@@ -168,6 +168,17 @@ globalThis.absUrl = function(href, base) {
   }
   return base.replace(/\/$/, '') + '/' + href;
 };
+
+globalThis.unpackJs = function(source) {
+  var s = String(source);
+  if (s.indexOf('}(') === -1 || s.indexOf(".split('|')") === -1) return s;
+  var body = s.slice(s.indexOf("}('") + 3, s.indexOf(".split('|'),0,{}))"));
+  body = body.replace(/\\'/g, "'");
+  var payload = body.slice(0, body.indexOf("',"));
+  var dict = body.slice(body.indexOf("'", body.indexOf("',") + 2) + 1, body.lastIndexOf("'")).split('|');
+  function r62(t){ var a=0; for (var i=0;i<t.length;i++){ var c=t.charCodeAt(i); a = a*62 + (c<=57 ? c-48 : c>=97 ? c-87 : c-29); } return a; }
+  return payload.replace(/[0-9A-Za-z]+/g, function(k){ var i=r62(k); return (i<dict.length && dict[i]!=='') ? dict[i] : k; });
+};
 ''';
 
 /// Wraps a provider's JS so it lives in its own namespace with a local

@@ -39,6 +39,23 @@ globalThis.absUrl = (h, b) => /^https?:\/\//i.test(h) ? h
   : b ? (h.startsWith('/') ? b.match(/^(https?:\/\/[^/]+)/)[1] + h : b.replace(/\/$/, '') + '/' + h)
   : h;
 
+// Dean-Edwards p,a,c,k,e,d unpacker (base-62), no eval. Returns input unchanged
+// if not packed. Mirrors globalThis.unpackJs in js_bootstrap.dart.
+globalThis.unpackJs = function (source) {
+  const s = String(source);
+  if (s.indexOf('}(') === -1 || s.indexOf(".split('|')") === -1) return s;
+  let body = s.slice(s.indexOf("}('") + 3, s.indexOf(".split('|'),0,{}))"));
+  body = body.replace(/\\'/g, "'");
+  const payload = body.slice(0, body.indexOf("',"));
+  const dict = body.slice(body.indexOf("'", body.indexOf("',") + 2) + 1, body.lastIndexOf("'")).split('|');
+  const r62 = (t) => [...t].reduce((a, c) => a * 62 +
+    (c <= '9' ? c.charCodeAt(0) - 48 : c >= 'a' ? c.charCodeAt(0) - 87 : c.charCodeAt(0) - 29), 0);
+  return payload.replace(/[0-9A-Za-z]+/g, (k) => {
+    const i = r62(k);
+    return i < dict.length && dict[i] !== '' ? dict[i] : k;
+  });
+};
+
 globalThis.sha256Hex = async function (message) {
   return nodeCrypto.createHash('sha256').update(String(message)).digest('hex');
 };
