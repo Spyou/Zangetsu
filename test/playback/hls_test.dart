@@ -20,4 +20,11 @@ void main() {
     const media = '#EXTM3U\n#EXTINF:6.0,\nseg0.ts\n#EXTINF:6.0,\nseg1.ts\n';
     expect(parseHlsMaster(media, 'https://cdn.test/x/index.m3u8'), isEmpty);
   });
+
+  test('parseHlsMaster falls back to a bandwidth label when RESOLUTION is absent', () {
+    const master = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1200000\na/index.m3u8\n';
+    final out = parseHlsMaster(master, 'https://cdn.test/hls/master.m3u8');
+    expect(out.single.quality, '1200k');
+    expect(out.single.url, 'https://cdn.test/hls/a/index.m3u8');
+  });
 }
