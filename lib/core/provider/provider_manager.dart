@@ -68,9 +68,10 @@ class _JsHost {
     _runtime.evaluate('delete globalThis.__providers[${jsonEncode(sourceId)}];');
   }
 
-  Future<String> call(String sourceId, String method, List<Object?> args) async {
+  Future<String> call(String sourceId, String method, List<Object?> args,
+      {Duration timeout = const Duration(seconds: 15)}) async {
     try {
-      final v = await _runCall(sourceId, method, args);
+      final v = await _runCall(sourceId, method, args, timeout);
       _health.remove(sourceId);
       return v;
     } catch (e) {
@@ -84,15 +85,16 @@ class _JsHost {
     }
   }
 
-  Future<String> _runCall(String sourceId, String method, List<Object?> args) async {
+  Future<String> _runCall(String sourceId, String method, List<Object?> args,
+      Duration timeout) async {
     final argsJson = jsonEncode(args);
     final expr =
         '__callProvider(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)})';
     final asyncResult = await _runtime.evaluateAsync(expr);
     final resolved = await _runtime
         .handlePromise(asyncResult)
-        .timeout(const Duration(seconds: 15), onTimeout: () {
-      throw JsRuntimeException('$method timed out after 15s');
+        .timeout(timeout, onTimeout: () {
+      throw JsRuntimeException('$method timed out after ${timeout.inSeconds}s');
     });
     if (resolved.isError) {
       var msg = resolved.stringResult;
@@ -126,6 +128,8 @@ class _JsHost {
       final method = (payload['method'] as String?) ?? 'GET';
       final headers = (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
       final body = payload['body'];
+      // ignore: avoid_print
+      print('[fetch] $method $url');
       final resp = await dio.requestUri<dynamic>(
         Uri.parse(url),
         data: body,
@@ -137,6 +141,8 @@ class _JsHost {
           validateStatus: (_) => true,
         ),
       );
+      // ignore: avoid_print
+      print('[fetch] <- ${resp.statusCode} ${(resp.data?.toString().length ?? 0)}B $url');
       final responseHeaders = <String, String>{};
       resp.headers.forEach((k, v) => responseHeaders[k] = v.join(', '));
       final responseJson = jsonEncode({
@@ -148,6 +154,8 @@ class _JsHost {
       });
       _runtime.evaluate('__resolveFetch(${jsonEncode(id)}, ${jsonEncode(responseJson)});');
     } catch (e) {
+      // ignore: avoid_print
+      print('[fetch] FAILED $e');
       if (id != null) {
         _runtime.evaluate('__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
       }
@@ -214,8 +222,9 @@ class JsProvider implements BaseProvider {
   ProviderHealthStatus get healthStatus => _host.healthFor(sourceId);
   String? get lastError => _host.lastErrorFor(sourceId);
 
-  Future<String> _call(String method, List<Object?> args) =>
-      _host.call(sourceId, method, args);
+  Future<String> _call(String method, List<Object?> args,
+          {Duration timeout = const Duration(seconds: 15)}) =>
+      _host.call(sourceId, method, args, timeout: timeout);
 
   ProviderInfo? _infoCache;
 
@@ -252,7 +261,10 @@ class JsProvider implements BaseProvider {
 
   @override
   Future<List<VideoSource>> getVideoSources(String episodeUrl) async {
-    final raw = await _call('getVideoSources', [episodeUrl]);
+    // Video source resolution makes several network hops (decrypt + multiple
+    // embed/clock resolves), so it needs a longer ceiling than the 15s default.
+    final raw = await _call('getVideoSources', [episodeUrl],
+        timeout: const Duration(seconds: 60));
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(VideoSource.fromJson).toList();
   }

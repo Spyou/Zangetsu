@@ -53,9 +53,13 @@ class _DevSliceScreenState extends State<DevSliceScreen> {
           'url=${s.url} subs=${s.subtitles.length} '
           'referer=${s.headers?['Referer']}');
       buf.writeln('\n✅ SLICE OK');
-    } catch (e) {
+    } catch (e, st) {
       buf.writeln('\n❌ SLICE FAILED: $e');
+      // ignore: avoid_print
+      print('### DEVSLICE FAILED: $e\n$st');
     }
+    // ignore: avoid_print
+    print('### DEVSLICE LOG:\n${buf.toString()}');
     setState(() => _log = buf.toString());
   }
 

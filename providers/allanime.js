@@ -144,7 +144,7 @@ function getVideoSources(episodeUrl) {
       if (EMBED[name]) continue;
       if (raw.indexOf('--') === 0) {
         var path = decodeSourceUrl(raw);
-        if (path.indexOf('/apivtwo/clock') !== -1) jobs.push(_resolveClock(path, mode));
+        if (path.indexOf('/apivtwo/clock') !== -1) jobs.push(_resolveClock(path, mode).catch(function () { return []; }));
       } else if (/^https?:\/\//.test(raw)) {
         jobs.push(Promise.resolve([{ url: raw, quality: '', container: /\.m3u8/.test(raw) ? 'hls' : 'mp4',
           headers: { 'Referer': REFERER, 'User-Agent': UA }, kind: mode, audioLang: mode === 'dub' ? 'en' : 'ja', subtitles: [] }]));
