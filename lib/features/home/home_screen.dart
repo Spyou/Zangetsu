@@ -20,7 +20,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _search(String q) {
     if (q.trim().isEmpty) return;
-    setState(() => _results = _repo.search(q.trim()));
+    // Block-body setState: the closure must return void. An arrow body here
+    // would return the Future from the assignment, which setState forbids.
+    setState(() {
+      _results = _repo.search(q.trim());
+    });
   }
 
   @override
