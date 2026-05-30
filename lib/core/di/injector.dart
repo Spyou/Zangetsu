@@ -36,4 +36,12 @@ Future<void> initDependencies() async {
     originRepoUrl: 'bundled://',
     displayName: 'Bundled',
   );
+
+  final allanimeJs = await rootBundle.loadString('providers/allanime.js');
+  manager.load(
+    sourceId: 'allanime',
+    jsSource: allanimeJs,
+    originRepoUrl: 'bundled://',
+    displayName: 'Bundled',
+  );
 }

@@ -73,4 +73,5 @@ flutter:
   uses-material-design: true
   assets:
     - providers/example.js
+    - providers/allanime.js
     - extractors/example_embed.js
