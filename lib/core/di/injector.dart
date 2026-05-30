@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../playback/resume_store.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
 
@@ -13,6 +14,7 @@ final GetIt sl = GetIt.instance;
 Future<void> initDependencies() async {
   await Hive.initFlutter();
   await ProviderDownloader.init();
+  await ResumeStore.init();
 
   final dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 15),
