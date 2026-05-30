@@ -38,6 +38,7 @@ class PlayerController extends ChangeNotifier {
   VideoSource? active;
   List<HlsVariant> qualities = const [];
   HlsVariant? activeQuality; // null = Auto (the master)
+  VideoSource? _hlsMaster; // the HLS master among `sources` that the quality menu expands
   String? error;
   bool loadingSources = false;
 
@@ -77,6 +78,7 @@ class PlayerController extends ChangeNotifier {
       if (gen != _gen) return; // superseded by a newer open
       sources = resolved;
       loadingSources = false;
+      _buildQualityMenu(gen); // populate Auto/1080p/720p from the HLS master, if any
       final pick = pickDefault(resolved);
       if (pick == null) {
         error = 'No playable sources for this episode.';
@@ -95,25 +97,48 @@ class PlayerController extends ChangeNotifier {
   /// Switch to a specific source (sub/dub or quality change), preserving position.
   Future<void> switchSource(VideoSource s) => _open(s, seekTo: _lastPos);
 
-  /// Switch the active HLS resolution. [v] == null → Auto (re-open the master).
-  /// Re-opens at the live position and keeps the expanded quality menu.
+  /// Builds the quality menu from the first HLS master among [sources]
+  /// (independent of which source plays by default). Fire-and-forget; the menu
+  /// appears once the master is fetched + parsed. Resets prior quality state.
+  void _buildQualityMenu(int gen) {
+    qualities = const [];
+    activeQuality = null;
+    _hlsMaster = null;
+    VideoSource? master;
+    for (final s in sources) {
+      if (s.container == SourceContainer.hls) { master = s; break; }
+    }
+    if (master == null) return;
+    _hlsMaster = master;
+    final m = master;
+    fetchHlsVariants(m.url, m.headers, _dio).then((vs) {
+      if (gen == _gen && vs.length > 1) {
+        qualities = vs;
+        notifyListeners();
+      }
+    });
+  }
+
+  /// Switch the HLS resolution. [v] == null → Auto (the adaptive master);
+  /// otherwise the chosen variant. Plays via the HLS master's headers/kind and
+  /// resumes at the live position. No-op if there's no HLS master.
   Future<void> selectQuality(HlsVariant? v) async {
-    final a = active;
-    if (a == null) return;
-    final url = v?.url ?? a.url; // Auto uses the master url
+    final master = _hlsMaster;
+    if (master == null) return;
+    final url = v?.url ?? master.url;
     await _open(
       VideoSource(
-        url: url, quality: v?.quality ?? a.quality, container: a.container,
-        headers: a.headers, kind: a.kind, audioLang: a.audioLang, subtitles: a.subtitles,
+        url: url, quality: v?.quality ?? 'auto', container: SourceContainer.hls,
+        headers: master.headers, kind: master.kind,
+        audioLang: master.audioLang, subtitles: master.subtitles,
       ),
       seekTo: _lastPos,
-      keepQualities: true,
     );
     activeQuality = v;
     notifyListeners();
   }
 
-  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen, bool keepQualities = false}) async {
+  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
     final g = gen ?? ++_gen;
     active = s;
     error = null;
@@ -129,18 +154,6 @@ class PlayerController extends ChangeNotifier {
       final sub = s.subtitles.firstWhere((x) => x.isDefault, orElse: () => s.subtitles.first);
       await player.setSubtitleTrack(
           SubtitleTrack.uri(sub.url, title: sub.label ?? sub.lang, language: sub.lang));
-    }
-    if (!keepQualities) {
-      qualities = const [];
-      activeQuality = null;
-      if (s.container == SourceContainer.hls) {
-        fetchHlsVariants(s.url, s.headers, _dio).then((vs) {
-          if (g == _gen && vs.length > 1) {
-            qualities = vs;
-            notifyListeners();
-          }
-        });
-      }
     }
   }
 

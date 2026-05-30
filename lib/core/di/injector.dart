@@ -19,8 +19,10 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ResumeStore>(ResumeStore());
 
   final dio = Dio(BaseOptions(
-    connectTimeout: const Duration(seconds: 15),
-    receiveTimeout: const Duration(seconds: 20),
+    // 8s bounds every provider/extractor fetch (incl. embed hosts that hang,
+    // e.g. streamlare's anti-bot endpoint) so source resolution can't stall ~20s.
+    connectTimeout: const Duration(seconds: 8),
+    receiveTimeout: const Duration(seconds: 8),
     headers: {'User-Agent': 'Mozilla/5.0 (WATCH_APP) Chrome/120.0'},
   ));
   sl.registerSingleton<Dio>(dio);
