@@ -38,6 +38,7 @@ class PlayerController extends ChangeNotifier {
   final List<StreamSubscription> _subs = [];
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
+  int _gen = 0; // bumped per open; async continuations bail if superseded
 
   Episode get currentEpisode => episodes[currentIndex];
 
@@ -53,6 +54,7 @@ class PlayerController extends ChangeNotifier {
 
   /// Resolves sources for [index] and starts the best one.
   Future<void> openEpisode(int index) async {
+    final gen = ++_gen;
     await _persist();
     currentIndex = index;
     error = null;
@@ -62,6 +64,7 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
     try {
       final resolved = await _resolveSources(currentEpisode.url);
+      if (gen != _gen) return; // superseded by a newer open
       sources = resolved;
       loadingSources = false;
       final pick = pickDefault(resolved);
@@ -70,8 +73,9 @@ class PlayerController extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      await _open(pick);
+      await _open(pick, gen: gen);
     } catch (e) {
+      if (gen != _gen) return;
       loadingSources = false;
       error = 'Could not load sources: $e';
       notifyListeners();
@@ -81,7 +85,8 @@ class PlayerController extends ChangeNotifier {
   /// Switch to a specific source (sub/dub or quality change), preserving position.
   Future<void> switchSource(VideoSource s) => _open(s, seekTo: _lastPos);
 
-  Future<void> _open(VideoSource s, {Duration? seekTo}) async {
+  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
+    final g = gen ?? ++_gen;
     active = s;
     error = null;
     notifyListeners();
@@ -91,7 +96,7 @@ class PlayerController extends ChangeNotifier {
     await player.open(
       Media(s.url, httpHeaders: s.headers, start: start > Duration.zero ? start : null),
     );
-    // Attach the first soft subtitle, if any.
+    if (g != _gen) return; // superseded mid-open
     if (s.subtitles.isNotEmpty) {
       final sub = s.subtitles.firstWhere((x) => x.isDefault, orElse: () => s.subtitles.first);
       await player.setSubtitleTrack(
@@ -99,13 +104,15 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  /// Try the next source after the [failed] one (dead/DRM/unsupported).
+  /// Try the next source after the current one fails (dead/DRM/unsupported),
+  /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
     debugPrint('[player] error: $e');
-    final remaining = sources.where((s) => s != active).toList();
-    final next = pickDefault(remaining);
+    final failed = active;
+    final remaining = sources.where((s) => s != failed).toList();
+    final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
     if (next != null) {
-      await _open(next);
+      await _open(next, seekTo: _lastPos);
     } else {
       error = 'Playback failed: $e';
       notifyListeners();
