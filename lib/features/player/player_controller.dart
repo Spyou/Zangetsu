@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/hls.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 
@@ -19,12 +21,14 @@ class PlayerController extends ChangeNotifier {
     required this.episodes,
     required this.resume,
     required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
-  }) : _resolveSources = resolveSources;
+    required Dio dio,
+  }) : _resolveSources = resolveSources, _dio = dio;
 
   final String sourceId;
   final List<Episode> episodes;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) _resolveSources;
+  final Dio _dio;
 
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
@@ -32,6 +36,8 @@ class PlayerController extends ChangeNotifier {
   int currentIndex = 0;
   List<VideoSource> sources = const [];
   VideoSource? active;
+  List<HlsVariant> qualities = const [];
+  HlsVariant? activeQuality; // null = Auto (the master)
   String? error;
   bool loadingSources = false;
 
@@ -89,7 +95,25 @@ class PlayerController extends ChangeNotifier {
   /// Switch to a specific source (sub/dub or quality change), preserving position.
   Future<void> switchSource(VideoSource s) => _open(s, seekTo: _lastPos);
 
-  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
+  /// Switch the active HLS resolution. [v] == null → Auto (re-open the master).
+  /// Re-opens at the live position and keeps the expanded quality menu.
+  Future<void> selectQuality(HlsVariant? v) async {
+    final a = active;
+    if (a == null) return;
+    final url = v?.url ?? a.url; // Auto uses the master url
+    await _open(
+      VideoSource(
+        url: url, quality: v?.quality ?? a.quality, container: a.container,
+        headers: a.headers, kind: a.kind, audioLang: a.audioLang, subtitles: a.subtitles,
+      ),
+      seekTo: _lastPos,
+      keepQualities: true,
+    );
+    activeQuality = v;
+    notifyListeners();
+  }
+
+  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen, bool keepQualities = false}) async {
     final g = gen ?? ++_gen;
     active = s;
     error = null;
@@ -105,6 +129,18 @@ class PlayerController extends ChangeNotifier {
       final sub = s.subtitles.firstWhere((x) => x.isDefault, orElse: () => s.subtitles.first);
       await player.setSubtitleTrack(
           SubtitleTrack.uri(sub.url, title: sub.label ?? sub.lang, language: sub.lang));
+    }
+    if (!keepQualities) {
+      qualities = const [];
+      activeQuality = null;
+      if (s.container == SourceContainer.hls) {
+        fetchHlsVariants(s.url, s.headers, _dio).then((vs) {
+          if (g == _gen && vs.length > 1) {
+            qualities = vs;
+            notifyListeners();
+          }
+        });
+      }
     }
   }
 
