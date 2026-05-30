@@ -33,6 +33,7 @@ class _JsHost {
     _runtime.onMessage('fetch', _onFetch);
     _runtime.onMessage('console', _onConsole);
     _runtime.onMessage('crypto', _onCrypto);
+    _runtime.onMessage('timer', _onTimer);
     final r = _runtime.evaluate(kJsBootstrap);
     if (r.isError) {
       throw JsRuntimeException('Bootstrap failed: ${r.stringResult}');
@@ -128,6 +129,7 @@ class _JsHost {
       final method = (payload['method'] as String?) ?? 'GET';
       final headers = (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
       final body = payload['body'];
+      final tMs = (payload['timeoutMs'] as num?)?.toInt() ?? 0;
       // ignore: avoid_print
       print('[fetch] $method $url');
       final resp = await dio.requestUri<dynamic>(
@@ -139,6 +141,8 @@ class _JsHost {
           responseType: ResponseType.plain,
           followRedirects: true,
           validateStatus: (_) => true,
+          receiveTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
+          sendTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
         ),
       );
       // ignore: avoid_print
@@ -187,6 +191,17 @@ class _JsHost {
         _runtime.evaluate('__rejectCrypto(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
       }
     }
+  }
+
+  void _onTimer(dynamic raw) {
+    try {
+      final payload = _coerceMap(raw);
+      final id = payload['id'] as String;
+      final ms = (payload['ms'] as num?)?.toInt() ?? 0;
+      Future<void>.delayed(Duration(milliseconds: ms < 0 ? 0 : ms), () {
+        _runtime.evaluate('__fireTimer(${jsonEncode(id)});');
+      });
+    } catch (_) {}
   }
 
   void _onConsole(dynamic raw) {

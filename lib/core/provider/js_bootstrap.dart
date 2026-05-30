@@ -86,7 +86,8 @@ globalThis.__fetch = function(src, url, opts) {
     method: (opts.method || 'GET').toUpperCase(),
     headers: opts.headers || {},
     body: opts.body == null ? null : (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)),
-    responseType: opts.responseType || 'text'
+    responseType: opts.responseType || 'text',
+    timeoutMs: (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) ? opts.timeoutMs : 0
   };
   var promise = new Promise(function(resolve, reject) {
     __pendingFetches[id] = { resolve: resolve, reject: reject };
@@ -168,6 +169,25 @@ globalThis.absUrl = function(href, base) {
   }
   return base.replace(/\/$/, '') + '/' + href;
 };
+
+var __timers = {};
+var __timerSeq = 0;
+function __nextTimerId() { __timerSeq += 1; return 't' + __timerSeq; }
+globalThis.__fireTimer = function(id) {
+  var fn = __timers[id];
+  if (!fn) return;
+  delete __timers[id];
+  try { fn(); } catch (e) {}
+};
+if (typeof globalThis.setTimeout !== 'function') {
+  globalThis.setTimeout = function(fn, ms) {
+    var id = __nextTimerId();
+    __timers[id] = fn;
+    sendMessage('timer', JSON.stringify({ id: id, ms: ms || 0 }));
+    return id;
+  };
+  globalThis.clearTimeout = function(id) { delete __timers[id]; };
+}
 
 globalThis.unpackJs = function(source) {
   var s = String(source);
