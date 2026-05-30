@@ -19,8 +19,8 @@ grows via hosted JS providers + per-host extractors — no app update needed.
 ## Testing
 
 ```bash
-flutter test              # Dart model tests
-node --test js_harness/   # JS provider/extractor contract (offline, deterministic)
+flutter test                            # Dart model tests
+node --test js_harness/contract.test.mjs   # JS provider/extractor contract (offline, deterministic)
 ```
 
 ## Running the dev slice
