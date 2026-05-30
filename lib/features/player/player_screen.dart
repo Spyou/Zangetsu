@@ -1,6 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -38,6 +40,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       episodes: widget.episodes,
       resume: widget.resume,
       resolveSources: widget.resolveSources,
+      dio: sl<Dio>(),
     )..init(widget.startIndex);
   }
 
@@ -56,6 +59,30 @@ class _PlayerScreenState extends State<PlayerScreen> {
           child: ListView(
             shrinkWrap: true,
             children: [
+              if (_c.qualities.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Text('Quality', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: Icon(_c.activeQuality == null ? Icons.check : null),
+                  title: const Text('Auto'),
+                  onTap: () { Navigator.pop(context); _c.selectQuality(null); },
+                ),
+                for (final v in _c.qualities)
+                  ListTile(
+                    dense: true,
+                    leading: Icon(_c.activeQuality?.url == v.url ? Icons.check : null),
+                    title: Text(v.quality),
+                    onTap: () { Navigator.pop(context); _c.selectQuality(v); },
+                  ),
+                const Divider(),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  child: Text('Source', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
               for (final k in kinds)
                 for (final s in sortByQuality(sourcesForKind(_c.sources, k)))
                   ListTile(
@@ -105,7 +132,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       Expanded(
                         child: Text('Ep ${_c.currentEpisode.number ?? ''} • '
                             '${_c.active?.kind.name ?? ''} '
-                            '${_c.active?.quality ?? ''}',
+                            '${_c.activeQuality?.quality ?? _c.active?.quality ?? ''}',
                             style: const TextStyle(color: Colors.white70)),
                       ),
                       IconButton(
