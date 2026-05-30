@@ -83,3 +83,7 @@ flutter:
     - providers/example.js
     - providers/allanime.js
     - extractors/example_embed.js
+    - extractors/okru.js
+    - extractors/mp4upload.js
+    - extractors/streamlare.js
+    - extractors/doodstream.js

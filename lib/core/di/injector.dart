@@ -33,6 +33,13 @@ Future<void> initDependencies() async {
   final extractorJs = await rootBundle.loadString('extractors/example_embed.js');
   manager.loadExtractor(extractorId: 'example_embed', jsSource: extractorJs);
 
+  // Real embed-host extractors (P2). Order doesn't matter; each registers its
+  // own hosts in __extractors and is reached via extractVideo().
+  for (final ex in ['okru', 'mp4upload', 'streamlare', 'doodstream']) {
+    final js = await rootBundle.loadString('extractors/$ex.js');
+    manager.loadExtractor(extractorId: ex, jsSource: js);
+  }
+
   final providerJs = await rootBundle.loadString('providers/example.js');
   manager.load(
     sourceId: 'example',
