@@ -25,6 +25,7 @@ function _parse(jsonText, headers) {
 globalThis.__streamlareParse = _parse;
 
 function extract(url, opts) {
+  opts = opts || {}; var _kind = opts.kind || 'sub'; var _lang = opts.audioLang || (_kind === 'dub' ? 'en' : 'ja');
   var headers = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36', 'Referer': 'https://slwatch.co/' };
   var body = JSON.stringify({ id: _id(url) });
   return fetch('https://slwatch.co/api/video/stream/get', {
@@ -33,5 +34,5 @@ function extract(url, opts) {
     var t = r.body || '';
     if (t.charAt(0) !== '{') throw new Error('streamlare: anti-bot / not JSON');
     return _parse(t, headers);
-  });
+  }).then(function(arr){ return arr.map(function(s){ s.kind = _kind; s.audioLang = _lang; return s; }); });
 }

@@ -43,3 +43,11 @@ live('getVideoSources returns a playable stream for One Piece ep 1', async () =>
   assert.ok(sources.some(function (s) { return /\.m3u8|\.mp4|fast4speed|wixmp/.test(s.url); }), 'expected a playable url');
   assert.ok(sources.every(function (s) { return s.headers && s.headers.Referer; }), 'headers present');
 });
+
+import { loadExtractor as _loadEx } from './host.mjs';
+_loadEx(new URL('../extractors/okru.js', import.meta.url));
+
+test('allanime + okru extractor both expose their hooks (wiring present)', () => {
+  assert.equal(typeof globalThis.__allanimeDecodeSourceUrl, 'function');
+  assert.equal(typeof globalThis.__okruParse, 'function');
+});

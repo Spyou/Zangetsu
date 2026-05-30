@@ -20,10 +20,11 @@ function _parse(html) {
 globalThis.__mp4uploadParse = _parse;
 
 function extract(url, opts) {
+  opts = opts || {}; var _kind = opts.kind || 'sub'; var _lang = opts.audioLang || (_kind === 'dub' ? 'en' : 'ja');
   var headers = { 'Referer': 'https://mp4upload.com/', 'User-Agent': 'Mozilla/5.0' };
   return fetch(url, { headers: headers }).then(function (r) {
     var s = _parse(r.body || '');
     if (!s) throw new Error('mp4upload: no source');
     return [s];
-  });
+  }).then(function(arr){ return arr.map(function(s){ s.kind = _kind; s.audioLang = _lang; return s; }); });
 }

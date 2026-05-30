@@ -24,6 +24,7 @@ function _build(host, pageHtml, passBody, finalEmbedUrl) {
 globalThis.__doodBuild = _build;
 
 function extract(url, opts) {
+  opts = opts || {}; var _kind = opts.kind || 'sub'; var _lang = opts.audioLang || (_kind === 'dub' ? 'en' : 'ja');
   var embed = String(url).replace('/d/', '/e/');
   return fetch(embed, {}).then(function (r) {
     var finalUrl = r.url || embed;
@@ -36,5 +37,5 @@ function extract(url, opts) {
         if (!s) throw new Error('doodstream: build failed');
         return [s];
       });
-  });
+  }).then(function(arr){ return arr.map(function(s){ s.kind = _kind; s.audioLang = _lang; return s; }); });
 }

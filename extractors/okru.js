@@ -32,7 +32,8 @@ function _parse(html, headers) {
 globalThis.__okruParse = _parse;
 
 function extract(url, opts) {
-  opts = opts || {};
+  opts = opts || {}; var _kind = opts.kind || 'sub'; var _lang = opts.audioLang || (_kind === 'dub' ? 'en' : 'ja');
   var headers = opts.headers || { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0 Safari/537.36' };
-  return fetch(url, { headers: headers }).then(function (r) { return _parse(r.body || '', headers); });
+  return fetch(url, { headers: headers }).then(function (r) { return _parse(r.body || '', headers); })
+    .then(function(arr){ return arr.map(function(s){ s.kind = _kind; s.audioLang = _lang; return s; }); });
 }

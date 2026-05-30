@@ -137,11 +137,16 @@ function getVideoSources(episodeUrl) {
   var m = String(episodeUrl).replace('allanime://', '').split('/');
   var showId = m[0], mode = (m[1] === 'dub') ? 'dub' : 'sub', epNo = m[2];
   return _fetchSourceUrls(showId, mode, epNo).then(function (sourceUrls) {
-    var EMBED = { 'Ok': 1, 'Ss-Hls': 1, 'Mp4': 1, 'Sl-mp4': 1 };
+    var SKIP = { 'Ss-Hls': 1 };                       // dead host
+    var EMBED = { 'Ok': 1, 'Mp4': 1, 'Sl-mp4': 1 };   // resolve via extractVideo
     var jobs = [];
     for (var i = 0; i < sourceUrls.length; i++) {
       var su = sourceUrls[i]; var name = su.sourceName || ''; var raw = String(su.sourceUrl || '');
-      if (EMBED[name]) continue;
+      if (SKIP[name]) continue;
+      if (EMBED[name] && /^https?:\/\//.test(raw)) {
+        jobs.push(extractVideo(raw, { headers: { 'Referer': REFERER, 'User-Agent': UA }, kind: mode, audioLang: mode === 'dub' ? 'en' : 'ja' }).catch(function () { return []; }));
+        continue;
+      }
       if (raw.indexOf('--') === 0) {
         var path = decodeSourceUrl(raw);
         if (path.indexOf('/apivtwo/clock') !== -1) jobs.push(_resolveClock(path, mode).catch(function () { return []; }));
