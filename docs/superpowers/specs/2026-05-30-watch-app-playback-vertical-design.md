@@ -46,19 +46,48 @@ API.
   `availableEpisodesDetail` (separate **sub** and **dub** episode lists) →
   `[Episode]` (number, id). Detail also returns description/genres/status when
   present.
-- **`getVideoSources(episodeUrl)`** → `episode` query → `sourceUrls[]`. Each
-  `sourceUrl` is obfuscated (prefix `--` + substitution/hex encoding). The
-  provider **ports ani-cli's decode algorithm**, then:
-  - direct links → return as `VideoSource` (`container` sniffed from extension);
-  - `clock`-style links → fetch the resolver JSON (`/apivtwo/clock?id=…` →
-    `links[]` with `link` + `resolutionStr`/`hls`) → return each as a
-    `VideoSource` tagged `quality` + `container:'hls'|'mp4'`.
-  - Every source carries `headers` (Referer/UA) and `kind:'sub'|'dub'` (from
-    which episode list it came), plus any `subtitles[]` AllAnime exposes.
-- **Stability note:** AllAnime occasionally rotates its API host / persisted-query
-  hashes. The provider hard-codes the current values; when they drift, the fix is
-  a one-file JS update (the whole point of the hosted-provider model). Bundled now,
-  moves to the hosted repo in P4.
+- **`getVideoSources(episodeUrl)`** → **persisted-query GET** of the `episode`
+  operation (hash `d405d0edd690624b66baba3068e0edc3ac90f1597d898a1ec8db4e5c43c00fec`).
+  The response is **AES-256-CTR encrypted** under `data.tobeparsed` (base64) —
+  verified live 2026-05-30; there is no plain/hex-only path anymore. The provider:
+  1. **Decrypts** `tobeparsed` → `episode.sourceUrls[]` (see §1.5 crypto). Verified
+     params: `key = SHA256("Xot36i3lK3:v1")`, `iv = blob[1..13]`,
+     `counter = iv ‖ 0x00000002`, `ciphertext = blob[13 .. len-16]`.
+  2. For each `sourceUrl`: if it starts with `--`, **hex-substitution decode**
+     (ani-cli table) → `/apivtwo/clock.json?id=…`; fetch
+     `https://allanime.day<path>` (Referer `https://youtu-chan.com`) → `links[]`
+     (`link` + `resolutionStr` + `hls`) → emit a `VideoSource` per link, `quality`
+     from `resolutionStr`, `container:'hls'|'mp4'` (HLS master playlists are
+     handed to media_kit as-is for its own variant ladder). Direct `https://`
+     `sourceUrl`s (e.g. `Yt-mp4` → `tools.fast4speed.rsvp`) emit directly.
+  3. **Embed-host** `sourceName`s (`Ok`/ok.ru, `Ss-Hls`/streamsb, `Mp4`/mp4upload,
+     `Sl-mp4`/streamlare) are **skipped in v1** (they need per-host extractors —
+     deferred to P2). `Default`/`S-mp4`/`Uv-mp4`/`Luf-Mp4` + `Yt-mp4` give enough
+     direct playable streams.
+  - Every emitted source carries `headers` (`Referer: https://youtu-chan.com`,
+    desktop UA) and `kind:'sub'|'dub'` (from which episode list it came).
+- **Stability note:** AllAnime rotates its API host, persisted-query hash, the
+  `Referer` host (`youtu-chan.com`), and the AES key string over time. The provider
+  hard-codes current values; when they drift the fix is a one-file JS update (the
+  point of the hosted-provider model). The live integration test catches drift.
+  Bundled now, moves to the hosted repo in P4.
+
+## 1.5 Runtime crypto capability (NEW — required by AllAnime)
+
+QuickJS has no WebCrypto, but AllAnime (and future embed hosts like MegaCloud)
+require real crypto. Add a **Dart-backed async crypto bridge** to the runtime,
+mirroring the existing `fetch` bridge:
+
+- JS host helpers exposed to providers/extractors:
+  `sha256Hex(message) → Promise<hex>` and
+  `aesCtrDecrypt({keyHex, counterHex, dataB64}) → Promise<plaintextUtf8>`.
+- Dart side: `crypto` package (SHA-256, already a dep) + `pointycastle` (AES-CTR)
+  handle a new `crypto` message channel.
+- The Node test harness mirrors these with `node:crypto` (already proven to decrypt
+  the live blob), so providers test identically offline and on-device.
+- Pure-JS helpers (`base64ToBytes`, byte/hex slicing) stay in JS; only SHA-256 and
+  AES go through the bridge. General primitives (not AllAnime-specific) so P2
+  extractors reuse them.
 
 ## 2. Extractor stance (v1)
 
@@ -133,14 +162,24 @@ providers/allanime.js                      # real AllAnime provider (bundled)
   selection, resume read/write (no real playback).
 - **On-device smoke** — actually watch a real episode end-to-end (now unblocked).
 
-## 7. Build phasing (order, not scope cuts)
+## 7. Build phasing — split into two plans
 
-| Phase | Deliverable |
-|---|---|
-| **A** | AllAnime provider + decode; Node decode tests + live integration test |
-| **B** | `media_kit` player module (full features), driven by example data first |
-| **C** | Wire real UI: `SourceRepository`, Home (search), Detail (episodes), open Player |
-| **D** | Resume + autoplay-next + DRM-skip; on-device smoke — watch a real episode |
+This vertical is two independent, separately-testable subsystems, so it gets two
+implementation plans:
+
+**Plan 2A — data layer (AllAnime provider + crypto bridge).** Deliverable:
+`getVideoSources('…')` returns real playable `.m3u8`/`.mp4` URLs.
+- A1: Dart-backed crypto bridge (`sha256Hex`, `aesCtrDecrypt`) + Node harness mirror.
+- A2: AllAnime provider (search/episodes POST; sources persisted-GET → decrypt →
+  hex-decode → clock resolve), with hex-decode + AES unit tests and a network-gated
+  live integration test.
+
+**Plan 2B — presentation (player + UI), depends on 2A.** Deliverable: watch a real
+episode on-device.
+- B1: `media_kit` player module (full features), driven by example data first.
+- B2: `SourceRepository` + Home (search) + Detail (sub/dub + episodes) → open Player.
+- B3: resume + autoplay-next + DRM-skip; on-device smoke — watch a real AllAnime
+  episode end-to-end.
 
 ## Out of scope (this vertical)
 
