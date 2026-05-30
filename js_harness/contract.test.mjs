@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadProvider, callProvider } from './host.mjs';
+import { loadProvider, callProvider, loadExtractor } from './host.mjs';
 
 loadProvider('example', new URL('../providers/example.js', import.meta.url));
+loadExtractor(new URL('../extractors/example_embed.js', import.meta.url));
 
 test('getInfo reports an anime provider', async () => {
   const info = JSON.parse(await callProvider('example', 'getInfo', []));
@@ -30,4 +31,23 @@ test('getEpisodes returns the same episode list shape', async () => {
     await callProvider('example', 'getEpisodes', ['https://example.test/anime/one-piece']));
   assert.ok(Array.isArray(eps));
   assert.equal(eps[0].number, 1);
+});
+
+test('extractVideo resolves an embed host to VideoSources', async () => {
+  const sources = await globalThis.extractVideo('https://embed.test/e/1', {
+    headers: { Referer: 'https://example.test/' },
+  });
+  assert.ok(Array.isArray(sources) && sources.length > 0);
+  assert.equal(sources[0].container, 'hls');
+  assert.equal(sources[0].kind, 'sub');
+  assert.match(sources[0].url, /\.m3u8$/);
+});
+
+test('provider.getVideoSources flows through extractVideo end-to-end', async () => {
+  const sources = JSON.parse(
+    await callProvider('example', 'getVideoSources', ['https://example.test/watch/one-piece/1']));
+  assert.ok(sources.length > 0);
+  assert.equal(sources[0].kind, 'sub');
+  assert.equal(sources[0].headers.Referer, 'https://example.test/');
+  assert.ok(sources[0].subtitles.length >= 1);
 });
