@@ -39,6 +39,8 @@ class PlayerController extends ChangeNotifier {
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
   int _gen = 0; // bumped per open; async continuations bail if superseded
+  final Set<String> _tried = {}; // source URLs already attempted this episode
+  bool _recovering = false; // debounce: one error-recovery at a time
 
   Episode get currentEpisode => episodes[currentIndex];
 
@@ -57,6 +59,8 @@ class PlayerController extends ChangeNotifier {
     final gen = ++_gen;
     await _persist();
     currentIndex = index;
+    _tried.clear();
+    _recovering = false;
     error = null;
     loadingSources = true;
     sources = const [];
@@ -108,15 +112,29 @@ class PlayerController extends ChangeNotifier {
   /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
     debugPrint('[player] error: $e');
+    final lower = e.toLowerCase();
+    // libmpv emits many non-fatal warnings (e.g. the iOS Simulator has no
+    // audio device). Only treat clear "this stream is unplayable" errors as a
+    // reason to switch sources — never the audio-device/no-sound warnings.
+    final fatal = lower.contains('failed to open') ||
+        lower.contains('recognize file format') ||
+        lower.contains('ffurl') ||
+        lower.contains('connection');
+    if (!fatal || _recovering) return;
+    _recovering = true;
     final failed = active;
-    final remaining = sources.where((s) => s != failed).toList();
+    if (failed != null) _tried.add(failed.url);
+    // Never re-try a source we've already attempted this episode (prevents the
+    // A→B→A thrash cascade).
+    final remaining = sources.where((s) => !_tried.contains(s.url)).toList();
     final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
     if (next != null) {
       await _open(next, seekTo: _lastPos);
     } else {
-      error = 'Playback failed: $e';
+      error = 'No source could be played on this device (tried ${_tried.length}).';
       notifyListeners();
     }
+    _recovering = false;
   }
 
   Future<void> playNext() async {
