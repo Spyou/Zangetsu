@@ -86,12 +86,12 @@ class _PosterCard extends StatelessWidget {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: item.cover == null
-                  ? const ColoredBox(color: Colors.black26)
+                  ? const SizedBox.expand(child: ColoredBox(color: Colors.black26))
                   : CachedNetworkImage(
                       imageUrl: item.cover!,
                       httpHeaders: item.coverHeaders,
                       fit: BoxFit.cover, width: double.infinity,
-                      errorWidget: (_, _, _) => const ColoredBox(color: Colors.black26),
+                      errorWidget: (_, _, _) => const SizedBox.expand(child: ColoredBox(color: Colors.black26)),
                     ),
             ),
           ),

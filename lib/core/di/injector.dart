@@ -16,6 +16,7 @@ Future<void> initDependencies() async {
   await Hive.initFlutter();
   await ProviderDownloader.init();
   await ResumeStore.init();
+  sl.registerSingleton<ResumeStore>(ResumeStore());
 
   final dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 15),
