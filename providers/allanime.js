@@ -118,7 +118,7 @@ function _decryptTobeparsed(b64) {
 }
 
 function _resolveClock(path, mode) {
-  return fetch('https://allanime.day' + path, { headers: { 'Referer': REFERER, 'User-Agent': UA } })
+  return fetch('https://allanime.day' + path, { headers: { 'Referer': REFERER, 'User-Agent': UA }, timeoutMs: 8000 })
     .then(function (r) {
       var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { return []; }
       var links = (j && j.links) || [];
@@ -132,6 +132,24 @@ function _resolveClock(path, mode) {
       return out;
     });
 }
+
+function _settleWithDeadline(jobs, deadlineMs) {
+  return new Promise(function (resolve) {
+    var results = [];
+    var pending = jobs.length;
+    var done = false;
+    function finish() { if (!done) { done = true; resolve(results); } }
+    if (pending === 0) { resolve(results); return; }
+    for (var i = 0; i < jobs.length; i++) {
+      Promise.resolve(jobs[i])
+        .then(function (arr) { if (arr && arr.length) results = results.concat(arr); })
+        .catch(function () {})
+        .then(function () { pending -= 1; if (pending === 0) finish(); });
+    }
+    setTimeout(finish, deadlineMs);
+  });
+}
+globalThis.__allanimeSettleWithDeadline = _settleWithDeadline; // test hook
 
 function getVideoSources(episodeUrl) {
   var m = String(episodeUrl).replace('allanime://', '').split('/');
@@ -155,8 +173,8 @@ function getVideoSources(episodeUrl) {
           headers: { 'Referer': REFERER, 'User-Agent': UA }, kind: mode, audioLang: mode === 'dub' ? 'en' : 'ja', subtitles: [] }]));
       }
     }
-    return Promise.all(jobs).then(function (lists) {
-      var all = []; for (var k = 0; k < lists.length; k++) all = all.concat(lists[k]);
+    var deadline = (typeof globalThis.__allanimeDeadlineMs === 'number') ? globalThis.__allanimeDeadlineMs : 5000;
+    return _settleWithDeadline(jobs, deadline).then(function (all) {
       if (all.length === 0) throw new Error('AllAnime: no playable sources');
       return all;
     });

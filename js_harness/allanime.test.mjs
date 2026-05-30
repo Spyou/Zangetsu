@@ -51,3 +51,15 @@ test('allanime + okru extractor both expose their hooks (wiring present)', () =>
   assert.equal(typeof globalThis.__allanimeDecodeSourceUrl, 'function');
   assert.equal(typeof globalThis.__okruParse, 'function');
 });
+
+test('settleWithDeadline returns resolved jobs without waiting for hung ones', async () => {
+  const settle = globalThis.__allanimeSettleWithDeadline;
+  assert.equal(typeof settle, 'function');
+  const fast = Promise.resolve([{ url: 'a' }]);
+  const hung = new Promise(() => {}); // never resolves
+  const t0 = Date.now();
+  const out = await settle([fast, hung], 150);
+  const dt = Date.now() - t0;
+  assert.deepEqual(out, [{ url: 'a' }]);
+  assert.ok(dt < 1000, 'should resolve at the ~150ms deadline, not wait for hung');
+});
