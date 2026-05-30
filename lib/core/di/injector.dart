@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../playback/resume_store.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
+import '../repository/source_repository.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -46,4 +47,6 @@ Future<void> initDependencies() async {
     originRepoUrl: 'bundled://',
     displayName: 'Bundled',
   );
+
+  sl.registerSingleton<SourceRepository>(SourceRepository(manager: manager));
 }
