@@ -24,6 +24,60 @@ globalThis.__rejectFetch = function(id, reason) {
   delete __pendingFetches[id]; p.reject(reason);
 };
 
+var __pendingCrypto = {};
+var __cryptoSeq = 0;
+function __nextCryptoId() { __cryptoSeq += 1; return 'c' + __cryptoSeq; }
+globalThis.__resolveCrypto = function(id, value) {
+  var p = __pendingCrypto[id]; if (!p) return;
+  delete __pendingCrypto[id]; p.resolve(value);
+};
+globalThis.__rejectCrypto = function(id, reason) {
+  var p = __pendingCrypto[id]; if (!p) return;
+  delete __pendingCrypto[id]; p.reject(reason);
+};
+function __crypto(op, payload) {
+  var id = __nextCryptoId();
+  var msg = { id: id, op: op };
+  for (var k in payload) { if (payload.hasOwnProperty(k)) msg[k] = payload[k]; }
+  var promise = new Promise(function(resolve, reject) {
+    __pendingCrypto[id] = { resolve: resolve, reject: reject };
+  });
+  sendMessage('crypto', JSON.stringify(msg));
+  return promise;
+}
+globalThis.sha256Hex = function(message) { return __crypto('sha256', { message: String(message) }); };
+globalThis.aesCtrDecrypt = function(opts) {
+  return __crypto('aesCtrDecrypt', { keyHex: opts.keyHex, counterHex: opts.counterHex, dataB64: opts.dataB64 });
+};
+globalThis.base64ToBytes = function(b64) {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var lookup = {}; for (var i = 0; i < chars.length; i++) lookup[chars.charAt(i)] = i;
+  var s = String(b64).replace(/[^A-Za-z0-9+/]/g, '');
+  var out = []; var n = s.length;
+  for (var j = 0; j < n; j += 4) {
+    var e1 = lookup[s.charAt(j)], e2 = lookup[s.charAt(j + 1)];
+    var e3 = lookup[s.charAt(j + 2)], e4 = lookup[s.charAt(j + 3)];
+    out.push((e1 << 2) | (e2 >> 4));
+    if (j + 2 < n) out.push(((e2 & 15) << 4) | (e3 >> 2));
+    if (j + 3 < n) out.push(((e3 & 3) << 6) | e4);
+  }
+  return out;
+};
+globalThis.bytesToHex = function(bytes) {
+  var h = ''; for (var i = 0; i < bytes.length; i++) { var x = (bytes[i] & 255).toString(16); h += x.length === 1 ? '0' + x : x; } return h;
+};
+globalThis.bytesToB64 = function(bytes) {
+  var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var out = '', i = 0;
+  while (i < bytes.length) {
+    var c1 = bytes[i++] & 255, c2 = i < bytes.length ? bytes[i++] & 255 : NaN, c3 = i < bytes.length ? bytes[i++] & 255 : NaN;
+    out += chars.charAt(c1 >> 2) + chars.charAt(((c1 & 3) << 4) | (c2 >> 4))
+        + (isNaN(c2) ? '=' : chars.charAt(((c2 & 15) << 2) | (c3 >> 6)))
+        + (isNaN(c3) ? '=' : chars.charAt(c3 & 63));
+  }
+  return out;
+};
+
 globalThis.__fetch = function(src, url, opts) {
   opts = opts || {};
   var id = __nextFetchId();

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_js/flutter_js.dart';
@@ -11,6 +12,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
+import 'crypto_ops.dart';
 import 'js_bootstrap.dart';
 
 enum ProviderHealthStatus { healthy, degraded, broken }
@@ -30,6 +32,7 @@ class _JsHost {
     _runtime.enableHandlePromises();
     _runtime.onMessage('fetch', _onFetch);
     _runtime.onMessage('console', _onConsole);
+    _runtime.onMessage('crypto', _onCrypto);
     final r = _runtime.evaluate(kJsBootstrap);
     if (r.isError) {
       throw JsRuntimeException('Bootstrap failed: ${r.stringResult}');
@@ -147,6 +150,33 @@ class _JsHost {
     } catch (e) {
       if (id != null) {
         _runtime.evaluate('__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
+      }
+    }
+  }
+
+  void _onCrypto(dynamic raw) {
+    String? id;
+    try {
+      final payload = _coerceMap(raw);
+      id = payload['id'] as String;
+      final op = payload['op'] as String;
+      String result;
+      if (op == 'sha256') {
+        result = sha256Hex(payload['message'] as String);
+      } else if (op == 'aesCtrDecrypt') {
+        final data = base64Decode(payload['dataB64'] as String);
+        result = aesCtrDecryptToString(
+          keyHex: payload['keyHex'] as String,
+          counterHex: payload['counterHex'] as String,
+          data: Uint8List.fromList(data),
+        );
+      } else {
+        throw FormatException('Unknown crypto op: $op');
+      }
+      _runtime.evaluate('__resolveCrypto(${jsonEncode(id)}, ${jsonEncode(result)});');
+    } catch (e) {
+      if (id != null) {
+        _runtime.evaluate('__rejectCrypto(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
       }
     }
   }
