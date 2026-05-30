@@ -55,6 +55,11 @@ dependencies:
   # AES-256-CTR for decrypting source lists from providers (e.g. AllAnime).
   pointycastle: ^3.9.1
 
+  # Video playback (libmpv-based). _libs_video bundles the native libs (iOS pod).
+  media_kit: ^1.1.11
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5
+
   # JSON
   json_annotation: ^4.11.0
 
