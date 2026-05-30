@@ -25,3 +25,21 @@ live('getEpisodes returns a non-empty list for the first result', async () => {
   const eps = JSON.parse(await callProvider('allanime', 'getEpisodes', [rows[0].url]));
   assert.ok(Array.isArray(eps) && eps.length > 0, 'expected episodes');
 });
+
+test('decodeSourceUrl maps the hex-substitution table', async () => {
+  const dec = globalThis.__allanimeDecodeSourceUrl;
+  assert.equal(typeof dec, 'function', 'decoder hook missing');
+  assert.equal(dec('--175948514e4c4f57'), '/apivtwo');
+  assert.equal(dec('--175b54575b53'), '/clock.json');
+  assert.equal(dec('https://x/y.m3u8'), 'https://x/y.m3u8');
+});
+
+live('getVideoSources returns a playable stream for One Piece ep 1', async () => {
+  const rows = JSON.parse(await callProvider('allanime', 'search', ['one piece', 1, {}]));
+  const detail = JSON.parse(await callProvider('allanime', 'getDetail', [rows[0].url]));
+  const ep1 = detail.episodes.find(function (e) { return e.number === 1; }) || detail.episodes[0];
+  const sources = JSON.parse(await callProvider('allanime', 'getVideoSources', [ep1.url]));
+  assert.ok(sources.length > 0, 'expected sources');
+  assert.ok(sources.some(function (s) { return /\.m3u8|\.mp4|fast4speed|wixmp/.test(s.url); }), 'expected a playable url');
+  assert.ok(sources.every(function (s) { return s.headers && s.headers.Referer; }), 'headers present');
+});
