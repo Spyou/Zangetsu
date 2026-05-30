@@ -1,6 +1,7 @@
 // Pure-Node mirror of kJsBootstrap + wrapProviderSource + wrapExtractorSource.
 // Lets provider/extractor contracts be tested without Flutter/QuickJS.
 import fs from 'node:fs';
+import nodeCrypto from 'node:crypto';
 
 globalThis.__providers = globalThis.__providers || {};
 globalThis.__extractors = globalThis.__extractors || {};
@@ -37,6 +38,20 @@ globalThis.absUrl = (h, b) => /^https?:\/\//i.test(h) ? h
   : h.startsWith('//') ? 'https:' + h
   : b ? (h.startsWith('/') ? b.match(/^(https?:\/\/[^/]+)/)[1] + h : b.replace(/\/$/, '') + '/' + h)
   : h;
+
+globalThis.sha256Hex = async function (message) {
+  return nodeCrypto.createHash('sha256').update(String(message)).digest('hex');
+};
+globalThis.aesCtrDecrypt = async function (opts) {
+  const key = Buffer.from(opts.keyHex, 'hex');
+  const ctr = Buffer.from(opts.counterHex, 'hex');
+  const data = Buffer.from(opts.dataB64, 'base64');
+  const d = nodeCrypto.createDecipheriv('aes-256-ctr', key, ctr);
+  return Buffer.concat([d.update(data), d.final()]).toString('utf8');
+};
+globalThis.base64ToBytes = (b64) => Array.from(Buffer.from(String(b64), 'base64'));
+globalThis.bytesToHex = (bytes) => Buffer.from(bytes).toString('hex');
+globalThis.bytesToB64 = (bytes) => Buffer.from(bytes).toString('base64');
 
 // Shared extractor dispatcher (mirrors the runtime helper). Parses the host
 // from `embedUrl` and routes to the registered extractor.
