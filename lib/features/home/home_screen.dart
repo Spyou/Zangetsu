@@ -91,7 +91,7 @@ class _PosterCard extends StatelessWidget {
                       imageUrl: item.cover!,
                       httpHeaders: item.coverHeaders,
                       fit: BoxFit.cover, width: double.infinity,
-                      errorWidget: (_, __, ___) => const ColoredBox(color: Colors.black26),
+                      errorWidget: (_, _, _) => const ColoredBox(color: Colors.black26),
                     ),
             ),
           ),
