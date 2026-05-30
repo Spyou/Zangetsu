@@ -49,6 +49,12 @@ dependencies:
   # JS engine (QuickJS bridge)
   flutter_js: ^0.8.0
 
+  # Hashing (SHA-256)
+  crypto: ^3.0.6
+
+  # AES-256-CTR for decrypting source lists from providers (e.g. AllAnime).
+  pointycastle: ^3.9.1
+
   # JSON
   json_annotation: ^4.11.0
 
