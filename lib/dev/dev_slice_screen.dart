@@ -25,24 +25,28 @@ class _DevSliceScreenState extends State<DevSliceScreen> {
   }
 
   Future<void> _run() async {
-    final p = sl<ProviderManager>().get('example')!;
+    final p = sl<ProviderManager>().get('allanime')!;
     final buf = StringBuffer();
     try {
       final info = await p.getInfo();
       buf.writeln('provider: ${info.name} (${info.type.name})');
 
-      final List<MediaItem> results = await p.search('one', 1);
-      buf.writeln('search("one") -> ${results.length} result(s): '
-          '${results.map((r) => r.title).join(", ")}');
+      final List<MediaItem> results = await p.search('one piece', 1);
+      buf.writeln('search("one piece") -> ${results.length} result(s); '
+          'first=${results.isEmpty ? "—" : results.first.title}');
 
       final MediaDetail detail = await p.getDetail(results.first.url);
-      buf.writeln('detail: ${detail.title} • ${detail.status.name} • '
-          '${detail.episodes.length} eps • studios=${detail.studios.join(",")}');
-
       final List<Episode> eps = await p.getEpisodes(detail.url);
-      buf.writeln('episodes: ${eps.map((e) => e.title).join(", ")}');
+      buf.writeln('detail: ${detail.title} • ${eps.length} eps '
+          '(${eps.take(3).map((e) => e.number).join(", ")}…)');
 
-      final List<VideoSource> sources = await p.getVideoSources(eps.first.url);
+      final Episode ep1 =
+          eps.firstWhere((e) => e.number == 1, orElse: () => eps.first);
+      buf.writeln('resolving sources for ep ${ep1.number} '
+          '(AES decrypt on-device, may take ~30s)…');
+      setState(() => _log = buf.toString());
+
+      final List<VideoSource> sources = await p.getVideoSources(ep1.url);
       final s = sources.first;
       buf.writeln('sources for "${eps.first.title}": ${sources.length} • '
           'first=${s.quality}/${s.container.name}/${s.kind.name} '
