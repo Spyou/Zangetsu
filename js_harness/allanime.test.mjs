@@ -22,6 +22,6 @@ live('search returns results for "one piece"', async () => {
 
 live('getEpisodes returns a non-empty list for the first result', async () => {
   const rows = JSON.parse(await callProvider('allanime', 'search', ['one piece', 1, {}]));
-  const detail = JSON.parse(await callProvider('allanime', 'getDetail', [rows[0].url]));
-  assert.ok(detail.episodes.length > 0, 'expected episodes');
+  const eps = JSON.parse(await callProvider('allanime', 'getEpisodes', [rows[0].url]));
+  assert.ok(Array.isArray(eps) && eps.length > 0, 'expected episodes');
 });

@@ -14,7 +14,10 @@ function _headers() { return { 'Referer': REFERER, 'Origin': ORIGIN, 'User-Agent
 
 function _post(query, variables) {
   return fetch(API, { method: 'POST', headers: _headers(), body: JSON.stringify({ variables: variables, query: query }) })
-    .then(function (r) { try { return JSON.parse(r.body || 'null'); } catch (e) { throw new Error('AllAnime: bad JSON (' + r.status + ')'); } });
+    .then(function (r) {
+      if (!r.ok) throw new Error('AllAnime: HTTP ' + r.status);
+      try { return JSON.parse(r.body || 'null'); } catch (e) { throw new Error('AllAnime: bad JSON (' + r.status + ')'); }
+    });
 }
 
 function getInfo() {
