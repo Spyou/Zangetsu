@@ -3,7 +3,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
-import 'dev/dev_slice_screen.dart';
+import 'features/home/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -18,6 +18,6 @@ class WatchApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: kAppName,
         theme: ThemeData.dark(useMaterial3: true),
-        home: const DevSliceScreen(),
+        home: const HomeScreen(),
       );
 }
