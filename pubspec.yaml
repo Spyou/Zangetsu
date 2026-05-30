@@ -60,6 +60,9 @@ dependencies:
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.5
 
+  # Image caching
+  cached_network_image: ^3.4.1
+
   # JSON
   json_annotation: ^4.11.0
 
