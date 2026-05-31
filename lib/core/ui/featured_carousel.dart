@@ -86,7 +86,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 360,
+        height: 400,
         child: Stack(
           children: [
             // ── Page view ─────────────────────────────────────────────────
@@ -108,7 +108,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
             // ── Page dots ─────────────────────────────────────────────────
             Positioned(
-              bottom: 4,
+              bottom: 10,
               left: 0,
               right: 0,
               child: Center(
