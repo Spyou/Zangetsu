@@ -17,6 +17,8 @@ MediaItem _$MediaItemFromJson(Map<String, dynamic> json) => MediaItem(
   url: json['url'] as String,
   type: $enumDecode(_$ProviderTypeEnumMap, json['type']),
   sourceId: json['sourceId'] as String,
+  subCount: (json['subCount'] as num?)?.toInt(),
+  dubCount: (json['dubCount'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
@@ -28,6 +30,8 @@ Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
   'url': instance.url,
   'type': _$ProviderTypeEnumMap[instance.type]!,
   'sourceId': instance.sourceId,
+  'subCount': instance.subCount,
+  'dubCount': instance.dubCount,
 };
 
 const _$ProviderTypeEnumMap = {

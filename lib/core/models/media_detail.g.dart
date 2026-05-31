@@ -36,6 +36,8 @@ MediaDetail _$MediaDetailFromJson(Map<String, dynamic> json) => MediaDetail(
       [],
   type: $enumDecode(_$ProviderTypeEnumMap, json['type']),
   sourceId: json['sourceId'] as String,
+  subCount: (json['subCount'] as num?)?.toInt(),
+  dubCount: (json['dubCount'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
@@ -53,6 +55,8 @@ Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
       'episodes': instance.episodes.map((e) => e.toJson()).toList(),
       'type': _$ProviderTypeEnumMap[instance.type]!,
       'sourceId': instance.sourceId,
+      'subCount': instance.subCount,
+      'dubCount': instance.dubCount,
     };
 
 const _$MediaStatusEnumMap = {

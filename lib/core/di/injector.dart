@@ -4,6 +4,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../playback/resume_store.dart';
+import '../playback/watch_history.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
 import '../repository/source_repository.dart';
@@ -17,6 +18,8 @@ Future<void> initDependencies() async {
   await ProviderDownloader.init();
   await ResumeStore.init();
   sl.registerSingleton<ResumeStore>(ResumeStore());
+  await WatchHistory.init();
+  sl.registerSingleton<WatchHistory>(WatchHistory());
 
   final dio = Dio(BaseOptions(
     // 8s bounds every provider/extractor fetch (incl. embed hosts that hang,

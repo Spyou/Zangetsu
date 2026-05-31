@@ -19,12 +19,21 @@ class SourceRepository {
     return p;
   }
 
+  Future<List<MediaItem>> popular({
+    String category = 'sub',
+    int dateRange = 7,
+    int page = 1,
+  }) =>
+      _p.popular(category: category, dateRange: dateRange, page: page);
+
   Future<List<MediaItem>> search(String query, {String category = 'sub'}) =>
       _p.search(query, 1, category: category);
 
-  Future<MediaDetail> detail(String url) => _p.getDetail(url);
+  Future<MediaDetail> detail(String url, {String category = 'sub'}) =>
+      _p.getDetail(url, category: category);
 
-  Future<List<Episode>> episodes(String url) => _p.getEpisodes(url);
+  Future<List<Episode>> episodes(String url, {String category = 'sub'}) =>
+      _p.getEpisodes(url, category: category);
 
   Future<List<VideoSource>> sources(String episodeUrl) =>
       _p.getVideoSources(episodeUrl);

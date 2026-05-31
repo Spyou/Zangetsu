@@ -20,6 +20,8 @@ class MediaItem extends Equatable {
   final String url;
   final ProviderType type;
   final String sourceId;
+  final int? subCount;
+  final int? dubCount;
 
   const MediaItem({
     required this.id,
@@ -30,13 +32,15 @@ class MediaItem extends Equatable {
     required this.url,
     required this.type,
     required this.sourceId,
+    this.subCount,
+    this.dubCount,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
       _$MediaItemFromJson(json);
   Map<String, dynamic> toJson() => _$MediaItemToJson(this);
 
-  MediaItem copyWith({String? sourceId}) => MediaItem(
+  MediaItem copyWith({String? sourceId, int? subCount, int? dubCount}) => MediaItem(
         id: id,
         title: title,
         englishTitle: englishTitle,
@@ -45,9 +49,11 @@ class MediaItem extends Equatable {
         url: url,
         type: type,
         sourceId: sourceId ?? this.sourceId,
+        subCount: subCount ?? this.subCount,
+        dubCount: dubCount ?? this.dubCount,
       );
 
   @override
   List<Object?> get props =>
-      [id, title, englishTitle, cover, coverHeaders, url, type, sourceId];
+      [id, title, englishTitle, cover, coverHeaders, url, type, sourceId, subCount, dubCount];
 }

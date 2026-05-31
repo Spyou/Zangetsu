@@ -7,21 +7,32 @@ import '../models/video_source.dart';
 /// Dart-side mirror of the JS provider contract. Every JS provider in
 /// `providers/*.js` exports these globals:
 ///   - getInfo()
+///   - popular(opts)
 ///   - search(query, page, opts)
-///   - getDetail(url)
-///   - getEpisodes(url)
+///   - getDetail(url, opts)
+///   - getEpisodes(url, opts)
 ///   - getVideoSources(episodeUrl)   // returns playable streams
 abstract class BaseProvider {
   String get sourceId;
 
   Future<ProviderInfo> getInfo();
 
-  /// `category` is an optional listing hint (e.g. 'popular', 'latest').
+  /// Returns the popular/trending feed. [category] is 'sub' or 'dub'.
+  /// [dateRange] is the trending window in days; [page] for pagination.
+  Future<List<MediaItem>> popular({
+    String category = 'sub',
+    int dateRange = 7,
+    int page = 1,
+  });
+
+  /// [category] is an optional listing hint (e.g. 'sub', 'dub').
   Future<List<MediaItem>> search(String query, int page, {String category = ''});
 
-  Future<MediaDetail> getDetail(String url);
+  /// [category] is 'sub' or 'dub' — controls which episode list is fetched.
+  Future<MediaDetail> getDetail(String url, {String category = 'sub'});
 
-  Future<List<Episode>> getEpisodes(String url);
+  /// [category] is 'sub' or 'dub'.
+  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'});
 
   /// The video leaf — returns one or more playable [VideoSource]s for an
   /// episode (the UI filters by kind/quality/lang).

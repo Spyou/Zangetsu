@@ -254,6 +254,19 @@ class JsProvider implements BaseProvider {
   }
 
   @override
+  Future<List<MediaItem>> popular({
+    String category = 'sub',
+    int dateRange = 7,
+    int page = 1,
+  }) async {
+    final raw = await _call('popular', [
+      {'category': category, 'dateRange': dateRange, 'page': page}
+    ]);
+    final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
+    return list.map((m) => MediaItem.fromJson({...m, 'sourceId': sourceId})).toList();
+  }
+
+  @override
   Future<List<MediaItem>> search(String query, int page, {String category = ''}) async {
     final raw = await _call('search', [query, page, {'category': category}]);
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
@@ -261,15 +274,15 @@ class JsProvider implements BaseProvider {
   }
 
   @override
-  Future<MediaDetail> getDetail(String url) async {
-    final raw = await _call('getDetail', [url]);
+  Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
+    final raw = await _call('getDetail', [url, {'category': category}]);
     final map = jsonDecode(raw) as Map<String, dynamic>;
     return MediaDetail.fromJson({...map, 'sourceId': sourceId});
   }
 
   @override
-  Future<List<Episode>> getEpisodes(String url) async {
-    final raw = await _call('getEpisodes', [url]);
+  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) async {
+    final raw = await _call('getEpisodes', [url, {'category': category}]);
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(Episode.fromJson).toList();
   }

@@ -46,6 +46,8 @@ class MediaDetail extends Equatable {
 
   final ProviderType type;
   final String sourceId;
+  final int? subCount;
+  final int? dubCount;
 
   const MediaDetail({
     required this.id,
@@ -61,6 +63,8 @@ class MediaDetail extends Equatable {
     this.episodes = const [],
     required this.type,
     required this.sourceId,
+    this.subCount,
+    this.dubCount,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -70,6 +74,6 @@ class MediaDetail extends Equatable {
   @override
   List<Object?> get props => [
         id, title, englishTitle, cover, coverHeaders, url, description,
-        status, genres, studios, episodes, type, sourceId,
+        status, genres, studios, episodes, type, sourceId, subCount, dubCount,
       ];
 }
