@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
+import 'core/theme/app_theme.dart';
 import 'features/home/home_screen.dart';
 
 Future<void> main() async {
@@ -17,7 +18,7 @@ class WatchApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         title: kAppName,
-        theme: ThemeData.dark(useMaterial3: true),
+        theme: buildAppTheme(),
         home: const HomeScreen(),
       );
 }

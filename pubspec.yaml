@@ -87,3 +87,8 @@ flutter:
     - extractors/mp4upload.js
     - extractors/streamlare.js
     - extractors/doodstream.js
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
