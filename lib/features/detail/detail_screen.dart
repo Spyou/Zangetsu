@@ -99,15 +99,17 @@ class _DetailScreenState extends State<DetailScreen> {
           final detail = snap.data!;
           final eps = detail.episodes;
           final resumeIdx = _resumeIndex(eps);
-          final resumeMark = eps.isNotEmpty
-              ? sl<ResumeStore>().get(widget.item.sourceId, eps[resumeIdx].id)
-              : null;
-          final hasResume = resumeMark != null;
+          final store = sl<ResumeStore>();
+          // "Continue" whenever ANY episode has been touched (the user is
+          // mid-series), even if the resume target itself is freshly unwatched
+          // (e.g. the previous episode just finished). "Play" only when fresh.
+          final hasAnyMark = eps.any(
+              (e) => store.get(widget.item.sourceId, e.id) != null);
           final episodeNum = eps.isNotEmpty
               ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
               : 1;
           final buttonLabel =
-              hasResume ? 'Continue E$episodeNum' : 'Play';
+              hasAnyMark ? 'Continue E$episodeNum' : 'Play';
 
           // Meta row pieces
           final statusLabel = _statusLabel(detail.status);
@@ -234,8 +236,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
                     final ep = eps[i];
-                    final mark = sl<ResumeStore>()
-                        .get(widget.item.sourceId, ep.id);
+                    final mark = store.get(widget.item.sourceId, ep.id);
                     final epNum = ep.number != null
                         ? ep.number!.toInt().toString()
                         : '${i + 1}';
@@ -310,7 +311,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                       ),
                                       if (ep.filler) ...[
                                         const SizedBox(height: 4),
-                                        _FillerChip(),
+                                        const _FillerChip(),
                                       ],
                                     ],
                                   ),
@@ -387,6 +388,8 @@ class _ProgressBar extends StatelessWidget {
 
 /// Small rounded "Filler" chip.
 class _FillerChip extends StatelessWidget {
+  const _FillerChip();
+
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
