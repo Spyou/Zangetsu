@@ -12,6 +12,7 @@ import 'featured_hero.dart';
 /// - Auto-advances every 5 seconds.
 /// - Page dot indicator with animated active dot.
 /// - Timer and PageController are disposed on unmount — no leak.
+/// - Fixed height 450 px matches [FeaturedHero]'s deterministic natural height.
 class FeaturedCarousel extends StatefulWidget {
   const FeaturedCarousel({
     super.key,
@@ -20,6 +21,7 @@ class FeaturedCarousel extends StatefulWidget {
     required this.onPlay,
     required this.onInfo,
     required this.onToggleList,
+    this.describe,
   });
 
   final List<MediaItem> items;
@@ -27,6 +29,11 @@ class FeaturedCarousel extends StatefulWidget {
   final void Function(MediaItem) onPlay;
   final void Function(MediaItem) onInfo;
   final void Function(MediaItem) onToggleList;
+
+  /// Optional lazily-fetched description resolver. Called once per item and
+  /// the Future is passed to [FeaturedHero] so it can populate the 3-line
+  /// description box. Caching is handled by the caller (HomeScreen).
+  final Future<String?> Function(MediaItem)? describe;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -68,25 +75,30 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    if (_pages.isEmpty) return const SizedBox(height: 360);
+    // Empty state — reserve the same 450 px so layout doesn't jump.
+    if (_pages.isEmpty) return const SizedBox(height: 450);
 
-    // Single item — no dots, no timer needed.
+    // Single item — no dots, no timer needed. Still wrapped to 450 px.
     if (_pages.length == 1) {
       final it = _pages.first;
       return RepaintBoundary(
-        child: FeaturedHero(
-          item: it,
-          inList: widget.inList(it),
-          onPlay: () => widget.onPlay(it),
-          onInfo: () => widget.onInfo(it),
-          onToggleList: () => widget.onToggleList(it),
+        child: SizedBox(
+          height: 450,
+          child: FeaturedHero(
+            item: it,
+            inList: widget.inList(it),
+            onPlay: () => widget.onPlay(it),
+            onInfo: () => widget.onInfo(it),
+            onToggleList: () => widget.onToggleList(it),
+            descriptionFuture: widget.describe?.call(it),
+          ),
         ),
       );
     }
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 400,
+        height: 450,
         child: Stack(
           children: [
             // ── Page view ─────────────────────────────────────────────────
@@ -102,13 +114,14 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
                   onPlay: () => widget.onPlay(it),
                   onInfo: () => widget.onInfo(it),
                   onToggleList: () => widget.onToggleList(it),
+                  descriptionFuture: widget.describe?.call(it),
                 );
               },
             ),
 
             // ── Page dots ─────────────────────────────────────────────────
             Positioned(
-              bottom: 10,
+              bottom: 8,
               left: 0,
               right: 0,
               child: Center(

@@ -35,6 +35,19 @@ class _HomeScreenState extends State<HomeScreen> {
   late Future<List<MediaItem>> _month;
   late Future<List<MediaItem>> _allTime;
 
+  /// Description cache: key = "sourceId:id", value = lazily-fetched Future.
+  /// Futures are stored so they are never re-fetched on carousel rotation.
+  final Map<String, Future<String?>> _descCache = {};
+
+  Future<String?> _describe(MediaItem m) => _descCache.putIfAbsent(
+        '${m.sourceId}:${m.id}',
+        () => _repo
+            .detail(m.url)
+            .then((d) => d.description)
+            // ignore: avoid_types_on_closure_parameters
+            .catchError((_) => null as String?),
+      );
+
   void _load() {
     _trending = _repo.popular(dateRange: 1);
     _month = _repo.popular(dateRange: 30);
@@ -184,6 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             await _myList.toggle(m);
                             if (mounted) setState(() {});
                           },
+                          describe: _describe,
                         ),
                         // Floating header sits on top
                         Positioned(
