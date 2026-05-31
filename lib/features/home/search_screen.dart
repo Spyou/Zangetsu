@@ -20,9 +20,18 @@ import '../detail/detail_screen.dart';
 /// When [initialQuery] is provided the screen pre-fills the text field and
 /// fires a search immediately so genre chips can seed it without extra taps.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key, this.initialQuery});
+  const SearchScreen({
+    super.key,
+    this.initialQuery,
+    this.showBack = true,
+  });
 
   final String? initialQuery;
+
+  /// When [false] the screen is embedded as a bottom-nav tab and the back
+  /// arrow is hidden. Also suppresses autofocus so the keyboard doesn't
+  /// appear on app launch.
+  final bool showBack;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -73,20 +82,22 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row: back arrow + search field ──────────────────────
+            // ── Header row: back arrow (routed) + search field ─────────────
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 12, 16, 0),
+              padding: EdgeInsets.fromLTRB(
+                  widget.showBack ? 4 : 16, 12, 16, 0),
               child: Row(
                 children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.arrow_back_ios_new,
-                      color: Colors.white,
-                      size: 20,
+                  if (widget.showBack)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.arrow_back_ios_new,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Back',
                     ),
-                    onPressed: () => Navigator.pop(context),
-                    tooltip: 'Back',
-                  ),
                   Expanded(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
@@ -105,7 +116,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           Expanded(
                             child: TextField(
                               controller: _controller,
-                              autofocus: true,
+                              autofocus: widget.showBack,
                               textInputAction: TextInputAction.search,
                               onSubmitted: _search,
                               style: AppText.body

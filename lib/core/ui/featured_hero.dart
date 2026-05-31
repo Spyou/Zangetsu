@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'badge.dart';
 import 'buttons.dart';
 
 /// Cinematic full-width hero banner for the home screen spotlight.
@@ -28,6 +29,10 @@ class FeaturedHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final heroMemCacheWidth =
+        (mq.size.width * mq.devicePixelRatio).round();
+
     return RepaintBoundary(
       child: SizedBox(
         height: 460,
@@ -39,6 +44,7 @@ class FeaturedHero extends StatelessWidget {
               CachedNetworkImage(
                 imageUrl: item.cover!,
                 httpHeaders: item.coverHeaders,
+                memCacheWidth: heroMemCacheWidth,
                 fit: BoxFit.cover,
                 fadeInDuration: const Duration(milliseconds: 250),
                 placeholder: (context, url) =>
@@ -73,7 +79,7 @@ class FeaturedHero extends StatelessWidget {
               ),
             ),
 
-            // ── Bottom content: title + actions ─────────────────────────────
+            // ── Bottom content: overline + title + meta + actions ───────────
             Positioned(
               left: 16,
               right: 16,
@@ -82,6 +88,13 @@ class FeaturedHero extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // TRENDING accent overline
+                  Text(
+                    'TRENDING',
+                    style: AppText.overline
+                        .copyWith(color: AppColors.accent),
+                  ),
+                  const SizedBox(height: 6),
                   Text(
                     item.title,
                     textAlign: TextAlign.center,
@@ -89,6 +102,9 @@ class FeaturedHero extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: AppText.largeTitle,
                   ),
+                  const SizedBox(height: 8),
+                  // Meta row: episode count + SUB/DUB badges
+                  _MetaRow(item: item),
                   const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -116,6 +132,43 @@ class FeaturedHero extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Centered meta row — episode count + SUB/DUB badges.
+class _MetaRow extends StatelessWidget {
+  const _MetaRow({required this.item});
+  final MediaItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final subCount = item.subCount ?? 0;
+    final dubCount = item.dubCount ?? 0;
+    final maxCount = subCount >= dubCount ? subCount : dubCount;
+    final hasSub = subCount > 0;
+    final hasDub = dubCount > 0;
+    final hasEpisodes = maxCount > 0;
+
+    if (!hasEpisodes && !hasSub && !hasDub) return const SizedBox.shrink();
+
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        if (hasEpisodes)
+          Text(
+            '$maxCount Episodes',
+            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+          ),
+        if (hasSub) const TagBadge(text: 'SUB'),
+        if (hasDub) TagBadge(
+          text: 'DUB',
+          color: AppColors.textSecondary,
+        ),
+      ],
     );
   }
 }

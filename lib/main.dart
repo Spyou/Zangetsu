@@ -4,7 +4,7 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/theme/app_theme.dart';
-import 'features/home/home_screen.dart';
+import 'features/shell/root_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +19,6 @@ class WatchApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: kAppName,
         theme: buildAppTheme(),
-        home: const HomeScreen(),
+        home: const RootShell(),
       );
 }

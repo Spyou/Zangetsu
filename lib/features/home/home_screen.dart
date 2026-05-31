@@ -11,7 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
-import '../../core/ui/featured_hero.dart';
+import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/genre_chips.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
@@ -136,16 +136,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const Expanded(
               child: Text(kAppName, style: AppText.largeTitle),
             ),
-            IconButton(
-              icon: const Icon(Icons.search, color: Colors.white),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SearchScreen(),
-                ),
-              ),
-              tooltip: 'Search',
-            ),
+            // Symmetry spacer (Search is now a bottom-nav tab).
+            const SizedBox(width: 48),
           ],
         ),
       ),
@@ -180,17 +172,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       (snap.data?.isNotEmpty ?? false);
 
                   if (hasHero) {
-                    final featured = snap.data!.first;
                     return Stack(
                       children: [
-                        // Hero art + scrims + title + buttons
-                        FeaturedHero(
-                          item: featured,
-                          inList: _myList.contains(featured),
-                          onPlay: () => _playFeatured(featured),
-                          onInfo: () => _openDetail(featured),
-                          onToggleList: () async {
-                            await _myList.toggle(featured);
+                        // Auto-rotating carousel (up to 6 trending items)
+                        FeaturedCarousel(
+                          items: snap.data!,
+                          inList: (m) => _myList.contains(m),
+                          onPlay: _playFeatured,
+                          onInfo: _openDetail,
+                          onToggleList: (m) async {
+                            await _myList.toggle(m);
                             if (mounted) setState(() {});
                           },
                         ),
@@ -237,14 +228,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _animated(
                     ContentRow(
                       title: 'My List',
-                      itemWidth: 124,
-                      itemHeight: 210,
+                      itemWidth: 140,
+                      itemHeight: 236,
                       itemCount: savedItems.length,
                       itemBuilder: (c, i) => PosterCard(
                         title: savedItems[i].title,
                         imageUrl: savedItems[i].cover,
                         headers: savedItems[i].coverHeaders,
-                        cellWidth: 124,
+                        cellWidth: 140,
                         onTap: () => _openDetail(savedItems[i]),
                       ),
                     ),
@@ -300,14 +291,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _animated(
                       ContentRow(
                         title: 'Trending Now',
-                        itemWidth: 124,
-                        itemHeight: 210,
+                        itemWidth: 140,
+                        itemHeight: 236,
                         itemCount: items.length,
                         itemBuilder: (c, i) => PosterCard(
                           title: items[i].title,
                           imageUrl: items[i].cover,
                           headers: items[i].coverHeaders,
-                          cellWidth: 124,
+                          cellWidth: 140,
                           onTap: () => _openDetail(items[i]),
                         ),
                       ),
@@ -334,14 +325,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _animated(
                       ContentRow(
                         title: 'Popular This Month',
-                        itemWidth: 124,
-                        itemHeight: 210,
+                        itemWidth: 140,
+                        itemHeight: 236,
                         itemCount: items.length,
                         itemBuilder: (c, i) => PosterCard(
                           title: items[i].title,
                           imageUrl: items[i].cover,
                           headers: items[i].coverHeaders,
-                          cellWidth: 124,
+                          cellWidth: 140,
                           onTap: () => _openDetail(items[i]),
                         ),
                       ),
@@ -368,14 +359,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _animated(
                       ContentRow(
                         title: 'All-Time Favorites',
-                        itemWidth: 124,
-                        itemHeight: 210,
+                        itemWidth: 140,
+                        itemHeight: 236,
                         itemCount: items.length,
                         itemBuilder: (c, i) => PosterCard(
                           title: items[i].title,
                           imageUrl: items[i].cover,
                           headers: items[i].coverHeaders,
-                          cellWidth: 124,
+                          cellWidth: 140,
                           onTap: () => _openDetail(items[i]),
                         ),
                       ),
