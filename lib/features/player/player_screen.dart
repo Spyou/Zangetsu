@@ -94,7 +94,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             ? const Icon(Icons.check,
                                 color: AppColors.accent, size: 20)
                             : const SizedBox(width: 20),
-                        title: const Text('Auto', style: AppText.body),
+                        title: Text('Auto',
+                            style: AppText.body
+                                .copyWith(color: AppColors.textPrimary)),
                         onTap: () {
                           Navigator.pop(context);
                           _c.selectQuality(null);
