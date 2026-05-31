@@ -251,8 +251,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: _animated(
                     ContentRow(
                       title: 'Continue Watching',
-                      itemWidth: 260,
-                      itemHeight: 196,
+                      itemWidth: 300,
+                      itemHeight: 230,
                       itemCount: history.length,
                       itemBuilder: (c, i) {
                         final e = history[i];

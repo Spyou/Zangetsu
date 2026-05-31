@@ -68,7 +68,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    if (_pages.isEmpty) return const SizedBox(height: 460);
+    if (_pages.isEmpty) return const SizedBox(height: 360);
 
     // Single item — no dots, no timer needed.
     if (_pages.length == 1) {
@@ -86,7 +86,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 460,
+        height: 360,
         child: Stack(
           children: [
             // ── Page view ─────────────────────────────────────────────────
@@ -108,7 +108,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
 
             // ── Page dots ─────────────────────────────────────────────────
             Positioned(
-              bottom: 8,
+              bottom: 4,
               left: 0,
               right: 0,
               child: Center(
