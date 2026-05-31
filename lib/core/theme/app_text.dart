@@ -10,4 +10,5 @@ abstract class AppText {
   static const body = TextStyle(fontFamily: _f, fontSize: 15, height: 1.35, fontWeight: FontWeight.w400, color: AppColors.textSecondary);
   static const caption = TextStyle(fontFamily: _f, fontSize: 13, height: 1.3, fontWeight: FontWeight.w500, color: AppColors.textTertiary);
   static const button = TextStyle(fontFamily: _f, fontSize: 16, fontWeight: FontWeight.w600, letterSpacing: -0.2);
+  static const overline = TextStyle(fontFamily: _f, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.8, color: AppColors.textSecondary);
 }
