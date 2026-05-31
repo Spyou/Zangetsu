@@ -68,25 +68,25 @@ class _RowSkeletonState extends State<RowSkeleton>
                 ),
               ),
 
-              // Non-scrolling clamped row of skeleton cells
-              ClipRect(
-                child: Padding(
+              // Horizontal non-scrolling list of skeleton cells — lays out
+              // off the right edge without a RenderFlex overflow assertion.
+              SizedBox(
+                height: widget.itemHeight,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  physics: const NeverScrollableScrollPhysics(),
                   padding: const EdgeInsets.only(left: 16),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    children: List.generate(5, (index) {
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: SizedBox(
-                            width: widget.itemWidth,
-                            height: widget.itemHeight,
-                            child: ColoredBox(color: shimmerColor),
-                          ),
-                        ),
-                      );
-                    }),
+                  itemCount: 5,
+                  itemBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: SizedBox(
+                        width: widget.itemWidth,
+                        height: widget.itemHeight,
+                        child: ColoredBox(color: shimmerColor),
+                      ),
+                    ),
                   ),
                 ),
               ),
