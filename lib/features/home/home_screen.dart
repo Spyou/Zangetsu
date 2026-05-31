@@ -1,10 +1,13 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
+import '../../core/ui/poster_card.dart';
+import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -35,74 +38,125 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _controller,
-          textInputAction: TextInputAction.search,
-          onSubmitted: _search,
-          decoration: const InputDecoration(
-            hintText: 'Search $kAppName…',
-            border: InputBorder.none,
-          ),
-        ),
-        actions: [IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text))],
-      ),
-      body: _results == null
-          ? const Center(child: Text('Search for an anime to start.'))
-          : FutureBuilder<List<MediaItem>>(
-              future: _results,
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Search failed: ${snap.error}'));
-                }
-                final items = snap.data ?? const [];
-                if (items.isEmpty) return const Center(child: Text('No results.'));
-                return GridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3, childAspectRatio: 0.62,
-                    crossAxisSpacing: 8, mainAxisSpacing: 8),
-                  itemCount: items.length,
-                  itemBuilder: (context, i) => _PosterCard(item: items[i]),
-                );
-              },
-            ),
-    );
-  }
-}
+    final mq = MediaQuery.of(context);
+    // cellWidth = (screenWidth - 40 px screen padding - 24 px for 2 gaps) / 3
+    final cellW = (mq.size.width - 40 - 24) / 3;
 
-class _PosterCard extends StatelessWidget {
-  const _PosterCard({required this.item});
-  final MediaItem item;
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => DetailScreen(item: item))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: item.cover == null
-                  ? const SizedBox.expand(child: ColoredBox(color: Colors.black26))
-                  : CachedNetworkImage(
-                      imageUrl: item.cover!,
-                      httpHeaders: item.coverHeaders,
-                      fit: BoxFit.cover, width: double.infinity,
-                      errorWidget: (_, _, _) => const SizedBox.expand(child: ColoredBox(color: Colors.black26)),
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      body: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Large-title header ──────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+              child: const Text(kAppName, style: AppText.largeTitle),
+            ),
+            const SizedBox(height: 16),
+            // ── Search field ────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 12),
+                    const Icon(
+                      Icons.search,
+                      size: 20,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: _search,
+                        style: AppText.body
+                            .copyWith(color: AppColors.textPrimary),
+                        cursorColor: AppColors.accent,
+                        decoration: InputDecoration(
+                          hintText: 'Search $kAppName…',
+                          hintStyle: AppText.body,
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            // ── Results area ────────────────────────────────────────────────
+            Expanded(
+              child: _results == null
+                  ? const EmptyState(
+                      icon: Icons.movie_filter_outlined,
+                      message: 'Search for something to watch',
+                    )
+                  : FutureBuilder<List<MediaItem>>(
+                      future: _results,
+                      builder: (context, snap) {
+                        if (snap.connectionState == ConnectionState.waiting) {
+                          return const Padding(
+                            padding: EdgeInsets.all(20),
+                            child: SkeletonGrid(),
+                          );
+                        }
+                        if (snap.hasError) {
+                          return const EmptyState(
+                            icon: Icons.error_outline,
+                            message:
+                                'Search failed. Pull to retry or try another title.',
+                          );
+                        }
+                        final items = snap.data ?? const [];
+                        if (items.isEmpty) {
+                          return const EmptyState(
+                            icon: Icons.search_off,
+                            message: 'No results for that title',
+                          );
+                        }
+                        return GridView.builder(
+                          padding: const EdgeInsets.all(20),
+                          cacheExtent: 800,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 0.62,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 16,
+                          ),
+                          itemCount: items.length,
+                          itemBuilder: (context, i) {
+                            final item = items[i];
+                            return PosterCard(
+                              title: item.title,
+                              imageUrl: item.cover,
+                              headers: item.coverHeaders,
+                              cellWidth: cellW,
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DetailScreen(item: item),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
                     ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(item.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12)),
-        ],
+          ],
+        ),
       ),
     );
   }
