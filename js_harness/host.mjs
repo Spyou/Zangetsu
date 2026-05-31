@@ -103,6 +103,7 @@ function wrapProvider(sourceId, src) {
     globalThis.__providers['${sourceId}']={
       getInfo:typeof getInfo==='function'?getInfo:null,
       search:typeof search==='function'?search:null,
+      popular:typeof popular==='function'?popular:null,
       getDetail:typeof getDetail==='function'?getDetail:null,
       getEpisodes:typeof getEpisodes==='function'?getEpisodes:null,
       getVideoSources:typeof getVideoSources==='function'?getVideoSources:null,

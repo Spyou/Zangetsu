@@ -20,7 +20,7 @@ function decodeSourceUrl(s) {
 globalThis.__allanimeDecodeSourceUrl = decodeSourceUrl; // test hook
 
 var SEARCH_GQL = 'query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name thumbnail availableEpisodes __typename } }}';
-var SHOW_GQL = 'query ($showId: String!) { show( _id: $showId ) { _id name thumbnail description availableEpisodesDetail }}';
+var SHOW_GQL = 'query ($showId: String!) { show( _id: $showId ) { _id name englishName thumbnail description availableEpisodes availableEpisodesDetail }}';
 
 function _headers() { return { 'Referer': REFERER, 'Origin': ORIGIN, 'User-Agent': UA, 'Content-Type': 'application/json' }; }
 
@@ -51,41 +51,50 @@ function search(query, page, opts) {
   });
 }
 
-function _episodesFromDetail(detailNode) {
-  var d = (detailNode && detailNode.availableEpisodesDetail) || {};
-  var sub = (d.sub || []).slice();
-  var dub = (d.dub || []).slice();
-  var nums = {};
-  sub.forEach(function (n) { nums[n] = true; });
-  dub.forEach(function (n) { nums[n] = true; });
-  var keys = Object.keys(nums).sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
-  var eps = [];
-  for (var i = 0; i < keys.length; i++) {
-    var n = keys[i];
-    eps.push({ id: n, title: 'Episode ' + n, number: parseFloat(n), url: 'ep://' + n });
-  }
-  return eps;
-}
+var POPULAR_GQL = 'query($type:VaildPopularTypeEnumType!,$size:Int!,$dateRange:Int,$page:Int,$allowAdult:Boolean,$allowUnknown:Boolean){queryPopular(type:$type,size:$size,dateRange:$dateRange,page:$page,allowAdult:$allowAdult,allowUnknown:$allowUnknown){recommendations{anyCard{_id name englishName thumbnail availableEpisodes __typename}}}}';
 
-function getDetail(url) {
-  var showId = String(url);
-  return _post(SHOW_GQL, { showId: showId }).then(function (j) {
-    var show = (j && j.data && j.data.show) || {};
-    var eps = _episodesFromDetail(show);
-    for (var k = 0; k < eps.length; k++) {
-      eps[k].url = 'allanime://' + showId + '/sub/' + eps[k].number;
+function popular(opts) {
+  opts = opts || {};
+  var vars = { type: 'anime', size: opts.size || 26,
+    dateRange: (opts.dateRange == null ? 7 : opts.dateRange),
+    page: opts.page || 1, allowAdult: false, allowUnknown: false };
+  return _post(POPULAR_GQL, vars).then(function (j) {
+    var recs = (j && j.data && j.data.queryPopular && j.data.queryPopular.recommendations) || [];
+    var out = [];
+    for (var i = 0; i < recs.length; i++) {
+      var c = recs[i] && recs[i].anyCard; if (!c || !c._id) continue;
+      var ae = c.availableEpisodes || {};
+      out.push({ id: c._id, title: c.name, englishTitle: c.englishName || null,
+        cover: c.thumbnail || null, url: c._id, type: 'anime', sourceId: SOURCE_ID,
+        subCount: ae.sub || 0, dubCount: ae.dub || 0 });
     }
-    return {
-      id: showId, title: show.name || showId, cover: show.thumbnail || null,
-      url: showId, description: show.description || '', status: 'unknown',
-      genres: [], studios: [], type: 'anime', sourceId: SOURCE_ID, episodes: eps
-    };
+    return out;
   });
 }
 
-function getEpisodes(url) {
-  return getDetail(url).then(function (d) { return d.episodes; });
+function getDetail(url, opts) {
+  var showId = String(url);
+  var cat = (opts && opts.category === 'dub') ? 'dub' : 'sub';
+  return _post(SHOW_GQL, { showId: showId }).then(function (j) {
+    var show = (j && j.data && j.data.show) || {};
+    var aed = show.availableEpisodesDetail || {};
+    var ae = show.availableEpisodes || {};
+    var keys = (aed[cat] || []).slice().sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
+    var eps = [];
+    for (var i = 0; i < keys.length; i++) {
+      var n = keys[i];
+      eps.push({ id: cat + ':' + n, title: 'Episode ' + n, number: parseFloat(n),
+        url: 'allanime://' + showId + '/' + cat + '/' + n });
+    }
+    return { id: showId, title: show.name || showId, englishTitle: show.englishName || null,
+      cover: show.thumbnail || null, url: showId, description: show.description || '',
+      status: 'unknown', genres: [], studios: [], type: 'anime', sourceId: SOURCE_ID,
+      episodes: eps, subCount: (ae.sub != null ? ae.sub : (aed.sub || []).length),
+      dubCount: (ae.dub != null ? ae.dub : (aed.dub || []).length) };
+  });
 }
+
+function getEpisodes(url, opts) { return getDetail(url, opts).then(function (d) { return d.episodes; }); }
 
 var SOURCES_GQL = 'query ($showId: String!, $translationType: VaildTranslationTypeEnumType!, $episodeString: String!) { episode( showId: $showId translationType: $translationType episodeString: $episodeString ) { episodeString sourceUrls }}';
 

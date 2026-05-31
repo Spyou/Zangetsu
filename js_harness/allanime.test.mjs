@@ -44,6 +44,70 @@ live('getVideoSources returns a playable stream for One Piece ep 1', async () =>
   assert.ok(sources.every(function (s) { return s.headers && s.headers.Referer; }), 'headers present');
 });
 
+// Offline dub URL/id scheme test — stubs __fetch to return a fake show response
+test('getDetail with category:dub builds /dub/ URLs and dub: ids', async () => {
+  const fakeShow = {
+    _id: 'test-show-id', name: 'Test Show', englishName: 'Test Show EN',
+    thumbnail: null, description: '', availableEpisodes: { sub: 2, dub: 1 },
+    availableEpisodesDetail: { sub: ['1', '2'], dub: ['1'] }
+  };
+  const fakeResponse = {
+    ok: true, status: 200, statusText: 'OK', headers: {}, url: '',
+    body: JSON.stringify({ data: { show: fakeShow } }),
+    text: async () => JSON.stringify({ data: { show: fakeShow } }),
+    json: async () => ({ data: { show: fakeShow } }),
+  };
+  const realFetch = globalThis.__fetch;
+  globalThis.__fetch = async (_src, _url, _opts) => fakeResponse;
+  try {
+    const detail = JSON.parse(await callProvider('allanime', 'getDetail', ['test-show-id', { category: 'dub' }]));
+    assert.ok(Array.isArray(detail.episodes), 'episodes must be an array');
+    assert.equal(detail.episodes.length, 1, 'dub has 1 episode');
+    assert.ok(detail.episodes[0].url.includes('/dub/'), 'url must contain /dub/');
+    assert.ok(detail.episodes[0].id.startsWith('dub:'), 'id must start with dub:');
+    assert.equal(detail.subCount, 2, 'subCount from availableEpisodes');
+    assert.equal(detail.dubCount, 1, 'dubCount from availableEpisodes');
+  } finally {
+    globalThis.__fetch = realFetch;
+  }
+});
+
+// Offline sub default — same stub, no opts
+test('getDetail without opts defaults to sub and builds /sub/ URLs', async () => {
+  const fakeShow = {
+    _id: 'test-show-id', name: 'Test Show', englishName: null,
+    thumbnail: null, description: '', availableEpisodes: { sub: 2, dub: 1 },
+    availableEpisodesDetail: { sub: ['1', '2'], dub: ['1'] }
+  };
+  const fakeResponse = {
+    ok: true, status: 200, statusText: 'OK', headers: {}, url: '',
+    body: JSON.stringify({ data: { show: fakeShow } }),
+    text: async () => JSON.stringify({ data: { show: fakeShow } }),
+    json: async () => ({ data: { show: fakeShow } }),
+  };
+  const realFetch = globalThis.__fetch;
+  globalThis.__fetch = async (_src, _url, _opts) => fakeResponse;
+  try {
+    const detail = JSON.parse(await callProvider('allanime', 'getDetail', ['test-show-id']));
+    assert.ok(Array.isArray(detail.episodes), 'episodes must be an array');
+    assert.equal(detail.episodes.length, 2, 'sub has 2 episodes');
+    assert.ok(detail.episodes.every(e => e.url.includes('/sub/')), 'all urls must contain /sub/');
+    assert.ok(detail.episodes.every(e => e.id.startsWith('sub:')), 'all ids must start with sub:');
+  } finally {
+    globalThis.__fetch = realFetch;
+  }
+});
+
+live('popular returns a non-empty list with expected shape', async () => {
+  const rows = JSON.parse(await callProvider('allanime', 'popular', [{ dateRange: 7 }]));
+  assert.ok(Array.isArray(rows) && rows.length > 0, 'expected popular results');
+  for (const row of rows) {
+    assert.ok(row.id && row.id.length > 0, 'each item must have a non-empty id');
+    assert.ok(row.title && row.title.length > 0, 'each item must have a non-empty title');
+    assert.equal(typeof row.subCount, 'number', 'subCount must be a number');
+  }
+});
+
 import { loadExtractor as _loadEx } from './host.mjs';
 _loadEx(new URL('../extractors/okru.js', import.meta.url));
 
