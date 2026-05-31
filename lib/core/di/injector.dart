@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../playback/my_list.dart';
 import '../playback/resume_store.dart';
 import '../playback/watch_history.dart';
 import '../provider/provider_downloader.dart';
@@ -20,6 +21,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ResumeStore>(ResumeStore());
   await WatchHistory.init();
   sl.registerSingleton<WatchHistory>(WatchHistory());
+  await MyListStore.init();
+  sl.registerSingleton<MyListStore>(MyListStore());
 
   final dio = Dio(BaseOptions(
     // 8s bounds every provider/extractor fetch (incl. embed hosts that hang,

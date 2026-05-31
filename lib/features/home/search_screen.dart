@@ -16,8 +16,13 @@ import '../detail/detail_screen.dart';
 /// block-body [setState] that assigns the [Future] (not arrow-body),
 /// controller [dispose], results grid with [SkeletonGrid]/[EmptyState]/
 /// 3-col [PosterCard] [GridView].
+///
+/// When [initialQuery] is provided the screen pre-fills the text field and
+/// fires a search immediately so genre chips can seed it without extra taps.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.initialQuery});
+
+  final String? initialQuery;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -27,6 +32,19 @@ class _SearchScreenState extends State<SearchScreen> {
   final _repo = sl<SourceRepository>();
   final _controller = TextEditingController();
   Future<List<MediaItem>>? _results;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQuery?.trim();
+    if (q != null && q.isNotEmpty) {
+      _controller.text = q;
+      // Fire the search after the first frame so the widget tree is mounted.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _search(q);
+      });
+    }
+  }
 
   void _search(String q) {
     if (q.trim().isEmpty) return;

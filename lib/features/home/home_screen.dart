@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
@@ -10,6 +11,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
+import '../../core/ui/featured_hero.dart';
+import '../../core/ui/genre_chips.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../detail/detail_screen.dart';
@@ -25,6 +28,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _repo = sl<SourceRepository>();
+  final _myList = sl<MyListStore>();
 
   // Futures cached in fields (not in build) to prevent refetch on every rebuild.
   late Future<List<MediaItem>> _trending;
@@ -48,9 +52,36 @@ class _HomeScreenState extends State<HomeScreen> {
       context,
       MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
     ).then((_) {
-      // Refresh Continue Watching row when returning from detail.
+      // Refresh Continue Watching + My List row when returning from detail.
       if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _playFeatured(MediaItem item) async {
+    try {
+      final eps = await _repo.episodes(item.url);
+      if (eps.isEmpty) {
+        _openDetail(item);
+        return;
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+            sourceId: item.sourceId,
+            episodes: eps,
+            startIndex: 0,
+            resume: sl<ResumeStore>(),
+            resolveSources: _repo.sources,
+          ),
+        ),
+      );
+      if (mounted) setState(() {});
+    } catch (_) {
+      // On any error fall back to detail screen.
+      if (mounted) _openDetail(item);
+    }
   }
 
   Future<void> _resume(HistoryEntry e) async {
@@ -94,13 +125,44 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Floating brand header — always positioned on top of the hero or bg.
+  Widget _buildHeader() {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Row(
+          children: [
+            const Expanded(
+              child: Text(kAppName, style: AppText.largeTitle),
+            ),
+            IconButton(
+              icon: const Icon(Icons.search, color: Colors.white),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SearchScreen(),
+                ),
+              ),
+              tooltip: 'Search',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Read Continue Watching in build so it refreshes after returning from player/detail.
+    // Read Continue Watching + My List in build so they refresh after returning
+    // from player/detail without triggering a re-fetch of network futures.
     final history = sl<WatchHistory>().recent();
+    final savedItems = _myList.all();
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      // Extend content behind the status bar; the floating header handles
+      // its own SafeArea(bottom: false).
       body: RefreshIndicator(
         color: AppColors.accent,
         onRefresh: () async {
@@ -108,32 +170,87 @@ class _HomeScreenState extends State<HomeScreen> {
         },
         child: CustomScrollView(
           slivers: [
-            // ── Brand header ──────────────────────────────────────────────
+            // ── Hero + floating header (first sliver) ─────────────────────
             SliverToBoxAdapter(
-              child: SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: const Text(kAppName, style: AppText.largeTitle),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.search, color: Colors.white),
-                        onPressed: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const SearchScreen(),
-                          ),
+              child: FutureBuilder<List<MediaItem>>(
+                future: _trending,
+                builder: (context, snap) {
+                  final hasHero = snap.connectionState != ConnectionState.waiting &&
+                      !snap.hasError &&
+                      (snap.data?.isNotEmpty ?? false);
+
+                  if (hasHero) {
+                    final featured = snap.data!.first;
+                    return Stack(
+                      children: [
+                        // Hero art + scrims + title + buttons
+                        FeaturedHero(
+                          item: featured,
+                          inList: _myList.contains(featured),
+                          onPlay: () => _playFeatured(featured),
+                          onInfo: () => _openDetail(featured),
+                          onToggleList: () async {
+                            await _myList.toggle(featured);
+                            if (mounted) setState(() {});
+                          },
                         ),
-                        tooltip: 'Search',
-                      ),
-                    ],
+                        // Floating header sits on top
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          child: _buildHeader(),
+                        ),
+                      ],
+                    );
+                  }
+
+                  // While loading or on error: plain header on bg colour.
+                  return ColoredBox(
+                    color: AppColors.bg,
+                    child: _buildHeader(),
+                  );
+                },
+              ),
+            ),
+
+            // ── Genre chips ───────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: GenreChips(
+                  onTap: (g) => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SearchScreen(initialQuery: g),
+                    ),
                   ),
                 ),
               ),
             ),
+
+            // ── My List (only when non-empty) ─────────────────────────────
+            if (savedItems.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: _animated(
+                    ContentRow(
+                      title: 'My List',
+                      itemWidth: 124,
+                      itemHeight: 210,
+                      itemCount: savedItems.length,
+                      itemBuilder: (c, i) => PosterCard(
+                        title: savedItems[i].title,
+                        imageUrl: savedItems[i].cover,
+                        headers: savedItems[i].coverHeaders,
+                        cellWidth: 124,
+                        onTap: () => _openDetail(savedItems[i]),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
 
             // ── Continue Watching ─────────────────────────────────────────
             if (history.isNotEmpty)
