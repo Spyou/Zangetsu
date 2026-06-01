@@ -5,8 +5,9 @@ import '../../core/theme/app_text.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
+import '../settings/settings_screen.dart';
 
-/// App-level navigation shell — three tabs via a [NavigationBar].
+/// App-level navigation shell — four tabs via a [NavigationBar].
 ///
 /// Uses [IndexedStack] so each screen preserves its scroll/state when
 /// the user switches tabs.
@@ -30,6 +31,7 @@ class _RootShellState extends State<RootShell> {
           HomeScreen(),
           SearchScreen(showBack: false),
           MyListScreen(),
+          SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBarTheme(
@@ -73,6 +75,11 @@ class _RootShellState extends State<RootShell> {
               icon: Icon(Icons.bookmark_outline),
               selectedIcon: Icon(Icons.bookmark),
               label: 'My List',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: 'Settings',
             ),
           ],
         ),

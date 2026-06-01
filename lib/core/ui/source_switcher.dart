@@ -1,19 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../di/injector.dart';
+import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
-/// Metadata for sources the user can select at runtime.
-const kSelectableSources = <Map<String, String>>[
-  {'id': 'allanime', 'label': 'AllAnime', 'sub': 'Anime'},
-  {'id': 'netmirror_nf', 'label': 'Netflix', 'sub': 'Movies & TV'},
-  {'id': 'netmirror_pv', 'label': 'Prime Video', 'sub': 'Movies & TV'},
-  {'id': 'netmirror_hs', 'label': 'Hotstar', 'sub': 'Movies & TV'},
-  {'id': 'netmirror_dp', 'label': 'Disney+', 'sub': 'Movies & TV'},
-];
-
-/// A compact pill button that shows the active source and opens a bottom-sheet
-/// picker when tapped.
+/// A compact pill button that shows the active source and opens a
+/// bottom-sheet picker when tapped. The selectable list is built
+/// dynamically from the installed-and-enabled providers in
+/// [ProviderRegistry], so repo-installed sources become selectable here
+/// as soon as they're enabled.
 class SourceSwitcher extends StatelessWidget {
   const SourceSwitcher({
     super.key,
@@ -24,11 +20,25 @@ class SourceSwitcher extends StatelessWidget {
   final String currentId;
   final void Function(String id) onChanged;
 
+  /// Installed + enabled providers, mapped to `{id, label}` rows.
+  List<({String id, String label})> _selectable() {
+    final entries =
+        sl<ProviderRegistry>().getAll().where((e) => e.enabled).toList()
+          ..sort((a, b) {
+            final an = a.displayName.isNotEmpty ? a.displayName : a.name;
+            final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
+            return an.toLowerCase().compareTo(bn.toLowerCase());
+          });
+    return [
+      for (final e in entries)
+        (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name),
+    ];
+  }
+
   String get _label {
-    for (final src in kSelectableSources) {
-      if (src['id'] == currentId) return src['label']!;
-    }
-    return currentId;
+    final entry = sl<ProviderRegistry>().entryFor(currentId);
+    if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
+    return entry?.name ?? currentId;
   }
 
   @override
@@ -64,6 +74,7 @@ class SourceSwitcher extends StatelessWidget {
   }
 
   void _showPicker(BuildContext context) {
+    final sources = _selectable();
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -95,18 +106,23 @@ class SourceSwitcher extends StatelessWidget {
                 ),
               ),
               const Divider(color: AppColors.hairline, height: 1),
-              ...kSelectableSources.map((src) {
-                final isActive = src['id'] == currentId;
-                return _SourceRow(
-                  label: src['label']!,
-                  sub: src['sub']!,
-                  isActive: isActive,
-                  onTap: () {
-                    Navigator.of(ctx).pop();
-                    onChanged(src['id']!);
-                  },
-                );
-              }),
+              if (sources.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Text('No enabled sources', style: AppText.body),
+                )
+              else
+                ...sources.map((src) {
+                  final isActive = src.id == currentId;
+                  return _SourceRow(
+                    label: src.label,
+                    isActive: isActive,
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      onChanged(src.id);
+                    },
+                  );
+                }),
               const SizedBox(height: 8),
             ],
           ),
@@ -119,13 +135,11 @@ class SourceSwitcher extends StatelessWidget {
 class _SourceRow extends StatelessWidget {
   const _SourceRow({
     required this.label,
-    required this.sub,
     required this.isActive,
     required this.onTap,
   });
 
   final String label;
-  final String sub;
   final bool isActive;
   final VoidCallback onTap;
 
@@ -139,16 +153,7 @@ class _SourceRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: AppText.headline),
-                  const SizedBox(height: 2),
-                  Text(sub, style: AppText.caption),
-                ],
-              ),
-            ),
+            Expanded(child: Text(label, style: AppText.headline)),
             if (isActive)
               const Icon(
                 Icons.check,
