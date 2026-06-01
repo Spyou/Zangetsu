@@ -309,32 +309,47 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openQualitySheet() {
-    _sheet<void>(
-      _SheetColumn(
-        header: 'Quality',
-        children: [
+    // Prefer adaptive HLS-master variants when present (Auto + variants);
+    // otherwise fall back to the distinct per-source qualities (e.g. AllAnime
+    // mp4/clock sources that each carry a resolution but no HLS master).
+    final List<Widget> rows;
+    if (_c.qualities.isNotEmpty) {
+      rows = [
+        _SheetRow(
+          label: 'Auto',
+          active: _c.activeQuality == null,
+          onTap: () {
+            Navigator.pop(context);
+            _c.selectQuality(null);
+            _bumpControls();
+          },
+        ),
+        for (final v in _c.qualities)
           _SheetRow(
-            label: 'Auto',
-            active: _c.activeQuality == null,
+            label: v.quality,
+            active: _c.activeQuality?.url == v.url,
             onTap: () {
               Navigator.pop(context);
-              _c.selectQuality(null);
+              _c.selectQuality(v);
               _bumpControls();
             },
           ),
-          for (final v in _c.qualities)
-            _SheetRow(
-              label: v.quality,
-              active: _c.activeQuality?.url == v.url,
-              onTap: () {
-                Navigator.pop(context);
-                _c.selectQuality(v);
-                _bumpControls();
-              },
-            ),
-        ],
-      ),
-    );
+      ];
+    } else {
+      rows = [
+        for (final q in _c.sourceQualities)
+          _SheetRow(
+            label: q,
+            active: _c.activeSourceQuality == q,
+            onTap: () {
+              Navigator.pop(context);
+              _c.selectSourceQuality(q);
+              _bumpControls();
+            },
+          ),
+      ];
+    }
+    _sheet<void>(_SheetColumn(header: 'Quality', children: rows));
   }
 
   void _openSourceSheet() {
@@ -720,7 +735,7 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Subtitles',
                         onTap: onSubtitles,
                       ),
-                      if (c.qualities.isNotEmpty)
+                      if (c.qualities.isNotEmpty || c.sourceQualities.length > 1)
                         _ControlButton(
                           icon: Icons.high_quality,
                           label: 'Quality',

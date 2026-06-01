@@ -232,6 +232,44 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Source-based quality (when there's no multi-variant HLS master) ───────
+  // AllAnime etc. return several distinct sources that each carry a resolution
+  // label but no HLS master playlist, so [qualities] is empty. Surface those
+  // per-source qualities as selectable options instead.
+
+  /// Distinct non-empty quality labels among the resolved [sources] for the
+  /// active audio kind, high→low.
+  List<String> get sourceQualities {
+    final kind = active?.kind;
+    final seen = <String>{};
+    final out = <String>[];
+    for (final s in sortByQuality(sources)) {
+      if (kind != null && s.kind != kind) continue;
+      final q = (s.quality ?? '').trim();
+      if (q.isEmpty || seen.contains(q)) continue;
+      seen.add(q);
+      out.add(q);
+    }
+    return out;
+  }
+
+  /// The quality label of the currently-playing source (for the active check).
+  String? get activeSourceQuality => (active?.quality ?? '').trim().isEmpty
+      ? null
+      : active!.quality!.trim();
+
+  /// Switch to the best source matching quality label [q] (same audio kind),
+  /// preserving the live position.
+  Future<void> selectSourceQuality(String q) async {
+    final kind = active?.kind;
+    for (final s in sortByQuality(sources)) {
+      if ((s.quality ?? '').trim() == q && (kind == null || s.kind == kind)) {
+        await switchSource(s);
+        return;
+      }
+    }
+  }
+
   Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
     final g = gen ?? ++_gen;
     active = s;
