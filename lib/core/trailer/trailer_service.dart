@@ -1,6 +1,5 @@
 import 'package:dio/dio.dart';
 
-import '../app_config.dart';
 import '../models/provider_info.dart';
 
 /// Resolves a YouTube trailer id for a title from a metadata provider.
@@ -18,7 +17,8 @@ class TrailerService {
   final Dio _dio;
 
   static const String _anilistEndpoint = 'https://graphql.anilist.co';
-  static const String _tmdbBase = 'https://api.themoviedb.org/3';
+  // Keyless TMDB proxy (mirrors api.themoviedb.org/3/* server-side, no api_key).
+  static const String _tmdbBase = 'https://jumpfreedom.com/3';
 
   static const String _anilistQuery =
       'query(\$search:String){ Media(search:\$search, type:ANIME){ '
@@ -82,14 +82,13 @@ class TrailerService {
     String? englishTitle,
     String? year,
   }) async {
-    if (kTmdbApiKey.isEmpty) return null;
     final query = (englishTitle != null && englishTitle.isNotEmpty)
         ? englishTitle
         : title;
     try {
       final search = await _dio.get<dynamic>(
         '$_tmdbBase/search/multi',
-        queryParameters: {'api_key': kTmdbApiKey, 'query': query},
+        queryParameters: {'query': query},
       );
       final results = _asList(_asMap(search.data)?['results']);
       if (results == null || results.isEmpty) return null;
@@ -121,7 +120,6 @@ class TrailerService {
 
       final videos = await _dio.get<dynamic>(
         '$_tmdbBase/$mediaType/$id/videos',
-        queryParameters: {'api_key': kTmdbApiKey},
       );
       final vids = _asList(_asMap(videos.data)?['results'])
           ?.map(_asMap)
