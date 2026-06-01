@@ -67,8 +67,19 @@ class _DetailViewState extends State<_DetailView>
   static const double _expandedHeight = 320;
   bool _showAppBarTitle = false;
 
-  late final TabController _tabController =
-      TabController(length: 4, vsync: this);
+  // Outer scroll position (the hero/header viewport). We listen to THIS instead
+  // of a NotificationListener: the listener also fires for the inner TabBarView
+  // lists (whose pixels start at 0), which flipped the title back OFF as soon as
+  // you scrolled deeper into the episode list. NestedScrollView.controller drives
+  // the OUTER viewport only, so its offset stays past the threshold once the hero
+  // has collapsed — the title stays visible no matter how far the body scrolls.
+  late final ScrollController _scrollController = ScrollController()
+    ..addListener(_onScroll);
+
+  late final TabController _tabController = TabController(
+    length: 4,
+    vsync: this,
+  );
 
   // ── My List (per-title store) ─────────────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
@@ -87,36 +98,37 @@ class _DetailViewState extends State<_DetailView>
   /// hero can mount the trailer player.
   void _resolveTrailer(MediaDetail detail) {
     if (_trailerFuture != null) return;
-    _trailerFuture = sl<TrailerService>().youtubeId(
-      title: detail.title,
-      englishTitle: detail.englishTitle,
-      type: detail.type,
-      year: detail.year,
-    )..then((id) {
-        if (!mounted) return;
-        if (id != null && id.isNotEmpty && id != _trailerId) {
-          setState(() => _trailerId = id);
-        }
-      });
+    _trailerFuture =
+        sl<TrailerService>().youtubeId(
+          title: detail.title,
+          englishTitle: detail.englishTitle,
+          type: detail.type,
+          year: detail.year,
+        )..then((id) {
+          if (!mounted) return;
+          if (id != null && id.isNotEmpty && id != _trailerId) {
+            setState(() => _trailerId = id);
+          }
+        });
   }
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
   }
 
-  // ── Scroll-driven app-bar title fade. PRESERVED EFFECT — adapted to the
-  // NestedScrollView outer viewport (Sozo Read's pattern). The title fades in
-  // as the hero scrolls past. ─────────────────────────────────────────────
-  bool _onScroll(ScrollNotification n) {
-    if (n.metrics.axis != Axis.vertical) return false;
+  // ── Scroll-driven app-bar title fade. PRESERVED EFFECT — reads the outer
+  // NestedScrollView offset (Sozo Read's pattern). The title fades in as the
+  // hero scrolls past and STAYS in while the body scrolls. ──────────────────
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
     final shouldShow =
-        n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
+        _scrollController.offset > (_expandedHeight - kToolbarHeight - 24);
     if (shouldShow != _showAppBarTitle) {
       setState(() => _showAppBarTitle = shouldShow);
     }
-    return false;
   }
 
   // ── The 5-icon action row wiring ──────────────────────────────────────────
@@ -165,7 +177,10 @@ class _DetailViewState extends State<_DetailView>
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Text(msg, style: AppText.caption.copyWith(color: Colors.white)),
+          content: Text(
+            msg,
+            style: AppText.caption.copyWith(color: Colors.white),
+          ),
           backgroundColor: AppColors.surface2,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 2),
@@ -190,30 +205,32 @@ class _DetailViewState extends State<_DetailView>
     ];
     final availableCategories = available.isEmpty ? [category] : available;
 
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => PlayerScreen(
-        sourceId: widget.item.sourceId,
-        episodes: episodes,
-        startIndex: index,
-        resume: sl<ResumeStore>(),
-        resolveSources: (u) =>
-            sl<SourceRepository>().sources(u, sourceId: widget.item.sourceId),
-        history: sl<WatchHistory>(),
-        showTitle: detail.title,
-        cover: detail.cover ?? widget.item.cover,
-        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        showUrl: widget.item.url,
-        category: category,
-        availableCategories: availableCategories,
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          sourceId: widget.item.sourceId,
+          episodes: episodes,
+          startIndex: index,
+          resume: sl<ResumeStore>(),
+          resolveSources: (u) =>
+              sl<SourceRepository>().sources(u, sourceId: widget.item.sourceId),
+          history: sl<WatchHistory>(),
+          showTitle: detail.title,
+          cover: detail.cover ?? widget.item.cover,
+          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+          showUrl: widget.item.url,
+          category: category,
+          availableCategories: availableCategories,
+        ),
       ),
-    ));
+    );
   }
 
   /// Push the in-app trailer player for a resolved YouTube id.
   void _openTrailer(String videoId) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => TrailerScreen(videoId: videoId),
-    ));
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => TrailerScreen(videoId: videoId)));
   }
 
   /// Netflix-style download label for the FIRST episode of the current season,
@@ -270,7 +287,10 @@ class _DetailViewState extends State<_DetailView>
   }
 
   Widget _buildBody(
-      BuildContext context, DetailState state, MediaDetail detail) {
+    BuildContext context,
+    DetailState state,
+    MediaDetail detail,
+  ) {
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
     final category = state.category;
@@ -299,7 +319,9 @@ class _DetailViewState extends State<_DetailView>
     final seasonSet = seasonsOf(eps);
     final hasMultipleSeasons = seasonSet.length > 1;
     final currentSeason = hasMultipleSeasons
-        ? (seasonSet.contains(selectedSeason) ? selectedSeason : seasonSet.first)
+        ? (seasonSet.contains(selectedSeason)
+              ? selectedSeason
+              : seasonSet.first)
         : 1;
     final seasonEps = hasMultipleSeasons
         ? eps.where((e) => parseSeason(e.title) == currentSeason).toList()
@@ -323,7 +345,11 @@ class _DetailViewState extends State<_DetailView>
 
     // ── Download button label: "Download S{season}:E{n}" when we can derive
     // the first episode of the current season, else a plain "Download". ──────
-    final downloadLabel = _downloadLabel(seasonEps, hasMultipleSeasons, currentSeason);
+    final downloadLabel = _downloadLabel(
+      seasonEps,
+      hasMultipleSeasons,
+      currentSeason,
+    );
 
     // ── Starring / Creators (Genres fallback) muted lines ───────────────────
     final starring = detail.cast.isNotEmpty
@@ -342,257 +368,257 @@ class _DetailViewState extends State<_DetailView>
     // Friendly provider name.
     final sourceName =
         sl<ProviderRegistry>().entryFor(item.sourceId)?.displayName ??
-            item.sourceId;
+        item.sourceId;
 
-    return NotificationListener<ScrollNotification>(
-      onNotification: _onScroll,
-      child: NestedScrollView(
-        headerSliverBuilder: (context, _) => [
-          // ── 1. Hero: backdrop + overlapping poster + status/total ──────────
-          SliverAppBar(
-            expandedHeight: _expandedHeight,
-            pinned: true,
-            backgroundColor: AppColors.bg,
-            surfaceTintColor: Colors.transparent,
-            shadowColor: Colors.transparent,
-            centerTitle: false,
-            titleSpacing: 0,
-            // PRESERVED EFFECT: title fades in once the hero scrolls past.
-            title: AnimatedOpacity(
-              opacity: _showAppBarTitle ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOut,
-              child: Text(
-                detail.title,
-                style: AppText.headline,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return NestedScrollView(
+      controller: _scrollController,
+      headerSliverBuilder: (context, _) => [
+        // ── 1. Hero: backdrop + overlapping poster + status/total ──────────
+        SliverAppBar(
+          expandedHeight: _expandedHeight,
+          pinned: true,
+          backgroundColor: AppColors.bg,
+          surfaceTintColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          centerTitle: false,
+          titleSpacing: 0,
+          // PRESERVED EFFECT: title fades in once the hero scrolls past.
+          title: AnimatedOpacity(
+            opacity: _showAppBarTitle ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: Text(
+              detail.title,
+              style: AppText.headline,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            flexibleSpace: FlexibleSpaceBar(
-              collapseMode: CollapseMode.parallax,
-              background: RepaintBoundary(
-                child: _Hero(
-                  coverUrl: coverUrl,
-                  coverHeaders: coverHeaders,
-                  hasCover: hasCover,
-                  trailerId: _trailerId,
-                  // Pause the trailer once the hero has scrolled past (reuses
-                  // the same signal that fades in the app-bar title).
-                  collapsed: _showAppBarTitle,
-                  onTapFullscreen:
-                      _trailerId != null ? () => _openTrailer(_trailerId!) : null,
-                ),
+          ),
+          flexibleSpace: FlexibleSpaceBar(
+            collapseMode: CollapseMode.parallax,
+            background: RepaintBoundary(
+              child: _Hero(
+                coverUrl: coverUrl,
+                coverHeaders: coverHeaders,
+                hasCover: hasCover,
+                trailerId: _trailerId,
+                // Pause the trailer once the hero has scrolled past (reuses
+                // the same signal that fades in the app-bar title).
+                collapsed: _showAppBarTitle,
+                onTapFullscreen: _trailerId != null
+                    ? () => _openTrailer(_trailerId!)
+                    : null,
               ),
             ),
           ),
+        ),
 
-          // ── 2. Title + meta line (Netflix header) ──────────────────────────
-          SliverToBoxAdapter(
-            child: RepaintBoundary(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+        // ── 2. Title + meta line (Netflix header) ──────────────────────────
+        SliverToBoxAdapter(
+          child: RepaintBoundary(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    detail.title,
+                    style: AppText.largeTitle.copyWith(fontSize: 28),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (metaLine.isNotEmpty) ...[
+                    const SizedBox(height: 8),
                     Text(
-                      detail.title,
-                      style: AppText.largeTitle.copyWith(fontSize: 28),
-                      maxLines: 2,
+                      metaLine,
+                      style: AppText.body.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (metaLine.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        metaLine,
-                        style: AppText.body
-                            .copyWith(color: AppColors.textSecondary),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                   ],
-                ),
+                ],
               ),
             ),
           ),
+        ),
 
-          // ── 3. White Play + gray Download buttons (full-width, stacked) ─────
-          // (The hero banner autoplays the trailer; tap it for fullscreen.)
+        // ── 3. White Play + gray Download buttons (full-width, stacked) ─────
+        // (The hero banner autoplays the trailer; tap it for fullscreen.)
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+            child: Column(
+              children: [
+                _PlayButton(
+                  label: buttonLabel,
+                  onPressed: eps.isNotEmpty
+                      ? () => _openPlayer(eps, resumeIdx, detail, category)
+                      : null,
+                ),
+                const SizedBox(height: 10),
+                _DownloadButton(
+                  label: downloadLabel,
+                  onPressed: () => _snack('Downloads coming soon'),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // ── 4. Synopsis (clamped) + "Read more" → Details tab ───────────────
+        if ((detail.description ?? '').isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-              child: Column(
-                children: [
-                  _PlayButton(
-                    label: buttonLabel,
-                    onPressed: eps.isNotEmpty
-                        ? () => _openPlayer(eps, resumeIdx, detail, category)
-                        : null,
-                  ),
-                  const SizedBox(height: 10),
-                  _DownloadButton(
-                    label: downloadLabel,
-                    onPressed: () => _snack('Downloads coming soon'),
-                  ),
-                ],
+              child: _Description(
+                text: detail.description!,
+                // "Read more" jumps to the Details tab (full synopsis) rather
+                // than expanding inline; the header stays clamped to 3 lines.
+                onReadMore: () => _tabController.animateTo(3),
               ),
             ),
           ),
 
-          // ── 4. Synopsis (clamped) + "Read more" → Details tab ───────────────
-          if ((detail.description ?? '').isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-                child: _Description(
-                  text: detail.description!,
-                  // "Read more" jumps to the Details tab (full synopsis) rather
-                  // than expanding inline; the header stays clamped to 3 lines.
-                  onReadMore: () => _tabController.animateTo(3),
-                ),
-              ),
-            ),
-
-          // ── 5. Starring / Creators / Genres muted lines ─────────────────────
-          if (starring != null || creators != null || genresLine != null)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (starring != null)
-                      _CreditLine(
-                        label: 'Starring',
-                        value: starring,
-                        more: starringMore,
-                        // Tapping the line (or its "… more") opens the Cast tab.
-                        onMore: starringMore
-                            ? () => _tabController.animateTo(1)
-                            : null,
-                      ),
-                    if (genresLine != null)
-                      _CreditLine(label: 'Genres', value: genresLine),
-                    if (creators != null)
-                      _CreditLine(label: 'Creators', value: creators),
-                  ],
-                ),
-              ),
-            ),
-
-          // ── 6. Icon-over-label action row (My List / Trailer / Share / Web) ─
-          // "Trailer" is a CloudStream-style result action (recloudstream's
-          // result fragment exposes a Trailer button); it opens the fullscreen
-          // TrailerScreen and only appears once a trailer id has resolved.
+        // ── 5. Starring / Creators / Genres muted lines ─────────────────────
+        if (starring != null || creators != null || genresLine != null)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _IconAction(
-                    icon: _inMyList
-                        ? Icons.check_rounded
-                        : Icons.add_rounded,
-                    active: _inMyList,
-                    label: 'My List',
-                    tooltip: _inMyList ? 'In My List' : 'Add to My List',
-                    onTap: _toggleMyList,
-                  ),
-                  _IconAction(
-                    icon: Icons.ios_share_rounded,
-                    label: 'Share',
-                    tooltip: 'Share',
-                    onTap: () => _share(detail, sourceName),
-                  ),
-                  _IconAction(
-                    icon: Icons.public_rounded,
-                    label: 'Web',
-                    tooltip: 'Open source site',
-                    onTap: _openSourceSite,
-                  ),
+                  if (starring != null)
+                    _CreditLine(
+                      label: 'Starring',
+                      value: starring,
+                      more: starringMore,
+                      // Tapping the line (or its "… more") opens the Cast tab.
+                      onMore: starringMore
+                          ? () => _tabController.animateTo(1)
+                          : null,
+                    ),
+                  if (genresLine != null)
+                    _CreditLine(label: 'Genres', value: genresLine),
+                  if (creators != null)
+                    _CreditLine(label: 'Creators', value: creators),
                 ],
               ),
             ),
           ),
 
-          // ── 7. Pinned tab bar ───────────────────────────────────────────────
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _TabBarDelegate(
-              TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                // Hug the left edge: the first tab starts flush with the 16px
-                // content gutter (title/synopsis), and labelPadding(right: 24)
-                // spaces the tabs apart while keeping them left-anchored —
-                // never centered/spread (matches Sozo Read).
-                padding: const EdgeInsets.only(left: 16),
-                labelPadding: const EdgeInsets.only(right: 24),
-                labelColor: AppColors.accent,
-                unselectedLabelColor: AppColors.textSecondary,
-                indicatorSize: TabBarIndicatorSize.label,
-                indicator: const UnderlineTabIndicator(
-                  borderSide: BorderSide(color: AppColors.accent, width: 2.5),
-                  insets: EdgeInsets.symmetric(horizontal: 2),
+        // ── 6. Icon-over-label action row (My List / Trailer / Share / Web) ─
+        // "Trailer" is a CloudStream-style result action (recloudstream's
+        // result fragment exposes a Trailer button); it opens the fullscreen
+        // TrailerScreen and only appears once a trailer id has resolved.
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _IconAction(
+                  icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
+                  active: _inMyList,
+                  label: 'My List',
+                  tooltip: _inMyList ? 'In My List' : 'Add to My List',
+                  onTap: _toggleMyList,
                 ),
-                // Remove the full-width underline divider under the bar.
-                dividerColor: Colors.transparent,
-                dividerHeight: 0,
-                splashFactory: NoSplash.splashFactory,
-                overlayColor: WidgetStateProperty.all(Colors.transparent),
-                labelStyle: AppText.headline.copyWith(fontSize: 15),
-                unselectedLabelStyle:
-                    AppText.headline.copyWith(fontSize: 15, fontWeight: FontWeight.w500),
-                tabs: const [
-                  Tab(text: 'Episodes'),
-                  Tab(text: 'Cast'),
-                  Tab(text: 'Relations'),
-                  Tab(text: 'Details'),
-                ],
-              ),
+                _IconAction(
+                  icon: Icons.ios_share_rounded,
+                  label: 'Share',
+                  tooltip: 'Share',
+                  onTap: () => _share(detail, sourceName),
+                ),
+                _IconAction(
+                  icon: Icons.public_rounded,
+                  label: 'Web',
+                  tooltip: 'Open source site',
+                  onTap: _openSourceSite,
+                ),
+              ],
             ),
           ),
-        ],
-        body: TabBarView(
-          controller: _tabController,
-          children: [
-            // ── Episodes ──────────────────────────────────────────────────────
-            _EpisodesTab(
-              eps: eps,
-              seasonEps: seasonEps,
-              hasMultipleSeasons: hasMultipleSeasons,
-              seasonSet: seasonSet,
-              currentSeason: currentSeason,
-              onSelectSeason: cubit.selectSeason,
-              coverUrl: coverUrl,
-              coverHeaders: coverHeaders,
-              sourceId: item.sourceId,
-              resumeIndex: _resumeIndex,
-              hasAnyMark: hasAnyMark,
-              onOpen: (fullIndex) =>
-                  _openPlayer(eps, fullIndex, detail, category),
-              onInfo: () => _tabController.animateTo(3),
-              onDownload: () => _snack('Downloads coming soon'),
-            ),
-            // ── Cast ────────────────────────────────────────────────────────────
-            _CastTab(cast: detail.cast),
-            // ── Relations (no data) ──────────────────────────────────────────────
-            const _RelationsTab(),
-            // ── Details ──────────────────────────────────────────────────────────
-            _DetailsTab(
-              sourceName: sourceName,
-              statusStr: statusStr,
-              genres: detail.genres,
-              studios: detail.studios,
-              episodeCount: eps.length,
-              year: detail.year,
-              description: detail.description,
-            ),
-          ],
         ),
+
+        // ── 7. Pinned tab bar ───────────────────────────────────────────────
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _TabBarDelegate(
+            TabBar(
+              controller: _tabController,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              // Hug the left edge: the first tab starts flush with the 16px
+              // content gutter (title/synopsis), and labelPadding(right: 24)
+              // spaces the tabs apart while keeping them left-anchored —
+              // never centered/spread (matches Sozo Read).
+              padding: const EdgeInsets.only(left: 16),
+              labelPadding: const EdgeInsets.only(right: 24),
+              labelColor: AppColors.accent,
+              unselectedLabelColor: AppColors.textSecondary,
+              indicatorSize: TabBarIndicatorSize.label,
+              indicator: const UnderlineTabIndicator(
+                borderSide: BorderSide(color: AppColors.accent, width: 2.5),
+                insets: EdgeInsets.symmetric(horizontal: 2),
+              ),
+              // Remove the full-width underline divider under the bar.
+              dividerColor: Colors.transparent,
+              dividerHeight: 0,
+              splashFactory: NoSplash.splashFactory,
+              overlayColor: WidgetStateProperty.all(Colors.transparent),
+              labelStyle: AppText.headline.copyWith(fontSize: 15),
+              unselectedLabelStyle: AppText.headline.copyWith(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+              ),
+              tabs: const [
+                Tab(text: 'Episodes'),
+                Tab(text: 'Cast'),
+                Tab(text: 'Relations'),
+                Tab(text: 'Details'),
+              ],
+            ),
+          ),
+        ),
+      ],
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          // ── Episodes ──────────────────────────────────────────────────────
+          _EpisodesTab(
+            eps: eps,
+            seasonEps: seasonEps,
+            hasMultipleSeasons: hasMultipleSeasons,
+            seasonSet: seasonSet,
+            currentSeason: currentSeason,
+            onSelectSeason: cubit.selectSeason,
+            coverUrl: coverUrl,
+            coverHeaders: coverHeaders,
+            sourceId: item.sourceId,
+            resumeIndex: _resumeIndex,
+            hasAnyMark: hasAnyMark,
+            onOpen: (fullIndex) =>
+                _openPlayer(eps, fullIndex, detail, category),
+            onInfo: () => _tabController.animateTo(3),
+            onDownload: () => _snack('Downloads coming soon'),
+          ),
+          // ── Cast ────────────────────────────────────────────────────────────
+          _CastTab(cast: detail.cast),
+          // ── Relations (no data) ──────────────────────────────────────────────
+          const _RelationsTab(),
+          // ── Details ──────────────────────────────────────────────────────────
+          _DetailsTab(
+            sourceName: sourceName,
+            statusStr: statusStr,
+            genres: detail.genres,
+            studios: detail.studios,
+            episodeCount: eps.length,
+            year: detail.year,
+            description: detail.description,
+          ),
+        ],
       ),
     );
   }
@@ -661,10 +687,14 @@ class _Hero extends StatelessWidget {
             : _coverBackdrop(),
         // Gradients render OVER the video for title readability.
         const IgnorePointer(
-          child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.topScrim)),
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: AppColors.topScrim),
+          ),
         ),
         const IgnorePointer(
-          child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+          child: DecoratedBox(
+            decoration: BoxDecoration(gradient: AppColors.scrim),
+          ),
         ),
       ],
     );
@@ -930,8 +960,11 @@ class _PlayButton extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.play_arrow_rounded,
-                    color: Colors.black, size: 26),
+                const Icon(
+                  Icons.play_arrow_rounded,
+                  color: Colors.black,
+                  size: 26,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   label,
@@ -970,13 +1003,13 @@ class _DownloadButton extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.file_download_outlined,
-                  color: Colors.white, size: 24),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: AppText.button.copyWith(color: Colors.white),
+              const Icon(
+                Icons.file_download_outlined,
+                color: Colors.white,
+                size: 24,
               ),
+              const SizedBox(width: 8),
+              Text(label, style: AppText.button.copyWith(color: Colors.white)),
             ],
           ),
         ),
@@ -1047,10 +1080,7 @@ class _CreditLine extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Description extends StatelessWidget {
-  const _Description({
-    required this.text,
-    required this.onReadMore,
-  });
+  const _Description({required this.text, required this.onReadMore});
 
   final String text;
 
@@ -1152,13 +1182,12 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     // No divider line under the bar — just the left-aligned tabs (Sozo Read).
-    return Material(
-      color: AppColors.bg,
-      elevation: 0,
-      child: tabBar,
-    );
+    return Material(color: AppColors.bg, elevation: 0, child: tabBar);
   }
 
   @override
@@ -1253,13 +1282,14 @@ class _EpisodesTab extends StatelessWidget {
         final isResume = hasAnyMark && fullIndex == resumeIndex(eps);
         final fraction = isInProgress
             ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
-                .clamp(0.0, 1.0)
+                  .clamp(0.0, 1.0)
             : 0.0;
 
         final epNum = ep.number?.toInt() ?? i + 1;
         final rawTitle = ep.title;
-        final displayTitle =
-            hasMultipleSeasons ? cleanTitle(rawTitle) : rawTitle;
+        final displayTitle = hasMultipleSeasons
+            ? cleanTitle(rawTitle)
+            : rawTitle;
 
         return RepaintBoundary(
           child: _EpisodeRow(
@@ -1310,10 +1340,8 @@ class _EpisodesHeader extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (sheetContext) => _SeasonSheet(
-        seasons: seasons,
-        currentSeason: currentSeason,
-      ),
+      builder: (sheetContext) =>
+          _SeasonSheet(seasons: seasons, currentSeason: currentSeason),
     );
     if (picked != null) onSelectSeason(picked);
   }
@@ -1425,7 +1453,9 @@ class _SeasonSheet extends StatelessWidget {
                   onTap: () => Navigator.of(context0).pop(s),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 14),
+                      horizontal: 20,
+                      vertical: 14,
+                    ),
                     child: Row(
                       children: [
                         Expanded(
@@ -1435,14 +1465,18 @@ class _SeasonSheet extends StatelessWidget {
                               color: selected
                                   ? AppColors.textPrimary
                                   : AppColors.textSecondary,
-                              fontWeight:
-                                  selected ? FontWeight.w700 : FontWeight.w500,
+                              fontWeight: selected
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
                             ),
                           ),
                         ),
                         if (selected)
-                          const Icon(Icons.check_rounded,
-                              color: AppColors.accent, size: 22),
+                          const Icon(
+                            Icons.check_rounded,
+                            color: AppColors.accent,
+                            size: 22,
+                          ),
                       ],
                     ),
                   ),
@@ -1508,8 +1542,9 @@ class _EpisodeRow extends StatelessWidget {
         ? ep.date!.trim()
         : null;
 
-    final heading =
-        displayTitle.isNotEmpty ? '$epNum. $displayTitle' : 'Episode $epNum';
+    final heading = displayTitle.isNotEmpty
+        ? '$epNum. $displayTitle'
+        : 'Episode $epNum';
 
     return InkWell(
       onTap: onTap,
@@ -1541,15 +1576,18 @@ class _EpisodeRow extends StatelessWidget {
                                   fit: BoxFit.cover,
                                   memCacheWidth: 320,
                                   placeholder: (c, u) => const ColoredBox(
-                                      color: AppColors.surface2),
+                                    color: AppColors.surface2,
+                                  ),
                                   errorWidget: (c, u, e) => const ColoredBox(
-                                      color: AppColors.surface2),
+                                    color: AppColors.surface2,
+                                  ),
                                 )
                               : const ColoredBox(color: AppColors.surface2),
                           if (isWatched)
                             const DecoratedBox(
-                              decoration:
-                                  BoxDecoration(color: Color(0x73000000)),
+                              decoration: BoxDecoration(
+                                color: Color(0x73000000),
+                              ),
                               child: SizedBox.expand(),
                             ),
                           // Centered play-circle (white ring like the ref).
@@ -1561,8 +1599,11 @@ class _EpisodeRow extends StatelessWidget {
                               ),
                               child: Padding(
                                 padding: EdgeInsets.all(7),
-                                child: Icon(Icons.play_arrow_rounded,
-                                    color: Colors.white, size: 22),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
                               ),
                             ),
                           ),
@@ -1570,8 +1611,11 @@ class _EpisodeRow extends StatelessWidget {
                             const Positioned(
                               top: 4,
                               right: 4,
-                              child: Icon(Icons.check_circle,
-                                  color: Colors.white, size: 16),
+                              child: Icon(
+                                Icons.check_circle,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                             ),
                           if (isInProgress)
                             Positioned(
@@ -1596,8 +1640,9 @@ class _EpisodeRow extends StatelessWidget {
                         heading,
                         style: AppText.body.copyWith(
                           color: titleColor,
-                          fontWeight:
-                              isResume ? FontWeight.w800 : FontWeight.w700,
+                          fontWeight: isResume
+                              ? FontWeight.w800
+                              : FontWeight.w700,
                         ),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
@@ -1606,8 +1651,9 @@ class _EpisodeRow extends StatelessWidget {
                         const SizedBox(height: 4),
                         Text(
                           subline,
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary),
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
                         ),
                       ],
                       if (isResume || ep.filler) ...[
@@ -1615,12 +1661,12 @@ class _EpisodeRow extends StatelessWidget {
                         Row(
                           children: [
                             if (isResume) const TagBadge(text: 'CONTINUE'),
-                            if (isResume && ep.filler)
-                              const SizedBox(width: 6),
+                            if (isResume && ep.filler) const SizedBox(width: 6),
                             if (ep.filler)
                               const TagBadge(
-                                  text: 'FILLER',
-                                  color: AppColors.textTertiary),
+                                text: 'FILLER',
+                                color: AppColors.textTertiary,
+                              ),
                           ],
                         ),
                       ],
@@ -1695,8 +1741,10 @@ class _CastTab extends StatelessWidget {
           children: [
             for (final name in cast)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 9,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.surface2,
                   borderRadius: BorderRadius.circular(20),
@@ -1705,13 +1753,17 @@ class _CastTab extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.person_rounded,
-                        size: 16, color: AppColors.textSecondary),
+                    const Icon(
+                      Icons.person_rounded,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       name,
-                      style: AppText.caption
-                          .copyWith(color: AppColors.textPrimary),
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -1768,7 +1820,8 @@ class _DetailsTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
-        if (sourceName.isNotEmpty) _DetailRow(label: 'Source', value: sourceName),
+        if (sourceName.isNotEmpty)
+          _DetailRow(label: 'Source', value: sourceName),
         if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
         if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
         _DetailRow(label: 'Episodes', value: '$episodeCount'),
@@ -1776,22 +1829,25 @@ class _DetailsTab extends StatelessWidget {
           _DetailRow(label: 'Studio', value: studios.join(', ')),
         if (genres.isNotEmpty) ...[
           const SizedBox(height: 14),
-          Text('Genres',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary)),
+          Text(
+            'Genres',
+            style: AppText.caption.copyWith(color: AppColors.textTertiary),
+          ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             children: genres
-                .map((g) =>
-                    TagBadge(text: g, color: AppColors.textSecondary))
+                .map((g) => TagBadge(text: g, color: AppColors.textSecondary))
                 .toList(),
           ),
         ],
         if (desc.isNotEmpty) ...[
           const SizedBox(height: 20),
-          Text('Synopsis',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary)),
+          Text(
+            'Synopsis',
+            style: AppText.caption.copyWith(color: AppColors.textTertiary),
+          ),
           const SizedBox(height: 8),
           Text(desc, style: AppText.body),
         ],
