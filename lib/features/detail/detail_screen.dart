@@ -7,7 +7,9 @@ import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/provider_registry.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -30,6 +32,7 @@ class DetailScreen extends StatelessWidget {
         repo: sl<SourceRepository>(),
         url: item.url,
         sourceId: item.sourceId,
+        prefs: sl<TitlePrefsStore>(),
       )..load(),
       child: _DetailView(item: item),
     );
@@ -179,6 +182,11 @@ class _DetailViewState extends State<_DetailView> {
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     if (detail.genres.isNotEmpty) metaParts.add(detail.genres.first);
     final metaLine = metaParts.join(' · ');
+
+    // Friendly provider name for the source chip + Details section.
+    final sourceName =
+        sl<ProviderRegistry>().entryFor(item.sourceId)?.displayName ??
+            item.sourceId;
 
     return NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
@@ -332,10 +340,26 @@ class _DetailViewState extends State<_DetailView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Meta row — title lives only in the hero + fading app-bar
-                Text(metaLine,
-                    style: AppText.caption.copyWith(
-                        color: AppColors.textTertiary)),
+                // Source chip + meta row. Title lives only in the hero +
+                // fading app-bar; the chip surfaces WHICH provider this title
+                // came from (AllAnime / Netflix / …).
+                Row(
+                  children: [
+                    if (sourceName.isNotEmpty) ...[
+                      TagBadge(text: sourceName),
+                      const SizedBox(width: 8),
+                    ],
+                    Expanded(
+                      child: Text(
+                        metaLine,
+                        style: AppText.caption.copyWith(
+                            color: AppColors.textTertiary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 // Description with "More" affordance
                 if ((detail.description ?? '').isNotEmpty) ...[
@@ -481,6 +505,17 @@ class _DetailViewState extends State<_DetailView> {
           ),
         ),
 
+        // ── 5. Sozo-style "Details" section ──────────────────────────────────
+        SliverToBoxAdapter(
+          child: _DetailsSection(
+            sourceName: sourceName,
+            statusStr: statusStr,
+            genres: detail.genres,
+            episodeCount: eps.length,
+            description: detail.description,
+          ),
+        ),
+
         // Bottom padding
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
@@ -541,6 +576,107 @@ class _SeasonSelector extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sozo-style "Details" section — inline (no tabs). Surfaces source / status /
+// genres / episode count + the FULL (un-truncated) synopsis. The header still
+// shows the 3-line + More/Less; this is the complete reference block.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DetailsSection extends StatelessWidget {
+  const _DetailsSection({
+    required this.sourceName,
+    required this.statusStr,
+    required this.genres,
+    required this.episodeCount,
+    required this.description,
+  });
+
+  final String sourceName;
+  final String statusStr;
+  final List<String> genres;
+  final int episodeCount;
+  final String? description;
+
+  @override
+  Widget build(BuildContext context) {
+    final desc = description ?? '';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 8),
+          const Divider(color: AppColors.hairline),
+          const SizedBox(height: 16),
+          Text('DETAILS', style: AppText.overline),
+          const SizedBox(height: 14),
+          if (sourceName.isNotEmpty)
+            _DetailRow(label: 'Source', value: sourceName),
+          if (statusStr.isNotEmpty)
+            _DetailRow(label: 'Status', value: statusStr),
+          _DetailRow(label: 'Episodes', value: '$episodeCount'),
+          if (genres.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Genres',
+              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: genres
+                  .map((g) => TagBadge(text: g, color: AppColors.textSecondary))
+                  .toList(),
+            ),
+          ],
+          if (desc.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Synopsis',
+              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+            ),
+            const SizedBox(height: 6),
+            Text(desc, style: AppText.body),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// One label/value line in the Details section.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(
+              label,
+              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppText.caption.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
       ),
     );
   }

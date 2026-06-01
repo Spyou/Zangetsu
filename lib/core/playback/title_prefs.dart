@@ -1,0 +1,31 @@
+import 'package:hive/hive.dart';
+
+/// Remembers per-title user choices (currently the sub/dub category), keyed by
+/// `"<sourceId>::<showUrl>"`. Netflix-style "remember my choice for this title".
+class TitlePrefsStore {
+  static const String boxName = 'title_prefs';
+  static Future<void> init() async {
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox<Map>(boxName);
+    }
+  }
+
+  Box<Map> get _box => Hive.box<Map>(boxName);
+  String _key(String sourceId, String showUrl) => '$sourceId::$showUrl';
+
+  String? category(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    final c = m == null ? null : Map<String, dynamic>.from(m)['category'];
+    return (c == 'sub' || c == 'dub') ? c as String : null;
+  }
+
+  Future<void> setCategory(
+      String sourceId, String showUrl, String category) async {
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    m['category'] = category;
+    await _box.put(k, m);
+  }
+}

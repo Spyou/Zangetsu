@@ -1,9 +1,11 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/di/injector.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/media_detail.dart';
 import '../../../core/models/provider_info.dart';
+import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 
 /// Lifecycle of the detail load. Mirrors Sozo Read's `DetailStatus`
@@ -62,21 +64,35 @@ class DetailCubit extends Cubit<DetailState> {
     required SourceRepository repo,
     required String url,
     String? sourceId,
+    TitlePrefsStore? prefs,
   })  : _repo = repo,
         _url = url,
         _sourceId = sourceId,
-        super(const DetailState());
+        _prefs = prefs ?? sl<TitlePrefsStore>(),
+        // Seed the INITIAL category from the per-title remembered choice so the
+        // Sub/Dub toggle reflects the saved value on the very first render (no
+        // flash from 'sub' → remembered). Falls back to 'sub' when unset.
+        super(DetailState(
+          category:
+              (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
+                  'sub',
+        ));
 
   final SourceRepository _repo;
   final String _url;
+  final TitlePrefsStore _prefs;
 
   /// The owning item's source. When null, repo calls fall back to the
   /// active source. Set from `DetailScreen(item:).sourceId` so a title
   /// opened from My List / cross-source rows queries its OWN provider.
   final String? _sourceId;
 
+  /// Stable key component for per-title prefs. Falls back to '' when the
+  /// owning source is unknown (active-source title) — robust, never throws.
+  String get _prefsSourceId => _sourceId ?? '';
+
   /// Initial fetch. Emits loading then success/error for the current
-  /// [DetailState.category] (defaults to 'sub').
+  /// [DetailState.category] (the per-title remembered choice, else 'sub').
   Future<void> load() async {
     emit(state.copyWith(status: DetailStatus.loading));
     try {
@@ -102,6 +118,9 @@ class DetailCubit extends Cubit<DetailState> {
         detail: detail,
         selectedSeason: 1,
       ));
+      // Netflix-style: remember THIS title's Sub/Dub choice so reopening it
+      // restores the last-picked category. Only after a successful switch.
+      await _prefs.setCategory(_prefsSourceId, _url, cat);
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
     }

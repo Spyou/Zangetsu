@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../playback/my_list.dart';
 import '../playback/resume_store.dart';
+import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
@@ -28,6 +29,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<WatchHistory>(WatchHistory());
   await MyListStore.init();
   sl.registerSingleton<MyListStore>(MyListStore());
+  await TitlePrefsStore.init();
+  sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
 
   final dio = Dio(
     BaseOptions(
