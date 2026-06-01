@@ -80,28 +80,39 @@ function search(query, page, opts) {
     });
 }
 
+// Browse/trending feed = the empty-query search (the old /mobile/home grid is
+// dead). It's one UNIFIED list across all OTTs (Netflix/Prime/Hotstar titles
+// together), with real titles. Cached once per session.
+var _browse = null;
+function _browseFeed() {
+  if (_browse) return Promise.resolve(_browse);
+  return _catFetch('/mobile/search.php?s=&t=' + _ts()).then(function (j) {
+    var res = (j && j.searchResult) || [];
+    var out = [];
+    for (var i = 0; i < res.length; i++) {
+      var x = res[i]; if (!x || x.id == null) continue;
+      out.push({
+        id: String(x.id), title: x.t || '', cover: _poster(x.id),
+        coverHeaders: _posterHeaders(), url: String(x.id),
+        type: 'movie', sourceId: SOURCE_ID
+      });
+    }
+    _browse = out;
+    return out;
+  });
+}
+
 function popular(opts) {
-  return _getCookie().then(function (c) {
-    return fetch(MAIN + '/mobile/home?app=1', {
-      headers: { 'User-Agent': UA, 'Cookie': c, 'Referer': MAIN + '/home' }
-    }).then(function (r) {
-      var html = r.body || '';
-      var re = /data-post=["']([^"']+)["']/g;
-      var seen = {}, out = [], m;
-      while ((m = re.exec(html)) !== null) {
-        var id = m[1];
-        if (!id || seen[id]) continue;
-        seen[id] = 1;
-        out.push({
-          id: String(id), title: '', cover: _poster(id),
-          coverHeaders: _posterHeaders(), url: String(id),
-          type: 'movie', sourceId: SOURCE_ID
-        });
-        if (out.length >= 30) break;
-      }
-      if (out.length === 0) return search('a', 1, opts);
-      return out;
-    });
+  var dr = (opts && opts.dateRange != null) ? opts.dateRange : 1;
+  return _browseFeed().then(function (feed) {
+    if (!feed.length) return search('a', 1, opts);
+    // One unified trending list; partition it so the three Home rows each show
+    // distinct real titles (dateRange is AllAnime's notion — here it just picks
+    // which third of the feed to show).
+    var third = Math.ceil(feed.length / 3);
+    var start = (dr <= 1) ? 0 : (dr <= 30 ? third : third * 2);
+    var slice = feed.slice(start, start + third);
+    return slice.length ? slice : feed;
   }).catch(function () { return search('a', 1, opts); });
 }
 
@@ -228,26 +239,37 @@ function _resolveApi() {
   return tryNext();
 }
 
+// A title can live on any of the mirrored OTTs; the unified catalog doesn't
+// tell us which, so try each backend until one yields a stream.
+var OTTS = ['nf', 'pv', 'hs'];
+
 function getVideoSources(episodeUrl) {
   var epId = String(episodeUrl);
   return _resolveApi().then(function (apiBase) {
-    return _getCookie().then(function (cookie) {
-      return fetch(apiBase + '/newtv/player.php?id=' + epId, {
-        headers: {
-          'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
-          'Ott': OTT, 'Usertoken': '', 'Cookie': cookie
-        }
-      }).then(function (r) {
-        var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
-        if (j && j.status === 'ok' && j.video_link) {
-          return [{
-            url: j.video_link, quality: 'auto', container: 'hls',
-            headers: { 'Referer': j.referer || MAIN, 'Cookie': 'hd=on', 'User-Agent': UA },
-            kind: 'raw', audioLang: '', subtitles: []
-          }];
-        }
-        throw new Error('NetMirror: no stream');
-      });
+    return _getCookie().then(function (baseCookie) {
+      var i = 0;
+      function tryOtt() {
+        if (i >= OTTS.length) throw new Error('NetMirror: no stream');
+        var ott = OTTS[i++];
+        var cookie = baseCookie.replace(/ott=[^;]*/, 'ott=' + ott);
+        return fetch(apiBase + '/newtv/player.php?id=' + epId, {
+          headers: {
+            'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
+            'Ott': ott, 'Usertoken': '', 'Cookie': cookie
+          }
+        }).then(function (r) {
+          var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
+          if (j && j.status === 'ok' && j.video_link) {
+            return [{
+              url: j.video_link, quality: 'auto', container: 'hls',
+              headers: { 'Referer': j.referer || MAIN, 'Cookie': 'hd=on', 'User-Agent': UA },
+              kind: 'raw', audioLang: '', subtitles: []
+            }];
+          }
+          return tryOtt();
+        }).catch(function () { return tryOtt(); });
+      }
+      return tryOtt();
     });
   });
 }
