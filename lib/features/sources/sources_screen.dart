@@ -1,7 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:hive/hive.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/provider/provider_registry.dart';
@@ -9,6 +7,9 @@ import '../../core/provider/provider_repo_registry.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
+import 'bloc/sources_bloc.dart';
+import 'bloc/sources_event.dart';
+import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
 
 /// Sources management — two tabs:
@@ -17,14 +18,33 @@ import 'source_settings_screen.dart';
 ///     remove (non-bundled).
 ///   * Repos — tracked manifest repos. Add via FAB; each repo lists its
 ///     sources with Install / Installed-Uninstall actions.
-class SourcesScreen extends StatefulWidget {
+///
+/// All source/repo data is owned by [SourcesBloc], which watches both Hive
+/// boxes and re-emits on any change so both tabs stay in sync. The
+/// TabController stays widget-local state — only the data lives in the bloc.
+class SourcesScreen extends StatelessWidget {
   const SourcesScreen({super.key});
 
   @override
-  State<SourcesScreen> createState() => _SourcesScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) => SourcesBloc(
+        registry: sl<ProviderRegistry>(),
+        repos: sl<ProviderReposRegistry>(),
+      ),
+      child: const _SourcesView(),
+    );
+  }
 }
 
-class _SourcesScreenState extends State<SourcesScreen>
+class _SourcesView extends StatefulWidget {
+  const _SourcesView();
+
+  @override
+  State<_SourcesView> createState() => _SourcesViewState();
+}
+
+class _SourcesViewState extends State<_SourcesView>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
   int _index = 0;
@@ -47,128 +67,128 @@ class _SourcesScreenState extends State<SourcesScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: Text('Sources', style: AppText.title),
-        bottom: TabBar(
+    return BlocListener<SourcesBloc, SourcesState>(
+      // Fire on every notice — including repeats — by listening to the
+      // (notice, noticeSeq) pair, which changes even for identical text.
+      listenWhen: (a, b) =>
+          b.notice != null &&
+          (a.notice != b.notice || a.noticeSeq != b.noticeSeq),
+      listener: (context, state) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(state.notice!)));
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: AppBar(
+          title: Text('Sources', style: AppText.title),
+          bottom: TabBar(
+            controller: _tab,
+            indicatorColor: AppColors.accent,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: AppColors.textPrimary,
+            unselectedLabelColor: AppColors.textSecondary,
+            labelStyle: AppText.headline,
+            unselectedLabelStyle: AppText.headline,
+            dividerHeight: 0,
+            tabs: const [
+              Tab(text: 'Installed'),
+              Tab(text: 'Repos'),
+            ],
+          ),
+        ),
+        floatingActionButton: _index == 1
+            ? FloatingActionButton.extended(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                onPressed: () => _showAddRepoDialog(context),
+                icon: const Icon(Icons.add),
+                label: Text('Add repo',
+                    style: AppText.button.copyWith(color: Colors.white)),
+              )
+            : null,
+        body: TabBarView(
           controller: _tab,
-          indicatorColor: AppColors.accent,
-          indicatorSize: TabBarIndicatorSize.label,
-          labelColor: AppColors.textPrimary,
-          unselectedLabelColor: AppColors.textSecondary,
-          labelStyle: AppText.headline,
-          unselectedLabelStyle: AppText.headline,
-          dividerHeight: 0,
-          tabs: const [
-            Tab(text: 'Installed'),
-            Tab(text: 'Repos'),
+          children: const [
+            _InstalledTab(),
+            _ReposTab(),
           ],
         ),
-      ),
-      floatingActionButton: _index == 1
-          ? FloatingActionButton.extended(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
-              onPressed: () => _showAddRepoDialog(context),
-              icon: const Icon(Icons.add),
-              label: Text('Add repo',
-                  style: AppText.button.copyWith(color: Colors.white)),
-            )
-          : null,
-      body: TabBarView(
-        controller: _tab,
-        children: const [
-          _InstalledTab(),
-          _ReposTab(),
-        ],
       ),
     );
   }
 }
 
-Future<void> _showAddRepoDialog(BuildContext context) =>
-    showDialog<void>(context: context, builder: (_) => const _AddRepoDialog());
+Future<void> _showAddRepoDialog(BuildContext context) {
+  final bloc = context.read<SourcesBloc>();
+  return showDialog<void>(
+    context: context,
+    builder: (_) => _AddRepoDialog(bloc: bloc),
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Installed tab
 // ---------------------------------------------------------------------------
 
-class _InstalledTab extends StatefulWidget {
+class _InstalledTab extends StatelessWidget {
   const _InstalledTab();
 
   @override
-  State<_InstalledTab> createState() => _InstalledTabState();
-}
-
-class _InstalledTabState extends State<_InstalledTab> {
-  StreamSubscription<BoxEvent>? _sub;
-
-  @override
-  void initState() {
-    super.initState();
-    _sub = sl<ProviderRegistry>().watch().listen((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final registry = sl<ProviderRegistry>();
-    final repos = sl<ProviderReposRegistry>();
-    final entries = registry.getAll();
-    if (entries.isEmpty) {
-      return const EmptyState(
-        icon: Icons.dns_rounded,
-        message: 'No providers installed.',
-      );
-    }
-    // Group by origin repo. Bundled first, then repos alphabetically by
-    // their resolved display name.
-    final groups = <String, List<ProviderRegistryEntry>>{};
-    for (final e in entries) {
-      final key = e.originRepoUrl.isEmpty ? kBundledRepoUrl : e.originRepoUrl;
-      groups.putIfAbsent(key, () => []).add(e);
-    }
-    String nameFor(String repoUrl) {
-      if (repoUrl == kBundledRepoUrl) return 'Built-in';
-      final repo = repos.get(repoUrl);
-      if (repo != null) return repo.displayName;
-      // Fall back to a display name snapshotted on an entry, else the URL.
-      final snap = groups[repoUrl]!
-          .map((e) => e.displayName)
-          .firstWhere((n) => n.isNotEmpty, orElse: () => repoUrl);
-      return snap;
-    }
+    return BlocBuilder<SourcesBloc, SourcesState>(
+      buildWhen: (a, b) => a.installed != b.installed || a.repos != b.repos,
+      builder: (context, state) {
+        final entries = state.installed;
+        if (entries.isEmpty) {
+          return const EmptyState(
+            icon: Icons.dns_rounded,
+            message: 'No providers installed.',
+          );
+        }
+        // Group by origin repo. Bundled first, then repos alphabetically by
+        // their resolved display name.
+        final groups = <String, List<ProviderRegistryEntry>>{};
+        for (final e in entries) {
+          final key =
+              e.originRepoUrl.isEmpty ? kBundledRepoUrl : e.originRepoUrl;
+          groups.putIfAbsent(key, () => []).add(e);
+        }
+        final repoByUrl = {for (final r in state.repos) r.url: r};
+        String nameFor(String repoUrl) {
+          if (repoUrl == kBundledRepoUrl) return 'Built-in';
+          final repo = repoByUrl[repoUrl];
+          if (repo != null) return repo.displayName;
+          // Fall back to a display name snapshotted on an entry, else the URL.
+          final snap = groups[repoUrl]!
+              .map((e) => e.displayName)
+              .firstWhere((n) => n.isNotEmpty, orElse: () => repoUrl);
+          return snap;
+        }
 
-    final keys = groups.keys.toList()
-      ..sort((a, b) {
-        if (a == kBundledRepoUrl) return -1;
-        if (b == kBundledRepoUrl) return 1;
-        return nameFor(a).toLowerCase().compareTo(nameFor(b).toLowerCase());
-      });
-
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-      itemCount: keys.length,
-      itemBuilder: (_, i) {
-        final key = keys[i];
-        final items = groups[key]!
+        final keys = groups.keys.toList()
           ..sort((a, b) {
-            final an = a.displayName.isNotEmpty ? a.displayName : a.name;
-            final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
-            return an.toLowerCase().compareTo(bn.toLowerCase());
+            if (a == kBundledRepoUrl) return -1;
+            if (b == kBundledRepoUrl) return 1;
+            return nameFor(a).toLowerCase().compareTo(nameFor(b).toLowerCase());
           });
-        return _InstalledGroup(
-          title: nameFor(key),
-          repoUrl: key,
-          entries: items,
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+          itemCount: keys.length,
+          itemBuilder: (_, i) {
+            final key = keys[i];
+            final items = groups[key]!
+              ..sort((a, b) {
+                final an = a.displayName.isNotEmpty ? a.displayName : a.name;
+                final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
+                return an.toLowerCase().compareTo(bn.toLowerCase());
+              });
+            return _InstalledGroup(
+              title: nameFor(key),
+              repoUrl: key,
+              entries: items,
+            );
+          },
         );
       },
     );
@@ -234,7 +254,7 @@ class _InstalledRow extends StatelessWidget {
       ProviderRegistry.providerKey(entry.originRepoUrl, entry.name);
 
   Future<void> _confirmRemove(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final bloc = context.read<SourcesBloc>();
     final name = entry.displayName.isNotEmpty ? entry.displayName : entry.name;
     final ok = await showDialog<bool>(
       context: context,
@@ -260,8 +280,7 @@ class _InstalledRow extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await sl<ProviderRegistry>().uninstall(_key);
-    messenger.showSnackBar(SnackBar(content: Text('Removed $name')));
+    bloc.add(SourceUninstalled(_key, displayName: name));
   }
 
   @override
@@ -291,7 +310,9 @@ class _InstalledRow extends StatelessWidget {
           Switch.adaptive(
             value: entry.enabled,
             activeThumbColor: AppColors.accent,
-            onChanged: (v) => sl<ProviderRegistry>().setEnabled(_key, v),
+            onChanged: (v) => context
+                .read<SourcesBloc>()
+                .add(SourceEnabledToggled(_key, enabled: v)),
           ),
           IconButton(
             tooltip: 'Source settings',
@@ -324,50 +345,23 @@ class _InstalledRow extends StatelessWidget {
 // Repos tab
 // ---------------------------------------------------------------------------
 
-class _ReposTab extends StatefulWidget {
+class _ReposTab extends StatelessWidget {
   const _ReposTab();
 
   @override
-  State<_ReposTab> createState() => _ReposTabState();
-}
-
-class _ReposTabState extends State<_ReposTab> {
-  StreamSubscription<BoxEvent>? _registrySub;
-
-  @override
-  void initState() {
-    super.initState();
-    // The installed-providers box drives the Install/Installed pill state.
-    _registrySub = sl<ProviderRegistry>().watch().listen((_) {
-      if (mounted) setState(() {});
-    });
-  }
-
-  @override
-  void dispose() {
-    _registrySub?.cancel();
-    super.dispose();
-  }
-
-  Set<String> _installedKeys() => sl<ProviderRegistry>()
-      .getAll()
-      .map((e) => ProviderRegistry.providerKey(e.originRepoUrl, e.name))
-      .toSet();
-
-  @override
   Widget build(BuildContext context) {
-    final repos = sl<ProviderReposRegistry>();
-    return StreamBuilder<BoxEvent>(
-      stream: repos.watch(),
-      builder: (context, _) {
-        final all = repos.getAll();
+    return BlocBuilder<SourcesBloc, SourcesState>(
+      buildWhen: (a, b) =>
+          a.repos != b.repos || a.installedKeys != b.installedKeys,
+      builder: (context, state) {
+        final all = state.repos;
         if (all.isEmpty) {
           return const EmptyState(
             icon: Icons.cloud_off_rounded,
             message: 'No repos added yet.\nTap "Add repo" to add one.',
           );
         }
-        final installedKeys = _installedKeys();
+        final installedKeys = state.installedKeys;
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
           itemCount: all.length,
@@ -386,7 +380,7 @@ class _RepoSection extends StatelessWidget {
   final Set<String> installedKeys;
 
   Future<void> _remove(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final bloc = context.read<SourcesBloc>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -412,10 +406,7 @@ class _RepoSection extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await sl<ProviderReposRegistry>().remove(repo.url);
-    messenger.showSnackBar(
-      SnackBar(content: Text('Removed ${repo.displayName}')),
-    );
+    bloc.add(RepoRemoved(repo.url, displayName: repo.displayName));
   }
 
   @override
@@ -505,28 +496,14 @@ class _RepoSourceRow extends StatelessWidget {
 
   String get _key => ProviderRegistry.providerKey(repo.url, source.id);
 
-  Future<void> _install(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      await sl<ProviderRegistry>().install(
-        sourceId: source.id,
-        fileUrl: sl<ProviderReposRegistry>().resolveFileUrl(repo, source),
-        repoUrl: repo.url,
-        displayName: source.name,
-        version: source.version,
-      );
-      messenger.showSnackBar(
-        SnackBar(content: Text('Installed ${source.name}')),
-      );
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text("Couldn't install ${source.name}: $e")),
-      );
-    }
+  void _install(BuildContext context) {
+    context
+        .read<SourcesBloc>()
+        .add(SourceInstalled(repo: repo, source: source));
   }
 
   Future<void> _uninstall(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+    final bloc = context.read<SourcesBloc>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -551,8 +528,7 @@ class _RepoSourceRow extends StatelessWidget {
       ),
     );
     if (ok != true) return;
-    await sl<ProviderRegistry>().uninstall(_key);
-    messenger.showSnackBar(SnackBar(content: Text('Removed ${source.name}')));
+    bloc.add(SourceUninstalled(_key, displayName: source.name));
   }
 
   @override
@@ -615,7 +591,9 @@ class _RepoSourceRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _AddRepoDialog extends StatefulWidget {
-  const _AddRepoDialog();
+  const _AddRepoDialog({required this.bloc});
+
+  final SourcesBloc bloc;
 
   @override
   State<_AddRepoDialog> createState() => _AddRepoDialogState();
@@ -644,29 +622,20 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
       _loading = true;
       _error = null;
     });
-    final messenger = ScaffoldMessenger.of(context);
     final name = _nameCtrl.text.trim();
-    try {
-      final repo = await sl<ProviderReposRegistry>()
-          .fetchAndCache(url, customName: name.isEmpty ? null : name);
-      if (!mounted) return;
+    // The bloc emits the "Added …" notice on success; on failure it returns
+    // the message so we can render it inline and keep the dialog open.
+    final error = await widget.bloc
+        .addRepo(url, customName: name.isEmpty ? null : name);
+    if (!mounted) return;
+    if (error == null) {
       Navigator.of(context).pop();
-      messenger.showSnackBar(
-        SnackBar(content: Text('Added ${repo.displayName}')),
-      );
-    } on ProviderRepoException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.message;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
+      return;
     }
+    setState(() {
+      _loading = false;
+      _error = error;
+    });
   }
 
   @override
