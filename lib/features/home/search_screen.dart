@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/repository/source_repository.dart';
@@ -9,6 +8,23 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
+
+// ── Sort options ────────────────────────────────────────────────────────────
+
+enum _SortOrder { bestMatch, titleAsc, titleDesc }
+
+extension _SortLabel on _SortOrder {
+  String get label {
+    switch (this) {
+      case _SortOrder.bestMatch:
+        return 'Best match';
+      case _SortOrder.titleAsc:
+        return 'Title A–Z';
+      case _SortOrder.titleDesc:
+        return 'Title Z–A';
+    }
+  }
+}
 
 /// Dedicated search screen pushed from the Home header search icon.
 ///
@@ -41,6 +57,10 @@ class _SearchScreenState extends State<SearchScreen> {
   final _repo = sl<SourceRepository>();
   final _controller = TextEditingController();
   Future<List<MediaItem>>? _results;
+  _SortOrder _sort = _SortOrder.bestMatch;
+
+  // The raw query that produced _results — used for empty-state message.
+  String _lastQuery = '';
 
   @override
   void initState() {
@@ -60,8 +80,88 @@ class _SearchScreenState extends State<SearchScreen> {
     // Block-body setState: the closure must return void. An arrow body here
     // would return the Future from the assignment, which setState forbids.
     setState(() {
+      _lastQuery = q.trim();
       _results = _repo.search(q.trim());
     });
+  }
+
+  void _openSortSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Handle
+                    Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.hairline,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    for (final opt in _SortOrder.values)
+                      InkWell(
+                        onTap: () {
+                          setState(() => _sort = opt);
+                          Navigator.pop(ctx);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 14),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(opt.label,
+                                    style: AppText.body.copyWith(
+                                      color: _sort == opt
+                                          ? AppColors.textPrimary
+                                          : AppColors.textSecondary,
+                                      fontWeight: _sort == opt
+                                          ? FontWeight.w600
+                                          : FontWeight.w400,
+                                    )),
+                              ),
+                              if (_sort == opt)
+                                const Icon(
+                                  Icons.check_rounded,
+                                  size: 20,
+                                  color: AppColors.accent,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  List<MediaItem> _sorted(List<MediaItem> items) {
+    switch (_sort) {
+      case _SortOrder.bestMatch:
+        return items;
+      case _SortOrder.titleAsc:
+        return [...items]..sort((a, b) => a.title.compareTo(b.title));
+      case _SortOrder.titleDesc:
+        return [...items]..sort((a, b) => b.title.compareTo(a.title));
+    }
   }
 
   @override
@@ -82,7 +182,7 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Header row: back arrow (routed) + search field ─────────────
+            // ── Header row: back arrow (optional) + search field + sort ────
             Padding(
               padding: EdgeInsets.fromLTRB(
                   widget.showBack ? 4 : 16, 12, 16, 0),
@@ -102,7 +202,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         color: AppColors.surface2,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Row(
                         children: [
@@ -122,17 +222,34 @@ class _SearchScreenState extends State<SearchScreen> {
                               style: AppText.body
                                   .copyWith(color: AppColors.textPrimary),
                               cursorColor: AppColors.accent,
-                              decoration: InputDecoration(
-                                hintText: 'Search $kAppName…',
+                              decoration: const InputDecoration(
+                                hintText: 'Search…',
                                 hintStyle: AppText.body,
                                 border: InputBorder.none,
                                 isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
+                                contentPadding: EdgeInsets.symmetric(
                                     vertical: 14),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          // Sort button — only meaningful once there are results
+                          IconButton(
+                            icon: Icon(
+                              Icons.sort_rounded,
+                              size: 20,
+                              color: _sort != _SortOrder.bestMatch
+                                  ? AppColors.accent
+                                  : AppColors.textTertiary,
+                            ),
+                            tooltip: 'Sort',
+                            onPressed: _openSortSheet,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 36,
+                              minHeight: 36,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
                         ],
                       ),
                     ),
@@ -144,9 +261,24 @@ class _SearchScreenState extends State<SearchScreen> {
             // ── Results area ────────────────────────────────────────────────
             Expanded(
               child: _results == null
-                  ? const EmptyState(
-                      icon: Icons.movie_filter_outlined,
-                      message: 'Search for something to watch',
+                  // Idle state — no query yet
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.search_rounded,
+                            size: 48,
+                            color: AppColors.textTertiary,
+                          ),
+                          SizedBox(height: 12),
+                          Text(
+                            'Search for something to watch',
+                            textAlign: TextAlign.center,
+                            style: AppText.body,
+                          ),
+                        ],
+                      ),
                     )
                   : FutureBuilder<List<MediaItem>>(
                       future: _results,
@@ -160,19 +292,19 @@ class _SearchScreenState extends State<SearchScreen> {
                         if (snap.hasError) {
                           return const EmptyState(
                             icon: Icons.error_outline,
-                            message:
-                                'Search failed. Pull to retry or try another title.',
+                            message: 'Search failed — try again',
                           );
                         }
-                        final items = snap.data ?? const [];
-                        if (items.isEmpty) {
-                          return const EmptyState(
+                        final raw = snap.data ?? const [];
+                        if (raw.isEmpty) {
+                          return EmptyState(
                             icon: Icons.search_off,
-                            message: 'No results for that title',
+                            message: 'No results for "$_lastQuery"',
                           );
                         }
+                        final items = _sorted(raw);
                         return GridView.builder(
-                          padding: const EdgeInsets.all(20),
+                          padding: const EdgeInsets.all(16),
                           cacheExtent: 800,
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
@@ -194,7 +326,9 @@ class _SearchScreenState extends State<SearchScreen> {
                                 MaterialPageRoute(
                                   builder: (_) => DetailScreen(item: item),
                                 ),
-                              ),
+                              ).then((_) {
+                                if (mounted) setState(() {});
+                              }),
                             );
                           },
                         );

@@ -12,13 +12,11 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
-import '../../core/ui/genre_chips.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
-import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -237,21 +235,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: _buildHeader(),
                   );
                 },
-              ),
-            ),
-
-            // ── Genre chips ───────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                child: GenreChips(
-                  onTap: (g) => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => SearchScreen(initialQuery: g),
-                    ),
-                  ),
-                ),
               ),
             ),
 
