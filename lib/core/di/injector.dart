@@ -125,8 +125,16 @@ Future<void> initDependencies() async {
   }
 
   // Global cubit so any widget can read/write the active source id and
-  // descendants can react via BlocBuilder/BlocListener.
-  sl.registerSingleton<ActiveSourceCubit>(ActiveSourceCubit());
+  // descendants can react via BlocBuilder/BlocListener. Persists the pick to a
+  // Hive box and restores it on launch, validated against the providers that
+  // actually loaded (so a removed/disabled source falls back to allanime).
+  await ActiveSourceCubit.init();
+  sl.registerSingleton<ActiveSourceCubit>(
+    ActiveSourceCubit(
+      box: Hive.box(ActiveSourceCubit.boxName),
+      valid: manager.installedIds.toSet(),
+    ),
+  );
 
   sl.registerSingleton<SourceRepository>(
     SourceRepository(manager: manager, activeSource: sl<ActiveSourceCubit>()),
