@@ -155,7 +155,15 @@ globalThis.__callProvider = function(sourceId, method, argsJson) {
 
 globalThis.htmlText = function(html) {
   if (!html) return '';
-  return String(html).replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  return String(html)
+    .replace(/<[^>]*>/g, '')
+    // numeric + hex character references (e.g. &#8212; &#x2014;)
+    .replace(/&#x([0-9a-fA-F]+);/g, function(_, h) { return String.fromCodePoint(parseInt(h, 16)); })
+    .replace(/&#(\d+);/g, function(_, d) { return String.fromCodePoint(parseInt(d, 10)); })
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
 globalThis.absUrl = function(href, base) {

@@ -87,7 +87,7 @@ function getDetail(url, opts) {
         url: 'allanime://' + showId + '/' + cat + '/' + n });
     }
     return { id: showId, title: show.name || showId, englishTitle: show.englishName || null,
-      cover: show.thumbnail || null, url: showId, description: show.description || '',
+      cover: show.thumbnail || null, url: showId, description: htmlText(show.description || ''),
       status: 'unknown', genres: [], studios: [], type: 'anime', sourceId: SOURCE_ID,
       episodes: eps, subCount: (ae.sub != null ? ae.sub : (aed.sub || []).length),
       dubCount: (ae.dub != null ? ae.dub : (aed.dub || []).length) };
