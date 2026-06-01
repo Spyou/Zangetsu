@@ -417,8 +417,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
           return Stack(
             fit: StackFit.expand,
             children: [
-              // 1. The video.
-              Center(child: Video(controller: _c.videoController)),
+              // 1. The video. NoVideoControls disables media_kit's built-in
+              // controls (which include their own buffering spinner + gestures)
+              // so ONLY our custom Netflix overlay shows — fixes the duplicate
+              // spinner / double controls.
+              Center(
+                child: Video(
+                  controller: _c.videoController,
+                  controls: NoVideoControls,
+                ),
+              ),
 
               // 2. Gesture surface: tap toggles, double-tap seeks, long-press 2x.
               Positioned.fill(
