@@ -92,15 +92,33 @@ function search(query, page, opts) {
     .then(function (j) { return _mapResults((j && j.searchResult) || []); });
 }
 
-// Browse: the per-platform home grid is dead, so browse from search. Netflix
-// has a curated empty-query feed; the other platforms need a query, so we use a
-// broad common term. Cached once, then partitioned into the three Home rows.
+// Browse: the per-platform home/trending grid is dead, so browse is built from
+// search. Netflix has a curated empty-query feed; the other platforms have no
+// trending endpoint, so we sample a varied catalog by merging several common
+// queries and de-duping. Cached once, then partitioned into the three Home rows.
 var _browse = null;
+function _searchRaw(q) {
+  return _catFetch(PREFIX + '/search.php?s=' + encodeURIComponent(q) + '&t=' + _ts())
+    .then(function (j) { return _mapResults((j && j.searchResult) || []); })
+    .catch(function () { return []; });
+}
 function _browseFeed() {
   if (_browse) return Promise.resolve(_browse);
-  var q = (OTT === 'nf') ? '' : 'the';
-  return _catFetch(PREFIX + '/search.php?s=' + encodeURIComponent(q) + '&t=' + _ts())
-    .then(function (j) { _browse = _mapResults((j && j.searchResult) || []); return _browse; });
+  if (OTT === 'nf') {
+    return _searchRaw('').then(function (feed) { _browse = feed; return feed; });
+  }
+  var qs = ['the', 'a', 'man', 'love', 'star', 'life'];
+  return Promise.all(qs.map(_searchRaw)).then(function (lists) {
+    var seen = {}, out = [];
+    for (var i = 0; i < lists.length; i++) {
+      for (var k = 0; k < lists[i].length; k++) {
+        var it = lists[i][k];
+        if (it && !seen[it.id]) { seen[it.id] = 1; out.push(it); }
+      }
+    }
+    _browse = out;
+    return out;
+  });
 }
 
 function popular(opts) {
