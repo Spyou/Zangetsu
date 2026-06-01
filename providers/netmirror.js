@@ -189,12 +189,27 @@ function getDetail(url, opts) {
     var description = htmlText(p.desc || p.m_desc || '');
     var genres = String(p.genre || '').split(',').map(_trim).filter(function (g) { return g.length > 0; });
 
+    // Cast — split the comma-separated `cast` (fall back to `short_cast`)
+    // into clean names. Append director / creator when present so the Cast
+    // tab carries the people behind the title too. De-duped, blanks dropped.
+    var castRaw = String(p.cast || p.short_cast || '');
+    var cast = castRaw.split(',').map(_trim).filter(function (c) { return c.length > 0; });
+    [p.director, p.creator].forEach(function (extra) {
+      String(extra || '').split(',').map(_trim).forEach(function (name) {
+        if (name.length > 0 && cast.indexOf(name) < 0) cast.push(name);
+      });
+    });
+
+    // Release year — surfaced verbatim when present, else null (the UI
+    // omits the segment rather than guessing).
+    var year = p.year ? String(p.year) : (p.released ? String(p.released) : null);
+
     function finish(episodes) {
       return {
         id: id, title: title, englishTitle: null, cover: _poster(id),
         coverHeaders: _posterHeaders(), url: id, description: description,
         status: 'unknown', genres: genres, studios: [], type: 'movie',
-        sourceId: SOURCE_ID, episodes: episodes
+        sourceId: SOURCE_ID, episodes: episodes, cast: cast, year: year
       };
     }
 

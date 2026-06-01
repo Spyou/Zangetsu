@@ -34,6 +34,9 @@ MediaDetail _$MediaDetailFromJson(Map<String, dynamic> json) => MediaDetail(
           ?.map((e) => Episode.fromJson(e as Map<String, dynamic>))
           .toList() ??
       [],
+  cast:
+      (json['cast'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+  year: json['year'] as String?,
   type: $enumDecode(_$ProviderTypeEnumMap, json['type']),
   sourceId: json['sourceId'] as String,
   subCount: (json['subCount'] as num?)?.toInt(),
@@ -53,6 +56,8 @@ Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
       'genres': instance.genres,
       'studios': instance.studios,
       'episodes': instance.episodes.map((e) => e.toJson()).toList(),
+      'cast': instance.cast,
+      'year': instance.year,
       'type': _$ProviderTypeEnumMap[instance.type]!,
       'sourceId': instance.sourceId,
       'subCount': instance.subCount,

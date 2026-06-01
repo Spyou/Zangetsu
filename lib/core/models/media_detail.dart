@@ -44,6 +44,16 @@ class MediaDetail extends Equatable {
   @JsonKey(defaultValue: <Episode>[])
   final List<Episode> episodes;
 
+  /// Cast members (actors / voice actors). Populated by sources that expose
+  /// it (e.g. NetMirror's `post.php` cast field); empty for sources that
+  /// don't (e.g. AllAnime). Drives the Cast tab.
+  @JsonKey(defaultValue: <String>[])
+  final List<String> cast;
+
+  /// Release year, when the source provides it. Null otherwise — the meta
+  /// line omits the segment rather than inventing a value.
+  final String? year;
+
   final ProviderType type;
   final String sourceId;
   final int? subCount;
@@ -61,6 +71,8 @@ class MediaDetail extends Equatable {
     this.genres = const [],
     this.studios = const [],
     this.episodes = const [],
+    this.cast = const [],
+    this.year,
     required this.type,
     required this.sourceId,
     this.subCount,
@@ -74,6 +86,7 @@ class MediaDetail extends Equatable {
   @override
   List<Object?> get props => [
         id, title, englishTitle, cover, coverHeaders, url, description,
-        status, genres, studios, episodes, type, sourceId, subCount, dubCount,
+        status, genres, studios, episodes, cast, year, type, sourceId,
+        subCount, dubCount,
       ];
 }

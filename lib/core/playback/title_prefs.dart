@@ -28,4 +28,24 @@ class TitlePrefsStore {
     m['category'] = category;
     await _box.put(k, m);
   }
+
+  /// Whether this title is marked as a favorite. Keyed identically to the
+  /// sub/dub choice so a title's UI prefs all travel together.
+  bool isFavorite(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    if (m == null) return false;
+    return Map<String, dynamic>.from(m)['favorite'] == true;
+  }
+
+  /// Flip the favorite flag and return the new value.
+  Future<bool> toggleFavorite(String sourceId, String showUrl) async {
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    final next = !(m['favorite'] == true);
+    m['favorite'] = next;
+    await _box.put(k, m);
+    return next;
+  }
 }

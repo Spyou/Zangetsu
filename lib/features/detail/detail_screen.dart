@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -16,7 +18,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
-import '../../core/ui/buttons.dart';
 import '../../core/ui/segmented_toggle.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
@@ -41,10 +42,11 @@ class DetailScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _DetailView — StatefulWidget for the scroll-driven app-bar title fade.
-// The scroll position is pure UI state and stays widget-level; everything
-// data-related (detail / category / season / desc-expand) lives in
-// DetailCubit and is consumed via BlocBuilder below.
+// _DetailView — StatefulWidget for the scroll-driven app-bar title fade and the
+// four-tab layout (Episodes / Cast / Relations / Details). The scroll position
+// and TabController are pure UI state and stay widget-level; everything
+// data-related (detail / category / season / desc-expand) lives in DetailCubit
+// and is consumed via BlocBuilder below.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DetailView extends StatefulWidget {
@@ -55,39 +57,41 @@ class _DetailView extends StatefulWidget {
   State<_DetailView> createState() => _DetailViewState();
 }
 
-class _DetailViewState extends State<_DetailView> {
-  static const double _expandedHeight = 360;
+class _DetailViewState extends State<_DetailView>
+    with SingleTickerProviderStateMixin {
+  static const double _expandedHeight = 320;
   bool _showAppBarTitle = false;
-  final ScrollController _scrollController = ScrollController();
+
+  late final TabController _tabController =
+      TabController(length: 4, vsync: this);
+
+  // ── My List + Favorite (per-title stores) ────────────────────────────────
+  final MyListStore _myList = sl<MyListStore>();
+  final TitlePrefsStore _prefs = sl<TitlePrefsStore>();
+  late bool _inMyList = _myList.contains(widget.item);
+  late bool _isFavorite =
+      _prefs.isFavorite(widget.item.sourceId, widget.item.url);
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  /// Smoothly reveal the bottom "Details" section.
-  void _scrollToDetails() {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      _scrollController.position.maxScrollExtent,
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeInOut,
-    );
-  }
-
+  // ── Scroll-driven app-bar title fade. PRESERVED EFFECT — adapted to the
+  // NestedScrollView outer viewport (Sozo Read's pattern). The title fades in
+  // as the hero scrolls past. ─────────────────────────────────────────────
   bool _onScroll(ScrollNotification n) {
     if (n.metrics.axis != Axis.vertical) return false;
-    final shouldShow = n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
+    final shouldShow =
+        n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
     if (shouldShow != _showAppBarTitle) {
       setState(() => _showAppBarTitle = shouldShow);
     }
     return false;
   }
 
-  // ── My List toggle (visual-only addition; behavior preserved elsewhere) ───
-  final MyListStore _myList = sl<MyListStore>();
-  late bool _inMyList = _myList.contains(widget.item);
+  // ── The 5-icon action row wiring ──────────────────────────────────────────
 
   Future<void> _toggleMyList() async {
     await _myList.toggle(widget.item);
@@ -95,7 +99,73 @@ class _DetailViewState extends State<_DetailView> {
     setState(() => _inMyList = _myList.contains(widget.item));
   }
 
-  // ── Preserved exactly from original ──────────────────────────────────────
+  Future<void> _toggleFavorite() async {
+    final next =
+        await _prefs.toggleFavorite(widget.item.sourceId, widget.item.url);
+    if (!mounted) return;
+    setState(() => _isFavorite = next);
+  }
+
+  void _share(MediaDetail detail, String sourceName) {
+    final text = sourceName.isNotEmpty
+        ? '${detail.title} — on $sourceName'
+        : detail.title;
+    Clipboard.setData(ClipboardData(text: text));
+    _snack('Copied to clipboard');
+  }
+
+  /// ✕ — paired with the bookmark. Removes the title from My List when it's
+  /// saved; otherwise a brief hint.
+  Future<void> _removeFromMyList() async {
+    if (!_inMyList) {
+      _snack('Not in My List');
+      return;
+    }
+    await _myList.toggle(widget.item); // toggle off
+    if (!mounted) return;
+    setState(() => _inMyList = _myList.contains(widget.item));
+    _snack('Removed from My List');
+  }
+
+  /// Globe — open the source's web page in the system browser. Falls back to
+  /// a snackbar when no usable URL can be derived.
+  Future<void> _openSourceSite() async {
+    final url = _sourceWebUrl();
+    if (url == null) {
+      _snack('No web page for this source');
+      return;
+    }
+    final ok = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!ok && mounted) _snack('Could not open the source site');
+  }
+
+  /// Best-effort web URL for the title. Prefers an absolute item URL; else
+  /// the source's display name has no base here, so we surface the raw URL
+  /// only when it already looks like a link.
+  String? _sourceWebUrl() {
+    final u = widget.item.url.trim();
+    if (u.startsWith('http://') || u.startsWith('https://')) return u;
+    return null;
+  }
+
+  void _snack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(msg, style: AppText.caption.copyWith(color: Colors.white)),
+          backgroundColor: AppColors.surface2,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  // ── Cross-source player launch — PRESERVED EXACTLY ────────────────────────
 
   void _openPlayer(
     List<Episode> episodes,
@@ -121,11 +191,7 @@ class _DetailViewState extends State<_DetailView> {
     ));
   }
 
-  /// Walk episodes and return the best resume target index.
-  /// - No marks → 0 ("Play")
-  /// - Highest marked & not finished → that index ("Continue EN")
-  /// - Highest marked & finished + next exists → next index ("Continue EN+1")
-  /// - Highest marked & finished & last → same index ("Continue EN")
+  /// Walk episodes and return the best resume target index. PRESERVED.
   int _resumeIndex(List<Episode> eps) {
     final store = sl<ResumeStore>();
     int? highestMarked;
@@ -163,7 +229,8 @@ class _DetailViewState extends State<_DetailView> {
     );
   }
 
-  Widget _buildBody(BuildContext context, DetailState state, MediaDetail detail) {
+  Widget _buildBody(
+      BuildContext context, DetailState state, MediaDetail detail) {
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
     final category = state.category;
@@ -174,453 +241,728 @@ class _DetailViewState extends State<_DetailView> {
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
 
-    // Resume / play button logic
+    // Resume / play button logic. PRESERVED.
     final resumeIdx = _resumeIndex(eps);
-    final hasAnyMark =
-        eps.any((e) => store.get(item.sourceId, e.id) != null);
+    final hasAnyMark = eps.any((e) => store.get(item.sourceId, e.id) != null);
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
     final buttonLabel = hasAnyMark ? 'Continue E$episodeNum' : 'Play';
 
-    // Cover
+    // Cover / backdrop.
     final coverUrl = detail.cover ?? item.cover ?? '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
-    // Season data
+    // Season data. PRESERVED.
     final seasonSet = seasonsOf(eps);
     final hasMultipleSeasons = seasonSet.length > 1;
-
-    // Season to display (clamp in case detail reloads with fewer seasons)
     final currentSeason = hasMultipleSeasons
         ? (seasonSet.contains(selectedSeason) ? selectedSeason : seasonSet.first)
         : 1;
-
-    // Episodes filtered by season
     final seasonEps = hasMultipleSeasons
-        ? eps
-            .where((e) => parseSeason(e.title) == currentSeason)
-            .toList()
+        ? eps.where((e) => parseSeason(e.title) == currentSeason).toList()
         : eps;
 
-    // Meta row
+    // ── "RELEASING" status badge + "Total of X / Y" availability line ───────
     final statusStr = statusLabel(detail.status);
-    final metaParts = <String>['${eps.length} Episodes'];
-    if (statusStr.isNotEmpty) metaParts.add(statusStr);
-    if (detail.genres.isNotEmpty) metaParts.add(detail.genres.first);
-    final metaLine = metaParts.join(' · ');
+    // Available / total. When sub/dub counts exist (anime), the active track's
+    // count is the "available" count and total is the larger of the two; else
+    // fall back to the parsed episode count for both.
+    final subN = detail.subCount ?? 0;
+    final dubN = detail.dubCount ?? 0;
+    final maxTrack = subN > dubN ? subN : dubN;
+    final available = showSubDub
+        ? (category == 'sub' ? subN : dubN)
+        : eps.length;
+    final total = showSubDub && maxTrack > 0 ? maxTrack : eps.length;
 
-    // Friendly provider name for the source chip + Details section.
+    // ── Title meta line: "2023 · Action / Horror · 1 Season" ────────────────
+    final metaParts = <String>[];
+    if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
+    if (detail.genres.isNotEmpty) metaParts.add(detail.genres.take(2).join(' / '));
+    if (hasMultipleSeasons) {
+      metaParts.add('${seasonSet.length} Seasons');
+    } else if (eps.isNotEmpty) {
+      metaParts.add('${eps.length} Episode${eps.length == 1 ? '' : 's'}');
+    }
+    final metaLine = metaParts.join('  ·  ');
+
+    // Friendly provider name.
     final sourceName =
         sl<ProviderRegistry>().entryFor(item.sourceId)?.displayName ??
             item.sourceId;
 
     return NotificationListener<ScrollNotification>(
       onNotification: _onScroll,
-      child: CustomScrollView(
-      controller: _scrollController,
-      slivers: [
-        // ── 1. Cinematic hero SliverAppBar ─────────────────────────────────
-        SliverAppBar(
-          expandedHeight: _expandedHeight,
-          pinned: true,
-          stretch: true,
-          backgroundColor: AppColors.bg,
-          surfaceTintColor: Colors.transparent,
-          // Fades in only once the hero cover has scrolled out of view —
-          // mirrors Sozo Read's NotificationListener-driven pattern.
-          title: AnimatedOpacity(
-            opacity: _showAppBarTitle ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            child: Text(
-              detail.title,
-              style: AppText.headline,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+      child: NestedScrollView(
+        headerSliverBuilder: (context, _) => [
+          // ── 1. Hero: backdrop + overlapping poster + status/total ──────────
+          SliverAppBar(
+            expandedHeight: _expandedHeight,
+            pinned: true,
+            backgroundColor: AppColors.bg,
+            surfaceTintColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            centerTitle: false,
+            titleSpacing: 0,
+            // PRESERVED EFFECT: title fades in once the hero scrolls past.
+            title: AnimatedOpacity(
+              opacity: _showAppBarTitle ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              child: Text(
+                detail.title,
+                style: AppText.headline,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-          flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            background: RepaintBoundary(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Backdrop cover
-                  hasCover
-                      ? CachedNetworkImage(
-                          imageUrl: coverUrl,
-                          httpHeaders: coverHeaders,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 800,
-                          placeholder: (context0, url0) =>
-                              const ColoredBox(color: AppColors.surface2),
-                          errorWidget: (context0, url0, err) =>
-                              const ColoredBox(color: AppColors.surface2),
-                        )
-                      : const ColoredBox(color: AppColors.surface2),
-                  // Top scrim (status-bar legibility)
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.topScrim,
-                    ),
-                  ),
-                  // Bottom-up scrim
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: AppColors.scrim,
-                    ),
-                  ),
-                  // Cinematic poster + title block at the bottom.
-                  Positioned(
-                    left: 16,
-                    right: 16,
-                    bottom: 20,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        // Crisp 2:3 poster with rounded corners + soft elevation.
-                        SizedBox(
-                          height: 168,
-                          child: AspectRatio(
-                            aspectRatio: 2 / 3,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(12),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x80000000),
-                                    blurRadius: 20,
-                                    offset: Offset(0, 8),
-                                  ),
-                                ],
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.08),
-                                  width: 0.5,
-                                ),
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: hasCover
-                                    ? CachedNetworkImage(
-                                        imageUrl: coverUrl,
-                                        httpHeaders: coverHeaders,
-                                        fit: BoxFit.cover,
-                                        memCacheWidth: 240,
-                                        placeholder: (context0, url0) =>
-                                            const ColoredBox(
-                                                color: AppColors.surface2),
-                                        errorWidget: (context0, url0, err) =>
-                                            const ColoredBox(
-                                                color: AppColors.surface2),
-                                      )
-                                    : const ColoredBox(
-                                        color: AppColors.surface2),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        // Title + meta block.
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  detail.title,
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontFamily: 'Inter',
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: -0.4,
-                                    height: 1.12,
-                                    shadows: [
-                                      Shadow(
-                                        blurRadius: 8,
-                                        color: Colors.black,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if ((detail.englishTitle ?? '').isNotEmpty &&
-                                    detail.englishTitle != detail.title) ...[
-                                  const SizedBox(height: 5),
-                                  Text(
-                                    detail.englishTitle!,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontFamily: 'Inter',
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.25,
-                                    ),
-                                  ),
-                                ],
-                                const SizedBox(height: 10),
-                                if (detail.status != MediaStatus.unknown)
-                                  _StatusBadge(status: detail.status),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            flexibleSpace: FlexibleSpaceBar(
+              collapseMode: CollapseMode.parallax,
+              background: RepaintBoundary(
+                child: _Hero(
+                  coverUrl: coverUrl,
+                  coverHeaders: coverHeaders,
+                  hasCover: hasCover,
+                ),
               ),
             ),
           ),
-        ),
 
-        // ── 2. Header block ─────────────────────────────────────────────────
-        SliverToBoxAdapter(
-          child: RepaintBoundary(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Source chip + meta row. Title lives only in the hero +
-                  // fading app-bar; the chip surfaces WHICH provider this title
-                  // came from (AllAnime / Netflix / …).
-                  Row(
-                    children: [
-                      if (sourceName.isNotEmpty) ...[
-                        TagBadge(text: sourceName),
-                        const SizedBox(width: 8),
-                      ],
-                      Expanded(
-                        child: Text(
-                          metaLine,
-                          style: AppText.caption.copyWith(
-                              color: AppColors.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // Play / Continue button
-                  PrimaryButton(
-                    label: buttonLabel,
-                    icon: Icons.play_arrow_rounded,
-                    onPressed: eps.isNotEmpty
-                        ? () => _openPlayer(eps, resumeIdx, detail, category)
-                        : null,
-                  ),
-                  const SizedBox(height: 12),
-                  // Netflix-style secondary action row (icon-over-label).
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _ActionButton(
-                          icon: _inMyList
-                              ? Icons.check_rounded
-                              : Icons.add_rounded,
-                          label: 'My List',
-                          active: _inMyList,
-                          onTap: _toggleMyList,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: _ActionButton(
-                          icon: Icons.info_outline_rounded,
-                          label: 'Details',
-                          onTap: () => _scrollToDetails(),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  // Sub / Dub toggle — anime only, when both counts are meaningful
-                  if (showSubDub) ...[
-                    SegmentedToggle(
-                      segments: const ['Sub', 'Dub'],
-                      index: audioIndex,
-                      onChanged: (i) =>
-                          cubit.setCategory(i == 0 ? 'sub' : 'dub'),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  // Description with "More" affordance
-                  if ((detail.description ?? '').isNotEmpty) ...[
-                    GestureDetector(
-                      onTap: cubit.toggleDesc,
-                      behavior: HitTestBehavior.opaque,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          AnimatedSize(
-                            duration: const Duration(milliseconds: 180),
-                            curve: Curves.easeOut,
-                            alignment: Alignment.topCenter,
-                            child: Text(
-                              detail.description!,
-                              style: AppText.body,
-                              maxLines: descExpanded ? null : 3,
-                              overflow: descExpanded
-                                  ? TextOverflow.visible
-                                  : TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            descExpanded ? 'Show less' : 'Show more',
-                            style: AppText.caption.copyWith(
-                              color: AppColors.accent,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  // Genre chips
-                  if (detail.genres.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: detail.genres
-                          .map((g) => TagBadge(
-                                text: g,
-                                color: AppColors.textSecondary,
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  const Divider(color: AppColors.hairline, height: 1),
-                  const SizedBox(height: 16),
-                  // "Episodes" heading + count.
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      const Text('Episodes', style: AppText.title),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          '${seasonEps.length}',
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textTertiary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // ── 3. Season selector (only when multi-season) ─────────────────────
-        if (hasMultipleSeasons)
+          // ── 2. Status badge + "Total of X / Y" ─────────────────────────────
           SliverToBoxAdapter(
-            child: _SeasonSelector(
-              seasons: seasonSet.toList()..sort(),
-              selectedSeason: currentSeason,
-              onSelectSeason: cubit.selectSeason,
+            child: RepaintBoundary(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Row(
+                  children: [
+                    if (statusStr.isNotEmpty)
+                      _ReleaseBadge(label: statusStr.toUpperCase()),
+                    if (statusStr.isNotEmpty) const SizedBox(width: 12),
+                    Text(
+                      'Total of $available / $total',
+                      style: AppText.caption
+                          .copyWith(color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
 
-        // ── 4. Netflix/Prime-style episode list ──────────────────────────────
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, i) {
-              final ep = seasonEps[i];
-              // Map season-filtered index back to the FULL episode list index
-              // so playback / resume keys remain correct.
-              final fullIndex = eps.indexOf(ep);
-              final mark = store.get(item.sourceId, ep.id);
-              final isInProgress = mark != null &&
-                  !mark.finished &&
-                  mark.duration > Duration.zero;
-              final isWatched = mark != null && mark.finished;
-              final isResume = hasAnyMark && fullIndex == _resumeIndex(eps);
-
-              final fraction = isInProgress
-                  ? (mark.position.inMilliseconds /
-                          mark.duration.inMilliseconds)
-                      .clamp(0.0, 1.0)
-                  : 0.0;
-
-              final epNumStr =
-                  'E${ep.number?.toInt() ?? i + 1}';
-              final rawTitle = ep.title;
-              final displayTitle = hasMultipleSeasons
-                  ? cleanTitle(rawTitle)
-                  : rawTitle;
-
-              return RepaintBoundary(
+          // ── 3. Title + meta line ───────────────────────────────────────────
+          SliverToBoxAdapter(
+            child: RepaintBoundary(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                 child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _EpisodeRow(
-                    ep: ep,
-                    epNumStr: epNumStr,
-                    displayTitle: displayTitle,
-                    coverUrl: coverUrl,
-                    coverHeaders: coverHeaders,
-                    isWatched: isWatched,
-                    isInProgress: isInProgress,
-                    isResume: isResume,
-                    fraction: fraction,
-                    onTap: () => _openPlayer(eps, fullIndex, detail, category),
-                  ),
-                  if (i < seasonEps.length - 1)
-                    const Divider(
-                      height: 1,
-                      thickness: 0,
-                      color: AppColors.hairline,
-                      indent: 16,
-                      endIndent: 16,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      detail.title,
+                      style: AppText.largeTitle.copyWith(fontSize: 26),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    if (metaLine.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        metaLine,
+                        style: AppText.caption
+                            .copyWith(color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          // ── 4. Action row: red Play + square download ──────────────────────
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _PlayButton(
+                      label: buttonLabel,
+                      onPressed: eps.isNotEmpty
+                          ? () => _openPlayer(eps, resumeIdx, detail, category)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  _DownloadButton(
+                    onPressed: () => _snack('Downloads coming soon'),
+                  ),
                 ],
               ),
-              );
-            },
-            childCount: seasonEps.length,
+            ),
           ),
-        ),
 
-        // ── 5. Sozo-style "Details" section ──────────────────────────────────
-        SliverToBoxAdapter(
-          child: _DetailsSection(
-            sourceName: sourceName,
-            statusStr: statusStr,
-            genres: detail.genres,
-            episodeCount: eps.length,
-            description: detail.description,
+          // ── 5. Description + inline Read more ───────────────────────────────
+          if ((detail.description ?? '').isNotEmpty)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _Description(
+                  text: detail.description!,
+                  expanded: descExpanded,
+                  onToggle: cubit.toggleDesc,
+                ),
+              ),
+            ),
+
+          // ── 6. Five-icon action row ─────────────────────────────────────────
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 18, 8, 6),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _IconAction(
+                    icon: _inMyList
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_outline_rounded,
+                    active: _inMyList,
+                    tooltip: 'My List',
+                    onTap: _toggleMyList,
+                  ),
+                  _IconAction(
+                    icon: _isFavorite
+                        ? Icons.favorite_rounded
+                        : Icons.favorite_outline_rounded,
+                    active: _isFavorite,
+                    tooltip: 'Favorite',
+                    onTap: _toggleFavorite,
+                  ),
+                  _IconAction(
+                    icon: Icons.ios_share_rounded,
+                    tooltip: 'Share',
+                    onTap: () => _share(detail, sourceName),
+                  ),
+                  _IconAction(
+                    icon: Icons.close_rounded,
+                    tooltip: 'Remove from My List',
+                    onTap: _removeFromMyList,
+                  ),
+                  _IconAction(
+                    icon: Icons.public_rounded,
+                    tooltip: 'Open source site',
+                    onTap: _openSourceSite,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
 
-        // Bottom padding
-        const SliverToBoxAdapter(child: SizedBox(height: 40)),
-      ],
-    ),
+          // ── 7. Pinned tab bar ───────────────────────────────────────────────
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _TabBarDelegate(
+              TabBar(
+                controller: _tabController,
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                labelPadding: const EdgeInsets.symmetric(horizontal: 14),
+                labelColor: AppColors.accent,
+                unselectedLabelColor: AppColors.textSecondary,
+                indicatorSize: TabBarIndicatorSize.label,
+                indicator: const UnderlineTabIndicator(
+                  borderSide: BorderSide(color: AppColors.accent, width: 2.5),
+                  insets: EdgeInsets.symmetric(horizontal: 2),
+                ),
+                dividerHeight: 0,
+                splashFactory: NoSplash.splashFactory,
+                overlayColor: WidgetStateProperty.all(Colors.transparent),
+                labelStyle: AppText.headline.copyWith(fontSize: 15),
+                unselectedLabelStyle:
+                    AppText.headline.copyWith(fontSize: 15, fontWeight: FontWeight.w500),
+                tabs: const [
+                  Tab(text: 'Episodes'),
+                  Tab(text: 'Cast'),
+                  Tab(text: 'Relations'),
+                  Tab(text: 'Details'),
+                ],
+              ),
+            ),
+          ),
+        ],
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            // ── Episodes ──────────────────────────────────────────────────────
+            _EpisodesTab(
+              eps: eps,
+              seasonEps: seasonEps,
+              hasMultipleSeasons: hasMultipleSeasons,
+              seasonSet: seasonSet,
+              currentSeason: currentSeason,
+              onSelectSeason: cubit.selectSeason,
+              showSubDub: showSubDub,
+              audioIndex: audioIndex,
+              onCategory: (i) => cubit.setCategory(i == 0 ? 'sub' : 'dub'),
+              coverUrl: coverUrl,
+              coverHeaders: coverHeaders,
+              sourceId: item.sourceId,
+              resumeIndex: _resumeIndex,
+              hasAnyMark: hasAnyMark,
+              onOpen: (fullIndex) =>
+                  _openPlayer(eps, fullIndex, detail, category),
+            ),
+            // ── Cast ────────────────────────────────────────────────────────────
+            _CastTab(cast: detail.cast),
+            // ── Relations (no data) ──────────────────────────────────────────────
+            const _RelationsTab(),
+            // ── Details ──────────────────────────────────────────────────────────
+            _DetailsTab(
+              sourceName: sourceName,
+              statusStr: statusStr,
+              genres: detail.genres,
+              studios: detail.studios,
+              episodeCount: eps.length,
+              year: detail.year,
+              description: detail.description,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Season selector — horizontal pill chips
+// Hero — full-width backdrop with a portrait poster overlapping the bottom-right
+// and a back arrow over the top-left.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Hero extends StatelessWidget {
+  const _Hero({
+    required this.coverUrl,
+    required this.coverHeaders,
+    required this.hasCover,
+  });
+
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
+  final bool hasCover;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Backdrop.
+        hasCover
+            ? CachedNetworkImage(
+                imageUrl: coverUrl,
+                httpHeaders: coverHeaders,
+                fit: BoxFit.cover,
+                memCacheWidth: 800,
+                placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
+                errorWidget: (c, u, e) =>
+                    const ColoredBox(color: AppColors.surface2),
+              )
+            : const ColoredBox(color: AppColors.surface2),
+        const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.topScrim)),
+        const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+        // Overlapping portrait poster, bottom-right.
+        Positioned(
+          right: 16,
+          bottom: 14,
+          child: SizedBox(
+            height: 132,
+            child: AspectRatio(
+              aspectRatio: 2 / 3,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x99000000),
+                      blurRadius: 18,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    width: 0.5,
+                  ),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: hasCover
+                      ? CachedNetworkImage(
+                          imageUrl: coverUrl,
+                          httpHeaders: coverHeaders,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 240,
+                          placeholder: (c, u) =>
+                              const ColoredBox(color: AppColors.surface2),
+                          errorWidget: (c, u, e) =>
+                              const ColoredBox(color: AppColors.surface2),
+                        )
+                      : const ColoredBox(color: AppColors.surface2),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "RELEASING" / status badge — small red pill.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ReleaseBadge extends StatelessWidget {
+  const _ReleaseBadge({required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: AppText.overline.copyWith(
+          color: Colors.white,
+          fontSize: 11,
+          letterSpacing: 0.6,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wide red Play button + label.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.label, this.onPressed});
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.4,
+      child: Material(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.play_arrow_rounded,
+                    color: Colors.white, size: 24),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Square red download button (placeholder action).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DownloadButton extends StatelessWidget {
+  const _DownloadButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.accent,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onPressed,
+        child: const SizedBox(
+          width: 52,
+          height: 52,
+          child: Icon(Icons.file_download_outlined,
+              color: Colors.white, size: 24),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Description: 3 lines + inline red "Read more" that expands.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Description extends StatelessWidget {
+  const _Description({
+    required this.text,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  final String text;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onToggle,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: Text(
+              text,
+              style: AppText.body,
+              maxLines: expanded ? null : 3,
+              overflow:
+                  expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            expanded ? 'Read less' : 'Read more',
+            style: AppText.caption.copyWith(
+              color: AppColors.accent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// One of the 5 outlined icon actions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _IconAction extends StatelessWidget {
+  const _IconAction({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.active = false,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 26,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Icon(
+            icon,
+            size: 24,
+            color: active ? AppColors.accent : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pinned tab-bar delegate.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TabBarDelegate extends SliverPersistentHeaderDelegate {
+  _TabBarDelegate(this.tabBar);
+  final TabBar tabBar;
+
+  // +1 for the hairline divider rendered under the tab bar.
+  @override
+  double get minExtent => tabBar.preferredSize.height + 1;
+  @override
+  double get maxExtent => tabBar.preferredSize.height + 1;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Material(
+      color: AppColors.bg,
+      elevation: 0,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          tabBar,
+          const Divider(color: AppColors.hairline, height: 1, thickness: 1),
+        ],
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _TabBarDelegate oldDelegate) =>
+      tabBar != oldDelegate.tabBar;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Episodes tab — season selector (multi-season) + Sub/Dub toggle (anime) +
+// rich episode rows. PRESERVES season filtering, sub/dub re-fetch, _openPlayer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EpisodesTab extends StatelessWidget {
+  const _EpisodesTab({
+    required this.eps,
+    required this.seasonEps,
+    required this.hasMultipleSeasons,
+    required this.seasonSet,
+    required this.currentSeason,
+    required this.onSelectSeason,
+    required this.showSubDub,
+    required this.audioIndex,
+    required this.onCategory,
+    required this.coverUrl,
+    required this.coverHeaders,
+    required this.sourceId,
+    required this.resumeIndex,
+    required this.hasAnyMark,
+    required this.onOpen,
+  });
+
+  final List<Episode> eps;
+  final List<Episode> seasonEps;
+  final bool hasMultipleSeasons;
+  final Set<int> seasonSet;
+  final int currentSeason;
+  final ValueChanged<int> onSelectSeason;
+  final bool showSubDub;
+  final int audioIndex;
+  final ValueChanged<int> onCategory;
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
+  final String sourceId;
+  final int Function(List<Episode>) resumeIndex;
+  final bool hasAnyMark;
+  final void Function(int fullIndex) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = sl<ResumeStore>();
+
+    if (eps.isEmpty) {
+      return const EmptyState(
+        icon: Icons.video_library_outlined,
+        message: 'No episodes available from this source',
+      );
+    }
+
+    final headerCount = (hasMultipleSeasons ? 1 : 0) + (showSubDub ? 1 : 0);
+
+    return ListView.separated(
+      padding: const EdgeInsets.only(top: 8, bottom: 40),
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: seasonEps.length + headerCount,
+      separatorBuilder: (context0, i) {
+        if (i < headerCount) return const SizedBox.shrink();
+        return const Divider(
+          height: 1,
+          thickness: 0,
+          color: AppColors.hairline,
+          indent: 16,
+          endIndent: 16,
+        );
+      },
+      itemBuilder: (context0, rawIndex) {
+        // Header rows: season selector, then Sub/Dub toggle.
+        var headerIdx = rawIndex;
+        if (hasMultipleSeasons && headerIdx == 0) {
+          return _SeasonSelector(
+            seasons: seasonSet.toList()..sort(),
+            selectedSeason: currentSeason,
+            onSelectSeason: onSelectSeason,
+          );
+        }
+        if (hasMultipleSeasons) headerIdx -= 1;
+        if (showSubDub && headerIdx == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: SegmentedToggle(
+              segments: const ['Sub', 'Dub'],
+              index: audioIndex,
+              onChanged: onCategory,
+            ),
+          );
+        }
+
+        final i = rawIndex - headerCount;
+        final ep = seasonEps[i];
+        final fullIndex = eps.indexOf(ep);
+        final mark = store.get(sourceId, ep.id);
+        final isInProgress =
+            mark != null && !mark.finished && mark.duration > Duration.zero;
+        final isWatched = mark != null && mark.finished;
+        final isResume = hasAnyMark && fullIndex == resumeIndex(eps);
+        final fraction = isInProgress
+            ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
+                .clamp(0.0, 1.0)
+            : 0.0;
+
+        final epNum = ep.number?.toInt() ?? i + 1;
+        final rawTitle = ep.title;
+        final displayTitle =
+            hasMultipleSeasons ? cleanTitle(rawTitle) : rawTitle;
+
+        return RepaintBoundary(
+          child: _EpisodeRow(
+            ep: ep,
+            epNum: epNum,
+            displayTitle: displayTitle,
+            coverUrl: coverUrl,
+            coverHeaders: coverHeaders,
+            isWatched: isWatched,
+            isInProgress: isInProgress,
+            isResume: isResume,
+            fraction: fraction,
+            onTap: () => onOpen(fullIndex),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Season selector — horizontal pill chips.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SeasonSelector extends StatelessWidget {
@@ -668,8 +1010,7 @@ class _SeasonSelector extends StatelessWidget {
                   style: AppText.caption.copyWith(
                     color:
                         selected ? AppColors.accent : AppColors.textSecondary,
-                    fontWeight:
-                        selected ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                   ),
                 ),
               ),
@@ -682,74 +1023,329 @@ class _SeasonSelector extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sozo-style "Details" section — inline (no tabs). Surfaces source / status /
-// genres / episode count + the FULL (un-truncated) synopsis. The header still
-// shows the 3-line + More/Less; this is the complete reference block.
+// Rich episode row — "N. Title", duration/date, 16:9 thumbnail, synopsis line.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _DetailsSection extends StatelessWidget {
-  const _DetailsSection({
-    required this.sourceName,
-    required this.statusStr,
-    required this.genres,
-    required this.episodeCount,
-    required this.description,
+class _EpisodeRow extends StatelessWidget {
+  const _EpisodeRow({
+    required this.ep,
+    required this.epNum,
+    required this.displayTitle,
+    required this.coverUrl,
+    required this.coverHeaders,
+    required this.isWatched,
+    required this.isInProgress,
+    required this.isResume,
+    required this.fraction,
+    required this.onTap,
   });
 
-  final String sourceName;
-  final String statusStr;
-  final List<String> genres;
-  final int episodeCount;
-  final String? description;
+  final Episode ep;
+  final int epNum;
+  final String displayTitle;
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
+  final bool isWatched;
+  final bool isInProgress;
+  final bool isResume;
+  final double fraction;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final desc = description ?? '';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Divider(color: AppColors.hairline, height: 1),
-          const SizedBox(height: 20),
-          Text('DETAILS', style: AppText.overline),
-          const SizedBox(height: 16),
-          if (sourceName.isNotEmpty)
-            _DetailRow(label: 'Source', value: sourceName),
-          if (statusStr.isNotEmpty)
-            _DetailRow(label: 'Status', value: statusStr),
-          _DetailRow(label: 'Episodes', value: '$episodeCount'),
-          if (genres.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Text(
-              'Genres',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+    final titleColor = isResume
+        ? AppColors.accent
+        : (isWatched ? AppColors.textSecondary : AppColors.textPrimary);
+
+    final thumbUrl = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+        ? ep.thumbnail!
+        : coverUrl;
+
+    // Air date as a muted detail line (our model has no per-episode synopsis;
+    // show date when present, omit otherwise — no invented data).
+    final subline = (ep.date != null && ep.date!.trim().isNotEmpty)
+        ? ep.date!.trim()
+        : null;
+
+    final heading = displayTitle.isNotEmpty ? '$epNum. $displayTitle' : 'Episode $epNum';
+
+    return InkWell(
+      onTap: onTap,
+      splashColor: AppColors.accentSoft,
+      highlightColor: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Text(
+                    heading,
+                    style: AppText.headline.copyWith(
+                      color: titleColor,
+                      fontWeight: isResume ? FontWeight.w800 : FontWeight.w700,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isResume) ...[
+                  const SizedBox(width: 8),
+                  const TagBadge(text: 'CONTINUE'),
+                ],
+                if (ep.filler) ...[
+                  const SizedBox(width: 6),
+                  const TagBadge(text: 'FILLER', color: AppColors.textTertiary),
+                ],
+                if (subline != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    subline,
+                    style: AppText.caption.copyWith(color: AppColors.textTertiary),
+                  ),
+                ],
+              ],
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: genres
-                  .map((g) => TagBadge(text: g, color: AppColors.textSecondary))
-                  .toList(),
+            // 16:9 thumbnail.
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x4D000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      thumbUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: thumbUrl,
+                              httpHeaders: coverHeaders,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 640,
+                              placeholder: (c, u) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                              errorWidget: (c, u, e) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                            )
+                          : const ColoredBox(color: AppColors.surface2),
+                      if (isWatched)
+                        const DecoratedBox(
+                          decoration: BoxDecoration(color: Color(0x73000000)),
+                          child: SizedBox.expand(),
+                        ),
+                      const Center(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: Color(0x66000000),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Padding(
+                            padding: EdgeInsets.all(8),
+                            child: Icon(Icons.play_arrow_rounded,
+                                color: Colors.white, size: 28),
+                          ),
+                        ),
+                      ),
+                      if (isWatched)
+                        const Positioned(
+                          top: 6,
+                          right: 6,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Color(0xAA000000),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Padding(
+                              padding: EdgeInsets.all(3),
+                              child: Icon(Icons.check_rounded,
+                                  color: Colors.white, size: 14),
+                            ),
+                          ),
+                        ),
+                      if (isInProgress)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: _ThumbnailProgressBar(fraction: fraction),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           ],
-          if (desc.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            Text(
-              'Synopsis',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
-            ),
-            const SizedBox(height: 8),
-            Text(desc, style: AppText.body),
-          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ThumbnailProgressBar extends StatelessWidget {
+  const _ThumbnailProgressBar({required this.fraction});
+  final double fraction;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 4,
+      child: Stack(
+        children: [
+          const ColoredBox(color: Color(0x80000000), child: SizedBox.expand()),
+          FractionallySizedBox(
+            widthFactor: fraction,
+            alignment: Alignment.centerLeft,
+            child: const ColoredBox(color: AppColors.accent),
+          ),
         ],
       ),
     );
   }
 }
 
-/// One label/value line in the Details section.
+// ─────────────────────────────────────────────────────────────────────────────
+// Cast tab — chips of cast members; graceful empty state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CastTab extends StatelessWidget {
+  const _CastTab({required this.cast});
+  final List<String> cast;
+
+  @override
+  Widget build(BuildContext context) {
+    if (cast.isEmpty) {
+      return const EmptyState(
+        icon: Icons.people_outline_rounded,
+        message: 'No cast information',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 10,
+          children: [
+            for (final name in cast)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppColors.hairline, width: 0.5),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.person_rounded,
+                        size: 16, color: AppColors.textSecondary),
+                    const SizedBox(width: 8),
+                    Text(
+                      name,
+                      style: AppText.caption
+                          .copyWith(color: AppColors.textPrimary),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Relations tab — no relations data in our model; tasteful empty state.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RelationsTab extends StatelessWidget {
+  const _RelationsTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return const EmptyState(
+      icon: Icons.account_tree_outlined,
+      message: 'No related titles',
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Details tab — source / status / genres / studios / episode count / synopsis.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DetailsTab extends StatelessWidget {
+  const _DetailsTab({
+    required this.sourceName,
+    required this.statusStr,
+    required this.genres,
+    required this.studios,
+    required this.episodeCount,
+    required this.year,
+    required this.description,
+  });
+
+  final String sourceName;
+  final String statusStr;
+  final List<String> genres;
+  final List<String> studios;
+  final int episodeCount;
+  final String? year;
+  final String? description;
+
+  @override
+  Widget build(BuildContext context) {
+    final desc = description ?? '';
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
+      children: [
+        if (sourceName.isNotEmpty) _DetailRow(label: 'Source', value: sourceName),
+        if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
+        if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
+        _DetailRow(label: 'Episodes', value: '$episodeCount'),
+        if (studios.isNotEmpty)
+          _DetailRow(label: 'Studio', value: studios.join(', ')),
+        if (genres.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text('Genres',
+              style: AppText.caption.copyWith(color: AppColors.textTertiary)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: genres
+                .map((g) =>
+                    TagBadge(text: g, color: AppColors.textSecondary))
+                .toList(),
+          ),
+        ],
+        if (desc.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text('Synopsis',
+              style: AppText.caption.copyWith(color: AppColors.textTertiary)),
+          const SizedBox(height: 8),
+          Text(desc, style: AppText.body),
+        ],
+      ],
+    );
+  }
+}
+
 class _DetailRow extends StatelessWidget {
   const _DetailRow({required this.label, required this.value});
   final String label;
@@ -779,344 +1375,6 @@ class _DetailRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Netflix/Prime-style episode row — landscape thumbnail + meta
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _EpisodeRow extends StatelessWidget {
-  const _EpisodeRow({
-    required this.ep,
-    required this.epNumStr,
-    required this.displayTitle,
-    required this.coverUrl,
-    required this.coverHeaders,
-    required this.isWatched,
-    required this.isInProgress,
-    required this.isResume,
-    required this.fraction,
-    required this.onTap,
-  });
-
-  final Episode ep;
-  final String epNumStr;
-  final String displayTitle;
-  final String coverUrl;
-  final Map<String, String>? coverHeaders;
-  final bool isWatched;
-  final bool isInProgress;
-  final bool isResume;
-  final double fraction;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final titleColor = isResume
-        ? AppColors.accent
-        : (isWatched ? AppColors.textSecondary : AppColors.textPrimary);
-
-    final thumbUrl =
-        (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
-            ? ep.thumbnail!
-            : coverUrl;
-
-    // A graceful 1-line muted detail when we have a synopsis-like field.
-    // Most episodes only carry an air date — show it when present, omit
-    // otherwise (no empty placeholder rows).
-    final subline = (ep.date != null && ep.date!.trim().isNotEmpty)
-        ? ep.date!.trim()
-        : null;
-
-    return InkWell(
-      onTap: onTap,
-      splashColor: AppColors.accentSoft,
-      highlightColor: AppColors.surface,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 16:9 thumbnail
-            SizedBox(
-              width: 136,
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x4D000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        thumbUrl.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: thumbUrl,
-                                httpHeaders: coverHeaders,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 272,
-                                placeholder: (context0, url0) =>
-                                    const ColoredBox(
-                                        color: AppColors.surface2),
-                                errorWidget: (context0, url0, err) =>
-                                    const ColoredBox(
-                                        color: AppColors.surface2),
-                              )
-                            : const ColoredBox(color: AppColors.surface2),
-                        // Dim watched thumbnails so progress reads clearly.
-                        if (isWatched)
-                          const DecoratedBox(
-                            decoration: BoxDecoration(color: Color(0x73000000)),
-                            child: SizedBox.expand(),
-                          ),
-                        // Play glyph overlay
-                        const Center(
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Color(0x66000000),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(6),
-                              child: Icon(
-                                Icons.play_arrow_rounded,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Watched check overlay (top-right)
-                        if (isWatched)
-                          const Positioned(
-                            top: 5,
-                            right: 5,
-                            child: DecoratedBox(
-                              decoration: BoxDecoration(
-                                color: Color(0xAA000000),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Padding(
-                                padding: EdgeInsets.all(2),
-                                child: Icon(
-                                  Icons.check_rounded,
-                                  color: Colors.white,
-                                  size: 13,
-                                ),
-                              ),
-                            ),
-                          ),
-                        // Resume progress bar at the bottom of thumb
-                        if (isInProgress)
-                          Positioned(
-                            left: 0,
-                            right: 0,
-                            bottom: 0,
-                            child: _ThumbnailProgressBar(fraction: fraction),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Meta column
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Episode number + badges row
-                  Row(
-                    children: [
-                      Text(
-                        epNumStr,
-                        style: AppText.headline.copyWith(
-                          color: titleColor,
-                          fontWeight:
-                              isResume ? FontWeight.w800 : FontWeight.w700,
-                        ),
-                      ),
-                      const Spacer(),
-                      if (isResume)
-                        const TagBadge(text: 'CONTINUE'),
-                      if (ep.filler) ...[
-                        if (isResume) const SizedBox(width: 6),
-                        const TagBadge(
-                          text: 'FILLER',
-                          color: AppColors.textTertiary,
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  // Episode title
-                  if (displayTitle.isNotEmpty)
-                    Text(
-                      displayTitle,
-                      style: AppText.body.copyWith(
-                        color: isWatched
-                            ? AppColors.textTertiary
-                            : AppColors.textSecondary,
-                        fontSize: 14,
-                        height: 1.3,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  // Muted 1-line subline (air date) when available.
-                  if (subline != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      subline,
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Thin accent progress bar painted at the bottom of a thumbnail
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ThumbnailProgressBar extends StatelessWidget {
-  const _ThumbnailProgressBar({required this.fraction});
-  final double fraction;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 4,
-      child: Stack(
-        children: [
-          const ColoredBox(
-              color: Color(0x80000000), child: SizedBox.expand()),
-          FractionallySizedBox(
-            widthFactor: fraction,
-            alignment: Alignment.centerLeft,
-            child: const ColoredBox(color: AppColors.accent),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Netflix-style secondary action button — icon over label, translucent fill.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.active = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = active ? AppColors.accent : AppColors.textPrimary;
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 160),
-        curve: Curves.easeOut,
-        height: 48,
-        decoration: BoxDecoration(
-          color: active ? AppColors.accentSoft : const Color(0x14FFFFFF),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: active ? AppColors.accent : AppColors.hairline,
-            width: active ? 1 : 0.5,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: fg, size: 19),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: AppText.caption.copyWith(
-                color: fg,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Status badge pill (mirrors Sozo Read's _StatusBadge)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.status});
-  final MediaStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = switch (status) {
-      MediaStatus.ongoing => const Color(0xFF30D158),   // green
-      MediaStatus.completed => AppColors.accent,
-      MediaStatus.hiatus => const Color(0xFFFF9F0A),    // amber
-      MediaStatus.cancelled => AppColors.textTertiary,
-      MediaStatus.unknown => AppColors.textTertiary,
-    };
-    final label = switch (status) {
-      MediaStatus.ongoing => 'ONGOING',
-      MediaStatus.completed => 'COMPLETED',
-      MediaStatus.hiatus => 'HIATUS',
-      MediaStatus.cancelled => 'CANCELLED',
-      MediaStatus.unknown => 'UNKNOWN',
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.8,
-        ),
       ),
     );
   }
