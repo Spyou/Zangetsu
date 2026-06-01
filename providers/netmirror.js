@@ -1,30 +1,49 @@
-// NetMirror provider — Netflix/Prime mirror (HLS). https://net52.cc
+// NetMirror provider — Netflix / Prime / Hotstar / Disney+ mirror (HLS).
+// Host: https://net52.cc. ONE file, loaded once per platform under a distinct
+// sourceId (netmirror_nf / _pv / _hs / _dp). The platform is derived from the
+// runtime-provided __SOURCE_ID, which selects the ott cookie, the path prefix
+// (/mobile, /mobile/pv, /mobile/hs) and the poster CDN path. Verified live.
 
 var MAIN = 'https://net52.cc';
 var IMG = 'https://imgcdn.kim';
-var SOURCE_ID = 'netmirror';
-var OTT = 'nf';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-// NewTV resolver domains — tried in order; first that returns a token_hash wins.
 var NEWTV_DOMAINS = ['https://mobiledetects.com', 'https://mobidetect.art', 'https://mobidetect.cc'];
 
+// --- Platform config from the registered sourceId ---------------------------
+var _ID = (typeof __SOURCE_ID !== 'undefined' && __SOURCE_ID) ? String(__SOURCE_ID) : 'netmirror_nf';
+function _ottFor(id) {
+  if (id.indexOf('_pv') >= 0) return 'pv';
+  if (id.indexOf('_dp') >= 0) return 'dp';
+  if (id.indexOf('_hs') >= 0) return 'hs';
+  return 'nf';
+}
+var OTT = _ottFor(_ID);
+var SOURCE_ID = _ID;
+// Search / detail / episodes path namespace per platform.
+var PREFIX = (OTT === 'pv') ? '/mobile/pv' : ((OTT === 'hs' || OTT === 'dp') ? '/mobile/hs' : '/mobile');
+var _NAMES = { nf: 'Netflix', pv: 'Prime Video', hs: 'Hotstar', dp: 'Disney+' };
+
+function _poster(id) {
+  if (OTT === 'pv') return IMG + '/pv/341/' + id + '.jpg';
+  if (OTT === 'hs' || OTT === 'dp') return IMG + '/hs/v/166/' + id + '.jpg';
+  return IMG + '/poster/v/' + id + '.jpg';
+}
+function _posterHeaders() { return { 'Referer': MAIN + '/home', 'User-Agent': UA }; }
+
 // Date.now() may be unavailable in QuickJS; use a monotonic counter for the
-// cache-busting `t` query param instead.
+// cache-busting `t` query param.
 var _tsCounter = 1700000000;
 function _ts() { _tsCounter += 1; return _tsCounter; }
 
-// --- Cookie cache (once per runtime session; no time-based expiry) ----------
-var _cookie = { v: null, at: 0 };
-
+// --- Cookie cache (once per runtime session per platform) -------------------
+var _cookie = null;
 function _getCookie() {
-  if (_cookie.v) return Promise.resolve(_cookie.v);
+  if (_cookie) return Promise.resolve(_cookie);
   return fetch(MAIN + '/verify.php', {
     method: 'POST',
     followRedirects: false,
     headers: {
-      'User-Agent': UA,
-      'Origin': 'https://net22.cc',
+      'User-Agent': UA, 'Origin': 'https://net22.cc',
       'Referer': 'https://net22.cc/verify2',
       'Content-Type': 'application/x-www-form-urlencoded'
     },
@@ -32,20 +51,12 @@ function _getCookie() {
   }).then(function (r) {
     var sc = r.headers && r.headers['set-cookie'];
     var th = '';
-    if (sc) {
-      var m = String(sc).match(/t_hash_t=([^;]+)/);
-      if (m) th = m[1];
-    }
+    if (sc) { var m = String(sc).match(/t_hash_t=([^;]+)/); if (m) th = m[1]; }
     if (!th) throw new Error('NetMirror: could not obtain t_hash_t cookie');
-    _cookie.v = 't_hash_t=' + th + '; ott=nf; hd=on';
-    _cookie.at = _ts();
-    return _cookie.v;
+    _cookie = 't_hash_t=' + th + '; ott=' + OTT + '; hd=on';
+    return _cookie;
   });
 }
-
-// --- Helpers -----------------------------------------------------------------
-function _posterHeaders() { return { 'Referer': MAIN + '/home', 'User-Agent': UA }; }
-function _poster(id) { return IMG + '/poster/v/' + id + '.jpg'; }
 
 function _catFetch(path) {
   return _getCookie().then(function (c) {
@@ -55,73 +66,59 @@ function _catFetch(path) {
   });
 }
 
-// --- Provider API ------------------------------------------------------------
+function _mapResults(res) {
+  var out = [];
+  for (var i = 0; i < res.length; i++) {
+    var x = res[i]; if (!x || x.id == null) continue;
+    out.push({
+      id: String(x.id), title: x.t || '', cover: _poster(x.id),
+      coverHeaders: _posterHeaders(), url: String(x.id),
+      type: 'movie', sourceId: SOURCE_ID
+    });
+  }
+  return out;
+}
+
+// --- Provider API -----------------------------------------------------------
 function getInfo() {
   return {
-    name: 'NetMirror', lang: 'en', baseUrl: MAIN,
-    logo: IMG + '/poster/v/placeholder.jpg', type: 'movie', version: '1.0.0'
+    name: _NAMES[OTT] || 'NetMirror', lang: 'en', baseUrl: MAIN,
+    logo: IMG + '/poster/v/placeholder.jpg', type: 'movie', version: '1.1.0'
   };
 }
 
 function search(query, page, opts) {
-  return _catFetch('/mobile/search.php?s=' + encodeURIComponent(query) + '&t=' + _ts())
-    .then(function (j) {
-      var res = (j && j.searchResult) || [];
-      var out = [];
-      for (var i = 0; i < res.length; i++) {
-        var x = res[i]; if (!x || x.id == null) continue;
-        out.push({
-          id: String(x.id), title: x.t || '', cover: _poster(x.id),
-          coverHeaders: _posterHeaders(), url: String(x.id),
-          type: 'movie', sourceId: SOURCE_ID
-        });
-      }
-      return out;
-    });
+  return _catFetch(PREFIX + '/search.php?s=' + encodeURIComponent(query) + '&t=' + _ts())
+    .then(function (j) { return _mapResults((j && j.searchResult) || []); });
 }
 
-// Browse/trending feed = the empty-query search (the old /mobile/home grid is
-// dead). It's one UNIFIED list across all OTTs (Netflix/Prime/Hotstar titles
-// together), with real titles. Cached once per session.
+// Browse: the per-platform home grid is dead, so browse from search. Netflix
+// has a curated empty-query feed; the other platforms need a query, so we use a
+// broad common term. Cached once, then partitioned into the three Home rows.
 var _browse = null;
 function _browseFeed() {
   if (_browse) return Promise.resolve(_browse);
-  return _catFetch('/mobile/search.php?s=&t=' + _ts()).then(function (j) {
-    var res = (j && j.searchResult) || [];
-    var out = [];
-    for (var i = 0; i < res.length; i++) {
-      var x = res[i]; if (!x || x.id == null) continue;
-      out.push({
-        id: String(x.id), title: x.t || '', cover: _poster(x.id),
-        coverHeaders: _posterHeaders(), url: String(x.id),
-        type: 'movie', sourceId: SOURCE_ID
-      });
-    }
-    _browse = out;
-    return out;
-  });
+  var q = (OTT === 'nf') ? '' : 'the';
+  return _catFetch(PREFIX + '/search.php?s=' + encodeURIComponent(q) + '&t=' + _ts())
+    .then(function (j) { _browse = _mapResults((j && j.searchResult) || []); return _browse; });
 }
 
 function popular(opts) {
   var dr = (opts && opts.dateRange != null) ? opts.dateRange : 1;
   return _browseFeed().then(function (feed) {
-    if (!feed.length) return search('a', 1, opts);
-    // One unified trending list; partition it so the three Home rows each show
-    // distinct real titles (dateRange is AllAnime's notion — here it just picks
-    // which third of the feed to show).
+    if (!feed.length) return [];
     var third = Math.ceil(feed.length / 3);
     var start = (dr <= 1) ? 0 : (dr <= 30 ? third : third * 2);
     var slice = feed.slice(start, start + third);
     return slice.length ? slice : feed;
-  }).catch(function () { return search('a', 1, opts); });
+  }).catch(function () { return []; });
 }
 
 function _trim(s) { return String(s).replace(/^\s+|\s+$/g, ''); }
 
-// Pages through one season's episodes. Returns array of raw episode objects.
 function _seasonEpisodes(seriesId, seasonId, acc, page, resolve) {
   if (page > 10) { resolve(acc); return; }
-  _catFetch('/mobile/episodes.php?s=' + seasonId + '&series=' + seriesId + '&t=' + _ts() + '&page=' + page)
+  _catFetch(PREFIX + '/episodes.php?s=' + seasonId + '&series=' + seriesId + '&t=' + _ts() + '&page=' + page)
     .then(function (data) {
       var eps = (data && data.episodes) || [];
       for (var i = 0; i < eps.length; i++) acc.push(eps[i]);
@@ -132,7 +129,6 @@ function _seasonEpisodes(seriesId, seasonId, acc, page, resolve) {
 }
 
 function _collectSeasons(seriesId, seasons) {
-  // Sequentially collect each season's episodes (preserve season order).
   var all = [];
   var chain = Promise.resolve();
   seasons.forEach(function (s) {
@@ -149,11 +145,9 @@ function _collectSeasons(seriesId, seasons) {
 }
 
 function _mapEpisodes(raw, fallbackId, fallbackTitle) {
-  var out = [];
-  var n = 0;
+  var out = [], n = 0;
   for (var i = 0; i < raw.length; i++) {
-    var e = raw[i];
-    if (!e) continue;
+    var e = raw[i]; if (!e) continue;
     n += 1;
     var label = (e.s ? e.s : '') + (e.s ? ' ' : '') + (e.ep || 'Episode');
     out.push({
@@ -168,7 +162,7 @@ function _mapEpisodes(raw, fallbackId, fallbackTitle) {
 
 function getDetail(url, opts) {
   var id = String(url);
-  return _catFetch('/mobile/post.php?id=' + id + '&t=' + _ts()).then(function (p) {
+  return _catFetch(PREFIX + '/post.php?id=' + id + '&t=' + _ts()).then(function (p) {
     p = p || {};
     var title = p.title || id;
     var description = htmlText(p.desc || p.m_desc || '');
@@ -200,7 +194,6 @@ function getDetail(url, opts) {
       if (eps.length === 0) eps = [{ id: id, title: title || 'Movie', number: 1, url: id }];
       return finish(eps);
     }
-    // Movie: single episode pointing at the title id.
     return finish([{ id: id, title: title || 'Movie', number: 1, url: id }]);
   });
 }
@@ -209,16 +202,13 @@ function getEpisodes(url, opts) {
   return getDetail(url, opts).then(function (d) { return d.episodes; });
 }
 
-// --- Video resolution --------------------------------------------------------
+// --- Video resolution -------------------------------------------------------
 var _apiBase = null;
-
 function _decodeB64(b64) {
-  var bytes = base64ToBytes(b64);
-  var s = '';
+  var bytes = base64ToBytes(b64), s = '';
   for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return s;
 }
-
 function _resolveApi() {
   if (_apiBase) return Promise.resolve(_apiBase);
   var i = 0;
@@ -229,47 +219,33 @@ function _resolveApi() {
       headers: { 'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0' }
     }).then(function (r) {
       var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
-      if (j && j.token_hash) {
-        _apiBase = _decodeB64(j.token_hash);
-        return _apiBase;
-      }
+      if (j && j.token_hash) { _apiBase = _decodeB64(j.token_hash); return _apiBase; }
       return tryNext();
     }).catch(function () { return tryNext(); });
   }
   return tryNext();
 }
 
-// A title can live on any of the mirrored OTTs; the unified catalog doesn't
-// tell us which, so try each backend until one yields a stream.
-var OTTS = ['nf', 'pv', 'hs'];
-
 function getVideoSources(episodeUrl) {
   var epId = String(episodeUrl);
   return _resolveApi().then(function (apiBase) {
-    return _getCookie().then(function (baseCookie) {
-      var i = 0;
-      function tryOtt() {
-        if (i >= OTTS.length) throw new Error('NetMirror: no stream');
-        var ott = OTTS[i++];
-        var cookie = baseCookie.replace(/ott=[^;]*/, 'ott=' + ott);
-        return fetch(apiBase + '/newtv/player.php?id=' + epId, {
-          headers: {
-            'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
-            'Ott': ott, 'Usertoken': '', 'Cookie': cookie
-          }
-        }).then(function (r) {
-          var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
-          if (j && j.status === 'ok' && j.video_link) {
-            return [{
-              url: j.video_link, quality: 'auto', container: 'hls',
-              headers: { 'Referer': j.referer || MAIN, 'Cookie': 'hd=on', 'User-Agent': UA },
-              kind: 'raw', audioLang: '', subtitles: []
-            }];
-          }
-          return tryOtt();
-        }).catch(function () { return tryOtt(); });
-      }
-      return tryOtt();
+    return _getCookie().then(function (cookie) {
+      return fetch(apiBase + '/newtv/player.php?id=' + epId, {
+        headers: {
+          'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
+          'Ott': OTT, 'Usertoken': '', 'Cookie': cookie
+        }
+      }).then(function (r) {
+        var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
+        if (j && j.status === 'ok' && j.video_link) {
+          return [{
+            url: j.video_link, quality: 'auto', container: 'hls',
+            headers: { 'Referer': j.referer || MAIN, 'Cookie': 'hd=on', 'User-Agent': UA },
+            kind: 'raw', audioLang: '', subtitles: []
+          }];
+        }
+        throw new Error('NetMirror: no stream');
+      });
     });
   });
 }

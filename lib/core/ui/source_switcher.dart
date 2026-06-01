@@ -6,7 +6,10 @@ import '../theme/app_text.dart';
 /// Metadata for sources the user can select at runtime.
 const kSelectableSources = <Map<String, String>>[
   {'id': 'allanime', 'label': 'AllAnime', 'sub': 'Anime'},
-  {'id': 'netmirror', 'label': 'NetMirror', 'sub': 'Movies & TV'},
+  {'id': 'netmirror_nf', 'label': 'Netflix', 'sub': 'Movies & TV'},
+  {'id': 'netmirror_pv', 'label': 'Prime Video', 'sub': 'Movies & TV'},
+  {'id': 'netmirror_hs', 'label': 'Hotstar', 'sub': 'Movies & TV'},
+  {'id': 'netmirror_dp', 'label': 'Disney+', 'sub': 'Movies & TV'},
 ];
 
 /// A compact pill button that shows the active source and opens a bottom-sheet

@@ -65,13 +65,23 @@ Future<void> initDependencies() async {
     displayName: 'Bundled',
   );
 
+  // NetMirror is ONE provider file loaded once per OTT platform; each instance
+  // derives its ott / path prefix / poster CDN from its sourceId (__SOURCE_ID).
   final netmirrorJs = await rootBundle.loadString('providers/netmirror.js');
-  manager.load(
-    sourceId: 'netmirror',
-    jsSource: netmirrorJs,
-    originRepoUrl: 'bundled://',
-    displayName: 'NetMirror',
-  );
+  const netmirrorPlatforms = {
+    'netmirror_nf': 'Netflix',
+    'netmirror_pv': 'Prime Video',
+    'netmirror_hs': 'Hotstar',
+    'netmirror_dp': 'Disney+',
+  };
+  netmirrorPlatforms.forEach((id, name) {
+    manager.load(
+      sourceId: id,
+      jsSource: netmirrorJs,
+      originRepoUrl: 'bundled://',
+      displayName: name,
+    );
+  });
 
   // Named ValueNotifier so any widget can read/write the active source id.
   sl.registerSingleton<ValueNotifier<String>>(
