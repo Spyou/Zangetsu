@@ -7,6 +7,9 @@
 var MAIN = 'https://net52.cc';
 var IMG = 'https://imgcdn.kim';
 var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+// The NewTV player API fingerprints this UA; matching the CloudStream reference
+// (Sushan64/NetMirror-Extension Utils.kt `newTvBaseHeaders`) keeps player.php happy.
+var NEWTV_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0 /OS.GatuNewTV v1.0';
 var NEWTV_DOMAINS = ['https://mobiledetects.com', 'https://mobidetect.art', 'https://mobidetect.cc'];
 
 // --- Platform config from the registered sourceId ---------------------------
@@ -244,25 +247,55 @@ function _resolveApi() {
   return tryNext();
 }
 
+// The NewTV API returns the SAME master endpoint (/newtv/hls/<ott>/<id>.m3u8)
+// for every id, but only *playable* ids (a real episode id, or a movie id)
+// yield a complete master with #EXT-X-STREAM-INF video variants. Collection ids
+// (a series id, a season id) return a malformed audio-only stub with a broken
+// empty-host URL (`https:///files/...`) and NO video — libmpv renders that as a
+// black screen. We fetch the master, keep it only if it actually contains video,
+// and reject the stub so the player surfaces a clean error / falls through
+// instead of silently failing. (Confirmed live, 2026-06: episode ids 80187190…
+// play; series id 80187302 / season id 80187189 return the broken stub.)
+function _looksPlayable(m3u8) {
+  var s = String(m3u8 || '');
+  // A complete master has at least one video variant. Reject the known stub:
+  // an audio-only playlist whose URI has an empty host (`https:///files/...`).
+  if (s.indexOf('#EXT-X-STREAM-INF') >= 0) return true;
+  return false;
+}
+
 function getVideoSources(episodeUrl) {
   var epId = String(episodeUrl);
   return _resolveApi().then(function (apiBase) {
     return _getCookie().then(function (cookie) {
       return fetch(apiBase + '/newtv/player.php?id=' + epId, {
         headers: {
-          'User-Agent': UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
+          'User-Agent': NEWTV_UA, 'X-Requested-With': 'NetmirrorNewTV v1.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache', 'Expires': '0',
           'Ott': OTT, 'Usertoken': '', 'Cookie': cookie
         }
       }).then(function (r) {
         var j; try { j = JSON.parse(r.body || 'null'); } catch (e) { j = null; }
-        if (j && j.status === 'ok' && j.video_link) {
+        if (!j || j.status !== 'ok' || !j.video_link) throw new Error('NetMirror: no stream');
+        var masterUrl = j.video_link;
+        var referer = j.referer || MAIN;
+        // Playback headers: the master AND its variant playlists/segments are
+        // gated on Referer + `hd=on` (variants 404 without them). media_kit
+        // applies these to all child HLS requests for the media.
+        var playHeaders = { 'Referer': referer, 'Cookie': 'hd=on', 'User-Agent': NEWTV_UA };
+        // Validate the master actually carries video before handing it to the
+        // player; reject the audio-only stub returned for non-playable ids.
+        return fetch(masterUrl, { headers: playHeaders }).then(function (mr) {
+          if (!_looksPlayable(mr && mr.body)) {
+            throw new Error('NetMirror: stream not available for this title (no video variants)');
+          }
           return [{
-            url: j.video_link, quality: 'auto', container: 'hls',
-            headers: { 'Referer': j.referer || MAIN, 'Cookie': 'hd=on', 'User-Agent': UA },
-            kind: 'raw', audioLang: '', subtitles: []
+            url: masterUrl, quality: 'auto', container: 'hls',
+            headers: playHeaders, kind: 'raw', audioLang: '', subtitles: []
           }];
-        }
-        throw new Error('NetMirror: no stream');
+        });
       });
     });
   });

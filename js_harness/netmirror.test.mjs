@@ -20,8 +20,10 @@ test('platform name derives from sourceId', async () => {
   assert.equal(nf.type, 'movie');
 });
 
-// --- Live: Netflix full chain search -> detail -> m3u8 ---------------------
-live('netflix: search -> detail -> .m3u8', async () => {
+// --- Live: Netflix full chain search -> detail -> PLAYABLE master ----------
+// Asserts the resolved url is not just a .m3u8 but a master that actually
+// contains video (#EXT-X-STREAM-INF) reachable with the source's own headers.
+live('netflix: search -> detail -> playable master (has video)', async () => {
   const rows = JSON.parse(await callProvider('netmirror_nf', 'search', ['stranger', 1, {}]));
   assert.ok(Array.isArray(rows) && rows.length > 0, 'expected search results');
   const detail = JSON.parse(await callProvider('netmirror_nf', 'getDetail', [rows[0].id, {}]));
@@ -32,7 +34,22 @@ live('netflix: search -> detail -> .m3u8', async () => {
   assert.ok(Array.isArray(sources) && sources.length >= 1, 'expected sources');
   assert.ok(/\.m3u8/.test(sources[0].url), 'expected .m3u8, got ' + sources[0].url);
   assert.equal(sources[0].container, 'hls');
-  console.log('[netmirror nf] stream:', sources[0].url);
+  // The returned url must point to a master with real video variants.
+  const m3u8 = await (await fetch(sources[0].url, { headers: sources[0].headers })).text();
+  assert.ok(/#EXT-X-STREAM-INF/.test(m3u8), 'master should contain video variants, got: ' + m3u8.slice(0, 160));
+  assert.ok(!/https:\/\/\/files/.test(m3u8), 'master should not be the broken audio-only stub');
+  console.log('[netmirror nf] playable master:', sources[0].url);
+});
+
+// --- Live: a non-playable collection id is rejected (not a black screen) ---
+live('netflix: series/collection id is rejected with a clear error', async () => {
+  const rows = JSON.parse(await callProvider('netmirror_nf', 'search', ['stranger', 1, {}]));
+  // rows[0].id is the SERIES id; feeding it directly must NOT yield a stub source.
+  await assert.rejects(
+    () => callProvider('netmirror_nf', 'getVideoSources', [rows[0].id]),
+    /not available|no stream/i,
+    'series id should be rejected, not returned as a broken source'
+  );
 });
 
 // --- Live: Prime is a DISTINCT catalog (per-OTT path prefix works) ---------
