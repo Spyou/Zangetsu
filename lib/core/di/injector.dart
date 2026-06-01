@@ -14,6 +14,7 @@ import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
+import '../trailer/trailer_service.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -42,6 +43,9 @@ Future<void> initDependencies() async {
     ),
   );
   sl.registerSingleton<Dio>(dio);
+
+  // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
+  sl.registerSingleton<TrailerService>(TrailerService(dio));
 
   final manager = ProviderManager(dio: dio);
   sl.registerSingleton<ProviderManager>(manager);

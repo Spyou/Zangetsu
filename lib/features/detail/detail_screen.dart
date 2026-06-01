@@ -16,10 +16,12 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/trailer/trailer_service.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
 class DetailScreen extends StatelessWidget {
@@ -70,6 +72,21 @@ class _DetailViewState extends State<_DetailView>
   late bool _inMyList = _myList.contains(widget.item);
   late bool _isFavorite =
       _prefs.isFavorite(widget.item.sourceId, widget.item.url);
+
+  // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
+  // Resolved lazily once per detail load and cached so the Trailer button
+  // doesn't refetch on every rebuild. Yields a YouTube id or null.
+  Future<String?>? _trailerFuture;
+
+  /// Kick off (once) the YouTube-id lookup for the resolved detail.
+  Future<String?> _resolveTrailer(MediaDetail detail) {
+    return _trailerFuture ??= sl<TrailerService>().youtubeId(
+      title: detail.title,
+      englishTitle: detail.englishTitle,
+      type: detail.type,
+      year: detail.year,
+    );
+  }
 
   @override
   void dispose() {
@@ -197,6 +214,13 @@ class _DetailViewState extends State<_DetailView>
         category: category,
         availableCategories: availableCategories,
       ),
+    ));
+  }
+
+  /// Push the in-app trailer player for a resolved YouTube id.
+  void _openTrailer(String videoId) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => TrailerScreen(videoId: videoId),
     ));
   }
 
@@ -389,23 +413,44 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
 
-          // ── 4. Action row: red Play + square download ──────────────────────
+          // ── 4. Action row: red Play + square download, then Trailer ────────
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: _PlayButton(
-                      label: buttonLabel,
-                      onPressed: eps.isNotEmpty
-                          ? () => _openPlayer(eps, resumeIdx, detail, category)
-                          : null,
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _PlayButton(
+                          label: buttonLabel,
+                          onPressed: eps.isNotEmpty
+                              ? () =>
+                                  _openPlayer(eps, resumeIdx, detail, category)
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _DownloadButton(
+                        onPressed: () => _snack('Downloads coming soon'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  _DownloadButton(
-                    onPressed: () => _snack('Downloads coming soon'),
+                  // Trailer: a tasteful secondary button that only appears once a
+                  // YouTube id resolves (lazy + cached so it never refetches).
+                  FutureBuilder<String?>(
+                    future: _resolveTrailer(detail),
+                    builder: (context, snap) {
+                      final id = snap.data;
+                      if (id == null || id.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _TrailerButton(onPressed: () => _openTrailer(id)),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -713,6 +758,47 @@ class _DownloadButton extends StatelessWidget {
           height: 52,
           child: Icon(Icons.file_download_outlined,
               color: Colors.white, size: 24),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Secondary "Trailer" button — surface2 with a hairline outline, sits under the
+// Play/download row. Rendered only when a trailer id resolves.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TrailerButton extends StatelessWidget {
+  const _TrailerButton({required this.onPressed});
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onPressed,
+        child: Container(
+          height: 46,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.hairline, width: 1),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.movie_outlined,
+                  color: AppColors.textPrimary, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Trailer',
+                style: AppText.button.copyWith(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
         ),
       ),
     );

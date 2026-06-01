@@ -9,3 +9,10 @@ const String kAppId = 'watch_app';
 
 /// Manifest schema version this app speaks. Repos below this are rejected.
 const int kManifestSchemaVersion = 2;
+
+/// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
+/// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,
+/// or paste a literal default below. When empty, movie/TV trailers are
+/// gracefully disabled (the Trailer button simply never appears for them).
+const String kTmdbApiKey =
+    String.fromEnvironment('TMDB_API_KEY', defaultValue: '');
