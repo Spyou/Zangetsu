@@ -70,12 +70,9 @@ class _DetailViewState extends State<_DetailView>
   late final TabController _tabController =
       TabController(length: 4, vsync: this);
 
-  // ── My List + Favorite (per-title stores) ────────────────────────────────
+  // ── My List (per-title store) ─────────────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
-  final TitlePrefsStore _prefs = sl<TitlePrefsStore>();
   late bool _inMyList = _myList.contains(widget.item);
-  late bool _isFavorite =
-      _prefs.isFavorite(widget.item.sourceId, widget.item.url);
 
   // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
   // Resolved lazily once per detail load and cached so the hero player doesn't
@@ -128,13 +125,6 @@ class _DetailViewState extends State<_DetailView>
     await _myList.toggle(widget.item);
     if (!mounted) return;
     setState(() => _inMyList = _myList.contains(widget.item));
-  }
-
-  Future<void> _toggleFavorite() async {
-    final next =
-        await _prefs.toggleFavorite(widget.item.sourceId, widget.item.url);
-    if (!mounted) return;
-    setState(() => _isFavorite = next);
   }
 
   void _share(MediaDetail detail, String sourceName) {
@@ -284,7 +274,6 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
     final category = state.category;
-    final descExpanded = state.descExpanded;
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
@@ -451,15 +440,16 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
 
-          // ── 4. Synopsis + inline more ───────────────────────────────────────
+          // ── 4. Synopsis (clamped) + "Read more" → Details tab ───────────────
           if ((detail.description ?? '').isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
                 child: _Description(
                   text: detail.description!,
-                  expanded: descExpanded,
-                  onToggle: cubit.toggleDesc,
+                  // "Read more" jumps to the Details tab (full synopsis) rather
+                  // than expanding inline; the header stays clamped to 3 lines.
+                  onReadMore: () => _tabController.animateTo(3),
                 ),
               ),
             ),
@@ -477,6 +467,10 @@ class _DetailViewState extends State<_DetailView>
                         label: 'Starring',
                         value: starring,
                         more: starringMore,
+                        // Tapping the line (or its "… more") opens the Cast tab.
+                        onMore: starringMore
+                            ? () => _tabController.animateTo(1)
+                            : null,
                       ),
                     if (genresLine != null)
                       _CreditLine(label: 'Genres', value: genresLine),
@@ -487,7 +481,10 @@ class _DetailViewState extends State<_DetailView>
               ),
             ),
 
-          // ── 6. Icon-over-label action row (My List / Like / Share / Web) ────
+          // ── 6. Icon-over-label action row (My List / Trailer / Share / Web) ─
+          // "Trailer" is a CloudStream-style result action (recloudstream's
+          // result fragment exposes a Trailer button); it opens the fullscreen
+          // TrailerScreen and only appears once a trailer id has resolved.
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(8, 20, 8, 8),
@@ -503,15 +500,13 @@ class _DetailViewState extends State<_DetailView>
                     tooltip: _inMyList ? 'In My List' : 'Add to My List',
                     onTap: _toggleMyList,
                   ),
-                  _IconAction(
-                    icon: _isFavorite
-                        ? Icons.thumb_up_alt_rounded
-                        : Icons.thumb_up_alt_outlined,
-                    active: _isFavorite,
-                    label: 'Rate',
-                    tooltip: 'Rate',
-                    onTap: _toggleFavorite,
-                  ),
+                  if (_trailerId != null)
+                    _IconAction(
+                      icon: Icons.movie_outlined,
+                      label: 'Trailer',
+                      tooltip: 'Watch trailer',
+                      onTap: () => _openTrailer(_trailerId!),
+                    ),
                   _IconAction(
                     icon: Icons.ios_share_rounded,
                     label: 'Share',
@@ -537,8 +532,12 @@ class _DetailViewState extends State<_DetailView>
                 controller: _tabController,
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                labelPadding: const EdgeInsets.symmetric(horizontal: 14),
+                // Hug the left edge: the first tab starts flush with the 16px
+                // content gutter (title/synopsis), and labelPadding(right: 24)
+                // spaces the tabs apart while keeping them left-anchored —
+                // never centered/spread (matches Sozo Read).
+                padding: const EdgeInsets.only(left: 16),
+                labelPadding: const EdgeInsets.only(right: 24),
                 labelColor: AppColors.accent,
                 unselectedLabelColor: AppColors.textSecondary,
                 indicatorSize: TabBarIndicatorSize.label,
@@ -546,6 +545,8 @@ class _DetailViewState extends State<_DetailView>
                   borderSide: BorderSide(color: AppColors.accent, width: 2.5),
                   insets: EdgeInsets.symmetric(horizontal: 2),
                 ),
+                // Remove the full-width underline divider under the bar.
+                dividerColor: Colors.transparent,
                 dividerHeight: 0,
                 splashFactory: NoSplash.splashFactory,
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
@@ -1038,19 +1039,23 @@ class _CreditLine extends StatelessWidget {
     required this.label,
     required this.value,
     this.more = false,
+    this.onMore,
   });
 
   final String label;
   final String value;
 
-  /// When true, append a muted "… more" affordance (visual only — the full
-  /// list lives in the Cast/Details tabs).
+  /// When true, append a "… more" affordance. When [onMore] is also set, the
+  /// whole line is tappable and jumps to the relevant tab (Cast).
   final bool more;
+
+  /// Tapping the line (or its "… more") jumps to the related tab. Null = inert.
+  final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
     final base = AppText.caption.copyWith(color: AppColors.textSecondary);
-    return Padding(
+    final line = Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: Text.rich(
         TextSpan(
@@ -1071,47 +1076,48 @@ class _CreditLine extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
     );
+    if (onMore == null) return line;
+    return GestureDetector(
+      onTap: onMore,
+      behavior: HitTestBehavior.opaque,
+      child: line,
+    );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Description: 3 lines + inline red "Read more" that expands.
+// Description: synopsis clamped to 3 lines + a red "Read more" that opens the
+// Details tab (which shows the full synopsis). No inline expand.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Description extends StatelessWidget {
   const _Description({
     required this.text,
-    required this.expanded,
-    required this.onToggle,
+    required this.onReadMore,
   });
 
   final String text;
-  final bool expanded;
-  final VoidCallback onToggle;
+
+  /// Jumps to the Details tab (full synopsis) — no inline expansion.
+  final VoidCallback onReadMore;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onToggle,
+      onTap: onReadMore,
       behavior: HitTestBehavior.opaque,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            alignment: Alignment.topCenter,
-            child: Text(
-              text,
-              style: AppText.body,
-              maxLines: expanded ? null : 3,
-              overflow:
-                  expanded ? TextOverflow.visible : TextOverflow.ellipsis,
-            ),
+          Text(
+            text,
+            style: AppText.body,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 6),
           Text(
-            expanded ? 'Read less' : 'Read more',
+            'Read more',
             style: AppText.caption.copyWith(
               color: AppColors.accent,
               fontWeight: FontWeight.w700,
@@ -1183,25 +1189,19 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
   _TabBarDelegate(this.tabBar);
   final TabBar tabBar;
 
-  // +1 for the hairline divider rendered under the tab bar.
   @override
-  double get minExtent => tabBar.preferredSize.height + 1;
+  double get minExtent => tabBar.preferredSize.height;
   @override
-  double get maxExtent => tabBar.preferredSize.height + 1;
+  double get maxExtent => tabBar.preferredSize.height;
 
   @override
   Widget build(
       BuildContext context, double shrinkOffset, bool overlapsContent) {
+    // No divider line under the bar — just the left-aligned tabs (Sozo Read).
     return Material(
       color: AppColors.bg,
       elevation: 0,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          tabBar,
-          const Divider(color: AppColors.hairline, height: 1, thickness: 1),
-        ],
-      ),
+      child: tabBar,
     );
   }
 
