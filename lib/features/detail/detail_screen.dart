@@ -1,11 +1,11 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
-import '../../core/models/provider_info.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
@@ -17,47 +17,71 @@ import '../../core/ui/buttons.dart';
 import '../../core/ui/segmented_toggle.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import 'cubit/detail_cubit.dart';
 
-class DetailScreen extends StatefulWidget {
+class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item});
   final MediaItem item;
+
   @override
-  State<DetailScreen> createState() => _DetailScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (_) =>
+          DetailCubit(repo: sl<SourceRepository>(), url: item.url)..load(),
+      child: _DetailView(item: item),
+    );
+  }
 }
 
-class _DetailScreenState extends State<DetailScreen> {
-  final _repo = sl<SourceRepository>();
-  Future<MediaDetail>? _detail;
-  int _audioIndex = 0;
-  // category: 0 = 'sub', 1 = 'dub'
-  int _category = 0;
+// ─────────────────────────────────────────────────────────────────────────────
+// _DetailView — StatefulWidget for the scroll-driven app-bar title fade.
+// The scroll position is pure UI state and stays widget-level; everything
+// data-related (detail / category / season / desc-expand) lives in
+// DetailCubit and is consumed via BlocBuilder below.
+// ─────────────────────────────────────────────────────────────────────────────
 
-  // UI state
-  bool _descExpanded = false;
-  int _selectedSeason = 1;
+class _DetailView extends StatefulWidget {
+  const _DetailView({required this.item});
+  final MediaItem item;
 
   @override
-  void initState() {
-    super.initState();
-    _detail = _repo.detail(widget.item.url, category: _audioIndex == 0 ? 'sub' : 'dub');
+  State<_DetailView> createState() => _DetailViewState();
+}
+
+class _DetailViewState extends State<_DetailView> {
+  static const double _expandedHeight = 360;
+  bool _showAppBarTitle = false;
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    final shouldShow = n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
+    if (shouldShow != _showAppBarTitle) {
+      setState(() => _showAppBarTitle = shouldShow);
+    }
+    return false;
   }
 
   // ── Preserved exactly from original ──────────────────────────────────────
 
-  void _openPlayer(List<Episode> episodes, int index, MediaDetail detail) {
+  void _openPlayer(
+    List<Episode> episodes,
+    int index,
+    MediaDetail detail,
+    String category,
+  ) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PlayerScreen(
         sourceId: widget.item.sourceId,
         episodes: episodes,
         startIndex: index,
         resume: sl<ResumeStore>(),
-        resolveSources: _repo.sources,
+        resolveSources: sl<SourceRepository>().sources,
         history: sl<WatchHistory>(),
         showTitle: detail.title,
         cover: detail.cover ?? widget.item.cover,
         coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
         showUrl: widget.item.url,
-        category: _category == 0 ? 'sub' : 'dub',
+        category: category,
       ),
     ));
   }
@@ -83,184 +107,40 @@ class _DetailScreenState extends State<DetailScreen> {
     return highestMarked;
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  String _statusLabel(MediaStatus status) {
-    switch (status) {
-      case MediaStatus.ongoing:
-        return 'Ongoing';
-      case MediaStatus.completed:
-        return 'Completed';
-      case MediaStatus.hiatus:
-        return 'Hiatus';
-      case MediaStatus.cancelled:
-        return 'Cancelled';
-      case MediaStatus.unknown:
-        return '';
-    }
-  }
-
-  /// Parse the season number from the start of an episode title.
-  /// Returns null if no such prefix exists.
-  /// E.g. "S1 E3 - Attack" gives 1; "Episode 5" gives null.
-  int? _parseSeason(String title) {
-    final m = RegExp(r'^S(\d+)').firstMatch(title.trim());
-    if (m == null) return null;
-    return int.tryParse(m.group(1)!);
-  }
-
-  /// Derive the set of seasons present in the episode list.
-  /// Returns an empty set when no episode has a season prefix (single-season).
-  Set<int> _seasons(List<Episode> eps) {
-    final result = <int>{};
-    for (final ep in eps) {
-      final s = _parseSeason(ep.title);
-      if (s != null) result.add(s);
-    }
-    return result;
-  }
-
-  /// Strip a leading season+episode prefix from a title so the episode
-  /// row shows a clean title without redundant numbering.
-  String _cleanTitle(String title) {
-    return title
-        .replaceFirst(RegExp(r'^S\d+\s+E\d+\s*[-–—]?\s*'), '')
-        .trim();
-  }
-
-  /// Whether to show the Sub/Dub toggle:
-  /// - Only for anime (ProviderType.anime)
-  /// - And at least one of subCount / dubCount is non-zero / non-null
-  bool _showSubDub(MediaDetail detail) {
-    if (detail.type != ProviderType.anime) return false;
-    final hasSub = (detail.subCount ?? 0) > 0;
-    final hasDub = (detail.dubCount ?? 0) > 0;
-    return hasSub || hasDub;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: FutureBuilder<MediaDetail>(
-        future: _detail,
-        builder: (context, snap) {
-          if (snap.connectionState == ConnectionState.waiting) {
+      body: BlocBuilder<DetailCubit, DetailState>(
+        builder: (context, state) {
+          if (state.status == DetailStatus.loading) {
             return const Center(child: BrandLoader(label: 'Loading…'));
           }
-          if (snap.hasError || !snap.hasData) {
+          if (state.status == DetailStatus.error || state.detail == null) {
             return const EmptyState(
               icon: Icons.error_outline,
               message: 'Failed to load this title',
             );
           }
-
-          final detail = snap.data!;
-          return _DetailBody(
-            item: widget.item,
-            detail: detail,
-            audioIndex: _audioIndex,
-            category: _category,
-            descExpanded: _descExpanded,
-            selectedSeason: _selectedSeason,
-            showSubDub: _showSubDub(detail),
-            onToggleDesc: () => setState(() => _descExpanded = !_descExpanded),
-            onSelectSeason: (s) => setState(() => _selectedSeason = s),
-            onAudioChanged: (i) {
-              setState(() {
-                _audioIndex = i;
-                _category = i;
-                _detail = _repo.detail(
-                  widget.item.url,
-                  category: i == 0 ? 'sub' : 'dub',
-                );
-              });
-            },
-            openPlayer: _openPlayer,
-            resumeIndex: _resumeIndex,
-            statusLabel: _statusLabel,
-            parseSeason: _parseSeason,
-            seasons: _seasons,
-            cleanTitle: _cleanTitle,
-          );
+          return _buildBody(context, state, state.detail!);
         },
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// _DetailBody — StatefulWidget for scroll-driven app-bar title fade
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _DetailBody extends StatefulWidget {
-  const _DetailBody({
-    required this.item,
-    required this.detail,
-    required this.audioIndex,
-    required this.category,
-    required this.descExpanded,
-    required this.selectedSeason,
-    required this.showSubDub,
-    required this.onToggleDesc,
-    required this.onSelectSeason,
-    required this.onAudioChanged,
-    required this.openPlayer,
-    required this.resumeIndex,
-    required this.statusLabel,
-    required this.parseSeason,
-    required this.seasons,
-    required this.cleanTitle,
-  });
-
-  final MediaItem item;
-  final MediaDetail detail;
-  final int audioIndex;
-  final int category;
-  final bool descExpanded;
-  final int selectedSeason;
-  final bool showSubDub;
-
-  final VoidCallback onToggleDesc;
-  final ValueChanged<int> onSelectSeason;
-  final ValueChanged<int> onAudioChanged;
-  final void Function(List<Episode> eps, int index, MediaDetail detail) openPlayer;
-  final int Function(List<Episode> eps) resumeIndex;
-  final String Function(MediaStatus) statusLabel;
-  final int? Function(String) parseSeason;
-  final Set<int> Function(List<Episode>) seasons;
-  final String Function(String) cleanTitle;
-
-  @override
-  State<_DetailBody> createState() => _DetailBodyState();
-}
-
-class _DetailBodyState extends State<_DetailBody> {
-  static const double _expandedHeight = 360;
-  bool _showAppBarTitle = false;
-
-  bool _onScroll(ScrollNotification n) {
-    if (n.metrics.axis != Axis.vertical) return false;
-    final shouldShow = n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
-    if (shouldShow != _showAppBarTitle) {
-      setState(() => _showAppBarTitle = shouldShow);
-    }
-    return false;
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildBody(BuildContext context, DetailState state, MediaDetail detail) {
     final item = widget.item;
-    final detail = widget.detail;
-    final audioIndex = widget.audioIndex;
-    final descExpanded = widget.descExpanded;
-    final selectedSeason = widget.selectedSeason;
-    final showSubDub = widget.showSubDub;
+    final cubit = context.read<DetailCubit>();
+    final category = state.category;
+    final audioIndex = category == 'sub' ? 0 : 1;
+    final descExpanded = state.descExpanded;
+    final selectedSeason = state.selectedSeason;
+    final showSubDub = showSubDubFor(detail);
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
 
     // Resume / play button logic
-    final resumeIdx = widget.resumeIndex(eps);
+    final resumeIdx = _resumeIndex(eps);
     final hasAnyMark =
         eps.any((e) => store.get(item.sourceId, e.id) != null);
     final episodeNum = eps.isNotEmpty
@@ -274,7 +154,7 @@ class _DetailBodyState extends State<_DetailBody> {
     final hasCover = coverUrl.isNotEmpty;
 
     // Season data
-    final seasonSet = widget.seasons(eps);
+    final seasonSet = seasonsOf(eps);
     final hasMultipleSeasons = seasonSet.length > 1;
 
     // Season to display (clamp in case detail reloads with fewer seasons)
@@ -285,12 +165,12 @@ class _DetailBodyState extends State<_DetailBody> {
     // Episodes filtered by season
     final seasonEps = hasMultipleSeasons
         ? eps
-            .where((e) => widget.parseSeason(e.title) == currentSeason)
+            .where((e) => parseSeason(e.title) == currentSeason)
             .toList()
         : eps;
 
     // Meta row
-    final statusStr = widget.statusLabel(detail.status);
+    final statusStr = statusLabel(detail.status);
     final metaParts = <String>['${eps.length} Episodes'];
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     if (detail.genres.isNotEmpty) metaParts.add(detail.genres.first);
@@ -456,7 +336,7 @@ class _DetailBodyState extends State<_DetailBody> {
                 // Description with "More" affordance
                 if ((detail.description ?? '').isNotEmpty) ...[
                   GestureDetector(
-                    onTap: widget.onToggleDesc,
+                    onTap: cubit.toggleDesc,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -500,7 +380,7 @@ class _DetailBodyState extends State<_DetailBody> {
                   label: buttonLabel,
                   icon: Icons.play_arrow,
                   onPressed: eps.isNotEmpty
-                      ? () => widget.openPlayer(eps, resumeIdx, detail)
+                      ? () => _openPlayer(eps, resumeIdx, detail, category)
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -509,7 +389,8 @@ class _DetailBodyState extends State<_DetailBody> {
                   SegmentedToggle(
                     segments: const ['Sub', 'Dub'],
                     index: audioIndex,
-                    onChanged: widget.onAudioChanged,
+                    onChanged: (i) =>
+                        cubit.setCategory(i == 0 ? 'sub' : 'dub'),
                   ),
                 if (showSubDub) const SizedBox(height: 4),
                 const SizedBox(height: 16),
@@ -534,7 +415,7 @@ class _DetailBodyState extends State<_DetailBody> {
             child: _SeasonSelector(
               seasons: seasonSet.toList()..sort(),
               selectedSeason: currentSeason,
-              onSelectSeason: widget.onSelectSeason,
+              onSelectSeason: cubit.selectSeason,
             ),
           ),
 
@@ -551,7 +432,7 @@ class _DetailBodyState extends State<_DetailBody> {
                   !mark.finished &&
                   mark.duration > Duration.zero;
               final isWatched = mark != null && mark.finished;
-              final isResume = hasAnyMark && fullIndex == widget.resumeIndex(eps);
+              final isResume = hasAnyMark && fullIndex == _resumeIndex(eps);
 
               final fraction = isInProgress
                   ? (mark.position.inMilliseconds /
@@ -563,7 +444,7 @@ class _DetailBodyState extends State<_DetailBody> {
                   'E${ep.number?.toInt() ?? i + 1}';
               final rawTitle = ep.title;
               final displayTitle = hasMultipleSeasons
-                  ? widget.cleanTitle(rawTitle)
+                  ? cleanTitle(rawTitle)
                   : rawTitle;
 
               return Column(
@@ -579,7 +460,7 @@ class _DetailBodyState extends State<_DetailBody> {
                     isInProgress: isInProgress,
                     isResume: isResume,
                     fraction: fraction,
-                    onTap: () => widget.openPlayer(eps, fullIndex, detail),
+                    onTap: () => _openPlayer(eps, fullIndex, detail, category),
                   ),
                   if (i < seasonEps.length - 1)
                     const Divider(
