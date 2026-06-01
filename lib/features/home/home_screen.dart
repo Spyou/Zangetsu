@@ -106,8 +106,11 @@ class _HomeViewState extends State<_HomeView> {
 
   Future<void> _resume(HistoryEntry e) async {
     try {
-      final eps = await _repo.episodes(e.showUrl,
-          category: e.category, sourceId: e.sourceId);
+      final eps = await _repo.episodes(
+        e.showUrl,
+        category: e.category,
+        sourceId: e.sourceId,
+      );
       var idx = eps.indexWhere((x) => x.id == e.episodeId);
       if (idx < 0) idx = 0;
       if (!mounted) return;
@@ -203,10 +206,10 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    // Read Continue Watching + My List in build so they refresh after returning
-    // from player/detail without triggering a re-fetch of network futures.
+    // Read Continue Watching in build so it refreshes after returning from
+    // player/detail without triggering a re-fetch of network futures. (My List
+    // has its own screen — it is intentionally NOT shown as a home row.)
     final history = sl<WatchHistory>().recent();
-    final savedItems = _myList.all();
 
     return BlocListener<ActiveSourceCubit, String>(
       listener: (context, _) {
@@ -267,30 +270,7 @@ class _HomeViewState extends State<_HomeView> {
                     ),
                   ),
 
-                  // ── My List (only when non-empty) ─────────────────────────
-                  if (savedItems.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: _animated(
-                          ContentRow(
-                            title: 'My List',
-                            itemWidth: 140,
-                            itemHeight: 236,
-                            itemCount: savedItems.length,
-                            itemBuilder: (c, i) => PosterCard(
-                              title: savedItems[i].title,
-                              imageUrl: savedItems[i].cover,
-                              headers: savedItems[i].coverHeaders,
-                              cellWidth: 140,
-                              onTap: () => _openDetail(savedItems[i]),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-
-                  // ── Continue Watching ─────────────────────────────────────
+                  // ── Continue Watching (same poster footprint as the rows) ─
                   if (history.isNotEmpty)
                     SliverToBoxAdapter(
                       child: Padding(
@@ -298,8 +278,8 @@ class _HomeViewState extends State<_HomeView> {
                         child: _animated(
                           ContentRow(
                             title: 'Continue Watching',
-                            itemWidth: 300,
-                            itemHeight: 230,
+                            itemWidth: 140,
+                            itemHeight: 236,
                             itemCount: history.length,
                             itemBuilder: (c, i) {
                               final e = history[i];
@@ -308,6 +288,7 @@ class _HomeViewState extends State<_HomeView> {
                                 imageUrl: e.cover,
                                 headers: e.coverHeaders,
                                 progress: e.progress,
+                                cellWidth: 140,
                                 subtitle: e.episodeNumber != null
                                     ? 'Episode ${e.episodeNumber!.toInt()}'
                                     : null,

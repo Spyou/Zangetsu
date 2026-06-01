@@ -6,17 +6,15 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'buttons.dart';
 
-/// Hero banner for the home-screen spotlight.
+/// Amazon-Prime-style cinematic hero for the home spotlight.
 ///
-/// Layout (fixed total height = 450 px — never jumps regardless of content):
-///   • 250 px background art strip (cropped/zoomed cover) with a top scrim
-///     for status-bar legibility and a bottom fade into [AppColors.bg].
-///   • Rounded info card that overlaps the art by 34 px (Transform.translate),
-///     containing a poster thumbnail (104×150) + title (fixed 48 px) +
-///     description (fixed 54 px, 3-line, lazily fetched) + Play / ＋ buttons.
+/// Full-bleed backdrop (no floating info-card) with a slow Ken-Burns zoom, a
+/// gradient that melts the art into the page background, and bottom-anchored
+/// content: title → tagline (lazily fetched) → Play / My-List.
 ///
-/// No [BackdropFilter] — gradient scrims only for scroll perf.
-/// All inner boxes are FIXED height → carousel container never resizes.
+/// It FILLS whatever height the parent (the carousel) gives it — the carousel
+/// pins a fixed height so the container never resizes between slides. The root
+/// [Stack] clips (default hard-edge) so the Ken-Burns overflow stays bounded.
 class FeaturedHero extends StatelessWidget {
   const FeaturedHero({
     super.key,
@@ -34,85 +32,131 @@ class FeaturedHero extends StatelessWidget {
   final VoidCallback onInfo;
   final VoidCallback onToggleList;
 
-  /// Lazily-fetched description for the show. While null/loading the 54 px
-  /// box is reserved (empty text), so the hero height never changes.
+  /// Lazily-fetched tagline for the show. While null/loading the box is
+  /// reserved (empty text), so the hero height never changes.
   final Future<String?>? descriptionFuture;
 
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
-    final dpr = mq.devicePixelRatio;
-    final heroMemW = (mq.size.width * dpr).round();
-    final thumbMemW = (104 * dpr).round();
+    final memW = (mq.size.width * mq.devicePixelRatio).round();
 
     return RepaintBoundary(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // ── 1. Background art strip (250 px) ────────────────────────────
-          SizedBox(
-            height: 250,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Cover image (cropped / zoomed)
-                if (item.cover != null && item.cover!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: item.cover!,
-                    httpHeaders: item.coverHeaders,
-                    memCacheWidth: heroMemW,
-                    fit: BoxFit.cover,
-                    fadeInDuration: const Duration(milliseconds: 250),
-                    placeholder: (context, url) =>
-                        const ColoredBox(color: AppColors.surface2),
-                    errorWidget: (context, url, err) =>
-                        const ColoredBox(color: AppColors.surface2),
-                  )
-                else
-                  const ColoredBox(color: AppColors.surface2),
+          // ── Full-bleed backdrop with a continuous Ken-Burns zoom ──────────
+          if (item.cover != null && item.cover!.isNotEmpty)
+            _KenBurns(
+              child: CachedNetworkImage(
+                imageUrl: item.cover!,
+                httpHeaders: item.coverHeaders,
+                memCacheWidth: memW,
+                fit: BoxFit.cover,
+                fadeInDuration: const Duration(milliseconds: 300),
+                placeholder: (context, url) =>
+                    const ColoredBox(color: AppColors.surface2),
+                errorWidget: (context, url, err) =>
+                    const ColoredBox(color: AppColors.surface2),
+              ),
+            )
+          else
+            const ColoredBox(color: AppColors.surface2),
 
-                // Top scrim — status-bar legibility
-                const DecoratedBox(
-                  decoration: BoxDecoration(gradient: AppColors.topScrim),
-                ),
-
-                // Bottom fade — art melts into AppColors.bg
-                const Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 120,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Colors.transparent, AppColors.bg],
-                        stops: [0.4, 1.0],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+          // ── Top scrim — status-bar legibility ─────────────────────────────
+          const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(gradient: AppColors.topScrim),
             ),
           ),
 
-          // ── 2. Info card (overlaps art by 34 px via Transform.translate) ─
-          // Transform.translate does NOT affect layout — the card still
-          // occupies its natural position in the Column.
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Transform.translate(
-              offset: const Offset(0, -34),
-              child: _InfoCard(
-                item: item,
-                inList: inList,
-                thumbMemW: thumbMemW,
-                descriptionFuture: descriptionFuture,
-                onPlay: onPlay,
-                onInfo: onInfo,
-                onToggleList: onToggleList,
+          // ── Bottom cinematic gradient — melts art into bg + text contrast ──
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: 340,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x000B0B0F),
+                      Color(0xB30B0B0F),
+                      AppColors.bg,
+                    ],
+                    stops: [0.0, 0.55, 1.0],
+                  ),
+                ),
               ),
+            ),
+          ),
+
+          // ── Bottom-anchored content ───────────────────────────────────────
+          Positioned(
+            left: 16,
+            right: 16,
+            bottom: 46,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Title (tappable → info)
+                GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: onInfo,
+                  child: Text(
+                    item.title,
+                    style: AppText.largeTitle.copyWith(
+                      fontSize: 30,
+                      height: 1.05,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                // Tagline — fixed 2-line box; empty while loading/null so the
+                // hero height stays constant.
+                SizedBox(
+                  height: 40,
+                  child: FutureBuilder<String?>(
+                    future: descriptionFuture,
+                    builder: (context, snap) {
+                      final d = (snap.data ?? '').trim();
+                      return Text(
+                        d,
+                        style: AppText.body.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Action buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: PrimaryButton(
+                        label: 'Play',
+                        icon: Icons.play_arrow,
+                        onPressed: onPlay,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _ToggleButton(inList: inList, onTap: onToggleList),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -122,159 +166,44 @@ class FeaturedHero extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Info card
-// Fixed inner heights:
-//   padding top+bottom   16+16 = 32
-//   poster               150
-//   col: title(48)+gap(8)+desc(54)+gap(12)+buttons(46) = 168
-//   max(poster, col)     168
-//   total card height    32 + 168 = 200
+// Ken-Burns — a slow, looping zoom on the backdrop. GPU-cheap (one Transform on
+// a RepaintBoundary child). Pauses nothing; the controller is disposed on unmount.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({
-    required this.item,
-    required this.inList,
-    required this.thumbMemW,
-    required this.descriptionFuture,
-    required this.onPlay,
-    required this.onInfo,
-    required this.onToggleList,
-  });
+class _KenBurns extends StatefulWidget {
+  const _KenBurns({required this.child});
+  final Widget child;
 
-  final MediaItem item;
-  final bool inList;
-  final int thumbMemW;
-  final Future<String?>? descriptionFuture;
-  final VoidCallback onPlay;
-  final VoidCallback onInfo;
-  final VoidCallback onToggleList;
+  @override
+  State<_KenBurns> createState() => _KenBurnsState();
+}
+
+class _KenBurnsState extends State<_KenBurns>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 14),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _scale = Tween<double>(
+    begin: 1.0,
+    end: 1.14,
+  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.hairline, width: 0.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Poster thumbnail (tappable → info) ─────────────────────────
-            GestureDetector(
-              behavior: HitTestBehavior.translucent,
-              onTap: onInfo,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: SizedBox(
-                  width: 104,
-                  height: 150,
-                  child: item.cover != null && item.cover!.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: item.cover!,
-                          httpHeaders: item.coverHeaders,
-                          memCacheWidth: thumbMemW,
-                          fit: BoxFit.cover,
-                          fadeInDuration: const Duration(milliseconds: 180),
-                          placeholder: (context, url) =>
-                              const ColoredBox(color: AppColors.surface2),
-                          errorWidget: (context, url, err) =>
-                              const ColoredBox(color: AppColors.surface2),
-                        )
-                      : const ColoredBox(color: AppColors.surface2),
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 14),
-
-            // ── Right column: title + description + buttons ─────────────────
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Title — fixed 2-line height (tappable → info)
-                  GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: onInfo,
-                    child: SizedBox(
-                      height: 48,
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(
-                          item.title,
-                          style: AppText.headline,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 8),
-
-                  // Description — fixed 3-line height (tappable → info)
-                  // The SizedBox is ALWAYS 54 px; empty while loading/null.
-                  GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: onInfo,
-                    child: SizedBox(
-                      height: 54,
-                      child: FutureBuilder<String?>(
-                        future: descriptionFuture,
-                        builder: (context, snap) {
-                          final d = (snap.data ?? '').trim();
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Text(
-                              d,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textSecondary,
-                              ),
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Action buttons row — fixed 46 px height
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 46,
-                          child: PrimaryButton(
-                            label: 'Play',
-                            icon: Icons.play_arrow,
-                            onPressed: onPlay,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      _ToggleButton(inList: inList, onTap: onToggleList),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    return ScaleTransition(scale: _scale, child: widget.child);
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Square toggle (＋ / ✓) button — fixed 46×46
+// Square toggle (＋ / ✓) button — fixed 52×52, matches PrimaryButton height.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ToggleButton extends StatelessWidget {
@@ -288,18 +217,18 @@ class _ToggleButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 46,
-        height: 46,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
-          color: AppColors.surface2,
-          borderRadius: BorderRadius.circular(12),
+          color: const Color(0x1AFFFFFF),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.hairline, width: 0.5),
         ),
         child: Center(
           child: Icon(
             inList ? Icons.check : Icons.add,
             color: inList ? AppColors.accent : AppColors.textPrimary,
-            size: 22,
+            size: 24,
           ),
         ),
       ),

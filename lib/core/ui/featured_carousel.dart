@@ -6,13 +6,19 @@ import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import 'featured_hero.dart';
 
-/// Auto-rotating hero carousel showing up to 6 trending items.
+/// Fixed hero height — the carousel pins this so the container never resizes
+/// between slides and the hero fills it edge-to-edge (Prime-style).
+const double kHeroHeight = 540;
+
+/// Auto-rotating, infinitely-looping hero carousel (up to 6 trending items).
 ///
-/// - Swipeable via [PageView].
-/// - Auto-advances every 5 seconds.
-/// - Page dot indicator with animated active dot.
-/// - Timer and PageController are disposed on unmount — no leak.
-/// - Fixed height 450 px matches [FeaturedHero]'s deterministic natural height.
+/// - Swipeable via [PageView]; auto-advances every 5 s.
+/// - **Seamless loop:** the page index lives deep inside a virtualized range and
+///   only ever moves FORWARD (`nextPage`), so going from the last item to the
+///   first never rewinds backward through every slide.
+/// - Page-dot indicator with an animated active dot (maps the virtual index back
+///   to the real item via modulo).
+/// - Timer + PageController disposed on unmount — no leak.
 class FeaturedCarousel extends StatefulWidget {
   const FeaturedCarousel({
     super.key,
@@ -30,9 +36,8 @@ class FeaturedCarousel extends StatefulWidget {
   final void Function(MediaItem) onInfo;
   final void Function(MediaItem) onToggleList;
 
-  /// Optional lazily-fetched description resolver. Called once per item and
-  /// the Future is passed to [FeaturedHero] so it can populate the 3-line
-  /// description box. Caching is handled by the caller (HomeScreen).
+  /// Optional lazily-fetched tagline resolver. Called once per item and the
+  /// Future is passed to [FeaturedHero]. Caching is handled by the caller.
   final Future<String?> Function(MediaItem)? describe;
 
   @override
@@ -40,27 +45,43 @@ class FeaturedCarousel extends StatefulWidget {
 }
 
 class _FeaturedCarouselState extends State<FeaturedCarousel> {
-  late final PageController _pc;
+  // A large base so the PageView can scroll forward "forever" without ever
+  // hitting an edge. Picked as a multiple of any realistic item count.
+  static const int _virtualBase = 100000;
+
+  late PageController _pc;
   late List<MediaItem> _pages;
-  int _index = 0;
+  int _index = 0; // virtual page index
   Timer? _timer;
+
+  int get _count => _pages.length;
+
+  /// Maps the virtual [_index] back to the real item slot.
+  int get _realIndex => _count == 0 ? 0 : _index % _count;
+
+  /// A start index that is a multiple of [_count] (so the first real item shows)
+  /// yet sits deep in the range, leaving room to advance forward indefinitely.
+  int get _startIndex =>
+      _count == 0 ? 0 : _virtualBase - (_virtualBase % _count);
 
   @override
   void initState() {
     super.initState();
     _pages = widget.items.take(6).toList();
-    _pc = PageController();
+    _index = _count > 1 ? _startIndex : 0;
+    _pc = PageController(initialPage: _index);
+    _startTimer();
+  }
 
-    // Only start auto-advance when there is more than one item.
-    if (_pages.length > 1) {
+  void _startTimer() {
+    _timer?.cancel();
+    if (_count > 1) {
       _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-        if (!mounted) return;
-        if (!_pc.hasClients) return;
-        final next = (_index + 1) % _pages.length;
-        _pc.animateToPage(
-          next,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOut,
+        if (!mounted || !_pc.hasClients) return;
+        // Always FORWARD — seamless wrap, never a backward rewind.
+        _pc.nextPage(
+          duration: const Duration(milliseconds: 750),
+          curve: Curves.easeInOutCubic,
         );
       });
     }
@@ -72,16 +93,18 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     // The items change when the user switches source — rebuild the pages so the
     // banner reflects the new catalog (it used to cache the first source's items).
     final next = widget.items.take(6).toList();
-    final changed = next.length != _pages.length ||
+    final changed =
+        next.length != _pages.length ||
         (next.isNotEmpty &&
             _pages.isNotEmpty &&
             next.first.id != _pages.first.id);
     if (changed) {
       setState(() {
         _pages = next;
-        _index = 0;
+        _index = _count > 1 ? _startIndex : 0;
       });
-      if (_pc.hasClients) _pc.jumpToPage(0);
+      if (_pc.hasClients) _pc.jumpToPage(_index);
+      _startTimer();
     }
   }
 
@@ -92,72 +115,61 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     super.dispose();
   }
 
+  FeaturedHero _hero(MediaItem it) => FeaturedHero(
+    item: it,
+    inList: widget.inList(it),
+    onPlay: () => widget.onPlay(it),
+    onInfo: () => widget.onInfo(it),
+    onToggleList: () => widget.onToggleList(it),
+    descriptionFuture: widget.describe?.call(it),
+  );
+
   @override
   Widget build(BuildContext context) {
-    // Empty state — reserve the same 450 px so layout doesn't jump.
-    if (_pages.isEmpty) return const SizedBox(height: 450);
+    // Empty state — reserve the height so layout doesn't jump.
+    if (_count == 0) return const SizedBox(height: kHeroHeight);
 
-    // Single item — no dots, no timer needed. Still wrapped to 450 px.
-    if (_pages.length == 1) {
-      final it = _pages.first;
+    // Single item — no dots, no timer. Still pinned to the hero height.
+    if (_count == 1) {
       return RepaintBoundary(
-        child: SizedBox(
-          height: 450,
-          child: FeaturedHero(
-            item: it,
-            inList: widget.inList(it),
-            onPlay: () => widget.onPlay(it),
-            onInfo: () => widget.onInfo(it),
-            onToggleList: () => widget.onToggleList(it),
-            descriptionFuture: widget.describe?.call(it),
-          ),
-        ),
+        child: SizedBox(height: kHeroHeight, child: _hero(_pages.first)),
       );
     }
 
     return RepaintBoundary(
       child: SizedBox(
-        height: 450,
+        height: kHeroHeight,
         child: Stack(
           children: [
-            // ── Page view ─────────────────────────────────────────────────
+            // ── Infinite page view ────────────────────────────────────────
             PageView.builder(
               controller: _pc,
-              itemCount: _pages.length,
+              // No itemCount → infinite; modulo maps back to the real slot.
               onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (context, i) {
-                final it = _pages[i];
-                return FeaturedHero(
-                  item: it,
-                  inList: widget.inList(it),
-                  onPlay: () => widget.onPlay(it),
-                  onInfo: () => widget.onInfo(it),
-                  onToggleList: () => widget.onToggleList(it),
-                  descriptionFuture: widget.describe?.call(it),
-                );
-              },
+              itemBuilder: (context, i) => _hero(_pages[i % _count]),
             ),
 
             // ── Page dots ─────────────────────────────────────────────────
             Positioned(
-              bottom: 8,
+              bottom: 18,
               left: 0,
               right: 0,
               child: Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: List.generate(_pages.length, (i) {
-                    final isActive = i == _index;
+                  children: List.generate(_count, (i) {
+                    final isActive = i == _realIndex;
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 3),
                       child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        width: isActive ? 18 : 6,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                        width: isActive ? 20 : 6,
                         height: 6,
                         decoration: BoxDecoration(
                           color: isActive
                               ? AppColors.accent
-                              : AppColors.textTertiary.withAlpha(128),
+                              : AppColors.textTertiary.withAlpha(120),
                           borderRadius: BorderRadius.circular(3),
                         ),
                       ),
