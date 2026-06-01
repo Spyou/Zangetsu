@@ -18,7 +18,6 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
-import '../../core/ui/segmented_toggle.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import 'cubit/detail_cubit.dart';
@@ -173,6 +172,15 @@ class _DetailViewState extends State<_DetailView>
     MediaDetail detail,
     String category,
   ) {
+    // Available sub/dub categories from the detail — lets the PLAYER offer the
+    // Sub/Dub switch (the Detail no longer does). Empty/single → treated as a
+    // single-category source by the player (no Version section).
+    final available = <String>[
+      if ((detail.subCount ?? 0) > 0) 'sub',
+      if ((detail.dubCount ?? 0) > 0) 'dub',
+    ];
+    final availableCategories = available.isEmpty ? [category] : available;
+
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PlayerScreen(
         sourceId: widget.item.sourceId,
@@ -187,6 +195,7 @@ class _DetailViewState extends State<_DetailView>
         coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
         showUrl: widget.item.url,
         category: category,
+        availableCategories: availableCategories,
       ),
     ));
   }
@@ -234,7 +243,6 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     final cubit = context.read<DetailCubit>();
     final category = state.category;
-    final audioIndex = category == 'sub' ? 0 : 1;
     final descExpanded = state.descExpanded;
     final selectedSeason = state.selectedSeason;
     final showSubDub = showSubDubFor(detail);
@@ -504,9 +512,6 @@ class _DetailViewState extends State<_DetailView>
               seasonSet: seasonSet,
               currentSeason: currentSeason,
               onSelectSeason: cubit.selectSeason,
-              showSubDub: showSubDub,
-              audioIndex: audioIndex,
-              onCategory: (i) => cubit.setCategory(i == 0 ? 'sub' : 'dub'),
               coverUrl: coverUrl,
               coverHeaders: coverHeaders,
               sourceId: item.sourceId,
@@ -836,8 +841,8 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Episodes tab — season selector (multi-season) + Sub/Dub toggle (anime) +
-// rich episode rows. PRESERVES season filtering, sub/dub re-fetch, _openPlayer.
+// Episodes tab — season selector (multi-season) + rich episode rows. PRESERVES
+// season filtering and _openPlayer. Sub/Dub selection now lives in the player.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EpisodesTab extends StatelessWidget {
@@ -848,9 +853,6 @@ class _EpisodesTab extends StatelessWidget {
     required this.seasonSet,
     required this.currentSeason,
     required this.onSelectSeason,
-    required this.showSubDub,
-    required this.audioIndex,
-    required this.onCategory,
     required this.coverUrl,
     required this.coverHeaders,
     required this.sourceId,
@@ -865,9 +867,6 @@ class _EpisodesTab extends StatelessWidget {
   final Set<int> seasonSet;
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
-  final bool showSubDub;
-  final int audioIndex;
-  final ValueChanged<int> onCategory;
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final String sourceId;
@@ -886,7 +885,9 @@ class _EpisodesTab extends StatelessWidget {
       );
     }
 
-    final headerCount = (hasMultipleSeasons ? 1 : 0) + (showSubDub ? 1 : 0);
+    // Sub/Dub selection moved to the PLAYER — the only optional header row left
+    // is the season selector (multi-season titles).
+    final headerCount = hasMultipleSeasons ? 1 : 0;
 
     return ListView.separated(
       padding: const EdgeInsets.only(top: 8, bottom: 40),
@@ -903,24 +904,12 @@ class _EpisodesTab extends StatelessWidget {
         );
       },
       itemBuilder: (context0, rawIndex) {
-        // Header rows: season selector, then Sub/Dub toggle.
-        var headerIdx = rawIndex;
-        if (hasMultipleSeasons && headerIdx == 0) {
+        // Header row: season selector (multi-season only).
+        if (hasMultipleSeasons && rawIndex == 0) {
           return _SeasonSelector(
             seasons: seasonSet.toList()..sort(),
             selectedSeason: currentSeason,
             onSelectSeason: onSelectSeason,
-          );
-        }
-        if (hasMultipleSeasons) headerIdx -= 1;
-        if (showSubDub && headerIdx == 0) {
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-            child: SegmentedToggle(
-              segments: const ['Sub', 'Dub'],
-              index: audioIndex,
-              onChanged: onCategory,
-            ),
           );
         }
 

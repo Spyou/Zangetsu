@@ -38,6 +38,7 @@ class PlayerScreen extends StatefulWidget {
     this.coverHeaders,
     this.showUrl,
     this.category,
+    this.availableCategories = const [],
   });
 
   final String sourceId;
@@ -53,6 +54,11 @@ class PlayerScreen extends StatefulWidget {
   final Map<String, String>? coverHeaders;
   final String? showUrl;
   final String? category;
+
+  /// Sub/Dub categories this title offers. When length <= 1 the player hides
+  /// the Version (Sub/Dub) section. Switching re-resolves the current episode
+  /// in the chosen language (see [PlayerCubit.switchCategory]).
+  final List<String> availableCategories;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -93,6 +99,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       coverHeaders: widget.coverHeaders,
       showUrl: widget.showUrl,
       category: widget.category,
+      availableCategories: widget.availableCategories,
     )..init(widget.startIndex);
     _scheduleHide();
   }
@@ -193,24 +200,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openAudioSheet() {
-    final kinds = _c.audioKinds;
-    final activeKind = _c.activeKind;
+    final categories = _c.categories;
+    final activeCategory = _c.activeCategory;
     final audioTracks = _c.mediaAudioTracks;
     final activeTrack = _c.activeAudioTrack;
     _sheet<void>(
       _SheetColumn(
         header: 'Audio',
         children: [
-          // Version (Sub/Dub source switch) — only when more than one exists.
-          if (kinds.length > 1) ...[
+          // Version (Sub/Dub) — re-resolves the current episode in the chosen
+          // language. Only shown when the title offers more than one category.
+          if (categories.length > 1) ...[
             const _SheetSectionHeader('Version'),
-            for (final k in kinds)
+            for (final cat in categories)
               _SheetRow(
-                label: k.name.toUpperCase(),
-                active: activeKind == k,
+                label: cat.toUpperCase(),
+                active: activeCategory == cat,
                 onTap: () {
                   Navigator.pop(context);
-                  _c.switchAudio(k);
+                  _c.switchCategory(cat);
                   _bumpControls();
                 },
               ),
@@ -735,7 +743,8 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Speed',
                         onTap: onSpeed,
                       ),
-                      if (c.audioKinds.length > 1 ||
+                      if (c.categories.length > 1 ||
+                          c.audioKinds.length > 1 ||
                           c.mediaAudioTracks.length > 1)
                         _ControlButton(
                           icon: Icons.graphic_eq,

@@ -7,11 +7,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
@@ -101,8 +103,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.coverHeaders,
     this.showUrl,
     this.category,
+    this.availableCategories = const [],
   })  : _resolveSources = resolveSources,
         _dio = dio,
+        _activeCategory = category ?? 'sub',
         super(const PlayerState());
 
   final String sourceId;
@@ -117,7 +121,21 @@ class PlayerCubit extends Cubit<PlayerState> {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final String? showUrl;
+
+  /// The category (sub/dub) the session launched in. The LIVE category (which
+  /// the user can flip mid-session) is [_activeCategory] — `category` is just
+  /// the launch value.
   final String? category;
+
+  /// Sub/Dub categories this title offers (e.g. `['sub','dub']`). When length
+  /// <= 1 the player treats the source as single-category (no Version switch).
+  /// AllAnime sub/dub are DIFFERENT streams — switching re-resolves the OTHER
+  /// category's URL for the current episode (see [_episodeUrl]).
+  final List<String> availableCategories;
+
+  /// The currently-playing category. Re-resolving sources rewrites the
+  /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
+  String _activeCategory;
 
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
@@ -133,6 +151,71 @@ class PlayerCubit extends Cubit<PlayerState> {
   bool _recovering = false; // debounce: one error-recovery at a time
 
   Episode get currentEpisode => episodes[state.currentIndex];
+
+  /// The episode URL to resolve sources from, rewritten to the active
+  /// category. Sub/Dub are separate AllAnime streams encoded in the URL
+  /// (`allanime://<id>/sub/<n>` vs `.../dub/<n>`), so switching language means
+  /// resolving the OTHER category's URL. Only rewrites when the title offers
+  /// more than one category AND the URL carries a `/sub/` or `/dub/` segment
+  /// (NetMirror etc. have no such segment → unchanged).
+  String _episodeUrl(Episode ep) {
+    if (availableCategories.length > 1 &&
+        RegExp(r'/(sub|dub)/').hasMatch(ep.url)) {
+      return ep.url.replaceFirst(RegExp(r'/(sub|dub)/'), '/$_activeCategory/');
+    }
+    return ep.url;
+  }
+
+  // ── Sub/Dub (category) switching — the player owns this now (not Detail) ──
+
+  /// Categories this title offers (drives the player's "Version" section).
+  List<String> get categories => availableCategories;
+
+  /// The currently-active category ('sub'/'dub').
+  String get activeCategory => _activeCategory;
+
+  /// Switch the whole session to [cat] (sub ↔ dub). No-op when unchanged or
+  /// not offered. Re-resolves the CURRENT episode in the new language while
+  /// preserving the live position and current index, persists the per-title
+  /// choice, and keeps the rest of the session (incl. playNext) + history in
+  /// [cat].
+  Future<void> switchCategory(String cat) async {
+    if (cat == _activeCategory || !availableCategories.contains(cat)) return;
+    _activeCategory = cat;
+    await sl<TitlePrefsStore>().setCategory(sourceId, showUrl ?? '', cat);
+
+    // Re-resolve the current episode in the new language — like openEpisode but
+    // keeping currentIndex and the live position.
+    final gen = ++_gen;
+    final keepPos = _lastPos;
+    _tried.clear();
+    _recovering = false;
+    emit(state.copyWith(
+      error: () => null,
+      loadingSources: true,
+      sources: const [],
+      active: () => null,
+    ));
+    try {
+      final resolved = await _resolveSources(_episodeUrl(currentEpisode));
+      if (gen != _gen) return;
+      emit(state.copyWith(sources: resolved, loadingSources: false));
+      _buildQualityMenu(gen);
+      final pick = pickDefault(resolved);
+      if (pick == null) {
+        emit(state.copyWith(
+            error: () => 'No playable sources for this episode.'));
+        return;
+      }
+      await _open(pick, seekTo: keepPos, gen: gen);
+    } catch (e) {
+      if (gen != _gen) return;
+      emit(state.copyWith(
+        loadingSources: false,
+        error: () => 'Could not load sources: $e',
+      ));
+    }
+  }
 
   void init(int index) {
     emit(state.copyWith(tracks: player.state.tracks));
@@ -234,7 +317,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       active: () => null,
     ));
     try {
-      final resolved = await _resolveSources(currentEpisode.url);
+      final resolved = await _resolveSources(_episodeUrl(currentEpisode));
       if (gen != _gen) return; // superseded by a newer open
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen); // populate Auto/1080p/720p from the HLS master, if any
@@ -399,7 +482,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         cover: cover,
         coverHeaders: coverHeaders,
         showUrl: showUrl ?? '',
-        category: category ?? 'sub',
+        category: _activeCategory,
         episodeId: currentEpisode.id,
         episodeNumber: currentEpisode.number,
         episodeUrl: currentEpisode.url,
