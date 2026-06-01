@@ -1074,58 +1074,17 @@ class _EpisodeRow extends StatelessWidget {
       splashColor: AppColors.accentSoft,
       highlightColor: AppColors.surface,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Text(
-                    heading,
-                    style: AppText.headline.copyWith(
-                      color: titleColor,
-                      fontWeight: isResume ? FontWeight.w800 : FontWeight.w700,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (isResume) ...[
-                  const SizedBox(width: 8),
-                  const TagBadge(text: 'CONTINUE'),
-                ],
-                if (ep.filler) ...[
-                  const SizedBox(width: 6),
-                  const TagBadge(text: 'FILLER', color: AppColors.textTertiary),
-                ],
-                if (subline != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    subline,
-                    style: AppText.caption.copyWith(color: AppColors.textTertiary),
-                  ),
-                ],
-              ],
-            ),
-            const SizedBox(height: 10),
-            // 16:9 thumbnail.
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x4D000000),
-                      blurRadius: 8,
-                      offset: Offset(0, 3),
-                    ),
-                  ],
-                ),
+            // Compact 16:9 thumbnail on the left (Netflix/CloudStream row).
+            SizedBox(
+              width: 128,
+              child: AspectRatio(
+                aspectRatio: 16 / 9,
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1134,7 +1093,7 @@ class _EpisodeRow extends StatelessWidget {
                               imageUrl: thumbUrl,
                               httpHeaders: coverHeaders,
                               fit: BoxFit.cover,
-                              memCacheWidth: 640,
+                              memCacheWidth: 320,
                               placeholder: (c, u) =>
                                   const ColoredBox(color: AppColors.surface2),
                               errorWidget: (c, u, e) =>
@@ -1153,27 +1112,18 @@ class _EpisodeRow extends StatelessWidget {
                             shape: BoxShape.circle,
                           ),
                           child: Padding(
-                            padding: EdgeInsets.all(8),
+                            padding: EdgeInsets.all(6),
                             child: Icon(Icons.play_arrow_rounded,
-                                color: Colors.white, size: 28),
+                                color: Colors.white, size: 20),
                           ),
                         ),
                       ),
                       if (isWatched)
                         const Positioned(
-                          top: 6,
-                          right: 6,
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Color(0xAA000000),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Padding(
-                              padding: EdgeInsets.all(3),
-                              child: Icon(Icons.check_rounded,
-                                  color: Colors.white, size: 14),
-                            ),
-                          ),
+                          top: 4,
+                          right: 4,
+                          child: Icon(Icons.check_circle,
+                              color: Colors.white, size: 16),
                         ),
                       if (isInProgress)
                         Positioned(
@@ -1185,6 +1135,49 @@ class _EpisodeRow extends StatelessWidget {
                     ],
                   ),
                 ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Number · title · badges · sub-line.
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          heading,
+                          style: AppText.body.copyWith(
+                            color: titleColor,
+                            fontWeight:
+                                isResume ? FontWeight.w800 : FontWeight.w700,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (isResume) ...[
+                        const SizedBox(width: 6),
+                        const TagBadge(text: 'CONTINUE'),
+                      ],
+                      if (ep.filler) ...[
+                        const SizedBox(width: 6),
+                        const TagBadge(
+                            text: 'FILLER', color: AppColors.textTertiary),
+                      ],
+                    ],
+                  ),
+                  if (subline != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      subline,
+                      style: AppText.caption
+                          .copyWith(color: AppColors.textTertiary),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
