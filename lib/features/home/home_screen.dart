@@ -15,6 +15,7 @@ import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/genre_chips.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
+import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'search_screen.dart';
@@ -29,6 +30,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _repo = sl<SourceRepository>();
   final _myList = sl<MyListStore>();
+  final _active = sl<ValueNotifier<String>>(instanceName: 'activeSource');
 
   // Futures cached in fields (not in build) to prevent refetch on every rebuild.
   late Future<List<MediaItem>> _trending;
@@ -58,6 +60,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
+    _active.addListener(_onSourceChanged);
+  }
+
+  @override
+  void dispose() {
+    _active.removeListener(_onSourceChanged);
+    super.dispose();
+  }
+
+  void _onSourceChanged() {
+    if (!mounted) return;
+    setState(() {
+      _descCache.clear();
+      _load();
+    });
   }
 
   void _openDetail(MediaItem item) {
@@ -149,8 +166,12 @@ class _HomeScreenState extends State<HomeScreen> {
             const Expanded(
               child: Text(kAppName, style: AppText.largeTitle),
             ),
-            // Symmetry spacer (Search is now a bottom-nav tab).
-            const SizedBox(width: 48),
+            SourceSwitcher(
+              currentId: _active.value,
+              onChanged: (id) {
+                if (id != _active.value) _active.value = id;
+              },
+            ),
           ],
         ),
       ),

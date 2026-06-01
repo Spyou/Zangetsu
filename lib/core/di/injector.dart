@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -72,5 +73,14 @@ Future<void> initDependencies() async {
     displayName: 'NetMirror',
   );
 
-  sl.registerSingleton<SourceRepository>(SourceRepository(manager: manager));
+  // Named ValueNotifier so any widget can read/write the active source id.
+  sl.registerSingleton<ValueNotifier<String>>(
+    ValueNotifier<String>('allanime'),
+    instanceName: 'activeSource',
+  );
+
+  sl.registerSingleton<SourceRepository>(SourceRepository(
+    manager: manager,
+    activeSource: sl<ValueNotifier<String>>(instanceName: 'activeSource'),
+  ));
 }

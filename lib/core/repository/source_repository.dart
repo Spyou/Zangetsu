@@ -1,21 +1,30 @@
+import 'package:flutter/foundation.dart';
+
 import '../models/episode.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/video_source.dart';
 import '../provider/provider_manager.dart';
 
-/// Facade over the active provider runtime for the UI layer. For 2B it targets
-/// the bundled AllAnime provider; later phases let the user pick the source.
+/// Facade over the active provider runtime for the UI layer.
+/// The active source is driven by [activeSource] so callers can switch at
+/// runtime without recreating the repository.
 class SourceRepository {
-  SourceRepository({required ProviderManager manager, this.sourceId = 'allanime'})
-      : _manager = manager;
+  SourceRepository({
+    required ProviderManager manager,
+    required ValueNotifier<String> activeSource,
+  })  : _manager = manager,
+        _active = activeSource;
 
   final ProviderManager _manager;
-  final String sourceId;
+  final ValueNotifier<String> _active;
+
+  /// The currently-active source identifier.
+  String get sourceId => _active.value;
 
   JsProvider get _p {
-    final p = _manager.get(sourceId);
-    if (p == null) throw StateError('Provider not loaded: $sourceId');
+    final p = _manager.get(_active.value);
+    if (p == null) throw StateError('Provider not loaded: ${_active.value}');
     return p;
   }
 
