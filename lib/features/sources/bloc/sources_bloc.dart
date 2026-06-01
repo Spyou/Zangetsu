@@ -21,9 +21,9 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
   SourcesBloc({
     required ProviderRegistry registry,
     required ProviderReposRegistry repos,
-  })  : _registry = registry,
-        _repos = repos,
-        super(const SourcesState()) {
+  }) : _registry = registry,
+       _repos = repos,
+       super(const SourcesState()) {
     on<SourcesStarted>(_onStarted);
     on<SourcesRefreshed>(_onRefreshed);
     on<SourceInstalled>(_onInstalled);
@@ -56,12 +56,12 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
   }
 
   SourcesState _snapshot({String? notice, int? noticeSeq}) => state.copyWith(
-        status: SourcesStatus.ready,
-        installed: _registry.getAll(),
-        repos: _repos.getAll(),
-        notice: notice,
-        noticeSeq: noticeSeq,
-      );
+    status: SourcesStatus.ready,
+    installed: _registry.getAll(),
+    repos: _repos.getAll(),
+    notice: notice,
+    noticeSeq: noticeSeq,
+  );
 
   void _onStarted(SourcesStarted event, Emitter<SourcesState> emit) {
     emit(_snapshot());
@@ -108,10 +108,7 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
     // The box-watch subscription re-emits the fresh snapshot.
   }
 
-  Future<void> _onRepoAdded(
-    RepoAdded event,
-    Emitter<SourcesState> emit,
-  ) async {
+  Future<void> _onRepoAdded(RepoAdded event, Emitter<SourcesState> emit) async {
     try {
       final repo = await _repos.fetchAndCache(
         event.url,

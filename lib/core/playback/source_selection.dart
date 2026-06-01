@@ -14,7 +14,9 @@ int qualityRank(String? quality) {
 List<VideoSource> sortByQuality(List<VideoSource> sources) {
   final indexed = sources.asMap().entries.toList();
   indexed.sort((a, b) {
-    final r = qualityRank(b.value.quality).compareTo(qualityRank(a.value.quality));
+    final r = qualityRank(
+      b.value.quality,
+    ).compareTo(qualityRank(a.value.quality));
     return r != 0 ? r : a.key.compareTo(b.key);
   });
   return indexed.map((e) => e.value).toList();
@@ -35,7 +37,10 @@ List<VideoSource> sourcesForKind(List<VideoSource> sources, AudioKind kind) =>
 
 /// Best default source: highest quality of [prefer]; if none of that kind,
 /// highest quality overall. Null only when [sources] is empty.
-VideoSource? pickDefault(List<VideoSource> sources, {AudioKind prefer = AudioKind.sub}) {
+VideoSource? pickDefault(
+  List<VideoSource> sources, {
+  AudioKind prefer = AudioKind.sub,
+}) {
   if (sources.isEmpty) return null;
   final preferred = sortByQuality(sourcesForKind(sources, prefer));
   if (preferred.isNotEmpty) return preferred.first;

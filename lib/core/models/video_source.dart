@@ -63,8 +63,10 @@ class VideoSource extends Equatable {
   final String url;
   final String? quality;
 
-  @JsonKey(unknownEnumValue: SourceContainer.unknown,
-      defaultValue: SourceContainer.unknown)
+  @JsonKey(
+    unknownEnumValue: SourceContainer.unknown,
+    defaultValue: SourceContainer.unknown,
+  )
   final SourceContainer container;
 
   final Map<String, String>? headers;
@@ -92,6 +94,13 @@ class VideoSource extends Equatable {
   Map<String, dynamic> toJson() => _$VideoSourceToJson(this);
 
   @override
-  List<Object?> get props =>
-      [url, quality, container, headers, kind, audioLang, subtitles];
+  List<Object?> get props => [
+    url,
+    quality,
+    container,
+    headers,
+    kind,
+    audioLang,
+    subtitles,
+  ];
 }

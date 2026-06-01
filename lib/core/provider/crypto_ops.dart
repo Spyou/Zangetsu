@@ -25,8 +25,13 @@ String aesCtrDecryptToString({
   required Uint8List data,
 }) {
   final cipher = CTRStreamCipher(AESEngine())
-    ..init(false, ParametersWithIV(KeyParameter(_hexToBytes(keyHex)),
-        _hexToBytes(counterHex)));
+    ..init(
+      false,
+      ParametersWithIV(
+        KeyParameter(_hexToBytes(keyHex)),
+        _hexToBytes(counterHex),
+      ),
+    );
   final out = cipher.process(data);
   return utf8.decode(out, allowMalformed: true);
 }

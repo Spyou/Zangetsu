@@ -36,8 +36,10 @@ class _TrailerScreenState extends State<TrailerScreen> {
   }
 
   Future<void> _resolveAndOpen() async {
-    final url =
-        await sl<TrailerService>().streamUrl(widget.videoId, low: false);
+    final url = await sl<TrailerService>().streamUrl(
+      widget.videoId,
+      low: false,
+    );
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _resolved = false);
@@ -75,8 +77,10 @@ class _TrailerScreenState extends State<TrailerScreen> {
                 color: Colors.black.withValues(alpha: 0.45),
                 shape: const CircleBorder(),
                 child: IconButton(
-                  icon: const Icon(Icons.close_rounded,
-                      color: AppColors.textPrimary),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.textPrimary,
+                  ),
                   tooltip: 'Close',
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
@@ -96,8 +100,11 @@ class _TrailerScreenState extends State<TrailerScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.movie_filter_outlined,
-                color: AppColors.textSecondary, size: 40),
+            const Icon(
+              Icons.movie_filter_outlined,
+              color: AppColors.textSecondary,
+              size: 40,
+            ),
             const SizedBox(height: 12),
             Text('Trailer unavailable', style: AppText.body),
             const SizedBox(height: 16),

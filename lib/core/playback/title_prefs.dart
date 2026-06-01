@@ -20,7 +20,10 @@ class TitlePrefsStore {
   }
 
   Future<void> setCategory(
-      String sourceId, String showUrl, String category) async {
+    String sourceId,
+    String showUrl,
+    String category,
+  ) async {
     final k = _key(sourceId, showUrl);
     final m = _box.get(k) == null
         ? <String, dynamic>{}

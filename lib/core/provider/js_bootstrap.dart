@@ -229,6 +229,7 @@ String wrapProviderSource(String sourceId, String providerJs) {
   $providerJs
   globalThis.__providers['$src'] = {
     getInfo:         typeof getInfo === 'function' ? getInfo : null,
+    getHome:         typeof getHome === 'function' ? getHome : null,
     popular:         typeof popular === 'function' ? popular : null,
     search:          typeof search === 'function' ? search : null,
     getDetail:       typeof getDetail === 'function' ? getDetail : null,

@@ -7,6 +7,7 @@ import 'package:flutter_js/flutter_js.dart';
 
 import '../error/exceptions.dart';
 import '../models/episode.dart';
+import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
@@ -18,7 +19,11 @@ import 'js_bootstrap.dart';
 enum ProviderHealthStatus { healthy, degraded, broken }
 
 class _ProviderHealth {
-  _ProviderHealth({required this.failures, required this.lastError, required this.status});
+  _ProviderHealth({
+    required this.failures,
+    required this.lastError,
+    required this.status,
+  });
   final int failures;
   final String lastError;
   final ProviderHealthStatus status;
@@ -54,19 +59,25 @@ class _JsHost {
   void loadProvider(String sourceId, String jsSource) {
     final r = _runtime.evaluate(wrapProviderSource(sourceId, jsSource));
     if (r.isError) {
-      throw JsRuntimeException('Provider eval failed for $sourceId: ${r.stringResult}');
+      throw JsRuntimeException(
+        'Provider eval failed for $sourceId: ${r.stringResult}',
+      );
     }
   }
 
   void loadExtractor(String extractorId, String jsSource) {
     final r = _runtime.evaluate(wrapExtractorSource(extractorId, jsSource));
     if (r.isError) {
-      throw JsRuntimeException('Extractor eval failed for $extractorId: ${r.stringResult}');
+      throw JsRuntimeException(
+        'Extractor eval failed for $extractorId: ${r.stringResult}',
+      );
     }
   }
 
   void removeProvider(String sourceId) {
-    _runtime.evaluate('delete globalThis.__providers[${jsonEncode(sourceId)}];');
+    _runtime.evaluate(
+      'delete globalThis.__providers[${jsonEncode(sourceId)}];',
+    );
   }
 
   /// Pushes [settings] into the JS runtime as `__settings[sourceId]`.
@@ -83,8 +94,12 @@ class _JsHost {
     }
   }
 
-  Future<String> call(String sourceId, String method, List<Object?> args,
-      {Duration timeout = const Duration(seconds: 15)}) async {
+  Future<String> call(
+    String sourceId,
+    String method,
+    List<Object?> args, {
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
     try {
       final v = await _runCall(sourceId, method, args, timeout);
       _health.remove(sourceId);
@@ -94,27 +109,41 @@ class _JsHost {
       _health[sourceId] = _ProviderHealth(
         failures: failures,
         lastError: e.toString(),
-        status: failures >= 3 ? ProviderHealthStatus.broken : ProviderHealthStatus.degraded,
+        status: failures >= 3
+            ? ProviderHealthStatus.broken
+            : ProviderHealthStatus.degraded,
       );
       rethrow;
     }
   }
 
-  Future<String> _runCall(String sourceId, String method, List<Object?> args,
-      Duration timeout) async {
+  Future<String> _runCall(
+    String sourceId,
+    String method,
+    List<Object?> args,
+    Duration timeout,
+  ) async {
     final argsJson = jsonEncode(args);
     final expr =
         '__callProvider(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)})';
     final asyncResult = await _runtime.evaluateAsync(expr);
     final resolved = await _runtime
         .handlePromise(asyncResult)
-        .timeout(timeout, onTimeout: () {
-      throw JsRuntimeException('$method timed out after ${timeout.inSeconds}s');
-    });
+        .timeout(
+          timeout,
+          onTimeout: () {
+            throw JsRuntimeException(
+              '$method timed out after ${timeout.inSeconds}s',
+            );
+          },
+        );
     if (resolved.isError) {
       var msg = resolved.stringResult;
       if (msg.startsWith('"') && msg.endsWith('"')) {
-        try { final unq = jsonDecode(msg); if (unq is String) msg = unq; } catch (_) {}
+        try {
+          final unq = jsonDecode(msg);
+          if (unq is String) msg = unq;
+        } catch (_) {}
       }
       throw JsRuntimeException(msg);
     }
@@ -123,7 +152,10 @@ class _JsHost {
       throw JsRuntimeException('$sourceId.$method returned null');
     }
     if (s.startsWith('"') && s.endsWith('"')) {
-      try { final u = jsonDecode(s); if (u is String) s = u; } catch (_) {}
+      try {
+        final u = jsonDecode(s);
+        if (u is String) s = u;
+      } catch (_) {}
     }
     return s;
   }
@@ -131,7 +163,9 @@ class _JsHost {
   Map<String, dynamic> _coerceMap(dynamic raw) {
     if (raw is String) return jsonDecode(raw) as Map<String, dynamic>;
     if (raw is Map) return Map<String, dynamic>.from(raw);
-    throw FormatException('Unexpected message payload type: ${raw.runtimeType}');
+    throw FormatException(
+      'Unexpected message payload type: ${raw.runtimeType}',
+    );
   }
 
   Future<void> _onFetch(dynamic raw) async {
@@ -141,7 +175,8 @@ class _JsHost {
       id = payload['id'] as String;
       final url = payload['url'] as String;
       final method = (payload['method'] as String?) ?? 'GET';
-      final headers = (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
+      final headers =
+          (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
       final body = payload['body'];
       final tMs = (payload['timeoutMs'] as num?)?.toInt() ?? 0;
       final follow = payload['followRedirects'] != false;
@@ -162,7 +197,9 @@ class _JsHost {
         ),
       );
       // ignore: avoid_print
-      print('[fetch] <- ${resp.statusCode} ${(resp.data?.toString().length ?? 0)}B $url');
+      print(
+        '[fetch] <- ${resp.statusCode} ${(resp.data?.toString().length ?? 0)}B $url',
+      );
       final responseHeaders = <String, String>{};
       resp.headers.forEach((k, v) => responseHeaders[k] = v.join(', '));
       final responseJson = jsonEncode({
@@ -172,12 +209,16 @@ class _JsHost {
         'url': resp.realUri.toString(),
         'body': resp.data?.toString() ?? '',
       });
-      _runtime.evaluate('__resolveFetch(${jsonEncode(id)}, ${jsonEncode(responseJson)});');
+      _runtime.evaluate(
+        '__resolveFetch(${jsonEncode(id)}, ${jsonEncode(responseJson)});',
+      );
     } catch (e) {
       // ignore: avoid_print
       print('[fetch] FAILED $e');
       if (id != null) {
-        _runtime.evaluate('__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
+        _runtime.evaluate(
+          '__rejectFetch(${jsonEncode(id)}, ${jsonEncode(e.toString())});',
+        );
       }
     }
   }
@@ -201,10 +242,14 @@ class _JsHost {
       } else {
         throw FormatException('Unknown crypto op: $op');
       }
-      _runtime.evaluate('__resolveCrypto(${jsonEncode(id)}, ${jsonEncode(result)});');
+      _runtime.evaluate(
+        '__resolveCrypto(${jsonEncode(id)}, ${jsonEncode(result)});',
+      );
     } catch (e) {
       if (id != null) {
-        _runtime.evaluate('__rejectCrypto(${jsonEncode(id)}, ${jsonEncode(e.toString())});');
+        _runtime.evaluate(
+          '__rejectCrypto(${jsonEncode(id)}, ${jsonEncode(e.toString())});',
+        );
       }
     }
   }
@@ -253,9 +298,11 @@ class JsProvider implements BaseProvider {
   ProviderHealthStatus get healthStatus => _host.healthFor(sourceId);
   String? get lastError => _host.lastErrorFor(sourceId);
 
-  Future<String> _call(String method, List<Object?> args,
-          {Duration timeout = const Duration(seconds: 15)}) =>
-      _host.call(sourceId, method, args, timeout: timeout);
+  Future<String> _call(
+    String method,
+    List<Object?> args, {
+    Duration timeout = const Duration(seconds: 15),
+  }) => _host.call(sourceId, method, args, timeout: timeout);
 
   ProviderInfo? _infoCache;
 
@@ -269,6 +316,49 @@ class JsProvider implements BaseProvider {
     return info;
   }
 
+  /// CloudStream-style home rows. Returns the provider's own named sections,
+  /// or `null` when the JS file doesn't define `getHome` (the caller then
+  /// synthesizes default rows from [popular]). Never returns partial garbage:
+  /// items without the basics are dropped, empty/untitled sections are kept
+  /// out. Given a generous timeout since it may fan out several listing calls.
+  Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
+    try {
+      final raw = await _call('getHome', [
+        {'category': category},
+      ], timeout: const Duration(seconds: 30));
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return null;
+      final out = <HomeSection>[];
+      for (final s in decoded) {
+        if (s is! Map) continue;
+        final m = Map<String, dynamic>.from(s);
+        final title = (m['title'] ?? '').toString().trim();
+        if (title.isEmpty) continue;
+        final rawItems = m['items'];
+        final items = <MediaItem>[];
+        if (rawItems is List) {
+          for (final e in rawItems) {
+            if (e is Map) {
+              items.add(
+                MediaItem.fromJson({
+                  ...Map<String, dynamic>.from(e),
+                  'sourceId': sourceId,
+                }),
+              );
+            }
+          }
+        }
+        out.add(HomeSection(title: title, items: items));
+      }
+      return out;
+    } catch (e) {
+      final msg = e is JsRuntimeException ? e.message : e.toString();
+      // The bootstrap signals an absent function with this exact phrase.
+      if (msg.contains('missing method: getHome')) return null;
+      rethrow;
+    }
+  }
+
   @override
   Future<List<MediaItem>> popular({
     String category = 'sub',
@@ -276,29 +366,50 @@ class JsProvider implements BaseProvider {
     int page = 1,
   }) async {
     final raw = await _call('popular', [
-      {'category': category, 'dateRange': dateRange, 'page': page}
+      {'category': category, 'dateRange': dateRange, 'page': page},
     ]);
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map((m) => MediaItem.fromJson({...m, 'sourceId': sourceId})).toList();
+    return list
+        .map((m) => MediaItem.fromJson({...m, 'sourceId': sourceId}))
+        .toList();
   }
 
   @override
-  Future<List<MediaItem>> search(String query, int page, {String category = ''}) async {
-    final raw = await _call('search', [query, page, {'category': category}]);
+  Future<List<MediaItem>> search(
+    String query,
+    int page, {
+    String category = '',
+  }) async {
+    final raw = await _call('search', [
+      query,
+      page,
+      {'category': category},
+    ]);
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-    return list.map((m) => MediaItem.fromJson({...m, 'sourceId': sourceId})).toList();
+    return list
+        .map((m) => MediaItem.fromJson({...m, 'sourceId': sourceId}))
+        .toList();
   }
 
   @override
   Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
-    final raw = await _call('getDetail', [url, {'category': category}]);
+    final raw = await _call('getDetail', [
+      url,
+      {'category': category},
+    ]);
     final map = jsonDecode(raw) as Map<String, dynamic>;
     return MediaDetail.fromJson({...map, 'sourceId': sourceId});
   }
 
   @override
-  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) async {
-    final raw = await _call('getEpisodes', [url, {'category': category}]);
+  Future<List<Episode>> getEpisodes(
+    String url, {
+    String category = 'sub',
+  }) async {
+    final raw = await _call('getEpisodes', [
+      url,
+      {'category': category},
+    ]);
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(Episode.fromJson).toList();
   }
@@ -307,8 +418,9 @@ class JsProvider implements BaseProvider {
   Future<List<VideoSource>> getVideoSources(String episodeUrl) async {
     // Video source resolution makes several network hops (decrypt + multiple
     // embed/clock resolves), so it needs a longer ceiling than the 15s default.
-    final raw = await _call('getVideoSources', [episodeUrl],
-        timeout: const Duration(seconds: 60));
+    final raw = await _call('getVideoSources', [
+      episodeUrl,
+    ], timeout: const Duration(seconds: 60));
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(VideoSource.fromJson).toList();
   }

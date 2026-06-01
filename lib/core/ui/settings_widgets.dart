@@ -33,7 +33,8 @@ class SettingsTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fg = destructive ? AppColors.accent : null;
-    final trailingWidget = trailing ??
+    final trailingWidget =
+        trailing ??
         (onTap == null
             ? null
             : const Icon(
@@ -104,12 +105,14 @@ class SettingsCard extends StatelessWidget {
     for (var i = 0; i < children.length; i++) {
       separated.add(children[i]);
       if (i < children.length - 1) {
-        separated.add(const Divider(
-          height: 0.5,
-          thickness: 0.5,
-          indent: 52,
-          color: AppColors.hairline,
-        ));
+        separated.add(
+          const Divider(
+            height: 0.5,
+            thickness: 0.5,
+            indent: 52,
+            color: AppColors.hairline,
+          ),
+        );
       }
     }
     return Container(
@@ -119,10 +122,7 @@ class SettingsCard extends StatelessWidget {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: separated,
-      ),
+      child: Column(mainAxisSize: MainAxisSize.min, children: separated),
     );
   }
 }

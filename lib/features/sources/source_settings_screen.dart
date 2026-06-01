@@ -161,18 +161,16 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Text(
-                  schema.label,
-                  style: AppText.headline,
-                ),
+                child: Text(schema.label, style: AppText.headline),
               ),
               const Divider(color: AppColors.hairline, height: 1),
               for (final opt in schema.options)
                 ListTile(
                   onTap: () => Navigator.pop(ctx, opt.value),
-                  title: Text(opt.label, style: AppText.body.copyWith(
-                    color: AppColors.textPrimary,
-                  )),
+                  title: Text(
+                    opt.label,
+                    style: AppText.body.copyWith(color: AppColors.textPrimary),
+                  ),
                   trailing: Icon(
                     current == opt.value
                         ? Icons.radio_button_checked_rounded
@@ -196,7 +194,10 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
-        title: Text(widget.displayName ?? widget.sourceId, style: AppText.title),
+        title: Text(
+          widget.displayName ?? widget.sourceId,
+          style: AppText.title,
+        ),
       ),
       body: FutureBuilder<List<ProviderSettingSchema>?>(
         future: _schemaFuture,
@@ -235,7 +236,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
                   ),
                   label: Text(
                     'Reset to defaults',
-                    style: AppText.body.copyWith(color: AppColors.textSecondary),
+                    style: AppText.body.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
@@ -247,14 +250,14 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   }
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: padding,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: child,
-      );
+    margin: const EdgeInsets.symmetric(vertical: 4),
+    padding: padding,
+    decoration: BoxDecoration(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: child,
+  );
 
   Widget _buildEntry(ProviderSettingSchema schema) {
     switch (schema.type) {
@@ -264,9 +267,10 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
           child: SwitchListTile.adaptive(
             value: v,
             activeThumbColor: AppColors.accent,
-            title: Text(schema.label, style: AppText.body.copyWith(
-              color: AppColors.textPrimary,
-            )),
+            title: Text(
+              schema.label,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+            ),
             onChanged: (next) => _updateImmediate(schema.key, next),
           ),
         );
@@ -283,9 +287,10 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
             .label;
         return _card(
           child: ListTile(
-            title: Text(schema.label, style: AppText.body.copyWith(
-              color: AppColors.textPrimary,
-            )),
+            title: Text(
+              schema.label,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+            ),
             subtitle: Text(label, style: AppText.caption),
             trailing: const Icon(
               Icons.chevron_right_rounded,
@@ -296,8 +301,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
         );
       case ProviderSettingType.multiEnum:
         final raw = _values[schema.key];
-        final selected =
-            raw is List ? raw.whereType<String>().toSet() : <String>{};
+        final selected = raw is List
+            ? raw.whereType<String>().toSet()
+            : <String>{};
         return _card(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Column(

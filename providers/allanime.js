@@ -72,6 +72,24 @@ function popular(opts) {
   });
 }
 
+// CloudStream-style home rows. AllAnime's only listing knob is queryPopular's
+// dateRange, so we expose it as four genuinely-different windows.
+function getHome(opts) {
+  opts = opts || {};
+  var cat = _mode(opts);
+  var rows = [
+    { title: 'Trending Now',       dateRange: 1 },
+    { title: 'Popular This Week',  dateRange: 7 },
+    { title: 'New This Month',     dateRange: 30 },
+    { title: 'All-Time Favorites', dateRange: 0 }
+  ];
+  return Promise.all(rows.map(function (r) {
+    return popular({ category: cat, dateRange: r.dateRange, page: 1 })
+      .then(function (items) { return { title: r.title, items: items }; })
+      .catch(function () { return { title: r.title, items: [] }; });
+  }));
+}
+
 function getDetail(url, opts) {
   var showId = String(url);
   var cat = (opts && opts.category === 'dub') ? 'dub' : 'sub';

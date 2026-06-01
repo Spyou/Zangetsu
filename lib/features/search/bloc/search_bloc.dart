@@ -8,8 +8,8 @@ import 'search_state.dart';
 
 class SearchBloc extends Bloc<SearchEvent, SearchState> {
   SearchBloc({required SourceRepository repo})
-      : _repo = repo,
-        super(const SearchState()) {
+    : _repo = repo,
+      super(const SearchState()) {
     on<SearchQueryChanged>(_onQueryChanged);
     on<SearchSortChanged>(_onSortChanged);
     on<SearchSubmitted>(_onSubmitted);
@@ -18,19 +18,18 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final SourceRepository _repo;
   Timer? _debounce;
 
-  void _onQueryChanged(
-    SearchQueryChanged event,
-    Emitter<SearchState> emit,
-  ) {
+  void _onQueryChanged(SearchQueryChanged event, Emitter<SearchState> emit) {
     emit(state.copyWith(query: event.query, sort: SearchSort.bestMatch));
     _debounce?.cancel();
 
     if (event.query.trim().isEmpty) {
-      emit(state.copyWith(
-        results: const [],
-        status: SearchStatus.idle,
-        clearError: true,
-      ));
+      emit(
+        state.copyWith(
+          results: const [],
+          status: SearchStatus.idle,
+          clearError: true,
+        ),
+      );
       return;
     }
 
@@ -40,10 +39,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     );
   }
 
-  void _onSortChanged(
-    SearchSortChanged event,
-    Emitter<SearchState> emit,
-  ) {
+  void _onSortChanged(SearchSortChanged event, Emitter<SearchState> emit) {
     emit(state.copyWith(sort: event.sort));
   }
 
@@ -54,23 +50,19 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     final q = state.query.trim();
     if (q.isEmpty) return;
 
-    emit(state.copyWith(
-      status: SearchStatus.loading,
-      results: const [],
-      clearError: true,
-    ));
+    emit(
+      state.copyWith(
+        status: SearchStatus.loading,
+        results: const [],
+        clearError: true,
+      ),
+    );
 
     try {
       final results = await _repo.search(q);
-      emit(state.copyWith(
-        status: SearchStatus.success,
-        results: results,
-      ));
+      emit(state.copyWith(status: SearchStatus.success, results: results));
     } catch (e) {
-      emit(state.copyWith(
-        status: SearchStatus.error,
-        error: e.toString(),
-      ));
+      emit(state.copyWith(status: SearchStatus.error, error: e.toString()));
     }
   }
 

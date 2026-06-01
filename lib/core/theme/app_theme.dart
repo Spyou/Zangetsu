@@ -27,6 +27,10 @@ ThemeData buildAppTheme() {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
     ),
-    dividerTheme: const DividerThemeData(color: AppColors.hairline, thickness: 0.5, space: 0.5),
+    dividerTheme: const DividerThemeData(
+      color: AppColors.hairline,
+      thickness: 0.5,
+      space: 0.5,
+    ),
   );
 }

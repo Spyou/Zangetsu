@@ -33,11 +33,7 @@ class ContentRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _Header(
-          title: title,
-          overline: overline,
-          onSeeAll: onSeeAll,
-        ),
+        _Header(title: title, overline: overline, onSeeAll: onSeeAll),
         SizedBox(
           height: itemHeight,
           child: ListView.builder(
@@ -49,9 +45,7 @@ class ContentRow extends StatelessWidget {
               padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
                 width: itemWidth,
-                child: RepaintBoundary(
-                  child: itemBuilder(context, index),
-                ),
+                child: RepaintBoundary(child: itemBuilder(context, index)),
               ),
             ),
           ),
@@ -62,11 +56,7 @@ class ContentRow extends StatelessWidget {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.title,
-    this.overline,
-    this.onSeeAll,
-  });
+  const _Header({required this.title, this.overline, this.onSeeAll});
 
   final String title;
   final String? overline;
@@ -87,9 +77,7 @@ class _Header extends StatelessWidget {
           if (onSeeAll != null)
             Row(
               children: [
-                Expanded(
-                  child: Text(title, style: AppText.headline),
-                ),
+                Expanded(child: Text(title, style: AppText.headline)),
                 GestureDetector(
                   onTap: onSeeAll,
                   behavior: HitTestBehavior.opaque,
@@ -97,8 +85,7 @@ class _Header extends StatelessWidget {
                     padding: const EdgeInsets.only(left: 8),
                     child: Text(
                       'See All',
-                      style: AppText.caption
-                          .copyWith(color: AppColors.accent),
+                      style: AppText.caption.copyWith(color: AppColors.accent),
                     ),
                   ),
                 ),

@@ -20,8 +20,7 @@ class SegmentedToggle extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final segmentWidth =
-            constraints.maxWidth / segments.length;
+        final segmentWidth = constraints.maxWidth / segments.length;
         return SizedBox(
           height: 36,
           child: Stack(
@@ -38,9 +37,7 @@ class SegmentedToggle extends StatelessWidget {
               RepaintBoundary(
                 child: AnimatedAlign(
                   alignment: Alignment(
-                    -1.0 +
-                        (2.0 * index + 1.0) /
-                            segments.length,
+                    -1.0 + (2.0 * index + 1.0) / segments.length,
                     0,
                   ),
                   duration: const Duration(milliseconds: 200),

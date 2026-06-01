@@ -67,8 +67,7 @@ class _PosterCardState extends State<PosterCard> {
                               const ColoredBox(color: AppColors.surface2),
                         ),
                       const DecoratedBox(
-                        decoration:
-                            BoxDecoration(gradient: AppColors.scrim),
+                        decoration: BoxDecoration(gradient: AppColors.scrim),
                       ),
                     ],
                   ),
@@ -79,8 +78,7 @@ class _PosterCardState extends State<PosterCard> {
                 widget.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: AppText.caption
-                    .copyWith(color: AppColors.textPrimary),
+                style: AppText.caption.copyWith(color: AppColors.textPrimary),
               ),
             ],
           ),

@@ -20,6 +20,16 @@ test('platform name derives from sourceId', async () => {
   assert.equal(nf.type, 'movie');
 });
 
+// --- Live: getHome returns the provider's own distinct named rows ----------
+live('netflix: getHome returns named sections', async () => {
+  const sections = JSON.parse(await callProvider('netmirror_nf', 'getHome', [{}]));
+  assert.ok(Array.isArray(sections) && sections.length >= 1, 'expected sections');
+  assert.ok(
+    sections.every((s) => typeof s.title === 'string' && Array.isArray(s.items)),
+    'each section is {title, items[]}');
+  console.log('[netmirror nf] home rows:', sections.map((s) => s.title + ':' + s.items.length));
+});
+
 // --- Live: Netflix full chain search -> detail -> PLAYABLE master ----------
 // Asserts the resolved url is not just a .m3u8 but a master that actually
 // contains video (#EXT-X-STREAM-INF) reachable with the source's own headers.

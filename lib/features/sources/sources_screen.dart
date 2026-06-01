@@ -74,8 +74,9 @@ class _SourcesViewState extends State<_SourcesView>
           b.notice != null &&
           (a.notice != b.notice || a.noticeSeq != b.noticeSeq),
       listener: (context, state) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(state.notice!)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(state.notice!)));
       },
       child: Scaffold(
         backgroundColor: AppColors.bg,
@@ -102,16 +103,15 @@ class _SourcesViewState extends State<_SourcesView>
                 foregroundColor: Colors.white,
                 onPressed: () => _showAddRepoDialog(context),
                 icon: const Icon(Icons.add),
-                label: Text('Add repo',
-                    style: AppText.button.copyWith(color: Colors.white)),
+                label: Text(
+                  'Add repo',
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
               )
             : null,
         body: TabBarView(
           controller: _tab,
-          children: const [
-            _InstalledTab(),
-            _ReposTab(),
-          ],
+          children: const [_InstalledTab(), _ReposTab()],
         ),
       ),
     );
@@ -149,8 +149,9 @@ class _InstalledTab extends StatelessWidget {
         // their resolved display name.
         final groups = <String, List<ProviderRegistryEntry>>{};
         for (final e in entries) {
-          final key =
-              e.originRepoUrl.isEmpty ? kBundledRepoUrl : e.originRepoUrl;
+          final key = e.originRepoUrl.isEmpty
+              ? kBundledRepoUrl
+              : e.originRepoUrl;
           groups.putIfAbsent(key, () => []).add(e);
         }
         final repoByUrl = {for (final r in state.repos) r.url: r};
@@ -268,13 +269,17 @@ class _InstalledRow extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: AppText.body.copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove',
-                style: AppText.body.copyWith(color: AppColors.accent)),
+            child: Text(
+              'Remove',
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -310,9 +315,9 @@ class _InstalledRow extends StatelessWidget {
           Switch.adaptive(
             value: entry.enabled,
             activeThumbColor: AppColors.accent,
-            onChanged: (v) => context
-                .read<SourcesBloc>()
-                .add(SourceEnabledToggled(_key, enabled: v)),
+            onChanged: (v) => context.read<SourcesBloc>().add(
+              SourceEnabledToggled(_key, enabled: v),
+            ),
           ),
           IconButton(
             tooltip: 'Source settings',
@@ -394,13 +399,17 @@ class _RepoSection extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: AppText.body.copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Remove',
-                style: AppText.body.copyWith(color: AppColors.accent)),
+            child: Text(
+              'Remove',
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -436,14 +445,18 @@ class _RepoSection extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text('${repo.sources.length} sources',
-                          style: AppText.caption),
+                      Text(
+                        '${repo.sources.length} sources',
+                        style: AppText.caption,
+                      ),
                     ],
                   ),
                 ),
                 PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert,
-                      color: AppColors.textSecondary),
+                  icon: const Icon(
+                    Icons.more_vert,
+                    color: AppColors.textSecondary,
+                  ),
                   color: AppColors.surface2,
                   onSelected: (v) {
                     if (v == 'remove') _remove(context);
@@ -451,9 +464,12 @@ class _RepoSection extends StatelessWidget {
                   itemBuilder: (_) => [
                     PopupMenuItem(
                       value: 'remove',
-                      child: Text('Remove repo',
-                          style: AppText.body
-                              .copyWith(color: AppColors.textPrimary)),
+                      child: Text(
+                        'Remove repo',
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -463,18 +479,25 @@ class _RepoSection extends StatelessWidget {
           if (repo.sources.isEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text('No sources in this repo yet.',
-                  textAlign: TextAlign.center, style: AppText.caption),
+              child: Text(
+                'No sources in this repo yet.',
+                textAlign: TextAlign.center,
+                style: AppText.caption,
+              ),
             )
           else
             for (final source in repo.sources) ...[
               const Divider(
-                  height: 0.5, thickness: 0.5, color: AppColors.hairline),
+                height: 0.5,
+                thickness: 0.5,
+                color: AppColors.hairline,
+              ),
               _RepoSourceRow(
                 repo: repo,
                 source: source,
                 installed: installedKeys.contains(
-                    ProviderRegistry.providerKey(repo.url, source.id)),
+                  ProviderRegistry.providerKey(repo.url, source.id),
+                ),
               ),
             ],
         ],
@@ -497,9 +520,9 @@ class _RepoSourceRow extends StatelessWidget {
   String get _key => ProviderRegistry.providerKey(repo.url, source.id);
 
   void _install(BuildContext context) {
-    context
-        .read<SourcesBloc>()
-        .add(SourceInstalled(repo: repo, source: source));
+    context.read<SourcesBloc>().add(
+      SourceInstalled(repo: repo, source: source),
+    );
   }
 
   Future<void> _uninstall(BuildContext context) async {
@@ -516,13 +539,17 @@ class _RepoSourceRow extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel',
-                style: AppText.body.copyWith(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Uninstall',
-                style: AppText.body.copyWith(color: AppColors.accent)),
+            child: Text(
+              'Uninstall',
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -548,8 +575,10 @@ class _RepoSourceRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text('${source.lang} • v${source.version}',
-                    style: AppText.caption),
+                Text(
+                  '${source.lang} • v${source.version}',
+                  style: AppText.caption,
+                ),
               ],
             ),
           ),
@@ -560,10 +589,12 @@ class _RepoSourceRow extends StatelessWidget {
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
                 side: BorderSide(
-                    color: AppColors.textSecondary.withValues(alpha: 0.4)),
+                  color: AppColors.textSecondary.withValues(alpha: 0.4),
+                ),
                 minimumSize: const Size(96, 36),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text('Installed'),
             )
@@ -576,7 +607,8 @@ class _RepoSourceRow extends StatelessWidget {
                 elevation: 0,
                 minimumSize: const Size(96, 36),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
               child: const Text('Install'),
             ),
@@ -625,8 +657,10 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
     final name = _nameCtrl.text.trim();
     // The bloc emits the "Added …" notice on success; on failure it returns
     // the message so we can render it inline and keep the dialog open.
-    final error = await widget.bloc
-        .addRepo(url, customName: name.isEmpty ? null : name);
+    final error = await widget.bloc.addRepo(
+      url,
+      customName: name.isEmpty ? null : name,
+    );
     if (!mounted) return;
     if (error == null) {
       Navigator.of(context).pop();
@@ -679,16 +713,20 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
           ),
           if (_error != null) ...[
             const SizedBox(height: 8),
-            Text(_error!,
-                style: AppText.caption.copyWith(color: AppColors.accent)),
+            Text(
+              _error!,
+              style: AppText.caption.copyWith(color: AppColors.accent),
+            ),
           ],
         ],
       ),
       actions: [
         TextButton(
           onPressed: _loading ? null : () => Navigator.of(context).pop(),
-          child: Text('Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary)),
+          child: Text(
+            'Cancel',
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
         ),
         FilledButton(
           style: FilledButton.styleFrom(
@@ -701,7 +739,9 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
                   width: 16,
                   height: 16,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Text('Add'),
         ),

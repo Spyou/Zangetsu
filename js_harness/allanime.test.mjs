@@ -98,6 +98,15 @@ test('getDetail without opts defaults to sub and builds /sub/ URLs', async () =>
   }
 });
 
+live('getHome returns named sections', async () => {
+  const sections = JSON.parse(await callProvider('allanime', 'getHome', [{}]));
+  assert.ok(Array.isArray(sections) && sections.length >= 1, 'expected sections');
+  assert.ok(
+    sections.every((s) => typeof s.title === 'string' && Array.isArray(s.items)),
+    'each section is {title, items[]}');
+  assert.ok(sections.some((s) => s.items.length > 0), 'at least one row has items');
+});
+
 live('popular returns a non-empty list with expected shape', async () => {
   const rows = JSON.parse(await callProvider('allanime', 'popular', [{ dateRange: 7 }]));
   assert.ok(Array.isArray(rows) && rows.length > 0, 'expected popular results');

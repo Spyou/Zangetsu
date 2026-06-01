@@ -155,11 +155,7 @@ class _SourceRow extends StatelessWidget {
           children: [
             Expanded(child: Text(label, style: AppText.headline)),
             if (isActive)
-              const Icon(
-                Icons.check,
-                color: AppColors.accent,
-                size: 20,
-              ),
+              const Icon(Icons.check, color: AppColors.accent, size: 20),
           ],
         ),
       ),

@@ -69,21 +69,28 @@ class PlayerState extends Equatable {
     HlsVariant? Function()? activeQuality,
     int? currentIndex,
     Tracks? tracks,
-  }) =>
-      PlayerState(
-        loadingSources: loadingSources ?? this.loadingSources,
-        error: error != null ? error() : this.error,
-        sources: sources ?? this.sources,
-        active: active != null ? active() : this.active,
-        qualities: qualities ?? this.qualities,
-        activeQuality: activeQuality != null ? activeQuality() : this.activeQuality,
-        currentIndex: currentIndex ?? this.currentIndex,
-        tracks: tracks ?? this.tracks,
-      );
+  }) => PlayerState(
+    loadingSources: loadingSources ?? this.loadingSources,
+    error: error != null ? error() : this.error,
+    sources: sources ?? this.sources,
+    active: active != null ? active() : this.active,
+    qualities: qualities ?? this.qualities,
+    activeQuality: activeQuality != null ? activeQuality() : this.activeQuality,
+    currentIndex: currentIndex ?? this.currentIndex,
+    tracks: tracks ?? this.tracks,
+  );
 
   @override
-  List<Object?> get props =>
-      [loadingSources, error, sources, active, qualities, activeQuality, currentIndex, tracks];
+  List<Object?> get props => [
+    loadingSources,
+    error,
+    sources,
+    active,
+    qualities,
+    activeQuality,
+    currentIndex,
+    tracks,
+  ];
 }
 
 /// Owns a media_kit [Player] for one watch session: opens a source with its
@@ -95,7 +102,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     required this.sourceId,
     required this.episodes,
     required this.resume,
-    required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+    required Future<List<VideoSource>> Function(String episodeUrl)
+    resolveSources,
     required Dio dio,
     this.history,
     this.showTitle,
@@ -104,10 +112,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.showUrl,
     this.category,
     this.availableCategories = const [],
-  })  : _resolveSources = resolveSources,
-        _dio = dio,
-        _activeCategory = category ?? 'sub',
-        super(const PlayerState());
+  }) : _resolveSources = resolveSources,
+       _dio = dio,
+       _activeCategory = category ?? 'sub',
+       super(const PlayerState());
 
   final String sourceId;
   final List<Episode> episodes;
@@ -140,7 +148,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
 
-  VideoSource? _hlsMaster; // the HLS master among `sources` that the quality menu expands
+  VideoSource?
+  _hlsMaster; // the HLS master among `sources` that the quality menu expands
 
   final List<StreamSubscription> _subs = [];
   Duration _lastPos = Duration.zero;
@@ -190,12 +199,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     final keepPos = _lastPos;
     _tried.clear();
     _recovering = false;
-    emit(state.copyWith(
-      error: () => null,
-      loadingSources: true,
-      sources: const [],
-      active: () => null,
-    ));
+    emit(
+      state.copyWith(
+        error: () => null,
+        loadingSources: true,
+        sources: const [],
+        active: () => null,
+      ),
+    );
     try {
       final resolved = await _resolveSources(_episodeUrl(currentEpisode));
       if (gen != _gen) return;
@@ -203,40 +214,49 @@ class PlayerCubit extends Cubit<PlayerState> {
       _buildQualityMenu(gen);
       final pick = pickDefault(resolved);
       if (pick == null) {
-        emit(state.copyWith(
-            error: () => 'No playable sources for this episode.'));
+        emit(
+          state.copyWith(error: () => 'No playable sources for this episode.'),
+        );
         return;
       }
       await _open(pick, seekTo: keepPos, gen: gen);
     } catch (e) {
       if (gen != _gen) return;
-      emit(state.copyWith(
-        loadingSources: false,
-        error: () => 'Could not load sources: $e',
-      ));
+      emit(
+        state.copyWith(
+          loadingSources: false,
+          error: () => 'Could not load sources: $e',
+        ),
+      );
     }
   }
 
   void init(int index) {
     emit(state.copyWith(tracks: player.state.tracks));
-    _subs.add(player.stream.tracks.listen((t) {
-      emit(state.copyWith(tracks: t));
-    }));
-    _subs.add(player.stream.position.listen((p) {
-      _lastPos = p;
-      // Throttled progress capture so Continue Watching fills mid-episode
-      // (without waiting for an episode switch / dispose). Cheap: at most
-      // one write every ~5s, only while we have a real duration.
-      final now = DateTime.now().millisecondsSinceEpoch;
-      if (_lastDur > Duration.zero && now - _lastHistoryMs >= 5000) {
-        _lastHistoryMs = now;
-        _persist();
-      }
-    }));
+    _subs.add(
+      player.stream.tracks.listen((t) {
+        emit(state.copyWith(tracks: t));
+      }),
+    );
+    _subs.add(
+      player.stream.position.listen((p) {
+        _lastPos = p;
+        // Throttled progress capture so Continue Watching fills mid-episode
+        // (without waiting for an episode switch / dispose). Cheap: at most
+        // one write every ~5s, only while we have a real duration.
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (_lastDur > Duration.zero && now - _lastHistoryMs >= 5000) {
+          _lastHistoryMs = now;
+          _persist();
+        }
+      }),
+    );
     _subs.add(player.stream.duration.listen((d) => _lastDur = d));
-    _subs.add(player.stream.completed.listen((done) {
-      if (done) playNext();
-    }));
+    _subs.add(
+      player.stream.completed.listen((done) {
+        if (done) playNext();
+      }),
+    );
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
     openEpisode(index);
   }
@@ -276,8 +296,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
   /// Embedded subtitle tracks for the open media (excludes auto/no).
-  List<SubtitleTrack> get mediaSubtitleTracks =>
-      state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+  List<SubtitleTrack> get mediaSubtitleTracks => state.tracks.subtitle
+      .where((t) => t.id != 'auto' && t.id != 'no')
+      .toList();
 
   /// Currently-selected audio track (id == 'auto'/'no' for the synthetic ones).
   AudioTrack get activeAudioTrack => player.state.track.audio;
@@ -294,7 +315,8 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Load one of the source's soft-subs by URL.
   Future<void> setSoftSub(Subtitle s) async => player.setSubtitleTrack(
-      SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang));
+    SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
+  );
 
   /// Load an external subtitle file from disk (picked via file_picker).
   Future<void> setSubtitleFromFile(String path) async =>
@@ -309,30 +331,38 @@ class PlayerCubit extends Cubit<PlayerState> {
     await _persist();
     _tried.clear();
     _recovering = false;
-    emit(state.copyWith(
-      currentIndex: index,
-      error: () => null,
-      loadingSources: true,
-      sources: const [],
-      active: () => null,
-    ));
+    emit(
+      state.copyWith(
+        currentIndex: index,
+        error: () => null,
+        loadingSources: true,
+        sources: const [],
+        active: () => null,
+      ),
+    );
     try {
       final resolved = await _resolveSources(_episodeUrl(currentEpisode));
       if (gen != _gen) return; // superseded by a newer open
       emit(state.copyWith(sources: resolved, loadingSources: false));
-      _buildQualityMenu(gen); // populate Auto/1080p/720p from the HLS master, if any
+      _buildQualityMenu(
+        gen,
+      ); // populate Auto/1080p/720p from the HLS master, if any
       final pick = pickDefault(resolved);
       if (pick == null) {
-        emit(state.copyWith(error: () => 'No playable sources for this episode.'));
+        emit(
+          state.copyWith(error: () => 'No playable sources for this episode.'),
+        );
         return;
       }
       await _open(pick, gen: gen);
     } catch (e) {
       if (gen != _gen) return;
-      emit(state.copyWith(
-        loadingSources: false,
-        error: () => 'Could not load sources: $e',
-      ));
+      emit(
+        state.copyWith(
+          loadingSources: false,
+          error: () => 'Could not load sources: $e',
+        ),
+      );
     }
   }
 
@@ -347,7 +377,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     _hlsMaster = null;
     VideoSource? master;
     for (final s in state.sources) {
-      if (s.container == SourceContainer.hls) { master = s; break; }
+      if (s.container == SourceContainer.hls) {
+        master = s;
+        break;
+      }
     }
     if (master == null) return;
     _hlsMaster = master;
@@ -368,9 +401,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     final url = v?.url ?? master.url;
     await _open(
       VideoSource(
-        url: url, quality: v?.quality ?? 'auto', container: SourceContainer.hls,
-        headers: master.headers, kind: master.kind,
-        audioLang: master.audioLang, subtitles: master.subtitles,
+        url: url,
+        quality: v?.quality ?? 'auto',
+        container: SourceContainer.hls,
+        headers: master.headers,
+        kind: master.kind,
+        audioLang: master.audioLang,
+        subtitles: master.subtitles,
       ),
       seekTo: _lastPos,
     );
@@ -399,7 +436,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   /// The quality label of the currently-playing source (for the active check).
-  String? get activeSourceQuality => (state.active?.quality ?? '').trim().isEmpty
+  String? get activeSourceQuality =>
+      (state.active?.quality ?? '').trim().isEmpty
       ? null
       : state.active!.quality!.trim();
 
@@ -419,16 +457,29 @@ class PlayerCubit extends Cubit<PlayerState> {
     final g = gen ?? ++_gen;
     emit(state.copyWith(active: () => s, error: () => null));
     final mark = resume.get(sourceId, currentEpisode.id);
-    final start = seekTo ??
+    final start =
+        seekTo ??
         ((mark != null && !mark.finished) ? mark.position : Duration.zero);
     await player.open(
-      Media(s.url, httpHeaders: s.headers, start: start > Duration.zero ? start : null),
+      Media(
+        s.url,
+        httpHeaders: s.headers,
+        start: start > Duration.zero ? start : null,
+      ),
     );
     if (g != _gen) return; // superseded mid-open
     if (s.subtitles.isNotEmpty) {
-      final sub = s.subtitles.firstWhere((x) => x.isDefault, orElse: () => s.subtitles.first);
+      final sub = s.subtitles.firstWhere(
+        (x) => x.isDefault,
+        orElse: () => s.subtitles.first,
+      );
       await player.setSubtitleTrack(
-          SubtitleTrack.uri(sub.url, title: sub.label ?? sub.lang, language: sub.lang));
+        SubtitleTrack.uri(
+          sub.url,
+          title: sub.label ?? sub.lang,
+          language: sub.lang,
+        ),
+      );
     }
   }
 
@@ -440,7 +491,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     // libmpv emits many non-fatal warnings (e.g. the iOS Simulator has no
     // audio device). Only treat clear "this stream is unplayable" errors as a
     // reason to switch sources — never the audio-device/no-sound warnings.
-    final fatal = lower.contains('failed to open') ||
+    final fatal =
+        lower.contains('failed to open') ||
         lower.contains('recognize file format') ||
         lower.contains('ffurl') ||
         lower.contains('connection');
@@ -450,14 +502,19 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (failed != null) _tried.add(failed.url);
     // Never re-try a source we've already attempted this episode (prevents the
     // A→B→A thrash cascade).
-    final remaining = state.sources.where((s) => !_tried.contains(s.url)).toList();
+    final remaining = state.sources
+        .where((s) => !_tried.contains(s.url))
+        .toList();
     final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
     if (next != null) {
       await _open(next, seekTo: _lastPos);
     } else {
-      emit(state.copyWith(
-        error: () => 'No source could be played on this device (tried ${_tried.length}).',
-      ));
+      emit(
+        state.copyWith(
+          error: () =>
+              'No source could be played on this device (tried ${_tried.length}).',
+        ),
+      );
     }
     _recovering = false;
   }
@@ -475,21 +532,23 @@ class PlayerCubit extends Cubit<PlayerState> {
     final h = history;
     final title = showTitle;
     if (h != null && title != null && _lastDur > Duration.zero) {
-      await h.save(HistoryEntry(
-        sourceId: sourceId,
-        showId: showUrl ?? sourceId,
-        showTitle: title,
-        cover: cover,
-        coverHeaders: coverHeaders,
-        showUrl: showUrl ?? '',
-        category: _activeCategory,
-        episodeId: currentEpisode.id,
-        episodeNumber: currentEpisode.number,
-        episodeUrl: currentEpisode.url,
-        position: _lastPos,
-        duration: _lastDur,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
-      ));
+      await h.save(
+        HistoryEntry(
+          sourceId: sourceId,
+          showId: showUrl ?? sourceId,
+          showTitle: title,
+          cover: cover,
+          coverHeaders: coverHeaders,
+          showUrl: showUrl ?? '',
+          category: _activeCategory,
+          episodeId: currentEpisode.id,
+          episodeNumber: currentEpisode.number,
+          episodeUrl: currentEpisode.url,
+          position: _lastPos,
+          duration: _lastDur,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
     }
   }
 

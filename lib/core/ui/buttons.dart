@@ -21,8 +21,7 @@ class PrimaryButton extends StatefulWidget {
 class _PrimaryButtonState extends State<PrimaryButton> {
   bool _pressed = false;
 
-  void _down(TapDownDetails _) =>
-      setState(() => _pressed = true);
+  void _down(TapDownDetails _) => setState(() => _pressed = true);
   void _up(TapUpDetails _) => setState(() => _pressed = false);
   void _cancel() => setState(() => _pressed = false);
 
@@ -58,8 +57,7 @@ class _PrimaryButtonState extends State<PrimaryButton> {
                     ],
                     Text(
                       widget.label,
-                      style: AppText.button
-                          .copyWith(color: Colors.black),
+                      style: AppText.button.copyWith(color: Colors.black),
                     ),
                   ],
                 ),
@@ -91,8 +89,7 @@ class SecondaryButton extends StatefulWidget {
 class _SecondaryButtonState extends State<SecondaryButton> {
   bool _pressed = false;
 
-  void _down(TapDownDetails _) =>
-      setState(() => _pressed = true);
+  void _down(TapDownDetails _) => setState(() => _pressed = true);
   void _up(TapUpDetails _) => setState(() => _pressed = false);
   void _cancel() => setState(() => _pressed = false);
 
@@ -126,14 +123,14 @@ class _SecondaryButtonState extends State<SecondaryButton> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (widget.icon != null) ...[
-                      Icon(widget.icon,
-                          color: AppColors.textPrimary, size: 20),
+                      Icon(widget.icon, color: AppColors.textPrimary, size: 20),
                       const SizedBox(width: 8),
                     ],
                     Text(
                       widget.label,
-                      style: AppText.button
-                          .copyWith(color: AppColors.textPrimary),
+                      style: AppText.button.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ],
                 ),

@@ -43,23 +43,22 @@ class SourcesState extends Equatable {
     List<ProviderRepo>? repos,
     String? notice,
     int? noticeSeq,
-  }) =>
-      SourcesState(
-        status: status ?? this.status,
-        installed: installed ?? this.installed,
-        repos: repos ?? this.repos,
-        notice: notice ?? this.notice,
-        noticeSeq: noticeSeq ?? this.noticeSeq,
-      );
+  }) => SourcesState(
+    status: status ?? this.status,
+    installed: installed ?? this.installed,
+    repos: repos ?? this.repos,
+    notice: notice ?? this.notice,
+    noticeSeq: noticeSeq ?? this.noticeSeq,
+  );
 
   @override
   List<Object?> get props => [
-        status,
-        // ProviderRegistryEntry / ProviderRepo aren't Equatable, so compare
-        // on their serialisable shape to get value equality for rebuilds.
-        installed.map((e) => e.toJson()).toList(),
-        repos.map((r) => r.toJson()).toList(),
-        notice,
-        noticeSeq,
-      ];
+    status,
+    // ProviderRegistryEntry / ProviderRepo aren't Equatable, so compare
+    // on their serialisable shape to get value equality for rebuilds.
+    installed.map((e) => e.toJson()).toList(),
+    repos.map((r) => r.toJson()).toList(),
+    notice,
+    noticeSeq,
+  ];
 }

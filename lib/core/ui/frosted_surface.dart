@@ -30,7 +30,9 @@ class FrostedSurface extends StatelessWidget {
       child: child,
     );
     if (!blur) {
-      return RepaintBoundary(child: ClipRRect(borderRadius: r, child: fill));
+      return RepaintBoundary(
+        child: ClipRRect(borderRadius: r, child: fill),
+      );
     }
     return RepaintBoundary(
       child: ClipRRect(

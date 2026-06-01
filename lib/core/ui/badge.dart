@@ -6,11 +6,7 @@ import '../theme/app_text.dart';
 ///
 /// Named [TagBadge] to avoid collision with Flutter's built-in [Badge] widget.
 class TagBadge extends StatelessWidget {
-  const TagBadge({
-    super.key,
-    required this.text,
-    this.color,
-  });
+  const TagBadge({super.key, required this.text, this.color});
 
   final String text;
 
@@ -32,10 +28,7 @@ class TagBadge extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        child: Text(
-          text,
-          style: AppText.overline.copyWith(color: labelColor),
-        ),
+        child: Text(text, style: AppText.overline.copyWith(color: labelColor)),
       ),
     );
   }

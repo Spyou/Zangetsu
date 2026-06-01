@@ -40,7 +40,8 @@ class MediaItem extends Equatable {
       _$MediaItemFromJson(json);
   Map<String, dynamic> toJson() => _$MediaItemToJson(this);
 
-  MediaItem copyWith({String? sourceId, int? subCount, int? dubCount}) => MediaItem(
+  MediaItem copyWith({String? sourceId, int? subCount, int? dubCount}) =>
+      MediaItem(
         id: id,
         title: title,
         englishTitle: englishTitle,
@@ -54,6 +55,16 @@ class MediaItem extends Equatable {
       );
 
   @override
-  List<Object?> get props =>
-      [id, title, englishTitle, cover, coverHeaders, url, type, sourceId, subCount, dubCount];
+  List<Object?> get props => [
+    id,
+    title,
+    englishTitle,
+    cover,
+    coverHeaders,
+    url,
+    type,
+    sourceId,
+    subCount,
+    dubCount,
+  ];
 }

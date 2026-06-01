@@ -34,15 +34,13 @@ class SearchState extends Equatable {
       case SearchSort.bestMatch:
         return results;
       case SearchSort.titleAsc:
-        return [...results]
-          ..sort(
-            (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-          );
+        return [...results]..sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
       case SearchSort.titleDesc:
-        return [...results]
-          ..sort(
-            (a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()),
-          );
+        return [...results]..sort(
+          (a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()),
+        );
     }
   }
 

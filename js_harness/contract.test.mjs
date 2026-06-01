@@ -18,6 +18,14 @@ test('search returns MediaItem rows', async () => {
   assert.ok(rows[0].id && rows[0].url && rows[0].title);
 });
 
+test('getHome returns named sections of MediaItem rows', async () => {
+  const sections = JSON.parse(await callProvider('example', 'getHome', [{}]));
+  assert.ok(Array.isArray(sections) && sections.length >= 1, 'expected sections');
+  assert.ok(sections[0].title && sections[0].title.length > 0, 'section has a title');
+  assert.ok(Array.isArray(sections[0].items) && sections[0].items.length > 0, 'section has items');
+  assert.ok(sections[0].items[0].id && sections[0].items[0].url, 'items are MediaItem-shaped');
+});
+
 test('getDetail returns episodes', async () => {
   const detail = JSON.parse(
     await callProvider('example', 'getDetail', ['https://example.test/anime/one-piece']));

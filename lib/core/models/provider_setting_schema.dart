@@ -85,8 +85,7 @@ class ProviderSettingSchema {
         break;
       case ProviderSettingType.enum_:
         if (options.isEmpty) return null;
-        if (rawDefault is String &&
-            options.any((o) => o.value == rawDefault)) {
+        if (rawDefault is String && options.any((o) => o.value == rawDefault)) {
           defaultValue = rawDefault;
         } else {
           defaultValue = options.first.value;

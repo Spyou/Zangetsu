@@ -135,6 +135,36 @@ function popular(opts) {
   }).catch(function () { return []; });
 }
 
+// CloudStream-style home rows. NetMirror has no live category/trending grid,
+// so each row is seeded by a different query — giving genuinely distinct rows
+// instead of three slices of one feed. Netflix additionally has a curated
+// empty-query feed that makes a good "Trending" hero + row. Empty rows are
+// dropped app-side.
+function getHome(opts) {
+  var rows;
+  if (OTT === 'nf') {
+    rows = [
+      { title: 'Trending on Netflix', q: '' },
+      { title: 'Action & Adventure',  q: 'man' },
+      { title: 'Romance',             q: 'love' },
+      { title: 'Sci-Fi & Fantasy',    q: 'star' }
+    ];
+  } else {
+    rows = [
+      { title: 'Popular',             q: 'the' },
+      { title: 'Action & Adventure',  q: 'man' },
+      { title: 'Romance',             q: 'love' },
+      { title: 'Sci-Fi & Fantasy',    q: 'star' },
+      { title: 'Drama',               q: 'life' }
+    ];
+  }
+  return Promise.all(rows.map(function (r) {
+    return _searchRaw(r.q).then(function (items) {
+      return { title: r.title, items: items };
+    });
+  }));
+}
+
 function _trim(s) { return String(s).replace(/^\s+|\s+$/g, ''); }
 
 function _seasonEpisodes(seriesId, seasonId, acc, page, resolve) {

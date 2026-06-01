@@ -26,7 +26,11 @@ abstract class BaseProvider {
   });
 
   /// [category] is an optional listing hint (e.g. 'sub', 'dub').
-  Future<List<MediaItem>> search(String query, int page, {String category = ''});
+  Future<List<MediaItem>> search(
+    String query,
+    int page, {
+    String category = '',
+  });
 
   /// [category] is 'sub' or 'dub' — controls which episode list is fetched.
   Future<MediaDetail> getDetail(String url, {String category = 'sub'});

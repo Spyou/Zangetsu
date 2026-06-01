@@ -25,6 +25,16 @@ function search(query, page, opts) {
   });
 }
 
+// CloudStream-style home rows. The provider names its own sections; the app
+// renders whatever comes back (and uses the first section for the hero).
+function getHome(opts) {
+  var all = _catalog();
+  return [
+    { title: 'Trending Now', items: all },
+    { title: 'New Releases', items: all },
+  ];
+}
+
 function _episodes() {
   return [
     { id: 'ep-1', title: 'Episode 1', number: 1,

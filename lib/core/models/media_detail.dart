@@ -31,8 +31,10 @@ class MediaDetail extends Equatable {
   final String url;
   final String? description;
 
-  @JsonKey(unknownEnumValue: MediaStatus.unknown,
-      defaultValue: MediaStatus.unknown)
+  @JsonKey(
+    unknownEnumValue: MediaStatus.unknown,
+    defaultValue: MediaStatus.unknown,
+  )
   final MediaStatus status;
 
   @JsonKey(defaultValue: <String>[])
@@ -85,8 +87,22 @@ class MediaDetail extends Equatable {
 
   @override
   List<Object?> get props => [
-        id, title, englishTitle, cover, coverHeaders, url, description,
-        status, genres, studios, episodes, cast, year, type, sourceId,
-        subCount, dubCount,
-      ];
+    id,
+    title,
+    englishTitle,
+    cover,
+    coverHeaders,
+    url,
+    description,
+    status,
+    genres,
+    studios,
+    episodes,
+    cast,
+    year,
+    type,
+    sourceId,
+    subCount,
+    dubCount,
+  ];
 }

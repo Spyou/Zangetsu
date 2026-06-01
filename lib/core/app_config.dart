@@ -14,5 +14,7 @@ const int kManifestSchemaVersion = 2;
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,
 /// or paste a literal default below. When empty, movie/TV trailers are
 /// gracefully disabled (the Trailer button simply never appears for them).
-const String kTmdbApiKey =
-    String.fromEnvironment('TMDB_API_KEY', defaultValue: '');
+const String kTmdbApiKey = String.fromEnvironment(
+  'TMDB_API_KEY',
+  defaultValue: '',
+);

@@ -44,13 +44,13 @@ class ProviderRegistryEntry {
   final String displayName;
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'url': url,
-        'version': version,
-        'enabled': enabled,
-        if (originRepoUrl.isNotEmpty) 'originRepoUrl': originRepoUrl,
-        if (displayName.isNotEmpty) 'displayName': displayName,
-      };
+    'name': name,
+    'url': url,
+    'version': version,
+    'enabled': enabled,
+    if (originRepoUrl.isNotEmpty) 'originRepoUrl': originRepoUrl,
+    if (displayName.isNotEmpty) 'displayName': displayName,
+  };
 
   factory ProviderRegistryEntry.fromJson(Map<String, dynamic> j) =>
       ProviderRegistryEntry(
@@ -68,15 +68,14 @@ class ProviderRegistryEntry {
     String? url,
     String? originRepoUrl,
     String? displayName,
-  }) =>
-      ProviderRegistryEntry(
-        name: name,
-        url: url ?? this.url,
-        version: version ?? this.version,
-        enabled: enabled ?? this.enabled,
-        originRepoUrl: originRepoUrl ?? this.originRepoUrl,
-        displayName: displayName ?? this.displayName,
-      );
+  }) => ProviderRegistryEntry(
+    name: name,
+    url: url ?? this.url,
+    version: version ?? this.version,
+    enabled: enabled ?? this.enabled,
+    originRepoUrl: originRepoUrl ?? this.originRepoUrl,
+    displayName: displayName ?? this.displayName,
+  );
 
   bool get isBundled => url.startsWith(kBundledRepoUrl);
 }
@@ -95,9 +94,9 @@ class ProviderRegistry {
     required ProviderJsFetcher downloader,
     required ProviderRuntimeLoader manager,
     ProviderReposRegistry? repos,
-  })  : _downloader = downloader,
-        _manager = manager,
-        _repos = repos;
+  }) : _downloader = downloader,
+       _manager = manager,
+       _repos = repos;
 
   final ProviderJsFetcher _downloader;
   final ProviderRuntimeLoader _manager;
@@ -188,8 +187,9 @@ class ProviderRegistry {
     // Preserve a user's enabled toggle across re-seeds; default enabled.
     final enabled = existing == null
         ? true
-        : (ProviderRegistryEntry.fromJson(Map<String, dynamic>.from(existing))
-            .enabled);
+        : (ProviderRegistryEntry.fromJson(
+            Map<String, dynamic>.from(existing),
+          ).enabled);
     final entry = ProviderRegistryEntry(
       name: name,
       url: '$kBundledRepoUrl$name',
@@ -238,9 +238,10 @@ class ProviderRegistry {
     if (!_box.containsKey(key)) return;
     final sourceId = sourceIdOf(key);
     final remaining = getAll()
-        .where((e) =>
-            e.name == sourceId &&
-            providerKey(e.originRepoUrl, e.name) != key)
+        .where(
+          (e) =>
+              e.name == sourceId && providerKey(e.originRepoUrl, e.name) != key,
+        )
         .toList();
     if (remaining.isEmpty) {
       _manager.remove(sourceId);
@@ -255,9 +256,9 @@ class ProviderRegistry {
   Future<void> setEnabled(String key, bool enabled) async {
     final cur = _box.get(key);
     if (cur == null) return;
-    final entry =
-        ProviderRegistryEntry.fromJson(Map<String, dynamic>.from(cur))
-            .copyWith(enabled: enabled);
+    final entry = ProviderRegistryEntry.fromJson(
+      Map<String, dynamic>.from(cur),
+    ).copyWith(enabled: enabled);
     await _box.put(key, entry.toJson());
     if (enabled) {
       await _loadEntryIntoRuntime(entry);
@@ -283,14 +284,17 @@ class ProviderRegistry {
     return loaded;
   }
 
-  Future<void> _loadEntryIntoRuntime(ProviderRegistryEntry entry,
-      {bool force = false}) async {
+  Future<void> _loadEntryIntoRuntime(
+    ProviderRegistryEntry entry, {
+    bool force = false,
+  }) async {
     if (entry.isBundled) {
       final js = _bundledJs[entry.name];
       if (js == null) {
         throw ProviderException(
-            'Bundled provider ${entry.name} has no cached JS source '
-            '(seed it via installFromBundled before loadAll)');
+          'Bundled provider ${entry.name} has no cached JS source '
+          '(seed it via installFromBundled before loadAll)',
+        );
       }
       _manager.load(
         sourceId: entry.name,

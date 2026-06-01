@@ -44,21 +44,34 @@ List<HlsVariant> parseHlsMaster(String playlist, String masterUrl) {
       quality = kbps > 0 ? '${kbps}k' : 'auto';
       rank = kbps;
     }
-    out.add(_RankedVariant(quality: quality, url: _resolve(uri, masterUrl), rank: rank));
+    out.add(
+      _RankedVariant(
+        quality: quality,
+        url: _resolve(uri, masterUrl),
+        rank: rank,
+      ),
+    );
   }
   out.sort((a, b) => b.rank.compareTo(a.rank));
   return out.cast<HlsVariant>();
 }
 
 class _RankedVariant extends HlsVariant {
-  _RankedVariant({required super.quality, required super.url, required this.rank});
+  _RankedVariant({
+    required super.quality,
+    required super.url,
+    required this.rank,
+  });
   final int rank;
 }
 
 /// Fetches [masterUrl] and parses it into variants. Returns `[]` on any error or
 /// if it's not a master playlist.
 Future<List<HlsVariant>> fetchHlsVariants(
-    String masterUrl, Map<String, String>? headers, Dio dio) async {
+  String masterUrl,
+  Map<String, String>? headers,
+  Dio dio,
+) async {
   try {
     final resp = await dio.getUri<String>(
       Uri.parse(masterUrl),

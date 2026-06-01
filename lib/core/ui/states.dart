@@ -59,8 +59,7 @@ class _SkeletonGridState extends State<SkeletonGrid>
             itemBuilder: (context, index) => ClipRRect(
               borderRadius: BorderRadius.circular(14),
               child: ColoredBox(
-                color: AppColors.surface2
-                    .withValues(alpha: shimmerOpacity),
+                color: AppColors.surface2.withValues(alpha: shimmerOpacity),
               ),
             ),
           );
@@ -72,11 +71,7 @@ class _SkeletonGridState extends State<SkeletonGrid>
 
 /// Centered empty-state placeholder.
 class EmptyState extends StatelessWidget {
-  const EmptyState({
-    super.key,
-    required this.icon,
-    required this.message,
-  });
+  const EmptyState({super.key, required this.icon, required this.message});
   final IconData icon;
   final String message;
 
@@ -88,11 +83,7 @@ class EmptyState extends StatelessWidget {
         children: [
           Icon(icon, size: 48, color: AppColors.textTertiary),
           const SizedBox(height: 12),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: AppText.body,
-          ),
+          Text(message, textAlign: TextAlign.center, style: AppText.body),
         ],
       ),
     );

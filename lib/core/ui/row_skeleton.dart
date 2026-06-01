@@ -7,11 +7,7 @@ import '../theme/app_colors.dart';
 /// the [SkeletonGrid] pattern in states.dart). Disposed in [dispose].
 /// The item row is clipped so it never overflows its container.
 class RowSkeleton extends StatefulWidget {
-  const RowSkeleton({
-    super.key,
-    this.itemWidth = 124,
-    this.itemHeight = 210,
-  });
+  const RowSkeleton({super.key, this.itemWidth = 124, this.itemHeight = 210});
 
   final double itemWidth;
   final double itemHeight;
@@ -48,8 +44,7 @@ class _RowSkeletonState extends State<RowSkeleton>
         animation: _anim,
         builder: (context, _) {
           final opacity = 0.3 + 0.25 * _anim.value;
-          final shimmerColor =
-              AppColors.surface2.withValues(alpha: opacity);
+          final shimmerColor = AppColors.surface2.withValues(alpha: opacity);
 
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,

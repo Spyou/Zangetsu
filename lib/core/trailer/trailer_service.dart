@@ -36,7 +36,11 @@ class TrailerService {
       case ProviderType.anime:
         return _anilistTrailer(title: title, englishTitle: englishTitle);
       case ProviderType.movie:
-        return _tmdbTrailer(title: title, englishTitle: englishTitle, year: year);
+        return _tmdbTrailer(
+          title: title,
+          englishTitle: englishTitle,
+          year: year,
+        );
     }
   }
 
@@ -186,16 +190,16 @@ class TrailerService {
 
   /// Year from a TMDB result's release_date (movie) or first_air_date (tv).
   static String? _tmdbYear(Map<String, dynamic> r) {
-    final date =
-        (r['release_date'] ?? r['first_air_date'])?.toString() ?? '';
+    final date = (r['release_date'] ?? r['first_air_date'])?.toString() ?? '';
     if (date.length >= 4) return date.substring(0, 4);
     return null;
   }
 
   // ── tiny JSON helpers (defensive against dynamic shapes) ──────────────────
 
-  static Map<String, dynamic>? _asMap(dynamic v) =>
-      v is Map<String, dynamic> ? v : (v is Map ? Map<String, dynamic>.from(v) : null);
+  static Map<String, dynamic>? _asMap(dynamic v) => v is Map<String, dynamic>
+      ? v
+      : (v is Map ? Map<String, dynamic>.from(v) : null);
 
   static List<dynamic>? _asList(dynamic v) => v is List ? v : null;
 }

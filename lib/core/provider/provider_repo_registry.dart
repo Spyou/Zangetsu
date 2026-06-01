@@ -34,26 +34,26 @@ class RepoSource {
   final bool nsfw;
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'version': version,
-        'type': type,
-        'lang': lang,
-        'file': file,
-        if (logo != null) 'logo': logo,
-        if (nsfw) 'nsfw': true,
-      };
+    'id': id,
+    'name': name,
+    'version': version,
+    'type': type,
+    'lang': lang,
+    'file': file,
+    if (logo != null) 'logo': logo,
+    if (nsfw) 'nsfw': true,
+  };
 
   factory RepoSource.fromJson(Map<String, dynamic> j) => RepoSource(
-        id: (j['id'] as String).trim(),
-        name: (j['name'] as String).trim(),
-        version: (j['version'] as String?) ?? '1.0.0',
-        type: (j['type'] as String?) ?? 'anime',
-        lang: (j['lang'] as String?) ?? 'en',
-        file: (j['file'] as String).trim(),
-        logo: j['logo'] as String?,
-        nsfw: (j['nsfw'] as bool?) ?? false,
-      );
+    id: (j['id'] as String).trim(),
+    name: (j['name'] as String).trim(),
+    version: (j['version'] as String?) ?? '1.0.0',
+    type: (j['type'] as String?) ?? 'anime',
+    lang: (j['lang'] as String?) ?? 'en',
+    file: (j['file'] as String).trim(),
+    logo: j['logo'] as String?,
+    nsfw: (j['nsfw'] as bool?) ?? false,
+  );
 }
 
 /// One tracked provider repo. Manifest is refreshed via [fetchAndCache]
@@ -93,28 +93,29 @@ class ProviderRepo {
   }
 
   Map<String, dynamic> toJson() => {
-        'url': url,
-        'name': name,
-        'description': description,
-        'sources': sources.map((s) => s.toJson()).toList(),
-        'lastSyncedAt': lastSyncedAt.toIso8601String(),
-        if (customName != null) 'customName': customName,
-      };
+    'url': url,
+    'name': name,
+    'description': description,
+    'sources': sources.map((s) => s.toJson()).toList(),
+    'lastSyncedAt': lastSyncedAt.toIso8601String(),
+    if (customName != null) 'customName': customName,
+  };
 
   factory ProviderRepo.fromJson(Map<String, dynamic> j) => ProviderRepo(
-        url: j['url'] as String,
-        name: (j['name'] as String?) ?? 'Unnamed repo',
-        description: (j['description'] as String?) ?? '',
-        sources: ((j['sources'] as List<dynamic>?) ?? const [])
-            .whereType<Map>()
-            .map((m) => RepoSource.fromJson(Map<String, dynamic>.from(m)))
-            .toList(),
-        lastSyncedAt: DateTime.tryParse(j['lastSyncedAt'] as String? ?? '') ??
-            DateTime.fromMillisecondsSinceEpoch(0),
-        customName: (j['customName'] as String?)?.trim().isNotEmpty == true
-            ? (j['customName'] as String).trim()
-            : null,
-      );
+    url: j['url'] as String,
+    name: (j['name'] as String?) ?? 'Unnamed repo',
+    description: (j['description'] as String?) ?? '',
+    sources: ((j['sources'] as List<dynamic>?) ?? const [])
+        .whereType<Map>()
+        .map((m) => RepoSource.fromJson(Map<String, dynamic>.from(m)))
+        .toList(),
+    lastSyncedAt:
+        DateTime.tryParse(j['lastSyncedAt'] as String? ?? '') ??
+        DateTime.fromMillisecondsSinceEpoch(0),
+    customName: (j['customName'] as String?)?.trim().isNotEmpty == true
+        ? (j['customName'] as String).trim()
+        : null,
+  );
 }
 
 class ProviderRepoException implements Exception {

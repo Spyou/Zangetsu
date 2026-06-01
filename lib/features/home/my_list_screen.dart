@@ -65,11 +65,11 @@ class _MyListView extends StatelessWidget {
                     cacheExtent: 800,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      childAspectRatio: 0.62,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 16,
-                    ),
+                          crossAxisCount: 3,
+                          childAspectRatio: 0.62,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 16,
+                        ),
                     itemCount: items.length,
                     itemBuilder: (context, i) {
                       final item = items[i];

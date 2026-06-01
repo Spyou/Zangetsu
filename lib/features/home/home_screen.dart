@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
+import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/resume_store.dart';
@@ -177,19 +178,13 @@ class _HomeViewState extends State<_HomeView> {
     );
   }
 
-  /// Builds a browse row of poster cards from [items], or omits it (shrinks)
-  /// when the list is null/empty. While [loading] with no data yet it shows a
-  /// [RowSkeleton]. Mirrors the original per-row FutureBuilder semantics.
-  Widget _browseRow(String title, List<MediaItem>? items, bool loading) {
-    if (loading && items == null) {
-      return const RowSkeleton();
-    }
-    if (items == null || items.isEmpty) {
-      return const SizedBox.shrink();
-    }
+  /// Builds one provider-defined browse row (poster cards). The section is
+  /// already guaranteed non-empty by [SourceRepository.home].
+  Widget _sectionRow(HomeSection section) {
+    final items = section.items;
     return _animated(
       ContentRow(
-        title: title,
+        title: section.title,
         itemWidth: 140,
         itemHeight: 236,
         itemCount: items.length,
@@ -226,13 +221,20 @@ class _HomeViewState extends State<_HomeView> {
           onRefresh: () => context.read<HomeCubit>().load(),
           child: BlocBuilder<HomeCubit, HomeState>(
             builder: (context, state) {
+              final sections = state.sections ?? const <HomeSection>[];
+              // The first section feeds the hero carousel; the rest render as
+              // browse rows (so the spotlight isn't duplicated right below it).
+              final rowSections = sections.length > 1
+                  ? sections.sublist(1)
+                  : const <HomeSection>[];
+              final showSkeletons = state.loading && sections.isEmpty;
               return CustomScrollView(
                 slivers: [
                   // ── Hero + floating header (first sliver) ─────────────────
                   SliverToBoxAdapter(
                     child: Builder(
                       builder: (context) {
-                        final heroItems = state.trending ?? const <MediaItem>[];
+                        final heroItems = state.heroItems;
                         final hasHero = heroItems.isNotEmpty;
 
                         if (hasHero) {
@@ -302,41 +304,28 @@ class _HomeViewState extends State<_HomeView> {
                   else
                     const SliverToBoxAdapter(child: SizedBox.shrink()),
 
-                  // ── Trending Now ──────────────────────────────────────────
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: _browseRow(
-                        'Trending Now',
-                        state.trending,
-                        state.loading,
+                  // ── Provider-defined browse rows (CloudStream-style) ──────
+                  // The active provider decides the rows + their names; empty
+                  // ones are already dropped by SourceRepository.home.
+                  if (showSkeletons)
+                    ...List.generate(
+                      3,
+                      (_) => const SliverToBoxAdapter(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 10),
+                          child: RowSkeleton(),
+                        ),
+                      ),
+                    )
+                  else
+                    ...rowSections.map(
+                      (s) => SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: _sectionRow(s),
+                        ),
                       ),
                     ),
-                  ),
-
-                  // ── Popular This Month ────────────────────────────────────
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: _browseRow(
-                        'Popular This Month',
-                        state.month,
-                        state.loading,
-                      ),
-                    ),
-                  ),
-
-                  // ── All-Time Favorites ────────────────────────────────────
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: _browseRow(
-                        'All-Time Favorites',
-                        state.allTime,
-                        state.loading,
-                      ),
-                    ),
-                  ),
 
                   // ── Bottom padding ────────────────────────────────────────
                   const SliverToBoxAdapter(child: SizedBox(height: 32)),

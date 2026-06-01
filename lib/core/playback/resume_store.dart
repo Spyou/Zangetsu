@@ -27,7 +27,11 @@ class ResumeStore {
   String _key(String sourceId, String episodeId) => '$sourceId::$episodeId';
 
   Future<void> save(
-      String sourceId, String episodeId, Duration position, Duration duration) async {
+    String sourceId,
+    String episodeId,
+    Duration position,
+    Duration duration,
+  ) async {
     await _box.put(_key(sourceId, episodeId), {
       'positionMs': position.inMilliseconds,
       'durationMs': duration.inMilliseconds,

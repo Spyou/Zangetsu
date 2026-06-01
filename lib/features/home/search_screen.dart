@@ -21,11 +21,7 @@ import '../search/bloc/search_state.dart';
 /// When [initialQuery] is provided the screen pre-fills the text field and
 /// fires a search immediately.
 class SearchScreen extends StatelessWidget {
-  const SearchScreen({
-    super.key,
-    this.initialQuery,
-    this.showBack = true,
-  });
+  const SearchScreen({super.key, this.initialQuery, this.showBack = true});
 
   final String? initialQuery;
 
@@ -45,19 +41,13 @@ class SearchScreen extends StatelessWidget {
         }
         return bloc;
       },
-      child: _SearchView(
-        initialQuery: initialQuery,
-        showBack: showBack,
-      ),
+      child: _SearchView(initialQuery: initialQuery, showBack: showBack),
     );
   }
 }
 
 class _SearchView extends StatefulWidget {
-  const _SearchView({
-    this.initialQuery,
-    required this.showBack,
-  });
+  const _SearchView({this.initialQuery, required this.showBack});
 
   final String? initialQuery;
   final bool showBack;
@@ -113,14 +103,14 @@ class _SearchViewState extends State<_SearchView> {
                       for (final opt in SearchSort.values)
                         InkWell(
                           onTap: () {
-                            ctx
-                                .read<SearchBloc>()
-                                .add(SearchSortChanged(opt));
+                            ctx.read<SearchBloc>().add(SearchSortChanged(opt));
                             Navigator.pop(ctx);
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 14),
+                              horizontal: 20,
+                              vertical: 14,
+                            ),
                             child: Row(
                               children: [
                                 Expanded(
@@ -171,8 +161,7 @@ class _SearchViewState extends State<_SearchView> {
           children: [
             // ── Header row: back arrow (optional) + search field + sort ────
             Padding(
-              padding: EdgeInsets.fromLTRB(
-                  widget.showBack ? 4 : 16, 12, 16, 0),
+              padding: EdgeInsets.fromLTRB(widget.showBack ? 4 : 16, 12, 16, 0),
               child: Row(
                 children: [
                   if (widget.showBack)
@@ -211,8 +200,9 @@ class _SearchViewState extends State<_SearchView> {
                               onSubmitted: (text) => context
                                   .read<SearchBloc>()
                                   .add(SearchQueryChanged(text)),
-                              style: AppText.body
-                                  .copyWith(color: AppColors.textPrimary),
+                              style: AppText.body.copyWith(
+                                color: AppColors.textPrimary,
+                              ),
                               cursorColor: AppColors.accent,
                               decoration: const InputDecoration(
                                 hintText: 'Search…',
@@ -220,14 +210,14 @@ class _SearchViewState extends State<_SearchView> {
                                 border: InputBorder.none,
                                 isDense: true,
                                 contentPadding: EdgeInsets.symmetric(
-                                    vertical: 14),
+                                  vertical: 14,
+                                ),
                               ),
                             ),
                           ),
                           // Sort button — tinted coral when sort is not default
                           BlocBuilder<SearchBloc, SearchState>(
-                            buildWhen: (prev, curr) =>
-                                prev.sort != curr.sort,
+                            buildWhen: (prev, curr) => prev.sort != curr.sort,
                             builder: (context, state) => IconButton(
                               icon: Icon(
                                 Icons.sort_rounded,
@@ -304,11 +294,11 @@ class _SearchViewState extends State<_SearchView> {
                         cacheExtent: 800,
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 0.62,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 16,
-                        ),
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.62,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 16,
+                            ),
                         itemCount: items.length,
                         itemBuilder: (context, i) {
                           final item = items[i];

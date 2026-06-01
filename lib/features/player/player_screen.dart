@@ -309,9 +309,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load subtitle: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not load subtitle: $e')));
       }
     }
     _bumpControls();
@@ -370,7 +370,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           for (final k in kinds)
             for (final s in sortByQuality(sourcesForKind(_c.state.sources, k)))
               _SheetRow(
-                label: '${k.name.toUpperCase()} • '
+                label:
+                    '${k.name.toUpperCase()} • '
                     '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
                 active: s == _c.state.active,
                 onTap: () {
@@ -405,17 +406,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.error_outline,
-                        size: 40, color: AppColors.textTertiary),
+                    const Icon(
+                      Icons.error_outline,
+                      size: 40,
+                      color: AppColors.textTertiary,
+                    ),
                     const SizedBox(height: 12),
-                    Text(state.error!,
-                        style: AppText.body, textAlign: TextAlign.center),
+                    Text(
+                      state.error!,
+                      style: AppText.body,
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 16),
                     TextButton(
                       onPressed: () => _c.openEpisode(state.currentIndex),
-                      child: Text('Try again',
-                          style: AppText.body
-                              .copyWith(color: AppColors.accent)),
+                      child: Text(
+                        'Try again',
+                        style: AppText.body.copyWith(color: AppColors.accent),
+                      ),
                     ),
                   ],
                 ),
@@ -467,7 +475,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       width: 36,
                       height: 36,
                       child: CircularProgressIndicator(
-                          color: AppColors.accent, strokeWidth: 2.5),
+                        color: AppColors.accent,
+                        strokeWidth: 2.5,
+                      ),
                     ),
                   );
                 },
@@ -483,11 +493,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 12),
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
                       child: Text(
                         '$_seekLabel s',
-                        style: AppText.headline
-                            .copyWith(color: Colors.white),
+                        style: AppText.headline.copyWith(color: Colors.white),
                       ),
                     ),
                   ),
@@ -507,7 +518,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       ),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 7),
+                          horizontal: 14,
+                          vertical: 7,
+                        ),
                         child: Text(
                           '2x ▶▶',
                           style: AppText.caption.copyWith(
@@ -591,8 +604,7 @@ class _ControlsOverlay extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final epNum = c.currentEpisode.number?.toInt() ?? state.currentIndex + 1;
-    final title =
-        'Episode $epNum${showTitle != null ? " · $showTitle" : ""}';
+    final title = 'Episode $epNum${showTitle != null ? " · $showTitle" : ""}';
     final hasNext = state.currentIndex + 1 < c.episodes.length;
 
     return Stack(
@@ -818,12 +830,15 @@ class _SeekRow extends StatelessWidget {
       stream: controller.player.stream.position,
       builder: (context, snap) {
         final pos = snap.data ?? Duration.zero;
-        final posMs =
-            pos.inMilliseconds.clamp(0, totalMs > 0 ? totalMs : 1).toDouble();
+        final posMs = pos.inMilliseconds
+            .clamp(0, totalMs > 0 ? totalMs : 1)
+            .toDouble();
         return Row(
           children: [
-            Text(_fmt(pos),
-                style: AppText.caption.copyWith(color: Colors.white)),
+            Text(
+              _fmt(pos),
+              style: AppText.caption.copyWith(color: Colors.white),
+            ),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
@@ -832,10 +847,12 @@ class _SeekRow extends StatelessWidget {
                   thumbColor: Colors.white,
                   overlayColor: AppColors.accentSoft,
                   trackHeight: 3,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 6),
-                  overlayShape:
-                      const RoundSliderOverlayShape(overlayRadius: 14),
+                  thumbShape: const RoundSliderThumbShape(
+                    enabledThumbRadius: 6,
+                  ),
+                  overlayShape: const RoundSliderOverlayShape(
+                    overlayRadius: 14,
+                  ),
                 ),
                 child: Slider(
                   min: 0,
@@ -849,8 +866,10 @@ class _SeekRow extends StatelessWidget {
                 ),
               ),
             ),
-            Text(_fmt(duration),
-                style: AppText.caption.copyWith(color: Colors.white)),
+            Text(
+              _fmt(duration),
+              style: AppText.caption.copyWith(color: Colors.white),
+            ),
           ],
         );
       },
@@ -885,8 +904,7 @@ class _ControlButton extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.white, size: 22),
             const SizedBox(height: 3),
-            Text(label,
-                style: AppText.caption.copyWith(color: Colors.white)),
+            Text(label, style: AppText.caption.copyWith(color: Colors.white)),
           ],
         ),
       ),
@@ -921,9 +939,7 @@ class _SheetColumn extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
           child: Text(header, style: AppText.headline),
         ),
-        Flexible(
-          child: ListView(shrinkWrap: true, children: children),
-        ),
+        Flexible(child: ListView(shrinkWrap: true, children: children)),
       ],
     );
   }
@@ -952,8 +968,10 @@ class _SheetRow extends StatelessWidget {
       leading: active
           ? const Icon(Icons.check, color: AppColors.accent, size: 20)
           : const SizedBox(width: 20),
-      title: Text(label,
-          style: AppText.body.copyWith(color: AppColors.textPrimary)),
+      title: Text(
+        label,
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+      ),
       trailing: icon == null
           ? null
           : Icon(icon, color: AppColors.textSecondary, size: 20),

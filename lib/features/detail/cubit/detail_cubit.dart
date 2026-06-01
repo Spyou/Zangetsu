@@ -44,19 +44,24 @@ class DetailState extends Equatable {
     int? selectedSeason,
     bool? descExpanded,
     String? error,
-  }) =>
-      DetailState(
-        status: status ?? this.status,
-        detail: detail ?? this.detail,
-        category: category ?? this.category,
-        selectedSeason: selectedSeason ?? this.selectedSeason,
-        descExpanded: descExpanded ?? this.descExpanded,
-        error: error ?? this.error,
-      );
+  }) => DetailState(
+    status: status ?? this.status,
+    detail: detail ?? this.detail,
+    category: category ?? this.category,
+    selectedSeason: selectedSeason ?? this.selectedSeason,
+    descExpanded: descExpanded ?? this.descExpanded,
+    error: error ?? this.error,
+  );
 
   @override
-  List<Object?> get props =>
-      [status, detail, category, selectedSeason, descExpanded, error];
+  List<Object?> get props => [
+    status,
+    detail,
+    category,
+    selectedSeason,
+    descExpanded,
+    error,
+  ];
 }
 
 class DetailCubit extends Cubit<DetailState> {
@@ -65,18 +70,20 @@ class DetailCubit extends Cubit<DetailState> {
     required String url,
     String? sourceId,
     TitlePrefsStore? prefs,
-  })  : _repo = repo,
-        _url = url,
-        _sourceId = sourceId,
-        _prefs = prefs ?? sl<TitlePrefsStore>(),
-        // Seed the INITIAL category from the per-title remembered choice so the
-        // Sub/Dub toggle reflects the saved value on the very first render (no
-        // flash from 'sub' → remembered). Falls back to 'sub' when unset.
-        super(DetailState(
-          category:
-              (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
-                  'sub',
-        ));
+  }) : _repo = repo,
+       _url = url,
+       _sourceId = sourceId,
+       _prefs = prefs ?? sl<TitlePrefsStore>(),
+       // Seed the INITIAL category from the per-title remembered choice so the
+       // Sub/Dub toggle reflects the saved value on the very first render (no
+       // flash from 'sub' → remembered). Falls back to 'sub' when unset.
+       super(
+         DetailState(
+           category:
+               (prefs ?? sl<TitlePrefsStore>()).category(sourceId ?? '', url) ??
+               'sub',
+         ),
+       );
 
   final SourceRepository _repo;
   final String _url;
@@ -96,8 +103,11 @@ class DetailCubit extends Cubit<DetailState> {
   Future<void> load() async {
     emit(state.copyWith(status: DetailStatus.loading));
     try {
-      final detail =
-          await _repo.detail(_url, category: state.category, sourceId: _sourceId);
+      final detail = await _repo.detail(
+        _url,
+        category: state.category,
+        sourceId: _sourceId,
+      );
       emit(state.copyWith(status: DetailStatus.success, detail: detail));
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
@@ -112,12 +122,18 @@ class DetailCubit extends Cubit<DetailState> {
     if (cat == state.category) return;
     emit(state.copyWith(category: cat, status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(_url, category: cat, sourceId: _sourceId);
-      emit(state.copyWith(
-        status: DetailStatus.success,
-        detail: detail,
-        selectedSeason: 1,
-      ));
+      final detail = await _repo.detail(
+        _url,
+        category: cat,
+        sourceId: _sourceId,
+      );
+      emit(
+        state.copyWith(
+          status: DetailStatus.success,
+          detail: detail,
+          selectedSeason: 1,
+        ),
+      );
       // Netflix-style: remember THIS title's Sub/Dub choice so reopening it
       // restores the last-picked category. Only after a successful switch.
       await _prefs.setCategory(_prefsSourceId, _url, cat);

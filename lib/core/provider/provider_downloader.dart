@@ -17,18 +17,18 @@ class CachedProvider {
   });
 
   Map<String, dynamic> toJson() => {
-        'name': name,
-        'jsCode': jsCode,
-        'url': url,
-        'fetchedAt': fetchedAt.toIso8601String(),
-      };
+    'name': name,
+    'jsCode': jsCode,
+    'url': url,
+    'fetchedAt': fetchedAt.toIso8601String(),
+  };
 
   factory CachedProvider.fromJson(Map<String, dynamic> j) => CachedProvider(
-        name: j['name'] as String,
-        jsCode: j['jsCode'] as String,
-        url: j['url'] as String,
-        fetchedAt: DateTime.parse(j['fetchedAt'] as String),
-      );
+    name: j['name'] as String,
+    jsCode: j['jsCode'] as String,
+    url: j['url'] as String,
+    fetchedAt: DateTime.parse(j['fetchedAt'] as String),
+  );
 }
 
 /// Minimal contract the [ProviderRegistry] needs to fetch + evict repo
@@ -65,7 +65,8 @@ class ProviderDownloader implements ProviderJsFetcher {
     bool force = false,
   }) async {
     final cached = _read(name);
-    if (!force && cached != null &&
+    if (!force &&
+        cached != null &&
         DateTime.now().difference(cached.fetchedAt) < maxAge) {
       return cached;
     }
@@ -82,19 +83,30 @@ class ProviderDownloader implements ProviderJsFetcher {
       );
       if (resp.statusCode == null || resp.statusCode! >= 400) {
         if (cached != null) return cached;
-        throw NetworkException('Failed to download $name', statusCode: resp.statusCode);
+        throw NetworkException(
+          'Failed to download $name',
+          statusCode: resp.statusCode,
+        );
       }
       final js = resp.data ?? '';
       if (js.trim().isEmpty) {
         if (cached != null) return cached;
         throw ProviderException('Downloaded provider $name is empty');
       }
-      final entry = CachedProvider(name: name, jsCode: js, url: url, fetchedAt: DateTime.now());
+      final entry = CachedProvider(
+        name: name,
+        jsCode: js,
+        url: url,
+        fetchedAt: DateTime.now(),
+      );
       await _box.put(name, entry.toJson());
       return entry;
     } on DioException catch (e) {
       if (cached != null) return cached;
-      throw NetworkException('Dio error: ${e.message}', statusCode: e.response?.statusCode);
+      throw NetworkException(
+        'Dio error: ${e.message}',
+        statusCode: e.response?.statusCode,
+      );
     }
   }
 
