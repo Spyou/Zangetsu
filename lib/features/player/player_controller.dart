@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -12,12 +14,82 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/watch_history.dart';
 
+/// Immutable view-state for the player screen: exactly the fields the UI
+/// rebuilds on. These used to drive `notifyListeners()` on the old
+/// `ChangeNotifier`; they are now emitted by [PlayerCubit].
+///
+/// Live playback values (position/playing/buffering/duration) are NOT here —
+/// the screen still binds those directly off `player.stream.*` so the engine
+/// behaviour is untouched.
+class PlayerState extends Equatable {
+  const PlayerState({
+    this.loadingSources = false,
+    this.error,
+    this.sources = const [],
+    this.active,
+    this.qualities = const [],
+    this.activeQuality,
+    this.currentIndex = 0,
+    this.tracks = const Tracks(),
+  });
+
+  /// True while sources for the current episode are being resolved.
+  final bool loadingSources;
+
+  /// Non-null when sources couldn't be resolved/played (drives the retry UI).
+  final String? error;
+
+  /// Resolved sources for the current episode.
+  final List<VideoSource> sources;
+
+  /// The source currently opened in the engine.
+  final VideoSource? active;
+
+  /// HLS-master quality variants (empty unless a multi-variant master exists).
+  final List<HlsVariant> qualities;
+
+  /// Selected HLS variant; null = Auto (the adaptive master).
+  final HlsVariant? activeQuality;
+
+  /// Index into the episode list of the currently-open episode.
+  final int currentIndex;
+
+  /// Available audio/sub/video tracks for the open media (driven by
+  /// `player.stream.tracks`).
+  final Tracks tracks;
+
+  PlayerState copyWith({
+    bool? loadingSources,
+    String? Function()? error,
+    List<VideoSource>? sources,
+    VideoSource? Function()? active,
+    List<HlsVariant>? qualities,
+    HlsVariant? Function()? activeQuality,
+    int? currentIndex,
+    Tracks? tracks,
+  }) =>
+      PlayerState(
+        loadingSources: loadingSources ?? this.loadingSources,
+        error: error != null ? error() : this.error,
+        sources: sources ?? this.sources,
+        active: active != null ? active() : this.active,
+        qualities: qualities ?? this.qualities,
+        activeQuality: activeQuality != null ? activeQuality() : this.activeQuality,
+        currentIndex: currentIndex ?? this.currentIndex,
+        tracks: tracks ?? this.tracks,
+      );
+
+  @override
+  List<Object?> get props =>
+      [loadingSources, error, sources, active, qualities, activeQuality, currentIndex, tracks];
+}
+
 /// Owns a media_kit [Player] for one watch session: opens a source with its
 /// headers + subtitles, persists resume position, advances on completion, and
 /// falls through to the next source if one fails to start (covers dead/DRM
 /// sources).
-class PlayerController extends ChangeNotifier {
-  PlayerController({
+class PlayerCubit extends Cubit<PlayerState> {
+  PlayerCubit({
     required this.sourceId,
     required this.episodes,
     required this.resume,
@@ -29,7 +101,9 @@ class PlayerController extends ChangeNotifier {
     this.coverHeaders,
     this.showUrl,
     this.category,
-  }) : _resolveSources = resolveSources, _dio = dio;
+  })  : _resolveSources = resolveSources,
+        _dio = dio,
+        super(const PlayerState());
 
   final String sourceId;
   final List<Episode> episodes;
@@ -48,17 +122,9 @@ class PlayerController extends ChangeNotifier {
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
 
-  int currentIndex = 0;
-  List<VideoSource> sources = const [];
-  VideoSource? active;
-  List<HlsVariant> qualities = const [];
-  HlsVariant? activeQuality; // null = Auto (the master)
   VideoSource? _hlsMaster; // the HLS master among `sources` that the quality menu expands
-  String? error;
-  bool loadingSources = false;
 
   final List<StreamSubscription> _subs = [];
-  Tracks _tracks = const Tracks(); // available audio/sub/video tracks for the open media
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
@@ -66,13 +132,12 @@ class PlayerController extends ChangeNotifier {
   final Set<String> _tried = {}; // source URLs already attempted this episode
   bool _recovering = false; // debounce: one error-recovery at a time
 
-  Episode get currentEpisode => episodes[currentIndex];
+  Episode get currentEpisode => episodes[state.currentIndex];
 
   void init(int index) {
-    _tracks = player.state.tracks;
+    emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(player.stream.tracks.listen((t) {
-      _tracks = t;
-      notifyListeners();
+      emit(state.copyWith(tracks: t));
     }));
     _subs.add(player.stream.position.listen((p) {
       _lastPos = p;
@@ -109,13 +174,13 @@ class PlayerController extends ChangeNotifier {
     player.seek(clamped);
   }
 
-  List<AudioKind> get audioKinds => availableKinds(sources);
-  AudioKind? get activeKind => active?.kind;
+  List<AudioKind> get audioKinds => availableKinds(state.sources);
+  AudioKind? get activeKind => state.active?.kind;
 
   /// Switch to the best source of the given audio [k] (Sub/Dub), preserving
   /// the live position.
   Future<void> switchAudio(AudioKind k) async {
-    final s = pickDefault(sources, prefer: k);
+    final s = pickDefault(state.sources, prefer: k);
     if (s != null) await switchSource(s);
   }
 
@@ -125,11 +190,11 @@ class PlayerController extends ChangeNotifier {
   /// Embedded audio tracks for the open media (excludes the synthetic
   /// auto/no entries media_kit always reports).
   List<AudioTrack> get mediaAudioTracks =>
-      _tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+      state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
   /// Embedded subtitle tracks for the open media (excludes auto/no).
   List<SubtitleTrack> get mediaSubtitleTracks =>
-      _tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+      state.tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
   /// Currently-selected audio track (id == 'auto'/'no' for the synthetic ones).
   AudioTrack get activeAudioTrack => player.state.track.audio;
@@ -142,7 +207,7 @@ class PlayerController extends ChangeNotifier {
   void subtitlesOff() => player.setSubtitleTrack(SubtitleTrack.no());
 
   /// External "soft" subtitles advertised by the active source.
-  List<Subtitle> get softSubs => active?.subtitles ?? const [];
+  List<Subtitle> get softSubs => state.active?.subtitles ?? const [];
 
   /// Load one of the source's soft-subs by URL.
   Future<void> setSoftSub(Subtitle s) async => player.setSubtitleTrack(
@@ -159,47 +224,46 @@ class PlayerController extends ChangeNotifier {
   Future<void> openEpisode(int index) async {
     final gen = ++_gen;
     await _persist();
-    currentIndex = index;
     _tried.clear();
     _recovering = false;
-    error = null;
-    loadingSources = true;
-    sources = const [];
-    active = null;
-    notifyListeners();
+    emit(state.copyWith(
+      currentIndex: index,
+      error: () => null,
+      loadingSources: true,
+      sources: const [],
+      active: () => null,
+    ));
     try {
       final resolved = await _resolveSources(currentEpisode.url);
       if (gen != _gen) return; // superseded by a newer open
-      sources = resolved;
-      loadingSources = false;
+      emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen); // populate Auto/1080p/720p from the HLS master, if any
       final pick = pickDefault(resolved);
       if (pick == null) {
-        error = 'No playable sources for this episode.';
-        notifyListeners();
+        emit(state.copyWith(error: () => 'No playable sources for this episode.'));
         return;
       }
       await _open(pick, gen: gen);
     } catch (e) {
       if (gen != _gen) return;
-      loadingSources = false;
-      error = 'Could not load sources: $e';
-      notifyListeners();
+      emit(state.copyWith(
+        loadingSources: false,
+        error: () => 'Could not load sources: $e',
+      ));
     }
   }
 
   /// Switch to a specific source (sub/dub or quality change), preserving position.
   Future<void> switchSource(VideoSource s) => _open(s, seekTo: _lastPos);
 
-  /// Builds the quality menu from the first HLS master among [sources]
+  /// Builds the quality menu from the first HLS master among `state.sources`
   /// (independent of which source plays by default). Fire-and-forget; the menu
   /// appears once the master is fetched + parsed. Resets prior quality state.
   void _buildQualityMenu(int gen) {
-    qualities = const [];
-    activeQuality = null;
+    emit(state.copyWith(qualities: const [], activeQuality: () => null));
     _hlsMaster = null;
     VideoSource? master;
-    for (final s in sources) {
+    for (final s in state.sources) {
       if (s.container == SourceContainer.hls) { master = s; break; }
     }
     if (master == null) return;
@@ -207,8 +271,7 @@ class PlayerController extends ChangeNotifier {
     final m = master;
     fetchHlsVariants(m.url, m.headers, _dio).then((vs) {
       if (gen == _gen && vs.length > 1) {
-        qualities = vs;
-        notifyListeners();
+        emit(state.copyWith(qualities: vs));
       }
     });
   }
@@ -228,8 +291,7 @@ class PlayerController extends ChangeNotifier {
       ),
       seekTo: _lastPos,
     );
-    activeQuality = v;
-    notifyListeners();
+    emit(state.copyWith(activeQuality: () => v));
   }
 
   // ── Source-based quality (when there's no multi-variant HLS master) ───────
@@ -237,13 +299,13 @@ class PlayerController extends ChangeNotifier {
   // label but no HLS master playlist, so [qualities] is empty. Surface those
   // per-source qualities as selectable options instead.
 
-  /// Distinct non-empty quality labels among the resolved [sources] for the
+  /// Distinct non-empty quality labels among the resolved sources for the
   /// active audio kind, high→low.
   List<String> get sourceQualities {
-    final kind = active?.kind;
+    final kind = state.active?.kind;
     final seen = <String>{};
     final out = <String>[];
-    for (final s in sortByQuality(sources)) {
+    for (final s in sortByQuality(state.sources)) {
       if (kind != null && s.kind != kind) continue;
       final q = (s.quality ?? '').trim();
       if (q.isEmpty || seen.contains(q)) continue;
@@ -254,15 +316,15 @@ class PlayerController extends ChangeNotifier {
   }
 
   /// The quality label of the currently-playing source (for the active check).
-  String? get activeSourceQuality => (active?.quality ?? '').trim().isEmpty
+  String? get activeSourceQuality => (state.active?.quality ?? '').trim().isEmpty
       ? null
-      : active!.quality!.trim();
+      : state.active!.quality!.trim();
 
   /// Switch to the best source matching quality label [q] (same audio kind),
   /// preserving the live position.
   Future<void> selectSourceQuality(String q) async {
-    final kind = active?.kind;
-    for (final s in sortByQuality(sources)) {
+    final kind = state.active?.kind;
+    for (final s in sortByQuality(state.sources)) {
       if ((s.quality ?? '').trim() == q && (kind == null || s.kind == kind)) {
         await switchSource(s);
         return;
@@ -272,9 +334,7 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
     final g = gen ?? ++_gen;
-    active = s;
-    error = null;
-    notifyListeners();
+    emit(state.copyWith(active: () => s, error: () => null));
     final mark = resume.get(sourceId, currentEpisode.id);
     final start = seekTo ??
         ((mark != null && !mark.finished) ? mark.position : Duration.zero);
@@ -303,24 +363,25 @@ class PlayerController extends ChangeNotifier {
         lower.contains('connection');
     if (!fatal || _recovering) return;
     _recovering = true;
-    final failed = active;
+    final failed = state.active;
     if (failed != null) _tried.add(failed.url);
     // Never re-try a source we've already attempted this episode (prevents the
     // A→B→A thrash cascade).
-    final remaining = sources.where((s) => !_tried.contains(s.url)).toList();
+    final remaining = state.sources.where((s) => !_tried.contains(s.url)).toList();
     final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
     if (next != null) {
       await _open(next, seekTo: _lastPos);
     } else {
-      error = 'No source could be played on this device (tried ${_tried.length}).';
-      notifyListeners();
+      emit(state.copyWith(
+        error: () => 'No source could be played on this device (tried ${_tried.length}).',
+      ));
     }
     _recovering = false;
   }
 
   Future<void> playNext() async {
-    if (currentIndex + 1 < episodes.length) {
-      await openEpisode(currentIndex + 1);
+    if (state.currentIndex + 1 < episodes.length) {
+      await openEpisode(state.currentIndex + 1);
     }
   }
 
@@ -350,12 +411,12 @@ class PlayerController extends ChangeNotifier {
   }
 
   @override
-  void dispose() {
-    _persist();
+  Future<void> close() async {
+    await _persist();
     for (final s in _subs) {
       s.cancel();
     }
-    player.dispose();
-    super.dispose();
+    await player.dispose();
+    return super.close();
   }
 }

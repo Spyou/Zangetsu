@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/di/injector.dart';
@@ -58,7 +59,7 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
-  late final PlayerController _c;
+  late final PlayerCubit _c;
 
   bool _controlsVisible = true;
   bool _holding = false; // long-press 2x active
@@ -80,7 +81,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _c = PlayerController(
+    _c = PlayerCubit(
       sourceId: widget.sourceId,
       episodes: widget.episodes,
       resume: widget.resume,
@@ -100,7 +101,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _seekLabelTimer?.cancel();
-    _c.dispose();
+    _c.close();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -313,21 +314,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // otherwise fall back to the distinct per-source qualities (e.g. AllAnime
     // mp4/clock sources that each carry a resolution but no HLS master).
     final List<Widget> rows;
-    if (_c.qualities.isNotEmpty) {
+    if (_c.state.qualities.isNotEmpty) {
       rows = [
         _SheetRow(
           label: 'Auto',
-          active: _c.activeQuality == null,
+          active: _c.state.activeQuality == null,
           onTap: () {
             Navigator.pop(context);
             _c.selectQuality(null);
             _bumpControls();
           },
         ),
-        for (final v in _c.qualities)
+        for (final v in _c.state.qualities)
           _SheetRow(
             label: v.quality,
-            active: _c.activeQuality?.url == v.url,
+            active: _c.state.activeQuality?.url == v.url,
             onTap: () {
               Navigator.pop(context);
               _c.selectQuality(v);
@@ -353,17 +354,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _openSourceSheet() {
-    final kinds = availableKinds(_c.sources);
+    final kinds = availableKinds(_c.state.sources);
     _sheet<void>(
       _SheetColumn(
         header: 'Sources',
         children: [
           for (final k in kinds)
-            for (final s in sortByQuality(sourcesForKind(_c.sources, k)))
+            for (final s in sortByQuality(sourcesForKind(_c.state.sources, k)))
               _SheetRow(
                 label: '${k.name.toUpperCase()} • '
                     '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
-                active: s == _c.active,
+                active: s == _c.state.active,
                 onTap: () {
                   Navigator.pop(context);
                   _c.switchSource(s);
@@ -381,15 +382,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: AnimatedBuilder(
-        animation: _c,
-        builder: (context, _) {
-          if (_c.loadingSources) {
+      body: BlocBuilder<PlayerCubit, PlayerState>(
+        bloc: _c,
+        builder: (context, state) {
+          if (state.loadingSources) {
             return const Center(
               child: BrandLoader(label: 'Finding the best source…'),
             );
           }
-          if (_c.error != null) {
+          if (state.error != null) {
             return Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -399,11 +400,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     const Icon(Icons.error_outline,
                         size: 40, color: AppColors.textTertiary),
                     const SizedBox(height: 12),
-                    Text(_c.error!,
+                    Text(state.error!,
                         style: AppText.body, textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     TextButton(
-                      onPressed: () => _c.openEpisode(_c.currentIndex),
+                      onPressed: () => _c.openEpisode(state.currentIndex),
                       child: Text('Try again',
                           style: AppText.body
                               .copyWith(color: AppColors.accent)),
@@ -511,6 +512,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ignoring: !_controlsVisible,
                   child: _ControlsOverlay(
                     controller: _c,
+                    state: state,
                     showTitle: widget.showTitle,
                     duration: _duration,
                     onDurationChanged: (d) {
@@ -543,6 +545,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 class _ControlsOverlay extends StatelessWidget {
   const _ControlsOverlay({
     required this.controller,
+    required this.state,
     required this.showTitle,
     required this.duration,
     required this.onDurationChanged,
@@ -555,7 +558,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onSources,
   });
 
-  final PlayerController controller;
+  final PlayerCubit controller;
+  final PlayerState state;
   final String? showTitle;
   final Duration duration;
   final ValueChanged<Duration> onDurationChanged;
@@ -570,10 +574,10 @@ class _ControlsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final epNum = c.currentEpisode.number?.toInt() ?? c.currentIndex + 1;
+    final epNum = c.currentEpisode.number?.toInt() ?? state.currentIndex + 1;
     final title =
         'Episode $epNum${showTitle != null ? " · $showTitle" : ""}';
-    final hasNext = c.currentIndex + 1 < c.episodes.length;
+    final hasNext = state.currentIndex + 1 < c.episodes.length;
 
     return Stack(
       fit: StackFit.expand,
@@ -735,7 +739,8 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Subtitles',
                         onTap: onSubtitles,
                       ),
-                      if (c.qualities.isNotEmpty || c.sourceQualities.length > 1)
+                      if (state.qualities.isNotEmpty ||
+                          c.sourceQualities.length > 1)
                         _ControlButton(
                           icon: Icons.high_quality,
                           label: 'Quality',
@@ -778,7 +783,7 @@ class _SeekRow extends StatelessWidget {
     required this.onInteract,
   });
 
-  final PlayerController controller;
+  final PlayerCubit controller;
   final Duration duration;
   final VoidCallback onInteract;
 
