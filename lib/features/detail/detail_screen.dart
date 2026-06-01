@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -74,18 +75,29 @@ class _DetailViewState extends State<_DetailView>
       _prefs.isFavorite(widget.item.sourceId, widget.item.url);
 
   // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
-  // Resolved lazily once per detail load and cached so the Trailer button
-  // doesn't refetch on every rebuild. Yields a YouTube id or null.
+  // Resolved lazily once per detail load and cached so the hero player doesn't
+  // refetch on every rebuild. Yields a YouTube id or null; once it resolves the
+  // hero swaps its static cover backdrop for an autoplaying, muted, looping
+  // player (Netflix-style).
   Future<String?>? _trailerFuture;
+  String? _trailerId;
 
-  /// Kick off (once) the YouTube-id lookup for the resolved detail.
-  Future<String?> _resolveTrailer(MediaDetail detail) {
-    return _trailerFuture ??= sl<TrailerService>().youtubeId(
+  /// Kick off (once) the YouTube-id lookup for the resolved detail. When it
+  /// completes with a non-null id, store it in [_trailerId] and rebuild so the
+  /// hero can mount the trailer player.
+  void _resolveTrailer(MediaDetail detail) {
+    if (_trailerFuture != null) return;
+    _trailerFuture = sl<TrailerService>().youtubeId(
       title: detail.title,
       englishTitle: detail.englishTitle,
       type: detail.type,
       year: detail.year,
-    );
+    )..then((id) {
+        if (!mounted) return;
+        if (id != null && id.isNotEmpty && id != _trailerId) {
+          setState(() => _trailerId = id);
+        }
+      });
   }
 
   @override
@@ -286,6 +298,10 @@ class _DetailViewState extends State<_DetailView>
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
+    // Kick off the trailer lookup (once). When it resolves, _trailerId is set
+    // and the hero swaps its static backdrop for the autoplaying trailer.
+    _resolveTrailer(detail);
+
     // Season data. PRESERVED.
     final seasonSet = seasonsOf(eps);
     final hasMultipleSeasons = seasonSet.length > 1;
@@ -357,6 +373,12 @@ class _DetailViewState extends State<_DetailView>
                   coverUrl: coverUrl,
                   coverHeaders: coverHeaders,
                   hasCover: hasCover,
+                  trailerId: _trailerId,
+                  // Pause the trailer once the hero has scrolled past (reuses
+                  // the same signal that fades in the app-bar title).
+                  collapsed: _showAppBarTitle,
+                  onTapFullscreen:
+                      _trailerId != null ? () => _openTrailer(_trailerId!) : null,
                 ),
               ),
             ),
@@ -413,44 +435,25 @@ class _DetailViewState extends State<_DetailView>
             ),
           ),
 
-          // ── 4. Action row: red Play + square download, then Trailer ────────
+          // ── 4. Action row: red Play + square download ──────────────────────
+          // (The hero banner now autoplays the trailer, so the standalone
+          // "Trailer" button is gone — tap the banner for fullscreen.)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+              child: Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _PlayButton(
-                          label: buttonLabel,
-                          onPressed: eps.isNotEmpty
-                              ? () =>
-                                  _openPlayer(eps, resumeIdx, detail, category)
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      _DownloadButton(
-                        onPressed: () => _snack('Downloads coming soon'),
-                      ),
-                    ],
+                  Expanded(
+                    child: _PlayButton(
+                      label: buttonLabel,
+                      onPressed: eps.isNotEmpty
+                          ? () => _openPlayer(eps, resumeIdx, detail, category)
+                          : null,
+                    ),
                   ),
-                  // Trailer: a tasteful secondary button that only appears once a
-                  // YouTube id resolves (lazy + cached so it never refetches).
-                  FutureBuilder<String?>(
-                    future: _resolveTrailer(detail),
-                    builder: (context, snap) {
-                      final id = snap.data;
-                      if (id == null || id.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: _TrailerButton(onPressed: () => _openTrailer(id)),
-                      );
-                    },
+                  const SizedBox(width: 12),
+                  _DownloadButton(
+                    onPressed: () => _snack('Downloads coming soon'),
                   ),
                 ],
               ),
@@ -596,31 +599,64 @@ class _Hero extends StatelessWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.hasCover,
+    this.trailerId,
+    this.collapsed = false,
+    this.onTapFullscreen,
   });
 
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final bool hasCover;
 
+  /// Resolved YouTube id, or null while still loading / when none exists.
+  final String? trailerId;
+
+  /// True once the hero has scrolled past — the trailer pauses while collapsed.
+  final bool collapsed;
+
+  /// Opens the fullscreen trailer when the banner is tapped. Null disables it.
+  final VoidCallback? onTapFullscreen;
+
+  /// The static cover backdrop — used as the base layer when there's no
+  /// trailer, and as the placeholder/fallback underneath the player.
+  Widget _coverBackdrop() {
+    return hasCover
+        ? CachedNetworkImage(
+            imageUrl: coverUrl,
+            httpHeaders: coverHeaders,
+            fit: BoxFit.cover,
+            memCacheWidth: 800,
+            placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
+            errorWidget: (c, u, e) =>
+                const ColoredBox(color: AppColors.surface2),
+          )
+        : const ColoredBox(color: AppColors.surface2);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final id = trailerId;
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Backdrop.
-        hasCover
-            ? CachedNetworkImage(
-                imageUrl: coverUrl,
-                httpHeaders: coverHeaders,
-                fit: BoxFit.cover,
-                memCacheWidth: 800,
-                placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
-                errorWidget: (c, u, e) =>
-                    const ColoredBox(color: AppColors.surface2),
+        // Backdrop: autoplaying trailer once an id resolves, else the cover
+        // image. The cover image always sits underneath as placeholder/fallback
+        // so there's never a blank/black flash.
+        (id != null && id.isNotEmpty)
+            ? _HeroTrailer(
+                videoId: id,
+                collapsed: collapsed,
+                onTapFullscreen: onTapFullscreen,
+                placeholder: _coverBackdrop(),
               )
-            : const ColoredBox(color: AppColors.surface2),
-        const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.topScrim)),
-        const DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+            : _coverBackdrop(),
+        // Gradients render OVER the video for title/poster readability.
+        const IgnorePointer(
+          child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.topScrim)),
+        ),
+        const IgnorePointer(
+          child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
+        ),
         // Overlapping portrait poster, bottom-right.
         Positioned(
           right: 16,
@@ -664,6 +700,215 @@ class _Hero extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _HeroTrailer — the autoplaying, muted, looping trailer that becomes the hero
+// backdrop once a YouTube id resolves (Netflix-style). The static cover image
+// stays visible underneath until the player reports it's ready, so there's
+// never a blank/black flash; if the player errors we keep showing the cover.
+//
+// • Muted + autoplay + loop + NO chrome (controls/fullscreen/captions off).
+// • Cover-fits the 16:9 player so it fills the hero, cropping the sides.
+// • A bottom-right mute toggle (default muted); the user's choice survives
+//   pause/resume.
+// • Pauses when [collapsed] (scrolled past) and on dispose; the controller is
+//   disposed in dispose().
+// • Tapping the banner (outside the mute button) opens the fullscreen trailer.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HeroTrailer extends StatefulWidget {
+  const _HeroTrailer({
+    required this.videoId,
+    required this.collapsed,
+    required this.placeholder,
+    this.onTapFullscreen,
+  });
+
+  final String videoId;
+  final bool collapsed;
+  final Widget placeholder;
+  final VoidCallback? onTapFullscreen;
+
+  @override
+  State<_HeroTrailer> createState() => _HeroTrailerState();
+}
+
+class _HeroTrailerState extends State<_HeroTrailer> {
+  YoutubePlayerController? _controller;
+
+  // Cross-fade the player in once it's ready so the cover never blanks.
+  bool _ready = false;
+  // If the webview/player errors, fall back to the static cover image.
+  bool _errored = false;
+  // Mute state — default muted; preserved across pause/resume.
+  bool _muted = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initController();
+  }
+
+  void _initController() {
+    final controller = YoutubePlayerController.fromVideoId(
+      videoId: widget.videoId,
+      autoPlay: true,
+      params: const YoutubePlayerParams(
+        mute: true,
+        loop: true,
+        showControls: false,
+        showFullscreenButton: false,
+        enableCaption: false,
+        showVideoAnnotations: false,
+        strictRelatedVideos: true,
+        playsInline: true,
+      ),
+    );
+    controller.listen(_onValue);
+    _controller = controller;
+  }
+
+  void _onValue(YoutubePlayerValue value) {
+    if (!mounted) return;
+    // First time the player actually starts/buffers → reveal it.
+    if (!_ready &&
+        (value.playerState == PlayerState.playing ||
+            value.playerState == PlayerState.buffering ||
+            value.playerState == PlayerState.cued)) {
+      setState(() => _ready = true);
+    }
+    // The iframe `loop` param doesn't loop a single video on its own — when it
+    // ends, restart it ourselves so it loops Netflix-style.
+    if (value.playerState == PlayerState.ended) {
+      _controller?.playVideo();
+    }
+    // Surface a player error → fall back to the static cover.
+    if (value.error != YoutubeError.none && !_errored) {
+      setState(() => _errored = true);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _HeroTrailer old) {
+    super.didUpdateWidget(old);
+    // Re-create the controller if the id changes (different title).
+    if (old.videoId != widget.videoId) {
+      _controller?.close();
+      _ready = false;
+      _errored = false;
+      _initController();
+    }
+    // Pause when scrolled past the hero; resume when it's expanded again.
+    if (widget.collapsed != old.collapsed) {
+      if (widget.collapsed) {
+        _controller?.pauseVideo();
+      } else if (!_errored) {
+        _controller?.playVideo();
+      }
+    }
+  }
+
+  Future<void> _toggleMute() async {
+    final controller = _controller;
+    if (controller == null) return;
+    final next = !_muted;
+    if (next) {
+      await controller.mute();
+    } else {
+      await controller.unMute();
+    }
+    if (!mounted) return;
+    setState(() => _muted = next);
+  }
+
+  @override
+  void dispose() {
+    _controller?.pauseVideo();
+    _controller?.close();
+    _controller = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Cover image underneath as placeholder + permanent fallback.
+        widget.placeholder,
+        // The player, cover-fitted to fill the hero (16:9 cropped). Faded in
+        // once ready; hidden entirely if it errored.
+        if (controller != null && !_errored)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _ready ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 350),
+                curve: Curves.easeOut,
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  clipBehavior: Clip.hardEdge,
+                  child: SizedBox(
+                    width: 1280,
+                    height: 720,
+                    child: YoutubePlayer(
+                      controller: controller,
+                      aspectRatio: 16 / 9,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        // Tap anywhere on the banner (outside the mute button) → fullscreen.
+        if (widget.onTapFullscreen != null)
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: widget.onTapFullscreen,
+            ),
+          ),
+        // Mute toggle — bottom-left, clear of the bottom-right poster and the
+        // top-left back arrow. Only shown once the player is ready (mute is
+        // meaningless before that).
+        if (_ready && !_errored)
+          Positioned(
+            left: 14,
+            bottom: 14,
+            child: _MuteButton(muted: _muted, onTap: _toggleMute),
+          ),
+      ],
+    );
+  }
+}
+
+// Small translucent circular mute/unmute toggle for the hero trailer.
+class _MuteButton extends StatelessWidget {
+  const _MuteButton({required this.muted, required this.onTap});
+  final bool muted;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0x66000000),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Icon(
+            muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -758,47 +1003,6 @@ class _DownloadButton extends StatelessWidget {
           height: 52,
           child: Icon(Icons.file_download_outlined,
               color: Colors.white, size: 24),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Secondary "Trailer" button — surface2 with a hairline outline, sits under the
-// Play/download row. Rendered only when a trailer id resolves.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _TrailerButton extends StatelessWidget {
-  const _TrailerButton({required this.onPressed});
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface2,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onPressed,
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.hairline, width: 1),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.movie_outlined,
-                  color: AppColors.textPrimary, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                'Trailer',
-                style: AppText.button.copyWith(color: AppColors.textPrimary),
-              ),
-            ],
-          ),
         ),
       ),
     );
