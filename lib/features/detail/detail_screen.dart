@@ -500,13 +500,6 @@ class _DetailViewState extends State<_DetailView>
                     tooltip: _inMyList ? 'In My List' : 'Add to My List',
                     onTap: _toggleMyList,
                   ),
-                  if (_trailerId != null)
-                    _IconAction(
-                      icon: Icons.movie_outlined,
-                      label: 'Trailer',
-                      tooltip: 'Watch trailer',
-                      onTap: () => _openTrailer(_trailerId!),
-                    ),
                   _IconAction(
                     icon: Icons.ios_share_rounded,
                     label: 'Share',
@@ -788,6 +781,11 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     final controller = VideoController(player);
     _player = player;
     _videoController = controller;
+    // Mount the Video widget NOW (build renders it once _videoController != null),
+    // so media_kit's video output/texture exists BEFORE we play. Otherwise libmpv
+    // (esp. on iOS) can sit paused until a relayout/tap and the trailer never
+    // auto-starts — that was the "have to tap the banner to start it" bug.
+    if (mounted) setState(() {});
 
     await player.setVolume(_muted ? 0 : 100);
     // Loop the single trailer media (Netflix-style).
@@ -813,7 +811,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       // don't honor the autoplay flag until the first user interaction. Open
       // paused, then explicitly play() the moment the media is loaded and the
       // widget is still mounted, so the trailer starts on its own with no touch.
-      await player.open(Media(url), play: false);
+      await player.open(Media(url), play: !widget.collapsed);
       if (!mounted) return;
       // Only autostart when the hero is on-screen (expanded). If the user has
       // already scrolled past by the time the URL resolved, stay paused — the
