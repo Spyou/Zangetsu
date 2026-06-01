@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -192,24 +193,119 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _openAudioSheet() {
     final kinds = _c.audioKinds;
-    final active = _c.activeKind;
+    final activeKind = _c.activeKind;
+    final audioTracks = _c.mediaAudioTracks;
+    final activeTrack = _c.activeAudioTrack;
     _sheet<void>(
       _SheetColumn(
         header: 'Audio',
         children: [
-          for (final k in kinds)
-            _SheetRow(
-              label: k.name.toUpperCase(),
-              active: active == k,
-              onTap: () {
-                Navigator.pop(context);
-                _c.switchAudio(k);
-                _bumpControls();
-              },
-            ),
+          // Version (Sub/Dub source switch) — only when more than one exists.
+          if (kinds.length > 1) ...[
+            const _SheetSectionHeader('Version'),
+            for (final k in kinds)
+              _SheetRow(
+                label: k.name.toUpperCase(),
+                active: activeKind == k,
+                onTap: () {
+                  Navigator.pop(context);
+                  _c.switchAudio(k);
+                  _bumpControls();
+                },
+              ),
+          ],
+          // Embedded audio tracks — only when the media exposes more than one.
+          if (audioTracks.length > 1) ...[
+            const _SheetSectionHeader('Audio track'),
+            for (final t in audioTracks)
+              _SheetRow(
+                label: t.language ?? t.title ?? t.id,
+                active: activeTrack.id == t.id,
+                onTap: () {
+                  Navigator.pop(context);
+                  _c.setAudioTrack(t);
+                  _bumpControls();
+                },
+              ),
+          ],
         ],
       ),
     );
+  }
+
+  void _openSubtitlesSheet() {
+    final embedded = _c.mediaSubtitleTracks;
+    final soft = _c.softSubs;
+    final active = _c.activeSubtitleTrack;
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Subtitles',
+        children: [
+          // Off (CloudStream lists this first).
+          _SheetRow(
+            label: 'Off',
+            active: active.id == 'no',
+            onTap: () {
+              Navigator.pop(context);
+              _c.subtitlesOff();
+              _bumpControls();
+            },
+          ),
+          // Embedded subtitle tracks.
+          for (final t in embedded)
+            _SheetRow(
+              label: '${t.title ?? t.language ?? t.id} (embedded)',
+              active: active.id == t.id,
+              onTap: () {
+                Navigator.pop(context);
+                _c.setSubtitle(t);
+                _bumpControls();
+              },
+            ),
+          // External "soft" subtitles advertised by the source.
+          for (final s in soft)
+            _SheetRow(
+              label: s.label ?? s.lang,
+              active: false,
+              onTap: () {
+                Navigator.pop(context);
+                _c.setSoftSub(s);
+                _bumpControls();
+              },
+            ),
+          // Load a subtitle file from disk.
+          _SheetRow(
+            label: 'Load from file…',
+            icon: Icons.upload_file,
+            active: false,
+            onTap: () {
+              Navigator.pop(context);
+              _loadSubtitleFromFile();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadSubtitleFromFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['srt', 'vtt', 'ass', 'ssa', 'sub'],
+      );
+      final path = result?.files.single.path;
+      if (path != null) {
+        await _c.setSubtitleFromFile(path);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load subtitle: $e')),
+        );
+      }
+    }
+    _bumpControls();
   }
 
   void _openQualitySheet() {
@@ -411,6 +507,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onBack: () => Navigator.of(context).maybePop(),
                     onSpeed: _openSpeedSheet,
                     onAudio: _openAudioSheet,
+                    onSubtitles: _openSubtitlesSheet,
                     onQuality: _openQualitySheet,
                     onSources: _openSourceSheet,
                   ),
@@ -438,6 +535,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onBack,
     required this.onSpeed,
     required this.onAudio,
+    required this.onSubtitles,
     required this.onQuality,
     required this.onSources,
   });
@@ -450,6 +548,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onBack;
   final VoidCallback onSpeed;
   final VoidCallback onAudio;
+  final VoidCallback onSubtitles;
   final VoidCallback onQuality;
   final VoidCallback onSources;
 
@@ -609,12 +708,18 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Speed',
                         onTap: onSpeed,
                       ),
-                      if (c.audioKinds.length > 1)
+                      if (c.audioKinds.length > 1 ||
+                          c.mediaAudioTracks.length > 1)
                         _ControlButton(
                           icon: Icons.graphic_eq,
                           label: 'Audio',
                           onTap: onAudio,
                         ),
+                      _ControlButton(
+                        icon: Icons.closed_caption,
+                        label: 'Subtitles',
+                        onTap: onSubtitles,
+                      ),
                       if (c.qualities.isNotEmpty)
                         _ControlButton(
                           icon: Icons.high_quality,
@@ -792,11 +897,16 @@ class _SheetRow extends StatelessWidget {
     required this.label,
     required this.active,
     required this.onTap,
+    this.icon,
   });
 
   final String label;
   final bool active;
   final VoidCallback onTap;
+
+  /// Optional trailing icon (e.g. upload for "Load from file…"). The leading
+  /// slot stays reserved for the coral active-check.
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
@@ -807,7 +917,31 @@ class _SheetRow extends StatelessWidget {
           : const SizedBox(width: 20),
       title: Text(label,
           style: AppText.body.copyWith(color: AppColors.textPrimary)),
+      trailing: icon == null
+          ? null
+          : Icon(icon, color: AppColors.textSecondary, size: 20),
       onTap: onTap,
+    );
+  }
+}
+
+/// Small grouped-section label inside a sheet (e.g. "Version" / "Audio track").
+class _SheetSectionHeader extends StatelessWidget {
+  const _SheetSectionHeader(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 10, 20, 2),
+      child: Text(
+        label.toUpperCase(),
+        style: AppText.caption.copyWith(
+          color: AppColors.textTertiary,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
     );
   }
 }

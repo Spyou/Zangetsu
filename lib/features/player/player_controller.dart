@@ -58,6 +58,7 @@ class PlayerController extends ChangeNotifier {
   bool loadingSources = false;
 
   final List<StreamSubscription> _subs = [];
+  Tracks _tracks = const Tracks(); // available audio/sub/video tracks for the open media
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
@@ -68,6 +69,11 @@ class PlayerController extends ChangeNotifier {
   Episode get currentEpisode => episodes[currentIndex];
 
   void init(int index) {
+    _tracks = player.state.tracks;
+    _subs.add(player.stream.tracks.listen((t) {
+      _tracks = t;
+      notifyListeners();
+    }));
     _subs.add(player.stream.position.listen((p) {
       _lastPos = p;
       // Throttled progress capture so Continue Watching fills mid-episode
@@ -112,6 +118,42 @@ class PlayerController extends ChangeNotifier {
     final s = pickDefault(sources, prefer: k);
     if (s != null) await switchSource(s);
   }
+
+  // ── Embedded/soft track selection (CloudStream-style picker) ──────────────
+  // Tracks populate after a media opens (driven by player.stream.tracks).
+
+  /// Embedded audio tracks for the open media (excludes the synthetic
+  /// auto/no entries media_kit always reports).
+  List<AudioTrack> get mediaAudioTracks =>
+      _tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+
+  /// Embedded subtitle tracks for the open media (excludes auto/no).
+  List<SubtitleTrack> get mediaSubtitleTracks =>
+      _tracks.subtitle.where((t) => t.id != 'auto' && t.id != 'no').toList();
+
+  /// Currently-selected audio track (id == 'auto'/'no' for the synthetic ones).
+  AudioTrack get activeAudioTrack => player.state.track.audio;
+
+  /// Currently-selected subtitle track (id == 'no' when subs are off).
+  SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
+
+  void setAudioTrack(AudioTrack t) => player.setAudioTrack(t);
+  void setSubtitle(SubtitleTrack t) => player.setSubtitleTrack(t);
+  void subtitlesOff() => player.setSubtitleTrack(SubtitleTrack.no());
+
+  /// External "soft" subtitles advertised by the active source.
+  List<Subtitle> get softSubs => active?.subtitles ?? const [];
+
+  /// Load one of the source's soft-subs by URL.
+  Future<void> setSoftSub(Subtitle s) async => player.setSubtitleTrack(
+      SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang));
+
+  /// Load an external subtitle file from disk (picked via file_picker).
+  Future<void> setSubtitleFromFile(String path) async =>
+      player.setSubtitleTrack(SubtitleTrack.uri(path));
+
+  // TODO(player): defer online subtitle search/download, full subtitle
+  // styling, and subtitle delay/sync (CloudStream parity, post-v1).
 
   /// Resolves sources for [index] and starts the best one.
   Future<void> openEpisode(int index) async {
