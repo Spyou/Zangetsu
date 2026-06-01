@@ -485,10 +485,11 @@ class _DetailViewState extends State<_DetailView>
                 children: [
                   _IconAction(
                     icon: _inMyList
-                        ? Icons.bookmark_rounded
-                        : Icons.bookmark_outline_rounded,
+                        ? Icons.check_rounded
+                        : Icons.add_rounded,
                     active: _inMyList,
-                    tooltip: 'My List',
+                    label: 'My List',
+                    tooltip: _inMyList ? 'In My List' : 'Add to My List',
                     onTap: _toggleMyList,
                   ),
                   _IconAction(
@@ -496,21 +497,25 @@ class _DetailViewState extends State<_DetailView>
                         ? Icons.favorite_rounded
                         : Icons.favorite_outline_rounded,
                     active: _isFavorite,
+                    label: 'Like',
                     tooltip: 'Favorite',
                     onTap: _toggleFavorite,
                   ),
                   _IconAction(
                     icon: Icons.ios_share_rounded,
+                    label: 'Share',
                     tooltip: 'Share',
                     onTap: () => _share(detail, sourceName),
                   ),
                   _IconAction(
                     icon: Icons.close_rounded,
+                    label: 'Remove',
                     tooltip: 'Remove from My List',
                     onTap: _removeFromMyList,
                   ),
                   _IconAction(
                     icon: Icons.public_rounded,
+                    label: 'Web',
                     tooltip: 'Open source site',
                     onTap: _openSourceSite,
                   ),
@@ -796,7 +801,19 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     });
 
     try {
-      await player.open(Media(url), play: !widget.collapsed);
+      // Open WITHOUT relying solely on open(play:) — some engines/platforms
+      // don't honor the autoplay flag until the first user interaction. Open
+      // paused, then explicitly play() the moment the media is loaded and the
+      // widget is still mounted, so the trailer starts on its own with no touch.
+      await player.open(Media(url), play: false);
+      if (!mounted) return;
+      // Only autostart when the hero is on-screen (expanded). If the user has
+      // already scrolled past by the time the URL resolved, stay paused — the
+      // collapsed/expanded handler in didUpdateWidget will play it when they
+      // scroll back up.
+      if (!widget.collapsed) {
+        await player.play();
+      }
     } catch (_) {
       if (!mounted) return;
       setState(() => _errored = true);
@@ -1075,29 +1092,44 @@ class _Description extends StatelessWidget {
 class _IconAction extends StatelessWidget {
   const _IconAction({
     required this.icon,
+    required this.label,
     required this.tooltip,
     required this.onTap,
     this.active = false,
   });
 
   final IconData icon;
+
+  /// Small caption shown under the icon (Netflix-style icon-over-label).
+  final String label;
   final String tooltip;
   final VoidCallback onTap;
   final bool active;
 
   @override
   Widget build(BuildContext context) {
+    final color = active ? AppColors.accent : AppColors.textPrimary;
     return Tooltip(
       message: tooltip,
       child: InkResponse(
         onTap: onTap,
-        radius: 26,
+        radius: 34,
         child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(
-            icon,
-            size: 24,
-            color: active ? AppColors.accent : AppColors.textPrimary,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 24, color: color),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: AppText.caption.copyWith(
+                  color: active ? AppColors.accent : AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1185,9 +1217,10 @@ class _EpisodesTab extends StatelessWidget {
       );
     }
 
-    // Sub/Dub selection moved to the PLAYER — the only optional header row left
-    // is the season selector (multi-season titles).
-    final headerCount = hasMultipleSeasons ? 1 : 0;
+    // Sub/Dub selection moved to the PLAYER. The Episodes tab always opens with
+    // a single header row: a Netflix-style season dropdown for multi-season
+    // titles, or a plain "Episodes" label for single-season ones.
+    const headerCount = 1;
 
     return ListView.separated(
       padding: const EdgeInsets.only(top: 8, bottom: 40),
@@ -1204,11 +1237,13 @@ class _EpisodesTab extends StatelessWidget {
         );
       },
       itemBuilder: (context0, rawIndex) {
-        // Header row: season selector (multi-season only).
-        if (hasMultipleSeasons && rawIndex == 0) {
-          return _SeasonSelector(
+        // Header row: Netflix-style season dropdown (multi-season) or a plain
+        // "Episodes" label (single-season).
+        if (rawIndex == 0) {
+          return _EpisodesHeader(
+            hasMultipleSeasons: hasMultipleSeasons,
             seasons: seasonSet.toList()..sort(),
-            selectedSeason: currentSeason,
+            currentSeason: currentSeason,
             onSelectSeason: onSelectSeason,
           );
         }
@@ -1251,61 +1286,150 @@ class _EpisodesTab extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Season selector — horizontal pill chips.
+// Episodes header — Netflix-style season dropdown (multi-season) that opens a
+// dark bottom sheet to pick a season, or a plain "Episodes" label otherwise.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SeasonSelector extends StatelessWidget {
-  const _SeasonSelector({
+class _EpisodesHeader extends StatelessWidget {
+  const _EpisodesHeader({
+    required this.hasMultipleSeasons,
     required this.seasons,
-    required this.selectedSeason,
+    required this.currentSeason,
     required this.onSelectSeason,
   });
 
+  final bool hasMultipleSeasons;
   final List<int> seasons;
-  final int selectedSeason;
+  final int currentSeason;
   final ValueChanged<int> onSelectSeason;
+
+  Future<void> _openSheet(BuildContext context) async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      barrierColor: Colors.black54,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => _SeasonSheet(
+        seasons: seasons,
+        currentSeason: currentSeason,
+      ),
+    );
+    if (picked != null) onSelectSeason(picked);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: SizedBox(
-        height: 38,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: seasons.length,
-          separatorBuilder: (context0, i0) => const SizedBox(width: 8),
-          itemBuilder: (context0, i) {
-            final s = seasons[i];
-            final selected = s == selectedSeason;
-            return GestureDetector(
-              onTap: () => onSelectSeason(s),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOut,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.accentSoft : AppColors.surface2,
-                  borderRadius: BorderRadius.circular(19),
-                  border: Border.all(
-                    color: selected ? AppColors.accent : AppColors.hairline,
-                    width: 1,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: hasMultipleSeasons
+            ? Material(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(10),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => _openSheet(context),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Season $currentSeason',
+                          style: AppText.headline,
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: AppColors.textPrimary,
+                          size: 22,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  'Season $s',
-                  style: AppText.caption.copyWith(
-                    color:
-                        selected ? AppColors.accent : AppColors.textSecondary,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              )
+            : Text('Episodes', style: AppText.headline),
+      ),
+    );
+  }
+}
+
+// Dark, rounded-top bottom sheet listing the available seasons with a coral
+// check on the current one. Returns the picked season via Navigator.pop.
+class _SeasonSheet extends StatelessWidget {
+  const _SeasonSheet({required this.seasons, required this.currentSeason});
+
+  final List<int> seasons;
+  final int currentSeason;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Grab handle.
+          Container(
+            margin: const EdgeInsets.only(top: 10, bottom: 6),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.textTertiary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Seasons', style: AppText.title),
+            ),
+          ),
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              itemCount: seasons.length,
+              itemBuilder: (context0, i) {
+                final s = seasons[i];
+                final selected = s == currentSeason;
+                return InkWell(
+                  onTap: () => Navigator.of(context0).pop(s),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20, vertical: 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Season $s',
+                            style: AppText.body.copyWith(
+                              color: selected
+                                  ? AppColors.textPrimary
+                                  : AppColors.textSecondary,
+                              fontWeight:
+                                  selected ? FontWeight.w700 : FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        if (selected)
+                          const Icon(Icons.check_rounded,
+                              color: AppColors.accent, size: 22),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
