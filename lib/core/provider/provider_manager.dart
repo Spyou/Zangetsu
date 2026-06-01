@@ -130,6 +130,7 @@ class _JsHost {
       final headers = (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
       final body = payload['body'];
       final tMs = (payload['timeoutMs'] as num?)?.toInt() ?? 0;
+      final follow = payload['followRedirects'] != false;
       // ignore: avoid_print
       print('[fetch] $method $url');
       final resp = await dio.requestUri<dynamic>(
@@ -139,7 +140,8 @@ class _JsHost {
           method: method,
           headers: headers.map((k, v) => MapEntry(k, v.toString())),
           responseType: ResponseType.plain,
-          followRedirects: true,
+          followRedirects: follow,
+          maxRedirects: follow ? 5 : 0,
           validateStatus: (_) => true,
           receiveTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
           sendTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,

@@ -11,11 +11,20 @@ globalThis.__fetch = async function (src, u, opts) {
   const headers = Object.assign(
     { 'User-Agent': 'Mozilla/5.0 Chrome/120.0', Accept: '*/*' },
     opts.headers || {});
-  const r = await fetch(u, { method: opts.method || 'GET', headers, body: opts.body });
+  const init = { method: opts.method || 'GET', headers, body: opts.body };
+  if (opts.followRedirects === false) init.redirect = 'manual';
+  const r = await fetch(u, init);
   const text = await r.text();
+  const hdrs = Object.fromEntries(r.headers.entries());
+  // undici hides multiple Set-Cookie from entries(); surface them explicitly.
+  const sc = typeof r.headers.getSetCookie === 'function'
+    ? r.headers.getSetCookie()
+    : null;
+  if (sc && sc.length) hdrs['set-cookie'] = sc.join(', ');
+  else { const one = r.headers.get('set-cookie'); if (one) hdrs['set-cookie'] = one; }
   return {
     ok: r.ok, status: r.status, statusText: r.statusText,
-    headers: Object.fromEntries(r.headers.entries()), url: r.url, body: text,
+    headers: hdrs, url: r.url, body: text,
     text: async () => text, json: async () => JSON.parse(text),
   };
 };

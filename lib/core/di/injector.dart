@@ -64,5 +64,13 @@ Future<void> initDependencies() async {
     displayName: 'Bundled',
   );
 
+  final netmirrorJs = await rootBundle.loadString('providers/netmirror.js');
+  manager.load(
+    sourceId: 'netmirror',
+    jsSource: netmirrorJs,
+    originRepoUrl: 'bundled://',
+    displayName: 'NetMirror',
+  );
+
   sl.registerSingleton<SourceRepository>(SourceRepository(manager: manager));
 }

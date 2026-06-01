@@ -87,7 +87,8 @@ globalThis.__fetch = function(src, url, opts) {
     headers: opts.headers || {},
     body: opts.body == null ? null : (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)),
     responseType: opts.responseType || 'text',
-    timeoutMs: (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) ? opts.timeoutMs : 0
+    timeoutMs: (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) ? opts.timeoutMs : 0,
+    followRedirects: opts.followRedirects === false ? false : true
   };
   var promise = new Promise(function(resolve, reject) {
     __pendingFetches[id] = { resolve: resolve, reject: reject };

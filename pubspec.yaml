@@ -82,6 +82,7 @@ flutter:
   assets:
     - providers/example.js
     - providers/allanime.js
+    - providers/netmirror.js
     - extractors/example_embed.js
     - extractors/okru.js
     - extractors/mp4upload.js
