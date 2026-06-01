@@ -1,10 +1,9 @@
-import 'package:flutter/foundation.dart';
-
 import '../models/episode.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/video_source.dart';
 import '../provider/provider_manager.dart';
+import '../state/active_source_cubit.dart';
 
 /// Facade over the active provider runtime for the UI layer.
 /// The active source is driven by [activeSource] so callers can switch at
@@ -12,19 +11,19 @@ import '../provider/provider_manager.dart';
 class SourceRepository {
   SourceRepository({
     required ProviderManager manager,
-    required ValueNotifier<String> activeSource,
-  })  : _manager = manager,
-        _active = activeSource;
+    required ActiveSourceCubit activeSource,
+  }) : _manager = manager,
+       _active = activeSource;
 
   final ProviderManager _manager;
-  final ValueNotifier<String> _active;
+  final ActiveSourceCubit _active;
 
   /// The currently-active source identifier.
-  String get sourceId => _active.value;
+  String get sourceId => _active.state;
 
   JsProvider get _p {
-    final p = _manager.get(_active.value);
-    if (p == null) throw StateError('Provider not loaded: ${_active.value}');
+    final p = _manager.get(_active.state);
+    if (p == null) throw StateError('Provider not loaded: ${_active.state}');
     return p;
   }
 
@@ -32,8 +31,7 @@ class SourceRepository {
     String category = 'sub',
     int dateRange = 7,
     int page = 1,
-  }) =>
-      _p.popular(category: category, dateRange: dateRange, page: page);
+  }) => _p.popular(category: category, dateRange: dateRange, page: page);
 
   Future<List<MediaItem>> search(String query, {String category = 'sub'}) =>
       _p.search(query, 1, category: category);

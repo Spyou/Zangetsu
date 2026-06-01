@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -20,22 +22,22 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final ValueNotifier<String> _active =
-      sl<ValueNotifier<String>>(instanceName: 'activeSource');
+  ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
 
   ProviderRegistry get _registry => sl<ProviderRegistry>();
 
-  Future<void> _push(Widget screen) => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => screen),
-      );
+  Future<void> _push(Widget screen) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => screen));
 
-  String _activeLabel() {
-    final entry = _registry.entryFor(_active.value);
-    if (entry == null) return _active.value;
+  String _activeLabel(String activeId) {
+    final entry = _registry.entryFor(activeId);
+    if (entry == null) return activeId;
     return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
   }
 
-  /// Bottom sheet listing enabled providers; sets [activeSource].
+  /// Bottom sheet listing enabled providers; sets the active source on the
+  /// [ActiveSourceCubit].
   Future<void> _pickActiveSource() async {
     final enabled = _registry.getAll().where((e) => e.enabled).toList()
       ..sort((a, b) {
@@ -43,6 +45,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
         return an.toLowerCase().compareTo(bn.toLowerCase());
       });
+    final currentId = _active.state;
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
@@ -77,14 +80,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               )
             else
               ...enabled.map((e) {
-                final label =
-                    e.displayName.isNotEmpty ? e.displayName : e.name;
-                final isActive = e.name == _active.value;
+                final label = e.displayName.isNotEmpty ? e.displayName : e.name;
+                final isActive = e.name == currentId;
                 return ListTile(
                   onTap: () => Navigator.pop(ctx, e.name),
-                  title: Text(label,
-                      style: AppText.body
-                          .copyWith(color: AppColors.textPrimary)),
+                  title: Text(
+                    label,
+                    style: AppText.body.copyWith(color: AppColors.textPrimary),
+                  ),
                   trailing: isActive
                       ? const Icon(Icons.check, color: AppColors.accent)
                       : null,
@@ -95,16 +98,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
-    if (picked != null && picked != _active.value) {
-      _active.value = picked;
+    if (picked != null && picked != currentId) {
+      _active.setSource(picked);
       if (mounted) setState(() {});
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final enabledCount =
-        _registry.getAll().where((e) => e.enabled).length;
+    final enabledCount = _registry.getAll().where((e) => e.enabled).length;
+    final activeId = context.watch<ActiveSourceCubit>().state;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -133,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       SettingsTile(
                         icon: Icons.swap_horiz_rounded,
                         title: 'Active source',
-                        subtitle: _activeLabel(),
+                        subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSource,
                       ),
                     ],
@@ -254,16 +257,17 @@ class AboutSettingsScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.play_circle_fill_rounded,
-                  color: AppColors.accent, size: 40),
+              child: const Icon(
+                Icons.play_circle_fill_rounded,
+                color: AppColors.accent,
+                size: 40,
+              ),
             ),
           ),
           const SizedBox(height: 16),
           Center(child: Text(kAppName, style: AppText.title)),
           const SizedBox(height: 4),
-          Center(
-            child: Text('Version $kAppVersion', style: AppText.caption),
-          ),
+          Center(child: Text('Version $kAppVersion', style: AppText.caption)),
           const SizedBox(height: 24),
           Text(
             'A community-driven video app. Install sources from repos to '

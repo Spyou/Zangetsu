@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
@@ -7,6 +8,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
@@ -28,7 +30,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _repo = sl<SourceRepository>();
   final _myList = sl<MyListStore>();
-  final _active = sl<ValueNotifier<String>>(instanceName: 'activeSource');
 
   // Futures cached in fields (not in build) to prevent refetch on every rebuild.
   late Future<List<MediaItem>> _trending;
@@ -40,13 +41,13 @@ class _HomeScreenState extends State<HomeScreen> {
   final Map<String, Future<String?>> _descCache = {};
 
   Future<String?> _describe(MediaItem m) => _descCache.putIfAbsent(
-        '${m.sourceId}:${m.id}',
-        () => _repo
-            .detail(m.url)
-            .then((d) => d.description)
-            // ignore: avoid_types_on_closure_parameters
-            .catchError((_) => null as String?),
-      );
+    '${m.sourceId}:${m.id}',
+    () => _repo
+        .detail(m.url)
+        .then((d) => d.description)
+        // ignore: avoid_types_on_closure_parameters
+        .catchError((_) => null as String?),
+  );
 
   void _load() {
     _trending = _repo.popular(dateRange: 1);
@@ -58,21 +59,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
-    _active.addListener(_onSourceChanged);
-  }
-
-  @override
-  void dispose() {
-    _active.removeListener(_onSourceChanged);
-    super.dispose();
-  }
-
-  void _onSourceChanged() {
-    if (!mounted) return;
-    setState(() {
-      _descCache.clear();
-      _load();
-    });
   }
 
   void _openDetail(MediaItem item) {
@@ -173,14 +159,13 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Row(
           children: [
-            const Expanded(
-              child: Text(kAppName, style: AppText.largeTitle),
-            ),
-            SourceSwitcher(
-              currentId: _active.value,
-              onChanged: (id) {
-                if (id != _active.value) _active.value = id;
-              },
+            const Expanded(child: Text(kAppName, style: AppText.largeTitle)),
+            BlocBuilder<ActiveSourceCubit, String>(
+              builder: (context, id) => SourceSwitcher(
+                currentId: id,
+                onChanged: (newId) =>
+                    context.read<ActiveSourceCubit>().setSource(newId),
+              ),
             ),
           ],
         ),
@@ -195,220 +180,230 @@ class _HomeScreenState extends State<HomeScreen> {
     final history = sl<WatchHistory>().recent();
     final savedItems = _myList.all();
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      // Extend content behind the status bar; the floating header handles
-      // its own SafeArea(bottom: false).
-      body: RefreshIndicator(
-        color: AppColors.accent,
-        onRefresh: () async {
-          setState(_load);
-        },
-        child: CustomScrollView(
-          slivers: [
-            // ── Hero + floating header (first sliver) ─────────────────────
-            SliverToBoxAdapter(
-              child: FutureBuilder<List<MediaItem>>(
-                future: _trending,
-                builder: (context, snap) {
-                  final hasHero = snap.connectionState != ConnectionState.waiting &&
-                      !snap.hasError &&
-                      (snap.data?.isNotEmpty ?? false);
-
-                  if (hasHero) {
-                    return Stack(
-                      children: [
-                        // Auto-rotating carousel (up to 6 trending items)
-                        FeaturedCarousel(
-                          items: snap.data!,
-                          inList: (m) => _myList.contains(m),
-                          onPlay: _playFeatured,
-                          onInfo: _openDetail,
-                          onToggleList: (m) async {
-                            await _myList.toggle(m);
-                            if (mounted) setState(() {});
-                          },
-                          describe: _describe,
-                        ),
-                        // Floating header sits on top
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          child: _buildHeader(),
-                        ),
-                      ],
-                    );
-                  }
-
-                  // While loading or on error: plain header on bg colour.
-                  return ColoredBox(
-                    color: AppColors.bg,
-                    child: _buildHeader(),
-                  );
-                },
-              ),
-            ),
-
-            // ── My List (only when non-empty) ─────────────────────────────
-            if (savedItems.isNotEmpty)
+    return BlocListener<ActiveSourceCubit, String>(
+      listener: (context, _) {
+        if (!mounted) return;
+        setState(() {
+          _descCache.clear();
+          _load();
+        });
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        // Extend content behind the status bar; the floating header handles
+        // its own SafeArea(bottom: false).
+        body: RefreshIndicator(
+          color: AppColors.accent,
+          onRefresh: () async {
+            setState(_load);
+          },
+          child: CustomScrollView(
+            slivers: [
+              // ── Hero + floating header (first sliver) ─────────────────────
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: _animated(
-                    ContentRow(
-                      title: 'My List',
-                      itemWidth: 140,
-                      itemHeight: 236,
-                      itemCount: savedItems.length,
-                      itemBuilder: (c, i) => PosterCard(
-                        title: savedItems[i].title,
-                        imageUrl: savedItems[i].cover,
-                        headers: savedItems[i].coverHeaders,
-                        cellWidth: 140,
-                        onTap: () => _openDetail(savedItems[i]),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-
-            // ── Continue Watching ─────────────────────────────────────────
-            if (history.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 10),
-                  child: _animated(
-                    ContentRow(
-                      title: 'Continue Watching',
-                      itemWidth: 300,
-                      itemHeight: 230,
-                      itemCount: history.length,
-                      itemBuilder: (c, i) {
-                        final e = history[i];
-                        return ContinueCard(
-                          title: e.showTitle,
-                          imageUrl: e.cover,
-                          headers: e.coverHeaders,
-                          progress: e.progress,
-                          subtitle: e.episodeNumber != null
-                              ? 'Episode ${e.episodeNumber!.toInt()}'
-                              : null,
-                          onTap: () => _resume(e),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              )
-            else
-              const SliverToBoxAdapter(child: SizedBox.shrink()),
-
-            // ── Trending Now ──────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
                 child: FutureBuilder<List<MediaItem>>(
                   future: _trending,
                   builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const RowSkeleton();
+                    final hasHero =
+                        snap.connectionState != ConnectionState.waiting &&
+                        !snap.hasError &&
+                        (snap.data?.isNotEmpty ?? false);
+
+                    if (hasHero) {
+                      return Stack(
+                        children: [
+                          // Auto-rotating carousel (up to 6 trending items)
+                          FeaturedCarousel(
+                            items: snap.data!,
+                            inList: (m) => _myList.contains(m),
+                            onPlay: _playFeatured,
+                            onInfo: _openDetail,
+                            onToggleList: (m) async {
+                              await _myList.toggle(m);
+                              if (mounted) setState(() {});
+                            },
+                            describe: _describe,
+                          ),
+                          // Floating header sits on top
+                          Positioned(
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            child: _buildHeader(),
+                          ),
+                        ],
+                      );
                     }
-                    if (snap.hasError || (snap.data?.isEmpty ?? true)) {
-                      return const SizedBox.shrink();
-                    }
-                    final items = snap.data!;
-                    return _animated(
-                      ContentRow(
-                        title: 'Trending Now',
-                        itemWidth: 140,
-                        itemHeight: 236,
-                        itemCount: items.length,
-                        itemBuilder: (c, i) => PosterCard(
-                          title: items[i].title,
-                          imageUrl: items[i].cover,
-                          headers: items[i].coverHeaders,
-                          cellWidth: 140,
-                          onTap: () => _openDetail(items[i]),
-                        ),
-                      ),
+
+                    // While loading or on error: plain header on bg colour.
+                    return ColoredBox(
+                      color: AppColors.bg,
+                      child: _buildHeader(),
                     );
                   },
                 ),
               ),
-            ),
 
-            // ── Popular This Month ────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: FutureBuilder<List<MediaItem>>(
-                  future: _month,
-                  builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const RowSkeleton();
-                    }
-                    if (snap.hasError || (snap.data?.isEmpty ?? true)) {
-                      return const SizedBox.shrink();
-                    }
-                    final items = snap.data!;
-                    return _animated(
+              // ── My List (only when non-empty) ─────────────────────────────
+              if (savedItems.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: _animated(
                       ContentRow(
-                        title: 'Popular This Month',
+                        title: 'My List',
                         itemWidth: 140,
                         itemHeight: 236,
-                        itemCount: items.length,
+                        itemCount: savedItems.length,
                         itemBuilder: (c, i) => PosterCard(
-                          title: items[i].title,
-                          imageUrl: items[i].cover,
-                          headers: items[i].coverHeaders,
+                          title: savedItems[i].title,
+                          imageUrl: savedItems[i].cover,
+                          headers: savedItems[i].coverHeaders,
                           cellWidth: 140,
-                          onTap: () => _openDetail(items[i]),
+                          onTap: () => _openDetail(savedItems[i]),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
-              ),
-            ),
 
-            // ── All-Time Favorites ────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                child: FutureBuilder<List<MediaItem>>(
-                  future: _allTime,
-                  builder: (context, snap) {
-                    if (snap.connectionState == ConnectionState.waiting) {
-                      return const RowSkeleton();
-                    }
-                    if (snap.hasError || (snap.data?.isEmpty ?? true)) {
-                      return const SizedBox.shrink();
-                    }
-                    final items = snap.data!;
-                    return _animated(
+              // ── Continue Watching ─────────────────────────────────────────
+              if (history.isNotEmpty)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    child: _animated(
                       ContentRow(
-                        title: 'All-Time Favorites',
-                        itemWidth: 140,
-                        itemHeight: 236,
-                        itemCount: items.length,
-                        itemBuilder: (c, i) => PosterCard(
-                          title: items[i].title,
-                          imageUrl: items[i].cover,
-                          headers: items[i].coverHeaders,
-                          cellWidth: 140,
-                          onTap: () => _openDetail(items[i]),
-                        ),
+                        title: 'Continue Watching',
+                        itemWidth: 300,
+                        itemHeight: 230,
+                        itemCount: history.length,
+                        itemBuilder: (c, i) {
+                          final e = history[i];
+                          return ContinueCard(
+                            title: e.showTitle,
+                            imageUrl: e.cover,
+                            headers: e.coverHeaders,
+                            progress: e.progress,
+                            subtitle: e.episodeNumber != null
+                                ? 'Episode ${e.episodeNumber!.toInt()}'
+                                : null,
+                            onTap: () => _resume(e),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ),
+                )
+              else
+                const SliverToBoxAdapter(child: SizedBox.shrink()),
+
+              // ── Trending Now ──────────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: FutureBuilder<List<MediaItem>>(
+                    future: _trending,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const RowSkeleton();
+                      }
+                      if (snap.hasError || (snap.data?.isEmpty ?? true)) {
+                        return const SizedBox.shrink();
+                      }
+                      final items = snap.data!;
+                      return _animated(
+                        ContentRow(
+                          title: 'Trending Now',
+                          itemWidth: 140,
+                          itemHeight: 236,
+                          itemCount: items.length,
+                          itemBuilder: (c, i) => PosterCard(
+                            title: items[i].title,
+                            imageUrl: items[i].cover,
+                            headers: items[i].coverHeaders,
+                            cellWidth: 140,
+                            onTap: () => _openDetail(items[i]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
-            ),
 
-            // ── Bottom padding ────────────────────────────────────────────
-            const SliverToBoxAdapter(child: SizedBox(height: 32)),
-          ],
+              // ── Popular This Month ────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: FutureBuilder<List<MediaItem>>(
+                    future: _month,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const RowSkeleton();
+                      }
+                      if (snap.hasError || (snap.data?.isEmpty ?? true)) {
+                        return const SizedBox.shrink();
+                      }
+                      final items = snap.data!;
+                      return _animated(
+                        ContentRow(
+                          title: 'Popular This Month',
+                          itemWidth: 140,
+                          itemHeight: 236,
+                          itemCount: items.length,
+                          itemBuilder: (c, i) => PosterCard(
+                            title: items[i].title,
+                            imageUrl: items[i].cover,
+                            headers: items[i].coverHeaders,
+                            cellWidth: 140,
+                            onTap: () => _openDetail(items[i]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // ── All-Time Favorites ────────────────────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  child: FutureBuilder<List<MediaItem>>(
+                    future: _allTime,
+                    builder: (context, snap) {
+                      if (snap.connectionState == ConnectionState.waiting) {
+                        return const RowSkeleton();
+                      }
+                      if (snap.hasError || (snap.data?.isEmpty ?? true)) {
+                        return const SizedBox.shrink();
+                      }
+                      final items = snap.data!;
+                      return _animated(
+                        ContentRow(
+                          title: 'All-Time Favorites',
+                          itemWidth: 140,
+                          itemHeight: 236,
+                          itemCount: items.length,
+                          itemBuilder: (c, i) => PosterCard(
+                            title: items[i].title,
+                            imageUrl: items[i].cover,
+                            headers: items[i].coverHeaders,
+                            cellWidth: 140,
+                            onTap: () => _openDetail(items[i]),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // ── Bottom padding ────────────────────────────────────────────
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            ],
+          ),
         ),
       ),
     );

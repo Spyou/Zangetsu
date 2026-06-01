@@ -1,5 +1,4 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -13,6 +12,7 @@ import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
+import '../state/active_source_cubit.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -29,13 +29,15 @@ Future<void> initDependencies() async {
   await MyListStore.init();
   sl.registerSingleton<MyListStore>(MyListStore());
 
-  final dio = Dio(BaseOptions(
-    // 8s bounds every provider/extractor fetch (incl. embed hosts that hang,
-    // e.g. streamlare's anti-bot endpoint) so source resolution can't stall ~20s.
-    connectTimeout: const Duration(seconds: 8),
-    receiveTimeout: const Duration(seconds: 8),
-    headers: {'User-Agent': 'Mozilla/5.0 (WATCH_APP) Chrome/120.0'},
-  ));
+  final dio = Dio(
+    BaseOptions(
+      // 8s bounds every provider/extractor fetch (incl. embed hosts that hang,
+      // e.g. streamlare's anti-bot endpoint) so source resolution can't stall ~20s.
+      connectTimeout: const Duration(seconds: 8),
+      receiveTimeout: const Duration(seconds: 8),
+      headers: {'User-Agent': 'Mozilla/5.0 (WATCH_APP) Chrome/120.0'},
+    ),
+  );
   sl.registerSingleton<Dio>(dio);
 
   final manager = ProviderManager(dio: dio);
@@ -61,7 +63,9 @@ Future<void> initDependencies() async {
 
   // Load bundled extractor BEFORE the providers so getVideoSources can resolve.
   // Extractors are NOT providers — they stay loaded directly on the manager.
-  final extractorJs = await rootBundle.loadString('extractors/example_embed.js');
+  final extractorJs = await rootBundle.loadString(
+    'extractors/example_embed.js',
+  );
   manager.loadExtractor(extractorId: 'example_embed', jsSource: extractorJs);
 
   // Real embed-host extractors. Order doesn't matter; each registers its
@@ -113,14 +117,11 @@ Future<void> initDependencies() async {
     manager.setSettings(sourceId, entry.value);
   }
 
-  // Named ValueNotifier so any widget can read/write the active source id.
-  sl.registerSingleton<ValueNotifier<String>>(
-    ValueNotifier<String>('allanime'),
-    instanceName: 'activeSource',
-  );
+  // Global cubit so any widget can read/write the active source id and
+  // descendants can react via BlocBuilder/BlocListener.
+  sl.registerSingleton<ActiveSourceCubit>(ActiveSourceCubit());
 
-  sl.registerSingleton<SourceRepository>(SourceRepository(
-    manager: manager,
-    activeSource: sl<ValueNotifier<String>>(instanceName: 'activeSource'),
-  ));
+  sl.registerSingleton<SourceRepository>(
+    SourceRepository(manager: manager, activeSource: sl<ActiveSourceCubit>()),
+  );
 }
