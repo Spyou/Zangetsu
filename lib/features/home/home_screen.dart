@@ -73,7 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _playFeatured(MediaItem item) async {
     try {
-      final eps = await _repo.episodes(item.url);
+      final eps = await _repo.episodes(item.url, sourceId: item.sourceId);
       if (eps.isEmpty) {
         _openDetail(item);
         return;
@@ -87,7 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
             episodes: eps,
             startIndex: 0,
             resume: sl<ResumeStore>(),
-            resolveSources: _repo.sources,
+            resolveSources: (u) => _repo.sources(u, sourceId: item.sourceId),
             history: sl<WatchHistory>(),
             showTitle: item.title,
             cover: item.cover,
@@ -106,7 +106,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _resume(HistoryEntry e) async {
     try {
-      final eps = await _repo.episodes(e.showUrl, category: e.category);
+      final eps = await _repo.episodes(e.showUrl,
+          category: e.category, sourceId: e.sourceId);
       var idx = eps.indexWhere((x) => x.id == e.episodeId);
       if (idx < 0) idx = 0;
       if (!mounted) return;
@@ -118,7 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
             episodes: eps,
             startIndex: idx,
             resume: sl<ResumeStore>(),
-            resolveSources: _repo.sources,
+            resolveSources: (u) => _repo.sources(u, sourceId: e.sourceId),
             history: sl<WatchHistory>(),
             showTitle: e.showTitle,
             cover: e.cover,

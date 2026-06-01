@@ -21,9 +21,12 @@ class SourceRepository {
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
-  JsProvider get _p {
-    final p = _manager.get(_active.state);
-    if (p == null) throw StateError('Provider not loaded: ${_active.state}');
+  /// Resolves the provider for a per-call [id], falling back to the active
+  /// source when [id] is null. Lets cross-source items (Continue Watching,
+  /// My List, etc.) route to their OWN provider instead of the active one.
+  JsProvider _providerFor(String? id) {
+    final p = _manager.get(id ?? _active.state);
+    if (p == null) throw StateError('Provider not loaded: ${id ?? _active.state}');
     return p;
   }
 
@@ -31,17 +34,22 @@ class SourceRepository {
     String category = 'sub',
     int dateRange = 7,
     int page = 1,
-  }) => _p.popular(category: category, dateRange: dateRange, page: page);
+    String? sourceId,
+  }) => _providerFor(sourceId)
+      .popular(category: category, dateRange: dateRange, page: page);
 
-  Future<List<MediaItem>> search(String query, {String category = 'sub'}) =>
-      _p.search(query, 1, category: category);
+  Future<List<MediaItem>> search(String query,
+          {String category = 'sub', String? sourceId}) =>
+      _providerFor(sourceId).search(query, 1, category: category);
 
-  Future<MediaDetail> detail(String url, {String category = 'sub'}) =>
-      _p.getDetail(url, category: category);
+  Future<MediaDetail> detail(String url,
+          {String category = 'sub', String? sourceId}) =>
+      _providerFor(sourceId).getDetail(url, category: category);
 
-  Future<List<Episode>> episodes(String url, {String category = 'sub'}) =>
-      _p.getEpisodes(url, category: category);
+  Future<List<Episode>> episodes(String url,
+          {String category = 'sub', String? sourceId}) =>
+      _providerFor(sourceId).getEpisodes(url, category: category);
 
-  Future<List<VideoSource>> sources(String episodeUrl) =>
-      _p.getVideoSources(episodeUrl);
+  Future<List<VideoSource>> sources(String episodeUrl, {String? sourceId}) =>
+      _providerFor(sourceId).getVideoSources(episodeUrl);
 }

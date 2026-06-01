@@ -58,20 +58,30 @@ class DetailState extends Equatable {
 }
 
 class DetailCubit extends Cubit<DetailState> {
-  DetailCubit({required SourceRepository repo, required String url})
-      : _repo = repo,
+  DetailCubit({
+    required SourceRepository repo,
+    required String url,
+    String? sourceId,
+  })  : _repo = repo,
         _url = url,
+        _sourceId = sourceId,
         super(const DetailState());
 
   final SourceRepository _repo;
   final String _url;
+
+  /// The owning item's source. When null, repo calls fall back to the
+  /// active source. Set from `DetailScreen(item:).sourceId` so a title
+  /// opened from My List / cross-source rows queries its OWN provider.
+  final String? _sourceId;
 
   /// Initial fetch. Emits loading then success/error for the current
   /// [DetailState.category] (defaults to 'sub').
   Future<void> load() async {
     emit(state.copyWith(status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(_url, category: state.category);
+      final detail =
+          await _repo.detail(_url, category: state.category, sourceId: _sourceId);
       emit(state.copyWith(status: DetailStatus.success, detail: detail));
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
@@ -86,7 +96,7 @@ class DetailCubit extends Cubit<DetailState> {
     if (cat == state.category) return;
     emit(state.copyWith(category: cat, status: DetailStatus.loading));
     try {
-      final detail = await _repo.detail(_url, category: cat);
+      final detail = await _repo.detail(_url, category: cat, sourceId: _sourceId);
       emit(state.copyWith(
         status: DetailStatus.success,
         detail: detail,

@@ -26,8 +26,11 @@ class DetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) =>
-          DetailCubit(repo: sl<SourceRepository>(), url: item.url)..load(),
+      create: (_) => DetailCubit(
+        repo: sl<SourceRepository>(),
+        url: item.url,
+        sourceId: item.sourceId,
+      )..load(),
       child: _DetailView(item: item),
     );
   }
@@ -75,7 +78,8 @@ class _DetailViewState extends State<_DetailView> {
         episodes: episodes,
         startIndex: index,
         resume: sl<ResumeStore>(),
-        resolveSources: sl<SourceRepository>().sources,
+        resolveSources: (u) =>
+            sl<SourceRepository>().sources(u, sourceId: widget.item.sourceId),
         history: sl<WatchHistory>(),
         showTitle: detail.title,
         cover: detail.cover ?? widget.item.cover,
