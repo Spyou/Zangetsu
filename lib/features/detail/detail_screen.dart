@@ -659,54 +659,12 @@ class _Hero extends StatelessWidget {
                 placeholder: _coverBackdrop(),
               )
             : _coverBackdrop(),
-        // Gradients render OVER the video for title/poster readability.
+        // Gradients render OVER the video for title readability.
         const IgnorePointer(
           child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.topScrim)),
         ),
         const IgnorePointer(
           child: DecoratedBox(decoration: BoxDecoration(gradient: AppColors.scrim)),
-        ),
-        // Overlapping portrait poster, bottom-right.
-        Positioned(
-          right: 16,
-          bottom: 14,
-          child: SizedBox(
-            height: 132,
-            child: AspectRatio(
-              aspectRatio: 2 / 3,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Color(0x99000000),
-                      blurRadius: 18,
-                      offset: Offset(0, 8),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.10),
-                    width: 0.5,
-                  ),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: hasCover
-                      ? CachedNetworkImage(
-                          imageUrl: coverUrl,
-                          httpHeaders: coverHeaders,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 240,
-                          placeholder: (c, u) =>
-                              const ColoredBox(color: AppColors.surface2),
-                          errorWidget: (c, u, e) =>
-                              const ColoredBox(color: AppColors.surface2),
-                        )
-                      : const ColoredBox(color: AppColors.surface2),
-                ),
-              ),
-            ),
-          ),
         ),
       ],
     );
