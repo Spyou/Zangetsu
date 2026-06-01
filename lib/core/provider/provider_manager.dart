@@ -69,6 +69,20 @@ class _JsHost {
     _runtime.evaluate('delete globalThis.__providers[${jsonEncode(sourceId)}];');
   }
 
+  /// Pushes [settings] into the JS runtime as `__settings[sourceId]`.
+  /// One-shot sync eval — best-effort, never throws. Replaces the slot
+  /// entirely so cleared keys disappear from the JS side too. Providers
+  /// read it as `__settings[__SOURCE_ID]` inside their wrapped closure.
+  void setSettings(String sourceId, Map<String, dynamic> settings) {
+    final r = _runtime.evaluate(
+      '__settings[${jsonEncode(sourceId)}] = ${jsonEncode(settings)};',
+    );
+    if (r.isError) {
+      // ignore: avoid_print
+      print('[settings] push failed for $sourceId: ${r.stringResult}');
+    }
+  }
+
   Future<String> call(String sourceId, String method, List<Object?> args,
       {Duration timeout = const Duration(seconds: 15)}) async {
     try {
@@ -298,21 +312,66 @@ class JsProvider implements BaseProvider {
     final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
     return list.map(VideoSource.fromJson).toList();
   }
+
+  /// Returns the provider's raw settings schema (the JSON list returned
+  /// by its `getSettings()`), or null if the JS file doesn't define
+  /// `getSettings`. Never throws — the wrapped namespace sets the slot
+  /// to `null` for providers without the function, which `__callProvider`
+  /// reports as a "missing method" rejection; we treat that as "no
+  /// schema". Parse the result with `ProviderSettingSchema.parseAll`.
+  Future<List<dynamic>?> getSettingsSchema() async {
+    try {
+      final raw = await _call('getSettings', const []);
+      final decoded = jsonDecode(raw);
+      if (decoded is List) return decoded;
+      return null;
+    } catch (e) {
+      final msg = e is JsRuntimeException ? e.message : e.toString();
+      // The bootstrap signals an absent function with this exact prefix.
+      if (msg.contains('missing method: getSettings')) return null;
+      // ignore: avoid_print
+      print('[settings] schema load failed for $sourceId: $msg');
+      return null;
+    }
+  }
+}
+
+/// Minimal contract the [ProviderRegistry] needs from a runtime host.
+/// Lets tests inject a no-op loader without spinning up native QuickJS.
+abstract class ProviderRuntimeLoader {
+  JsProvider? get(String id);
+
+  /// Loads [jsSource] into the runtime under [sourceId]. Return type is
+  /// `void` here so test doubles needn't fabricate a [JsProvider]; the
+  /// concrete [ProviderManager] still returns the loaded provider.
+  void load({
+    required String sourceId,
+    required String jsSource,
+    String originRepoUrl,
+    String displayName,
+  });
+
+  /// Pushes per-source settings into the runtime as `__settings[sourceId]`.
+  void setSettings(String sourceId, Map<String, dynamic> settings);
+
+  void remove(String id);
 }
 
 /// Public manager. Owns the single shared QuickJS runtime + registered
 /// providers and extractors.
-class ProviderManager {
+class ProviderManager implements ProviderRuntimeLoader {
   ProviderManager({required Dio dio}) : _host = _JsHost(dio: dio);
 
   final _JsHost _host;
 
   Iterable<String> get installedIds => _host.providers.keys;
   List<JsProvider> get all => _host.providers.values.toList();
+  @override
   JsProvider? get(String id) => _host.providers[id];
 
   /// Loads [jsSource] as a provider under [sourceId]. One provider per
   /// sourceId is live at a time; reloading replaces it.
+  @override
   JsProvider load({
     required String sourceId,
     required String jsSource,
@@ -336,6 +395,14 @@ class ProviderManager {
     _host.loadExtractor(extractorId, jsSource);
   }
 
+  /// Mirrors per-source settings into the JS runtime so subsequent
+  /// provider calls can read them as `__settings[sourceId]`. Safe to
+  /// call any time — the underlying eval is single-shot and best-effort.
+  @override
+  void setSettings(String sourceId, Map<String, dynamic> settings) =>
+      _host.setSettings(sourceId, settings);
+
+  @override
   void remove(String id) {
     _host.removeProvider(id);
     _host.providers.remove(id);

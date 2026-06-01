@@ -31,8 +31,19 @@ class CachedProvider {
       );
 }
 
+/// Minimal contract the [ProviderRegistry] needs to fetch + evict repo
+/// provider JS. Lets tests inject a stub without real network / Hive.
+abstract class ProviderJsFetcher {
+  Future<CachedProvider> fetch({
+    required String name,
+    required String url,
+    bool force,
+  });
+  Future<void> remove(String name);
+}
+
 /// Downloads provider / extractor JS from raw URLs and caches them in Hive.
-class ProviderDownloader {
+class ProviderDownloader implements ProviderJsFetcher {
   static const String boxName = 'provider_js_cache';
   static const Duration maxAge = Duration(hours: 24);
 
@@ -47,6 +58,7 @@ class ProviderDownloader {
     }
   }
 
+  @override
   Future<CachedProvider> fetch({
     required String name,
     required String url,
@@ -93,6 +105,7 @@ class ProviderDownloader {
   }
 
   CachedProvider? readCached(String name) => _read(name);
+  @override
   Future<void> remove(String name) async => _box.delete(name);
   Future<void> clear() async => _box.clear();
 }
