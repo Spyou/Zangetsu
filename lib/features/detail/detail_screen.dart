@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -706,16 +709,17 @@ class _Hero extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // _HeroTrailer — the autoplaying, muted, looping trailer that becomes the hero
-// backdrop once a YouTube id resolves (Netflix-style). The static cover image
-// stays visible underneath until the player reports it's ready, so there's
-// never a blank/black flash; if the player errors we keep showing the cover.
+// backdrop once a YouTube id resolves (Netflix-style). The trailer is a DIRECT
+// muxed stream (extracted by youtube_explode_dart) played natively via
+// media_kit — NO iframe, NO YouTube chrome (no related-videos / endscreen /
+// branding). The static cover image stays visible underneath until the first
+// frame is painted, so there's never a blank/black flash; if extraction or
+// playback fails we keep showing the cover.
 //
-// • Muted + autoplay + loop + NO chrome (controls/fullscreen/captions off).
-// • Cover-fits the 16:9 player so it fills the hero, cropping the sides.
-// • A bottom-right mute toggle (default muted); the user's choice survives
-//   pause/resume.
-// • Pauses when [collapsed] (scrolled past) and on dispose; the controller is
-//   disposed in dispose().
+// • Muted + autoplay + loops the single media + cover-fit (BoxFit.cover).
+// • A bottom-left mute toggle (default muted); the choice survives pause/resume.
+// • Pauses when [collapsed] (scrolled past) and on dispose; the Player is
+//   created only once a stream URL resolves and is disposed in dispose().
 // • Tapping the banner (outside the mute button) opens the fullscreen trailer.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -737,11 +741,17 @@ class _HeroTrailer extends StatefulWidget {
 }
 
 class _HeroTrailerState extends State<_HeroTrailer> {
-  YoutubePlayerController? _controller;
+  // Created lazily once a stream URL resolves — never before, so a failed
+  // extraction never mounts an empty/black player.
+  Player? _player;
+  VideoController? _videoController;
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<bool>? _completedSub;
 
-  // Cross-fade the player in once it's ready so the cover never blanks.
+  // Cross-fade the player in once it's actually playing so the cover never
+  // blanks.
   bool _ready = false;
-  // If the webview/player errors, fall back to the static cover image.
+  // Extraction or playback failed → stay on the static cover.
   bool _errored = false;
   // Mute state — default muted; preserved across pause/resume.
   bool _muted = true;
@@ -749,44 +759,46 @@ class _HeroTrailerState extends State<_HeroTrailer> {
   @override
   void initState() {
     super.initState();
-    _initController();
+    _resolveAndOpen();
   }
 
-  void _initController() {
-    final controller = YoutubePlayerController.fromVideoId(
-      videoId: widget.videoId,
-      autoPlay: true,
-      params: const YoutubePlayerParams(
-        mute: true,
-        loop: true,
-        showControls: false,
-        showFullscreenButton: false,
-        enableCaption: false,
-        showVideoAnnotations: false,
-        strictRelatedVideos: true,
-        playsInline: true,
-      ),
-    );
-    controller.listen(_onValue);
-    _controller = controller;
-  }
-
-  void _onValue(YoutubePlayerValue value) {
+  /// Extract a light muxed stream for the banner and start it muted + looping.
+  /// On any failure we flip [_errored] and the cover stays as the backdrop.
+  Future<void> _resolveAndOpen() async {
+    final url = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
     if (!mounted) return;
-    // First time the player actually starts/buffers → reveal it.
-    if (!_ready &&
-        (value.playerState == PlayerState.playing ||
-            value.playerState == PlayerState.buffering ||
-            value.playerState == PlayerState.cued)) {
-      setState(() => _ready = true);
+    if (url == null || url.isEmpty) {
+      setState(() => _errored = true);
+      return;
     }
-    // The iframe `loop` param doesn't loop a single video on its own — when it
-    // ends, restart it ourselves so it loops Netflix-style.
-    if (value.playerState == PlayerState.ended) {
-      _controller?.playVideo();
-    }
-    // Surface a player error → fall back to the static cover.
-    if (value.error != YoutubeError.none && !_errored) {
+    final player = Player();
+    final controller = VideoController(player);
+    _player = player;
+    _videoController = controller;
+
+    await player.setVolume(_muted ? 0 : 100);
+    // Loop the single trailer media (Netflix-style).
+    await player.setPlaylistMode(PlaylistMode.single);
+
+    // Reveal the player on the first "playing" event so we cross-fade in
+    // rather than showing a black first frame.
+    _playingSub = player.stream.playing.listen((playing) {
+      if (!mounted) return;
+      if (playing && !_ready) setState(() => _ready = true);
+    });
+    // Belt-and-braces loop: also restart on completion (covers engines where
+    // PlaylistMode.single doesn't auto-restart a single media).
+    _completedSub = player.stream.completed.listen((done) {
+      if (done && mounted && !widget.collapsed) {
+        _player?.seek(Duration.zero);
+        _player?.play();
+      }
+    });
+
+    try {
+      await player.open(Media(url), play: !widget.collapsed);
+    } catch (_) {
+      if (!mounted) return;
       setState(() => _errored = true);
     }
   }
@@ -794,54 +806,58 @@ class _HeroTrailerState extends State<_HeroTrailer> {
   @override
   void didUpdateWidget(covariant _HeroTrailer old) {
     super.didUpdateWidget(old);
-    // Re-create the controller if the id changes (different title).
+    // Re-resolve from scratch if the id changes (different title).
     if (old.videoId != widget.videoId) {
-      _controller?.close();
+      _disposePlayer();
       _ready = false;
       _errored = false;
-      _initController();
+      _resolveAndOpen();
     }
     // Pause when scrolled past the hero; resume when it's expanded again.
-    if (widget.collapsed != old.collapsed) {
+    if (widget.collapsed != old.collapsed && !_errored) {
       if (widget.collapsed) {
-        _controller?.pauseVideo();
-      } else if (!_errored) {
-        _controller?.playVideo();
+        _player?.pause();
+      } else {
+        _player?.play();
       }
     }
   }
 
   Future<void> _toggleMute() async {
-    final controller = _controller;
-    if (controller == null) return;
+    final player = _player;
+    if (player == null) return;
     final next = !_muted;
-    if (next) {
-      await controller.mute();
-    } else {
-      await controller.unMute();
-    }
+    await player.setVolume(next ? 0 : 100);
     if (!mounted) return;
     setState(() => _muted = next);
   }
 
+  void _disposePlayer() {
+    _playingSub?.cancel();
+    _completedSub?.cancel();
+    _playingSub = null;
+    _completedSub = null;
+    _videoController = null;
+    _player?.dispose();
+    _player = null;
+  }
+
   @override
   void dispose() {
-    _controller?.pauseVideo();
-    _controller?.close();
-    _controller = null;
+    _disposePlayer();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = _controller;
+    final controller = _videoController;
     return Stack(
       fit: StackFit.expand,
       children: [
         // Cover image underneath as placeholder + permanent fallback.
         widget.placeholder,
-        // The player, cover-fitted to fill the hero (16:9 cropped). Faded in
-        // once ready; hidden entirely if it errored.
+        // The native player, cover-fitted to fill the hero. Faded in once it's
+        // actually playing; hidden entirely if extraction/playback errored.
         if (controller != null && !_errored)
           Positioned.fill(
             child: IgnorePointer(
@@ -849,17 +865,11 @@ class _HeroTrailerState extends State<_HeroTrailer> {
                 opacity: _ready ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 350),
                 curve: Curves.easeOut,
-                child: FittedBox(
+                child: Video(
+                  controller: controller,
+                  controls: NoVideoControls,
                   fit: BoxFit.cover,
-                  clipBehavior: Clip.hardEdge,
-                  child: SizedBox(
-                    width: 1280,
-                    height: 720,
-                    child: YoutubePlayer(
-                      controller: controller,
-                      aspectRatio: 16 / 9,
-                    ),
-                  ),
+                  fill: Colors.transparent,
                 ),
               ),
             ),

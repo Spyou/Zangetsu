@@ -77,9 +77,11 @@ dependencies:
   # Open a source's web page in the system browser (Globe action on Detail).
   url_launcher: ^6.3.1
 
-  # In-app YouTube trailer playback (WebView-backed iframe embed). Trailers are
-  # resolved from metadata APIs (AniList / TMDB) by TrailerService.
-  youtube_player_iframe: ^6.0.2
+  # Direct YouTube stream extraction (pure-Dart, no API key / native deps).
+  # TrailerService resolves a YouTube id from metadata APIs (AniList / TMDB),
+  # then youtube_explode_dart resolves it to a direct muxed (video+audio) URL
+  # that media_kit plays natively — no iframe, no YouTube chrome (Netflix-style).
+  youtube_explode_dart: ^3.1.0
 
 dev_dependencies:
   flutter_test:

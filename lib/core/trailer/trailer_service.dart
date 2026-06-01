@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 import '../models/provider_info.dart';
 
@@ -36,6 +37,41 @@ class TrailerService {
         return _anilistTrailer(title: title, englishTitle: englishTitle);
       case ProviderType.movie:
         return _tmdbTrailer(title: title, englishTitle: englishTitle, year: year);
+    }
+  }
+
+  // ── Direct stream extraction (youtube_explode_dart) ───────────────────────
+
+  /// Resolves a YouTube video [youtubeId] to a direct, muxed (video+audio)
+  /// stream URL that media_kit can play natively — no iframe, no YouTube
+  /// chrome. Returns null when extraction fails (then the caller falls back to
+  /// the static cover / a "trailer unavailable" message).
+  ///
+  /// Muxed streams from YouTube cap at ~360p, which is exactly what we want:
+  ///   • [low] = true  → the LOWEST muxed quality, a light stream for the
+  ///     autoplaying hero banner (cover-fitted, so the crop hides the low res).
+  ///   • [low] = false → the muxed stream with the HIGHEST bitrate, the best
+  ///     available for the fullscreen trailer.
+  ///
+  /// NOTE: googlevideo URLs are short-lived and can vary by region — resolve
+  /// them fresh each time you want to play (the hero / fullscreen do exactly
+  /// that), never persist them.
+  Future<String?> streamUrl(String youtubeId, {bool low = false}) async {
+    final yt = YoutubeExplode();
+    try {
+      final manifest = await yt.videos.streamsClient.getManifest(youtubeId);
+      final muxed = manifest.muxed; // mp4 video+audio
+      if (muxed.isEmpty) return null;
+      // sortByVideoQuality() is descending (best first), so .last is the
+      // lowest muxed quality — the light pick for the banner.
+      final pick = low
+          ? muxed.sortByVideoQuality().last
+          : muxed.withHighestBitrate();
+      return pick.url.toString();
+    } catch (_) {
+      return null;
+    } finally {
+      yt.close();
     }
   }
 
