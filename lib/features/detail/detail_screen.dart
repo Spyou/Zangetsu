@@ -190,10 +190,10 @@ class _DetailScreenState extends State<DetailScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _DetailBody — extracted so it can be a const-friendly StatelessWidget
+// _DetailBody — StatefulWidget for scroll-driven app-bar title fade
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _DetailBody extends StatelessWidget {
+class _DetailBody extends StatefulWidget {
   const _DetailBody({
     required this.item,
     required this.detail,
@@ -232,12 +232,35 @@ class _DetailBody extends StatelessWidget {
   final String Function(String) cleanTitle;
 
   @override
+  State<_DetailBody> createState() => _DetailBodyState();
+}
+
+class _DetailBodyState extends State<_DetailBody> {
+  static const double _expandedHeight = 360;
+  bool _showAppBarTitle = false;
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.metrics.axis != Axis.vertical) return false;
+    final shouldShow = n.metrics.pixels > (_expandedHeight - kToolbarHeight - 24);
+    if (shouldShow != _showAppBarTitle) {
+      setState(() => _showAppBarTitle = shouldShow);
+    }
+    return false;
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final detail = widget.detail;
+    final audioIndex = widget.audioIndex;
+    final descExpanded = widget.descExpanded;
+    final selectedSeason = widget.selectedSeason;
+    final showSubDub = widget.showSubDub;
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
 
     // Resume / play button logic
-    final resumeIdx = resumeIndex(eps);
+    final resumeIdx = widget.resumeIndex(eps);
     final hasAnyMark =
         eps.any((e) => store.get(item.sourceId, e.id) != null);
     final episodeNum = eps.isNotEmpty
@@ -251,7 +274,7 @@ class _DetailBody extends StatelessWidget {
     final hasCover = coverUrl.isNotEmpty;
 
     // Season data
-    final seasonSet = seasons(eps);
+    final seasonSet = widget.seasons(eps);
     final hasMultipleSeasons = seasonSet.length > 1;
 
     // Season to display (clamp in case detail reloads with fewer seasons)
@@ -262,36 +285,43 @@ class _DetailBody extends StatelessWidget {
     // Episodes filtered by season
     final seasonEps = hasMultipleSeasons
         ? eps
-            .where((e) => parseSeason(e.title) == currentSeason)
+            .where((e) => widget.parseSeason(e.title) == currentSeason)
             .toList()
         : eps;
 
     // Meta row
-    final statusStr = statusLabel(detail.status);
+    final statusStr = widget.statusLabel(detail.status);
     final metaParts = <String>['${eps.length} Episodes'];
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     if (detail.genres.isNotEmpty) metaParts.add(detail.genres.first);
     final metaLine = metaParts.join(' · ');
 
-    return CustomScrollView(
+    return NotificationListener<ScrollNotification>(
+      onNotification: _onScroll,
+      child: CustomScrollView(
       slivers: [
         // ── 1. Cinematic hero SliverAppBar ─────────────────────────────────
         SliverAppBar(
-          expandedHeight: 360,
+          expandedHeight: _expandedHeight,
           pinned: true,
           stretch: true,
           backgroundColor: AppColors.bg,
           surfaceTintColor: Colors.transparent,
-          flexibleSpace: FlexibleSpaceBar(
-            collapseMode: CollapseMode.parallax,
-            titlePadding:
-                const EdgeInsetsDirectional.fromSTEB(16, 0, 16, 14),
-            title: Text(
+          // Fades in only once the hero cover has scrolled out of view —
+          // mirrors Sozo Read's NotificationListener-driven pattern.
+          title: AnimatedOpacity(
+            opacity: _showAppBarTitle ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            child: Text(
               detail.title,
               style: AppText.headline,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+          ),
+          flexibleSpace: FlexibleSpaceBar(
+            collapseMode: CollapseMode.parallax,
             background: RepaintBoundary(
               child: Stack(
                 fit: StackFit.expand,
@@ -418,15 +448,7 @@ class _DetailBody extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Large title
-                Text(detail.title, style: AppText.largeTitle),
-                if ((detail.englishTitle ?? '').isNotEmpty &&
-                    detail.englishTitle != detail.title) ...[
-                  const SizedBox(height: 4),
-                  Text(detail.englishTitle!, style: AppText.caption),
-                ],
-                const SizedBox(height: 8),
-                // Meta row
+                // Meta row — title lives only in the hero + fading app-bar
                 Text(metaLine,
                     style: AppText.caption.copyWith(
                         color: AppColors.textTertiary)),
@@ -434,7 +456,7 @@ class _DetailBody extends StatelessWidget {
                 // Description with "More" affordance
                 if ((detail.description ?? '').isNotEmpty) ...[
                   GestureDetector(
-                    onTap: onToggleDesc,
+                    onTap: widget.onToggleDesc,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -478,7 +500,7 @@ class _DetailBody extends StatelessWidget {
                   label: buttonLabel,
                   icon: Icons.play_arrow,
                   onPressed: eps.isNotEmpty
-                      ? () => openPlayer(eps, resumeIdx, detail)
+                      ? () => widget.openPlayer(eps, resumeIdx, detail)
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -487,7 +509,7 @@ class _DetailBody extends StatelessWidget {
                   SegmentedToggle(
                     segments: const ['Sub', 'Dub'],
                     index: audioIndex,
-                    onChanged: onAudioChanged,
+                    onChanged: widget.onAudioChanged,
                   ),
                 if (showSubDub) const SizedBox(height: 4),
                 const SizedBox(height: 16),
@@ -512,7 +534,7 @@ class _DetailBody extends StatelessWidget {
             child: _SeasonSelector(
               seasons: seasonSet.toList()..sort(),
               selectedSeason: currentSeason,
-              onSelectSeason: onSelectSeason,
+              onSelectSeason: widget.onSelectSeason,
             ),
           ),
 
@@ -529,7 +551,7 @@ class _DetailBody extends StatelessWidget {
                   !mark.finished &&
                   mark.duration > Duration.zero;
               final isWatched = mark != null && mark.finished;
-              final isResume = hasAnyMark && fullIndex == resumeIndex(eps);
+              final isResume = hasAnyMark && fullIndex == widget.resumeIndex(eps);
 
               final fraction = isInProgress
                   ? (mark.position.inMilliseconds /
@@ -541,7 +563,7 @@ class _DetailBody extends StatelessWidget {
                   'E${ep.number?.toInt() ?? i + 1}';
               final rawTitle = ep.title;
               final displayTitle = hasMultipleSeasons
-                  ? cleanTitle(rawTitle)
+                  ? widget.cleanTitle(rawTitle)
                   : rawTitle;
 
               return Column(
@@ -557,7 +579,7 @@ class _DetailBody extends StatelessWidget {
                     isInProgress: isInProgress,
                     isResume: isResume,
                     fraction: fraction,
-                    onTap: () => openPlayer(eps, fullIndex, detail),
+                    onTap: () => widget.openPlayer(eps, fullIndex, detail),
                   ),
                   if (i < seasonEps.length - 1)
                     const Divider(
@@ -577,6 +599,7 @@ class _DetailBody extends StatelessWidget {
         // Bottom padding
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
+    ),
     );
   }
 }
