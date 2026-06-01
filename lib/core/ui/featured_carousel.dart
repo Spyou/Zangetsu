@@ -41,7 +41,7 @@ class FeaturedCarousel extends StatefulWidget {
 
 class _FeaturedCarouselState extends State<FeaturedCarousel> {
   late final PageController _pc;
-  late final List<MediaItem> _pages;
+  late List<MediaItem> _pages;
   int _index = 0;
   Timer? _timer;
 
@@ -63,6 +63,25 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
           curve: Curves.easeInOut,
         );
       });
+    }
+  }
+
+  @override
+  void didUpdateWidget(FeaturedCarousel old) {
+    super.didUpdateWidget(old);
+    // The items change when the user switches source — rebuild the pages so the
+    // banner reflects the new catalog (it used to cache the first source's items).
+    final next = widget.items.take(6).toList();
+    final changed = next.length != _pages.length ||
+        (next.isNotEmpty &&
+            _pages.isNotEmpty &&
+            next.first.id != _pages.first.id);
+    if (changed) {
+      setState(() {
+        _pages = next;
+        _index = 0;
+      });
+      if (_pc.hasClients) _pc.jumpToPage(0);
     }
   }
 
