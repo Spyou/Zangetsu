@@ -7,6 +7,7 @@ import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -43,7 +44,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
   // ── Preserved exactly from original ──────────────────────────────────────
 
-  void _openPlayer(List<Episode> episodes, int index) {
+  void _openPlayer(List<Episode> episodes, int index, MediaDetail detail) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => PlayerScreen(
         sourceId: widget.item.sourceId,
@@ -51,6 +52,12 @@ class _DetailScreenState extends State<DetailScreen> {
         startIndex: index,
         resume: sl<ResumeStore>(),
         resolveSources: _repo.sources,
+        history: sl<WatchHistory>(),
+        showTitle: detail.title,
+        cover: detail.cover ?? widget.item.cover,
+        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+        showUrl: widget.item.url,
+        category: _category == 0 ? 'sub' : 'dub',
       ),
     ));
   }
@@ -217,7 +224,7 @@ class _DetailBody extends StatelessWidget {
   final VoidCallback onToggleDesc;
   final ValueChanged<int> onSelectSeason;
   final ValueChanged<int> onAudioChanged;
-  final void Function(List<Episode> eps, int index) openPlayer;
+  final void Function(List<Episode> eps, int index, MediaDetail detail) openPlayer;
   final int Function(List<Episode> eps) resumeIndex;
   final String Function(MediaStatus) statusLabel;
   final int? Function(String) parseSeason;
@@ -471,7 +478,7 @@ class _DetailBody extends StatelessWidget {
                   label: buttonLabel,
                   icon: Icons.play_arrow,
                   onPressed: eps.isNotEmpty
-                      ? () => openPlayer(eps, resumeIdx)
+                      ? () => openPlayer(eps, resumeIdx, detail)
                       : null,
                 ),
                 const SizedBox(height: 12),
@@ -550,7 +557,7 @@ class _DetailBody extends StatelessWidget {
                     isInProgress: isInProgress,
                     isResume: isResume,
                     fraction: fraction,
-                    onTap: () => openPlayer(eps, fullIndex),
+                    onTap: () => openPlayer(eps, fullIndex, detail),
                   ),
                   if (i < seasonEps.length - 1)
                     const Divider(

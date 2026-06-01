@@ -10,6 +10,7 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/watch_history.dart';
 
 /// Owns a media_kit [Player] for one watch session: opens a source with its
 /// headers + subtitles, persists resume position, advances on completion, and
@@ -22,6 +23,12 @@ class PlayerController extends ChangeNotifier {
     required this.resume,
     required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
     required Dio dio,
+    this.history,
+    this.showTitle,
+    this.cover,
+    this.coverHeaders,
+    this.showUrl,
+    this.category,
   }) : _resolveSources = resolveSources, _dio = dio;
 
   final String sourceId;
@@ -29,6 +36,14 @@ class PlayerController extends ChangeNotifier {
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) _resolveSources;
   final Dio _dio;
+
+  // Optional show-context for writing the Continue Watching history feed.
+  final WatchHistory? history;
+  final String? showTitle;
+  final String? cover;
+  final Map<String, String>? coverHeaders;
+  final String? showUrl;
+  final String? category;
 
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
@@ -45,6 +60,7 @@ class PlayerController extends ChangeNotifier {
   final List<StreamSubscription> _subs = [];
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
+  int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
   bool _recovering = false; // debounce: one error-recovery at a time
@@ -52,13 +68,49 @@ class PlayerController extends ChangeNotifier {
   Episode get currentEpisode => episodes[currentIndex];
 
   void init(int index) {
-    _subs.add(player.stream.position.listen((p) => _lastPos = p));
+    _subs.add(player.stream.position.listen((p) {
+      _lastPos = p;
+      // Throttled progress capture so Continue Watching fills mid-episode
+      // (without waiting for an episode switch / dispose). Cheap: at most
+      // one write every ~5s, only while we have a real duration.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (_lastDur > Duration.zero && now - _lastHistoryMs >= 5000) {
+        _lastHistoryMs = now;
+        _persist();
+      }
+    }));
     _subs.add(player.stream.duration.listen((d) => _lastDur = d));
     _subs.add(player.stream.completed.listen((done) {
       if (done) playNext();
     }));
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
     openEpisode(index);
+  }
+
+  // ── Public playback helpers (used by the Netflix-style overlay) ───────────
+
+  void setRate(double r) => player.setRate(r);
+  void togglePlay() => player.playOrPause();
+  void seekTo(Duration d) => player.seek(d);
+
+  /// Seek by [delta] (signed), clamped into 0..duration.
+  void seekBy(Duration delta) {
+    final target = _lastPos + delta;
+    final dur = _lastDur;
+    final clamped = target < Duration.zero
+        ? Duration.zero
+        : (dur > Duration.zero && target > dur ? dur : target);
+    player.seek(clamped);
+  }
+
+  List<AudioKind> get audioKinds => availableKinds(sources);
+  AudioKind? get activeKind => active?.kind;
+
+  /// Switch to the best source of the given audio [k] (Sub/Dub), preserving
+  /// the live position.
+  Future<void> switchAudio(AudioKind k) async {
+    final s = pickDefault(sources, prefer: k);
+    if (s != null) await switchSource(s);
   }
 
   /// Resolves sources for [index] and starts the best one.
@@ -195,6 +247,25 @@ class PlayerController extends ChangeNotifier {
   Future<void> _persist() async {
     if (_lastDur > Duration.zero) {
       await resume.save(sourceId, currentEpisode.id, _lastPos, _lastDur);
+    }
+    final h = history;
+    final title = showTitle;
+    if (h != null && title != null && _lastDur > Duration.zero) {
+      await h.save(HistoryEntry(
+        sourceId: sourceId,
+        showId: showUrl ?? sourceId,
+        showTitle: title,
+        cover: cover,
+        coverHeaders: coverHeaders,
+        showUrl: showUrl ?? '',
+        category: category ?? 'sub',
+        episodeId: currentEpisode.id,
+        episodeNumber: currentEpisode.number,
+        episodeUrl: currentEpisode.url,
+        position: _lastPos,
+        duration: _lastDur,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      ));
     }
   }
 
