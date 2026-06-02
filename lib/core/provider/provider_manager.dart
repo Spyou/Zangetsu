@@ -393,10 +393,12 @@ class JsProvider implements BaseProvider {
 
   @override
   Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
+    // 30s: some providers enrich detail with extra metadata round-trips
+    // (e.g. TMDB episode names/stills) on top of the page fetch.
     final raw = await _call('getDetail', [
       url,
       {'category': category},
-    ]);
+    ], timeout: const Duration(seconds: 30));
     final map = jsonDecode(raw) as Map<String, dynamic>;
     return MediaDetail.fromJson({...map, 'sourceId': sourceId});
   }
