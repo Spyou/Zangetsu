@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
@@ -13,7 +12,6 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
@@ -171,12 +169,15 @@ class _HomeViewState extends State<_HomeView> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Row(
           children: [
+            // Brand wordmark — the actual logo lettering (exact font).
             Expanded(
-              child: Text(
-                kAppName.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.wordmark.copyWith(fontSize: 21),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Image.asset(
+                  'assets/icon/wordmark.png',
+                  height: 22,
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
             BlocBuilder<ActiveSourceCubit, String>(

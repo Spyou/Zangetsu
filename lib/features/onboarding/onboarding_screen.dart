@@ -34,8 +34,8 @@ class SplashScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const _Logo(),
-            const SizedBox(height: 18),
-            Text(kAppName.toUpperCase(), style: AppText.wordmark.copyWith(fontSize: 26)),
+            const SizedBox(height: 20),
+            Image.asset('assets/icon/wordmark.png', height: 30, fit: BoxFit.contain),
             const SizedBox(height: 30),
             const SizedBox(
               width: 22,

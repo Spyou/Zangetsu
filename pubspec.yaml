@@ -116,15 +116,10 @@ flutter:
     - extractors/mp4upload.js
     - extractors/streamlare.js
     - extractors/doodstream.js
+    # Brand wordmark extracted from the logo (exact lettering) for header/splash.
+    - assets/icon/wordmark.png
 
   fonts:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter.ttf
-    # Brand wordmark font (matches the Zangetsu logo) — used for the home header.
-    - family: Montserrat
-      fonts:
-        - asset: assets/fonts/Montserrat-Medium.ttf
-          weight: 500
-        - asset: assets/fonts/Montserrat-SemiBold.ttf
-          weight: 600
