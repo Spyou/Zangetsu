@@ -3,6 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/playback/watch_history.dart';
 
+// Null service + logged-out callback → save() never touches the network (cloud
+// push is skipped when the user id is null), so these stay pure local-Hive
+// tests.
+WatchHistory _store() => WatchHistory(null, () => null);
+
 void main() {
   late Directory dir;
   setUp(() async {
@@ -23,7 +28,7 @@ void main() {
     position: Duration(milliseconds: pos), duration: Duration(milliseconds: dur), updatedAt: updatedAt);
 
   test('recent() is newest-first', () async {
-    final wh = WatchHistory();
+    final wh = _store();
     await wh.save(mk('a', 100));
     await wh.save(mk('b', 300));
     await wh.save(mk('c', 200));
@@ -32,7 +37,7 @@ void main() {
   });
 
   test('recent() excludes finished (>=92%)', () async {
-    final wh = WatchHistory();
+    final wh = _store();
     await wh.save(mk('a', 100));
     await wh.save(mk('done', 200, pos: 1190000, dur: 1200000)); // ~99% -> finished
     final r = wh.recent();

@@ -28,12 +28,25 @@ final GetIt sl = GetIt.instance;
 Future<void> initDependencies() async {
   await Hive.initFlutter();
   await ProviderDownloader.init();
+
+  // Appwrite first (no network on construct) so the library stores can use it
+  // for cloud sync. Public project id/endpoint only — no server key.
+  sl.registerSingleton<AppwriteService>(AppwriteService());
+  // Resolved lazily at call time (AuthCubit registers further down); null when
+  // signed out so the stores stay local-only.
+  String? currentUserId() =>
+      sl.isRegistered<AuthCubit>() ? sl<AuthCubit>().state.user?.$id : null;
+
   await ResumeStore.init();
   sl.registerSingleton<ResumeStore>(ResumeStore());
   await WatchHistory.init();
-  sl.registerSingleton<WatchHistory>(WatchHistory());
+  sl.registerSingleton<WatchHistory>(
+    WatchHistory(sl<AppwriteService>(), currentUserId),
+  );
   await MyListStore.init();
-  sl.registerSingleton<MyListStore>(MyListStore());
+  sl.registerSingleton<MyListStore>(
+    MyListStore(sl<AppwriteService>(), currentUserId),
+  );
   await TitlePrefsStore.init();
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await PlaybackPrefs.init();
@@ -53,10 +66,8 @@ Future<void> initDependencies() async {
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
 
-  // Appwrite (auth + profile + cloud-synced library). Uses the PUBLIC project
-  // id/endpoint only — no server key. AuthCubit is global so any widget can
-  // gate on login.
-  sl.registerSingleton<AppwriteService>(AppwriteService());
+  // AuthCubit is global so any widget can gate on login. AppwriteService is
+  // already registered above (the library stores depend on it).
   sl.registerSingleton<AuthCubit>(AuthCubit(sl<AppwriteService>()));
 
   final manager = ProviderManager(dio: dio);

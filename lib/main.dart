@@ -4,6 +4,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
+import 'core/playback/my_list.dart';
+import 'core/playback/watch_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/auth_cubit.dart';
@@ -51,9 +53,16 @@ class _BootGateState extends State<_BootGate> {
     final start = DateTime.now();
     await initDependencies();
     // Restore a persisted Appwrite session (bounded so a slow network can't
-    // trap the splash).
+    // trap the splash). If signed in, pull the cloud library into the local
+    // cache before Home warms so Continue Watching + My List are populated.
     try {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
+      if (sl<AuthCubit>().state.isLoggedIn) {
+        await Future.wait([
+          sl<MyListStore>().pullFromCloud(),
+          sl<WatchHistory>().pullFromCloud(),
+        ]).timeout(const Duration(seconds: 6));
+      }
     } catch (_) {}
     if (isOnboarded()) {
       sl<HomeCubit>().load(); // fire-and-forget warm for the active source
@@ -84,7 +93,23 @@ class _BootGateState extends State<_BootGate> {
             BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
             BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
           ],
-          child: child,
+          // Cloud-sync the library on in-session auth changes: pull on login,
+          // wipe the local cache on logout. Boot-time restore is handled in
+          // _run() (before this listener mounts, so no double pull).
+          child: BlocListener<AuthCubit, AuthState>(
+            listenWhen: (p, c) => p.status != c.status,
+            listener: (context, state) async {
+              if (state.status == AuthStatus.authenticated) {
+                await sl<MyListStore>().pullFromCloud();
+                await sl<WatchHistory>().pullFromCloud();
+                sl<HomeCubit>().load(); // surface pulled Continue Watching
+              } else if (state.status == AuthStatus.unauthenticated) {
+                await sl<MyListStore>().clearLocal();
+                await sl<WatchHistory>().clearLocal();
+              }
+            },
+            child: child,
+          ),
         );
       },
     );
