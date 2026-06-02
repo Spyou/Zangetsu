@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Default — builds all ABIs. Use this for emulators or non-arm64 devices.
+      "name": "Zangetsu (debug)",
+      "request": "launch",
+      "type": "dart"
+    },
+    {
+      // Faster on an arm64 phone: builds native libs for ONE ABI only.
+      // Do NOT use this for an x86_64 emulator or a 32-bit device.
+      "name": "Zangetsu (debug · fast arm64)",
+      "request": "launch",
+      "type": "dart",
+      "args": ["--target-platform", "android-arm64"]
+    },
+    {
+      "name": "Zangetsu (profile)",
+      "request": "launch",
+      "type": "dart",
+      "flutterMode": "profile"
+    }
+  ]
+}
