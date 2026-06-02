@@ -29,24 +29,58 @@ class SplashScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const _Logo(),
-            const SizedBox(height: 20),
-            Image.asset('assets/icon/wordmark.png', height: 30, fit: BoxFit.contain),
-            const SizedBox(height: 30),
-            const SizedBox(
-              width: 22,
-              height: 22,
+      body: Stack(
+        children: [
+          // Soft coral glow behind the wordmark — echoes the logo's red circle.
+          Center(
+            child: Container(
+              width: 460,
+              height: 460,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    AppColors.accent.withValues(alpha: 0.16),
+                    AppColors.accent.withValues(alpha: 0.04),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.45, 1.0],
+                ),
+              ),
+            ),
+          ),
+          // Wordmark — fades + eases in.
+          Center(
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0.0, end: 1.0),
+              duration: const Duration(milliseconds: 800),
+              curve: Curves.easeOutCubic,
+              builder: (context, t, child) => Opacity(
+                opacity: t.clamp(0.0, 1.0),
+                child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
+              ),
+              child: FractionallySizedBox(
+                widthFactor: 0.62,
+                child: Image.asset(
+                  'assets/icon/wordmark.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+          // Minimal loader, low and quiet.
+          const Align(
+            alignment: Alignment(0, 0.8),
+            child: SizedBox(
+              width: 24,
+              height: 24,
               child: CircularProgressIndicator(
-                strokeWidth: 2.4,
+                strokeWidth: 2,
                 color: AppColors.accent,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
