@@ -90,6 +90,17 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   build_runner: ^2.4.13
   json_serializable: ^6.9.0
+  flutter_launcher_icons: ^0.14.1
+
+# App launcher icon (Zangetsu logo). Regenerate with:
+#   dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#000000"
+  min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -110,3 +121,10 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter.ttf
+    # Brand wordmark font (matches the Zangetsu logo) — used for the home header.
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Montserrat-SemiBold.ttf
+          weight: 600

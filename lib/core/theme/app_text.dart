@@ -54,4 +54,15 @@ abstract class AppText {
     letterSpacing: 0.8,
     color: AppColors.textSecondary,
   );
+
+  /// Brand wordmark — Montserrat, matching the Zangetsu logo. Used where the
+  /// app name stands alone (home header, splash). Override size via copyWith.
+  static const wordmark = TextStyle(
+    fontFamily: 'Montserrat',
+    fontSize: 22,
+    height: 1.0,
+    fontWeight: FontWeight.w600,
+    letterSpacing: 3,
+    color: AppColors.textPrimary,
+  );
 }

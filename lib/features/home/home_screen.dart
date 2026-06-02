@@ -171,7 +171,14 @@ class _HomeViewState extends State<_HomeView> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
         child: Row(
           children: [
-            const Expanded(child: Text(kAppName, style: AppText.largeTitle)),
+            Expanded(
+              child: Text(
+                kAppName.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.wordmark.copyWith(fontSize: 21),
+              ),
+            ),
             BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
