@@ -87,6 +87,10 @@ dependencies:
   image_picker: ^1.2.2
   # Swipe-for-brightness gesture in the player (volume uses the media_kit player).
   screen_brightness: ^2.1.4
+  # Offline downloads — true background downloads with a progress notification,
+  # pause/resume, and move-to-shared-storage (public Downloads folder).
+  background_downloader: ^9.2.0
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
