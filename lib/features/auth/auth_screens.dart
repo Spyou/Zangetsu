@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -153,12 +155,27 @@ class _SignupScreenState extends State<SignupScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
 
+  /// Photo picked before the account exists. Uploaded right after signUp
+  /// succeeds (the avatars bucket needs an authenticated session, which only
+  /// exists once the account + session are created).
+  String? _avatarPath;
+
   @override
   void dispose() {
     _name.dispose();
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickAvatar() async {
+    final x = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 88,
+    );
+    if (x != null && mounted) setState(() => _avatarPath = x.path);
   }
 
   Future<void> _submit(BuildContext context) async {
@@ -168,12 +185,16 @@ class _SignupScreenState extends State<SignupScreen> {
         ..showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters')));
       return;
     }
-    final ok = await context.read<AuthCubit>().signUp(
+    final auth = context.read<AuthCubit>();
+    final ok = await auth.signUp(
       _name.text.trim(),
       _email.text.trim(),
       _password.text,
     );
-    if (ok && context.mounted) Navigator.of(context).pop();
+    if (!ok) return; // error already surfaced via state
+    // Session is live now — upload the chosen photo before leaving.
+    if (_avatarPath != null) await auth.updateAvatar(_avatarPath!);
+    if (context.mounted) Navigator.of(context).pop();
   }
 
   @override
@@ -182,6 +203,8 @@ class _SignupScreenState extends State<SignupScreen> {
       title: 'Create account',
       subtitle: 'Save your list and continue watching anywhere.',
       children: [
+        Center(child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar)),
+        const SizedBox(height: 24),
         _Field(controller: _name, hint: 'Name', icon: Icons.person_outline),
         const SizedBox(height: 12),
         _Field(controller: _email, hint: 'Email', icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
@@ -307,6 +330,55 @@ class ProfileScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared bits
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// Circular avatar picker for the signup form — shows the chosen image or a
+/// placeholder with a camera badge + "Add photo" caption.
+class _AvatarPicker extends StatelessWidget {
+  const _AvatarPicker({required this.path, required this.onTap});
+  final String? path;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            alignment: Alignment.bottomRight,
+            children: [
+              CircleAvatar(
+                radius: 44,
+                backgroundColor: AppColors.surface2,
+                backgroundImage: path != null ? FileImage(File(path!)) : null,
+                child: path == null
+                    ? const Icon(Icons.person_outline,
+                        size: 40, color: AppColors.textTertiary)
+                    : null,
+              ),
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: const BoxDecoration(
+                  color: AppColors.accent,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.camera_alt_rounded,
+                    size: 14, color: Colors.white),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            path == null ? 'Add photo' : 'Change photo',
+            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _AuthScaffold extends StatelessWidget {
   const _AuthScaffold({
