@@ -16,33 +16,23 @@ import 'features/shell/root_shell.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  // Dependency init now happens inside the boot gate so the splash shows
+  // Dependency init happens inside the boot gate so the splash shows
   // immediately instead of a blank screen.
   runApp(const WatchApp());
 }
 
-class WatchApp extends StatelessWidget {
+/// Boots the app: runs [initDependencies] behind a splash, then builds the
+/// real app with the global cubits provided ABOVE the [MaterialApp]'s Navigator
+/// so pushed routes (login, profile, …) can read them. Providing them below the
+/// Navigator would scope them out of any `Navigator.push`ed route.
+class WatchApp extends StatefulWidget {
   const WatchApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: kAppName,
-    theme: buildAppTheme(),
-    debugShowCheckedModeBanner: false,
-    home: const _BootGate(),
-  );
+  State<WatchApp> createState() => _WatchAppState();
 }
 
-/// Boots the app: runs [initDependencies] behind a splash, then routes to
-/// first-run onboarding (download the Zangetsu provider repo) or the shell.
-class _BootGate extends StatefulWidget {
-  const _BootGate();
-
-  @override
-  State<_BootGate> createState() => _BootGateState();
-}
-
-class _BootGateState extends State<_BootGate> {
+class _WatchAppState extends State<WatchApp> {
   late final Future<void> _boot = _run();
   bool? _onboardedOverride; // set true once onboarding finishes this session
 
@@ -72,43 +62,58 @@ class _BootGateState extends State<_BootGate> {
     if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
   }
 
+  /// Cloud-sync the library on in-session auth changes: pull on login, wipe the
+  /// local cache on logout. Boot-time restore is handled in [_run] (before this
+  /// listener mounts, so no double pull).
+  Future<void> _onAuthChange(BuildContext context, AuthState state) async {
+    if (state.status == AuthStatus.authenticated) {
+      await sl<MyListStore>().pullFromCloud();
+      await sl<WatchHistory>().pullFromCloud();
+      sl<HomeCubit>().load(); // surface pulled Continue Watching
+    } else if (state.status == AuthStatus.unauthenticated) {
+      await sl<MyListStore>().clearLocal();
+      await sl<WatchHistory>().clearLocal();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<void>(
       future: _boot,
       builder: (context, snap) {
-        // Still initializing (or init failed) → keep the splash up.
+        // Still initializing (or init failed) → keep the splash up. No cubits
+        // are needed yet, so a bare MaterialApp is enough.
         if (snap.connectionState != ConnectionState.done || snap.hasError) {
-          return const SplashScreen();
+          return MaterialApp(
+            title: kAppName,
+            theme: buildAppTheme(),
+            debugShowCheckedModeBanner: false,
+            home: const SplashScreen(),
+          );
         }
         // Dependencies ready — sl<> is resolvable from here on.
         final onboarded = _onboardedOverride ?? isOnboarded();
-        final Widget child = onboarded
+        final Widget home = onboarded
             ? const RootShell()
             : OnboardingScreen(
                 onDone: () => setState(() => _onboardedOverride = true),
               );
+        // Providers wrap the MaterialApp so its Navigator (and every pushed
+        // route) is a descendant of them.
         return MultiBlocProvider(
           providers: [
             BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
             BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
           ],
-          // Cloud-sync the library on in-session auth changes: pull on login,
-          // wipe the local cache on logout. Boot-time restore is handled in
-          // _run() (before this listener mounts, so no double pull).
           child: BlocListener<AuthCubit, AuthState>(
             listenWhen: (p, c) => p.status != c.status,
-            listener: (context, state) async {
-              if (state.status == AuthStatus.authenticated) {
-                await sl<MyListStore>().pullFromCloud();
-                await sl<WatchHistory>().pullFromCloud();
-                sl<HomeCubit>().load(); // surface pulled Continue Watching
-              } else if (state.status == AuthStatus.unauthenticated) {
-                await sl<MyListStore>().clearLocal();
-                await sl<WatchHistory>().clearLocal();
-              }
-            },
-            child: child,
+            listener: _onAuthChange,
+            child: MaterialApp(
+              title: kAppName,
+              theme: buildAppTheme(),
+              debugShowCheckedModeBanner: false,
+              home: home,
+            ),
           ),
         );
       },
