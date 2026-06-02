@@ -4,6 +4,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -126,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       SettingsTile(
                         icon: Icons.dns_rounded,
-                        title: 'Sources',
+                        title: 'Providers',
                         subtitle: '$enabledCount enabled',
                         onTap: () async {
                           await _push(const SourcesScreen());
@@ -138,6 +139,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Active source',
                         subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSource,
+                      ),
+                    ],
+                  ),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.play_circle_outline,
+                        title: 'Playback',
+                        subtitle: 'Quality, autoplay, speed',
+                        onTap: () => _push(const PlaybackSettingsScreen()),
                       ),
                     ],
                   ),
@@ -173,6 +184,275 @@ class _SettingsScreenState extends State<SettingsScreen> {
 /// App version string. Kept here so the About screen and the Settings
 /// list share a single source.
 const String kAppVersion = '1.0.0';
+
+// ---------------------------------------------------------------------------
+// Playback
+// ---------------------------------------------------------------------------
+
+/// App-wide playback defaults — default quality / audio, autoplay, speed,
+/// skip interval, keep-screen-on and resume. Reads and writes the shared
+/// [PlaybackPrefs] singleton; rebuilds after each change so the value
+/// subtitles stay current.
+class PlaybackSettingsScreen extends StatefulWidget {
+  const PlaybackSettingsScreen({super.key});
+
+  @override
+  State<PlaybackSettingsScreen> createState() => _PlaybackSettingsScreenState();
+}
+
+class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
+  PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
+
+  // Ordered (value, label) options for each picker.
+  static const List<(String, String)> _qualityOptions = [
+    ('auto', 'Auto'),
+    ('highest', 'Highest'),
+    ('1080p', '1080p'),
+    ('720p', '720p'),
+    ('480p', '480p'),
+  ];
+
+  static const List<(String, String)> _audioOptions = [
+    ('sub', 'Sub'),
+    ('dub', 'Dub'),
+  ];
+
+  static const List<(double, String)> _speedOptions = [
+    (0.5, '0.5x'),
+    (0.75, '0.75x'),
+    (1.0, '1x'),
+    (1.25, '1.25x'),
+    (1.5, '1.5x'),
+    (2.0, '2x'),
+  ];
+
+  static const List<(int, String)> _skipOptions = [
+    (5, '5s'),
+    (10, '10s'),
+    (15, '15s'),
+    (30, '30s'),
+  ];
+
+  String _labelFor<T>(List<(T, String)> options, T value, String fallback) {
+    for (final (v, label) in options) {
+      if (v == value) return label;
+    }
+    return fallback;
+  }
+
+  /// Bottom sheet listing [options]; returns the value the user tapped, or
+  /// null if dismissed. Mirrors the active-source picker on the Settings list.
+  Future<T?> _pick<T>({
+    required String title,
+    required List<(T, String)> options,
+    required T current,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(title, style: AppText.headline),
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            ...options.map((opt) {
+              final (value, label) = opt;
+              final isSelected = value == current;
+              return ListTile(
+                onTap: () => Navigator.pop(ctx, value),
+                title: Text(
+                  label,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
+                trailing: isSelected
+                    ? const Icon(Icons.check, color: AppColors.accent)
+                    : null,
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickQuality() async {
+    final picked = await _pick<String>(
+      title: 'Default quality',
+      options: _qualityOptions,
+      current: _prefs.defaultQuality,
+    );
+    if (picked == null) return;
+    await _prefs.setDefaultQuality(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickAudio() async {
+    final picked = await _pick<String>(
+      title: 'Default audio',
+      options: _audioOptions,
+      current: _prefs.defaultCategory,
+    );
+    if (picked == null) return;
+    await _prefs.setDefaultCategory(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickSpeed() async {
+    final picked = await _pick<double>(
+      title: 'Default speed',
+      options: _speedOptions,
+      current: _prefs.defaultSpeed,
+    );
+    if (picked == null) return;
+    await _prefs.setDefaultSpeed(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickSkip() async {
+    final picked = await _pick<int>(
+      title: 'Skip interval',
+      options: _skipOptions,
+      current: _prefs.seekSeconds,
+    );
+    if (picked == null) return;
+    await _prefs.setSeekSeconds(picked);
+    if (mounted) setState(() {});
+  }
+
+  /// A boolean row rendered as a [SwitchListTile.adaptive] styled to sit
+  /// inside a [SettingsCard] alongside the [SettingsTile] picker rows.
+  Widget _toggleRow({
+    required IconData icon,
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    String? subtitle,
+  }) {
+    return SwitchListTile.adaptive(
+      value: value,
+      onChanged: onChanged,
+      activeThumbColor: AppColors.accent,
+      contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      secondary: Icon(icon, color: AppColors.textSecondary, size: 22),
+      title: Text(
+        title,
+        style: AppText.headline.copyWith(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+          fontSize: 15,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(subtitle, style: AppText.caption),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(title: Text('Playback', style: AppText.title)),
+      body: ListView(
+        padding: const EdgeInsets.only(top: 8),
+        children: [
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.high_quality_outlined,
+                title: 'Default quality',
+                subtitle: _labelFor(
+                  _qualityOptions,
+                  _prefs.defaultQuality,
+                  _prefs.defaultQuality,
+                ),
+                onTap: _pickQuality,
+              ),
+              SettingsTile(
+                icon: Icons.closed_caption_off_outlined,
+                title: 'Default audio',
+                subtitle: _labelFor(
+                  _audioOptions,
+                  _prefs.defaultCategory,
+                  _prefs.defaultCategory,
+                ),
+                onTap: _pickAudio,
+              ),
+              _toggleRow(
+                icon: Icons.skip_next_outlined,
+                title: 'Autoplay next episode',
+                value: _prefs.autoplayNext,
+                onChanged: (v) async {
+                  await _prefs.setAutoplayNext(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              SettingsTile(
+                icon: Icons.speed_outlined,
+                title: 'Default speed',
+                subtitle: _labelFor(
+                  _speedOptions,
+                  _prefs.defaultSpeed,
+                  '${_prefs.defaultSpeed}x',
+                ),
+                onTap: _pickSpeed,
+              ),
+              SettingsTile(
+                icon: Icons.fast_forward_outlined,
+                title: 'Skip interval',
+                subtitle: _labelFor(
+                  _skipOptions,
+                  _prefs.seekSeconds,
+                  '${_prefs.seekSeconds}s',
+                ),
+                onTap: _pickSkip,
+              ),
+              _toggleRow(
+                icon: Icons.screen_lock_portrait_outlined,
+                title: 'Keep screen on',
+                value: _prefs.keepScreenOn,
+                onChanged: (v) async {
+                  await _prefs.setKeepScreenOn(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
+                icon: Icons.history_outlined,
+                title: 'Resume playback',
+                subtitle: 'Continue from where you left off',
+                value: _prefs.autoResume,
+                onChanged: (v) async {
+                  await _prefs.setAutoResume(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Storage

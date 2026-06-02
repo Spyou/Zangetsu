@@ -13,6 +13,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
@@ -205,6 +206,16 @@ class _DetailViewState extends State<_DetailView>
     ];
     final availableCategories = available.isEmpty ? [category] : available;
 
+    // Fresh play: prefer a saved per-title sub/dub choice, else the global
+    // default category, else fall back to the incoming category. Constrain to
+    // what's actually offered so single-category titles are a harmless no-op.
+    final preferred =
+        sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
+        sl<PlaybackPrefs>().defaultCategory;
+    final launchCategory = availableCategories.contains(preferred)
+        ? preferred
+        : category;
+
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
@@ -219,7 +230,7 @@ class _DetailViewState extends State<_DetailView>
           cover: detail.cover ?? widget.item.cover,
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           showUrl: widget.item.url,
-          category: category,
+          category: launchCategory,
           availableCategories: availableCategories,
         ),
       ),

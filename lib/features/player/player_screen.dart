@@ -6,8 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -79,6 +81,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // a position event arrives.
   Duration _duration = Duration.zero;
 
+  // User's preferred double-tap seek step, read once at session start.
+  final int _seekSeconds = sl<PlaybackPrefs>().seekSeconds;
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +92,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
     _c = PlayerCubit(
       sourceId: widget.sourceId,
       episodes: widget.episodes,
@@ -108,6 +114,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _seekLabelTimer?.cancel();
+    WakelockPlus.disable();
     _c.close();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -151,11 +158,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final w = MediaQuery.of(context).size.width;
     final x = d.localPosition.dx;
     if (x < w / 3) {
-      _c.seekBy(const Duration(seconds: -10));
-      _showSeekLabel('-10');
+      _c.seekBy(Duration(seconds: -_seekSeconds));
+      _showSeekLabel('-$_seekSeconds');
     } else if (x > w * 2 / 3) {
-      _c.seekBy(const Duration(seconds: 10));
-      _showSeekLabel('+10');
+      _c.seekBy(Duration(seconds: _seekSeconds));
+      _showSeekLabel('+$_seekSeconds');
     } else {
       _c.togglePlay();
     }

@@ -11,6 +11,7 @@ import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
@@ -220,6 +221,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         return;
       }
       await _open(pick, seekTo: keepPos, gen: gen);
+      _applyDefaultQuality();
     } catch (e) {
       if (gen != _gen) return;
       emit(
@@ -232,6 +234,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void init(int index) {
+    // Start the session at the user's preferred playback rate. Applied ONCE at
+    // session start so a mid-session speed picked via the overlay isn't clobbered
+    // on every _open.
+    player.setRate(sl<PlaybackPrefs>().defaultSpeed);
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -254,7 +260,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(player.stream.duration.listen((d) => _lastDur = d));
     _subs.add(
       player.stream.completed.listen((done) {
-        if (done) playNext();
+        if (done && sl<PlaybackPrefs>().autoplayNext) playNext();
       }),
     );
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
@@ -355,6 +361,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         return;
       }
       await _open(pick, gen: gen);
+      _applyDefaultQuality();
     } catch (e) {
       if (gen != _gen) return;
       emit(
@@ -364,6 +371,42 @@ class PlayerCubit extends Cubit<PlayerState> {
         ),
       );
     }
+  }
+
+  /// Applies the user's [PlaybackPrefs.defaultQuality] over the adaptive default
+  /// that [_open] just started. Defensive: a no-op when nothing matches (never
+  /// throws), so 'auto' or an unavailable target keeps the current default.
+  ///
+  /// 'highest' selects the top HLS variant if any exist, else the top per-source
+  /// quality. '1080p'/'720p'/'480p' select the matching HLS variant or source
+  /// quality by label, falling back to the current default when absent.
+  void _applyDefaultQuality() {
+    final pref = sl<PlaybackPrefs>().defaultQuality;
+    if (pref == 'auto') return;
+
+    final variants = state.qualities; // already sorted high→low
+    final srcQualities = sourceQualities; // already sorted high→low
+
+    if (pref == 'highest') {
+      if (variants.isNotEmpty) {
+        selectQuality(variants.first);
+      } else if (srcQualities.isNotEmpty) {
+        selectSourceQuality(srcQualities.first);
+      }
+      return;
+    }
+
+    // Specific resolution: match an HLS variant by label, else a source quality.
+    for (final v in variants) {
+      if (v.quality == pref) {
+        selectQuality(v);
+        return;
+      }
+    }
+    if (srcQualities.contains(pref)) {
+      selectSourceQuality(pref);
+    }
+    // No match → leave the current adaptive default (no-op).
   }
 
   /// Switch to a specific source (sub/dub or quality change), preserving position.
@@ -456,7 +499,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
     final g = gen ?? ++_gen;
     emit(state.copyWith(active: () => s, error: () => null));
-    final mark = resume.get(sourceId, currentEpisode.id);
+    // When auto-resume is off, ignore the saved resume mark and start from the
+    // explicit seek (a mid-session source/quality switch) or the very start.
+    final autoResume = sl<PlaybackPrefs>().autoResume;
+    final mark = autoResume ? resume.get(sourceId, currentEpisode.id) : null;
     final start =
         seekTo ??
         ((mark != null && !mark.finished) ? mark.position : Duration.zero);

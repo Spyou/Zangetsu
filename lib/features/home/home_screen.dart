@@ -6,7 +6,9 @@ import '../../core/di/injector.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -80,6 +82,11 @@ class _HomeViewState extends State<_HomeView> {
         return;
       }
       if (!mounted) return;
+      // Fresh play: prefer a saved per-title sub/dub choice, else the global
+      // default category, else 'sub'.
+      final category =
+          sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
+          sl<PlaybackPrefs>().defaultCategory;
       await Navigator.push(
         context,
         MaterialPageRoute(
@@ -94,7 +101,7 @@ class _HomeViewState extends State<_HomeView> {
             cover: item.cover,
             coverHeaders: item.coverHeaders,
             showUrl: item.url,
-            category: 'sub',
+            category: category,
           ),
         ),
       );

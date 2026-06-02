@@ -81,7 +81,7 @@ class _SourcesViewState extends State<_SourcesView>
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text('Sources', style: AppText.title),
+          title: Text('Providers', style: AppText.title),
           bottom: TabBar(
             controller: _tab,
             indicatorColor: AppColors.accent,
