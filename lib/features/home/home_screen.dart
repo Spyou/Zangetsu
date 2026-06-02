@@ -31,8 +31,9 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => HomeCubit(sl<SourceRepository>())..load(),
+    // Use the shared singleton so the splash can warm it before this mounts.
+    return BlocProvider.value(
+      value: sl<HomeCubit>(),
       child: const _HomeView(),
     );
   }
@@ -52,6 +53,15 @@ class _HomeViewState extends State<_HomeView> {
   /// Description cache: key = "sourceId:id", value = lazily-fetched Future.
   /// Futures are stored so they are never re-fetched on carousel rotation.
   final Map<String, Future<String?>> _descCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // The splash usually pre-warms the rows; only fetch here if it didn't
+    // (e.g. first run right after onboarding, or a source with no warm yet).
+    final cubit = context.read<HomeCubit>();
+    if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+  }
 
   Future<String?> _describe(MediaItem m) => _descCache.putIfAbsent(
     '${m.sourceId}:${m.id}',

@@ -6,6 +6,7 @@ import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
+import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
 
@@ -39,8 +40,22 @@ class _BootGate extends StatefulWidget {
 }
 
 class _BootGateState extends State<_BootGate> {
-  late final Future<void> _boot = initDependencies();
+  late final Future<void> _boot = _run();
   bool? _onboardedOverride; // set true once onboarding finishes this session
+
+  /// Init deps, then (for returning users) kick off the Home fetch so its rows
+  /// stream in WHILE the splash plays — Home appears already populated. Holds
+  /// the splash for a minimum so the intro animation reads even on fast boots.
+  Future<void> _run() async {
+    final start = DateTime.now();
+    await initDependencies();
+    if (isOnboarded()) {
+      sl<HomeCubit>().load(); // fire-and-forget warm for the active source
+    }
+    final elapsed = DateTime.now().difference(start);
+    const minSplash = Duration(milliseconds: 2000);
+    if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
+  }
 
   @override
   Widget build(BuildContext context) {

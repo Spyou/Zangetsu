@@ -8,6 +8,7 @@ import '../../core/provider/provider_repo_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../home/cubit/home_cubit.dart';
 
 /// First-run flag, stored in the shared 'app_prefs' Hive box (opened during
 /// [initDependencies]). True once the user has completed onboarding.
@@ -22,65 +23,119 @@ Future<void> _markOnboarded() =>
 // Splash — shown while initDependencies() runs.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  )..forward();
+
+  // Glow eases in; the wordmark fades in and "draws" left→right (wipe reveal)
+  // while settling up to full scale; the loader appears last.
+  late final Animation<double> _glow =
+      CurvedAnimation(parent: _c, curve: const Interval(0.0, 0.55, curve: Curves.easeOut));
+  late final Animation<double> _fade =
+      CurvedAnimation(parent: _c, curve: const Interval(0.12, 0.5, curve: Curves.easeOut));
+  late final Animation<double> _reveal =
+      CurvedAnimation(parent: _c, curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic));
+  late final Animation<double> _loader =
+      CurvedAnimation(parent: _c, curve: const Interval(0.7, 1.0, curve: Curves.easeOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: Stack(
-        children: [
-          // Soft coral glow behind the wordmark — echoes the logo's red circle.
-          Center(
-            child: Container(
-              width: 460,
-              height: 460,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.accent.withValues(alpha: 0.16),
-                    AppColors.accent.withValues(alpha: 0.04),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.45, 1.0],
+      body: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) {
+          final r = _reveal.value;
+          return Stack(
+            children: [
+              // Soft coral glow behind the wordmark — echoes the logo's circle.
+              Center(
+                child: Opacity(
+                  opacity: _glow.value,
+                  child: Container(
+                    width: 460,
+                    height: 460,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.accent.withValues(alpha: 0.18),
+                          AppColors.accent.withValues(alpha: 0.05),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.45, 1.0],
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          // Wordmark — fades + eases in.
-          Center(
-            child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0.0, end: 1.0),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.easeOutCubic,
-              builder: (context, t, child) => Opacity(
-                opacity: t.clamp(0.0, 1.0),
-                child: Transform.scale(scale: 0.92 + 0.08 * t, child: child),
-              ),
-              child: FractionallySizedBox(
-                widthFactor: 0.62,
-                child: Image.asset(
-                  'assets/icon/wordmark.png',
-                  fit: BoxFit.contain,
+              // Wordmark — wipe reveal (left→right) + fade + slight scale settle.
+              Center(
+                child: FractionallySizedBox(
+                  widthFactor: 0.62,
+                  child: Opacity(
+                    opacity: _fade.value,
+                    child: Transform.scale(
+                      scale: 0.94 + 0.06 * r,
+                      child: ShaderMask(
+                        blendMode: BlendMode.dstIn,
+                        shaderCallback: (rect) => LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: const [
+                            Colors.white,
+                            Colors.white,
+                            Colors.transparent,
+                          ],
+                          stops: [
+                            0.0,
+                            (r - 0.07).clamp(0.0, 1.0),
+                            r.clamp(0.0001, 1.0),
+                          ],
+                        ).createShader(rect),
+                        child: Image.asset(
+                          'assets/icon/wordmark.png',
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          // Minimal loader, low and quiet.
-          const Align(
-            alignment: Alignment(0, 0.8),
-            child: SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.accent,
+              // Minimal loader, low and quiet.
+              Align(
+                alignment: const Alignment(0, 0.8),
+                child: Opacity(
+                  opacity: _loader.value,
+                  child: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -159,8 +214,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (installed == 0) {
         throw Exception('No sources could be installed');
       }
-      // Activate the first source so Home has something to show.
+      // Activate the first source so Home has something to show, and warm its
+      // rows so Home isn't empty when the shell appears.
       sl<ActiveSourceCubit>().setSource(repo.sources.first.id);
+      sl<HomeCubit>().load();
       await _markOnboarded();
       if (mounted) widget.onDone();
     } catch (e) {

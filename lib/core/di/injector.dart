@@ -16,6 +16,7 @@ import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../trailer/trailer_service.dart';
+import '../../features/home/cubit/home_cubit.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -115,4 +116,9 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SourceRepository>(
     SourceRepository(manager: manager, activeSource: sl<ActiveSourceCubit>()),
   );
+
+  // Home data cubit as a singleton so the splash can warm it (preload the
+  // rows for the active source) while the intro animation plays — Home then
+  // appears already populated instead of flashing skeletons.
+  sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>()));
 }
