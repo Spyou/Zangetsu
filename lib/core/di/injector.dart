@@ -85,38 +85,11 @@ Future<void> initDependencies() async {
     manager.loadExtractor(extractorId: ex, jsSource: js);
   }
 
-  // --- Seed built-in providers via the registry ---------------------
-  // installFromBundled writes an enabled `bundled://` entry, caches the
-  // JS for later reloads, and loads it into the runtime immediately.
-  final allanimeJs = await rootBundle.loadString('providers/allanime.js');
-  await registry.installFromBundled(
-    name: 'allanime',
-    jsSource: allanimeJs,
-    displayName: 'AllAnime',
-  );
-
-  // NetMirror is ONE provider file backing FOUR OTT platform sourceIds;
-  // each instance derives its ott / path prefix / poster CDN from its
-  // sourceId (__SOURCE_ID). All four share the same in-memory JS source.
-  final netmirrorJs = await rootBundle.loadString('providers/netmirror.js');
-  const netmirrorPlatforms = {
-    'netmirror_nf': 'Netflix',
-    'netmirror_pv': 'Prime Video',
-    'netmirror_hs': 'Hotstar',
-    'netmirror_dp': 'Disney+',
-  };
-  for (final e in netmirrorPlatforms.entries) {
-    await registry.installFromBundled(
-      name: e.key,
-      jsSource: netmirrorJs,
-      displayName: e.value,
-    );
-  }
-
-  // Load every enabled entry into the runtime. installFromBundled already
-  // loaded the built-ins; loadAll re-loads any repo-installed providers
-  // persisted from previous launches (and is a no-op for already-loaded
-  // bundled ids).
+  // The app ships with NO built-in providers — every source comes from a repo
+  // (the Zangetsu repo is installed on first launch via onboarding). Drop any
+  // legacy `bundled://` entries left by older installs, then load the
+  // repo-installed providers persisted from previous launches.
+  await registry.purgeBundled();
   await registry.loadAll();
 
   // Push every saved per-provider settings row into the runtime so the

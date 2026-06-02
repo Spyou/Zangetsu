@@ -98,9 +98,8 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - providers/example.js
-    - providers/allanime.js
-    - providers/netmirror.js
+    # No built-in providers — sources are installed from the Zangetsu repo.
+    # Extractors stay bundled (shared video-host helpers, not providers).
     - extractors/example_embed.js
     - extractors/okru.js
     - extractors/mp4upload.js

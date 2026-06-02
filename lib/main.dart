@@ -6,26 +6,65 @@ import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
+import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
-  await initDependencies();
+  // Dependency init now happens inside the boot gate so the splash shows
+  // immediately instead of a blank screen.
   runApp(const WatchApp());
 }
 
 class WatchApp extends StatelessWidget {
   const WatchApp({super.key});
+
   @override
-  Widget build(BuildContext context) => MultiBlocProvider(
-    providers: [
-      BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
-    ],
-    child: MaterialApp(
-      title: kAppName,
-      theme: buildAppTheme(),
-      home: const RootShell(),
-    ),
+  Widget build(BuildContext context) => MaterialApp(
+    title: kAppName,
+    theme: buildAppTheme(),
+    debugShowCheckedModeBanner: false,
+    home: const _BootGate(),
   );
+}
+
+/// Boots the app: runs [initDependencies] behind a splash, then routes to
+/// first-run onboarding (download the Zangetsu provider repo) or the shell.
+class _BootGate extends StatefulWidget {
+  const _BootGate();
+
+  @override
+  State<_BootGate> createState() => _BootGateState();
+}
+
+class _BootGateState extends State<_BootGate> {
+  late final Future<void> _boot = initDependencies();
+  bool? _onboardedOverride; // set true once onboarding finishes this session
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _boot,
+      builder: (context, snap) {
+        // Still initializing (or init failed) → keep the splash up.
+        if (snap.connectionState != ConnectionState.done || snap.hasError) {
+          return const SplashScreen();
+        }
+        // Dependencies ready — sl<> is resolvable from here on.
+        final onboarded = _onboardedOverride ?? isOnboarded();
+        final Widget child = onboarded
+            ? const RootShell()
+            : OnboardingScreen(
+                onDone: () => setState(() => _onboardedOverride = true),
+              );
+        return MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
+          ],
+          child: child,
+        );
+      },
+    );
+  }
 }

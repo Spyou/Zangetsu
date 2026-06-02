@@ -7,6 +7,11 @@ const String kAppName = 'WATCH_APP';
 /// checked by the repo guard so a manga-only (Sozo) repo can't be added.
 const String kAppId = 'watch_app';
 
+/// The official provider repo, installed on first launch via onboarding.
+/// The app ships with NO built-in providers — every source comes from here.
+const String kZangetsuRepoUrl =
+    'https://raw.githubusercontent.com/Spyou/zangetsu-providers/main/index.json';
+
 /// Manifest schema version this app speaks. Repos below this are rejected.
 const int kManifestSchemaVersion = 2;
 

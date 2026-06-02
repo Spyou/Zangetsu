@@ -254,6 +254,23 @@ class ProviderRegistry {
     return entry;
   }
 
+  /// Migration: drop every legacy `bundled://` entry. The app no longer ships
+  /// built-in providers (all sources come from repos), so any bundled entries
+  /// left over from older installs would fail to load (their JS isn't seeded).
+  /// Safe to call every launch — a no-op once nothing bundled remains.
+  Future<void> purgeBundled() async {
+    final keys = _box.keys
+        .map((k) => k.toString())
+        .where((k) => repoUrlOf(k) == kBundledRepoUrl || !k.contains(kProviderKeySep))
+        .toList();
+    for (final k in keys) {
+      final sourceId = sourceIdOf(k);
+      _manager.remove(sourceId);
+      _bundledJs.remove(sourceId);
+      await _box.delete(k);
+    }
+  }
+
   /// Removes the entry at composite [key] and drops it from the runtime
   /// when no OTHER installed entry shares its sourceId.
   Future<void> uninstall(String key) async {
