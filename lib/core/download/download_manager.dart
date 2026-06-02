@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart';
@@ -134,6 +135,47 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Enqueue a single episode against an ALREADY-CHOSEN source (the CloudStream
+  /// "pick a server" flow) — no re-resolution, so the exact url + headers the
+  /// player would stream are what we download.
+  Future<void> enqueueSource({
+    required String sourceId,
+    required String showId,
+    required String showTitle,
+    String? cover,
+    Map<String, String>? coverHeaders,
+    required String showUrl,
+    required String category,
+    required Episode episode,
+    required VideoSource source,
+    required String qualityLabel,
+    required int nowMs,
+  }) async {
+    try {
+      await Permission.notification.request();
+    } catch (_) {}
+    final rec = DownloadRecord(
+      id: _idFor(sourceId, episode.id),
+      sourceId: sourceId,
+      showId: showId,
+      showTitle: showTitle,
+      cover: cover,
+      coverHeaders: coverHeaders,
+      showUrl: showUrl,
+      episodeId: episode.id,
+      episodeUrl: episode.url,
+      episodeNumber: episode.number,
+      episodeTitle: episode.title,
+      category: category,
+      quality: qualityLabel,
+      createdAt: nowMs,
+    );
+    _put(rec);
+    notifyListeners();
+    await _enqueueTaskFor(rec, source);
+  }
+
+  /// Resolve a source for [rec] (batch path) then enqueue it.
   Future<void> _resolveAndEnqueue(DownloadRecord rec) async {
     _put(rec.copyWith(status: DownloadStatus.resolving));
     notifyListeners();
@@ -150,32 +192,37 @@ class DownloadManager extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      final task = DownloadTask(
-        taskId: rec.id,
-        url: picked.url,
-        filename: '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
-            '_${_safe(rec.quality)}${_ext(picked.url)}',
-        headers: picked.headers ?? const {},
-        directory: '$_sharedDir/${_safe(rec.showTitle)}',
-        baseDirectory: BaseDirectory.applicationDocuments,
-        updates: Updates.statusAndProgress,
-        allowPause: true,
-        displayName: '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}',
-      );
-      _tasks[rec.id] = task;
-      final ok = await _dl.enqueue(task);
-      if (!ok) {
-        _put(
-          rec.copyWith(
-            status: DownloadStatus.failed,
-            error: () => "Couldn't start download",
-          ),
-        );
-        notifyListeners();
-      }
+      await _enqueueTaskFor(rec, picked);
     } catch (e) {
       _put(
         rec.copyWith(status: DownloadStatus.failed, error: () => 'Resolve failed'),
+      );
+      notifyListeners();
+    }
+  }
+
+  /// Build + enqueue a [DownloadTask] for [rec] from a concrete [source].
+  Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
+    final task = DownloadTask(
+      taskId: rec.id,
+      url: source.url,
+      filename: '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
+          '_${_safe(rec.quality)}${_ext(source.url)}',
+      headers: source.headers ?? const {},
+      directory: '$_sharedDir/${_safe(rec.showTitle)}',
+      baseDirectory: BaseDirectory.applicationDocuments,
+      updates: Updates.statusAndProgress,
+      allowPause: true,
+      displayName: '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}',
+    );
+    _tasks[rec.id] = task;
+    final ok = await _dl.enqueue(task);
+    if (!ok) {
+      _put(
+        rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => "Couldn't start download",
+        ),
       );
       notifyListeners();
     }
@@ -247,7 +294,7 @@ class DownloadManager extends ChangeNotifier {
         case TaskStatus.paused:
           _put(rec.copyWith(status: DownloadStatus.paused));
         case TaskStatus.complete:
-          await _finish(rec, update.task as DownloadTask);
+          await _finish(rec, update.task as DownloadTask, update.mimeType);
         case TaskStatus.canceled:
           _put(rec.copyWith(status: DownloadStatus.canceled));
         case TaskStatus.notFound:
@@ -265,7 +312,33 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  Future<void> _finish(DownloadRecord rec, DownloadTask task) async {
+  Future<void> _finish(
+    DownloadRecord rec,
+    DownloadTask task,
+    String? mimeType,
+  ) async {
+    // Content guard: if the server handed back a web/landing page instead of a
+    // video (the 4khdhub HubCloud/gamerxyt case), don't keep it.
+    final mt = (mimeType ?? '').toLowerCase();
+    final looksHtml = mt.contains('html') || mt.startsWith('text/');
+    int size = 0;
+    try {
+      final f = File(await task.filePath());
+      if (await f.exists()) size = await f.length();
+      if (looksHtml || (size > 0 && size < 524288)) {
+        // <512KB or HTML → not a real video file.
+        if (await f.exists()) await f.delete();
+        _put(
+          rec.copyWith(
+            status: DownloadStatus.failed,
+            error: () => 'That server returned a web page, not a video — '
+                'try a different server',
+          ),
+        );
+        return;
+      }
+    } catch (_) {}
+
     String? path;
     try {
       path = await _dl.moveToSharedStorage(
@@ -307,16 +380,12 @@ class DownloadManager extends ChangeNotifier {
     return '.mp4';
   }
 
-  static bool _isDirectFile(VideoSource s) {
+  /// Phase 1 downloads anything that isn't HLS (the player streams these same
+  /// sources, so they're real files). HLS lands in phase 2.
+  static bool _notHls(VideoSource s) {
     if (s.container == SourceContainer.hls) return false;
     final path = (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase();
-    if (path.endsWith('.m3u8')) return false;
-    if (s.container == SourceContainer.mp4) return true;
-    return path.endsWith('.mp4') ||
-        path.endsWith('.mkv') ||
-        path.endsWith('.webm') ||
-        path.endsWith('.mov') ||
-        path.endsWith('.m4v');
+    return !path.endsWith('.m3u8');
   }
 
   static int _height(VideoSource s) {
@@ -324,10 +393,10 @@ class DownloadManager extends ChangeNotifier {
     return m == null ? 0 : int.parse(m.group(1)!);
   }
 
-  /// Best direct-file source matching the requested quality; falls back to the
-  /// highest available direct-file source. Null when none are direct-file.
+  /// Best non-HLS source matching the requested quality; falls back to the
+  /// highest available. Null when only HLS is available.
   static VideoSource? _pick(List<VideoSource> sources, String quality) {
-    final direct = sources.where(_isDirectFile).toList();
+    final direct = sources.where(_notHls).toList();
     if (direct.isEmpty) return null;
     direct.sort((a, b) => _height(b).compareTo(_height(a)));
     if (quality == 'best') return direct.first;

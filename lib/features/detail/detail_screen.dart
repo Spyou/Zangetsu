@@ -14,6 +14,7 @@ import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/video_source.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -282,7 +283,9 @@ class _DetailViewState extends State<_DetailView>
 
   // ── Downloads ─────────────────────────────────────────────────────────────
 
-  /// Open the quality + range sheet for [episodes], then enqueue the picked set.
+  /// The main Download button. A movie / single episode goes straight to the
+  /// server picker (CloudStream-style); a multi-episode season opens the
+  /// quality + range batch sheet.
   Future<void> _openDownloadSheet({
     required MediaDetail detail,
     required List<Episode> episodes,
@@ -290,6 +293,10 @@ class _DetailViewState extends State<_DetailView>
   }) async {
     if (episodes.isEmpty) {
       _snack('No episodes to download');
+      return;
+    }
+    if (episodes.length == 1) {
+      await _pickSourceAndDownload(episodes.first, detail, category);
       return;
     }
     final res = await showModalBottomSheet<({String quality, List<Episode> episodes})>(
@@ -305,12 +312,51 @@ class _DetailViewState extends State<_DetailView>
     _startDownload(detail, category, res.quality, res.episodes);
   }
 
-  /// Single-episode download (the per-row icon) — same sheet, one episode.
+  /// Per-episode / movie download → resolve sources, let the user pick a
+  /// server/mirror, then download that exact url + headers.
   Future<void> _downloadSingle(
     Episode ep,
     MediaDetail detail,
     String category,
-  ) => _openDownloadSheet(detail: detail, episodes: [ep], category: category);
+  ) => _pickSourceAndDownload(ep, detail, category);
+
+  Future<void> _pickSourceAndDownload(
+    Episode ep,
+    MediaDetail detail,
+    String category,
+  ) async {
+    final item = widget.item;
+    final chosen = await showModalBottomSheet<VideoSource>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _SourcePickerSheet(
+        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+        resolve: () =>
+            sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+      ),
+    );
+    if (chosen == null || !mounted) return;
+    unawaited(
+      sl<DownloadManager>().enqueueSource(
+        sourceId: item.sourceId,
+        showId: item.id,
+        showTitle: detail.title,
+        cover: detail.cover ?? item.cover,
+        coverHeaders: detail.coverHeaders ?? item.coverHeaders,
+        showUrl: item.url,
+        category: category,
+        episode: ep,
+        source: chosen,
+        qualityLabel: chosen.quality ?? 'auto',
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    _snack('Added to downloads');
+  }
 
   void _startDownload(
     MediaDetail detail,
@@ -1415,52 +1461,51 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     final visible = widget.seasonEps.sublist(start, end);
     final showRanges = _rangeCount > 1;
 
-    // Controls stay pinned above the (scrolling) episode area — like
-    // CloudStream's persistent season/range selector.
-    return Column(
-      children: [
-        _EpisodesHeader(
-          hasMultipleSeasons: widget.hasMultipleSeasons,
-          seasons: widget.seasonSet.toList()..sort(),
-          currentSeason: widget.currentSeason,
-          onSelectSeason: widget.onSelectSeason,
-          onInfo: widget.onInfo,
-          grid: _grid,
-          onToggleView: () => setState(() => _grid = !_grid),
-          onJump: showRanges ? _jump : null,
+    // One scrollable (slivers): the header + chips scroll with the list so the
+    // tab can never overflow when the NestedScrollView hands it a tiny height
+    // during a layout pass (the Column+Expanded version did).
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: _EpisodesHeader(
+            hasMultipleSeasons: widget.hasMultipleSeasons,
+            seasons: widget.seasonSet.toList()..sort(),
+            currentSeason: widget.currentSeason,
+            onSelectSeason: widget.onSelectSeason,
+            onInfo: widget.onInfo,
+            grid: _grid,
+            onToggleView: () => setState(() => _grid = !_grid),
+            onJump: showRanges ? _jump : null,
+          ),
         ),
         if (showRanges)
-          _RangeChips(
-            count: _rangeCount,
-            selected: _rangeIndex,
-            labelFor: (i) {
-              final s = (i * _chunk).clamp(0, total - 1);
-              final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
-              return '${_numLabel(widget.seasonEps[s], s + 1)}'
-                  '–${_numLabel(widget.seasonEps[e], e + 1)}';
-            },
-            onSelect: (i) => setState(() {
-              _rangeIndex = i;
-              _highlightEpId = null;
-            }),
+          SliverToBoxAdapter(
+            child: _RangeChips(
+              count: _rangeCount,
+              selected: _rangeIndex,
+              labelFor: (i) {
+                final s = (i * _chunk).clamp(0, total - 1);
+                final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
+                return '${_numLabel(widget.seasonEps[s], s + 1)}'
+                    '–${_numLabel(widget.seasonEps[e], e + 1)}';
+              },
+              onSelect: (i) => setState(() {
+                _rangeIndex = i;
+                _highlightEpId = null;
+              }),
+            ),
           ),
-        Expanded(
-          // Rebuild rows live as downloads progress (DownloadManager notifies).
-          child: ListenableBuilder(
-            listenable: sl<DownloadManager>(),
-            builder: (context, _) => _grid
-                ? _buildGrid(store, visible, start)
-                : _buildList(store, visible, start),
-          ),
-        ),
+        if (_grid)
+          _buildGrid(store, visible, start)
+        else
+          _buildList(store, visible, start),
+        const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );
   }
 
   Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(top: 2, bottom: 48),
-      physics: const AlwaysScrollableScrollPhysics(),
+    return SliverList.builder(
       itemCount: visible.length,
       itemBuilder: (context, i) {
         final ep = visible[i];
@@ -1469,7 +1514,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         final epNum = ep.number?.toInt() ?? (offset + i + 1);
         final displayTitle =
             widget.hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
-        final dl = sl<DownloadManager>().recordFor(widget.sourceId, ep.id);
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -1483,8 +1527,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
             onDownload: () => widget.onDownload(ep),
-            downloadStatus: dl?.status,
-            downloadProgress: dl?.progress ?? 0,
+            sourceId: widget.sourceId,
           ),
         );
       },
@@ -1492,32 +1535,33 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   }
 
   Widget _buildGrid(ResumeStore store, List<Episode> visible, int offset) {
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 48),
-      physics: const AlwaysScrollableScrollPhysics(),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-        childAspectRatio: 1.15,
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      sliver: SliverGrid.builder(
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 5,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 1.15,
+        ),
+        itemCount: visible.length,
+        itemBuilder: (context, i) {
+          final ep = visible[i];
+          final fullIndex = widget.eps.indexOf(ep);
+          final st = _stateFor(store, ep, fullIndex);
+          final epNum = ep.number?.toInt() ?? (offset + i + 1);
+          return _EpisodeGridTile(
+            number: epNum,
+            isWatched: st.watched,
+            isInProgress: st.inProgress,
+            isResume: st.resume,
+            isFiller: ep.filler,
+            highlight: _highlightEpId == ep.id,
+            fraction: st.fraction,
+            onTap: () => widget.onOpen(fullIndex),
+          );
+        },
       ),
-      itemCount: visible.length,
-      itemBuilder: (context, i) {
-        final ep = visible[i];
-        final fullIndex = widget.eps.indexOf(ep);
-        final st = _stateFor(store, ep, fullIndex);
-        final epNum = ep.number?.toInt() ?? (offset + i + 1);
-        return _EpisodeGridTile(
-          number: epNum,
-          isWatched: st.watched,
-          isInProgress: st.inProgress,
-          isResume: st.resume,
-          isFiller: ep.filler,
-          highlight: _highlightEpId == ep.id,
-          fraction: st.fraction,
-          onTap: () => widget.onOpen(fullIndex),
-        );
-      },
     );
   }
 }
@@ -1952,8 +1996,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.fraction,
     required this.onTap,
     required this.onDownload,
-    this.downloadStatus,
-    this.downloadProgress = 0,
+    required this.sourceId,
   });
 
   final Episode ep;
@@ -1967,8 +2010,7 @@ class _EpisodeRow extends StatelessWidget {
   final double fraction;
   final VoidCallback onTap;
   final VoidCallback onDownload;
-  final DownloadStatus? downloadStatus;
-  final double downloadProgress;
+  final String sourceId;
 
   @override
   Widget build(BuildContext context) {
@@ -2120,8 +2162,8 @@ class _EpisodeRow extends StatelessWidget {
                 const SizedBox(width: 8),
                 // Per-episode download icon, reflecting download state.
                 _EpisodeDownloadIcon(
-                  status: downloadStatus,
-                  progress: downloadProgress,
+                  sourceId: sourceId,
+                  episodeId: ep.id,
                   onTap: onDownload,
                 ),
               ],
@@ -2133,20 +2175,32 @@ class _EpisodeRow extends StatelessWidget {
   }
 }
 
-// Per-episode download icon — download / spinner / progress ring / done / etc.
+// Per-episode download icon — self-updates from the DownloadManager so the
+// row reflects live progress without the whole list rebuilding.
 class _EpisodeDownloadIcon extends StatelessWidget {
   const _EpisodeDownloadIcon({
-    required this.status,
-    required this.progress,
+    required this.sourceId,
+    required this.episodeId,
     required this.onTap,
   });
 
-  final DownloadStatus? status;
-  final double progress;
+  final String sourceId;
+  final String episodeId;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final manager = sl<DownloadManager>();
+    return ListenableBuilder(
+      listenable: manager,
+      builder: (context, _) {
+        final rec = manager.recordFor(sourceId, episodeId);
+        return _glyph(rec?.status, rec?.progress ?? 0);
+      },
+    );
+  }
+
+  Widget _glyph(DownloadStatus? status, double progress) {
     final child = switch (status) {
       DownloadStatus.done => const Icon(
         Icons.download_done_rounded,
@@ -2193,6 +2247,147 @@ class _EpisodeDownloadIcon extends StatelessWidget {
       visualDensity: VisualDensity.compact,
       splashRadius: 22,
       icon: child,
+    );
+  }
+}
+
+// Server/mirror picker (CloudStream-style) — resolves the episode's sources
+// and lists them so the user downloads a specific, real link. Returns the
+// chosen VideoSource via pop. HLS sources are shown disabled (phase 2).
+class _SourcePickerSheet extends StatefulWidget {
+  const _SourcePickerSheet({required this.title, required this.resolve});
+
+  final String title;
+  final Future<List<VideoSource>> Function() resolve;
+
+  @override
+  State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
+}
+
+class _SourcePickerSheetState extends State<_SourcePickerSheet> {
+  List<VideoSource>? _sources;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await widget.resolve();
+      if (mounted) setState(() => _sources = s);
+    } catch (_) {
+      if (mounted) setState(() => _error = "Couldn't load download options");
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  bool _isHls(VideoSource s) =>
+      s.container == SourceContainer.hls ||
+      (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
+
+  @override
+  Widget build(BuildContext context) {
+    final maxH = MediaQuery.of(context).size.height * 0.6;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 12, 8),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text('Download · choose server', style: AppText.title),
+            ),
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Text(
+                widget.title,
+                style: AppText.caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Center(
+                  child: SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                ),
+              )
+            else if (_error != null || (_sources?.isEmpty ?? true))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  _error ?? 'No download sources found',
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
+                ),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: maxH),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _sources!.length,
+                  itemBuilder: (context, i) => _row(_sources![i]),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(VideoSource s) {
+    final hls = _isHls(s);
+    final label = (s.label != null && s.label!.trim().isNotEmpty)
+        ? s.label!.trim()
+        : (s.quality ?? 'Source');
+    final sub = [
+      if (s.quality != null && s.quality!.isNotEmpty) s.quality!,
+      hls ? 'HLS · not available offline yet' : 'Direct',
+    ].join(' · ');
+    return ListTile(
+      enabled: !hls,
+      contentPadding: const EdgeInsets.only(right: 8),
+      leading: Icon(
+        hls ? Icons.cloud_off_outlined : Icons.download_rounded,
+        color: hls ? AppColors.textTertiary : AppColors.accent,
+      ),
+      title: Text(
+        label,
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(sub, style: AppText.caption),
+      onTap: hls ? null : () => Navigator.pop(context, s),
     );
   }
 }
