@@ -11,6 +11,8 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../auth/auth_cubit.dart';
+import '../auth/auth_screens.dart';
 import '../sources/sources_screen.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
@@ -105,6 +107,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Account row — signed-in profile (pfp + name → Profile) or a Sign-in tile.
+  Widget _accountCard(BuildContext context) {
+    return BlocBuilder<AuthCubit, AuthState>(
+      builder: (context, auth) {
+        if (auth.isLoggedIn) {
+          final initial = auth.displayName.isNotEmpty
+              ? auth.displayName[0].toUpperCase()
+              : '?';
+          return SettingsCard(
+            children: [
+              ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                leading: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: AppColors.surface2,
+                  backgroundImage:
+                      auth.avatarUrl != null ? NetworkImage(auth.avatarUrl!) : null,
+                  child: auth.avatarUrl == null
+                      ? Text(initial, style: AppText.headline)
+                      : null,
+                ),
+                title: Text(
+                  auth.displayName,
+                  style: AppText.headline.copyWith(fontSize: 15),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  auth.user?.email ?? '',
+                  style: AppText.caption,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                onTap: () => _push(const ProfileScreen()),
+              ),
+            ],
+          );
+        }
+        return SettingsCard(
+          children: [
+            SettingsTile(
+              icon: Icons.person_outline_rounded,
+              title: 'Sign in',
+              subtitle: 'Sync your list & continue watching',
+              onTap: () => _push(const LoginScreen()),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
@@ -123,6 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(top: 4, bottom: 24),
                 children: [
+                  _accountCard(context),
                   SettingsCard(
                     children: [
                       SettingsTile(

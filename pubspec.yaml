@@ -83,6 +83,8 @@ dependencies:
   # that media_kit plays natively — no iframe, no YouTube chrome (Netflix-style).
   youtube_explode_dart: ^3.1.0
   wakelock_plus: ^1.5.2
+  appwrite: ^25.0.0
+  image_picker: ^1.2.2
 
 dev_dependencies:
   flutter_test:

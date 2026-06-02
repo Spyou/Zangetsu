@@ -16,6 +16,8 @@ import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../trailer/trailer_service.dart';
+import '../appwrite/appwrite_service.dart';
+import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 
 final GetIt sl = GetIt.instance;
@@ -50,6 +52,12 @@ Future<void> initDependencies() async {
 
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
+
+  // Appwrite (auth + profile + cloud-synced library). Uses the PUBLIC project
+  // id/endpoint only — no server key. AuthCubit is global so any widget can
+  // gate on login.
+  sl.registerSingleton<AppwriteService>(AppwriteService());
+  sl.registerSingleton<AuthCubit>(AuthCubit(sl<AppwriteService>()));
 
   final manager = ProviderManager(dio: dio);
   sl.registerSingleton<ProviderManager>(manager);

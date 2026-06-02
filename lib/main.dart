@@ -6,6 +6,7 @@ import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
+import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
@@ -49,6 +50,11 @@ class _BootGateState extends State<_BootGate> {
   Future<void> _run() async {
     final start = DateTime.now();
     await initDependencies();
+    // Restore a persisted Appwrite session (bounded so a slow network can't
+    // trap the splash).
+    try {
+      await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
+    } catch (_) {}
     if (isOnboarded()) {
       sl<HomeCubit>().load(); // fire-and-forget warm for the active source
     }
@@ -76,6 +82,7 @@ class _BootGateState extends State<_BootGate> {
         return MultiBlocProvider(
           providers: [
             BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
+            BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
           ],
           child: child,
         );
