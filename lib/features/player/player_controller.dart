@@ -159,6 +159,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
   bool _recovering = false; // debounce: one error-recovery at a time
+  bool _defaultRateApplied = false; // default speed applied once per session
 
   Episode get currentEpisode => episodes[state.currentIndex];
 
@@ -234,10 +235,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void init(int index) {
-    // Start the session at the user's preferred playback rate. Applied ONCE at
-    // session start so a mid-session speed picked via the overlay isn't clobbered
-    // on every _open.
-    player.setRate(sl<PlaybackPrefs>().defaultSpeed);
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -431,6 +428,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     fetchHlsVariants(m.url, m.headers, _dio).then((vs) {
       if (gen == _gen && vs.length > 1) {
         emit(state.copyWith(qualities: vs));
+        // Variants arrive async (after the initial open), so re-apply the
+        // default-quality pref now that the HLS ladder is known.
+        _applyDefaultQuality();
       }
     });
   }
@@ -514,6 +514,13 @@ class PlayerCubit extends Cubit<PlayerState> {
       ),
     );
     if (g != _gen) return; // superseded mid-open
+    // Apply the preferred speed ONCE, now that a media is actually loaded
+    // (setting it before any open doesn't stick). Mid-session overlay changes
+    // are never clobbered afterwards.
+    if (!_defaultRateApplied) {
+      _defaultRateApplied = true;
+      player.setRate(sl<PlaybackPrefs>().defaultSpeed);
+    }
     if (s.subtitles.isNotEmpty) {
       final sub = s.subtitles.firstWhere(
         (x) => x.isDefault,
