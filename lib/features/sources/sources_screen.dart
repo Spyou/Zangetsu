@@ -196,7 +196,7 @@ class _InstalledTab extends StatelessWidget {
   }
 }
 
-class _InstalledGroup extends StatelessWidget {
+class _InstalledGroup extends StatefulWidget {
   const _InstalledGroup({
     required this.title,
     required this.repoUrl,
@@ -208,38 +208,81 @@ class _InstalledGroup extends StatelessWidget {
   final List<ProviderRegistryEntry> entries;
 
   @override
+  State<_InstalledGroup> createState() => _InstalledGroupState();
+}
+
+class _InstalledGroupState extends State<_InstalledGroup> {
+  bool _expanded = true;
+
+  @override
   Widget build(BuildContext context) {
+    final entries = widget.entries;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
-          child: Text(
-            title.toUpperCase(),
-            style: AppText.overline.copyWith(color: AppColors.textTertiary),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: _expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    Icons.expand_more,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    widget.title.toUpperCase(),
+                    style: AppText.overline.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '${entries.length}',
+                  style: AppText.overline.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        Container(
-          clipBehavior: Clip.antiAlias,
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            children: [
-              for (var i = 0; i < entries.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                    height: 0.5,
-                    thickness: 0.5,
-                    color: AppColors.hairline,
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: !_expanded
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                _InstalledRow(entry: entries[i]),
-              ],
-            ],
-          ),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < entries.length; i++) ...[
+                        if (i > 0)
+                          const Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: AppColors.hairline,
+                          ),
+                        _InstalledRow(entry: entries[i]),
+                      ],
+                    ],
+                  ),
+                ),
         ),
         const SizedBox(height: 18),
       ],
@@ -404,7 +447,7 @@ class _ReposTab extends StatelessWidget {
   }
 }
 
-class _RepoSection extends StatelessWidget {
+class _RepoSection extends StatefulWidget {
   const _RepoSection({
     required this.repo,
     required this.installedKeys,
@@ -414,6 +457,17 @@ class _RepoSection extends StatelessWidget {
   final ProviderRepo repo;
   final Set<String> installedKeys;
   final Set<String> updatableKeys;
+
+  @override
+  State<_RepoSection> createState() => _RepoSectionState();
+}
+
+class _RepoSectionState extends State<_RepoSection> {
+  bool _expanded = true;
+
+  ProviderRepo get repo => widget.repo;
+  Set<String> get installedKeys => widget.installedKeys;
+  Set<String> get updatableKeys => widget.updatableKeys;
 
   int get _updateCount => repo.sources
       .where(
@@ -473,27 +527,47 @@ class _RepoSection extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        repo.displayName,
-                        style: AppText.headline,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        _updateCount > 0
-                            ? '${repo.sources.length} sources • $_updateCount update${_updateCount == 1 ? '' : 's'}'
-                            : '${repo.sources.length} sources',
-                        style: AppText.caption.copyWith(
-                          color: _updateCount > 0
-                              ? AppColors.accent
-                              : AppColors.textTertiary,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: _expanded ? 0 : -0.25,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(
+                            Icons.expand_more,
+                            color: AppColors.textSecondary,
+                            size: 22,
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                repo.displayName,
+                                style: AppText.headline,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _updateCount > 0
+                                    ? '${repo.sources.length} sources • $_updateCount update${_updateCount == 1 ? '' : 's'}'
+                                    : '${repo.sources.length} sources',
+                                style: AppText.caption.copyWith(
+                                  color: _updateCount > 0
+                                      ? AppColors.accent
+                                      : AppColors.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 if (_updateCount > 0)
@@ -554,33 +628,46 @@ class _RepoSection extends StatelessWidget {
               ],
             ),
           ),
-          if (repo.sources.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              child: Text(
-                'No sources in this repo yet.',
-                textAlign: TextAlign.center,
-                style: AppText.caption,
-              ),
-            )
-          else
-            for (final source in repo.sources) ...[
-              const Divider(
-                height: 0.5,
-                thickness: 0.5,
-                color: AppColors.hairline,
-              ),
-              _RepoSourceRow(
-                repo: repo,
-                source: source,
-                installed: installedKeys.contains(
-                  ProviderRegistry.providerKey(repo.url, source.id),
-                ),
-                hasUpdate: updatableKeys.contains(
-                  ProviderRegistry.providerKey(repo.url, source.id),
-                ),
-              ),
-            ],
+          // Collapsible source list.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: !_expanded
+                ? const SizedBox(width: double.infinity)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (repo.sources.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'No sources in this repo yet.',
+                            textAlign: TextAlign.center,
+                            style: AppText.caption,
+                          ),
+                        )
+                      else
+                        for (final source in repo.sources) ...[
+                          const Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: AppColors.hairline,
+                          ),
+                          _RepoSourceRow(
+                            repo: repo,
+                            source: source,
+                            installed: installedKeys.contains(
+                              ProviderRegistry.providerKey(repo.url, source.id),
+                            ),
+                            hasUpdate: updatableKeys.contains(
+                              ProviderRegistry.providerKey(repo.url, source.id),
+                            ),
+                          ),
+                        ],
+                    ],
+                  ),
+          ),
         ],
       ),
     );
