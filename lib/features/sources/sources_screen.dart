@@ -292,7 +292,12 @@ class _InstalledRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final bundled = entry.isBundled;
     final name = entry.displayName.isNotEmpty ? entry.displayName : entry.name;
-    final meta = '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
+    final state = context.read<SourcesBloc>().state;
+    final hasUpdate = state.hasUpdate(_key);
+    final newVersion = state.manifestVersions[_key];
+    final meta = hasUpdate
+        ? 'repo • v${entry.version} → v$newVersion'
+        : '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
       child: Row(
@@ -308,10 +313,23 @@ class _InstalledRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(meta, style: AppText.caption),
+                Text(
+                  meta,
+                  style: AppText.caption.copyWith(
+                    color: hasUpdate ? AppColors.accent : null,
+                  ),
+                ),
               ],
             ),
           ),
+          if (hasUpdate)
+            IconButton(
+              tooltip: 'Update to v$newVersion',
+              icon: const Icon(Icons.download_rounded, size: 20),
+              color: AppColors.accent,
+              onPressed: () =>
+                  context.read<SourcesBloc>().add(SourceUpdated(_key)),
+            ),
           Switch.adaptive(
             value: entry.enabled,
             activeThumbColor: AppColors.accent,
@@ -356,8 +374,7 @@ class _ReposTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SourcesBloc, SourcesState>(
-      buildWhen: (a, b) =>
-          a.repos != b.repos || a.installedKeys != b.installedKeys,
+      buildWhen: (a, b) => a.repos != b.repos || a.installed != b.installed,
       builder: (context, state) {
         final all = state.repos;
         if (all.isEmpty) {
@@ -367,11 +384,20 @@ class _ReposTab extends StatelessWidget {
           );
         }
         final installedKeys = state.installedKeys;
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-          itemCount: all.length,
-          itemBuilder: (_, i) =>
-              _RepoSection(repo: all[i], installedKeys: installedKeys),
+        final updatableKeys = state.updatableKeys;
+        return RefreshIndicator(
+          color: AppColors.accent,
+          backgroundColor: AppColors.surface,
+          onRefresh: () => context.read<SourcesBloc>().refreshAllRepos(),
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            itemCount: all.length,
+            itemBuilder: (_, i) => _RepoSection(
+              repo: all[i],
+              installedKeys: installedKeys,
+              updatableKeys: updatableKeys,
+            ),
+          ),
         );
       },
     );
@@ -379,10 +405,22 @@ class _ReposTab extends StatelessWidget {
 }
 
 class _RepoSection extends StatelessWidget {
-  const _RepoSection({required this.repo, required this.installedKeys});
+  const _RepoSection({
+    required this.repo,
+    required this.installedKeys,
+    required this.updatableKeys,
+  });
 
   final ProviderRepo repo;
   final Set<String> installedKeys;
+  final Set<String> updatableKeys;
+
+  int get _updateCount => repo.sources
+      .where(
+        (s) =>
+            updatableKeys.contains(ProviderRegistry.providerKey(repo.url, s.id)),
+      )
+      .length;
 
   Future<void> _remove(BuildContext context) async {
     final bloc = context.read<SourcesBloc>();
@@ -446,12 +484,29 @@ class _RepoSection extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${repo.sources.length} sources',
-                        style: AppText.caption,
+                        _updateCount > 0
+                            ? '${repo.sources.length} sources • $_updateCount update${_updateCount == 1 ? '' : 's'}'
+                            : '${repo.sources.length} sources',
+                        style: AppText.caption.copyWith(
+                          color: _updateCount > 0
+                              ? AppColors.accent
+                              : AppColors.textTertiary,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                if (_updateCount > 0)
+                  TextButton.icon(
+                    onPressed: () => context.read<SourcesBloc>().add(
+                      RepoUpdated(repo.url),
+                    ),
+                    icon: const Icon(Icons.download_rounded, size: 18),
+                    label: Text('Update all ($_updateCount)'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                    ),
+                  ),
                 PopupMenuButton<String>(
                   icon: const Icon(
                     Icons.more_vert,
@@ -460,8 +515,31 @@ class _RepoSection extends StatelessWidget {
                   color: AppColors.surface2,
                   onSelected: (v) {
                     if (v == 'remove') _remove(context);
+                    if (v == 'update') {
+                      context.read<SourcesBloc>().add(RepoUpdated(repo.url));
+                    }
+                    if (v == 'refresh') {
+                      context.read<SourcesBloc>().add(RepoRefreshed(repo.url));
+                    }
                   },
                   itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: 'refresh',
+                      child: Text(
+                        'Check for updates',
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    if (_updateCount > 0)
+                      PopupMenuItem(
+                        value: 'update',
+                        child: Text(
+                          'Update all ($_updateCount)',
+                          style: AppText.body.copyWith(color: AppColors.accent),
+                        ),
+                      ),
                     PopupMenuItem(
                       value: 'remove',
                       child: Text(
@@ -498,6 +576,9 @@ class _RepoSection extends StatelessWidget {
                 installed: installedKeys.contains(
                   ProviderRegistry.providerKey(repo.url, source.id),
                 ),
+                hasUpdate: updatableKeys.contains(
+                  ProviderRegistry.providerKey(repo.url, source.id),
+                ),
               ),
             ],
         ],
@@ -511,11 +592,13 @@ class _RepoSourceRow extends StatelessWidget {
     required this.repo,
     required this.source,
     required this.installed,
+    required this.hasUpdate,
   });
 
   final ProviderRepo repo;
   final RepoSource source;
   final bool installed;
+  final bool hasUpdate;
 
   String get _key => ProviderRegistry.providerKey(repo.url, source.id);
 
@@ -523,6 +606,10 @@ class _RepoSourceRow extends StatelessWidget {
     context.read<SourcesBloc>().add(
       SourceInstalled(repo: repo, source: source),
     );
+  }
+
+  void _update(BuildContext context) {
+    context.read<SourcesBloc>().add(SourceUpdated(_key));
   }
 
   Future<void> _uninstall(BuildContext context) async {
@@ -583,7 +670,22 @@ class _RepoSourceRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (installed)
+          if (installed && hasUpdate)
+            FilledButton.icon(
+              onPressed: () => _update(context),
+              icon: const Icon(Icons.download_rounded, size: 18),
+              label: const Text('Update'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(96, 36),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            )
+          else if (installed)
             OutlinedButton(
               onPressed: () => _uninstall(context),
               style: OutlinedButton.styleFrom(

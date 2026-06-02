@@ -37,6 +37,33 @@ class SourcesState extends Equatable {
       .map((e) => ProviderRegistry.providerKey(e.originRepoUrl, e.name))
       .toSet();
 
+  /// Installed version per composite key.
+  Map<String, String> get installedVersions => {
+    for (final e in installed)
+      ProviderRegistry.providerKey(e.originRepoUrl, e.name): e.version,
+  };
+
+  /// The latest manifest version advertised per composite key, across all
+  /// tracked repos.
+  Map<String, String> get manifestVersions => {
+    for (final repo in repos)
+      for (final s in repo.sources)
+        ProviderRegistry.providerKey(repo.url, s.id): s.version,
+  };
+
+  /// Whether the installed source at [key] has a newer version available in
+  /// its repo's current manifest.
+  bool hasUpdate(String key) {
+    final installedV = installedVersions[key];
+    final manifestV = manifestVersions[key];
+    if (installedV == null || manifestV == null) return false;
+    return isProviderVersionNewer(manifestV, installedV);
+  }
+
+  /// Composite keys (in any repo) that have an update available.
+  Set<String> get updatableKeys =>
+      installedKeys.where(hasUpdate).toSet();
+
   SourcesState copyWith({
     SourcesStatus? status,
     List<ProviderRegistryEntry>? installed,

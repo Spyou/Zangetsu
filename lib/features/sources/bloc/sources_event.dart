@@ -28,6 +28,34 @@ class SourceInstalled extends SourcesEvent {
   List<Object?> get props => [repo.url, source.id];
 }
 
+/// Re-install the source at composite [key] from its repo's CURRENT manifest,
+/// forcing a fresh JS download (an "Update"). The bloc resolves the repo +
+/// source from the key, so it works from either tab.
+class SourceUpdated extends SourcesEvent {
+  const SourceUpdated(this.key);
+  final String key;
+  @override
+  List<Object?> get props => [key];
+}
+
+/// Update every installed source in [repoUrl] that has a newer manifest
+/// version ("Update all").
+class RepoUpdated extends SourcesEvent {
+  const RepoUpdated(this.repoUrl);
+  final String repoUrl;
+  @override
+  List<Object?> get props => [repoUrl];
+}
+
+/// Re-fetch a repo's manifest so newer source versions become visible
+/// ("Check for updates").
+class RepoRefreshed extends SourcesEvent {
+  const RepoRefreshed(this.repoUrl);
+  final String repoUrl;
+  @override
+  List<Object?> get props => [repoUrl];
+}
+
 /// Remove the installed entry at composite [key].
 class SourceUninstalled extends SourcesEvent {
   const SourceUninstalled(this.key, {this.displayName});

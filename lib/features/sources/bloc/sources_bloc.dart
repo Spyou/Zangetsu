@@ -27,9 +27,12 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
     on<SourcesStarted>(_onStarted);
     on<SourcesRefreshed>(_onRefreshed);
     on<SourceInstalled>(_onInstalled);
+    on<SourceUpdated>(_onUpdated);
+    on<RepoUpdated>(_onRepoUpdated);
     on<SourceUninstalled>(_onUninstalled);
     on<SourceEnabledToggled>(_onEnabledToggled);
     on<RepoAdded>(_onRepoAdded);
+    on<RepoRefreshed>(_onRepoRefreshed);
     on<RepoRemoved>(_onRepoRemoved);
     on<SourcesNoticeRequested>(_onNoticeRequested);
 
@@ -91,6 +94,79 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
     }
   }
 
+  /// Force-reinstalls one source from its repo's current manifest.
+  Future<void> _onUpdated(
+    SourceUpdated event,
+    Emitter<SourcesState> emit,
+  ) async {
+    final repoUrl = ProviderRegistry.repoUrlOf(event.key);
+    final sourceId = ProviderRegistry.sourceIdOf(event.key);
+    final repo = _repos.get(repoUrl);
+    RepoSource? source;
+    if (repo != null) {
+      for (final s in repo.sources) {
+        if (s.id == sourceId) {
+          source = s;
+          break;
+        }
+      }
+    }
+    if (repo == null || source == null) {
+      _emitNotice(emit, "Couldn't find this source's repo to update");
+      return;
+    }
+    try {
+      await _registry.install(
+        sourceId: source.id,
+        fileUrl: _repos.resolveFileUrl(repo, source),
+        repoUrl: repo.url,
+        displayName: source.name,
+        version: source.version,
+        force: true,
+      );
+      _emitNotice(emit, 'Updated ${source.name} to v${source.version}');
+    } catch (e) {
+      _emitNotice(emit, "Couldn't update ${source.name}: $e");
+    }
+  }
+
+  /// Updates every installed source in a repo that has a newer manifest version.
+  Future<void> _onRepoUpdated(
+    RepoUpdated event,
+    Emitter<SourcesState> emit,
+  ) async {
+    final repo = _repos.get(event.repoUrl);
+    if (repo == null) return;
+    final installed = <String, ProviderRegistryEntry>{
+      for (final e in _registry.getAll())
+        ProviderRegistry.providerKey(e.originRepoUrl, e.name): e,
+    };
+    var updated = 0;
+    for (final source in repo.sources) {
+      final key = ProviderRegistry.providerKey(repo.url, source.id);
+      final entry = installed[key];
+      if (entry == null) continue;
+      if (!isProviderVersionNewer(source.version, entry.version)) continue;
+      try {
+        await _registry.install(
+          sourceId: source.id,
+          fileUrl: _repos.resolveFileUrl(repo, source),
+          repoUrl: repo.url,
+          displayName: source.name,
+          version: source.version,
+          force: true,
+        );
+        updated++;
+      } catch (_) {}
+    }
+    _emitNotice(
+      emit,
+      updated > 0
+          ? 'Updated $updated source${updated == 1 ? '' : 's'} in ${repo.displayName}'
+          : '${repo.displayName} is already up to date',
+    );
+  }
+
   Future<void> _onUninstalled(
     SourceUninstalled event,
     Emitter<SourcesState> emit,
@@ -120,6 +196,49 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
     } catch (e) {
       _emitNotice(emit, e.toString());
     }
+  }
+
+  Future<void> _onRepoRefreshed(
+    RepoRefreshed event,
+    Emitter<SourcesState> emit,
+  ) async {
+    try {
+      final repo = await _repos.fetchAndCache(event.repoUrl);
+      // The box-watch re-emits the snapshot; surface a count of updates found.
+      final installed = <String, ProviderRegistryEntry>{
+        for (final e in _registry.getAll())
+          ProviderRegistry.providerKey(e.originRepoUrl, e.name): e,
+      };
+      var updates = 0;
+      for (final s in repo.sources) {
+        final entry =
+            installed[ProviderRegistry.providerKey(repo.url, s.id)];
+        if (entry != null && isProviderVersionNewer(s.version, entry.version)) {
+          updates++;
+        }
+      }
+      _emitNotice(
+        emit,
+        updates > 0
+            ? '$updates update${updates == 1 ? '' : 's'} available in ${repo.displayName}'
+            : '${repo.displayName} is up to date',
+      );
+    } on ProviderRepoException catch (e) {
+      _emitNotice(emit, e.message);
+    } catch (e) {
+      _emitNotice(emit, e.toString());
+    }
+  }
+
+  /// Pull-to-refresh: re-fetch every tracked repo's manifest. Awaitable so the
+  /// RefreshIndicator can spin until done.
+  Future<void> refreshAllRepos() async {
+    for (final repo in _repos.getAll()) {
+      try {
+        await _repos.fetchAndCache(repo.url);
+      } catch (_) {}
+    }
+    if (!isClosed) add(const SourcesRefreshed());
   }
 
   Future<void> _onRepoRemoved(

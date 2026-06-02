@@ -14,6 +14,25 @@ const String kProviderKeySep = '::';
 /// lookups behave consistently.
 const String kBundledRepoUrl = 'bundled://';
 
+/// True if [candidate] is a newer version than [current] (numeric, dot-split
+/// semver; non-numeric segments count as 0). Used to flag source updates when
+/// a repo manifest advertises a higher version than the installed entry.
+bool isProviderVersionNewer(String candidate, String current) {
+  List<int> parse(String v) => v
+      .trim()
+      .split(RegExp(r'[.+\-]'))
+      .map((p) => int.tryParse(p) ?? 0)
+      .toList();
+  final a = parse(candidate), b = parse(current);
+  final n = a.length > b.length ? a.length : b.length;
+  for (var i = 0; i < n; i++) {
+    final x = i < a.length ? a[i] : 0;
+    final y = i < b.length ? b[i] : 0;
+    if (x != y) return x > y;
+  }
+  return false;
+}
+
 /// One installed provider record. The composite key under which this is
 /// stored is `providerKey(originRepoUrl, name)`.
 class ProviderRegistryEntry {
@@ -218,6 +237,7 @@ class ProviderRegistry {
     String repoUrl = '',
     String displayName = '',
     String version = '1.0.0',
+    bool force = false,
   }) async {
     final resolvedRepo = repoUrl.isEmpty ? kBundledRepoUrl : repoUrl;
     final entry = ProviderRegistryEntry(
@@ -228,7 +248,9 @@ class ProviderRegistry {
       displayName: displayName,
     );
     await _box.put(providerKey(resolvedRepo, sourceId), entry.toJson());
-    await _loadEntryIntoRuntime(entry);
+    // [force] bypasses the JS cache (and busts the CDN edge) so an Update
+    // actually pulls the new code; a fresh install has nothing cached anyway.
+    await _loadEntryIntoRuntime(entry, force: force);
     return entry;
   }
 
