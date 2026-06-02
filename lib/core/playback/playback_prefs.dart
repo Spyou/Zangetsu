@@ -52,4 +52,11 @@ class PlaybackPrefs {
   /// Whether to resume a title from its saved position automatically.
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);
+
+  /// Whether vertical swipe gestures in the player adjust brightness (left half)
+  /// and volume (right half), MX/Netflix-style.
+  bool get gestureControls =>
+      _box.get('gestureControls', defaultValue: true) as bool;
+  Future<void> setGestureControls(bool value) =>
+      _box.put('gestureControls', value);
 }

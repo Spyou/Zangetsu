@@ -491,6 +491,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 onTap: _pickSkip,
               ),
               _toggleRow(
+                icon: Icons.swipe_outlined,
+                title: 'Gesture controls',
+                subtitle: 'Swipe left for brightness, right for volume',
+                value: _prefs.gestureControls,
+                onChanged: (v) async {
+                  await _prefs.setGestureControls(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
                 title: 'Keep screen on',
                 value: _prefs.keepScreenOn,

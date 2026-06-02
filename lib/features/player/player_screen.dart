@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
@@ -17,6 +18,7 @@ import '../../core/playback/source_selection.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import 'player_controller.dart';
@@ -84,6 +86,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // User's preferred double-tap seek step, read once at session start.
   final int _seekSeconds = sl<PlaybackPrefs>().seekSeconds;
 
+  // ── Brightness / volume swipe gestures ──────────────────────────────────
+  final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
+  bool _dragIsBrightness = false; // left half = brightness, right half = volume
+  double _dragValue = 0; // running 0..1 value during a vertical drag
+  // HUD shown while adjusting (Netflix-style brightness/volume indicator).
+  bool _hudVisible = false;
+  double _hudValue = 0;
+  bool _hudIsBrightness = false;
+  Timer? _hudTimer;
+
   @override
   void initState() {
     super.initState();
@@ -114,6 +126,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _seekLabelTimer?.cancel();
+    _hudTimer?.cancel();
+    // Hand brightness back to the system when leaving the player.
+    if (_gesturesEnabled) {
+      ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
+        (_) {},
+      );
+    }
     WakelockPlus.disable();
     _c.close();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
@@ -167,6 +186,51 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _c.togglePlay();
     }
     _bumpControls();
+  }
+
+  // Vertical swipe: left half adjusts screen brightness, right half adjusts
+  // volume (MX/Netflix-style). Each drag seeds from the current value, then
+  // tracks finger movement; a swipe across ~70% of the height covers 0→100%.
+  Future<void> _onVDragStart(DragStartDetails d) async {
+    if (!_gesturesEnabled) return;
+    _dragIsBrightness =
+        d.localPosition.dx < MediaQuery.of(context).size.width / 2;
+    if (_dragIsBrightness) {
+      try {
+        _dragValue = await ScreenBrightness.instance.application;
+      } catch (_) {
+        _dragValue = 0.5;
+      }
+    } else {
+      _dragValue = (_c.player.state.volume / 100).clamp(0.0, 1.0);
+    }
+  }
+
+  void _onVDragUpdate(DragUpdateDetails d) {
+    if (!_gesturesEnabled) return;
+    final h = MediaQuery.of(context).size.height;
+    // Drag up (negative delta) increases the value.
+    _dragValue = (_dragValue - d.primaryDelta! / (h * 0.7)).clamp(0.0, 1.0);
+    if (_dragIsBrightness) {
+      ScreenBrightness.instance
+          .setApplicationScreenBrightness(_dragValue)
+          .catchError((_) {});
+    } else {
+      _c.player.setVolume(_dragValue * 100);
+    }
+    setState(() {
+      _hudVisible = true;
+      _hudValue = _dragValue;
+      _hudIsBrightness = _dragIsBrightness;
+    });
+  }
+
+  void _onVDragEnd(DragEndDetails d) {
+    if (!_gesturesEnabled) return;
+    _hudTimer?.cancel();
+    _hudTimer = Timer(const Duration(milliseconds: 500), () {
+      if (mounted) setState(() => _hudVisible = false);
+    });
   }
 
   // ── Sheets ──────────────────────────────────────────────────────────────
@@ -469,6 +533,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     _c.setRate(1.0);
                     setState(() => _holding = false);
                   },
+                  onVerticalDragStart: _onVDragStart,
+                  onVerticalDragUpdate: _onVDragUpdate,
+                  onVerticalDragEnd: _onVDragEnd,
                 ),
               ),
 
@@ -510,6 +577,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         '$_seekLabel s',
                         style: AppText.headline.copyWith(color: Colors.white),
                       ),
+                    ),
+                  ),
+                ),
+
+              // 4b. Brightness / volume HUD (Netflix-style) while swiping —
+              // pinned to the side being adjusted (left = brightness,
+              // right = volume).
+              if (_hudVisible)
+                Align(
+                  alignment: _hudIsBrightness
+                      ? Alignment.centerLeft
+                      : Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 36),
+                    child: _AdjustHud(
+                      value: _hudValue,
+                      isBrightness: _hudIsBrightness,
                     ),
                   ),
                 ),
@@ -578,6 +662,81 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Brightness / volume HUD — a compact dark pill with an icon, a vertical fill
+// bar and a percentage, shown centered while the user swipes (Netflix-style).
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AdjustHud extends StatelessWidget {
+  const _AdjustHud({required this.value, required this.isBrightness});
+
+  final double value; // 0..1
+  final bool isBrightness;
+
+  IconData get _icon {
+    if (isBrightness) {
+      return value < 0.35
+          ? Icons.brightness_low_rounded
+          : (value < 0.7
+                ? Icons.brightness_medium_rounded
+                : Icons.brightness_high_rounded);
+    }
+    return value <= 0.01
+        ? Icons.volume_off_rounded
+        : (value < 0.5 ? Icons.volume_down_rounded : Icons.volume_up_rounded);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pct = (value * 100).round();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(_icon, color: Colors.white, size: 26),
+            const SizedBox(height: 12),
+            // Vertical fill bar.
+            SizedBox(
+              width: 6,
+              height: 110,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    const ColoredBox(color: Colors.white24),
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: FractionallySizedBox(
+                        heightFactor: value.clamp(0.0, 1.0),
+                        child: const ColoredBox(color: AppColors.accent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '$pct%',
+              style: AppText.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Controls overlay — top bar, center transport, bottom seek + button row.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -613,8 +772,21 @@ class _ControlsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final epNum = c.currentEpisode.number?.toInt() ?? state.currentIndex + 1;
-    final title = 'Episode $epNum${showTitle != null ? " · $showTitle" : ""}';
+    final ep = c.currentEpisode;
+    final epNum = ep.number?.toInt() ?? state.currentIndex + 1;
+    // The episode's own name, but only when it's more than a generic
+    // "Episode N" / bare number (many sources just echo the number there).
+    final epName = ep.title.trim();
+    final hasEpName = epName.isNotEmpty &&
+        epName.toLowerCase() != 'episode $epNum' &&
+        epName != '$epNum';
+    // Line 1 = show name (falls back to "Episode N" when no show title).
+    final primaryTitle = showTitle ?? 'Episode $epNum';
+    // Line 2 = "E5 · Episode Name" — only when there's a show name above it to
+    // pair with (otherwise line 1 already carries the episode number).
+    final secondaryTitle = showTitle == null
+        ? null
+        : 'E$epNum${hasEpName ? ' · $epName' : ''}';
     final hasNext = state.currentIndex + 1 < c.episodes.length;
 
     return Stack(
@@ -669,11 +841,42 @@ class _ControlsOverlay extends StatelessWidget {
                     onPressed: onBack,
                   ),
                   Expanded(
-                    child: Text(
-                      title,
-                      style: AppText.headline.copyWith(color: Colors.white),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                primaryTitle,
+                                style: AppText.headline
+                                    .copyWith(color: Colors.white),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (ep.filler) ...[
+                              const SizedBox(width: 8),
+                              const TagBadge(
+                                text: 'FILLER',
+                                color: AppColors.textTertiary,
+                              ),
+                            ],
+                          ],
+                        ),
+                        if (secondaryTitle != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(
+                              secondaryTitle,
+                              style: AppText.caption
+                                  .copyWith(color: Colors.white70),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],
