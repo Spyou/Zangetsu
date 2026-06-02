@@ -9,6 +9,8 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/download/download_manager.dart';
+import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -278,6 +280,66 @@ class _DetailViewState extends State<_DetailView>
     return highestMarked;
   }
 
+  // ── Downloads ─────────────────────────────────────────────────────────────
+
+  /// Open the quality + range sheet for [episodes], then enqueue the picked set.
+  Future<void> _openDownloadSheet({
+    required MediaDetail detail,
+    required List<Episode> episodes,
+    required String category,
+  }) async {
+    if (episodes.isEmpty) {
+      _snack('No episodes to download');
+      return;
+    }
+    final res = await showModalBottomSheet<({String quality, List<Episode> episodes})>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _DownloadSheet(episodes: episodes, title: detail.title),
+    );
+    if (res == null || !mounted) return;
+    _startDownload(detail, category, res.quality, res.episodes);
+  }
+
+  /// Single-episode download (the per-row icon) — same sheet, one episode.
+  Future<void> _downloadSingle(
+    Episode ep,
+    MediaDetail detail,
+    String category,
+  ) => _openDownloadSheet(detail: detail, episodes: [ep], category: category);
+
+  void _startDownload(
+    MediaDetail detail,
+    String category,
+    String quality,
+    List<Episode> episodes,
+  ) {
+    final item = widget.item;
+    unawaited(
+      sl<DownloadManager>().enqueueEpisodes(
+        sourceId: item.sourceId,
+        showId: item.id,
+        showTitle: detail.title,
+        cover: detail.cover ?? item.cover,
+        coverHeaders: detail.coverHeaders ?? item.coverHeaders,
+        showUrl: item.url,
+        category: category,
+        quality: quality,
+        episodes: episodes,
+        nowMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+    );
+    _snack(
+      episodes.length == 1
+          ? 'Added to downloads'
+          : 'Downloading ${episodes.length} episodes',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -473,7 +535,11 @@ class _DetailViewState extends State<_DetailView>
                 const SizedBox(height: 10),
                 _DownloadButton(
                   label: downloadLabel,
-                  onPressed: () => _snack('Downloads coming soon'),
+                  onPressed: () => _openDownloadSheet(
+                    detail: detail,
+                    episodes: seasonEps,
+                    category: category,
+                  ),
                 ),
               ],
             ),
@@ -615,7 +681,7 @@ class _DetailViewState extends State<_DetailView>
             onOpen: (fullIndex) =>
                 _openPlayer(eps, fullIndex, detail, category),
             onInfo: () => _tabController.animateTo(3),
-            onDownload: () => _snack('Downloads coming soon'),
+            onDownload: (ep) => _downloadSingle(ep, detail, category),
           ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(cast: detail.cast),
@@ -1247,8 +1313,8 @@ class _EpisodesTab extends StatefulWidget {
   /// Opens the small circular ⓘ button → jumps to the Details tab.
   final VoidCallback onInfo;
 
-  /// Per-episode download icon (no downloads yet → snackbar).
-  final VoidCallback onDownload;
+  /// Per-episode download icon → opens the download sheet for that episode.
+  final void Function(Episode ep) onDownload;
 
   @override
   State<_EpisodesTab> createState() => _EpisodesTabState();
@@ -1379,9 +1445,13 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             }),
           ),
         Expanded(
-          child: _grid
-              ? _buildGrid(store, visible, start)
-              : _buildList(store, visible, start),
+          // Rebuild rows live as downloads progress (DownloadManager notifies).
+          child: ListenableBuilder(
+            listenable: sl<DownloadManager>(),
+            builder: (context, _) => _grid
+                ? _buildGrid(store, visible, start)
+                : _buildList(store, visible, start),
+          ),
         ),
       ],
     );
@@ -1399,6 +1469,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         final epNum = ep.number?.toInt() ?? (offset + i + 1);
         final displayTitle =
             widget.hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
+        final dl = sl<DownloadManager>().recordFor(widget.sourceId, ep.id);
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -1411,7 +1482,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isResume: st.resume,
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
-            onDownload: widget.onDownload,
+            onDownload: () => widget.onDownload(ep),
+            downloadStatus: dl?.status,
+            downloadProgress: dl?.progress ?? 0,
           ),
         );
       },
@@ -1879,6 +1952,8 @@ class _EpisodeRow extends StatelessWidget {
     required this.fraction,
     required this.onTap,
     required this.onDownload,
+    this.downloadStatus,
+    this.downloadProgress = 0,
   });
 
   final Episode ep;
@@ -1892,6 +1967,8 @@ class _EpisodeRow extends StatelessWidget {
   final double fraction;
   final VoidCallback onTap;
   final VoidCallback onDownload;
+  final DownloadStatus? downloadStatus;
+  final double downloadProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -2041,20 +2118,240 @@ class _EpisodeRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                // Per-episode download icon (no downloads yet → snackbar).
-                IconButton(
-                  onPressed: onDownload,
-                  visualDensity: VisualDensity.compact,
-                  splashRadius: 22,
-                  icon: const Icon(
-                    Icons.file_download_outlined,
-                    color: AppColors.textPrimary,
-                    size: 24,
-                  ),
+                // Per-episode download icon, reflecting download state.
+                _EpisodeDownloadIcon(
+                  status: downloadStatus,
+                  progress: downloadProgress,
+                  onTap: onDownload,
                 ),
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Per-episode download icon — download / spinner / progress ring / done / etc.
+class _EpisodeDownloadIcon extends StatelessWidget {
+  const _EpisodeDownloadIcon({
+    required this.status,
+    required this.progress,
+    required this.onTap,
+  });
+
+  final DownloadStatus? status;
+  final double progress;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final child = switch (status) {
+      DownloadStatus.done => const Icon(
+        Icons.download_done_rounded,
+        color: AppColors.accent,
+        size: 24,
+      ),
+      DownloadStatus.downloading || DownloadStatus.paused => SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(
+          value: progress > 0 ? progress : null,
+          strokeWidth: 2.4,
+          color: AppColors.accent,
+          backgroundColor: AppColors.surface2,
+        ),
+      ),
+      DownloadStatus.queued || DownloadStatus.resolving => const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.textSecondary,
+        ),
+      ),
+      DownloadStatus.unsupported => const Icon(
+        Icons.cloud_off_outlined,
+        color: AppColors.textTertiary,
+        size: 22,
+      ),
+      DownloadStatus.failed => const Icon(
+        Icons.refresh_rounded,
+        color: AppColors.accent,
+        size: 24,
+      ),
+      // null (never downloaded) or canceled → offer to download.
+      _ => const Icon(
+        Icons.file_download_outlined,
+        color: AppColors.textPrimary,
+        size: 24,
+      ),
+    };
+    return IconButton(
+      onPressed: onTap,
+      visualDensity: VisualDensity.compact,
+      splashRadius: 22,
+      icon: child,
+    );
+  }
+}
+
+// Download sheet — pick a quality, then a range (RangeSlider) covering all /
+// a span / a single episode. Returns the chosen (quality, episodes) via pop.
+class _DownloadSheet extends StatefulWidget {
+  const _DownloadSheet({required this.episodes, required this.title});
+
+  final List<Episode> episodes;
+  final String title;
+
+  @override
+  State<_DownloadSheet> createState() => _DownloadSheetState();
+}
+
+class _DownloadSheetState extends State<_DownloadSheet> {
+  static const List<String> _qualities = ['1080p', '720p', '480p', 'best'];
+  String _quality = '1080p';
+  late RangeValues _range;
+
+  @override
+  void initState() {
+    super.initState();
+    _range = RangeValues(1, widget.episodes.length.toDouble());
+  }
+
+  List<Episode> get _selected {
+    if (widget.episodes.length == 1) return widget.episodes;
+    return widget.episodes.sublist(_range.start.round() - 1, _range.end.round());
+  }
+
+  String _epLabel(int pos1) {
+    final e = widget.episodes[pos1 - 1];
+    return 'E${e.number?.toInt() ?? pos1}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final multi = widget.episodes.length > 1;
+    final count = _selected.length;
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text('Download', style: AppText.title),
+            const SizedBox(height: 4),
+            Text(
+              widget.title,
+              style: AppText.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 18),
+            Text('Quality', style: AppText.overline),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [for (final q in _qualities) _qualityChip(q)],
+            ),
+            if (multi) ...[
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Episodes', style: AppText.overline),
+                  Text(
+                    '${_epLabel(_range.start.round())} – '
+                    '${_epLabel(_range.end.round())}  ($count)',
+                    style: AppText.caption.copyWith(
+                      color: AppColors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              RangeSlider(
+                values: _range,
+                min: 1,
+                max: widget.episodes.length.toDouble(),
+                divisions: widget.episodes.length > 1
+                    ? widget.episodes.length - 1
+                    : 1,
+                activeColor: AppColors.accent,
+                inactiveColor: AppColors.surface2,
+                labels: RangeLabels(
+                  _epLabel(_range.start.round()),
+                  _epLabel(_range.end.round()),
+                ),
+                onChanged: (v) => setState(
+                  () => _range = RangeValues(
+                    v.start.roundToDouble(),
+                    v.end.roundToDouble(),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Material(
+              color: AppColors.accent,
+              borderRadius: BorderRadius.circular(10),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => Navigator.pop(
+                  context,
+                  (quality: _quality, episodes: _selected),
+                ),
+                child: SizedBox(
+                  height: 50,
+                  width: double.infinity,
+                  child: Center(
+                    child: Text(
+                      multi
+                          ? 'Download $count episode${count == 1 ? '' : 's'}'
+                          : 'Download',
+                      style: AppText.button.copyWith(color: Colors.white),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _qualityChip(String q) {
+    final sel = q == _quality;
+    return Material(
+      color: sel ? AppColors.accent : AppColors.surface2,
+      borderRadius: BorderRadius.circular(9),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => setState(() => _quality = q),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Text(
+            q == 'best' ? 'Best' : q,
+            style: AppText.caption.copyWith(
+              color: sel ? Colors.white : AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ),
     );

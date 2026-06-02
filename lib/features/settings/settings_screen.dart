@@ -13,6 +13,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
+import '../downloads/downloads_screen.dart';
 import '../sources/sources_screen.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
@@ -212,6 +213,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Playback',
                         subtitle: 'Quality, autoplay, speed',
                         onTap: () => _push(const PlaybackSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.download_outlined,
+                        title: 'Downloads',
+                        subtitle: 'Watch offline',
+                        onTap: () => _push(const DownloadsScreen()),
                       ),
                     ],
                   ),
