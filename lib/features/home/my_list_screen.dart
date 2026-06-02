@@ -6,8 +6,11 @@ import '../../core/models/media_item.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/buttons.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
+import '../auth/auth_cubit.dart';
+import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
 
@@ -51,41 +54,80 @@ class _MyListView extends StatelessWidget {
 
             // ── Body ────────────────────────────────────────────────────────
             Expanded(
-              child: BlocBuilder<MyListCubit, List<MediaItem>>(
-                builder: (context, items) {
-                  if (items.isEmpty) {
-                    return const EmptyState(
-                      icon: Icons.bookmark_outline,
-                      message: 'Titles you save appear here',
+              child: BlocBuilder<AuthCubit, AuthState>(
+                builder: (context, auth) {
+                  if (!auth.isLoggedIn) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.bookmark_outline,
+                              size: 56,
+                              color: AppColors.textTertiary,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Sign in to build your list',
+                              style: AppText.body,
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            SizedBox(
+                              width: 180,
+                              child: PrimaryButton(
+                                label: 'Sign in',
+                                onPressed: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const LoginScreen(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   }
+                  return BlocBuilder<MyListCubit, List<MediaItem>>(
+                    builder: (context, items) {
+                      if (items.isEmpty) {
+                        return const EmptyState(
+                          icon: Icons.bookmark_outline,
+                          message: 'Titles you save appear here',
+                        );
+                      }
 
-                  return GridView.builder(
-                    padding: const EdgeInsets.all(16),
-                    cacheExtent: 800,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 0.62,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 16,
-                        ),
-                    itemCount: items.length,
-                    itemBuilder: (context, i) {
-                      final item = items[i];
-                      return PosterCard(
-                        title: item.title,
-                        imageUrl: item.cover,
-                        headers: item.coverHeaders,
-                        cellWidth: cellW,
-                        onTap: () {
-                          final cubit = context.read<MyListCubit>();
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => DetailScreen(item: item),
+                      return GridView.builder(
+                        padding: const EdgeInsets.all(16),
+                        cacheExtent: 800,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              childAspectRatio: 0.62,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 16,
                             ),
-                          ).then((_) => cubit.reload());
+                        itemCount: items.length,
+                        itemBuilder: (context, i) {
+                          final item = items[i];
+                          return PosterCard(
+                            title: item.title,
+                            imageUrl: item.cover,
+                            headers: item.coverHeaders,
+                            cellWidth: cellW,
+                            onTap: () {
+                              final cubit = context.read<MyListCubit>();
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => DetailScreen(item: item),
+                                ),
+                              ).then((_) => cubit.reload());
+                            },
+                          );
                         },
                       );
                     },

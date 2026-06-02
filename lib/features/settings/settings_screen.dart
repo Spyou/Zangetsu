@@ -118,12 +118,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return SettingsCard(
             children: [
               ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 leading: CircleAvatar(
                   radius: 22,
                   backgroundColor: AppColors.surface2,
-                  backgroundImage:
-                      auth.avatarUrl != null ? NetworkImage(auth.avatarUrl!) : null,
+                  backgroundImage: auth.avatarUrl != null
+                      ? NetworkImage(auth.avatarUrl!)
+                      : null,
                   child: auth.avatarUrl == null
                       ? Text(initial, style: AppText.headline)
                       : null,
@@ -140,7 +144,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-                trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                trailing: const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textTertiary,
+                ),
                 onTap: () => _push(const ProfileScreen()),
               ),
             ],

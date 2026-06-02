@@ -18,6 +18,8 @@ import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
+import '../auth/auth_cubit.dart';
+import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
@@ -32,10 +34,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Use the shared singleton so the splash can warm it before this mounts.
-    return BlocProvider.value(
-      value: sl<HomeCubit>(),
-      child: const _HomeView(),
-    );
+    return BlocProvider.value(value: sl<HomeCubit>(), child: const _HomeView());
   }
 }
 
@@ -226,10 +225,11 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   Widget build(BuildContext context) {
-    // Read Continue Watching in build so it refreshes after returning from
-    // player/detail without triggering a re-fetch of network futures. (My List
-    // has its own screen — it is intentionally NOT shown as a home row.)
-    final history = sl<WatchHistory>().recent();
+    // Continue Watching is a logged-in feature; hide the row when signed out.
+    final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
+    final history = loggedIn
+        ? sl<WatchHistory>().recent()
+        : const <HistoryEntry>[];
 
     return BlocListener<ActiveSourceCubit, String>(
       listener: (context, _) {
@@ -272,6 +272,12 @@ class _HomeViewState extends State<_HomeView> {
                                 onPlay: _playFeatured,
                                 onInfo: _openDetail,
                                 onToggleList: (m) async {
+                                  if (!requireLogin(
+                                    context,
+                                    action: 'add to My List',
+                                  )) {
+                                    return;
+                                  }
                                   await _myList.toggle(m);
                                   if (mounted) setState(() {});
                                 },

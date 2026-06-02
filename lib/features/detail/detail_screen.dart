@@ -20,6 +20,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../auth/auth_screens.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
 import '../../core/ui/badge.dart';
@@ -135,6 +136,7 @@ class _DetailViewState extends State<_DetailView>
   // ── The 5-icon action row wiring ──────────────────────────────────────────
 
   Future<void> _toggleMyList() async {
+    if (!requireLogin(context, action: 'add to My List')) return;
     await _myList.toggle(widget.item);
     if (!mounted) return;
     setState(() => _inMyList = _myList.contains(widget.item));
