@@ -1213,7 +1213,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 // season filtering and _openPlayer. Sub/Dub selection now lives in the player.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _EpisodesTab extends StatelessWidget {
+class _EpisodesTab extends StatefulWidget {
   const _EpisodesTab({
     required this.eps,
     required this.seasonEps,
@@ -1251,73 +1251,198 @@ class _EpisodesTab extends StatelessWidget {
   final VoidCallback onDownload;
 
   @override
-  Widget build(BuildContext context) {
-    final store = sl<ResumeStore>();
+  State<_EpisodesTab> createState() => _EpisodesTabState();
+}
 
-    if (eps.isEmpty) {
+class _EpisodesTabState extends State<_EpisodesTab> {
+  /// Long seasons are split into chunks of this size (CloudStream-style) so
+  /// hundreds/thousands of episodes stay navigable via range chips.
+  static const int _chunk = 50;
+
+  bool _grid = false;
+  int _rangeIndex = 0;
+  String? _highlightEpId; // outlines a grid tile right after a jump
+
+  @override
+  void initState() {
+    super.initState();
+    _rangeIndex = _initialRange();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EpisodesTab old) {
+    super.didUpdateWidget(old);
+    // Season switched (or the episode set changed) → reset to the resume chunk.
+    if (old.currentSeason != widget.currentSeason ||
+        old.seasonEps.length != widget.seasonEps.length) {
+      _rangeIndex = _initialRange();
+      _highlightEpId = null;
+    }
+  }
+
+  /// The chunk holding the resume episode, so the tab opens where the user left
+  /// off instead of always at episode 1.
+  int _initialRange() {
+    if (!widget.hasAnyMark || widget.seasonEps.isEmpty) return 0;
+    final resumeEp = widget.eps[widget.resumeIndex(widget.eps)];
+    final local = widget.seasonEps.indexOf(resumeEp);
+    return local < 0 ? 0 : local ~/ _chunk;
+  }
+
+  int get _rangeCount => (widget.seasonEps.length / _chunk).ceil();
+
+  String _numLabel(Episode e, int fallback) =>
+      (e.number?.toInt() ?? fallback).toString();
+
+  ({bool watched, bool inProgress, bool resume, double fraction}) _stateFor(
+    ResumeStore store,
+    Episode ep,
+    int fullIndex,
+  ) {
+    final mark = store.get(widget.sourceId, ep.id);
+    final inProgress =
+        mark != null && !mark.finished && mark.duration > Duration.zero;
+    final watched = mark != null && mark.finished;
+    final resume =
+        widget.hasAnyMark && fullIndex == widget.resumeIndex(widget.eps);
+    final fraction = inProgress
+        ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
+              .clamp(0.0, 1.0)
+        : 0.0;
+    return (
+      watched: watched,
+      inProgress: inProgress,
+      resume: resume,
+      fraction: fraction,
+    );
+  }
+
+  Future<void> _jump() async {
+    final n = await showDialog<int>(
+      context: context,
+      builder: (_) => const _JumpDialog(),
+    );
+    if (n == null || !mounted) return;
+    // Match by episode number; fall back to a 1-based position.
+    var local = widget.seasonEps.indexWhere((e) => e.number?.toInt() == n);
+    if (local < 0 && n >= 1 && n <= widget.seasonEps.length) local = n - 1;
+    if (local < 0) return;
+    setState(() {
+      _rangeIndex = local ~/ _chunk;
+      _grid = true; // the grid makes the jumped-to episode easy to spot
+      _highlightEpId = widget.seasonEps[local].id;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.seasonEps.isEmpty) {
       return const EmptyState(
         icon: Icons.video_library_outlined,
         message: 'No episodes available from this source',
       );
     }
+    final store = sl<ResumeStore>();
+    final total = widget.seasonEps.length;
+    final start = (_rangeIndex * _chunk).clamp(0, total);
+    final end = (start + _chunk).clamp(0, total);
+    final visible = widget.seasonEps.sublist(start, end);
+    final showRanges = _rangeCount > 1;
 
-    // Sub/Dub selection moved to the PLAYER. The Episodes tab always opens with
-    // a single header row: a Netflix-style season dropdown + ⓘ info button for
-    // multi-season titles, or a plain "Episodes" header for single-season ones.
-    const headerCount = 1;
+    // Controls stay pinned above the (scrolling) episode area — like
+    // CloudStream's persistent season/range selector.
+    return Column(
+      children: [
+        _EpisodesHeader(
+          hasMultipleSeasons: widget.hasMultipleSeasons,
+          seasons: widget.seasonSet.toList()..sort(),
+          currentSeason: widget.currentSeason,
+          onSelectSeason: widget.onSelectSeason,
+          onInfo: widget.onInfo,
+          grid: _grid,
+          onToggleView: () => setState(() => _grid = !_grid),
+          onJump: showRanges ? _jump : null,
+        ),
+        if (showRanges)
+          _RangeChips(
+            count: _rangeCount,
+            selected: _rangeIndex,
+            labelFor: (i) {
+              final s = (i * _chunk).clamp(0, total - 1);
+              final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
+              return '${_numLabel(widget.seasonEps[s], s + 1)}'
+                  '–${_numLabel(widget.seasonEps[e], e + 1)}';
+            },
+            onSelect: (i) => setState(() {
+              _rangeIndex = i;
+              _highlightEpId = null;
+            }),
+          ),
+        Expanded(
+          child: _grid
+              ? _buildGrid(store, visible, start)
+              : _buildList(store, visible, start),
+        ),
+      ],
+    );
+  }
 
-    // Netflix uses whitespace, not divider lines — generous vertical gaps
-    // between episodes instead of hairlines.
+  Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 6, bottom: 48),
+      padding: const EdgeInsets.only(top: 2, bottom: 48),
       physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: seasonEps.length + headerCount,
-      itemBuilder: (context0, rawIndex) {
-        // Header row: Netflix-style season dropdown + ⓘ (multi-season) or a
-        // plain "Episodes" label (single-season).
-        if (rawIndex == 0) {
-          return _EpisodesHeader(
-            hasMultipleSeasons: hasMultipleSeasons,
-            seasons: seasonSet.toList()..sort(),
-            currentSeason: currentSeason,
-            onSelectSeason: onSelectSeason,
-            onInfo: onInfo,
-          );
-        }
-
-        final i = rawIndex - headerCount;
-        final ep = seasonEps[i];
-        final fullIndex = eps.indexOf(ep);
-        final mark = store.get(sourceId, ep.id);
-        final isInProgress =
-            mark != null && !mark.finished && mark.duration > Duration.zero;
-        final isWatched = mark != null && mark.finished;
-        final isResume = hasAnyMark && fullIndex == resumeIndex(eps);
-        final fraction = isInProgress
-            ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
-                  .clamp(0.0, 1.0)
-            : 0.0;
-
-        final epNum = ep.number?.toInt() ?? i + 1;
-        final rawTitle = ep.title;
-        final displayTitle = hasMultipleSeasons
-            ? cleanTitle(rawTitle)
-            : rawTitle;
-
+      itemCount: visible.length,
+      itemBuilder: (context, i) {
+        final ep = visible[i];
+        final fullIndex = widget.eps.indexOf(ep);
+        final st = _stateFor(store, ep, fullIndex);
+        final epNum = ep.number?.toInt() ?? (offset + i + 1);
+        final displayTitle =
+            widget.hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
             epNum: epNum,
             displayTitle: displayTitle,
-            coverUrl: coverUrl,
-            coverHeaders: coverHeaders,
-            isWatched: isWatched,
-            isInProgress: isInProgress,
-            isResume: isResume,
-            fraction: fraction,
-            onTap: () => onOpen(fullIndex),
-            onDownload: onDownload,
+            coverUrl: widget.coverUrl,
+            coverHeaders: widget.coverHeaders,
+            isWatched: st.watched,
+            isInProgress: st.inProgress,
+            isResume: st.resume,
+            fraction: st.fraction,
+            onTap: () => widget.onOpen(fullIndex),
+            onDownload: widget.onDownload,
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildGrid(ResumeStore store, List<Episode> visible, int offset) {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 48),
+      physics: const AlwaysScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 5,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.15,
+      ),
+      itemCount: visible.length,
+      itemBuilder: (context, i) {
+        final ep = visible[i];
+        final fullIndex = widget.eps.indexOf(ep);
+        final st = _stateFor(store, ep, fullIndex);
+        final epNum = ep.number?.toInt() ?? (offset + i + 1);
+        return _EpisodeGridTile(
+          number: epNum,
+          isWatched: st.watched,
+          isInProgress: st.inProgress,
+          isResume: st.resume,
+          isFiller: ep.filler,
+          highlight: _highlightEpId == ep.id,
+          fraction: st.fraction,
+          onTap: () => widget.onOpen(fullIndex),
         );
       },
     );
@@ -1336,6 +1461,9 @@ class _EpisodesHeader extends StatelessWidget {
     required this.currentSeason,
     required this.onSelectSeason,
     required this.onInfo,
+    required this.grid,
+    required this.onToggleView,
+    this.onJump,
   });
 
   final bool hasMultipleSeasons;
@@ -1343,6 +1471,26 @@ class _EpisodesHeader extends StatelessWidget {
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
   final VoidCallback onInfo;
+
+  /// Whether the grid view is active (toggles the view icon).
+  final bool grid;
+  final VoidCallback onToggleView;
+
+  /// Jump-to-episode; null hides the button (short seasons don't need it).
+  final VoidCallback? onJump;
+
+  Widget _circle(IconData icon, VoidCallback onTap) => Material(
+    color: AppColors.surface2,
+    shape: const CircleBorder(),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(icon, color: AppColors.textPrimary, size: 20),
+      ),
+    ),
+  );
 
   Future<void> _openSheet(BuildContext context) async {
     final picked = await showModalBottomSheet<int>(
@@ -1399,22 +1547,21 @@ class _EpisodesHeader extends StatelessWidget {
                   : Text('Episodes', style: AppText.headline),
             ),
           ),
-          // Right: small circular ⓘ info button → jumps to the Details tab.
-          Material(
-            color: AppColors.surface2,
-            shape: const CircleBorder(),
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              onTap: onInfo,
-              child: const Padding(
-                padding: EdgeInsets.all(8),
-                child: Icon(
-                  Icons.info_outline_rounded,
-                  color: AppColors.textPrimary,
-                  size: 20,
-                ),
+          // Right: jump-to-episode (long seasons) · list/grid toggle · ⓘ info.
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (onJump != null) ...[
+                _circle(Icons.search_rounded, onJump!),
+                const SizedBox(width: 8),
+              ],
+              _circle(
+                grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
+                onToggleView,
               ),
-            ),
+              const SizedBox(width: 8),
+              _circle(Icons.info_outline_rounded, onInfo),
+            ],
           ),
         ],
       ),
@@ -1499,6 +1646,213 @@ class _SeasonSheet extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Range chips — horizontal "1–50 / 51–100 / …" selector for long seasons so
+// big anime stay navigable without endless scrolling. Selected chip is coral.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RangeChips extends StatelessWidget {
+  const _RangeChips({
+    required this.count,
+    required this.selected,
+    required this.labelFor,
+    required this.onSelect,
+  });
+
+  final int count;
+  final int selected;
+  final String Function(int) labelFor;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 42,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        itemCount: count,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final sel = i == selected;
+          return Material(
+            color: sel ? AppColors.accent : AppColors.surface2,
+            borderRadius: BorderRadius.circular(9),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => onSelect(i),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                child: Center(
+                  child: Text(
+                    labelFor(i),
+                    style: AppText.caption.copyWith(
+                      color: sel ? Colors.white : AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compact episode-number tile for the grid view — coral when it's the resume
+// target, dimmed + ✓ when watched, a filler dot, and a resume bar when partly
+// watched. Outlined briefly after a jump.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EpisodeGridTile extends StatelessWidget {
+  const _EpisodeGridTile({
+    required this.number,
+    required this.isWatched,
+    required this.isInProgress,
+    required this.isResume,
+    required this.isFiller,
+    required this.highlight,
+    required this.fraction,
+    required this.onTap,
+  });
+
+  final int number;
+  final bool isWatched;
+  final bool isInProgress;
+  final bool isResume;
+  final bool isFiller;
+  final bool highlight;
+  final double fraction;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isResume
+        ? AppColors.accent
+        : (isWatched ? AppColors.surface : AppColors.surface2);
+    final fg = isResume
+        ? Colors.white
+        : (isWatched ? AppColors.textTertiary : AppColors.textPrimary);
+    final side = highlight
+        ? const BorderSide(color: AppColors.accent, width: 2)
+        : (isResume
+              ? BorderSide.none
+              : const BorderSide(color: AppColors.hairline, width: 0.5));
+
+    return Material(
+      color: bg,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: side,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Stack(
+          children: [
+            Center(
+              child: Text(
+                '$number',
+                style: AppText.body.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (isWatched && !isResume)
+              const Positioned(
+                top: 4,
+                right: 4,
+                child: Icon(
+                  Icons.check_rounded,
+                  size: 13,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            if (isFiller)
+              const Positioned(
+                top: 6,
+                left: 6,
+                child: SizedBox(
+                  width: 6,
+                  height: 6,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.textTertiary,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+              ),
+            if (isInProgress)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _ThumbnailProgressBar(fraction: fraction),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Small number-input dialog for "jump to episode".
+class _JumpDialog extends StatefulWidget {
+  const _JumpDialog();
+
+  @override
+  State<_JumpDialog> createState() => _JumpDialogState();
+}
+
+class _JumpDialogState extends State<_JumpDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.of(context).pop(int.tryParse(_ctrl.text.trim()));
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('Go to episode', style: AppText.headline),
+      content: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        keyboardType: TextInputType.number,
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          hintText: 'Episode number',
+          hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('Cancel', style: AppText.body),
+        ),
+        TextButton(
+          onPressed: _submit,
+          child: Text(
+            'Go',
+            style: AppText.body.copyWith(color: AppColors.accent),
+          ),
+        ),
+      ],
     );
   }
 }
