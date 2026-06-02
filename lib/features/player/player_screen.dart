@@ -370,9 +370,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           for (final k in kinds)
             for (final s in sortByQuality(sourcesForKind(_c.state.sources, k)))
               _SheetRow(
-                label:
-                    '${k.name.toUpperCase()} • '
-                    '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
+                // Prefer the provider's own per-mirror name (e.g. a HubCloud
+                // server); fall back to kind + quality/container otherwise.
+                label: s.label?.isNotEmpty == true
+                    ? s.label!
+                    : '${k.name.toUpperCase()} • '
+                          '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
                 active: s == _c.state.active,
                 onTap: () {
                   Navigator.pop(context);

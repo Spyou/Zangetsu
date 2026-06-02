@@ -63,6 +63,13 @@ class VideoSource extends Equatable {
   final String url;
   final String? quality;
 
+  /// Optional human-friendly name for this stream, shown in the player's
+  /// Sources sheet (e.g. "4K HDHub · FSL Server [WEB-DL] [2GB]"). When absent
+  /// the sheet falls back to the quality / container. Lets a provider that
+  /// exposes many mirrors label each one distinctly instead of every row
+  /// reading the same "2160p".
+  final String? label;
+
   @JsonKey(
     unknownEnumValue: SourceContainer.unknown,
     defaultValue: SourceContainer.unknown,
@@ -82,6 +89,7 @@ class VideoSource extends Equatable {
   const VideoSource({
     required this.url,
     this.quality,
+    this.label,
     this.container = SourceContainer.unknown,
     this.headers,
     this.kind = AudioKind.unknown,
@@ -97,6 +105,7 @@ class VideoSource extends Equatable {
   List<Object?> get props => [
     url,
     quality,
+    label,
     container,
     headers,
     kind,

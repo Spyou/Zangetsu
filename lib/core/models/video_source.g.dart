@@ -25,6 +25,7 @@ Map<String, dynamic> _$SubtitleToJson(Subtitle instance) => <String, dynamic>{
 VideoSource _$VideoSourceFromJson(Map<String, dynamic> json) => VideoSource(
   url: json['url'] as String,
   quality: json['quality'] as String?,
+  label: json['label'] as String?,
   container:
       $enumDecodeNullable(
         _$SourceContainerEnumMap,
@@ -54,6 +55,7 @@ Map<String, dynamic> _$VideoSourceToJson(VideoSource instance) =>
     <String, dynamic>{
       'url': instance.url,
       'quality': instance.quality,
+      'label': instance.label,
       'container': _$SourceContainerEnumMap[instance.container]!,
       'headers': instance.headers,
       'kind': _$AudioKindEnumMap[instance.kind]!,
