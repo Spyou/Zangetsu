@@ -535,10 +535,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     // an early default-quality switch would re-open at 0 and wipe the resume.
     // Fall back to the resume mark whenever the seek target is non-positive.
     final start = (seekTo != null && seekTo > Duration.zero) ? seekTo : resumeAt;
-    debugPrint(
-      '[resume] open ep=${currentEpisode.id} mark=${mark?.position} '
-      'finished=${mark?.finished} seekTo=$seekTo start=$start',
-    );
     await player.open(
       Media(
         s.url,
@@ -614,12 +610,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _verifyResume(Duration target, int g) async {
     for (var attempt = 0; attempt < 3; attempt++) {
       await Future.delayed(const Duration(milliseconds: 1200));
-      if (g != _gen) {
-        debugPrint('[resume] verify bailed (gen $g != $_gen)');
-        return; // a newer open superseded this
-      }
+      if (g != _gen) return; // a newer open superseded this
       final pos = player.state.position;
-      debugPrint('[resume] verify a=$attempt pos=$pos target=$target');
       if ((pos - target).abs() <= const Duration(seconds: 8)) return; // ok
       await player.seek(target);
     }
