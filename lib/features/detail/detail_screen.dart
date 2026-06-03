@@ -2810,49 +2810,56 @@ class _DownloadSheetState extends State<_DownloadSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                children: [
-                  SizedBox(
-                    width: 132,
-                    height: 74, // 16:9
-                    child: thumb.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: thumb,
-                            httpHeaders: widget.coverHeaders,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 280,
-                            placeholder: (c, u) =>
-                                const ColoredBox(color: AppColors.surface2),
-                            errorWidget: (c, u, e) =>
-                                const ColoredBox(color: AppColors.surface2),
-                          )
-                        : const ColoredBox(color: AppColors.surface2),
-                  ),
-                  // Dim + accent ring + check when selected.
-                  if (sel)
-                    Positioned.fill(
-                      child: DecoratedBox(
+            Container(
+              // Selection = a thin accent ring around the thumbnail (no heavy
+              // colour wash).
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: sel ? AppColors.accent : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: Stack(
+                  children: [
+                    SizedBox(
+                      width: 132,
+                      height: 74, // 16:9
+                      child: thumb.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: thumb,
+                              httpHeaders: widget.coverHeaders,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 280,
+                              placeholder: (c, u) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                              errorWidget: (c, u, e) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                            )
+                          : const ColoredBox(color: AppColors.surface2),
+                    ),
+                    // Small check badge — filled accent only when selected, a
+                    // subtle dark chip otherwise (so it reads on any thumbnail).
+                    Positioned(
+                      top: 5,
+                      right: 5,
+                      child: Container(
                         decoration: BoxDecoration(
-                          color: const Color(0x55FF4D57),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.accent, width: 2),
+                          color: sel ? AppColors.accent : const Color(0x99000000),
+                          shape: BoxShape.circle,
+                        ),
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(
+                          sel ? Icons.check_rounded : Icons.add_rounded,
+                          size: 14,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Icon(
-                      sel
-                          ? Icons.check_circle_rounded
-                          : Icons.circle_outlined,
-                      size: 20,
-                      color: sel ? AppColors.accent : Colors.white70,
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 6),
