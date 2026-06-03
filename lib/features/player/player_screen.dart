@@ -87,9 +87,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
 
-  // Transient ±10 seek label.
-  String? _seekLabel;
+  // Double-tap seek indicator (YouTube-style, accumulates on rapid taps).
   Timer? _seekLabelTimer;
+  int _seekAccum = 0; // accumulated seconds in the current burst
+  int _seekSide = 0; // -1 = left/rewind, +1 = right/forward, 0 = hidden
 
   // Duration tracked off the stream so the slider has a max even before
   // a position event arrives.
@@ -241,12 +242,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _scheduleHide();
   }
 
-  void _showSeekLabel(String label) {
+  /// Double-tap one side to seek; rapid taps accumulate (−10s, −20s, −30s…)
+  /// and the indicator shows on that side, YouTube-style.
+  void _accumSeek(int dir) {
+    _c.seekBy(Duration(seconds: dir * _seekSeconds));
+    if (_seekSide != dir) _seekAccum = 0; // changed direction → restart
+    _seekSide = dir;
+    _seekAccum += _seekSeconds;
     _seekLabelTimer?.cancel();
-    setState(() => _seekLabel = label);
-    _seekLabelTimer = Timer(const Duration(milliseconds: 700), () {
-      if (mounted) setState(() => _seekLabel = null);
+    setState(() {});
+    _seekLabelTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) {
+        setState(() {
+          _seekSide = 0;
+          _seekAccum = 0;
+        });
+      }
     });
+    _bumpControls();
   }
 
   // ── Gestures ────────────────────────────────────────────────────────────
@@ -255,15 +268,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final w = MediaQuery.of(context).size.width;
     final x = d.localPosition.dx;
     if (x < w / 3) {
-      _c.seekBy(Duration(seconds: -_seekSeconds));
-      _showSeekLabel('-$_seekSeconds');
+      _accumSeek(-1);
     } else if (x > w * 2 / 3) {
-      _c.seekBy(Duration(seconds: _seekSeconds));
-      _showSeekLabel('+$_seekSeconds');
+      _accumSeek(1);
     } else {
       _c.togglePlay();
+      _bumpControls();
     }
-    _bumpControls();
   }
 
   // Vertical swipe: left half adjusts screen brightness, right half adjusts
@@ -867,22 +878,39 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-              // 4. ±10 seek label.
-              if (_seekLabel != null)
-                Center(
+              // 4. Double-tap seek indicator — pinned to the tapped side, with
+              // the accumulated amount (−10s, −20s… / +10s, +20s…).
+              if (_seekSide != 0)
+                Align(
+                  alignment: _seekSide < 0
+                      ? const Alignment(-0.55, 0)
+                      : const Alignment(0.55, 0),
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(28),
+                    decoration: const BoxDecoration(
+                      color: Color(0x73000000),
+                      shape: BoxShape.circle,
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      child: Text(
-                        '$_seekLabel s',
-                        style: AppText.headline.copyWith(color: Colors.white),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _seekSide < 0
+                                ? Icons.fast_rewind_rounded
+                                : Icons.fast_forward_rounded,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${_seekSide < 0 ? '−' : '+'}$_seekAccum s',
+                            style: AppText.body.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
