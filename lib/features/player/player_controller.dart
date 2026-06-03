@@ -566,6 +566,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         ),
       );
     }
+    _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
   }
 
   /// Try the next source after the current one fails (dead/DRM/unsupported),
@@ -627,6 +628,36 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (state.currentIndex > 0) {
       await openEpisode(state.currentIndex - 1);
     }
+  }
+
+  // ── Subtitle / audio sync (delay offsets, applied via mpv) ────────────────
+  Duration subtitleDelay = Duration.zero;
+  Duration audioDelay = Duration.zero;
+
+  Future<void> setSubtitleDelay(Duration d) async {
+    subtitleDelay = d;
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('sub-delay', (d.inMilliseconds / 1000).toString());
+      } catch (_) {}
+    }
+  }
+
+  Future<void> setAudioDelay(Duration d) async {
+    audioDelay = d;
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('audio-delay', (d.inMilliseconds / 1000).toString());
+      } catch (_) {}
+    }
+  }
+
+  /// Re-apply the current sync offsets (mpv resets them on a new file).
+  Future<void> _reapplySync() async {
+    if (subtitleDelay != Duration.zero) await setSubtitleDelay(subtitleDelay);
+    if (audioDelay != Duration.zero) await setAudioDelay(audioDelay);
   }
 
   Future<void> _persist() async {

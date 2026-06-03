@@ -114,6 +114,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _upNextLeft = 0;
   bool _upNext = false;
 
+  // Sleep timer.
+  Timer? _sleepTimer;
+  bool _sleepActive = false; // a timer or end-of-episode stop is armed
+  bool _sleepEndOfEpisode = false;
+
   @override
   void initState() {
     super.initState();
@@ -153,6 +158,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _seekLabelTimer?.cancel();
     _hudTimer?.cancel();
     _upNextTimer?.cancel();
+    _sleepTimer?.cancel();
     _completedSub?.cancel();
     // Hand brightness back to the system when leaving the player.
     if (_gesturesEnabled) {
@@ -308,6 +314,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onEpisodeComplete() {
+    // Sleep timer set to "end of episode" — stop here instead of advancing.
+    if (_sleepEndOfEpisode) {
+      _c.player.pause();
+      setState(() {
+        _sleepActive = false;
+        _sleepEndOfEpisode = false;
+      });
+      return;
+    }
     final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
     if (!hasNext) return;
     if (!sl<PlaybackPrefs>().autoplayNext) return;
@@ -336,6 +351,83 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _dismissUpNext() {
     _upNextTimer?.cancel();
     setState(() => _upNext = false);
+  }
+
+  // ── Episodes picker ───────────────────────────────────────────────────────
+  void _openEpisodesSheet() {
+    final eps = _c.episodes;
+    final cur = _c.state.currentIndex;
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Episodes',
+        children: [
+          for (var i = 0; i < eps.length; i++)
+            _SheetRow(
+              label: _episodeLabel(eps[i], i),
+              active: i == cur,
+              onTap: () {
+                Navigator.pop(context);
+                if (i != cur) _c.openEpisode(i);
+                _bumpControls();
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _episodeLabel(Episode e, int i) {
+    final n = e.number?.toInt() ?? (i + 1);
+    final t = e.title.trim();
+    return (t.isEmpty || t == 'Episode $n') ? 'Episode $n' : 'E$n · $t';
+  }
+
+  // ── Sleep timer ───────────────────────────────────────────────────────────
+  void _openSleepSheet() {
+    void choose(Duration? d, {bool endOfEpisode = false}) {
+      Navigator.pop(context);
+      _setSleep(d, endOfEpisode: endOfEpisode);
+    }
+
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Sleep timer',
+        children: [
+          _SheetRow(
+            label: 'Off',
+            active: !_sleepActive,
+            onTap: () => choose(null),
+          ),
+          for (final m in const [15, 30, 45, 60])
+            _SheetRow(
+              label: '$m minutes',
+              active: false,
+              onTap: () => choose(Duration(minutes: m)),
+            ),
+          _SheetRow(
+            label: 'End of episode',
+            active: _sleepEndOfEpisode,
+            onTap: () => choose(null, endOfEpisode: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _setSleep(Duration? d, {bool endOfEpisode = false}) {
+    _sleepTimer?.cancel();
+    setState(() {
+      _sleepEndOfEpisode = endOfEpisode;
+      _sleepActive = endOfEpisode || d != null;
+    });
+    if (d != null) {
+      _sleepTimer = Timer(d, () {
+        if (!mounted) return;
+        _c.player.pause();
+        setState(() => _sleepActive = false);
+      });
+    }
+    _bumpControls();
   }
 
   static String _fmtDur(Duration d) {
@@ -501,6 +593,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
           ],
+          const _SheetSectionHeader('Sync'),
+          _DelayAdjuster(
+            label: 'Audio delay',
+            initial: _c.audioDelay,
+            onChanged: (d) => _c.setAudioDelay(d),
+          ),
         ],
       ),
     );
@@ -555,6 +653,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Navigator.pop(context);
               _loadSubtitleFromFile();
             },
+          ),
+          const _SheetSectionHeader('Sync'),
+          _DelayAdjuster(
+            label: 'Subtitle delay',
+            initial: _c.subtitleDelay,
+            onChanged: (d) => _c.setSubtitleDelay(d),
           ),
         ],
       ),
@@ -878,6 +982,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onSources: _openSourceSheet,
                       onLock: _toggleLock,
                       onZoom: _cycleFit,
+                      onSleep: _openSleepSheet,
+                      sleepActive: _sleepActive,
+                      onEpisodes:
+                          _c.episodes.length > 1 ? _openEpisodesSheet : null,
                       onPrev: _c.state.currentIndex > 0
                           ? () {
                               _c.playPrevious();
@@ -1022,6 +1130,9 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onZoom,
     required this.zoomLabel,
     required this.onPrev,
+    required this.onSleep,
+    required this.sleepActive,
+    required this.onEpisodes,
   });
 
   final PlayerCubit controller;
@@ -1040,6 +1151,9 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onZoom;
   final String zoomLabel;
   final VoidCallback? onPrev; // null = no previous episode
+  final VoidCallback onSleep;
+  final bool sleepActive;
+  final VoidCallback? onEpisodes; // null = single episode (no picker)
 
   @override
   Widget build(BuildContext context) {
@@ -1151,7 +1265,16 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Lock (top-right). Zoom lives in the bottom button row.
+                  // Sleep timer + lock (top-right). Zoom is in the bottom row.
+                  IconButton(
+                    icon: Icon(
+                      sleepActive
+                          ? Icons.bedtime_rounded
+                          : Icons.bedtime_outlined,
+                      color: sleepActive ? AppColors.accent : Colors.white,
+                    ),
+                    onPressed: onSleep,
+                  ),
                   IconButton(
                     icon: const Icon(Icons.lock_open_rounded,
                         color: Colors.white),
@@ -1276,6 +1399,12 @@ class _ControlsOverlay extends StatelessWidget {
                         label: zoomLabel,
                         onTap: onZoom,
                       ),
+                      if (onEpisodes != null)
+                        _ControlButton(
+                          icon: Icons.video_library_outlined,
+                          label: 'Episodes',
+                          onTap: onEpisodes!,
+                        ),
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
@@ -1530,6 +1659,83 @@ class _SheetRow extends StatelessWidget {
       onTap: onTap,
     );
   }
+}
+
+/// A −/value/+ stepper for a sync delay (subtitle or audio), in 0.25s steps.
+/// Holds its own value so the sheet updates live.
+class _DelayAdjuster extends StatefulWidget {
+  const _DelayAdjuster({
+    required this.label,
+    required this.initial,
+    required this.onChanged,
+  });
+  final String label;
+  final Duration initial;
+  final ValueChanged<Duration> onChanged;
+
+  @override
+  State<_DelayAdjuster> createState() => _DelayAdjusterState();
+}
+
+class _DelayAdjusterState extends State<_DelayAdjuster> {
+  late int _ms = widget.initial.inMilliseconds;
+  static const int _step = 250;
+
+  void _bump(int delta) {
+    setState(() => _ms = (_ms + delta).clamp(-30000, 30000));
+    widget.onChanged(Duration(milliseconds: _ms));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final secs = (_ms / 1000).toStringAsFixed(2);
+    final shown = _ms > 0 ? '+${secs}s' : '${secs}s';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.label,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+            ),
+          ),
+          _stepBtn(Icons.remove_rounded, () => _bump(-_step)),
+          SizedBox(
+            width: 72,
+            child: Text(
+              shown,
+              textAlign: TextAlign.center,
+              style: AppText.body.copyWith(
+                color: _ms == 0 ? AppColors.textSecondary : AppColors.accent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          _stepBtn(Icons.add_rounded, () => _bump(_step)),
+          IconButton(
+            tooltip: 'Reset',
+            icon: const Icon(Icons.restart_alt_rounded,
+                color: AppColors.textSecondary, size: 20),
+            onPressed: _ms == 0 ? null : () => _bump(-_ms),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepBtn(IconData icon, VoidCallback onTap) => Material(
+    color: AppColors.surface2,
+    shape: const CircleBorder(),
+    clipBehavior: Clip.antiAlias,
+    child: InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, color: AppColors.textPrimary, size: 20),
+      ),
+    ),
+  );
 }
 
 /// Small grouped-section label inside a sheet (e.g. "Version" / "Audio track").
