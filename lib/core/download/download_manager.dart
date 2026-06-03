@@ -82,8 +82,8 @@ class DownloadManager extends ChangeNotifier {
     return out;
   }
 
-  DownloadRecord? recordFor(String sourceId, String episodeId) =>
-      _records[_idFor(sourceId, episodeId)];
+  DownloadRecord? recordFor(String sourceId, String showId, String episodeId) =>
+      _records[_idFor(sourceId, showId, episodeId)];
 
   // ── Enqueue ───────────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ class DownloadManager extends ChangeNotifier {
 
     final pending = <DownloadRecord>[];
     for (final ep in episodes) {
-      final id = _idFor(sourceId, ep.id);
+      final id = _idFor(sourceId, showId, ep.id);
       final existing = _records[id];
       // Skip ones already done or in flight.
       if (existing != null &&
@@ -162,7 +162,7 @@ class DownloadManager extends ChangeNotifier {
       await Permission.notification.request();
     } catch (_) {}
     final rec = DownloadRecord(
-      id: _idFor(sourceId, episode.id),
+      id: _idFor(sourceId, showId, episode.id),
       sourceId: sourceId,
       showId: showId,
       showTitle: showTitle,
@@ -499,8 +499,12 @@ class DownloadManager extends ChangeNotifier {
     _box.put(rec.id, rec.toMap());
   }
 
-  String _idFor(String sourceId, String episodeId) =>
-      _safe('${sourceId}_$episodeId');
+  /// Deterministic record id. Includes the SHOW id because providers like
+  /// AllAnime reuse episode ids ('sub:1', 'sub:2', …) across every show — so
+  /// without the show id, episode 1 of one anime collides with episode 1 of
+  /// another and the second download gets skipped.
+  String _idFor(String sourceId, String showId, String episodeId) =>
+      _safe('${sourceId}_${showId}_$episodeId');
 
   static String _safe(String s) =>
       s.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');

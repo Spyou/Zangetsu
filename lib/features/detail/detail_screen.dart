@@ -746,6 +746,7 @@ class _DetailViewState extends State<_DetailView>
             coverUrl: coverUrl,
             coverHeaders: coverHeaders,
             sourceId: item.sourceId,
+            showId: item.id,
             resumeIndex: _resumeIndex,
             hasAnyMark: hasAnyMark,
             onOpen: (fullIndex) =>
@@ -1360,6 +1361,7 @@ class _EpisodesTab extends StatefulWidget {
     required this.coverUrl,
     required this.coverHeaders,
     required this.sourceId,
+    required this.showId,
     required this.resumeIndex,
     required this.hasAnyMark,
     required this.onOpen,
@@ -1376,6 +1378,7 @@ class _EpisodesTab extends StatefulWidget {
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final String sourceId;
+  final String showId;
   final int Function(List<Episode>) resumeIndex;
   final bool hasAnyMark;
   final void Function(int fullIndex) onOpen;
@@ -1552,6 +1555,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onTap: () => widget.onOpen(fullIndex),
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
+            showId: widget.showId,
           ),
         );
       },
@@ -2021,6 +2025,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.onTap,
     required this.onDownload,
     required this.sourceId,
+    required this.showId,
   });
 
   final Episode ep;
@@ -2035,6 +2040,7 @@ class _EpisodeRow extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onDownload;
   final String sourceId;
+  final String showId;
 
   @override
   Widget build(BuildContext context) {
@@ -2187,6 +2193,7 @@ class _EpisodeRow extends StatelessWidget {
                 // Per-episode download icon, reflecting download state.
                 _EpisodeDownloadIcon(
                   sourceId: sourceId,
+                  showId: showId,
                   episodeId: ep.id,
                   onTap: onDownload,
                 ),
@@ -2204,11 +2211,13 @@ class _EpisodeRow extends StatelessWidget {
 class _EpisodeDownloadIcon extends StatelessWidget {
   const _EpisodeDownloadIcon({
     required this.sourceId,
+    required this.showId,
     required this.episodeId,
     required this.onTap,
   });
 
   final String sourceId;
+  final String showId;
   final String episodeId;
   final VoidCallback onTap;
 
@@ -2218,7 +2227,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
     return ListenableBuilder(
       listenable: manager,
       builder: (context, _) {
-        final rec = manager.recordFor(sourceId, episodeId);
+        final rec = manager.recordFor(sourceId, showId, episodeId);
         return _glyph(rec?.status, rec?.progress ?? 0);
       },
     );
