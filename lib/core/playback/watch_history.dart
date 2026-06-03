@@ -202,5 +202,22 @@ class WatchHistory {
     } catch (_) {/* keep local */}
   }
 
+  /// Remove a single show from Continue Watching, locally and (when signed in)
+  /// from the cloud so it doesn't sync back. Best-effort on the cloud side.
+  Future<void> remove(String sourceId, String showId) async {
+    final key = _key(sourceId, showId);
+    await _box.delete(key);
+    _lastCloudPush.remove(key);
+    final uid = _currentUserId();
+    if (uid == null) return;
+    try {
+      await _aw!.databases.deleteDocument(
+        databaseId: Environment.databaseId,
+        collectionId: Environment.historyCollectionId,
+        documentId: _docId(uid, key),
+      );
+    } catch (_) {/* best-effort */}
+  }
+
   Future<void> clearLocal() async => _box.clear();
 }

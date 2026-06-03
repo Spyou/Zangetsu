@@ -20,6 +20,7 @@ class ContinueCard extends StatefulWidget {
     required this.progress,
     this.subtitle,
     this.onTap,
+    this.onLongPress,
     this.cellWidth = 140,
   });
 
@@ -32,6 +33,7 @@ class ContinueCard extends StatefulWidget {
 
   final String? subtitle;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final double cellWidth;
 
   @override
@@ -54,6 +56,7 @@ class _ContinueCardState extends State<ContinueCard> {
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
         onTapCancel: _handleTapCancel,

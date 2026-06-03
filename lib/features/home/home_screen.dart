@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/home_section.dart';
+import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -15,6 +17,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
+import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -79,6 +82,84 @@ class _HomeViewState extends State<_HomeView> {
       // Refresh Continue Watching + My List row when returning from detail.
       if (mounted) setState(() {});
     });
+  }
+
+  String _typeLabel(ProviderType t) =>
+      t == ProviderType.movie ? 'Movie' : 'Anime';
+
+  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
+    try {
+      return await _repo.detail(url, sourceId: sourceId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Netflix-style long-press info card for a browse-row item.
+  void _showInfo(MediaItem item) {
+    showMediaInfoSheet(
+      context,
+      title: item.title,
+      englishTitle: item.englishTitle,
+      cover: item.cover,
+      headers: item.coverHeaders,
+      typeLabel: _typeLabel(item.type),
+      subCount: item.subCount,
+      dubCount: item.dubCount,
+      detail: _detailOf(item.url, item.sourceId),
+      inMyList: _myList.contains(item),
+      onPlay: () => _playFeatured(item),
+      onOpenDetail: () => _openDetail(item),
+      onToggleMyList: () async {
+        if (!requireLogin(context, action: 'add to My List')) {
+          return _myList.contains(item);
+        }
+        await _myList.toggle(item);
+        if (mounted) setState(() {});
+        return _myList.contains(item);
+      },
+    );
+  }
+
+  /// Long-press info card for a Continue Watching item — adds Resume + Remove.
+  void _showContinueInfo(HistoryEntry e) {
+    final stub = MediaItem(
+      id: e.showId,
+      title: e.showTitle,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      url: e.showUrl,
+      type: ProviderType.anime,
+      sourceId: e.sourceId,
+    );
+    final pct = (e.progress * 100).round();
+    showMediaInfoSheet(
+      context,
+      title: e.showTitle,
+      cover: e.cover,
+      headers: e.coverHeaders,
+      detail: _detailOf(e.showUrl, e.sourceId),
+      inMyList: _myList.contains(stub),
+      playLabel: 'Resume',
+      progress: e.progress,
+      progressLabel: e.episodeNumber != null
+          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
+          : '$pct% watched',
+      onPlay: () => _resume(e),
+      onOpenDetail: () => _openDetail(stub),
+      onToggleMyList: () async {
+        if (!requireLogin(context, action: 'add to My List')) {
+          return _myList.contains(stub);
+        }
+        await _myList.toggle(stub);
+        if (mounted) setState(() {});
+        return _myList.contains(stub);
+      },
+      onRemoveFromContinue: () async {
+        await sl<WatchHistory>().remove(e.sourceId, e.showId);
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   Future<void> _playFeatured(MediaItem item) async {
@@ -202,6 +283,7 @@ class _HomeViewState extends State<_HomeView> {
           headers: items[i].coverHeaders,
           cellWidth: 140,
           onTap: () => _openDetail(items[i]),
+          onLongPress: () => _showInfo(items[i]),
         ),
       ),
     );
@@ -310,6 +392,7 @@ class _HomeViewState extends State<_HomeView> {
                                     ? 'Episode ${e.episodeNumber!.toInt()}'
                                     : null,
                                 onTap: () => _resume(e),
+                                onLongPress: () => _showContinueInfo(e),
                               );
                             },
                           ),

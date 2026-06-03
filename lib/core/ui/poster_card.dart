@@ -10,12 +10,14 @@ class PosterCard extends StatefulWidget {
     this.imageUrl,
     this.headers,
     this.onTap,
+    this.onLongPress,
     this.cellWidth = 180,
   });
   final String title;
   final String? imageUrl;
   final Map<String, String>? headers;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final double cellWidth;
 
   @override
@@ -36,6 +38,7 @@ class _PosterCardState extends State<PosterCard> {
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
         onTapCancel: _handleTapCancel,
