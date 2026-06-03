@@ -34,10 +34,12 @@ class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
     required this.sourceId,
-    required this.episodes,
-    required this.startIndex,
     required this.resume,
     required this.resolveSources,
+    this.episodes = const [],
+    this.startIndex = 0,
+    this.episodesResolver,
+    this.resumeEpisodeId,
     this.history,
     this.showTitle,
     this.cover,
@@ -48,10 +50,17 @@ class PlayerScreen extends StatefulWidget {
   });
 
   final String sourceId;
-  final List<Episode> episodes;
-  final int startIndex;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) resolveSources;
+
+  /// Either pass [episodes] directly, or an [episodesResolver] that the player
+  /// awaits behind its branded loader (so navigation is instant — no blocking
+  /// spinner before pushing). [resumeEpisodeId] picks the start index once
+  /// resolved.
+  final List<Episode> episodes;
+  final int startIndex;
+  final Future<List<Episode>> Function()? episodesResolver;
+  final String? resumeEpisodeId;
 
   // Optional show-context threaded into history (Continue Watching feed).
   final WatchHistory? history;
@@ -121,6 +130,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _sleepActive = false; // a timer or end-of-episode stop is armed
   bool _sleepEndOfEpisode = false;
 
+  bool _ready = false; // the player session (cubit) is built
+
   @override
   void initState() {
     super.initState();
@@ -130,9 +141,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
+    if (widget.episodesResolver != null && widget.episodes.isEmpty) {
+      _resolveThenStart(); // instant nav: resolve behind the branded loader
+    } else {
+      _startSession(widget.episodes, widget.startIndex);
+    }
+  }
+
+  StreamSubscription<bool>? _completedSub;
+
+  void _startSession(List<Episode> eps, int startIndex) {
     _c = PlayerCubit(
       sourceId: widget.sourceId,
-      episodes: widget.episodes,
+      episodes: eps,
       resume: widget.resume,
       resolveSources: widget.resolveSources,
       dio: sl<Dio>(),
@@ -143,16 +164,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
       showUrl: widget.showUrl,
       category: widget.category,
       availableCategories: widget.availableCategories,
-    )..init(widget.startIndex);
-    _scheduleHide();
+    )..init(startIndex);
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
     _completedSub = _c.player.stream.completed.listen((done) {
       if (done) _onEpisodeComplete();
     });
+    if (mounted) setState(() => _ready = true);
+    _scheduleHide();
   }
 
-  StreamSubscription<bool>? _completedSub;
+  Future<void> _resolveThenStart() async {
+    try {
+      final eps = await widget.episodesResolver!();
+      if (!mounted) return;
+      if (eps.isEmpty) {
+        Navigator.of(context).maybePop();
+        return;
+      }
+      var idx = 0;
+      if (widget.resumeEpisodeId != null) {
+        final i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        if (i >= 0) idx = i;
+      }
+      _startSession(eps, idx);
+    } catch (_) {
+      if (mounted) Navigator.of(context).maybePop();
+    }
+  }
 
   @override
   void dispose() {
@@ -169,7 +208,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
     }
     WakelockPlus.disable();
-    _c.close();
+    if (_ready) _c.close();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -763,6 +802,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Still resolving the episode list (instant-nav path) — show the branded
+    // loader instead of touching the not-yet-created cubit.
+    if (!_ready) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: BrandLoader(label: 'Loading…')),
+      );
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: BlocBuilder<PlayerCubit, PlayerState>(

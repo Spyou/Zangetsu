@@ -82,101 +82,59 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   Future<void> _playFeatured(MediaItem item) async {
-    final nav = Navigator.of(context);
-    _showLoader();
-    try {
-      final eps = await _repo.episodes(item.url, sourceId: item.sourceId);
-      nav.pop(); // dismiss the loader
-      if (!mounted) return;
-      if (eps.isEmpty) {
-        _openDetail(item);
-        return;
-      }
-      // Fresh play: prefer a saved per-title sub/dub choice, else the global
-      // default category, else 'sub'.
-      final category =
-          sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
-          sl<PlaybackPrefs>().defaultCategory;
-      await nav.push(
-        MaterialPageRoute(
-          builder: (_) => PlayerScreen(
-            sourceId: item.sourceId,
-            episodes: eps,
-            startIndex: 0,
-            resume: sl<ResumeStore>(),
-            resolveSources: (u) => _repo.sources(u, sourceId: item.sourceId),
-            history: sl<WatchHistory>(),
-            showTitle: item.title,
-            cover: item.cover,
-            coverHeaders: item.coverHeaders,
-            showUrl: item.url,
-            category: category,
-          ),
-        ),
-      );
-      if (mounted) setState(() {});
-    } catch (_) {
-      nav.pop(); // dismiss the loader
-      // On any error fall back to detail screen.
-      if (mounted) _openDetail(item);
-    }
-  }
-
-  /// Blocking spinner shown the instant a tile is tapped — resolving the episode
-  /// list is a network call, so without it a tap feels dead until the player
-  /// suddenly appears.
-  void _showLoader() {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black54,
-      builder: (_) => const Center(
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: CircularProgressIndicator(
-            color: AppColors.accent,
-            strokeWidth: 2.6,
-          ),
+    // Fresh play: prefer a saved per-title sub/dub choice, else the global
+    // default category, else 'sub'.
+    final category =
+        sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
+        sl<PlaybackPrefs>().defaultCategory;
+    // Instant nav — the player resolves the episode list behind its loader.
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          sourceId: item.sourceId,
+          episodesResolver: () => _repo.episodes(item.url, sourceId: item.sourceId),
+          resume: sl<ResumeStore>(),
+          resolveSources: (u) => _repo.sources(u, sourceId: item.sourceId),
+          history: sl<WatchHistory>(),
+          showTitle: item.title,
+          cover: item.cover,
+          coverHeaders: item.coverHeaders,
+          showUrl: item.url,
+          category: category,
         ),
       ),
     );
+    if (mounted) setState(() {});
   }
 
+  /// Resume from Continue Watching. Navigates to the player INSTANTLY; the
+  /// player resolves the episode list behind its own branded loader (no blocking
+  /// pre-navigation spinner).
   Future<void> _resume(HistoryEntry e) async {
-    final nav = Navigator.of(context);
-    _showLoader();
-    try {
-      final eps = await _repo.episodes(
-        e.showUrl,
-        category: e.category,
-        sourceId: e.sourceId,
-      );
-      nav.pop(); // dismiss the loader
-      if (!mounted || eps.isEmpty) return;
-      var idx = eps.indexWhere((x) => x.id == e.episodeId);
-      if (idx < 0) idx = 0;
-      await nav.push(
-        MaterialPageRoute(
-          builder: (_) => PlayerScreen(
-            sourceId: e.sourceId,
-            episodes: eps,
-            startIndex: idx,
-            resume: sl<ResumeStore>(),
-            resolveSources: (u) => _repo.sources(u, sourceId: e.sourceId),
-            history: sl<WatchHistory>(),
-            showTitle: e.showTitle,
-            cover: e.cover,
-            coverHeaders: e.coverHeaders,
-            showUrl: e.showUrl,
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlayerScreen(
+          sourceId: e.sourceId,
+          episodesResolver: () => _repo.episodes(
+            e.showUrl,
             category: e.category,
+            sourceId: e.sourceId,
           ),
+          resumeEpisodeId: e.episodeId,
+          resume: sl<ResumeStore>(),
+          resolveSources: (u) => _repo.sources(u, sourceId: e.sourceId),
+          history: sl<WatchHistory>(),
+          showTitle: e.showTitle,
+          cover: e.cover,
+          coverHeaders: e.coverHeaders,
+          showUrl: e.showUrl,
+          category: e.category,
         ),
-      );
-      if (mounted) setState(() {});
-    } catch (_) {
-      nav.pop(); // dismiss the loader on error
-    }
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   /// Wraps [child] in a subtle fade + upward slide entrance on first build.
