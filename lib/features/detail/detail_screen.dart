@@ -2547,10 +2547,13 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     () => _selectedIds.removeAll(_seasonEps.map((e) => e.id)),
   );
 
+  bool get _allSeasonSelected =>
+      _seasonEps.isNotEmpty &&
+      _seasonEps.every((e) => _selectedIds.contains(e.id));
+
   @override
   Widget build(BuildContext context) {
     final count = _selectedIds.length;
-    final maxGridH = MediaQuery.of(context).size.height * 0.34;
     return SafeArea(
       top: false,
       child: Padding(
@@ -2593,29 +2596,30 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             const SizedBox(height: 8),
             _sourceSection(),
 
-            // ── Episode multi-select (thumbnail rows) ──────────────────────
-            const SizedBox(height: 18),
+            // ── Episode multi-select (horizontal thumbnail cards) ──────────
+            const SizedBox(height: 20),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Episodes', style: AppText.overline),
-                Row(
-                  children: [
-                    _textBtn('Select all', _selectAllInSeason),
-                    const SizedBox(width: 4),
-                    _textBtn('Clear', _clearSeason),
-                  ],
+                Text(
+                  '${_selectedIds.length}/${_seasonEps.length} episodes',
+                  style: AppText.overline,
+                ),
+                _textBtn(
+                  _allSeasonSelected ? 'Clear' : 'Select all',
+                  _allSeasonSelected ? _clearSeason : _selectAllInSeason,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxGridH),
-              child: ListView.builder(
-                shrinkWrap: true,
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 118,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.zero,
                 itemCount: _seasonEps.length,
-                itemBuilder: (c, i) => _episodeRow(_seasonEps[i], i),
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (c, i) => _episodeCard(_seasonEps[i], i),
               ),
             ),
 
@@ -2783,17 +2787,16 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     );
   }
 
-  /// Tappable episode row: thumbnail + "E{n} · title" + a check, multi-select.
-  Widget _episodeRow(Episode e, int i) {
+  /// Horizontal episode card: 16:9 thumbnail with a selection check overlay +
+  /// "E{n}" and the title beneath. Tap to toggle.
+  Widget _episodeCard(Episode e, int i) {
     final sel = _selectedIds.contains(e.id);
     final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
         ? e.thumbnail!
         : widget.coverUrl;
     final epNum = _epNum(e, i);
     final title = e.title.trim();
-    final heading = (title.isEmpty || title == 'Episode $epNum')
-        ? 'Episode $epNum'
-        : 'E$epNum · $title';
+    final hasTitle = title.isNotEmpty && title != 'Episode $epNum';
     return GestureDetector(
       onTap: () => setState(() {
         if (sel) {
@@ -2802,57 +2805,71 @@ class _DownloadSheetState extends State<_DownloadSheet> {
           _selectedIds.add(e.id);
         }
       }),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: sel ? AppColors.accentSoft : AppColors.surface2,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: sel ? AppColors.accent : AppColors.hairline,
-            width: sel ? 1 : 0.5,
-          ),
-        ),
-        child: Row(
+      child: SizedBox(
+        width: 132,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: SizedBox(
-                width: 76,
-                height: 44, // ~16:9
-                child: thumb.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: thumb,
-                        httpHeaders: widget.coverHeaders,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 200,
-                        placeholder: (c, u) =>
-                            const ColoredBox(color: AppColors.surface),
-                        errorWidget: (c, u, e) =>
-                            const ColoredBox(color: AppColors.surface),
-                      )
-                    : const ColoredBox(color: AppColors.surface),
+              borderRadius: BorderRadius.circular(8),
+              child: Stack(
+                children: [
+                  SizedBox(
+                    width: 132,
+                    height: 74, // 16:9
+                    child: thumb.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: thumb,
+                            httpHeaders: widget.coverHeaders,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 280,
+                            placeholder: (c, u) =>
+                                const ColoredBox(color: AppColors.surface2),
+                            errorWidget: (c, u, e) =>
+                                const ColoredBox(color: AppColors.surface2),
+                          )
+                        : const ColoredBox(color: AppColors.surface2),
+                  ),
+                  // Dim + accent ring + check when selected.
+                  if (sel)
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: const Color(0x55FF4D57),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.accent, width: 2),
+                        ),
+                      ),
+                    ),
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Icon(
+                      sel
+                          ? Icons.check_circle_rounded
+                          : Icons.circle_outlined,
+                      size: 20,
+                      color: sel ? AppColors.accent : Colors.white70,
+                    ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                heading,
-                style: AppText.body.copyWith(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 2,
+            const SizedBox(height: 6),
+            Text(
+              'E$epNum',
+              style: AppText.caption.copyWith(
+                color: sel ? AppColors.accent : AppColors.textPrimary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (hasTitle)
+              Text(
+                title,
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            ),
-            const SizedBox(width: 8),
-            Icon(
-              sel ? Icons.check_circle_rounded : Icons.circle_outlined,
-              color: sel ? AppColors.accent : AppColors.textTertiary,
-              size: 22,
-            ),
-            const SizedBox(width: 6),
           ],
         ),
       ),
