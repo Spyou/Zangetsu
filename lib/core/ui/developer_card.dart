@@ -36,8 +36,9 @@ class DeveloperCard extends StatelessWidget {
     return Container(
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surface2,
-        borderRadius: BorderRadius.circular(14),
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.hairline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,16 +175,17 @@ class _LinkRow extends StatelessWidget {
               label,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
             ),
-            const Spacer(),
-            Flexible(
+            const SizedBox(width: 12),
+            Expanded(
               child: Text(
                 handle,
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+                textAlign: TextAlign.end,
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
                 overflow: TextOverflow.ellipsis,
                 maxLines: 1,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Icon(
               Icons.arrow_outward_rounded,
               size: 16,

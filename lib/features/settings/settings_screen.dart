@@ -13,6 +13,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'developers_screen.dart';
+import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
@@ -235,6 +236,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   SettingsCard(
                     children: [
+                      SettingsTile(
+                        icon: Icons.coffee_rounded,
+                        title: 'Support the app',
+                        subtitle: 'Buy me a coffee',
+                        onTap: () => _push(const DonateScreen()),
+                      ),
                       SettingsTile(
                         icon: Icons.people_outline_rounded,
                         title: 'Developers',
