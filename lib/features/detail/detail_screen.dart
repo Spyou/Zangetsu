@@ -2468,6 +2468,12 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       for (final eps in widget.episodesBySeason.values)
         for (final e in eps) e.id: e,
     };
+    // Default to the whole current season selected so Download is enabled
+    // immediately (the common "download this season" case); the user can Clear
+    // or toggle tiles to narrow it.
+    _selectedIds.addAll(
+      (widget.episodesBySeason[_season] ?? const <Episode>[]).map((e) => e.id),
+    );
     _resolveSources();
   }
 
