@@ -18,6 +18,7 @@ import '../state/active_source_cubit.dart';
 import '../trailer/trailer_service.dart';
 import '../appwrite/appwrite_service.dart';
 import '../download/download_manager.dart';
+import '../download/download_service.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 
@@ -140,8 +141,9 @@ Future<void> initDependencies() async {
   // Offline downloads (background_downloader). setup() restores persisted
   // records and starts listening for task progress/status updates.
   await DownloadManager.init();
+  await DownloadService.initialize(); // configure the foreground-service host
   sl.registerSingleton<DownloadManager>(
-    DownloadManager(sl<SourceRepository>(), sl<Dio>())..setup(),
+    DownloadManager(sl<SourceRepository>())..setup(),
   );
 
   // Home data cubit as a singleton so the splash can warm it (preload the

@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Network: Flutter only auto-adds INTERNET to debug builds, so it MUST be
          declared here or release builds have no network at all (streaming,
          providers, downloads). -->
@@ -6,11 +7,23 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Download progress notification (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Foreground service so HLS downloads continue in the background. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <application
         android:label="Zangetsu"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
+        <!-- flutter_background_service declares this service but without a
+             foregroundServiceType, which Android 14+ requires for dataSync.
+             Same attrs as the plugin + the type (merged, no conflict). -->
+        <service
+            android:name="id.flutter.flutter_background_service.BackgroundService"
+            android:enabled="true"
+            android:exported="true"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

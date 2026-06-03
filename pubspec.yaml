@@ -91,6 +91,7 @@ dependencies:
   # pause/resume, and move-to-shared-storage (public Downloads folder).
   background_downloader: ^9.2.0
   permission_handler: ^11.3.1
+  flutter_background_service: ^5.1.0
 
 dev_dependencies:
   flutter_test:

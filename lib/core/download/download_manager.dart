@@ -1,8 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -12,7 +12,7 @@ import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
 import 'download_record.dart';
-import 'hls_downloader.dart';
+import 'download_service.dart';
 
 /// Owns offline downloads. Direct-file (MP4/MKV) sources go through
 /// background_downloader (true background); HLS (m3u8) sources go through the
@@ -21,10 +21,9 @@ import 'hls_downloader.dart';
 /// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
 /// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo, Dio dio) : _hls = HlsDownloader(dio);
+  DownloadManager(this._repo);
 
   final SourceRepository _repo;
-  final HlsDownloader _hls;
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';
@@ -47,7 +46,7 @@ class DownloadManager extends ChangeNotifier {
   final Map<String, List<VideoSource>> _candidates = {};
   StreamSubscription<TaskUpdate>? _sub;
 
-  /// Wire notifications + the update stream. Call once at app start.
+  /// Wire notifications + the update streams. Call once at app start.
   void setup() {
     for (final raw in _box.values) {
       final r = DownloadRecord.fromMap(raw);
@@ -60,6 +59,86 @@ class DownloadManager extends ChangeNotifier {
       progressBar: true,
     );
     _sub = _dl.updates.listen(_onUpdate);
+    _listenBackgroundService();
+    _reconcileServiceResults(); // apply HLS downloads finished while killed
+  }
+
+  /// Apply progress/done/failed events the foreground-service isolate sends for
+  /// HLS downloads (live, while the UI is alive).
+  void _listenBackgroundService() {
+    final svc = DownloadService.instance;
+    svc.on('progress').listen((d) {
+      final id = d?['id'] as String?;
+      if (id == null) return;
+      final rec = _records[id];
+      if (rec == null || rec.status == DownloadStatus.canceled) return;
+      final p = (d?['progress'] as num?)?.toDouble() ?? rec.progress;
+      _put(rec.copyWith(status: DownloadStatus.downloading, progress: p));
+      notifyListeners();
+    });
+    svc.on('done').listen((d) {
+      final id = d?['id'] as String?;
+      if (id == null) return;
+      final rec = _records[id];
+      if (rec == null) return;
+      _candidates.remove(id);
+      final path = d?['filePath'] as String?;
+      _put(rec.copyWith(
+        status: DownloadStatus.done,
+        progress: 1,
+        filePath: () => path,
+      ));
+      notifyListeners();
+    });
+    svc.on('failed').listen((d) async {
+      final id = d?['id'] as String?;
+      if (id == null) return;
+      final rec = _records[id];
+      if (rec == null || d?['canceled'] == true) return;
+      if (await _tryNext(rec)) return;
+      _put(rec.copyWith(
+        status: DownloadStatus.failed,
+        error: () => d?['error'] as String? ?? 'Download failed',
+      ));
+      notifyListeners();
+    });
+  }
+
+  /// Read completion markers written by the service while the app was killed,
+  /// apply them to records, then delete them.
+  Future<void> _reconcileServiceResults() async {
+    try {
+      final dir = await DownloadService.resultsDir();
+      if (!await dir.exists()) return;
+      for (final entity in dir.listSync()) {
+        if (entity is! File || !entity.path.endsWith('.json')) continue;
+        try {
+          final m = jsonDecode(await entity.readAsString()) as Map;
+          final id = m['id'] as String?;
+          final rec = id == null ? null : _records[id];
+          if (rec != null && rec.status != DownloadStatus.done) {
+            final status = m['status'] as String?;
+            if (status == 'done') {
+              _candidates.remove(id);
+              _put(rec.copyWith(
+                status: DownloadStatus.done,
+                progress: 1,
+                filePath: () => m['filePath'] as String?,
+              ));
+            } else if (status == 'failed') {
+              _put(rec.copyWith(
+                status: DownloadStatus.failed,
+                error: () => m['error'] as String? ?? 'Download failed',
+              ));
+            }
+          }
+        } catch (_) {}
+        try {
+          await entity.delete();
+        } catch (_) {}
+      }
+      notifyListeners();
+    } catch (_) {}
   }
 
   @override
@@ -264,79 +343,42 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
-  /// Download an HLS source in-app: fetch+decrypt+concat segments to a file,
-  /// then move it into the public Downloads folder. Progress is throttled to
-  /// whole-percent steps so the UI isn't flooded per segment.
+  /// Hand an HLS source to the foreground-service isolate so it downloads in
+  /// true background. We resolve the path here (UI isolate owns path_provider),
+  /// start the service, and dispatch the job; progress/done/failed come back via
+  /// [_listenBackgroundService].
   Future<void> _startHlsDownload(DownloadRecord rec, VideoSource source) async {
     _put(rec.copyWith(status: DownloadStatus.downloading, progress: 0));
     notifyListeners();
-    var lastPct = -1;
     try {
       final docs = await getApplicationDocumentsDirectory();
-      final dir = Directory(
-        '${docs.path}/$_sharedDir/${_safe(rec.showTitle)}',
-      );
+      final safeShow = _safe(rec.showTitle);
+      final dir = Directory('${docs.path}/$_sharedDir/$safeShow');
       await dir.create(recursive: true);
-      final filename =
-          '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
+      final outputPath =
+          '${dir.path}/${safeShow}_E${rec.episodeNumber?.toInt() ?? ''}'
           '_${_safe(rec.quality)}.mp4';
-      final tmpPath = '${dir.path}/$filename';
 
-      final ok = await _hls.download(
-        url: source.url,
-        headers: source.headers ?? const {},
-        outputPath: tmpPath,
-        preferredQuality: rec.quality,
-        onProgress: (p) {
-          final pct = (p * 100).floor();
-          if (pct == lastPct) return; // throttle to 1% steps
-          lastPct = pct;
-          final cur = _records[rec.id];
-          if (cur == null || cur.status == DownloadStatus.canceled) return;
-          _put(cur.copyWith(status: DownloadStatus.downloading, progress: p));
-          notifyListeners();
-        },
-        canceled: () => _isCanceled(rec.id),
-      );
-
-      if (_isCanceled(rec.id)) return;
-      if (!ok) {
-        if (await _tryNext(rec)) return;
-        _put(
-          rec.copyWith(
-            status: DownloadStatus.failed,
-            error: () => 'HLS download failed — try another server',
-          ),
-        );
-        notifyListeners();
-        return;
+      if (!await DownloadService.instance.isRunning()) {
+        await DownloadService.instance.startService();
       }
-
-      String? finalPath;
-      try {
-        finalPath = await _dl.moveFileToSharedStorage(
-          tmpPath,
-          SharedStorage.downloads,
-          directory: '$_sharedDir/${_safe(rec.showTitle)}',
-        );
-      } catch (_) {}
-      finalPath ??= tmpPath;
-      _candidates.remove(rec.id);
-      _put(
-        rec.copyWith(
-          status: DownloadStatus.done,
-          progress: 1,
-          filePath: () => finalPath,
-        ),
-      );
-      notifyListeners();
+      DownloadService.instance.invoke('download', {
+        'id': rec.id,
+        'url': source.url,
+        'headers': source.headers ?? const <String, String>{},
+        'outputPath': outputPath,
+        'quality': rec.quality,
+        'label': 'E${rec.episodeNumber?.toInt() ?? ''}',
+        'showTitle': rec.showTitle,
+        'sharedSubDir': '$_sharedDir/$safeShow',
+      });
     } catch (_) {
       if (_isCanceled(rec.id)) return;
       if (await _tryNext(rec)) return;
       _put(
         rec.copyWith(
           status: DownloadStatus.failed,
-          error: () => 'HLS download failed',
+          error: () => "Couldn't start download",
         ),
       );
       notifyListeners();
@@ -368,8 +410,9 @@ class DownloadManager extends ChangeNotifier {
     _put(rec.copyWith(status: DownloadStatus.canceled, progress: 0));
     notifyListeners();
     try {
-      await _dl.cancelTaskWithId(rec.id);
+      await _dl.cancelTaskWithId(rec.id); // direct-file task (if any)
     } catch (_) {}
+    DownloadService.instance.invoke('cancel', {'id': rec.id}); // HLS job (if any)
     _tasks.remove(rec.id);
   }
 
@@ -383,6 +426,7 @@ class DownloadManager extends ChangeNotifier {
     try {
       await _dl.cancelTaskWithId(rec.id);
     } catch (_) {}
+    DownloadService.instance.invoke('cancel', {'id': rec.id}); // stop HLS job
     _tasks.remove(rec.id);
     _records.remove(rec.id);
     await _box.delete(rec.id);
