@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:media_kit/media_kit.dart' show Track;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -630,112 +631,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
-  void _openAudioSheet() {
-    final categories = _c.categories;
-    final activeCategory = _c.activeCategory;
-    final audioTracks = _c.mediaAudioTracks;
-    final activeTrack = _c.activeAudioTrack;
-    _sheet<void>(
-      _SheetColumn(
-        header: 'Audio',
-        children: [
-          // Version (Sub/Dub) — re-resolves the current episode in the chosen
-          // language. Only shown when the title offers more than one category.
-          if (categories.length > 1) ...[
-            const _SheetSectionHeader('Version'),
-            for (final cat in categories)
-              _SheetRow(
-                label: cat.toUpperCase(),
-                active: activeCategory == cat,
-                onTap: () {
-                  Navigator.pop(context);
-                  _c.switchCategory(cat);
-                  _bumpControls();
-                },
-              ),
-          ],
-          // Embedded audio tracks — only when the media exposes more than one.
-          if (audioTracks.length > 1) ...[
-            const _SheetSectionHeader('Audio track'),
-            for (final t in audioTracks)
-              _SheetRow(
-                label: t.language ?? t.title ?? t.id,
-                active: activeTrack.id == t.id,
-                onTap: () {
-                  Navigator.pop(context);
-                  _c.setAudioTrack(t);
-                  _bumpControls();
-                },
-              ),
-          ],
-          const _SheetSectionHeader('Sync'),
-          _DelayAdjuster(
-            label: 'Audio delay',
-            initial: _c.audioDelay,
-            onChanged: (d) => _c.setAudioDelay(d),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _openSubtitlesSheet() {
-    final embedded = _c.mediaSubtitleTracks;
-    final soft = _c.softSubs;
-    final active = _c.activeSubtitleTrack;
-    _sheet<void>(
-      _SheetColumn(
-        header: 'Subtitles',
-        children: [
-          // Off (CloudStream lists this first).
-          _SheetRow(
-            label: 'Off',
-            active: active.id == 'no',
-            onTap: () {
-              Navigator.pop(context);
-              _c.subtitlesOff();
-              _bumpControls();
-            },
-          ),
-          // Embedded subtitle tracks.
-          for (final t in embedded)
-            _SheetRow(
-              label: '${t.title ?? t.language ?? t.id} (embedded)',
-              active: active.id == t.id,
-              onTap: () {
-                Navigator.pop(context);
-                _c.setSubtitle(t);
-                _bumpControls();
-              },
-            ),
-          // External "soft" subtitles advertised by the source.
-          for (final s in soft)
-            _SheetRow(
-              label: s.label ?? s.lang,
-              active: false,
-              onTap: () {
-                Navigator.pop(context);
-                _c.setSoftSub(s);
-                _bumpControls();
-              },
-            ),
-          // Load a subtitle file from disk.
-          _SheetRow(
-            label: 'Load from file…',
-            icon: Icons.upload_file,
-            active: false,
-            onTap: () {
+  /// Netflix-style combined Audio | Subtitles panel (two columns, live
+  /// selection without closing).
+  void _openAudioSubsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => FrostedSurface(
+        blur: true,
+        opacity: 0.82,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: SafeArea(
+          top: false,
+          child: _AudioSubsSheet(
+            controller: _c,
+            onInteract: _bumpControls,
+            onLoadFile: () {
               Navigator.pop(context);
               _loadSubtitleFromFile();
             },
           ),
-          const _SheetSectionHeader('Sync'),
-          _DelayAdjuster(
-            label: 'Subtitle delay',
-            initial: _c.subtitleDelay,
-            onChanged: (d) => _c.setSubtitleDelay(d),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -1059,8 +976,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onInteract: _bumpControls,
                       onBack: () => Navigator.of(context).maybePop(),
                       onSpeed: _openSpeedSheet,
-                      onAudio: _openAudioSheet,
-                      onSubtitles: _openSubtitlesSheet,
+                      onAudioSubs: _openAudioSubsSheet,
                       onQuality: _openQualitySheet,
                       onSources: _openSourceSheet,
                       onLock: _toggleLock,
@@ -1221,8 +1137,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onInteract,
     required this.onBack,
     required this.onSpeed,
-    required this.onAudio,
-    required this.onSubtitles,
+    required this.onAudioSubs,
     required this.onQuality,
     required this.onSources,
     required this.onLock,
@@ -1242,8 +1157,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onInteract;
   final VoidCallback onBack;
   final VoidCallback onSpeed;
-  final VoidCallback onAudio;
-  final VoidCallback onSubtitles;
+  final VoidCallback onAudioSubs;
   final VoidCallback onQuality;
   final VoidCallback onSources;
   final VoidCallback onLock;
@@ -1486,18 +1400,10 @@ class _ControlsOverlay extends StatelessWidget {
                               label: 'Speed',
                               onTap: onSpeed,
                             ),
-                            if (c.categories.length > 1 ||
-                                c.audioKinds.length > 1 ||
-                                c.mediaAudioTracks.length > 1)
-                              _ControlButton(
-                                icon: Icons.graphic_eq,
-                                label: 'Audio',
-                                onTap: onAudio,
-                              ),
                             _ControlButton(
-                              icon: Icons.closed_caption,
-                              label: 'Subtitles',
-                              onTap: onSubtitles,
+                              icon: Icons.subtitles_rounded,
+                              label: 'Audio & subs',
+                              onTap: onAudioSubs,
                             ),
                             if (state.qualities.isNotEmpty ||
                                 c.sourceQualities.length > 1)
@@ -1980,6 +1886,177 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// Netflix-style combined panel: Audio (left) | Subtitles (right), selections
+// apply live without closing; a Sync section sits below.
+class _AudioSubsSheet extends StatefulWidget {
+  const _AudioSubsSheet({
+    required this.controller,
+    required this.onInteract,
+    required this.onLoadFile,
+  });
+  final PlayerCubit controller;
+  final VoidCallback onInteract;
+  final VoidCallback onLoadFile;
+
+  @override
+  State<_AudioSubsSheet> createState() => _AudioSubsSheetState();
+}
+
+class _AudioSubsSheetState extends State<_AudioSubsSheet> {
+  late String _category = widget.controller.activeCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final h = MediaQuery.of(context).size.height;
+    return StreamBuilder<Track>(
+      stream: c.player.stream.track,
+      builder: (context, snap) {
+        final track = snap.data ?? c.player.state.track;
+        final audioId = track.audio.id;
+        final subId = track.subtitle.id;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: h * 0.5),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _audioColumn(c, audioId)),
+                    Container(
+                      width: 0.5,
+                      margin: const EdgeInsets.symmetric(vertical: 8),
+                      color: AppColors.hairline,
+                    ),
+                    Expanded(child: _subColumn(c, subId)),
+                  ],
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 18),
+              _DelayAdjuster(
+                label: 'Subtitle delay',
+                initial: c.subtitleDelay,
+                onChanged: (d) => c.setSubtitleDelay(d),
+              ),
+              _DelayAdjuster(
+                label: 'Audio delay',
+                initial: c.audioDelay,
+                onChanged: (d) => c.setAudioDelay(d),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _audioColumn(PlayerCubit c, String audioId) {
+    final cats = c.categories;
+    final tracks = c.mediaAudioTracks;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _SheetSectionHeader('Audio'),
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            children: [
+              if (cats.length > 1)
+                for (final cat in cats)
+                  _SheetRow(
+                    label: cat.toUpperCase(),
+                    active: _category == cat,
+                    onTap: () {
+                      c.switchCategory(cat);
+                      setState(() => _category = cat);
+                      widget.onInteract();
+                    },
+                  ),
+              for (final t in tracks)
+                _SheetRow(
+                  label: t.language ?? t.title ?? t.id,
+                  active: audioId == t.id,
+                  onTap: () {
+                    c.setAudioTrack(t);
+                    widget.onInteract();
+                  },
+                ),
+              if (cats.length <= 1 && tracks.length <= 1)
+                _SheetRow(label: 'Default', active: true, onTap: () {}),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _subColumn(PlayerCubit c, String subId) {
+    final embedded = c.mediaSubtitleTracks;
+    final soft = c.softSubs;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const _SheetSectionHeader('Subtitles'),
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            children: [
+              _SheetRow(
+                label: 'Off',
+                active: subId == 'no',
+                onTap: () {
+                  c.subtitlesOff();
+                  widget.onInteract();
+                },
+              ),
+              for (final t in embedded)
+                _SheetRow(
+                  label: t.title ?? t.language ?? t.id,
+                  active: subId == t.id,
+                  onTap: () {
+                    c.setSubtitle(t);
+                    widget.onInteract();
+                  },
+                ),
+              for (final s in soft)
+                _SheetRow(
+                  label: s.label ?? s.lang,
+                  active: false,
+                  onTap: () {
+                    c.setSoftSub(s);
+                    widget.onInteract();
+                  },
+                ),
+              _SheetRow(
+                label: 'Load from file…',
+                icon: Icons.upload_file,
+                active: false,
+                onTap: widget.onLoadFile,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
