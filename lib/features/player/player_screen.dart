@@ -893,16 +893,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   duration: const Duration(milliseconds: 200),
                   child: IgnorePointer(
                     ignoring: !_controlsVisible,
-                    child: SafeArea(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Padding(
-                          padding: const EdgeInsets.only(left: 12),
-                          child: _RoundIconButton(
-                            icon: Icons.lock_outline_rounded,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _RoundIconButton(
+                            icon: Icons.lock_rounded,
                             onTap: _toggleLock,
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tap to unlock',
+                            style: AppText.caption.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -1144,18 +1151,7 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Aspect/zoom toggle + lock.
-                  TextButton.icon(
-                    onPressed: onZoom,
-                    icon: const Icon(Icons.aspect_ratio_rounded,
-                        color: Colors.white, size: 20),
-                    label: Text(zoomLabel,
-                        style: AppText.caption.copyWith(color: Colors.white)),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  ),
+                  // Lock (top-right). Zoom lives in the bottom button row.
                   IconButton(
                     icon: const Icon(Icons.lock_open_rounded,
                         color: Colors.white),
@@ -1275,6 +1271,11 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Sources',
                         onTap: onSources,
                       ),
+                      _ControlButton(
+                        icon: Icons.aspect_ratio_rounded,
+                        label: zoomLabel,
+                        onTap: onZoom,
+                      ),
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
@@ -1306,7 +1307,7 @@ class _ControlsOverlay extends StatelessWidget {
 // Seek row — current time + slider (stream-bound) + total time.
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SeekRow extends StatelessWidget {
+class _SeekRow extends StatefulWidget {
   const _SeekRow({
     required this.controller,
     required this.duration,
@@ -1317,6 +1318,15 @@ class _SeekRow extends StatelessWidget {
   final Duration duration;
   final VoidCallback onInteract;
 
+  @override
+  State<_SeekRow> createState() => _SeekRowState();
+}
+
+class _SeekRowState extends State<_SeekRow> {
+  // While the user is dragging the thumb, hold the value locally so the live
+  // position stream doesn't yank it back (which made it feel un-draggable).
+  double? _dragMs;
+
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -1326,18 +1336,21 @@ class _SeekRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalMs = duration.inMilliseconds;
+    final totalMs = widget.duration.inMilliseconds;
+    final max = totalMs > 0 ? totalMs.toDouble() : 1.0;
     return StreamBuilder<Duration>(
-      stream: controller.player.stream.position,
+      stream: widget.controller.player.stream.position,
       builder: (context, snap) {
-        final pos = snap.data ?? Duration.zero;
-        final posMs = pos.inMilliseconds
-            .clamp(0, totalMs > 0 ? totalMs : 1)
+        final streamMs = (snap.data ?? Duration.zero).inMilliseconds
+            .clamp(0, max.toInt())
             .toDouble();
+        // Use the drag value while scrubbing, else the live position.
+        final value = (_dragMs ?? streamMs).clamp(0.0, max);
+        final shownPos = Duration(milliseconds: value.round());
         return Row(
           children: [
             Text(
-              _fmt(pos),
+              _fmt(shownPos),
               style: AppText.caption.copyWith(color: Colors.white),
             ),
             Expanded(
@@ -1349,26 +1362,41 @@ class _SeekRow extends StatelessWidget {
                   overlayColor: AppColors.accentSoft,
                   trackHeight: 3,
                   thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 6,
+                    enabledThumbRadius: 7,
                   ),
                   overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 14,
+                    overlayRadius: 16,
                   ),
                 ),
                 child: Slider(
                   min: 0,
-                  max: totalMs > 0 ? totalMs.toDouble() : 1,
-                  value: posMs,
-                  onChanged: (_) => onInteract(),
-                  onChangeEnd: (v) {
-                    controller.seekTo(Duration(milliseconds: v.round()));
-                    onInteract();
-                  },
+                  max: max,
+                  value: value,
+                  onChangeStart: totalMs <= 0
+                      ? null
+                      : (v) {
+                          setState(() => _dragMs = v);
+                          widget.onInteract();
+                        },
+                  onChanged: totalMs <= 0
+                      ? null
+                      : (v) {
+                          setState(() => _dragMs = v);
+                          widget.onInteract();
+                        },
+                  onChangeEnd: totalMs <= 0
+                      ? null
+                      : (v) {
+                          widget.controller
+                              .seekTo(Duration(milliseconds: v.round()));
+                          setState(() => _dragMs = null);
+                          widget.onInteract();
+                        },
                 ),
               ),
             ),
             Text(
-              _fmt(duration),
+              _fmt(widget.duration),
               style: AppText.caption.copyWith(color: Colors.white),
             ),
           ],
