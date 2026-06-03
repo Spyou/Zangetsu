@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -353,33 +354,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     setState(() => _upNext = false);
   }
 
-  // ── Episodes picker ───────────────────────────────────────────────────────
-  void _openEpisodesSheet() {
-    final eps = _c.episodes;
-    final cur = _c.state.currentIndex;
-    _sheet<void>(
-      _SheetColumn(
-        header: 'Episodes',
-        children: [
-          for (var i = 0; i < eps.length; i++)
-            _SheetRow(
-              label: _episodeLabel(eps[i], i),
-              active: i == cur,
-              onTap: () {
-                Navigator.pop(context);
-                if (i != cur) _c.openEpisode(i);
-                _bumpControls();
-              },
-            ),
-        ],
+  // ── Episodes picker — slides in from the right (CloudStream-style) ─────────
+  void _openEpisodesPanel() {
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Episodes',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (ctx, _, _) => Align(
+        alignment: Alignment.centerRight,
+        child: _EpisodesPanel(
+          episodes: _c.episodes,
+          currentIndex: _c.state.currentIndex,
+          cover: widget.cover,
+          coverHeaders: widget.coverHeaders,
+          onSelect: (i) {
+            Navigator.pop(ctx);
+            if (i != _c.state.currentIndex) _c.openEpisode(i);
+            _bumpControls();
+          },
+        ),
+      ),
+      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+        position: Tween(begin: const Offset(1, 0), end: Offset.zero)
+            .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
       ),
     );
-  }
-
-  String _episodeLabel(Episode e, int i) {
-    final n = e.number?.toInt() ?? (i + 1);
-    final t = e.title.trim();
-    return (t.isEmpty || t == 'Episode $n') ? 'Episode $n' : 'E$n · $t';
   }
 
   // ── Sleep timer ───────────────────────────────────────────────────────────
@@ -985,7 +987,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onSleep: _openSleepSheet,
                       sleepActive: _sleepActive,
                       onEpisodes:
-                          _c.episodes.length > 1 ? _openEpisodesSheet : null,
+                          _c.episodes.length > 1 ? _openEpisodesPanel : null,
                       onPrev: _c.state.currentIndex > 0
                           ? () {
                               _c.playPrevious();
@@ -1265,7 +1267,13 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Sleep timer + lock (top-right). Zoom is in the bottom row.
+                  // Episodes + sleep + lock (top-right). Zoom is in bottom row.
+                  if (onEpisodes != null)
+                    IconButton(
+                      icon: const Icon(Icons.video_library_outlined,
+                          color: Colors.white),
+                      onPressed: onEpisodes,
+                    ),
                   IconButton(
                     icon: Icon(
                       sleepActive
@@ -1399,12 +1407,6 @@ class _ControlsOverlay extends StatelessWidget {
                         label: zoomLabel,
                         onTap: onZoom,
                       ),
-                      if (onEpisodes != null)
-                        _ControlButton(
-                          icon: Icons.video_library_outlined,
-                          label: 'Episodes',
-                          onTap: onEpisodes!,
-                        ),
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
@@ -1587,6 +1589,156 @@ class _ControlButton extends StatelessWidget {
             const SizedBox(height: 3),
             Text(label, style: AppText.caption.copyWith(color: Colors.white)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// Right-side episodes panel (CloudStream-style): thumbnail + "E{n} · title"
+// cards, the current one highlighted; tap to switch.
+class _EpisodesPanel extends StatelessWidget {
+  const _EpisodesPanel({
+    required this.episodes,
+    required this.currentIndex,
+    required this.cover,
+    required this.coverHeaders,
+    required this.onSelect,
+  });
+
+  final List<Episode> episodes;
+  final int currentIndex;
+  final String? cover;
+  final Map<String, String>? coverHeaders;
+  final void Function(int) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final panelW = (w * 0.42).clamp(300.0, 480.0);
+    return Material(
+      color: Colors.transparent,
+      child: FrostedSurface(
+        blur: true,
+        opacity: 0.88,
+        borderRadius: const BorderRadius.horizontal(left: Radius.circular(20)),
+        child: SizedBox(
+          width: panelW,
+          height: double.infinity,
+          child: SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 6, 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text('Episodes', style: AppText.title)),
+                      IconButton(
+                        icon: const Icon(Icons.close_rounded,
+                            color: AppColors.textSecondary),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    itemCount: episodes.length,
+                    itemBuilder: (c, i) => _card(episodes[i], i),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _card(Episode e, int i) {
+    final cur = i == currentIndex;
+    final n = e.number?.toInt() ?? (i + 1);
+    final title = e.title.trim();
+    final hasTitle = title.isNotEmpty && title != 'Episode $n';
+    final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
+        ? e.thumbnail!
+        : (cover ?? '');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+      child: Material(
+        color: cur ? AppColors.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => onSelect(i),
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 104,
+                    height: 58, // 16:9
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        thumb.isNotEmpty
+                            ? CachedNetworkImage(
+                                imageUrl: thumb,
+                                httpHeaders: coverHeaders,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 240,
+                                placeholder: (c, u) =>
+                                    const ColoredBox(color: AppColors.surface2),
+                                errorWidget: (c, u, e) =>
+                                    const ColoredBox(color: AppColors.surface2),
+                              )
+                            : const ColoredBox(color: AppColors.surface2),
+                        if (cur)
+                          const DecoratedBox(
+                            decoration: BoxDecoration(color: Color(0x55000000)),
+                            child: Center(
+                              child: Icon(Icons.play_arrow_rounded,
+                                  color: Colors.white, size: 26),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'E$n',
+                        style: AppText.body.copyWith(
+                          color: cur ? AppColors.accent : AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (hasTitle)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            title,
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textSecondary),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
