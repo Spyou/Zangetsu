@@ -1465,51 +1465,63 @@ class _ControlsOverlay extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 2),
-                  // Button row.
+                  // Button row: Previous pinned far-left, Next far-right, the
+                  // rest spread across the middle.
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _ControlButton(
-                        icon: Icons.speed,
-                        label: 'Speed',
-                        onTap: onSpeed,
-                      ),
-                      if (c.categories.length > 1 ||
-                          c.audioKinds.length > 1 ||
-                          c.mediaAudioTracks.length > 1)
-                        _ControlButton(
-                          icon: Icons.graphic_eq,
-                          label: 'Audio',
-                          onTap: onAudio,
-                        ),
-                      _ControlButton(
-                        icon: Icons.closed_caption,
-                        label: 'Subtitles',
-                        onTap: onSubtitles,
-                      ),
-                      if (state.qualities.isNotEmpty ||
-                          c.sourceQualities.length > 1)
-                        _ControlButton(
-                          icon: Icons.high_quality,
-                          label: 'Quality',
-                          onTap: onQuality,
-                        ),
-                      _ControlButton(
-                        icon: Icons.video_settings,
-                        label: 'Sources',
-                        onTap: onSources,
-                      ),
-                      _ControlButton(
-                        icon: Icons.aspect_ratio_rounded,
-                        label: zoomLabel,
-                        onTap: onZoom,
-                      ),
+                      // Far-left: Previous (placeholder keeps the middle
+                      // centered when there's no previous episode).
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
                           label: 'Previous',
                           onTap: onPrev!,
+                        )
+                      else
+                        const SizedBox(width: 60),
+                      Expanded(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            _ControlButton(
+                              icon: Icons.speed,
+                              label: 'Speed',
+                              onTap: onSpeed,
+                            ),
+                            if (c.categories.length > 1 ||
+                                c.audioKinds.length > 1 ||
+                                c.mediaAudioTracks.length > 1)
+                              _ControlButton(
+                                icon: Icons.graphic_eq,
+                                label: 'Audio',
+                                onTap: onAudio,
+                              ),
+                            _ControlButton(
+                              icon: Icons.closed_caption,
+                              label: 'Subtitles',
+                              onTap: onSubtitles,
+                            ),
+                            if (state.qualities.isNotEmpty ||
+                                c.sourceQualities.length > 1)
+                              _ControlButton(
+                                icon: Icons.high_quality,
+                                label: 'Quality',
+                                onTap: onQuality,
+                              ),
+                            _ControlButton(
+                              icon: Icons.video_settings,
+                              label: 'Sources',
+                              onTap: onSources,
+                            ),
+                            _ControlButton(
+                              icon: Icons.aspect_ratio_rounded,
+                              label: zoomLabel,
+                              onTap: onZoom,
+                            ),
+                          ],
                         ),
+                      ),
+                      // Far-right: Next.
                       if (hasNext)
                         _ControlButton(
                           icon: Icons.skip_next,
@@ -1518,7 +1530,9 @@ class _ControlsOverlay extends StatelessWidget {
                             c.playNext();
                             onInteract();
                           },
-                        ),
+                        )
+                      else
+                        const SizedBox(width: 60),
                     ],
                   ),
                 ],

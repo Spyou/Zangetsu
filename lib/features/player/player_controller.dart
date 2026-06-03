@@ -265,6 +265,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.tracks.listen((t) {
         emit(state.copyWith(tracks: t));
+        _tryApplySubPref(); // embedded tracks just arrived — restore remembered
       }),
     );
     _subs.add(
@@ -344,20 +345,79 @@ class PlayerCubit extends Cubit<PlayerState> {
   SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
 
   void setAudioTrack(AudioTrack t) => player.setAudioTrack(t);
-  void setSubtitle(SubtitleTrack t) => player.setSubtitleTrack(t);
-  void subtitlesOff() => player.setSubtitleTrack(SubtitleTrack.no());
+
+  void setSubtitle(SubtitleTrack t) {
+    player.setSubtitleTrack(t);
+    _rememberSub(t.language ?? t.title ?? t.id);
+  }
+
+  void subtitlesOff() {
+    player.setSubtitleTrack(SubtitleTrack.no());
+    _rememberSub('off');
+  }
 
   /// External "soft" subtitles advertised by the active source.
   List<Subtitle> get softSubs => state.active?.subtitles ?? const [];
 
   /// Load one of the source's soft-subs by URL.
-  Future<void> setSoftSub(Subtitle s) async => player.setSubtitleTrack(
-    SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
-  );
+  Future<void> setSoftSub(Subtitle s) async {
+    await player.setSubtitleTrack(
+      SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
+    );
+    _rememberSub(s.lang);
+  }
 
   /// Load an external subtitle file from disk (picked via file_picker).
   Future<void> setSubtitleFromFile(String path) async =>
       player.setSubtitleTrack(SubtitleTrack.uri(path));
+
+  void _rememberSub(String pref) {
+    final url = showUrl;
+    if (url != null && url.isNotEmpty && pref.isNotEmpty) {
+      sl<TitlePrefsStore>().setSubtitle(sourceId, url, pref);
+    }
+  }
+
+  bool _subApplied = false; // remembered-subtitle restored for this episode
+
+  /// Restore the title's remembered subtitle once per episode. 'off' turns subs
+  /// off; otherwise match a soft-sub or embedded track by language/label.
+  /// Embedded tracks load after open, so this is retried from the tracks stream
+  /// until a match is found (or there's nothing to restore).
+  void _tryApplySubPref() {
+    if (_subApplied) return;
+    final url = showUrl;
+    if (url == null) return;
+    final pref = sl<TitlePrefsStore>().subtitle(sourceId, url);
+    if (pref == null) {
+      _subApplied = true; // nothing remembered
+      return;
+    }
+    if (pref.toLowerCase() == 'off') {
+      player.setSubtitleTrack(SubtitleTrack.no());
+      _subApplied = true;
+      return;
+    }
+    final p = pref.toLowerCase();
+    for (final s in softSubs) {
+      if (s.lang.toLowerCase() == p || (s.label ?? '').toLowerCase() == p) {
+        player.setSubtitleTrack(
+          SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
+        );
+        _subApplied = true;
+        return;
+      }
+    }
+    for (final t in mediaSubtitleTracks) {
+      if ((t.language ?? '').toLowerCase() == p ||
+          (t.title ?? '').toLowerCase() == p) {
+        player.setSubtitleTrack(t);
+        _subApplied = true;
+        return;
+      }
+    }
+    // No match yet — embedded tracks may still be loading; retry later.
+  }
 
   // TODO(player): defer online subtitle search/download, full subtitle
   // styling, and subtitle delay/sync (CloudStream parity, post-v1).
@@ -370,6 +430,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _recovering = false;
     _skips = const []; // clear previous episode's skip markers
     _skipsForIndex = -1; // refetched when the new duration arrives
+    _subApplied = false; // restore the remembered subtitle for the new episode
     emit(
       state.copyWith(
         currentIndex: index,
@@ -627,6 +688,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
     applySubtitleStyle(); // restore subtitle size/colour/background
+    _tryApplySubPref(); // restore the remembered subtitle (soft subs / off)
   }
 
   /// Try the next source after the current one fails (dead/DRM/unsupported),
