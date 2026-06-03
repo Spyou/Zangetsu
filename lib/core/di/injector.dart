@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
+import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
@@ -67,6 +68,9 @@ Future<void> initDependencies() async {
 
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
+
+  // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
+  sl.registerSingleton<SkipService>(SkipService(dio));
 
   // AuthCubit is global so any widget can gate on login. AppwriteService is
   // already registered above (the library stores depend on it).

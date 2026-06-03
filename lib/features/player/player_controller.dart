@@ -12,6 +12,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/skip_service.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
@@ -280,7 +281,16 @@ class PlayerCubit extends Cubit<PlayerState> {
         }
       }),
     );
-    _subs.add(player.stream.duration.listen((d) => _lastDur = d));
+    _subs.add(
+      player.stream.duration.listen((d) {
+        _lastDur = d;
+        // Fetch accurate OP/ED skip times once the episode length is known.
+        if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
+          _skipsForIndex = state.currentIndex;
+          _fetchSkips(state.currentIndex, d);
+        }
+      }),
+    );
     // Completion is handled by the player screen (it shows the "Up next"
     // countdown card and then advances), so the controller doesn't auto-advance
     // here — avoids double-advancing.
@@ -358,6 +368,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     await _persist();
     _tried.clear();
     _recovering = false;
+    _skips = const []; // clear previous episode's skip markers
+    _skipsForIndex = -1; // refetched when the new duration arrives
     emit(
       state.copyWith(
         currentIndex: index,
@@ -629,6 +641,24 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (state.currentIndex > 0) {
       await openEpisode(state.currentIndex - 1);
     }
+  }
+
+  // ── Accurate skip times (AniSkip, anime only) ─────────────────────────────
+  List<SkipInterval> _skips = const [];
+  int _skipsForIndex = -1;
+  List<SkipInterval> get currentSkips => _skips;
+
+  Future<void> _fetchSkips(int index, Duration dur) async {
+    _skips = const [];
+    final ep = episodes[index];
+    final num = ep.number?.toInt();
+    final title = showTitle;
+    if (num == null || title == null || title.isEmpty) return;
+    try {
+      final s = await sl<SkipService>()
+          .skipTimes(title: title, episode: num, duration: dur);
+      if (index == state.currentIndex) _skips = s; // ignore if switched away
+    } catch (_) {}
   }
 
   // ── Subtitle / audio sync (delay offsets, applied via mpv) ────────────────

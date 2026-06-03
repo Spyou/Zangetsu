@@ -357,6 +357,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls(); // the top-bar zoom label reflects the new mode
   }
 
+  /// The skip button for the current [pos]: an accurate AniSkip "Skip
+  /// opening/ending" when inside a known interval, else the manual "Skip intro"
+  /// early in the episode (only when AniSkip has no opening data).
+  Widget? _skipButtonFor(Duration pos) {
+    for (final iv in _c.currentSkips) {
+      // Hide a beat before the interval ends so it doesn't flicker at the edge.
+      if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
+        return _SkipButton(
+          label: iv.type == 'ed' ? 'Skip ending' : 'Skip opening',
+          onTap: () {
+            _c.seekTo(iv.end);
+            _bumpControls();
+          },
+        );
+      }
+    }
+    final hasOpData = _c.currentSkips.any((i) => i.type == 'op');
+    final s = pos.inSeconds;
+    if (_skipIntroEnabled && !hasOpData && s >= 2 && s <= 120) {
+      return _SkipButton(
+        label: 'Skip intro',
+        onTap: () {
+          _c.seekBy(Duration(seconds: _skipIntroSecs));
+          _bumpControls();
+        },
+      );
+    }
+    return null;
+  }
+
   void _onEpisodeComplete() {
     // Sleep timer set to "end of episode" — stop here instead of advancing.
     if (_sleepEndOfEpisode) {
@@ -1076,23 +1106,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 6c. Skip-intro button — shows early in the episode (independent
-              // of the controls), seeks forward by the configured amount.
-              if (_skipIntroEnabled && !_locked && !_upNext)
+              // 6c. Skip button — accurate AniSkip OP/ED intervals when
+              // available (anime), else the manual "Skip intro" early on.
+              // Independent of the controls (stays visible like Netflix).
+              if (!_locked && !_upNext)
                 StreamBuilder<Duration>(
                   stream: _c.player.stream.position,
                   builder: (context, snap) {
-                    final s = (snap.data ?? Duration.zero).inSeconds;
-                    if (s < 2 || s > 120) return const SizedBox.shrink();
+                    final btn = _skipButtonFor(snap.data ?? Duration.zero);
+                    if (btn == null) return const SizedBox.shrink();
                     return Align(
                       alignment: const Alignment(0.94, 0.66),
-                      child: _SkipButton(
-                        label: 'Skip intro',
-                        onTap: () {
-                          _c.seekBy(Duration(seconds: _skipIntroSecs));
-                          _bumpControls();
-                        },
-                      ),
+                      child: btn,
                     );
                   },
                 ),
