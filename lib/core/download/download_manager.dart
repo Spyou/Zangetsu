@@ -192,6 +192,7 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
     try {
       final sources = await _repo.sources(rec.episodeUrl, sourceId: rec.sourceId);
+      if (_isCanceled(rec.id)) return; // canceled while resolving
       final ranked = _ranked(sources, rec.quality);
       if (ranked.isEmpty) {
         _put(
@@ -228,6 +229,7 @@ class DownloadManager extends ChangeNotifier {
 
   /// Build + enqueue a [DownloadTask] for [rec] from a concrete [source].
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
+    if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
     final task = DownloadTask(
       taskId: rec.id,
       url: source.url,
@@ -272,10 +274,20 @@ class DownloadManager extends ChangeNotifier {
 
   Future<void> cancel(DownloadRecord rec) async {
     _candidates.remove(rec.id); // user stopped it — don't auto-advance mirrors
-    await _dl.cancelTaskWithId(rec.id);
-    _put(rec.copyWith(status: DownloadStatus.canceled));
+    // Mark canceled FIRST so any in-flight resolve/update sees it and bails
+    // (otherwise a resolve finishing after cancel would re-enqueue, leaving the
+    // tile stuck "loading" despite saying canceled).
+    _put(rec.copyWith(status: DownloadStatus.canceled, progress: 0));
     notifyListeners();
+    try {
+      await _dl.cancelTaskWithId(rec.id);
+    } catch (_) {}
+    _tasks.remove(rec.id);
   }
+
+  bool _isCanceled(String id) =>
+      _records[id]?.status == DownloadStatus.canceled ||
+      !_records.containsKey(id); // deleted
 
   /// Cancel (if active) and forget the record + delete the saved file.
   Future<void> delete(DownloadRecord rec) async {
@@ -295,6 +307,9 @@ class DownloadManager extends ChangeNotifier {
     final id = update.task.taskId;
     final rec = _records[id];
     if (rec == null) return;
+    // Ignore late updates for a download the user canceled/deleted, so a
+    // trailing progress/running event can't flip it back to "downloading".
+    if (rec.status == DownloadStatus.canceled) return;
 
     if (update is TaskProgressUpdate) {
       if (update.progress >= 0) {
@@ -424,20 +439,29 @@ class DownloadManager extends ChangeNotifier {
     return m == null ? 0 : int.parse(m.group(1)!);
   }
 
-  /// All non-HLS sources, ordered best-first for the requested quality: an
-  /// exact quality match leads, then the rest by descending height. This is the
-  /// fallback order for try-next.
+  /// All non-HLS sources ordered for the requested quality. 'best' = highest
+  /// first. Otherwise ordered by CLOSENESS to the requested height (so picking
+  /// 360p actually gets the smallest file, not the best one) — ties go to the
+  /// higher quality. The full ordered list doubles as the try-next fallback.
   static List<VideoSource> _ranked(List<VideoSource> sources, String quality) {
-    final direct = sources.where(_notHls).toList()
-      ..sort((a, b) => _height(b).compareTo(_height(a)));
+    final direct = sources.where(_notHls).toList();
     if (direct.isEmpty) return const [];
-    if (quality == 'best') return direct;
+    if (quality == 'best') {
+      direct.sort((a, b) => _height(b).compareTo(_height(a)));
+      return direct;
+    }
     final want =
         int.tryParse(RegExp(r'(\d{3,4})').firstMatch(quality)?.group(1) ?? '');
-    if (want == null) return direct;
-    // Move exact-quality matches to the front, keep the rest as fallback.
-    final match = direct.where((s) => _height(s) == want).toList();
-    final rest = direct.where((s) => _height(s) != want).toList();
-    return [...match, ...rest];
+    if (want == null) {
+      direct.sort((a, b) => _height(b).compareTo(_height(a)));
+      return direct;
+    }
+    direct.sort((a, b) {
+      final da = (_height(a) - want).abs();
+      final db = (_height(b) - want).abs();
+      if (da != db) return da.compareTo(db); // closest to requested first
+      return _height(b).compareTo(_height(a)); // tie → higher quality
+    });
+    return direct;
   }
 }

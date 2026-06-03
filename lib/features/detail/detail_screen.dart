@@ -316,6 +316,8 @@ class _DetailViewState extends State<_DetailView>
         title: detail.title,
         episodesBySeason: episodesBySeason,
         initialSeason: initialSeason,
+        resolve: (ep) =>
+            sl<SourceRepository>().sources(ep.url, sourceId: widget.item.sourceId),
       ),
     );
     if (res == null || !mounted) return;
@@ -2416,30 +2418,37 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   }
 }
 
-// Download sheet — season chips (multi-season) + quality chips + a grid of
-// TAPPABLE episode tiles you multi-select (Select all / Clear). Returns the
-// chosen (quality, episodes) via pop.
+// Download sheet — season chips (multi-season) + a real SOURCE/quality list
+// (resolved from the season's first episode, like the player) + a grid of
+// TAPPABLE episode tiles you multi-select. Returns the chosen (quality,
+// episodes) via pop; the quality drives per-episode source selection.
 class _DownloadSheet extends StatefulWidget {
   const _DownloadSheet({
     required this.title,
     required this.episodesBySeason,
     required this.initialSeason,
+    required this.resolve,
   });
 
   final String title;
   final Map<int, List<Episode>> episodesBySeason;
   final int initialSeason;
+  final Future<List<VideoSource>> Function(Episode) resolve;
 
   @override
   State<_DownloadSheet> createState() => _DownloadSheetState();
 }
 
 class _DownloadSheetState extends State<_DownloadSheet> {
-  static const List<String> _qualities = ['1080p', '720p', '480p', 'best'];
-  String _quality = '1080p';
+  String _quality = 'best';
   late int _season;
   final Set<String> _selectedIds = {};
   late final Map<String, Episode> _byId;
+
+  // Real, resolved download sources for the current season's first episode.
+  List<VideoSource>? _sources; // null = loading, [] = none found
+  bool _loadingSources = true;
+  int _selectedSourceIdx = 0;
 
   @override
   void initState() {
@@ -2449,6 +2458,53 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       for (final eps in widget.episodesBySeason.values)
         for (final e in eps) e.id: e,
     };
+    _resolveSources();
+  }
+
+  bool _isHls(VideoSource s) =>
+      s.container == SourceContainer.hls ||
+      (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
+
+  int _h(VideoSource s) {
+    final m = RegExp(r'(\d{3,4})').firstMatch(s.quality ?? '');
+    return m == null ? 0 : int.parse(m.group(1)!);
+  }
+
+  /// Resolve the first episode of the current season to show the real
+  /// server/quality options (the batch download applies the chosen quality to
+  /// every selected episode).
+  Future<void> _resolveSources() async {
+    setState(() {
+      _loadingSources = true;
+      _sources = null;
+    });
+    final eps = _seasonEps;
+    if (eps.isEmpty) {
+      setState(() {
+        _loadingSources = false;
+        _sources = [];
+      });
+      return;
+    }
+    try {
+      final all = await widget.resolve(eps.first);
+      if (!mounted) return;
+      final direct = all.where((s) => !_isHls(s)).toList()
+        ..sort((a, b) => _h(b).compareTo(_h(a)));
+      setState(() {
+        _sources = direct;
+        _selectedSourceIdx = 0;
+        _quality = direct.isNotEmpty ? (direct.first.quality ?? 'best') : 'best';
+        _loadingSources = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingSources = false;
+          _sources = [];
+        });
+      }
+    }
   }
 
   List<int> get _seasons => widget.episodesBySeason.keys.toList()..sort();
@@ -2511,30 +2567,19 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 runSpacing: 8,
                 children: [
                   for (final s in _seasons)
-                    _chip(
-                      'S$s',
-                      s == _season,
-                      () => setState(() => _season = s),
-                    ),
+                    _chip('S$s', s == _season, () {
+                      setState(() => _season = s);
+                      _resolveSources(); // sources differ per season
+                    }),
                 ],
               ),
             ],
 
-            // ── Quality chips ──────────────────────────────────────────────
+            // ── Source / quality (resolved from the first episode) ─────────
             const SizedBox(height: 18),
-            Text('Quality', style: AppText.overline),
+            Text('Source', style: AppText.overline),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [
-                for (final q in _qualities)
-                  _chip(
-                    q == 'best' ? 'Best' : q,
-                    q == _quality,
-                    () => setState(() => _quality = q),
-                  ),
-              ],
-            ),
+            _sourceSection(),
 
             // ── Episode multi-select ───────────────────────────────────────
             const SizedBox(height: 18),
@@ -2595,6 +2640,94 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceSection() {
+    if (_loadingSources) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.accent,
+            ),
+          ),
+        ),
+      );
+    }
+    final srcs = _sources ?? const <VideoSource>[];
+    if (srcs.isEmpty) {
+      // Couldn't resolve here (e.g. HLS-only) — each episode still tries at
+      // download time; fall back to best available.
+      return Text(
+        'Auto · best available',
+        style: AppText.caption.copyWith(color: AppColors.textSecondary),
+      );
+    }
+    final maxH = MediaQuery.of(context).size.height * 0.22;
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: maxH),
+      child: SingleChildScrollView(
+        child: Column(
+          children: [
+            for (var i = 0; i < srcs.length; i++) _sourceRow(srcs[i], i),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sourceRow(VideoSource s, int i) {
+    final sel = i == _selectedSourceIdx;
+    final label = (s.label != null && s.label!.trim().isNotEmpty)
+        ? s.label!.trim()
+        : (s.quality ?? 'Source');
+    return GestureDetector(
+      onTap: () => setState(() {
+        _selectedSourceIdx = i;
+        _quality = s.quality ?? 'best';
+      }),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: sel ? AppColors.accentSoft : AppColors.surface2,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: sel ? AppColors.accent : AppColors.hairline,
+            width: sel ? 1 : 0.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              sel ? Icons.radio_button_checked : Icons.radio_button_off,
+              color: sel ? AppColors.accent : AppColors.textTertiary,
+              size: 18,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: AppText.caption.copyWith(color: AppColors.textPrimary),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (s.quality != null && s.quality!.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Text(
+                s.quality!,
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+            ],
           ],
         ),
       ),
