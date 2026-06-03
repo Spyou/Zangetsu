@@ -10,6 +10,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/developer_card.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
@@ -753,6 +754,16 @@ class AboutSettingsScreen extends StatelessWidget {
             style: AppText.body,
             textAlign: TextAlign.center,
           ),
+          const SizedBox(height: 28),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'DEVELOPER',
+              style: AppText.overline.copyWith(color: AppColors.textTertiary),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const DeveloperCard(),
         ],
       ),
     );
