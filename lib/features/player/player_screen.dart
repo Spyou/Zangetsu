@@ -96,6 +96,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _hudIsBrightness = false;
   Timer? _hudTimer;
 
+  // ── Lock / zoom / drag-seek / up-next ─────────────────────────────────────
+  bool _locked = false; // controls + gestures disabled
+  // Aspect cycle: Fit (contain) → Fill (cover) → Stretch (fill).
+  static const List<(BoxFit, String)> _fits = [
+    (BoxFit.contain, 'Fit'),
+    (BoxFit.cover, 'Fill'),
+    (BoxFit.fill, 'Stretch'),
+  ];
+  int _fitIndex = 0;
+  // Horizontal drag-to-seek.
+  bool _hSeeking = false;
+  Duration _hSeekStart = Duration.zero;
+  Duration _hSeekTarget = Duration.zero;
+  // "Up next" auto-advance card.
+  Timer? _upNextTimer;
+  int _upNextLeft = 0;
+  bool _upNext = false;
+
   @override
   void initState() {
     super.initState();
@@ -120,13 +138,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       availableCategories: widget.availableCategories,
     )..init(widget.startIndex);
     _scheduleHide();
+    // Drive the "Up next" card on episode completion (the controller no longer
+    // auto-advances; we show a 5s countdown card instead).
+    _completedSub = _c.player.stream.completed.listen((done) {
+      if (done) _onEpisodeComplete();
+    });
   }
+
+  StreamSubscription<bool>? _completedSub;
 
   @override
   void dispose() {
     _hideTimer?.cancel();
     _seekLabelTimer?.cancel();
     _hudTimer?.cancel();
+    _upNextTimer?.cancel();
+    _completedSub?.cancel();
     // Hand brightness back to the system when leaving the player.
     if (_gesturesEnabled) {
       ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
@@ -231,6 +258,172 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hudTimer = Timer(const Duration(milliseconds: 500), () {
       if (mounted) setState(() => _hudVisible = false);
     });
+  }
+
+  // Horizontal swipe across the surface scrubs the position; a time bubble shows
+  // the target while dragging, and the seek commits on release.
+  void _onHDragStart(DragStartDetails d) {
+    if (_duration <= Duration.zero) return; // can't scrub without a duration
+    _hSeekStart = _c.player.state.position;
+    _hSeekTarget = _hSeekStart;
+    setState(() => _hSeeking = true);
+  }
+
+  void _onHDragUpdate(DragUpdateDetails d) {
+    if (!_hSeeking) return;
+    final w = MediaQuery.of(context).size.width;
+    // Full screen width ≈ the whole duration; tune to ~90s per full swipe so
+    // long videos stay controllable.
+    final perPx = (_duration.inMilliseconds / w).clamp(0, 90000 / w * 4);
+    final deltaMs = (d.primaryDelta! * perPx).round();
+    var t = _hSeekTarget.inMilliseconds + deltaMs;
+    t = t.clamp(0, _duration.inMilliseconds);
+    setState(() => _hSeekTarget = Duration(milliseconds: t));
+  }
+
+  void _onHDragEnd(DragEndDetails d) {
+    if (!_hSeeking) return;
+    _c.seekTo(_hSeekTarget);
+    setState(() => _hSeeking = false);
+    _bumpControls();
+  }
+
+  // ── Lock / zoom / up-next ─────────────────────────────────────────────────
+
+  void _toggleLock() {
+    setState(() {
+      _locked = !_locked;
+      if (_locked) {
+        _controlsVisible = false;
+      } else {
+        _controlsVisible = true;
+        _scheduleHide();
+      }
+    });
+  }
+
+  void _cycleFit() {
+    setState(() => _fitIndex = (_fitIndex + 1) % _fits.length);
+    _bumpControls(); // the top-bar zoom label reflects the new mode
+  }
+
+  void _onEpisodeComplete() {
+    final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
+    if (!hasNext) return;
+    if (!sl<PlaybackPrefs>().autoplayNext) return;
+    _upNextTimer?.cancel();
+    setState(() {
+      _upNext = true;
+      _upNextLeft = 5;
+      _controlsVisible = false;
+    });
+    _upNextTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      setState(() => _upNextLeft -= 1);
+      if (_upNextLeft <= 0) {
+        t.cancel();
+        _playUpNext();
+      }
+    });
+  }
+
+  void _playUpNext() {
+    _upNextTimer?.cancel();
+    setState(() => _upNext = false);
+    _c.playNext();
+  }
+
+  void _dismissUpNext() {
+    _upNextTimer?.cancel();
+    setState(() => _upNext = false);
+  }
+
+  static String _fmtDur(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
+  }
+
+  Widget _buildUpNextCard() {
+    final nextIdx = _c.state.currentIndex + 1;
+    final next = nextIdx < _c.episodes.length ? _c.episodes[nextIdx] : null;
+    final epNum = next?.number?.toInt() ?? (nextIdx + 1);
+    final name = next?.title.trim() ?? '';
+    final hasName = name.isNotEmpty && name.toLowerCase() != 'episode $epNum';
+    return Align(
+      alignment: const Alignment(0.95, 0.7),
+      child: Container(
+        width: 260,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.hairline, width: 0.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Up next in $_upNextLeft',
+              style: AppText.caption.copyWith(color: Colors.white70),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              hasName ? 'E$epNum · $name' : 'Episode $epNum',
+              style: AppText.headline.copyWith(color: Colors.white),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _playUpNext,
+                    child: Container(
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: AppColors.accent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_arrow_rounded,
+                              color: Colors.white, size: 20),
+                          SizedBox(width: 4),
+                          Text('Play now',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                GestureDetector(
+                  onTap: _dismissUpNext,
+                  child: Container(
+                    height: 38,
+                    width: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2,
+                      borderRadius: BorderRadius.circular(9),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.close_rounded,
+                        color: Colors.white, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // ── Sheets ──────────────────────────────────────────────────────────────
@@ -515,27 +708,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 child: Video(
                   controller: _c.videoController,
                   controls: NoVideoControls,
+                  fit: _fits[_fitIndex].$1,
                 ),
               ),
 
-              // 2. Gesture surface: tap toggles, double-tap seeks, long-press 2x.
+              // 2. Gesture surface: tap toggles, double-tap seeks, long-press 2x,
+              // vertical = brightness/volume, horizontal = scrub. All disabled
+              // while locked (only the tap-to-reveal-unlock stays).
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _toggleControls,
-                  onDoubleTapDown: _onDoubleTapDown,
-                  onDoubleTap: () {}, // arm double-tap recognizer
-                  onLongPressStart: (_) {
-                    _c.setRate(2.0);
-                    setState(() => _holding = true);
-                  },
-                  onLongPressEnd: (_) {
-                    _c.setRate(1.0);
-                    setState(() => _holding = false);
-                  },
-                  onVerticalDragStart: _onVDragStart,
-                  onVerticalDragUpdate: _onVDragUpdate,
-                  onVerticalDragEnd: _onVDragEnd,
+                  onDoubleTapDown: _locked ? null : _onDoubleTapDown,
+                  onDoubleTap: _locked ? null : () {},
+                  onLongPressStart: _locked
+                      ? null
+                      : (_) {
+                          _c.setRate(2.0);
+                          setState(() => _holding = true);
+                        },
+                  onLongPressEnd: _locked
+                      ? null
+                      : (_) {
+                          _c.setRate(1.0);
+                          setState(() => _holding = false);
+                        },
+                  onVerticalDragStart: _locked ? null : _onVDragStart,
+                  onVerticalDragUpdate: _locked ? null : _onVDragUpdate,
+                  onVerticalDragEnd: _locked ? null : _onVDragEnd,
+                  onHorizontalDragStart: _locked ? null : _onHDragStart,
+                  onHorizontalDragUpdate: _locked ? null : _onHDragUpdate,
+                  onHorizontalDragEnd: _locked ? null : _onHDragEnd,
                 ),
               ),
 
@@ -627,32 +830,86 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 6. Controls overlay.
-              AnimatedOpacity(
-                opacity: _controlsVisible ? 1 : 0,
-                duration: const Duration(milliseconds: 220),
-                child: IgnorePointer(
-                  ignoring: !_controlsVisible,
-                  child: _ControlsOverlay(
-                    controller: _c,
-                    state: state,
-                    showTitle: widget.showTitle,
-                    duration: _duration,
-                    onDurationChanged: (d) {
-                      if (mounted && d != _duration) {
-                        setState(() => _duration = d);
-                      }
-                    },
-                    onInteract: _bumpControls,
-                    onBack: () => Navigator.of(context).maybePop(),
-                    onSpeed: _openSpeedSheet,
-                    onAudio: _openAudioSheet,
-                    onSubtitles: _openSubtitlesSheet,
-                    onQuality: _openQualitySheet,
-                    onSources: _openSourceSheet,
+              // 4c. Horizontal drag-to-seek time bubble.
+              if (_hSeeking)
+                Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.62),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        '${_fmtDur(_hSeekTarget)} / ${_fmtDur(_duration)}',
+                        style: AppText.headline.copyWith(color: Colors.white),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+
+              // 6. Controls overlay — or, when locked, just an unlock button.
+              if (!_locked)
+                AnimatedOpacity(
+                  opacity: _controlsVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 220),
+                  child: IgnorePointer(
+                    ignoring: !_controlsVisible,
+                    child: _ControlsOverlay(
+                      controller: _c,
+                      state: state,
+                      showTitle: widget.showTitle,
+                      duration: _duration,
+                      zoomLabel: _fits[_fitIndex].$2,
+                      onDurationChanged: (d) {
+                        if (mounted && d != _duration) {
+                          setState(() => _duration = d);
+                        }
+                      },
+                      onInteract: _bumpControls,
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onSpeed: _openSpeedSheet,
+                      onAudio: _openAudioSheet,
+                      onSubtitles: _openSubtitlesSheet,
+                      onQuality: _openQualitySheet,
+                      onSources: _openSourceSheet,
+                      onLock: _toggleLock,
+                      onZoom: _cycleFit,
+                      onPrev: _c.state.currentIndex > 0
+                          ? () {
+                              _c.playPrevious();
+                              _bumpControls();
+                            }
+                          : null,
+                    ),
+                  ),
+                )
+              else
+                AnimatedOpacity(
+                  opacity: _controlsVisible ? 1 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: IgnorePointer(
+                    ignoring: !_controlsVisible,
+                    child: SafeArea(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 12),
+                          child: _RoundIconButton(
+                            icon: Icons.lock_outline_rounded,
+                            onTap: _toggleLock,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+              // 7. Up-next card (auto-advance countdown).
+              if (_upNext) _buildUpNextCard(),
             ],
           );
         },
@@ -754,6 +1011,10 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onSubtitles,
     required this.onQuality,
     required this.onSources,
+    required this.onLock,
+    required this.onZoom,
+    required this.zoomLabel,
+    required this.onPrev,
   });
 
   final PlayerCubit controller;
@@ -768,6 +1029,10 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onSubtitles;
   final VoidCallback onQuality;
   final VoidCallback onSources;
+  final VoidCallback onLock;
+  final VoidCallback onZoom;
+  final String zoomLabel;
+  final VoidCallback? onPrev; // null = no previous episode
 
   @override
   Widget build(BuildContext context) {
@@ -878,6 +1143,23 @@ class _ControlsOverlay extends StatelessWidget {
                           ),
                       ],
                     ),
+                  ),
+                  // Aspect/zoom toggle + lock.
+                  TextButton.icon(
+                    onPressed: onZoom,
+                    icon: const Icon(Icons.aspect_ratio_rounded,
+                        color: Colors.white, size: 20),
+                    label: Text(zoomLabel,
+                        style: AppText.caption.copyWith(color: Colors.white)),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.lock_open_rounded,
+                        color: Colors.white),
+                    onPressed: onLock,
                   ),
                 ],
               ),
@@ -993,6 +1275,12 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Sources',
                         onTap: onSources,
                       ),
+                      if (onPrev != null)
+                        _ControlButton(
+                          icon: Icons.skip_previous,
+                          label: 'Previous',
+                          onTap: onPrev!,
+                        ),
                       if (hasNext)
                         _ControlButton(
                           icon: Icons.skip_next,
@@ -1093,6 +1381,29 @@ class _SeekRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small bits.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Small circular icon button (used for the unlock control while locked).
+class _RoundIconButton extends StatelessWidget {
+  const _RoundIconButton({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.5),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(icon, color: Colors.white, size: 24),
+        ),
+      ),
+    );
+  }
+}
 
 class _ControlButton extends StatelessWidget {
   const _ControlButton({

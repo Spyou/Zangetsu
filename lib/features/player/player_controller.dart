@@ -256,11 +256,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       }),
     );
     _subs.add(player.stream.duration.listen((d) => _lastDur = d));
-    _subs.add(
-      player.stream.completed.listen((done) {
-        if (done && sl<PlaybackPrefs>().autoplayNext) playNext();
-      }),
-    );
+    // Completion is handled by the player screen (it shows the "Up next"
+    // countdown card and then advances), so the controller doesn't auto-advance
+    // here — avoids double-advancing.
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
     openEpisode(index);
   }
@@ -576,6 +574,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> playNext() async {
     if (state.currentIndex + 1 < episodes.length) {
       await openEpisode(state.currentIndex + 1);
+    }
+  }
+
+  Future<void> playPrevious() async {
+    if (state.currentIndex > 0) {
+      await openEpisode(state.currentIndex - 1);
     }
   }
 
