@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -17,6 +18,10 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val channelName = "zangetsu/seek_preview"
     private val executor = Executors.newSingleThreadExecutor()
+
+    companion object {
+        private const val TAG = "SeekPreview"
+    }
 
     // Cached retriever so rapid scrubbing on one title doesn't re-open the
     // source for every frame (setDataSource is expensive, esp. over network).
@@ -61,13 +66,16 @@ class MainActivity : FlutterActivity() {
         releaseRetriever()
         val r = MediaMetadataRetriever()
         try {
+            Log.d(TAG, "setDataSource url=$url headers=${headers?.keys}")
             when {
                 url.startsWith("http") -> r.setDataSource(url, headers ?: emptyMap())
                 url.startsWith("content://") -> r.setDataSource(this, Uri.parse(url))
                 url.startsWith("file://") -> r.setDataSource(url.removePrefix("file://"))
                 else -> r.setDataSource(url)
             }
+            Log.d(TAG, "setDataSource OK")
         } catch (e: Exception) {
+            Log.w(TAG, "setDataSource FAILED: ${e.message}")
             try { r.release() } catch (_: Exception) {}
             return null
         }
@@ -97,12 +105,18 @@ class MainActivity : FlutterActivity() {
                     r.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                         ?.let { scaleDown(it, maxWidth) }
                 }
-            ) ?: return null
+            ) ?: run {
+                Log.w(TAG, "frame NULL (decoder returned no bitmap) pos=${positionMs}ms")
+                return null
+            }
             val out = ByteArrayOutputStream()
             bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
             bmp.recycle()
-            out.toByteArray()
+            val bytes = out.toByteArray()
+            Log.d(TAG, "frame OK pos=${positionMs}ms bytes=${bytes.size}")
+            bytes
         } catch (e: Exception) {
+            Log.w(TAG, "frame FAILED pos=${positionMs}ms: ${e.message}")
             null
         }
     }

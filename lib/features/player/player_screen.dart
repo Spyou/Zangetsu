@@ -1504,10 +1504,28 @@ class _SeekRowState extends State<_SeekRow> {
   // (a negative countdown, e.g. "−1:00"), CloudStream-style.
   bool _showRemaining = false;
 
-  // Netflix-style scrub preview: a hidden second player renders the frame at
-  // the drag position. Created lazily on first drag, freed a few seconds after.
+  // Netflix-style scrub preview: a hidden second player/decoder renders the
+  // frame at the drag position. Kept alive for the whole session so only the
+  // first scrub pays the open cost; online (mpv) re-opening every drag is what
+  // made the box take ages to appear.
   SeekPreview? _preview;
-  Timer? _idleTimer;
+  bool _prewarmed = false;
+
+  // Open the online (mpv) preview engine ahead of the first drag so the stream
+  // is already loaded by the time the user scrubs — avoids the long "hold and
+  // wait" for the box to appear. Offline (MMR) is instant, so no pre-warm.
+  void _maybePrewarm() {
+    if (_prewarmed) return;
+    final c = widget.controller;
+    if (c.previewUri == null || c.isLocalMedia) return;
+    if (!sl<PlaybackPrefs>().seekPreviewOnline) return;
+    _prewarmed = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensurePreview();
+      _preview?.request(c.player.state.position);
+    });
+  }
 
   bool get _previewEnabled {
     final c = widget.controller;
@@ -1517,26 +1535,30 @@ class _SeekRowState extends State<_SeekRow> {
   }
 
   void _ensurePreview() {
-    _idleTimer?.cancel();
-    if (!_previewEnabled) return;
     final c = widget.controller;
-    _preview ??= SeekPreview(uri: c.previewUri!, headers: c.previewHeaders);
+    if (!_previewEnabled) {
+      _preview?.dispose();
+      _preview = null;
+      return;
+    }
+    // Recreate if the active source changed (quality/source switch) so we don't
+    // preview a stale URL.
+    if (_preview != null && _preview!.uri != c.previewUri) {
+      _preview!.dispose();
+      _preview = null;
+    }
+    _preview ??= SeekPreview(
+      uri: c.previewUri!,
+      headers: c.previewHeaders,
+      local: c.isLocalMedia,
+    );
   }
 
   void _requestPreview(double ms) =>
       _preview?.request(Duration(milliseconds: ms.round()));
 
-  void _schedulePreviewDispose() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer(const Duration(seconds: 5), () {
-      _preview?.dispose();
-      _preview = null;
-    });
-  }
-
   @override
   void dispose() {
-    _idleTimer?.cancel();
     _preview?.dispose();
     super.dispose();
   }
@@ -1550,6 +1572,7 @@ class _SeekRowState extends State<_SeekRow> {
 
   @override
   Widget build(BuildContext context) {
+    _maybePrewarm();
     final totalMs = widget.duration.inMilliseconds;
     final max = totalMs > 0 ? totalMs.toDouble() : 1.0;
     return StreamBuilder<Duration>(
@@ -1619,12 +1642,35 @@ class _SeekRowState extends State<_SeekRow> {
                                     widget.controller.seekTo(
                                         Duration(milliseconds: v.round()));
                                     setState(() => _dragMs = null);
-                                    _schedulePreviewDispose();
                                     widget.onInteract();
                                   },
                           ),
                         ),
                       ),
+                      // Off-screen 1px Video that drives mpv frame rendering
+                      // for online previews — mpv only produces screenshot-able
+                      // frames when its texture is actually painted. Kept
+                      // mounted whenever the preview player exists (not only
+                      // mid-drag) so it stays warm between scrubs.
+                      if (_preview != null && _preview!.usesVideo)
+                        Positioned(
+                          left: 0,
+                          top: 0,
+                          width: 1,
+                          height: 1,
+                          child: IgnorePointer(
+                            child: ValueListenableBuilder<VideoController?>(
+                              valueListenable: _preview!.videoController,
+                              builder: (context, vc, _) => vc == null
+                                  ? const SizedBox.shrink()
+                                  : Video(
+                                      controller: vc,
+                                      controls: NoVideoControls,
+                                      fill: Colors.transparent,
+                                    ),
+                            ),
+                          ),
+                        ),
                       if (_dragMs != null)
                         Positioned(
                           left: left,
@@ -1663,10 +1709,10 @@ class _SeekRowState extends State<_SeekRow> {
   }
 }
 
-/// Floating thumbnail shown above the seek-bar thumb while scrubbing. Renders
-/// the live preview frame (or a spinner until the first one lands) with the
-/// target time beneath it. When [preview] is null (off) or the source can't be
-/// previewed, it collapses to a plain time bubble.
+/// Floating thumbnail shown above the seek-bar thumb while scrubbing. Shows the
+/// preview frame once one is available (never a loading spinner) with the
+/// target time beneath it. Until a frame lands — or on sources that can't be
+/// previewed — it's just a plain time bubble.
 class _PreviewBubble extends StatelessWidget {
   const _PreviewBubble({required this.preview, required this.time});
 
@@ -1680,10 +1726,10 @@ class _PreviewBubble extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (p != null)
-          ValueListenableBuilder<bool>(
-            valueListenable: p.supported,
-            builder: (context, supported, _) {
-              if (!supported) return const SizedBox.shrink();
+          ValueListenableBuilder<Uint8List?>(
+            valueListenable: p.frame,
+            builder: (context, bytes, _) {
+              if (bytes == null) return const SizedBox.shrink();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: ClipRRect(
@@ -1692,27 +1738,10 @@ class _PreviewBubble extends StatelessWidget {
                     width: 132,
                     height: 74,
                     color: Colors.black,
-                    child: ValueListenableBuilder<Uint8List?>(
-                      valueListenable: p.frame,
-                      builder: (context, bytes, _) {
-                        if (bytes == null) {
-                          return const Center(
-                            child: SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white54,
-                              ),
-                            ),
-                          );
-                        }
-                        return Image.memory(
-                          bytes,
-                          fit: BoxFit.cover,
-                          gaplessPlayback: true,
-                        );
-                      },
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
                     ),
                   ),
                 ),
