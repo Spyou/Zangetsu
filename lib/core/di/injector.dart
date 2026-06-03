@@ -141,7 +141,7 @@ Future<void> initDependencies() async {
   // records and starts listening for task progress/status updates.
   await DownloadManager.init();
   sl.registerSingleton<DownloadManager>(
-    DownloadManager(sl<SourceRepository>())..setup(),
+    DownloadManager(sl<SourceRepository>(), sl<Dio>())..setup(),
   );
 
   // Home data cubit as a singleton so the splash can warm it (preload the

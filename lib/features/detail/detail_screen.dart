@@ -2405,15 +2405,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     final label = _sourceName(s, i);
     final sub = [
       if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
-      hls ? 'HLS · not available offline yet' : 'Direct',
+      hls ? 'HLS' : 'Direct',
     ].join(' · ');
     return ListTile(
-      enabled: !hls,
       contentPadding: const EdgeInsets.only(right: 8),
-      leading: Icon(
-        hls ? Icons.cloud_off_outlined : Icons.download_rounded,
-        color: hls ? AppColors.textTertiary : AppColors.accent,
-      ),
+      leading: const Icon(Icons.download_rounded, color: AppColors.accent),
       title: Text(
         label,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
@@ -2421,9 +2417,8 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(sub, style: AppText.caption),
-      onTap: hls
-          ? null
-          : () => Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s])),
+      onTap: () =>
+          Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s])),
     );
   }
 }
@@ -2477,10 +2472,6 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     _resolveSources();
   }
 
-  bool _isHls(VideoSource s) =>
-      s.container == SourceContainer.hls ||
-      (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
-
   int _h(VideoSource s) {
     final m = RegExp(r'(\d{3,4})').firstMatch(s.quality ?? '');
     return m == null ? 0 : int.parse(m.group(1)!);
@@ -2505,12 +2496,12 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     try {
       final all = await widget.resolve(eps.first);
       if (!mounted) return;
-      final direct = all.where((s) => !_isHls(s)).toList()
-        ..sort((a, b) => _h(b).compareTo(_h(a)));
+      // HLS + direct are both downloadable now; show them all, best first.
+      final ranked = all.toList()..sort((a, b) => _h(b).compareTo(_h(a)));
       setState(() {
-        _sources = direct;
+        _sources = ranked;
         _selectedSourceIdx = 0;
-        _quality = direct.isNotEmpty ? (direct.first.quality ?? 'best') : 'best';
+        _quality = ranked.isNotEmpty ? (ranked.first.quality ?? 'best') : 'best';
         _loadingSources = false;
       });
     } catch (_) {

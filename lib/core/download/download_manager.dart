@@ -2,26 +2,29 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
 import 'download_record.dart';
+import 'hls_downloader.dart';
 
-/// Owns offline downloads: resolves a direct-file source per episode, enqueues
-/// a background download, tracks progress, and moves the finished file into the
-/// public Downloads folder. Records persist in the Hive `downloads` box so the
-/// library survives restarts. A [ChangeNotifier] so the UI can rebuild live.
-///
-/// Phase 1 handles direct-file (MP4/MKV) sources only; HLS-only episodes are
-/// marked [DownloadStatus.unsupported]. See docs/downloads-feature.md.
+/// Owns offline downloads. Direct-file (MP4/MKV) sources go through
+/// background_downloader (true background); HLS (m3u8) sources go through the
+/// in-app [HlsDownloader] (segment fetch + decrypt + concat, foreground). Both
+/// finish in the public Downloads folder. Records persist in the Hive
+/// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
+/// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo);
+  DownloadManager(this._repo, Dio dio) : _hls = HlsDownloader(dio);
 
   final SourceRepository _repo;
+  final HlsDownloader _hls;
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';
@@ -176,11 +179,11 @@ class DownloadManager extends ChangeNotifier {
     );
     _put(rec);
     notifyListeners();
-    // The user's chosen source first, then any other non-HLS mirrors as
-    // fallback (so a dead mirror auto-advances instead of just failing).
+    // The user's chosen source first, then the other mirrors as fallback (so a
+    // dead mirror auto-advances instead of just failing).
     _candidates[rec.id] = [
       source,
-      ...fallbacks.where((s) => _notHls(s) && s.url != source.url),
+      ...fallbacks.where((s) => s.url != source.url),
     ];
     await _enqueueTaskFor(rec, source);
   }
@@ -227,9 +230,14 @@ class DownloadManager extends ChangeNotifier {
     return true;
   }
 
-  /// Build + enqueue a [DownloadTask] for [rec] from a concrete [source].
+  /// Start [rec] from a concrete [source] — HLS via the in-app segment
+  /// downloader, everything else via background_downloader.
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
     if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
+    if (_isHls(source)) {
+      await _startHlsDownload(rec, source);
+      return;
+    }
     final task = DownloadTask(
       taskId: rec.id,
       url: source.url,
@@ -245,10 +253,90 @@ class DownloadManager extends ChangeNotifier {
     _tasks[rec.id] = task;
     final ok = await _dl.enqueue(task);
     if (!ok) {
+      if (await _tryNext(rec)) return;
       _put(
         rec.copyWith(
           status: DownloadStatus.failed,
           error: () => "Couldn't start download",
+        ),
+      );
+      notifyListeners();
+    }
+  }
+
+  /// Download an HLS source in-app: fetch+decrypt+concat segments to a file,
+  /// then move it into the public Downloads folder. Progress is throttled to
+  /// whole-percent steps so the UI isn't flooded per segment.
+  Future<void> _startHlsDownload(DownloadRecord rec, VideoSource source) async {
+    _put(rec.copyWith(status: DownloadStatus.downloading, progress: 0));
+    notifyListeners();
+    var lastPct = -1;
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final dir = Directory(
+        '${docs.path}/$_sharedDir/${_safe(rec.showTitle)}',
+      );
+      await dir.create(recursive: true);
+      final filename =
+          '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
+          '_${_safe(rec.quality)}.mp4';
+      final tmpPath = '${dir.path}/$filename';
+
+      final ok = await _hls.download(
+        url: source.url,
+        headers: source.headers ?? const {},
+        outputPath: tmpPath,
+        preferredQuality: rec.quality,
+        onProgress: (p) {
+          final pct = (p * 100).floor();
+          if (pct == lastPct) return; // throttle to 1% steps
+          lastPct = pct;
+          final cur = _records[rec.id];
+          if (cur == null || cur.status == DownloadStatus.canceled) return;
+          _put(cur.copyWith(status: DownloadStatus.downloading, progress: p));
+          notifyListeners();
+        },
+        canceled: () => _isCanceled(rec.id),
+      );
+
+      if (_isCanceled(rec.id)) return;
+      if (!ok) {
+        if (await _tryNext(rec)) return;
+        _put(
+          rec.copyWith(
+            status: DownloadStatus.failed,
+            error: () => 'HLS download failed — try another server',
+          ),
+        );
+        notifyListeners();
+        return;
+      }
+
+      String? finalPath;
+      try {
+        finalPath = await _dl.moveFileToSharedStorage(
+          tmpPath,
+          SharedStorage.downloads,
+          directory: '$_sharedDir/${_safe(rec.showTitle)}',
+        );
+      } catch (_) {}
+      finalPath ??= tmpPath;
+      _candidates.remove(rec.id);
+      _put(
+        rec.copyWith(
+          status: DownloadStatus.done,
+          progress: 1,
+          filePath: () => finalPath,
+        ),
+      );
+      notifyListeners();
+    } catch (_) {
+      if (_isCanceled(rec.id)) return;
+      if (await _tryNext(rec)) return;
+      _put(
+        rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => 'HLS download failed',
         ),
       );
       notifyListeners();
@@ -426,12 +514,11 @@ class DownloadManager extends ChangeNotifier {
     return '.mp4';
   }
 
-  /// Phase 1 downloads anything that isn't HLS (the player streams these same
-  /// sources, so they're real files). HLS lands in phase 2.
-  static bool _notHls(VideoSource s) {
-    if (s.container == SourceContainer.hls) return false;
-    final path = (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase();
-    return !path.endsWith('.m3u8');
+  /// HLS sources route through the in-app segment downloader; everything else
+  /// through background_downloader.
+  static bool _isHls(VideoSource s) {
+    if (s.container == SourceContainer.hls) return true;
+    return (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
   }
 
   static int _height(VideoSource s) {
@@ -439,29 +526,29 @@ class DownloadManager extends ChangeNotifier {
     return m == null ? 0 : int.parse(m.group(1)!);
   }
 
-  /// All non-HLS sources ordered for the requested quality. 'best' = highest
-  /// first. Otherwise ordered by CLOSENESS to the requested height (so picking
-  /// 360p actually gets the smallest file, not the best one) — ties go to the
-  /// higher quality. The full ordered list doubles as the try-next fallback.
+  /// All sources (HLS + direct, both downloadable now) ordered for the requested
+  /// quality. 'best' = highest first; otherwise by CLOSENESS to the requested
+  /// height (so 360p gets the smallest file) — ties go to the higher quality.
+  /// The full ordered list doubles as the try-next fallback.
   static List<VideoSource> _ranked(List<VideoSource> sources, String quality) {
-    final direct = sources.where(_notHls).toList();
-    if (direct.isEmpty) return const [];
+    final list = List<VideoSource>.from(sources);
+    if (list.isEmpty) return const [];
     if (quality == 'best') {
-      direct.sort((a, b) => _height(b).compareTo(_height(a)));
-      return direct;
+      list.sort((a, b) => _height(b).compareTo(_height(a)));
+      return list;
     }
     final want =
         int.tryParse(RegExp(r'(\d{3,4})').firstMatch(quality)?.group(1) ?? '');
     if (want == null) {
-      direct.sort((a, b) => _height(b).compareTo(_height(a)));
-      return direct;
+      list.sort((a, b) => _height(b).compareTo(_height(a)));
+      return list;
     }
-    direct.sort((a, b) {
+    list.sort((a, b) {
       final da = (_height(a) - want).abs();
       final db = (_height(b) - want).abs();
       if (da != db) return da.compareTo(db); // closest to requested first
       return _height(b).compareTo(_height(a)); // tie → higher quality
     });
-    return direct;
+    return list;
   }
 }
