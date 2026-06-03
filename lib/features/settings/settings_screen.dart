@@ -525,6 +525,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.image_outlined,
+                title: 'Seek preview (online)',
+                subtitle: 'Thumbnail while scrubbing — uses a little data',
+                value: _prefs.seekPreviewOnline,
+                onChanged: (v) async {
+                  await _prefs.setSeekPreviewOnline(v);
+                  if (mounted) setState(() {});
+                },
+              ),
             ],
           ),
 

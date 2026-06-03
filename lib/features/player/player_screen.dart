@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart' show Track;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -25,6 +26,7 @@ import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../detail/cubit/detail_cubit.dart' show parseSeason, seasonsOf, cleanTitle;
 import 'player_controller.dart';
+import 'seek_preview.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), double-tap ±10s seek, long-press 2x speed, a
@@ -1503,6 +1505,43 @@ class _SeekRowState extends State<_SeekRow> {
   // (a negative countdown, e.g. "−1:00"), CloudStream-style.
   bool _showRemaining = false;
 
+  // Netflix-style scrub preview: a hidden second player renders the frame at
+  // the drag position. Created lazily on first drag, freed a few seconds after.
+  SeekPreview? _preview;
+  Timer? _idleTimer;
+
+  bool get _previewEnabled {
+    final c = widget.controller;
+    if (c.previewUri == null) return false;
+    // Offline files always preview (instant/free); online honours the setting.
+    return c.isLocalMedia || sl<PlaybackPrefs>().seekPreviewOnline;
+  }
+
+  void _ensurePreview() {
+    _idleTimer?.cancel();
+    if (!_previewEnabled) return;
+    final c = widget.controller;
+    _preview ??= SeekPreview(uri: c.previewUri!, headers: c.previewHeaders);
+  }
+
+  void _requestPreview(double ms) =>
+      _preview?.request(Duration(milliseconds: ms.round()));
+
+  void _schedulePreviewDispose() {
+    _idleTimer?.cancel();
+    _idleTimer = Timer(const Duration(seconds: 5), () {
+      _preview?.dispose();
+      _preview = null;
+    });
+  }
+
+  @override
+  void dispose() {
+    _idleTimer?.cancel();
+    _preview?.dispose();
+    super.dispose();
+  }
+
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -1530,45 +1569,76 @@ class _SeekRowState extends State<_SeekRow> {
               style: AppText.caption.copyWith(color: Colors.white),
             ),
             Expanded(
-              child: SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: AppColors.accent,
-                  inactiveTrackColor: Colors.white24,
-                  thumbColor: Colors.white,
-                  overlayColor: AppColors.accentSoft,
-                  trackHeight: 3,
-                  thumbShape: const RoundSliderThumbShape(
-                    enabledThumbRadius: 7,
-                  ),
-                  overlayShape: const RoundSliderOverlayShape(
-                    overlayRadius: 16,
-                  ),
-                ),
-                child: Slider(
-                  min: 0,
-                  max: max,
-                  value: value,
-                  onChangeStart: totalMs <= 0
-                      ? null
-                      : (v) {
-                          setState(() => _dragMs = v);
-                          widget.onInteract();
-                        },
-                  onChanged: totalMs <= 0
-                      ? null
-                      : (v) {
-                          setState(() => _dragMs = v);
-                          widget.onInteract();
-                        },
-                  onChangeEnd: totalMs <= 0
-                      ? null
-                      : (v) {
-                          widget.controller
-                              .seekTo(Duration(milliseconds: v.round()));
-                          setState(() => _dragMs = null);
-                          widget.onInteract();
-                        },
-                ),
+              child: LayoutBuilder(
+                builder: (context, cons) {
+                  final w = cons.maxWidth;
+                  final frac = max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0;
+                  const bubbleW = 132.0;
+                  final left = (frac * w - bubbleW / 2)
+                      .clamp(0.0, (w - bubbleW).clamp(0.0, double.infinity));
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      SizedBox(
+                        width: w,
+                        child: SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            activeTrackColor: AppColors.accent,
+                            inactiveTrackColor: Colors.white24,
+                            thumbColor: Colors.white,
+                            overlayColor: AppColors.accentSoft,
+                            trackHeight: 3,
+                            thumbShape: const RoundSliderThumbShape(
+                              enabledThumbRadius: 7,
+                            ),
+                            overlayShape: const RoundSliderOverlayShape(
+                              overlayRadius: 16,
+                            ),
+                          ),
+                          child: Slider(
+                            min: 0,
+                            max: max,
+                            value: value,
+                            onChangeStart: totalMs <= 0
+                                ? null
+                                : (v) {
+                                    _ensurePreview();
+                                    setState(() => _dragMs = v);
+                                    _requestPreview(v);
+                                    widget.onInteract();
+                                  },
+                            onChanged: totalMs <= 0
+                                ? null
+                                : (v) {
+                                    setState(() => _dragMs = v);
+                                    _requestPreview(v);
+                                    widget.onInteract();
+                                  },
+                            onChangeEnd: totalMs <= 0
+                                ? null
+                                : (v) {
+                                    widget.controller.seekTo(
+                                        Duration(milliseconds: v.round()));
+                                    setState(() => _dragMs = null);
+                                    _schedulePreviewDispose();
+                                    widget.onInteract();
+                                  },
+                          ),
+                        ),
+                      ),
+                      if (_dragMs != null)
+                        Positioned(
+                          left: left,
+                          bottom: 26,
+                          width: bubbleW,
+                          child: _PreviewBubble(
+                            frame: _preview?.frame,
+                            time: _fmt(shownPos),
+                          ),
+                        ),
+                    ],
+                  );
+                },
               ),
             ),
             GestureDetector(
@@ -1590,6 +1660,73 @@ class _SeekRowState extends State<_SeekRow> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Floating thumbnail shown above the seek-bar thumb while scrubbing. Renders
+/// the live preview frame (or a spinner until the first one lands) with the
+/// target time beneath it. When [frame] is null (preview off / unavailable) it
+/// collapses to a plain time bubble.
+class _PreviewBubble extends StatelessWidget {
+  const _PreviewBubble({required this.frame, required this.time});
+
+  final ValueListenable<Uint8List?>? frame;
+  final String time;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (frame != null) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: 132,
+              height: 74,
+              color: Colors.black,
+              child: ValueListenableBuilder<Uint8List?>(
+                valueListenable: frame!,
+                builder: (context, bytes, _) {
+                  if (bytes == null) {
+                    return const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    );
+                  }
+                  return Image.memory(
+                    bytes,
+                    fit: BoxFit.cover,
+                    gaplessPlayback: true,
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+        ],
+        DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            child: Text(
+              time,
+              style: AppText.caption
+                  .copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

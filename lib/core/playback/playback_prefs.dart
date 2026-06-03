@@ -64,6 +64,14 @@ class PlaybackPrefs {
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
 
+  /// Whether to show live scrub-preview thumbnails for ONLINE streams. Offline
+  /// downloads always preview (it's instant and free); online generates frames
+  /// live, which costs a little extra data, so it's user-toggleable.
+  bool get seekPreviewOnline =>
+      _box.get('seekPreviewOnline', defaultValue: true) as bool;
+  Future<void> setSeekPreviewOnline(bool value) =>
+      _box.put('seekPreviewOnline', value);
+
   /// Whether to show a "Skip intro" button early in each episode.
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
   Future<void> setSkipIntro(bool value) => _box.put('skipIntro', value);

@@ -320,6 +320,20 @@ class PlayerCubit extends Cubit<PlayerState> {
   List<AudioKind> get audioKinds => availableKinds(state.sources);
   AudioKind? get activeKind => state.active?.kind;
 
+  // ── Scrub-preview source (Netflix-style thumbnails) ───────────────────────
+  /// The media URL a second, hidden player opens to generate scrub previews.
+  String? get previewUri => state.active?.url;
+
+  /// HTTP headers needed to fetch [previewUri] (auth/referer for some mirrors).
+  Map<String, String>? get previewHeaders => state.active?.headers;
+
+  /// Whether the active media is a local/offline file (vs. an http stream).
+  /// Local previews are instant and free; online ones cost a little data.
+  bool get isLocalMedia {
+    final u = state.active?.url;
+    return u != null && !u.startsWith('http');
+  }
+
   /// Switch to the best source of the given audio [k] (Sub/Dub), preserving
   /// the live position.
   Future<void> switchAudio(AudioKind k) async {
