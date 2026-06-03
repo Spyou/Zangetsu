@@ -1499,6 +1499,10 @@ class _SeekRowState extends State<_SeekRow> {
   // position stream doesn't yank it back (which made it feel un-draggable).
   double? _dragMs;
 
+  // Tap the right-hand time to flip between total duration and remaining time
+  // (a negative countdown, e.g. "−1:00"), CloudStream-style.
+  bool _showRemaining = false;
+
   String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -1567,9 +1571,21 @@ class _SeekRowState extends State<_SeekRow> {
                 ),
               ),
             ),
-            Text(
-              _fmt(widget.duration),
-              style: AppText.caption.copyWith(color: Colors.white),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() => _showRemaining = !_showRemaining);
+                widget.onInteract();
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                child: Text(
+                  _showRemaining
+                      ? '-${_fmt(widget.duration - shownPos)}'
+                      : _fmt(widget.duration),
+                  style: AppText.caption.copyWith(color: Colors.white),
+                ),
+              ),
             ),
           ],
         );
