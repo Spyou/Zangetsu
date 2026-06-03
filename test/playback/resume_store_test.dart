@@ -17,8 +17,8 @@ void main() {
 
   test('save then get round-trips a position', () async {
     final store = ResumeStore();
-    await store.save('allanime', 'ep-1', const Duration(seconds: 90), const Duration(minutes: 24));
-    final mark = store.get('allanime', 'ep-1');
+    await store.save('allanime', 'show-1', 'ep-1', const Duration(seconds: 90), const Duration(minutes: 24));
+    final mark = store.get('allanime', 'show-1', 'ep-1');
     expect(mark, isNotNull);
     expect(mark!.position.inSeconds, 90);
     expect(mark.duration.inMinutes, 24);
@@ -26,13 +26,21 @@ void main() {
   });
 
   test('get returns null for unknown episode', () {
-    expect(ResumeStore().get('allanime', 'nope'), isNull);
+    expect(ResumeStore().get('allanime', 'show-1', 'nope'), isNull);
+  });
+
+  test('same episode id in a different show does not collide', () async {
+    final store = ResumeStore();
+    await store.save('allanime', 'show-A', 'S1E1', const Duration(seconds: 90), const Duration(minutes: 24));
+    // Same source + episode id, different show — must be a separate position.
+    expect(store.get('allanime', 'show-B', 'S1E1'), isNull);
+    expect(store.get('allanime', 'show-A', 'S1E1')!.position.inSeconds, 90);
   });
 
   test('finished is true when near the end (>92%)', () async {
     final store = ResumeStore();
-    await store.save('allanime', 'ep-2', const Duration(minutes: 23, seconds: 30),
+    await store.save('allanime', 'show-1', 'ep-2', const Duration(minutes: 23, seconds: 30),
         const Duration(minutes: 24));
-    expect(store.get('allanime', 'ep-2')!.finished, true);
+    expect(store.get('allanime', 'show-1', 'ep-2')!.finished, true);
   });
 }

@@ -269,13 +269,14 @@ class _DetailViewState extends State<_DetailView>
     final store = sl<ResumeStore>();
     int? highestMarked;
     for (int j = 0; j < eps.length; j++) {
-      final mark = store.get(widget.item.sourceId, eps[j].id);
+      final mark = store.get(widget.item.sourceId, widget.item.url, eps[j].id);
       if (mark != null) {
         highestMarked = j;
       }
     }
     if (highestMarked == null) return 0;
-    final mark = store.get(widget.item.sourceId, eps[highestMarked].id)!;
+    final mark =
+        store.get(widget.item.sourceId, widget.item.url, eps[highestMarked].id)!;
     if (!mark.finished) return highestMarked;
     if (highestMarked + 1 < eps.length) return highestMarked + 1;
     return highestMarked;
@@ -436,7 +437,8 @@ class _DetailViewState extends State<_DetailView>
 
     // Resume / play button logic. PRESERVED.
     final resumeIdx = _resumeIndex(eps);
-    final hasAnyMark = eps.any((e) => store.get(item.sourceId, e.id) != null);
+    final hasAnyMark =
+        eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
@@ -749,6 +751,7 @@ class _DetailViewState extends State<_DetailView>
             coverHeaders: coverHeaders,
             sourceId: item.sourceId,
             showId: item.id,
+            showUrl: item.url,
             resumeIndex: _resumeIndex,
             hasAnyMark: hasAnyMark,
             onOpen: (fullIndex) =>
@@ -1364,6 +1367,7 @@ class _EpisodesTab extends StatefulWidget {
     required this.coverHeaders,
     required this.sourceId,
     required this.showId,
+    required this.showUrl,
     required this.resumeIndex,
     required this.hasAnyMark,
     required this.onOpen,
@@ -1381,6 +1385,7 @@ class _EpisodesTab extends StatefulWidget {
   final Map<String, String>? coverHeaders;
   final String sourceId;
   final String showId;
+  final String showUrl;
   final int Function(List<Episode>) resumeIndex;
   final bool hasAnyMark;
   final void Function(int fullIndex) onOpen;
@@ -1440,7 +1445,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     Episode ep,
     int fullIndex,
   ) {
-    final mark = store.get(widget.sourceId, ep.id);
+    final mark = store.get(widget.sourceId, widget.showUrl, ep.id);
     final inProgress =
         mark != null && !mark.finished && mark.duration > Duration.zero;
     final watched = mark != null && mark.finished;

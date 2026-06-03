@@ -163,6 +163,10 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   Episode get currentEpisode => episodes[state.currentIndex];
 
+  /// Stable per-show key for resume (the show URL, falling back to sourceId) so
+  /// episodes with the same id across different shows don't collide.
+  String get _showKey => showUrl ?? sourceId;
+
   /// The episode URL to resolve sources from, rewritten to the active
   /// category. Sub/Dub are separate AllAnime streams encoded in the URL
   /// (`allanime://<id>/sub/<n>` vs `.../dub/<n>`), so switching language means
@@ -501,7 +505,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
     final autoResume = sl<PlaybackPrefs>().autoResume;
-    final mark = autoResume ? resume.get(sourceId, currentEpisode.id) : null;
+    final mark =
+        autoResume ? resume.get(sourceId, _showKey, currentEpisode.id) : null;
     final start =
         seekTo ??
         ((mark != null && !mark.finished) ? mark.position : Duration.zero);
@@ -588,7 +593,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (_lastPos <= Duration.zero) return;
     // Save resume even when the duration is unknown (downloaded HLS files):
     // ResumeMark.finished is false at duration 0, so resume still seeks back.
-    await resume.save(sourceId, currentEpisode.id, _lastPos, _lastDur);
+    await resume.save(sourceId, _showKey, currentEpisode.id, _lastPos, _lastDur);
     final h = history;
     final title = showTitle;
     if (h != null && title != null) {

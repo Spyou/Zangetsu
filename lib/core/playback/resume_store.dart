@@ -24,22 +24,27 @@ class ResumeStore {
 
   Box<Map> get _box => Hive.box<Map>(boxName);
 
-  String _key(String sourceId, String episodeId) => '$sourceId::$episodeId';
+  // Key includes the SHOW because providers like 4khdhub reuse episode ids
+  // ('S1E3', …) across every title — without it, one show's resume position
+  // collides with another's.
+  String _key(String sourceId, String showId, String episodeId) =>
+      '$sourceId::$showId::$episodeId';
 
   Future<void> save(
     String sourceId,
+    String showId,
     String episodeId,
     Duration position,
     Duration duration,
   ) async {
-    await _box.put(_key(sourceId, episodeId), {
+    await _box.put(_key(sourceId, showId, episodeId), {
       'positionMs': position.inMilliseconds,
       'durationMs': duration.inMilliseconds,
     });
   }
 
-  ResumeMark? get(String sourceId, String episodeId) {
-    final raw = _box.get(_key(sourceId, episodeId));
+  ResumeMark? get(String sourceId, String showId, String episodeId) {
+    final raw = _box.get(_key(sourceId, showId, episodeId));
     if (raw == null) return null;
     final m = Map<String, dynamic>.from(raw);
     return ResumeMark(
