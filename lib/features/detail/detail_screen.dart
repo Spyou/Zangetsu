@@ -326,7 +326,7 @@ class _DetailViewState extends State<_DetailView>
     String category,
   ) async {
     final item = widget.item;
-    final chosen = await showModalBottomSheet<VideoSource>(
+    final res = await showModalBottomSheet<({VideoSource chosen, List<VideoSource> all})>(
       context: context,
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
@@ -339,7 +339,7 @@ class _DetailViewState extends State<_DetailView>
             sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
       ),
     );
-    if (chosen == null || !mounted) return;
+    if (res == null || !mounted) return;
     unawaited(
       sl<DownloadManager>().enqueueSource(
         sourceId: item.sourceId,
@@ -350,8 +350,9 @@ class _DetailViewState extends State<_DetailView>
         showUrl: item.url,
         category: category,
         episode: ep,
-        source: chosen,
-        qualityLabel: chosen.quality ?? 'auto',
+        source: res.chosen,
+        qualityLabel: res.chosen.quality ?? 'auto',
+        fallbacks: res.all,
         nowMs: DateTime.now().millisecondsSinceEpoch,
       ),
     );
@@ -2387,7 +2388,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(sub, style: AppText.caption),
-      onTap: hls ? null : () => Navigator.pop(context, s),
+      onTap: hls
+          ? null
+          : () => Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s])),
     );
   }
 }
