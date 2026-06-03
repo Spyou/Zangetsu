@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
@@ -10,8 +11,8 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/ui/developer_card.dart';
 import '../../core/ui/settings_widgets.dart';
+import 'developers_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
@@ -234,6 +235,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   SettingsCard(
                     children: [
+                      SettingsTile(
+                        icon: Icons.people_outline_rounded,
+                        title: 'Developers',
+                        onTap: () => _push(const DevelopersScreen()),
+                      ),
                       SettingsTile(
                         icon: Icons.info_outline_rounded,
                         title: 'About',
@@ -718,52 +724,84 @@ class StorageSettingsScreen extends StatelessWidget {
 class AboutSettingsScreen extends StatelessWidget {
   const AboutSettingsScreen({super.key});
 
+  static const String _discussionUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
+
+  Future<void> _open(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: Text('About', style: AppText.title)),
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        title: Text('About', style: AppText.title),
+        centerTitle: true,
+      ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+        padding: const EdgeInsets.fromLTRB(0, 28, 0, 28),
         children: [
+          // App logo.
           Center(
             child: Container(
-              width: 72,
-              height: 72,
+              width: 96,
+              height: 96,
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.accentSoft,
-                borderRadius: BorderRadius.circular(18),
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(24),
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.play_circle_fill_rounded,
-                color: AppColors.accent,
-                size: 40,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  'assets/icon/app_icon.png',
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Center(child: Text(kAppName, style: AppText.title)),
+          const SizedBox(height: 18),
+          Center(
+            child: Text(kAppName, style: AppText.largeTitle.copyWith(fontSize: 24)),
+          ),
           const SizedBox(height: 4),
           Center(child: Text('Version $kAppVersion', style: AppText.caption)),
-          const SizedBox(height: 24),
-          Text(
-            'A community-driven video app. Install sources from repos to '
-            'browse and stream — anime, movies and TV — all in one '
-            'place, in a clean dark interface.',
-            style: AppText.body,
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 28),
-          Align(
-            alignment: Alignment.centerLeft,
+          const SizedBox(height: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              'DEVELOPER',
-              style: AppText.overline.copyWith(color: AppColors.textTertiary),
+              'Your anime, movies and series — one sleek, ad-free home. '
+              'Add community sources to browse and stream in 4K, download for '
+              'offline, and pick up right where you left off across devices.',
+              style: AppText.body.copyWith(height: 1.5),
+              textAlign: TextAlign.center,
             ),
           ),
-          const SizedBox(height: 10),
-          const DeveloperCard(),
+          const SizedBox(height: 28),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.forum_rounded,
+                title: 'Discussion group',
+                subtitle: 'Join the community on Telegram',
+                onTap: () => _open(_discussionUrl),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Center(
+            child: Text(
+              '© ${DateTime.now().year}  $kAppName',
+              style: AppText.caption.copyWith(
+                color: AppColors.textTertiary,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
         ],
       ),
     );

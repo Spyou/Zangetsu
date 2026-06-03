@@ -127,6 +127,8 @@ flutter:
     - extractors/doodstream.js
     # Brand wordmark extracted from the logo (exact lettering) for header/splash.
     - assets/icon/wordmark.png
+    # Square app icon — shown on the About screen.
+    - assets/icon/app_icon.png
 
   fonts:
     - family: Inter
