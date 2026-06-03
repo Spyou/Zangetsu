@@ -45,8 +45,6 @@ class _SplashScreenState extends State<SplashScreen>
       CurvedAnimation(parent: _c, curve: const Interval(0.12, 0.5, curve: Curves.easeOut));
   late final Animation<double> _reveal =
       CurvedAnimation(parent: _c, curve: const Interval(0.12, 1.0, curve: Curves.easeOutCubic));
-  late final Animation<double> _loader =
-      CurvedAnimation(parent: _c, curve: const Interval(0.7, 1.0, curve: Curves.easeOut));
 
   @override
   void dispose() {
@@ -114,21 +112,6 @@ class _SplashScreenState extends State<SplashScreen>
                           fit: BoxFit.contain,
                         ),
                       ),
-                    ),
-                  ),
-                ),
-              ),
-              // Minimal loader, low and quiet.
-              Align(
-                alignment: const Alignment(0, 0.8),
-                child: Opacity(
-                  opacity: _loader.value,
-                  child: const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.accent,
                     ),
                   ),
                 ),
