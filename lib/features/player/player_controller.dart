@@ -245,10 +245,11 @@ class PlayerCubit extends Cubit<PlayerState> {
       player.stream.position.listen((p) {
         _lastPos = p;
         // Throttled progress capture so Continue Watching fills mid-episode
-        // (without waiting for an episode switch / dispose). Cheap: at most
-        // one write every ~5s, only while we have a real duration.
+        // (without waiting for an episode switch / dispose). Cheap: at most one
+        // write every ~5s. NOT gated on duration — downloaded HLS (concatenated
+        // TS) often reports no duration, and we still want resume to work.
         final now = DateTime.now().millisecondsSinceEpoch;
-        if (_lastDur > Duration.zero && now - _lastHistoryMs >= 5000) {
+        if (now - _lastHistoryMs >= 5000) {
           _lastHistoryMs = now;
           _persist();
         }
@@ -579,12 +580,14 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   Future<void> _persist() async {
-    if (_lastDur > Duration.zero) {
-      await resume.save(sourceId, currentEpisode.id, _lastPos, _lastDur);
-    }
+    // Nothing watched yet — don't overwrite a real mark with position 0.
+    if (_lastPos <= Duration.zero) return;
+    // Save resume even when the duration is unknown (downloaded HLS files):
+    // ResumeMark.finished is false at duration 0, so resume still seeks back.
+    await resume.save(sourceId, currentEpisode.id, _lastPos, _lastDur);
     final h = history;
     final title = showTitle;
-    if (h != null && title != null && _lastDur > Duration.zero) {
+    if (h != null && title != null) {
       await h.save(
         HistoryEntry(
           sourceId: sourceId,
