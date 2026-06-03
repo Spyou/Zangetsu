@@ -518,6 +518,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       ),
     );
     if (g != _gen) return; // superseded mid-open
+    // Some streams ignore Media.start (the seek-on-open doesn't take), so the
+    // user lands back at 0. Verify a moment later and re-seek if needed.
+    if (start > Duration.zero) _verifyResume(start, g);
     // Apply the preferred speed ONCE, now that a media is actually loaded
     // (setting it before any open doesn't stick). Mid-session overlay changes
     // are never clobbered afterwards.
@@ -574,6 +577,19 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
     }
     _recovering = false;
+  }
+
+  /// Re-seek shortly after open if the stream ignored Media.start (position is
+  /// still near 0 instead of the resume target). Retries a couple of times to
+  /// catch slow-loading sources.
+  Future<void> _verifyResume(Duration target, int g) async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (g != _gen) return; // a newer open superseded this
+      final pos = player.state.position;
+      if ((pos - target).abs() <= const Duration(seconds: 8)) return; // ok
+      await player.seek(target);
+    }
   }
 
   Future<void> playNext() async {
