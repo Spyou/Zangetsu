@@ -82,20 +82,22 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   Future<void> _playFeatured(MediaItem item) async {
+    final nav = Navigator.of(context);
+    _showLoader();
     try {
       final eps = await _repo.episodes(item.url, sourceId: item.sourceId);
+      nav.pop(); // dismiss the loader
+      if (!mounted) return;
       if (eps.isEmpty) {
         _openDetail(item);
         return;
       }
-      if (!mounted) return;
       // Fresh play: prefer a saved per-title sub/dub choice, else the global
       // default category, else 'sub'.
       final category =
           sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
           sl<PlaybackPrefs>().defaultCategory;
-      await Navigator.push(
-        context,
+      await nav.push(
         MaterialPageRoute(
           builder: (_) => PlayerScreen(
             sourceId: item.sourceId,
@@ -114,23 +116,47 @@ class _HomeViewState extends State<_HomeView> {
       );
       if (mounted) setState(() {});
     } catch (_) {
+      nav.pop(); // dismiss the loader
       // On any error fall back to detail screen.
       if (mounted) _openDetail(item);
     }
   }
 
+  /// Blocking spinner shown the instant a tile is tapped — resolving the episode
+  /// list is a network call, so without it a tap feels dead until the player
+  /// suddenly appears.
+  void _showLoader() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (_) => const Center(
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: CircularProgressIndicator(
+            color: AppColors.accent,
+            strokeWidth: 2.6,
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _resume(HistoryEntry e) async {
+    final nav = Navigator.of(context);
+    _showLoader();
     try {
       final eps = await _repo.episodes(
         e.showUrl,
         category: e.category,
         sourceId: e.sourceId,
       );
+      nav.pop(); // dismiss the loader
+      if (!mounted || eps.isEmpty) return;
       var idx = eps.indexWhere((x) => x.id == e.episodeId);
       if (idx < 0) idx = 0;
-      if (!mounted) return;
-      await Navigator.push(
-        context,
+      await nav.push(
         MaterialPageRoute(
           builder: (_) => PlayerScreen(
             sourceId: e.sourceId,
@@ -149,7 +175,7 @@ class _HomeViewState extends State<_HomeView> {
       );
       if (mounted) setState(() {});
     } catch (_) {
-      // Ignore; row stays as-is.
+      nav.pop(); // dismiss the loader on error
     }
   }
 
