@@ -283,20 +283,26 @@ class _DetailViewState extends State<_DetailView>
 
   // ── Downloads ─────────────────────────────────────────────────────────────
 
-  /// The main Download button. A movie / single episode goes straight to the
-  /// server picker (CloudStream-style); a multi-episode season opens the
-  /// quality + range batch sheet.
+  /// The main Download button. A single movie/episode goes straight to the
+  /// server picker; a multi-episode title opens the batch sheet (season chips +
+  /// tappable episode selection + quality).
   Future<void> _openDownloadSheet({
     required MediaDetail detail,
-    required List<Episode> episodes,
     required String category,
+    required Map<int, List<Episode>> episodesBySeason,
+    required int initialSeason,
   }) async {
-    if (episodes.isEmpty) {
+    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
+    if (total == 0) {
       _snack('No episodes to download');
       return;
     }
-    if (episodes.length == 1) {
-      await _pickSourceAndDownload(episodes.first, detail, category);
+    if (total == 1) {
+      await _pickSourceAndDownload(
+        episodesBySeason.values.first.first,
+        detail,
+        category,
+      );
       return;
     }
     final res = await showModalBottomSheet<({String quality, List<Episode> episodes})>(
@@ -306,7 +312,11 @@ class _DetailViewState extends State<_DetailView>
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _DownloadSheet(episodes: episodes, title: detail.title),
+      builder: (_) => _DownloadSheet(
+        title: detail.title,
+        episodesBySeason: episodesBySeason,
+        initialSeason: initialSeason,
+      ),
     );
     if (res == null || !mounted) return;
     _startDownload(detail, category, res.quality, res.episodes);
@@ -449,6 +459,16 @@ class _DetailViewState extends State<_DetailView>
         ? eps.where((e) => parseSeason(e.title) == currentSeason).toList()
         : eps;
 
+    // Episodes grouped by season for the download sheet's season chips.
+    final episodesBySeason = <int, List<Episode>>{};
+    if (hasMultipleSeasons) {
+      for (final e in eps) {
+        (episodesBySeason[parseSeason(e.title) ?? 1] ??= <Episode>[]).add(e);
+      }
+    } else {
+      episodesBySeason[1] = eps;
+    }
+
     // ── Status label (used by the meta line and Details tab) ────────────────
     final statusStr = statusLabel(detail.status);
 
@@ -584,8 +604,9 @@ class _DetailViewState extends State<_DetailView>
                   label: downloadLabel,
                   onPressed: () => _openDownloadSheet(
                     detail: detail,
-                    episodes: seasonEps,
                     category: category,
+                    episodesBySeason: episodesBySeason,
+                    initialSeason: currentSeason,
                   ),
                 ),
               ],
@@ -2395,13 +2416,19 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   }
 }
 
-// Download sheet — pick a quality, then a range (RangeSlider) covering all /
-// a span / a single episode. Returns the chosen (quality, episodes) via pop.
+// Download sheet — season chips (multi-season) + quality chips + a grid of
+// TAPPABLE episode tiles you multi-select (Select all / Clear). Returns the
+// chosen (quality, episodes) via pop.
 class _DownloadSheet extends StatefulWidget {
-  const _DownloadSheet({required this.episodes, required this.title});
+  const _DownloadSheet({
+    required this.title,
+    required this.episodesBySeason,
+    required this.initialSeason,
+  });
 
-  final List<Episode> episodes;
   final String title;
+  final Map<int, List<Episode>> episodesBySeason;
+  final int initialSeason;
 
   @override
   State<_DownloadSheet> createState() => _DownloadSheetState();
@@ -2410,28 +2437,42 @@ class _DownloadSheet extends StatefulWidget {
 class _DownloadSheetState extends State<_DownloadSheet> {
   static const List<String> _qualities = ['1080p', '720p', '480p', 'best'];
   String _quality = '1080p';
-  late RangeValues _range;
+  late int _season;
+  final Set<String> _selectedIds = {};
+  late final Map<String, Episode> _byId;
 
   @override
   void initState() {
     super.initState();
-    _range = RangeValues(1, widget.episodes.length.toDouble());
+    _season = widget.initialSeason;
+    _byId = {
+      for (final eps in widget.episodesBySeason.values)
+        for (final e in eps) e.id: e,
+    };
   }
 
-  List<Episode> get _selected {
-    if (widget.episodes.length == 1) return widget.episodes;
-    return widget.episodes.sublist(_range.start.round() - 1, _range.end.round());
-  }
+  List<int> get _seasons => widget.episodesBySeason.keys.toList()..sort();
+  bool get _multiSeason => _seasons.length > 1;
+  List<Episode> get _seasonEps => widget.episodesBySeason[_season] ?? const [];
 
-  String _epLabel(int pos1) {
-    final e = widget.episodes[pos1 - 1];
-    return 'E${e.number?.toInt() ?? pos1}';
-  }
+  List<Episode> get _selectedEpisodes =>
+      (_selectedIds.map((id) => _byId[id]).whereType<Episode>().toList())
+        ..sort((a, b) => (a.number ?? 0).compareTo(b.number ?? 0));
+
+  int _epNum(Episode e, int i) => e.number?.toInt() ?? (i + 1);
+
+  void _selectAllInSeason() => setState(
+    () => _selectedIds.addAll(_seasonEps.map((e) => e.id)),
+  );
+
+  void _clearSeason() => setState(
+    () => _selectedIds.removeAll(_seasonEps.map((e) => e.id)),
+  );
 
   @override
   Widget build(BuildContext context) {
-    final multi = widget.episodes.length > 1;
-    final count = _selected.length;
+    final count = _selectedIds.length;
+    final maxGridH = MediaQuery.of(context).size.height * 0.34;
     return SafeArea(
       top: false,
       child: Padding(
@@ -2459,69 +2500,96 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
+
+            // ── Season chips ───────────────────────────────────────────────
+            if (_multiSeason) ...[
+              const SizedBox(height: 18),
+              Text('Season', style: AppText.overline),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final s in _seasons)
+                    _chip(
+                      'S$s',
+                      s == _season,
+                      () => setState(() => _season = s),
+                    ),
+                ],
+              ),
+            ],
+
+            // ── Quality chips ──────────────────────────────────────────────
             const SizedBox(height: 18),
             Text('Quality', style: AppText.overline),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              children: [for (final q in _qualities) _qualityChip(q)],
+              children: [
+                for (final q in _qualities)
+                  _chip(
+                    q == 'best' ? 'Best' : q,
+                    q == _quality,
+                    () => setState(() => _quality = q),
+                  ),
+              ],
             ),
-            if (multi) ...[
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Episodes', style: AppText.overline),
-                  Text(
-                    '${_epLabel(_range.start.round())} – '
-                    '${_epLabel(_range.end.round())}  ($count)',
-                    style: AppText.caption.copyWith(
-                      color: AppColors.accent,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-              RangeSlider(
-                values: _range,
-                min: 1,
-                max: widget.episodes.length.toDouble(),
-                divisions: widget.episodes.length > 1
-                    ? widget.episodes.length - 1
-                    : 1,
-                activeColor: AppColors.accent,
-                inactiveColor: AppColors.surface2,
-                labels: RangeLabels(
-                  _epLabel(_range.start.round()),
-                  _epLabel(_range.end.round()),
+
+            // ── Episode multi-select ───────────────────────────────────────
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Episodes', style: AppText.overline),
+                Row(
+                  children: [
+                    _textBtn('Select all', _selectAllInSeason),
+                    const SizedBox(width: 4),
+                    _textBtn('Clear', _clearSeason),
+                  ],
                 ),
-                onChanged: (v) => setState(
-                  () => _range = RangeValues(
-                    v.start.roundToDouble(),
-                    v.end.roundToDouble(),
-                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxGridH),
+              child: SingleChildScrollView(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (var i = 0; i < _seasonEps.length; i++)
+                      _episodeTile(_seasonEps[i], i),
+                  ],
                 ),
               ),
-            ],
+            ),
+
+            // ── Download button ────────────────────────────────────────────
             const SizedBox(height: 16),
             Material(
-              color: AppColors.accent,
+              color: count == 0 ? AppColors.surface2 : AppColors.accent,
               borderRadius: BorderRadius.circular(10),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-                onTap: () => Navigator.pop(
-                  context,
-                  (quality: _quality, episodes: _selected),
-                ),
+                onTap: count == 0
+                    ? null
+                    : () => Navigator.pop(
+                        context,
+                        (quality: _quality, episodes: _selectedEpisodes),
+                      ),
                 child: SizedBox(
                   height: 50,
                   width: double.infinity,
                   child: Center(
                     child: Text(
-                      multi
-                          ? 'Download $count episode${count == 1 ? '' : 's'}'
-                          : 'Download',
-                      style: AppText.button.copyWith(color: Colors.white),
+                      count == 0
+                          ? 'Select episodes'
+                          : 'Download $count episode${count == 1 ? '' : 's'}',
+                      style: AppText.button.copyWith(
+                        color: count == 0 ? AppColors.textTertiary : Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -2533,23 +2601,72 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     );
   }
 
-  Widget _qualityChip(String q) {
-    final sel = q == _quality;
+  Widget _episodeTile(Episode e, int i) {
+    final sel = _selectedIds.contains(e.id);
+    return GestureDetector(
+      onTap: () => setState(() {
+        if (sel) {
+          _selectedIds.remove(e.id);
+        } else {
+          _selectedIds.add(e.id);
+        }
+      }),
+      child: Container(
+        width: 52,
+        height: 44,
+        decoration: BoxDecoration(
+          color: sel ? AppColors.accent : AppColors.surface2,
+          borderRadius: BorderRadius.circular(8),
+          border: sel
+              ? null
+              : Border.all(color: AppColors.hairline, width: 0.5),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          '${_epNum(e, i)}',
+          style: AppText.body.copyWith(
+            color: sel ? Colors.white : AppColors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(String label, bool sel, VoidCallback onTap) {
     return Material(
       color: sel ? AppColors.accent : AppColors.surface2,
       borderRadius: BorderRadius.circular(9),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => setState(() => _quality = q),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           child: Text(
-            q == 'best' ? 'Best' : q,
+            label,
             style: AppText.caption.copyWith(
               color: sel ? Colors.white : AppColors.textSecondary,
               fontWeight: FontWeight.w700,
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _textBtn(String label, VoidCallback onTap) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        label,
+        style: AppText.caption.copyWith(
+          color: AppColors.accent,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
