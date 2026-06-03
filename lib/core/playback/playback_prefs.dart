@@ -63,4 +63,33 @@ class PlaybackPrefs {
   /// Whether long-pressing the video plays at 2× while held.
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
+
+  /// Whether to show a "Skip intro" button early in each episode.
+  bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
+  Future<void> setSkipIntro(bool value) => _box.put('skipIntro', value);
+
+  /// Seconds a "Skip intro" tap jumps forward (typical anime OP ≈ 85s).
+  int get skipIntroSeconds =>
+      (_box.get('skipIntroSeconds', defaultValue: 85) as num).toInt();
+  Future<void> setSkipIntroSeconds(int value) =>
+      _box.put('skipIntroSeconds', value);
+
+  // ── Subtitle styling (applied via mpv) ─────────────────────────────────────
+  /// Subtitle size multiplier: 0.8 (small) / 1.0 / 1.3 (large).
+  double get subtitleScale =>
+      (_box.get('subtitleScale', defaultValue: 1.0) as num).toDouble();
+  Future<void> setSubtitleScale(double value) =>
+      _box.put('subtitleScale', value);
+
+  /// Subtitle text colour: 'white' | 'yellow'.
+  String get subtitleColor =>
+      _box.get('subtitleColor', defaultValue: 'white') as String;
+  Future<void> setSubtitleColor(String value) =>
+      _box.put('subtitleColor', value);
+
+  /// Whether to draw a translucent box behind subtitles.
+  bool get subtitleBackground =>
+      _box.get('subtitleBackground', defaultValue: false) as bool;
+  Future<void> setSubtitleBackground(bool value) =>
+      _box.put('subtitleBackground', value);
 }

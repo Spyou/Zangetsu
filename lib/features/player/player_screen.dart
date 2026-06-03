@@ -100,6 +100,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ── Brightness / volume swipe gestures ──────────────────────────────────
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
+  final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
+  final int _skipIntroSecs = sl<PlaybackPrefs>().skipIntroSeconds;
   bool _dragIsBrightness = false; // left half = brightness, right half = volume
   double _dragValue = 0; // running 0..1 value during a vertical drag
   // HUD shown while adjusting (Netflix-style brightness/volume indicator).
@@ -1074,6 +1076,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
+              // 6c. Skip-intro button — shows early in the episode (independent
+              // of the controls), seeks forward by the configured amount.
+              if (_skipIntroEnabled && !_locked && !_upNext)
+                StreamBuilder<Duration>(
+                  stream: _c.player.stream.position,
+                  builder: (context, snap) {
+                    final s = (snap.data ?? Duration.zero).inSeconds;
+                    if (s < 2 || s > 120) return const SizedBox.shrink();
+                    return Align(
+                      alignment: const Alignment(0.94, 0.66),
+                      child: _SkipButton(
+                        label: 'Skip intro',
+                        onTap: () {
+                          _c.seekBy(Duration(seconds: _skipIntroSecs));
+                          _bumpControls();
+                        },
+                      ),
+                    );
+                  },
+                ),
+
               // 7. Up-next card (auto-advance countdown).
               if (_upNext) _buildUpNextCard(),
             ],
@@ -1589,6 +1612,46 @@ class _SeekRowState extends State<_SeekRow> {
 // ─────────────────────────────────────────────────────────────────────────────
 // Small bits.
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Netflix-style "Skip intro" pill.
+class _SkipButton extends StatelessWidget {
+  const _SkipButton({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.6),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: const BorderSide(color: Colors.white70, width: 1),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                label,
+                style: AppText.body.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 6),
+              const Icon(Icons.fast_forward_rounded,
+                  color: Colors.white, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // Small circular icon button (used for the unlock control while locked).
 class _RoundIconButton extends StatelessWidget {

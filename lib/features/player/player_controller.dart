@@ -567,6 +567,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
     }
     _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
+    applySubtitleStyle(); // restore subtitle size/colour/background
   }
 
   /// Try the next source after the current one fails (dead/DRM/unsupported),
@@ -658,6 +659,22 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _reapplySync() async {
     if (subtitleDelay != Duration.zero) await setSubtitleDelay(subtitleDelay);
     if (audioDelay != Duration.zero) await setAudioDelay(audioDelay);
+  }
+
+  /// Apply the saved subtitle styling (size / colour / background) via mpv.
+  /// Called after each open and whenever the user changes a style preference.
+  Future<void> applySubtitleStyle() async {
+    final p = player.platform;
+    if (p is! NativePlayer) return;
+    final prefs = sl<PlaybackPrefs>();
+    final color = prefs.subtitleColor == 'yellow' ? '#FFFF00' : '#FFFFFF';
+    // mpv colour is #AARRGGBB (alpha first); FF = opaque, 00 = transparent.
+    final back = prefs.subtitleBackground ? '#A0000000' : '#00000000';
+    try {
+      await p.setProperty('sub-scale', prefs.subtitleScale.toString());
+      await p.setProperty('sub-color', color);
+      await p.setProperty('sub-back-color', back);
+    } catch (_) {}
   }
 
   Future<void> _persist() async {

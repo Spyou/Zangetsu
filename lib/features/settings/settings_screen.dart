@@ -536,11 +536,90 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.fast_forward_outlined,
+                title: 'Skip intro button',
+                subtitle: 'Show a "Skip intro" button early in each episode',
+                value: _prefs.skipIntro,
+                onChanged: (v) async {
+                  await _prefs.setSkipIntro(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+          // ── Subtitle styling ────────────────────────────────────────────
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.format_size_rounded,
+                title: 'Subtitle size',
+                subtitle: _labelFor(
+                  _subSizeOptions,
+                  _prefs.subtitleScale,
+                  'Medium',
+                ),
+                onTap: _pickSubSize,
+              ),
+              SettingsTile(
+                icon: Icons.palette_outlined,
+                title: 'Subtitle colour',
+                subtitle: _labelFor(
+                  _subColorOptions,
+                  _prefs.subtitleColor,
+                  'White',
+                ),
+                onTap: _pickSubColor,
+              ),
+              _toggleRow(
+                icon: Icons.subtitles_outlined,
+                title: 'Subtitle background',
+                subtitle: 'Draw a box behind the text',
+                value: _prefs.subtitleBackground,
+                onChanged: (v) async {
+                  await _prefs.setSubtitleBackground(v);
+                  if (mounted) setState(() {});
+                },
+              ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  static const List<(double, String)> _subSizeOptions = [
+    (0.8, 'Small'),
+    (1.0, 'Medium'),
+    (1.3, 'Large'),
+  ];
+  static const List<(String, String)> _subColorOptions = [
+    ('white', 'White'),
+    ('yellow', 'Yellow'),
+  ];
+
+  Future<void> _pickSubSize() async {
+    final v = await _pick(
+      title: 'Subtitle size',
+      options: _subSizeOptions,
+      current: _prefs.subtitleScale,
+    );
+    if (v != null) {
+      await _prefs.setSubtitleScale(v);
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _pickSubColor() async {
+    final v = await _pick(
+      title: 'Subtitle colour',
+      options: _subColorOptions,
+      current: _prefs.subtitleColor,
+    );
+    if (v != null) {
+      await _prefs.setSubtitleColor(v);
+      if (mounted) setState(() {});
+    }
   }
 }
 
