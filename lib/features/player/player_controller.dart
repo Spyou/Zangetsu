@@ -238,7 +238,28 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
+  /// mpv HTTP tuning so remote MP4s (e.g. 4khdhub file hosts) seek/resume
+  /// reliably: force-seekable treats them as seekable even when the host omits
+  /// Accept-Ranges, and the reconnect options recover the connection that many
+  /// hosts drop on a seek (which otherwise restarts playback at 0). HLS already
+  /// seeks fine; this is what lets the MP4 mirrors behave like they do in
+  /// ExoPlayer-based apps.
+  Future<void> _configureMpv() async {
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('force-seekable', 'yes');
+        await p.setProperty(
+          'stream-lavf-o',
+          'reconnect=1,reconnect_streamed=1,'
+              'reconnect_on_network_error=1,reconnect_delay_max=5',
+        );
+      } catch (_) {}
+    }
+  }
+
   void init(int index) {
+    _configureMpv();
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
