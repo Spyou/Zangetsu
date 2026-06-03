@@ -2275,6 +2275,18 @@ class _EpisodeDownloadIcon extends StatelessWidget {
   }
 }
 
+/// A readable name for a source row. Providers like 4khdhub set a rich [label];
+/// AllAnime sets neither label nor quality, so fall back to the host (or a
+/// numbered server) instead of rendering a blank row.
+String _sourceName(VideoSource s, int index) {
+  final l = s.label?.trim();
+  if (l != null && l.isNotEmpty) return l;
+  final q = s.quality?.trim();
+  if (q != null && q.isNotEmpty) return q;
+  final host = (Uri.tryParse(s.url)?.host ?? '').replaceFirst('www.', '');
+  return host.isNotEmpty ? 'Server ${index + 1} · $host' : 'Server ${index + 1}';
+}
+
 // Server/mirror picker (CloudStream-style) — resolves the episode's sources
 // and lists them so the user downloads a specific, real link. Returns the
 // chosen VideoSource via pop. HLS sources are shown disabled (phase 2).
@@ -2379,7 +2391,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
                 child: ListView.builder(
                   shrinkWrap: true,
                   itemCount: _sources!.length,
-                  itemBuilder: (context, i) => _row(_sources![i]),
+                  itemBuilder: (context, i) => _row(_sources![i], i),
                 ),
               ),
           ],
@@ -2388,13 +2400,11 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     );
   }
 
-  Widget _row(VideoSource s) {
+  Widget _row(VideoSource s, int i) {
     final hls = _isHls(s);
-    final label = (s.label != null && s.label!.trim().isNotEmpty)
-        ? s.label!.trim()
-        : (s.quality ?? 'Source');
+    final label = _sourceName(s, i);
     final sub = [
-      if (s.quality != null && s.quality!.isNotEmpty) s.quality!,
+      if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
       hls ? 'HLS · not available offline yet' : 'Direct',
     ].join(' · ');
     return ListTile(
@@ -2686,13 +2696,12 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
   Widget _sourceRow(VideoSource s, int i) {
     final sel = i == _selectedSourceIdx;
-    final label = (s.label != null && s.label!.trim().isNotEmpty)
-        ? s.label!.trim()
-        : (s.quality ?? 'Source');
+    final label = _sourceName(s, i);
+    final hasQuality = s.quality != null && s.quality!.trim().isNotEmpty;
     return GestureDetector(
       onTap: () => setState(() {
         _selectedSourceIdx = i;
-        _quality = s.quality ?? 'best';
+        _quality = hasQuality ? s.quality!.trim() : 'best';
       }),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
@@ -2721,10 +2730,10 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (s.quality != null && s.quality!.isNotEmpty) ...[
+            if (hasQuality) ...[
               const SizedBox(width: 8),
               Text(
-                s.quality!,
+                s.quality!.trim(),
                 style: AppText.caption.copyWith(color: AppColors.textSecondary),
               ),
             ],
