@@ -4,7 +4,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:media_kit/media_kit.dart' show Track;
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1632,7 +1631,7 @@ class _SeekRowState extends State<_SeekRow> {
                           bottom: 26,
                           width: bubbleW,
                           child: _PreviewBubble(
-                            frame: _preview?.frame,
+                            preview: _preview,
                             time: _fmt(shownPos),
                           ),
                         ),
@@ -1666,52 +1665,60 @@ class _SeekRowState extends State<_SeekRow> {
 
 /// Floating thumbnail shown above the seek-bar thumb while scrubbing. Renders
 /// the live preview frame (or a spinner until the first one lands) with the
-/// target time beneath it. When [frame] is null (preview off / unavailable) it
-/// collapses to a plain time bubble.
+/// target time beneath it. When [preview] is null (off) or the source can't be
+/// previewed, it collapses to a plain time bubble.
 class _PreviewBubble extends StatelessWidget {
-  const _PreviewBubble({required this.frame, required this.time});
+  const _PreviewBubble({required this.preview, required this.time});
 
-  final ValueListenable<Uint8List?>? frame;
+  final SeekPreview? preview;
   final String time;
 
   @override
   Widget build(BuildContext context) {
+    final p = preview;
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (frame != null) ...[
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              width: 132,
-              height: 74,
-              color: Colors.black,
-              child: ValueListenableBuilder<Uint8List?>(
-                valueListenable: frame!,
-                builder: (context, bytes, _) {
-                  if (bytes == null) {
-                    return const Center(
-                      child: SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white54,
-                        ),
-                      ),
-                    );
-                  }
-                  return Image.memory(
-                    bytes,
-                    fit: BoxFit.cover,
-                    gaplessPlayback: true,
-                  );
-                },
-              ),
-            ),
+        if (p != null)
+          ValueListenableBuilder<bool>(
+            valueListenable: p.supported,
+            builder: (context, supported, _) {
+              if (!supported) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 132,
+                    height: 74,
+                    color: Colors.black,
+                    child: ValueListenableBuilder<Uint8List?>(
+                      valueListenable: p.frame,
+                      builder: (context, bytes, _) {
+                        if (bytes == null) {
+                          return const Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white54,
+                              ),
+                            ),
+                          );
+                        }
+                        return Image.memory(
+                          bytes,
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
-          const SizedBox(height: 4),
-        ],
         DecoratedBox(
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.8),
