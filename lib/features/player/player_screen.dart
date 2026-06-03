@@ -272,9 +272,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onHDragUpdate(DragUpdateDetails d) {
     if (!_hSeeking) return;
     final w = MediaQuery.of(context).size.width;
-    // Full screen width ≈ the whole duration; tune to ~90s per full swipe so
-    // long videos stay controllable.
-    final perPx = (_duration.inMilliseconds / w).clamp(0, 90000 / w * 4);
+    // Map the full screen width to the whole duration, so a partial swipe can
+    // reach anywhere (e.g. 7s → 20min) — like scrubbing the whole bar.
+    final perPx = _duration.inMilliseconds / w;
     final deltaMs = (d.primaryDelta! * perPx).round();
     var t = _hSeekTarget.inMilliseconds + deltaMs;
     t = t.clamp(0, _duration.inMilliseconds);
