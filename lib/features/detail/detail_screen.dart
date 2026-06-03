@@ -316,6 +316,8 @@ class _DetailViewState extends State<_DetailView>
         title: detail.title,
         episodesBySeason: episodesBySeason,
         initialSeason: initialSeason,
+        coverUrl: detail.cover ?? widget.item.cover ?? '',
+        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
         resolve: (ep) =>
             sl<SourceRepository>().sources(ep.url, sourceId: widget.item.sourceId),
       ),
@@ -2432,9 +2434,9 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
   }
 }
 
-// Download sheet — season chips (multi-season) + a real SOURCE/quality list
-// (resolved from the season's first episode, like the player) + a grid of
-// TAPPABLE episode tiles you multi-select. Returns the chosen (quality,
+// Download sheet — season dropdown (multi-season) + a real SOURCE/quality list
+// (resolved from the season's first episode, like the player) + tappable
+// thumbnail episode rows you multi-select. Returns the chosen (quality,
 // episodes) via pop; the quality drives per-episode source selection.
 class _DownloadSheet extends StatefulWidget {
   const _DownloadSheet({
@@ -2442,12 +2444,16 @@ class _DownloadSheet extends StatefulWidget {
     required this.episodesBySeason,
     required this.initialSeason,
     required this.resolve,
+    required this.coverUrl,
+    required this.coverHeaders,
   });
 
   final String title;
   final Map<int, List<Episode>> episodesBySeason;
   final int initialSeason;
   final Future<List<VideoSource>> Function(Episode) resolve;
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
 
   @override
   State<_DownloadSheet> createState() => _DownloadSheetState();
@@ -2573,22 +2579,12 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               overflow: TextOverflow.ellipsis,
             ),
 
-            // ── Season chips ───────────────────────────────────────────────
+            // ── Season dropdown ────────────────────────────────────────────
             if (_multiSeason) ...[
               const SizedBox(height: 18),
               Text('Season', style: AppText.overline),
               const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final s in _seasons)
-                    _chip('S$s', s == _season, () {
-                      setState(() => _season = s);
-                      _resolveSources(); // sources differ per season
-                    }),
-                ],
-              ),
+              _seasonDropdown(),
             ],
 
             // ── Source / quality (resolved from the first episode) ─────────
@@ -2597,7 +2593,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             const SizedBox(height: 8),
             _sourceSection(),
 
-            // ── Episode multi-select ───────────────────────────────────────
+            // ── Episode multi-select (thumbnail rows) ──────────────────────
             const SizedBox(height: 18),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2615,15 +2611,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: BoxConstraints(maxHeight: maxGridH),
-              child: SingleChildScrollView(
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (var i = 0; i < _seasonEps.length; i++)
-                      _episodeTile(_seasonEps[i], i),
-                  ],
-                ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: _seasonEps.length,
+                itemBuilder: (c, i) => _episodeRow(_seasonEps[i], i),
               ),
             ),
 
@@ -2749,8 +2741,59 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     );
   }
 
-  Widget _episodeTile(Episode e, int i) {
+  /// Season dropdown pill — opens the shared dark season picker sheet.
+  Widget _seasonDropdown() {
+    return Material(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () async {
+          final picked = await showModalBottomSheet<int>(
+            context: context,
+            backgroundColor: AppColors.surface,
+            isScrollControlled: true,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            builder: (_) =>
+                _SeasonSheet(seasons: _seasons, currentSeason: _season),
+          );
+          if (picked != null && picked != _season) {
+            setState(() => _season = picked);
+            _resolveSources(); // sources differ per season
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Season $_season', style: AppText.headline),
+              ),
+              const Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: AppColors.textPrimary,
+                size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Tappable episode row: thumbnail + "E{n} · title" + a check, multi-select.
+  Widget _episodeRow(Episode e, int i) {
     final sel = _selectedIds.contains(e.id);
+    final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
+        ? e.thumbnail!
+        : widget.coverUrl;
+    final epNum = _epNum(e, i);
+    final title = e.title.trim();
+    final heading = (title.isEmpty || title == 'Episode $epNum')
+        ? 'Episode $epNum'
+        : 'E$epNum · $title';
     return GestureDetector(
       onTap: () => setState(() {
         if (sel) {
@@ -2760,43 +2803,57 @@ class _DownloadSheetState extends State<_DownloadSheet> {
         }
       }),
       child: Container(
-        width: 52,
-        height: 44,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(6),
         decoration: BoxDecoration(
-          color: sel ? AppColors.accent : AppColors.surface2,
-          borderRadius: BorderRadius.circular(8),
-          border: sel
-              ? null
-              : Border.all(color: AppColors.hairline, width: 0.5),
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '${_epNum(e, i)}',
-          style: AppText.body.copyWith(
-            color: sel ? Colors.white : AppColors.textPrimary,
-            fontWeight: FontWeight.w700,
+          color: sel ? AppColors.accentSoft : AppColors.surface2,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: sel ? AppColors.accent : AppColors.hairline,
+            width: sel ? 1 : 0.5,
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _chip(String label, bool sel, VoidCallback onTap) {
-    return Material(
-      color: sel ? AppColors.accent : AppColors.surface2,
-      borderRadius: BorderRadius.circular(9),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Text(
-            label,
-            style: AppText.caption.copyWith(
-              color: sel ? Colors.white : AppColors.textSecondary,
-              fontWeight: FontWeight.w700,
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                width: 76,
+                height: 44, // ~16:9
+                child: thumb.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: thumb,
+                        httpHeaders: widget.coverHeaders,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 200,
+                        placeholder: (c, u) =>
+                            const ColoredBox(color: AppColors.surface),
+                        errorWidget: (c, u, e) =>
+                            const ColoredBox(color: AppColors.surface),
+                      )
+                    : const ColoredBox(color: AppColors.surface),
+              ),
             ),
-          ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                heading,
+                style: AppText.body.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              sel ? Icons.check_circle_rounded : Icons.circle_outlined,
+              color: sel ? AppColors.accent : AppColors.textTertiary,
+              size: 22,
+            ),
+            const SizedBox(width: 6),
+          ],
         ),
       ),
     );
