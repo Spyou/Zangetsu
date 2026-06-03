@@ -244,6 +244,12 @@ class _StatusGlyph extends StatelessWidget {
         color: AppColors.accent,
         size: 28,
       ),
+      DownloadStatus.canceled => const Icon(
+        Icons.cancel_outlined,
+        color: AppColors.textTertiary,
+        size: 26,
+      ),
+      // queued / resolving — genuinely loading.
       _ => const SizedBox(
         width: 26,
         height: 26,
@@ -279,8 +285,9 @@ class _TileMenu extends StatelessWidget {
             unawaited(manager.pause(r));
           case 'resume':
             unawaited(manager.resume(r));
+          // Cancel an in-flight download = stop it AND remove it from the list
+          // (delete cancels the task, drops the record, and clears fallbacks).
           case 'cancel':
-            unawaited(manager.cancel(r));
           case 'delete':
             unawaited(manager.delete(r));
         }
