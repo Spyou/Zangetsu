@@ -28,3 +28,17 @@ class SearchSortChanged extends SearchEvent {
 class SearchSubmitted extends SearchEvent {
   const SearchSubmitted();
 }
+
+/// Switches the active source-filter chip ([kAllSources] or a sourceId).
+class SearchSourceFilterChanged extends SearchEvent {
+  const SearchSourceFilterChanged(this.sourceId);
+  final String sourceId;
+
+  @override
+  List<Object?> get props => [sourceId];
+}
+
+/// Fired once on open to load trending titles for the idle screen.
+class SearchStarted extends SearchEvent {
+  const SearchStarted();
+}

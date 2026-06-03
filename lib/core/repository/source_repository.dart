@@ -22,6 +22,16 @@ class SourceRepository {
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
+  /// All currently-loaded sources (id + display name), for cross-source search
+  /// and source labelling. Order follows the provider registry.
+  List<({String id, String name})> get loadedSources => _manager.all
+      .map((p) => (id: p.sourceId, name: p.displayName))
+      .toList();
+
+  /// Human-friendly name for a source id (falls back to the id itself).
+  String displayName(String sourceId) =>
+      _manager.get(sourceId)?.displayName ?? sourceId;
+
   /// Resolves the provider for a per-call [id], falling back to the active
   /// source when [id] is null. Lets cross-source items (Continue Watching,
   /// My List, etc.) route to their OWN provider instead of the active one.

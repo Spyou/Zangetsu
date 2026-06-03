@@ -11,6 +11,7 @@ class PosterCard extends StatefulWidget {
     this.headers,
     this.onTap,
     this.onLongPress,
+    this.tags = const [],
     this.cellWidth = 180,
   });
   final String title;
@@ -18,6 +19,9 @@ class PosterCard extends StatefulWidget {
   final Map<String, String>? headers;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+
+  /// Small overlay badges drawn at the bottom-left of the art (e.g. SUB/DUB).
+  final List<String> tags;
   final double cellWidth;
 
   @override
@@ -72,6 +76,19 @@ class _PosterCardState extends State<PosterCard> {
                       const DecoratedBox(
                         decoration: BoxDecoration(gradient: AppColors.scrim),
                       ),
+                      if (widget.tags.isNotEmpty)
+                        Positioned(
+                          left: 6,
+                          bottom: 6,
+                          right: 6,
+                          child: Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            children: [
+                              for (final t in widget.tags) _PosterTag(t),
+                            ],
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -85,6 +102,34 @@ class _PosterCardState extends State<PosterCard> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Small frosted badge drawn over poster art (e.g. "SUB", "DUB", "MOVIE").
+class _PosterTag extends StatelessWidget {
+  const _PosterTag(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 9,
+          height: 1.1,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+          color: Colors.white,
         ),
       ),
     );
