@@ -22,6 +22,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
+import '../detail/cubit/detail_cubit.dart' show parseSeason, seasonsOf, cleanTitle;
 import 'player_controller.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
@@ -1595,9 +1596,20 @@ class _ControlButton extends StatelessWidget {
   }
 }
 
+// One row in the panel — either a "SEASON n" header or an episode (with its
+// global index into the flat episode list).
+class _PanelItem {
+  const _PanelItem.header(this.season) : index = -1;
+  const _PanelItem.episode(this.index) : season = -1;
+  final int season; // valid when index == -1
+  final int index; // global episode index when season == -1
+  bool get isHeader => index == -1;
+}
+
 // Right-side episodes panel (CloudStream-style): thumbnail + "E{n} · title"
-// cards, the current one highlighted; tap to switch.
-class _EpisodesPanel extends StatelessWidget {
+// cards grouped by "SEASON n" headers for multi-season titles; the current one
+// is highlighted and the list opens scrolled to it. Tap to switch.
+class _EpisodesPanel extends StatefulWidget {
   const _EpisodesPanel({
     required this.episodes,
     required this.currentIndex,
@@ -1611,6 +1623,66 @@ class _EpisodesPanel extends StatelessWidget {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final void Function(int) onSelect;
+
+  @override
+  State<_EpisodesPanel> createState() => _EpisodesPanelState();
+}
+
+class _EpisodesPanelState extends State<_EpisodesPanel> {
+  static const double _cardH = 78;
+  static const double _headerH = 34;
+
+  late final bool _multiSeason;
+  late final List<_PanelItem> _items;
+  late final ScrollController _scroll;
+
+  @override
+  void initState() {
+    super.initState();
+    _multiSeason = seasonsOf(widget.episodes).length > 1;
+    _items = _buildItems();
+    _scroll = ScrollController(initialScrollOffset: _offsetToCurrent());
+  }
+
+  List<_PanelItem> _buildItems() {
+    if (!_multiSeason) {
+      return [
+        for (var i = 0; i < widget.episodes.length; i++) _PanelItem.episode(i),
+      ];
+    }
+    final bySeason = <int, List<int>>{};
+    for (var i = 0; i < widget.episodes.length; i++) {
+      (bySeason[parseSeason(widget.episodes[i].title) ?? 1] ??= []).add(i);
+    }
+    final out = <_PanelItem>[];
+    for (final s in bySeason.keys.toList()..sort()) {
+      out.add(_PanelItem.header(s));
+      for (final i in bySeason[s]!) {
+        out.add(_PanelItem.episode(i));
+      }
+    }
+    return out;
+  }
+
+  /// Approx pixel offset so the list opens near the current episode.
+  double _offsetToCurrent() {
+    var offset = 0.0;
+    for (final it in _items) {
+      if (it.isHeader) {
+        offset += _headerH;
+      } else {
+        if (it.index == widget.currentIndex) break;
+        offset += _cardH;
+      }
+    }
+    return offset > _cardH * 2 ? offset - _cardH * 2 : 0; // leave a little above
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1644,9 +1716,26 @@ class _EpisodesPanel extends StatelessWidget {
                 ),
                 Expanded(
                   child: ListView.builder(
+                    controller: _scroll,
                     padding: const EdgeInsets.only(bottom: 16),
-                    itemCount: episodes.length,
-                    itemBuilder: (c, i) => _card(episodes[i], i),
+                    itemCount: _items.length,
+                    itemBuilder: (c, k) {
+                      final it = _items[k];
+                      if (it.isHeader) {
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text(
+                            'SEASON ${it.season}',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.textTertiary,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        );
+                      }
+                      return _card(widget.episodes[it.index], it.index);
+                    },
                   ),
                 ),
               ],
@@ -1658,10 +1747,14 @@ class _EpisodesPanel extends StatelessWidget {
   }
 
   Widget _card(Episode e, int i) {
-    final cur = i == currentIndex;
+    final cur = i == widget.currentIndex;
     final n = e.number?.toInt() ?? (i + 1);
-    final title = e.title.trim();
+    final raw = e.title.trim();
+    final title = _multiSeason ? cleanTitle(raw) : raw;
     final hasTitle = title.isNotEmpty && title != 'Episode $n';
+    final cover = widget.cover;
+    final coverHeaders = widget.coverHeaders;
+    final onSelect = widget.onSelect;
     final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
         ? e.thumbnail!
         : (cover ?? '');
