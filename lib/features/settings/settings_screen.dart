@@ -508,6 +508,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.fast_forward_rounded,
+                title: 'Hold for 2× speed',
+                subtitle: 'Long-press the video to play at 2× while held',
+                value: _prefs.holdSpeed,
+                onChanged: (v) async {
+                  await _prefs.setHoldSpeed(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
                 title: 'Keep screen on',
                 value: _prefs.keepScreenOn,

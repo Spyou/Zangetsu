@@ -99,6 +99,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Brightness / volume swipe gestures ──────────────────────────────────
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
+  final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   bool _dragIsBrightness = false; // left half = brightness, right half = volume
   double _dragValue = 0; // running 0..1 value during a vertical drag
   // HUD shown while adjusting (Netflix-style brightness/volume indicator).
@@ -875,13 +876,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   onTap: _toggleControls,
                   onDoubleTapDown: _locked ? null : _onDoubleTapDown,
                   onDoubleTap: _locked ? null : () {},
-                  onLongPressStart: _locked
+                  onLongPressStart: (_locked || !_holdSpeedEnabled)
                       ? null
                       : (_) {
                           _c.setRate(2.0);
                           setState(() => _holding = true);
                         },
-                  onLongPressEnd: _locked
+                  onLongPressEnd: (_locked || !_holdSpeedEnabled)
                       ? null
                       : (_) {
                           _c.setRate(1.0);

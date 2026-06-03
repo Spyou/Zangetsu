@@ -59,4 +59,8 @@ class PlaybackPrefs {
       _box.get('gestureControls', defaultValue: true) as bool;
   Future<void> setGestureControls(bool value) =>
       _box.put('gestureControls', value);
+
+  /// Whether long-pressing the video plays at 2× while held.
+  bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
+  Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
 }
