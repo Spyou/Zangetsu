@@ -822,7 +822,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 active: s == _c.state.active,
                 onTap: () {
                   Navigator.pop(context);
-                  _c.switchSource(s);
+                  _c.selectSource(s); // remembers this source for the title
                   _bumpControls();
                 },
               ),

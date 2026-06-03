@@ -444,8 +444,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       backgroundColor: AppColors.bg,
       appBar: AppBar(title: Text('Playback', style: AppText.title)),
       body: ListView(
-        padding: const EdgeInsets.only(top: 8),
+        padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
+          // ── Quality & audio ─────────────────────────────────────────────
+          const SettingsSectionLabel('Quality & audio'),
           SettingsCard(
             children: [
               SettingsTile(
@@ -459,23 +461,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 onTap: _pickQuality,
               ),
               SettingsTile(
-                icon: Icons.closed_caption_off_outlined,
-                title: 'Default audio',
+                icon: Icons.translate_rounded,
+                title: 'Default audio (anime sub/dub)',
                 subtitle: _labelFor(
                   _audioOptions,
                   _prefs.defaultCategory,
                   _prefs.defaultCategory,
                 ),
                 onTap: _pickAudio,
-              ),
-              _toggleRow(
-                icon: Icons.skip_next_outlined,
-                title: 'Autoplay next episode',
-                value: _prefs.autoplayNext,
-                onChanged: (v) async {
-                  await _prefs.setAutoplayNext(v);
-                  if (mounted) setState(() {});
-                },
               ),
               SettingsTile(
                 icon: Icons.speed_outlined,
@@ -487,9 +480,61 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
                 onTap: _pickSpeed,
               ),
-              SettingsTile(
+            ],
+          ),
+
+          // ── Playback behaviour ──────────────────────────────────────────
+          const SettingsSectionLabel('Playback'),
+          SettingsCard(
+            children: [
+              _toggleRow(
+                icon: Icons.history_outlined,
+                title: 'Resume playback',
+                subtitle: 'Continue from where you left off',
+                value: _prefs.autoResume,
+                onChanged: (v) async {
+                  await _prefs.setAutoResume(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
+                icon: Icons.skip_next_outlined,
+                title: 'Autoplay next episode',
+                value: _prefs.autoplayNext,
+                onChanged: (v) async {
+                  await _prefs.setAutoplayNext(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.fast_forward_outlined,
-                title: 'Skip interval',
+                title: 'Skip intro button',
+                subtitle: 'Accurate for anime, otherwise a quick skip',
+                value: _prefs.skipIntro,
+                onChanged: (v) async {
+                  await _prefs.setSkipIntro(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
+                icon: Icons.screen_lock_portrait_outlined,
+                title: 'Keep screen on',
+                value: _prefs.keepScreenOn,
+                onChanged: (v) async {
+                  await _prefs.setKeepScreenOn(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+            ],
+          ),
+
+          // ── Gestures ────────────────────────────────────────────────────
+          const SettingsSectionLabel('Gestures'),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.touch_app_outlined,
+                title: 'Double-tap skip',
                 subtitle: _labelFor(
                   _skipOptions,
                   _prefs.seekSeconds,
@@ -517,43 +562,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
-              _toggleRow(
-                icon: Icons.screen_lock_portrait_outlined,
-                title: 'Keep screen on',
-                value: _prefs.keepScreenOn,
-                onChanged: (v) async {
-                  await _prefs.setKeepScreenOn(v);
-                  if (mounted) setState(() {});
-                },
-              ),
-              _toggleRow(
-                icon: Icons.history_outlined,
-                title: 'Resume playback',
-                subtitle: 'Continue from where you left off',
-                value: _prefs.autoResume,
-                onChanged: (v) async {
-                  await _prefs.setAutoResume(v);
-                  if (mounted) setState(() {});
-                },
-              ),
-              _toggleRow(
-                icon: Icons.fast_forward_outlined,
-                title: 'Skip intro button',
-                subtitle: 'Show a "Skip intro" button early in each episode',
-                value: _prefs.skipIntro,
-                onChanged: (v) async {
-                  await _prefs.setSkipIntro(v);
-                  if (mounted) setState(() {});
-                },
-              ),
             ],
           ),
-          // ── Subtitle styling ────────────────────────────────────────────
+
+          // ── Subtitles ───────────────────────────────────────────────────
+          const SettingsSectionLabel('Subtitles'),
           SettingsCard(
             children: [
               SettingsTile(
                 icon: Icons.format_size_rounded,
-                title: 'Subtitle size',
+                title: 'Size',
                 subtitle: _labelFor(
                   _subSizeOptions,
                   _prefs.subtitleScale,
@@ -563,7 +581,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               SettingsTile(
                 icon: Icons.palette_outlined,
-                title: 'Subtitle colour',
+                title: 'Colour',
                 subtitle: _labelFor(
                   _subColorOptions,
                   _prefs.subtitleColor,
@@ -573,7 +591,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.subtitles_outlined,
-                title: 'Subtitle background',
+                title: 'Background',
                 subtitle: 'Draw a box behind the text',
                 value: _prefs.subtitleBackground,
                 onChanged: (v) async {

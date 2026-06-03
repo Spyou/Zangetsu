@@ -386,7 +386,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       _buildQualityMenu(
         gen,
       ); // populate Auto/1080p/720p from the HLS master, if any
-      final pick = pickDefault(resolved);
+      // Prefer the source the user picked for this title (e.g. Hindi), else the
+      // adaptive default.
+      final pick = _preferredSource(resolved) ?? pickDefault(resolved);
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),
@@ -444,6 +446,51 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Switch to a specific source (sub/dub or quality change), preserving position.
   Future<void> switchSource(VideoSource s) => _open(s, seekTo: _lastPos);
+
+  /// User explicitly picked a source from the Sources sheet — remember it for
+  /// this title (by label) so the same one is preferred next time, then switch.
+  Future<void> selectSource(VideoSource s) async {
+    final url = showUrl;
+    final label = s.label?.trim();
+    if (url != null && url.isNotEmpty && label != null && label.isNotEmpty) {
+      await sl<TitlePrefsStore>().setSourceLabel(sourceId, url, label);
+    }
+    await switchSource(s);
+  }
+
+  // Language tokens used to re-match a remembered source across re-resolves
+  // (URLs/sizes change, but the language usually persists in the label).
+  static const List<String> _langTokens = [
+    'hindi', 'english', 'tamil', 'telugu', 'malayalam', 'kannada', 'bengali',
+    'marathi', 'punjabi', 'japanese', 'korean', 'dual', 'multi', 'org',
+  ];
+
+  static String? _langOf(String label) {
+    final l = label.toLowerCase();
+    for (final t in _langTokens) {
+      if (l.contains(t)) return t;
+    }
+    return null;
+  }
+
+  /// The resolved source matching the title's remembered pick: exact label
+  /// first, else same language token. Null when nothing was remembered/matched.
+  VideoSource? _preferredSource(List<VideoSource> sources) {
+    final url = showUrl;
+    if (url == null) return null;
+    final saved = sl<TitlePrefsStore>().sourceLabel(sourceId, url);
+    if (saved == null) return null;
+    for (final s in sources) {
+      if ((s.label ?? '').trim() == saved) return s; // exact
+    }
+    final lang = _langOf(saved);
+    if (lang != null) {
+      for (final s in sources) {
+        if (_langOf(s.label ?? '') == lang) return s; // same language
+      }
+    }
+    return null;
+  }
 
   /// Builds the quality menu from the first HLS master among `state.sources`
   /// (independent of which source plays by default). Fire-and-forget; the menu
