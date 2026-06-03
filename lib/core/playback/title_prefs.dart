@@ -54,6 +54,27 @@ class TitlePrefsStore {
     await _box.put(k, m);
   }
 
+  /// Remembered embedded audio-track choice for this title (language/label),
+  /// e.g. 'hin'. Re-applied on reopen for multi-audio files (e.g. 4khdhub).
+  String? audioTrack(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    final v = m == null ? null : Map<String, dynamic>.from(m)['audioTrack'];
+    return (v is String && v.isNotEmpty) ? v : null;
+  }
+
+  Future<void> setAudioTrack(
+    String sourceId,
+    String showUrl,
+    String pref,
+  ) async {
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    m['audioTrack'] = pref;
+    await _box.put(k, m);
+  }
+
   /// Remembered subtitle choice for this title: 'off', or a language/label.
   /// Re-applied (by language) on reopen.
   String? subtitle(String sourceId, String showUrl) {

@@ -1469,16 +1469,14 @@ class _ControlsOverlay extends StatelessWidget {
                   // rest spread across the middle.
                   Row(
                     children: [
-                      // Far-left: Previous (placeholder keeps the middle
-                      // centered when there's no previous episode).
+                      // Far-left: Previous (only when there's a previous
+                      // episode — no placeholder, so no empty gap).
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
                           label: 'Previous',
                           onTap: onPrev!,
-                        )
-                      else
-                        const SizedBox(width: 60),
+                        ),
                       Expanded(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1521,7 +1519,7 @@ class _ControlsOverlay extends StatelessWidget {
                           ],
                         ),
                       ),
-                      // Far-right: Next.
+                      // Far-right: Next (only when there's a next episode).
                       if (hasNext)
                         _ControlButton(
                           icon: Icons.skip_next,
@@ -1530,9 +1528,7 @@ class _ControlsOverlay extends StatelessWidget {
                             c.playNext();
                             onInteract();
                           },
-                        )
-                      else
-                        const SizedBox(width: 60),
+                        ),
                     ],
                   ),
                 ],
@@ -2033,25 +2029,47 @@ class _SheetRow extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
 
-  /// Optional trailing icon (e.g. upload for "Load from file…"). The leading
-  /// slot stays reserved for the coral active-check.
+  /// Optional trailing icon (e.g. upload for "Load from file…").
   final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      dense: true,
-      leading: active
-          ? const Icon(Icons.check, color: AppColors.accent, size: 20)
-          : const SizedBox(width: 20),
-      title: Text(
-        label,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
+    // Netflix-style: the selected row is tinted + accent-bold with a trailing
+    // check; others are plain.
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+      child: Material(
+        color: active ? AppColors.accentSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppText.body.copyWith(
+                      color: active ? AppColors.accent : AppColors.textPrimary,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                if (icon != null)
+                  Icon(icon, color: AppColors.textSecondary, size: 20)
+                else if (active)
+                  const Icon(Icons.check_circle_rounded,
+                      color: AppColors.accent, size: 20),
+              ],
+            ),
+          ),
+        ),
       ),
-      trailing: icon == null
-          ? null
-          : Icon(icon, color: AppColors.textSecondary, size: 20),
-      onTap: onTap,
     );
   }
 }

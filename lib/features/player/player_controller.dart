@@ -265,7 +265,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.tracks.listen((t) {
         emit(state.copyWith(tracks: t));
-        _tryApplySubPref(); // embedded tracks just arrived — restore remembered
+        // Tracks just arrived — restore remembered audio/subtitle.
+        _tryApplyAudioPref();
+        _tryApplySubPref();
       }),
     );
     _subs.add(
@@ -344,7 +346,39 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Currently-selected subtitle track (id == 'no' when subs are off).
   SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
 
-  void setAudioTrack(AudioTrack t) => player.setAudioTrack(t);
+  void setAudioTrack(AudioTrack t) {
+    player.setAudioTrack(t);
+    final url = showUrl;
+    final pref = t.language ?? t.title ?? t.id;
+    if (url != null && url.isNotEmpty && pref.isNotEmpty) {
+      sl<TitlePrefsStore>().setAudioTrack(sourceId, url, pref);
+    }
+  }
+
+  bool _audioApplied = false; // remembered audio track restored this episode
+
+  /// Restore the title's remembered embedded audio track once per episode
+  /// (multi-audio files). Retried from the tracks stream as tracks load.
+  void _tryApplyAudioPref() {
+    if (_audioApplied) return;
+    final url = showUrl;
+    if (url == null) return;
+    final pref = sl<TitlePrefsStore>().audioTrack(sourceId, url);
+    if (pref == null) {
+      _audioApplied = true;
+      return;
+    }
+    final p = pref.toLowerCase();
+    for (final t in mediaAudioTracks) {
+      if ((t.language ?? '').toLowerCase() == p ||
+          (t.title ?? '').toLowerCase() == p) {
+        player.setAudioTrack(t);
+        _audioApplied = true;
+        return;
+      }
+    }
+    // Not loaded yet — retry on the next tracks update.
+  }
 
   void setSubtitle(SubtitleTrack t) {
     player.setSubtitleTrack(t);
@@ -431,6 +465,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _skips = const []; // clear previous episode's skip markers
     _skipsForIndex = -1; // refetched when the new duration arrives
     _subApplied = false; // restore the remembered subtitle for the new episode
+    _audioApplied = false; // restore the remembered audio track too
     emit(
       state.copyWith(
         currentIndex: index,
