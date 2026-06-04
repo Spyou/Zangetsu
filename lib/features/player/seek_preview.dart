@@ -101,6 +101,11 @@ class SeekPreview {
     final plat = p.platform;
     if (plat is NativePlayer) {
       try {
+        // No audio output at all — otherwise this hidden player grabs Android
+        // audio focus when nudged and PAUSES the main player. It also never
+        // needs sound. Disable the audio track + output device entirely.
+        await plat.setProperty('ao', 'null');
+        await plat.setProperty('aid', 'no');
         // Software frames are screenshot-able (hw buffers often aren't); grab
         // the lowest HLS variant to keep data + decode cost down.
         await plat.setProperty('hwdec', 'no');
