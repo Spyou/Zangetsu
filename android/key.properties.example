@@ -1,0 +1,8 @@
+# Copy this file to android/key.properties and fill in your real values.
+# key.properties is git-ignored — never commit it, and back up your keystore
+# (if you lose it you can never ship an update to the same app).
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=zangetsu
+# Absolute path to the keystore you created (no ~ — use the full path):
+storeFile=/Users/krishnavishwakarma/zangetsu-release.jks

@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Internal docs (plans, specs, audits) — not part of the shipped app
+/docs/
