@@ -2011,13 +2011,18 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
       child: Material(
-        color: cur ? AppColors.accentSoft : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        color: cur ? AppColors.accentSoft : AppColors.surface2,
         clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: cur
+              ? BorderSide(color: AppColors.accent.withValues(alpha: 0.6))
+              : BorderSide.none,
+        ),
         child: InkWell(
           onTap: () => onSelect(i),
           child: Padding(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(8),
             child: Row(
               children: [
                 ClipRRect(
