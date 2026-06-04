@@ -215,15 +215,15 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           if (provider != null)
-            widget.kenBurns
-                ? _KenBurns(
-                    child: Image(
-                      image: provider,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                    ),
-                  )
-                : Image(image: provider, fit: BoxFit.cover, gaplessPlayback: true)
+            Image(
+              image: provider,
+              fit: BoxFit.cover,
+              // Crop from the top so the poster's own printed title block (and
+              // the thin rule above it) is pushed off the bottom and hidden by
+              // the gradient — also removes the duplicate "ghosted" title.
+              alignment: Alignment.topCenter,
+              gaplessPlayback: true,
+            )
           else
             const ColoredBox(color: AppColors.surface2),
 
@@ -406,34 +406,4 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       ),
     );
   }
-}
-
-/// Slow, looping Ken-Burns zoom on the card artwork (cinematic mode).
-class _KenBurns extends StatefulWidget {
-  const _KenBurns({required this.child});
-  final Widget child;
-
-  @override
-  State<_KenBurns> createState() => _KenBurnsState();
-}
-
-class _KenBurnsState extends State<_KenBurns>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 16),
-  )..repeat(reverse: true);
-
-  late final Animation<double> _scale = Tween<double>(begin: 1.0, end: 1.12)
-      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) =>
-      ScaleTransition(scale: _scale, child: widget.child);
 }
