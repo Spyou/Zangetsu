@@ -218,10 +218,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           ),
 
           // ── Content ───────────────────────────────────────────────────────
+          // Anchored low in the card (Netflix/Apple-TV+-style) so there's no
+          // dead space below the buttons.
           Positioned(
             left: 20,
             right: 20,
-            bottom: 66,
+            bottom: 40,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
