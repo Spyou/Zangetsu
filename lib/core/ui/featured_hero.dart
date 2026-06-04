@@ -200,7 +200,9 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           // card already sits on a blurred copy of its own cover, so the edges
           // read softly without one.
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
+            // Full-bleed sides + bottom (rounded top only) so the banner melts
+            // straight into the page like the old hero. Top inset clears header.
+            padding: const EdgeInsets.fromLTRB(0, 90, 0, 0),
             child: _card(provider, tint, memW),
           ),
         ],
@@ -210,7 +212,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
   Widget _card(ImageProvider? provider, Color tint, int memW) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -274,7 +276,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           Positioned(
             left: 20,
             right: 20,
-            bottom: 26,
+            bottom: 44,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
