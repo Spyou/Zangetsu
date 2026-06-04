@@ -118,12 +118,33 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Plain page background. The card below is the ONLY banner — there is
-          // NO blurred full-width "box" bleed behind it (that outer box read as
-          // a second banner and left a hard tint line where the hero ended).
+          // Plain page background.
           const ColoredBox(color: AppColors.bg),
 
-          // ── The single artwork card, floating on the page ─────────────────
+          // Soft ambient glow of the art's own colour bleeding OUTSIDE the card.
+          // RADIAL so it fades to the page colour on every side — it dies out
+          // before reaching the banner's bottom, so there's no straight cut-off
+          // line like the old full-width "box" bleed had.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.15),
+                    radius: 1.05,
+                    colors: [
+                      tint.withValues(alpha: 0.66),
+                      tint.withValues(alpha: 0.28),
+                      const Color(0x000B0B0F),
+                    ],
+                    stops: const [0.0, 0.5, 0.84],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── The artwork card, floating on the glow ────────────────────────
           // Rounded, no border/shadow; its bottom melts into the page colour so
           // there's no hard edge below it.
           Padding(
