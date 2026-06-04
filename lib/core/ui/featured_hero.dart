@@ -134,6 +134,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       image: provider,
                       fit: BoxFit.cover,
                       gaplessPlayback: true,
+                      // Knock the bleed back so it's a subtle ambiance, not a
+                      // bright screen-wide colour wash.
+                      color: Colors.black.withValues(alpha: 0.38),
+                      colorBlendMode: BlendMode.darken,
                     ),
                   ),
                 ),
@@ -151,31 +155,32 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0x8A0B0B0F),
-                      Color(0x660B0B0F),
+                      Color(0xCC0B0B0F),
+                      Color(0xA60B0B0F),
                       AppColors.bg,
                     ],
-                    stops: [0.0, 0.5, 1.0],
+                    stops: [0.0, 0.52, 0.92],
                   ),
                 ),
               ),
             ),
           ),
 
-          // Colour-matched glow filling the upper area behind the card.
+          // Colour-matched glow behind the card top — subtle, doesn't reach the
+          // status bar or the rows below.
           Positioned(
-            top: 0,
+            top: 40,
             left: 0,
             right: 0,
-            height: 320,
+            height: 230,
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
                     center: Alignment.topCenter,
-                    radius: 1.1,
+                    radius: 1.0,
                     colors: [
-                      tint.withValues(alpha: 0.5),
+                      tint.withValues(alpha: 0.32),
                       tint.withValues(alpha: 0),
                     ],
                     stops: const [0.0, 0.7],
