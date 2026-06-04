@@ -1384,20 +1384,45 @@ class _ControlsOverlay extends StatelessWidget {
               ),
               const SizedBox(width: 24),
               StreamBuilder<bool>(
-                stream: c.player.stream.playing,
-                builder: (context, snap) {
-                  final playing = snap.data ?? c.player.state.playing;
-                  return IconButton(
-                    iconSize: 56,
-                    icon: Icon(
-                      playing
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_filled,
-                      color: Colors.white,
-                    ),
-                    onPressed: () {
-                      c.togglePlay();
-                      onInteract();
+                stream: c.player.stream.buffering,
+                builder: (context, bSnap) {
+                  final buffering = bSnap.data ?? c.player.state.buffering;
+                  // While buffering, show the spinner IN PLACE OF the play/pause
+                  // button (same 72px footprint so the row doesn't shift) — no
+                  // more spinner-over-button overlap.
+                  if (buffering) {
+                    return const SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: Center(
+                        child: SizedBox(
+                          width: 34,
+                          height: 34,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 3,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  return StreamBuilder<bool>(
+                    stream: c.player.stream.playing,
+                    builder: (context, snap) {
+                      final playing = snap.data ?? c.player.state.playing;
+                      return IconButton(
+                        iconSize: 56,
+                        icon: Icon(
+                          playing
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_filled,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          c.togglePlay();
+                          onInteract();
+                        },
+                      );
                     },
                   );
                 },
