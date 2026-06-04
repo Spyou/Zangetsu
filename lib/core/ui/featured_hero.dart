@@ -79,7 +79,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         size: const Size(180, 270),
         maximumColorCount: 8,
       );
-      final c = pal.vibrantColor?.color ??
+      final c =
+          pal.vibrantColor?.color ??
           pal.dominantColor?.color ??
           pal.darkVibrantColor?.color ??
           pal.mutedColor?.color;
@@ -87,7 +88,9 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         _paletteCache[cover] = c;
         if (mounted) setState(() => _artColor = c);
       }
-    } catch (_) {/* keep fallback */}
+    } catch (_) {
+      /* keep fallback */
+    }
   }
 
   @override
@@ -154,7 +157,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   gradient: RadialGradient(
                     center: Alignment.topCenter,
                     radius: 1.1,
-                    colors: [tint.withValues(alpha: 0.5), tint.withValues(alpha: 0)],
+                    colors: [
+                      tint.withValues(alpha: 0.5),
+                      tint.withValues(alpha: 0),
+                    ],
                     stops: const [0.0, 0.7],
                   ),
                 ),
@@ -240,35 +246,27 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     widget.item.title,
                     textAlign: TextAlign.center,
                     style: AppText.largeTitle.copyWith(
-                      fontSize: 34,
-                      height: 1.0,
-                      letterSpacing: -0.8,
+                      fontSize: 30,
+                      height: 1.02,
+                      letterSpacing: -0.6,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 // Metadata line (reserve height so the card never jumps).
                 SizedBox(height: 18, child: Center(child: _metaLine())),
-                const SizedBox(height: 20),
-                _playButton(),
-                const SizedBox(height: 14),
+                const SizedBox(height: 18),
+                // Single action row — Play + inline My List (info is on the
+                // title tap / long-press), so the overlay stays compact.
                 Row(
+                  mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _MiniAction(
-                      icon: widget.inList ? Icons.check_rounded : Icons.add_rounded,
-                      label: 'My List',
-                      active: widget.inList,
-                      onTap: widget.onToggleList,
-                    ),
-                    const SizedBox(width: 18),
-                    _MiniAction(
-                      icon: Icons.info_outline_rounded,
-                      label: 'Info',
-                      onTap: widget.onInfo,
-                    ),
+                    _playButton(),
+                    const SizedBox(width: 12),
+                    _listButton(),
                   ],
                 ),
               ],
@@ -315,7 +313,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         borderRadius: BorderRadius.circular(14),
         onTap: widget.onPlay,
         child: const SizedBox(
-          width: 200,
+          width: 176,
           height: 50,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -338,53 +336,25 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       ),
     );
   }
-}
 
-/// Glass circular icon + label (My List / Info) under the Play button.
-class _MiniAction extends StatelessWidget {
-  const _MiniAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.active = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
+  /// Inline glass circular My-List toggle sitting next to Play.
+  Widget _listButton() {
     return GestureDetector(
-      onTap: onTap,
+      onTap: widget.onToggleList,
       behavior: HitTestBehavior.opaque,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-            ),
-            child: Icon(
-              icon,
-              color: active ? AppColors.accent : Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: AppText.caption.copyWith(
-              color: Colors.white.withValues(alpha: 0.85),
-              fontSize: 11,
-            ),
-          ),
-        ],
+      child: Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.14),
+          shape: BoxShape.circle,
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        ),
+        child: Icon(
+          widget.inList ? Icons.check_rounded : Icons.add_rounded,
+          color: widget.inList ? AppColors.accent : Colors.white,
+          size: 24,
+        ),
       ),
     );
   }
