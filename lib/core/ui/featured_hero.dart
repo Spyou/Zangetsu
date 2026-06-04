@@ -248,8 +248,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             ),
           ),
 
-          // Bottom gradient for title/meta legibility — fades to the exact page
-          // colour so the card bottom melts into the page (no hard edge).
+          // Bottom gradient for title/meta legibility.
           const Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -258,11 +257,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0x000B0B0F),
-                      Color(0xA60B0B0F),
-                      AppColors.bg,
+                      Color(0x00000000),
+                      Color(0x8C000000),
+                      Color(0xE6000000),
                     ],
-                    stops: [0.42, 0.78, 1.0],
+                    stops: [0.4, 0.74, 1.0],
                   ),
                 ),
               ),
