@@ -14,6 +14,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
@@ -57,6 +58,16 @@ class _HomeViewState extends State<_HomeView> {
   /// never re-fetched on carousel rotation; pre-warmed when hero items load.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
   bool _heroPrewarmed = false;
+
+  /// Banner animation A/B — flipped by the on-banner switcher (temporary).
+  String _heroStyle = sl<PlaybackPrefs>().heroStyle;
+
+  void _cycleHeroStyle() {
+    setState(() {
+      _heroStyle = _heroStyle == 'cinematic' ? 'parallax' : 'cinematic';
+    });
+    sl<PlaybackPrefs>().setHeroStyle(_heroStyle);
+  }
 
   @override
   void initState() {
@@ -367,6 +378,9 @@ class _HomeViewState extends State<_HomeView> {
                                   if (mounted) setState(() {});
                                 },
                                 meta: _heroMeta,
+                                style: _heroStyle == 'cinematic'
+                                    ? HeroTransition.cinematic
+                                    : HeroTransition.parallax,
                               ),
                               // Floating header sits on top
                               Positioned(
@@ -374,6 +388,48 @@ class _HomeViewState extends State<_HomeView> {
                                 left: 0,
                                 right: 0,
                                 child: _buildHeader(),
+                              ),
+                              // Temporary A/B switcher — tap to flip the banner
+                              // animation between Cinematic and Parallax.
+                              Positioned(
+                                top: 98,
+                                right: 16,
+                                child: GestureDetector(
+                                  onTap: _cycleHeroStyle,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 7,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.5),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(
+                                        color: AppColors.hairline,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.swap_horiz_rounded,
+                                          size: 15,
+                                          color: AppColors.accent,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          _heroStyle == 'cinematic'
+                                              ? 'A · Cinematic'
+                                              : 'B · Parallax',
+                                          style: AppText.caption.copyWith(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           );

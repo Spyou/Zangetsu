@@ -64,6 +64,12 @@ class PlaybackPrefs {
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
 
+  /// Home hero banner animation: 'cinematic' (cross-fade + Ken-Burns) or
+  /// 'parallax' (parallax slide). A/B while we settle on the final one.
+  String get heroStyle =>
+      _box.get('heroStyle', defaultValue: 'cinematic') as String;
+  Future<void> setHeroStyle(String value) => _box.put('heroStyle', value);
+
   /// Whether to show live scrub-preview thumbnails for ONLINE streams. Offline
   /// downloads always preview (it's instant and free); online generates frames
   /// live, which costs a little extra data, so it's user-toggleable.

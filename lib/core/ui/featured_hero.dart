@@ -30,6 +30,8 @@ class FeaturedHero extends StatefulWidget {
     required this.onInfo,
     required this.onToggleList,
     this.metaFuture,
+    this.parallax = 0,
+    this.kenBurns = false,
   });
 
   final MediaItem item;
@@ -40,6 +42,13 @@ class FeaturedHero extends StatefulWidget {
 
   /// Lazily-fetched genres + episode count for this title.
   final Future<HeroMeta?>? metaFuture;
+
+  /// Page-relative offset (-1..1) used to parallax the blurred bleed in the
+  /// parallax-slide carousel mode. 0 = no parallax.
+  final double parallax;
+
+  /// Slowly zoom the card artwork (Ken-Burns) — used in the cinematic mode.
+  final bool kenBurns;
 
   @override
   State<FeaturedHero> createState() => _FeaturedHeroState();
@@ -111,14 +120,22 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           // ── 1. Blurred bleed of the cover (Apple depth) ───────────────────
+          // Parallax: the bleed lags behind the card during a slide. Scaled up
+          // so the translate never reveals an edge.
           if (provider != null)
             Positioned.fill(
-              child: ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(sigmaX: 42, sigmaY: 42),
-                child: Image(
-                  image: provider,
-                  fit: BoxFit.cover,
-                  gaplessPlayback: true,
+              child: Transform.translate(
+                offset: Offset(widget.parallax * 48, 0),
+                child: Transform.scale(
+                  scale: 1.18,
+                  child: ImageFiltered(
+                    imageFilter: ui.ImageFilter.blur(sigmaX: 42, sigmaY: 42),
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                    ),
+                  ),
                 ),
               ),
             )
@@ -185,7 +202,15 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           if (provider != null)
-            Image(image: provider, fit: BoxFit.cover, gaplessPlayback: true)
+            widget.kenBurns
+                ? _KenBurns(
+                    child: Image(
+                      image: provider,
+                      fit: BoxFit.cover,
+                      gaplessPlayback: true,
+                    ),
+                  )
+                : Image(image: provider, fit: BoxFit.cover, gaplessPlayback: true)
           else
             const ColoredBox(color: AppColors.surface2),
 
@@ -364,4 +389,34 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       ),
     );
   }
+}
+
+/// Slow, looping Ken-Burns zoom on the card artwork (cinematic mode).
+class _KenBurns extends StatefulWidget {
+  const _KenBurns({required this.child});
+  final Widget child;
+
+  @override
+  State<_KenBurns> createState() => _KenBurnsState();
+}
+
+class _KenBurnsState extends State<_KenBurns>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 16),
+  )..repeat(reverse: true);
+
+  late final Animation<double> _scale = Tween<double>(begin: 1.0, end: 1.12)
+      .animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut));
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      ScaleTransition(scale: _scale, child: widget.child);
 }

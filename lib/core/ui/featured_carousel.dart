@@ -10,6 +10,15 @@ import 'featured_hero.dart';
 /// between slides and the hero fills it edge-to-edge (Prime-style).
 const double kHeroHeight = 540;
 
+/// Banner transition styles (A/B).
+enum HeroTransition {
+  /// Cross-fade between banners + Ken-Burns zoom (no horizontal slide).
+  cinematic,
+
+  /// Horizontal slide with a parallax blurred background + depth scale.
+  parallax,
+}
+
 /// Auto-rotating, infinitely-looping hero carousel (up to 6 trending items).
 ///
 /// - Swipeable via [PageView]; auto-advances every 5 s.
@@ -28,6 +37,7 @@ class FeaturedCarousel extends StatefulWidget {
     required this.onInfo,
     required this.onToggleList,
     this.meta,
+    this.style = HeroTransition.parallax,
   });
 
   final List<MediaItem> items;
@@ -39,6 +49,9 @@ class FeaturedCarousel extends StatefulWidget {
   /// Optional lazily-fetched metadata resolver (genres + episodes). Called once
   /// per item; the Future is passed to [FeaturedHero]. Caching is the caller's.
   final Future<HeroMeta?> Function(MediaItem)? meta;
+
+  /// Which transition style to use (A = cinematic, B = parallax).
+  final HeroTransition style;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -76,14 +89,21 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
   void _startTimer() {
     _timer?.cancel();
     if (_count > 1) {
-      _timer = Timer.periodic(const Duration(seconds: 5), (_) {
-        if (!mounted || !_pc.hasClients) return;
-        // Always FORWARD — seamless wrap, never a backward rewind.
-        _pc.nextPage(
-          duration: const Duration(milliseconds: 750),
-          curve: Curves.easeInOutCubic,
-        );
-      });
+      _timer = Timer.periodic(const Duration(seconds: 5), (_) => _advance());
+    }
+  }
+
+  /// Auto-advance — mode-aware. Cinematic bumps the index (cross-fade); parallax
+  /// slides the PageView forward.
+  void _advance() {
+    if (!mounted) return;
+    if (widget.style == HeroTransition.cinematic) {
+      setState(() => _index++);
+    } else if (_pc.hasClients) {
+      _pc.nextPage(
+        duration: const Duration(milliseconds: 750),
+        curve: Curves.easeInOutCubic,
+      );
     }
   }
 
@@ -106,6 +126,16 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
       if (_pc.hasClients) _pc.jumpToPage(_index);
       _startTimer();
     }
+    // Style toggled (A/B) — restart the timer for the new mode and resync the
+    // PageController when switching into parallax.
+    if (old.style != widget.style) {
+      _startTimer();
+      if (widget.style == HeroTransition.parallax) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _pc.hasClients) _pc.jumpToPage(_index);
+        });
+      }
+    }
   }
 
   @override
@@ -115,14 +145,66 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     super.dispose();
   }
 
-  FeaturedHero _hero(MediaItem it) => FeaturedHero(
-    item: it,
-    inList: widget.inList(it),
-    onPlay: () => widget.onPlay(it),
-    onInfo: () => widget.onInfo(it),
-    onToggleList: () => widget.onToggleList(it),
-    metaFuture: widget.meta?.call(it),
-  );
+  FeaturedHero _hero(MediaItem it, {double parallax = 0, bool kenBurns = false}) =>
+      FeaturedHero(
+        item: it,
+        inList: widget.inList(it),
+        onPlay: () => widget.onPlay(it),
+        onInfo: () => widget.onInfo(it),
+        onToggleList: () => widget.onToggleList(it),
+        metaFuture: widget.meta?.call(it),
+        parallax: parallax,
+        kenBurns: kenBurns,
+      );
+
+  /// The pager — cinematic cross-fade (A) or parallax slide (B).
+  Widget _buildPager() {
+    if (widget.style == HeroTransition.cinematic) {
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onHorizontalDragEnd: (d) {
+          final v = d.primaryVelocity ?? 0;
+          if (v < -80) {
+            setState(() => _index++);
+            _startTimer();
+          } else if (v > 80) {
+            setState(() => _index--);
+            _startTimer();
+          }
+        },
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 650),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
+          transitionBuilder: (child, anim) =>
+              FadeTransition(opacity: anim, child: child),
+          child: KeyedSubtree(
+            key: ValueKey(_realIndex),
+            child: _hero(_pages[_realIndex], kenBurns: true),
+          ),
+        ),
+      );
+    }
+    // Parallax slide.
+    return PageView.builder(
+      controller: _pc,
+      onPageChanged: (i) => setState(() => _index = i),
+      itemBuilder: (context, i) => AnimatedBuilder(
+        animation: _pc,
+        builder: (context, _) {
+          var off = 0.0;
+          if (_pc.hasClients && _pc.position.haveDimensions) {
+            off = (_pc.page ?? _index.toDouble()) - i;
+          }
+          final scale = (1 - off.abs() * 0.06).clamp(0.94, 1.0);
+          return Transform.scale(
+            scale: scale,
+            child: _hero(_pages[i % _count], parallax: off.clamp(-1.0, 1.0)),
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -141,13 +223,8 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
         height: kHeroHeight,
         child: Stack(
           children: [
-            // ── Infinite page view ────────────────────────────────────────
-            PageView.builder(
-              controller: _pc,
-              // No itemCount → infinite; modulo maps back to the real slot.
-              onPageChanged: (i) => setState(() => _index = i),
-              itemBuilder: (context, i) => _hero(_pages[i % _count]),
-            ),
+            // ── Pager (cinematic cross-fade or parallax slide) ─────────────
+            _buildPager(),
 
             // ── Page dots ─────────────────────────────────────────────────
             Positioned(
