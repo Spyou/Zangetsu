@@ -191,9 +191,30 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           ),
 
           // ── 2. Rounded inset artwork card ─────────────────────────────────
+          // A soft colour glow (in the art's own colour) + a gentle shadow
+          // feather the card edge into the background, so it doesn't read as a
+          // hard 'box' against the darkened bleed.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
-            child: _card(provider, tint, memW),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [
+                  BoxShadow(
+                    color: tint.withValues(alpha: 0.40),
+                    blurRadius: 44,
+                    spreadRadius: -4,
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    blurRadius: 26,
+                    spreadRadius: -8,
+                    offset: const Offset(0, 14),
+                  ),
+                ],
+              ),
+              child: _card(provider, tint, memW),
+            ),
           ),
         ],
       ),
