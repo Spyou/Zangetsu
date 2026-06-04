@@ -265,8 +265,14 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _playButton(),
-                    const SizedBox(width: 12),
-                    _listButton(),
+                    const SizedBox(width: 10),
+                    _circleBtn(
+                      widget.inList ? Icons.check_rounded : Icons.add_rounded,
+                      widget.onToggleList,
+                      active: widget.inList,
+                    ),
+                    const SizedBox(width: 10),
+                    _circleBtn(Icons.info_outline_rounded, widget.onInfo),
                   ],
                 ),
               ],
@@ -313,7 +319,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         borderRadius: BorderRadius.circular(14),
         onTap: widget.onPlay,
         child: const SizedBox(
-          width: 176,
+          width: 150,
           height: 50,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -337,10 +343,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     );
   }
 
-  /// Inline glass circular My-List toggle sitting next to Play.
-  Widget _listButton() {
+  /// Inline glass circular action (My List / Info) sitting next to Play.
+  Widget _circleBtn(IconData icon, VoidCallback onTap, {bool active = false}) {
     return GestureDetector(
-      onTap: widget.onToggleList,
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
         width: 50,
@@ -351,8 +357,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
         ),
         child: Icon(
-          widget.inList ? Icons.check_rounded : Icons.add_rounded,
-          color: widget.inList ? AppColors.accent : Colors.white,
+          icon,
+          color: active ? AppColors.accent : Colors.white,
           size: 24,
         ),
       ),
