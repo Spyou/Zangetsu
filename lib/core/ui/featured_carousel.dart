@@ -180,7 +180,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
               FadeTransition(opacity: anim, child: child),
           child: KeyedSubtree(
             key: ValueKey(_realIndex),
-            child: _hero(_pages[_realIndex], kenBurns: true),
+            child: _hero(_pages[_realIndex]),
           ),
         ),
       );

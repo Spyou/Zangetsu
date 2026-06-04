@@ -123,21 +123,26 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           // Parallax: the bleed lags behind the card during a slide. Scaled up
           // so the translate never reveals an edge.
           if (provider != null)
+            // RepaintBoundary so the (expensive) blur is computed once and
+            // cached — not re-run every frame during animations/cross-fades.
             Positioned.fill(
-              child: Transform.translate(
-                offset: Offset(widget.parallax * 48, 0),
-                child: Transform.scale(
-                  scale: 1.18,
-                  child: ImageFiltered(
-                    imageFilter: ui.ImageFilter.blur(sigmaX: 42, sigmaY: 42),
-                    child: Image(
-                      image: provider,
-                      fit: BoxFit.cover,
-                      gaplessPlayback: true,
-                      // Knock the bleed back so it's a subtle ambiance, not a
-                      // bright screen-wide colour wash.
-                      color: Colors.black.withValues(alpha: 0.38),
-                      colorBlendMode: BlendMode.darken,
+              child: RepaintBoundary(
+                child: Transform.translate(
+                  offset: Offset(widget.parallax * 48, 0),
+                  child: Transform.scale(
+                    scale: 1.18,
+                    child: ImageFiltered(
+                      imageFilter:
+                          ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: Image(
+                        image: provider,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                        // Knock the bleed back so it's a subtle ambiance, not a
+                        // bright screen-wide colour wash.
+                        color: Colors.black.withValues(alpha: 0.38),
+                        colorBlendMode: BlendMode.darken,
+                      ),
                     ),
                   ),
                 ),
@@ -243,7 +248,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             ),
           ),
 
-          // Bottom dark gradient for title/meta legibility.
+          // Bottom gradient for title/meta legibility — fades to the exact page
+          // colour so the card bottom melts into the page (no hard edge).
           const Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -252,11 +258,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0x00000000),
-                      Color(0x8C000000),
-                      Color(0xE6000000),
+                      Color(0x000B0B0F),
+                      Color(0xA60B0B0F),
+                      AppColors.bg,
                     ],
-                    stops: [0.4, 0.74, 1.0],
+                    stops: [0.42, 0.78, 1.0],
                   ),
                 ),
               ),
