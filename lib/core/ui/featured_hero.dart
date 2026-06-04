@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -17,10 +16,10 @@ class HeroMeta {
   final String? year;
 }
 
-/// Apple-TV+-style cinematic hero: a rounded inset artwork card floating on a
-/// blurred bleed of its own art, with a colour-matched top gradient pulled from
-/// the cover's dominant colour, a centred title, an uppercase genres·episodes
-/// line, and a clean white Play + glass My-List / Info.
+/// Apple-TV+-style cinematic hero: a rounded inset artwork card floating on the
+/// page, with a colour-matched top gradient pulled from the cover's dominant
+/// colour, a centred title, an uppercase genres·episodes line, and a clean
+/// white Play + glass My-List / Info.
 class FeaturedHero extends StatefulWidget {
   const FeaturedHero({
     super.key,
@@ -119,90 +118,16 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 1. Blurred bleed of the cover (Apple depth) ───────────────────
-          // Parallax: the bleed lags behind the card during a slide. Scaled up
-          // so the translate never reveals an edge.
-          if (provider != null)
-            // RepaintBoundary so the (expensive) blur is computed once and
-            // cached — not re-run every frame during animations/cross-fades.
-            Positioned.fill(
-              child: RepaintBoundary(
-                child: Transform.translate(
-                  offset: Offset(widget.parallax * 48, 0),
-                  child: Transform.scale(
-                    scale: 1.18,
-                    child: ImageFiltered(
-                      imageFilter:
-                          ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                      child: Image(
-                        image: provider,
-                        fit: BoxFit.cover,
-                        gaplessPlayback: true,
-                        // Knock the bleed back so it's a subtle ambiance, not a
-                        // bright screen-wide colour wash.
-                        color: Colors.black.withValues(alpha: 0.38),
-                        colorBlendMode: BlendMode.darken,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            )
-          else
-            const ColoredBox(color: AppColors.surface2),
+          // Plain page background. The card below is the ONLY banner — there is
+          // NO blurred full-width "box" bleed behind it (that outer box read as
+          // a second banner and left a hard tint line where the hero ended).
+          const ColoredBox(color: AppColors.bg),
 
-          // Darken the bleed + melt into the page bg at the bottom.
-          const Positioned.fill(
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Color(0xCC0B0B0F),
-                      Color(0xA60B0B0F),
-                      AppColors.bg,
-                    ],
-                    stops: [0.0, 0.52, 0.92],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Colour-matched glow behind the card top — subtle, doesn't reach the
-          // status bar or the rows below.
-          Positioned(
-            top: 40,
-            left: 0,
-            right: 0,
-            height: 230,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.topCenter,
-                    radius: 1.0,
-                    colors: [
-                      tint.withValues(alpha: 0.32),
-                      tint.withValues(alpha: 0),
-                    ],
-                    stops: const [0.0, 0.7],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ── 2. Rounded inset artwork card ─────────────────────────────────
-          // No glow shadow — it spilled a coloured band BELOW the card. The
-          // card already sits on a blurred copy of its own cover, so the edges
-          // read softly without one.
+          // ── The single artwork card, floating on the page ─────────────────
+          // Rounded, no border/shadow; its bottom melts into the page colour so
+          // there's no hard edge below it.
           Padding(
-            // Full-bleed sides + bottom (rounded top only) so the banner melts
-            // straight into the page like the old hero. Top inset clears header.
-            padding: const EdgeInsets.fromLTRB(0, 90, 0, 0),
+            padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
             child: _card(provider, tint, memW),
           ),
         ],
@@ -212,7 +137,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
   Widget _card(ImageProvider? provider, Color tint, int memW) {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      borderRadius: BorderRadius.circular(28),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -250,9 +175,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             ),
           ),
 
-          // Bottom fade — same technique as the old full-bleed hero: fade to
-          // the EXACT page colour (not pure black), so the card bottom becomes
-          // the page colour and its edge melts invisibly into the page below.
+          // Bottom fade to the EXACT page colour, so the card bottom melts into
+          // the page with no hard bottom edge/line.
           const Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -276,7 +200,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
           Positioned(
             left: 20,
             right: 20,
-            bottom: 44,
+            bottom: 66,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.center,
