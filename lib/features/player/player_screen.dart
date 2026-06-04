@@ -23,7 +23,8 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
-import '../detail/cubit/detail_cubit.dart' show parseSeason, seasonsOf, cleanTitle;
+import '../detail/cubit/detail_cubit.dart'
+    show parseSeason, seasonsOf, cleanTitle;
 import 'player_controller.dart';
 import 'seek_preview.dart';
 
@@ -453,8 +454,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ),
       ),
       transitionBuilder: (ctx, anim, _, child) => SlideTransition(
-        position: Tween(begin: const Offset(1, 0), end: Offset.zero)
-            .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        position: Tween(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
         child: child,
       ),
     );
@@ -561,13 +564,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.play_arrow_rounded,
-                              color: Colors.white, size: 20),
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
                           SizedBox(width: 4),
-                          Text('Play now',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700)),
+                          Text(
+                            'Play now',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -584,8 +593,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       borderRadius: BorderRadius.circular(9),
                     ),
                     alignment: Alignment.center,
-                    child: const Icon(Icons.close_rounded,
-                        color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
                   ),
                 ),
               ],
@@ -1002,8 +1014,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onZoom: _cycleFit,
                       onSleep: _openSleepSheet,
                       sleepActive: _sleepActive,
-                      onEpisodes:
-                          _c.episodes.length > 1 ? _openEpisodesPanel : null,
+                      onEpisodes: _c.episodes.length > 1
+                          ? _openEpisodesPanel
+                          : null,
                       onPrev: _c.state.currentIndex > 0
                           ? () {
                               _c.playPrevious();
@@ -1195,7 +1208,8 @@ class _ControlsOverlay extends StatelessWidget {
     // The episode's own name, but only when it's more than a generic
     // "Episode N" / bare number (many sources just echo the number there).
     final epName = ep.title.trim();
-    final hasEpName = epName.isNotEmpty &&
+    final hasEpName =
+        epName.isNotEmpty &&
         epName.toLowerCase() != 'episode $epNum' &&
         epName != '$epNum';
     // Line 1 = show name (falls back to "Episode N" when no show title).
@@ -1268,8 +1282,9 @@ class _ControlsOverlay extends StatelessWidget {
                             Flexible(
                               child: Text(
                                 primaryTitle,
-                                style: AppText.headline
-                                    .copyWith(color: Colors.white),
+                                style: AppText.headline.copyWith(
+                                  color: Colors.white,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1288,8 +1303,9 @@ class _ControlsOverlay extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 1),
                             child: Text(
                               secondaryTitle,
-                              style: AppText.caption
-                                  .copyWith(color: Colors.white70),
+                              style: AppText.caption.copyWith(
+                                color: Colors.white70,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1300,8 +1316,10 @@ class _ControlsOverlay extends StatelessWidget {
                   // Episodes + sleep + lock (top-right). Zoom is in bottom row.
                   if (onEpisodes != null)
                     IconButton(
-                      icon: const Icon(Icons.video_library_outlined,
-                          color: Colors.white),
+                      icon: const Icon(
+                        Icons.video_library_outlined,
+                        color: Colors.white,
+                      ),
                       onPressed: onEpisodes,
                     ),
                   IconButton(
@@ -1314,8 +1332,10 @@ class _ControlsOverlay extends StatelessWidget {
                     onPressed: onSleep,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.lock_open_rounded,
-                        color: Colors.white),
+                    icon: const Icon(
+                      Icons.lock_open_rounded,
+                      color: Colors.white,
+                    ),
                     onPressed: onLock,
                   ),
                 ],
@@ -1577,8 +1597,10 @@ class _SeekRowState extends State<_SeekRow> {
                   final w = cons.maxWidth;
                   final frac = max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0;
                   const bubbleW = 132.0;
-                  final left = (frac * w - bubbleW / 2)
-                      .clamp(0.0, (w - bubbleW).clamp(0.0, double.infinity));
+                  final left = (frac * w - bubbleW / 2).clamp(
+                    0.0,
+                    (w - bubbleW).clamp(0.0, double.infinity),
+                  );
                   return Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -1621,7 +1643,8 @@ class _SeekRowState extends State<_SeekRow> {
                                 ? null
                                 : (v) {
                                     widget.controller.seekTo(
-                                        Duration(milliseconds: v.round()));
+                                      Duration(milliseconds: v.round()),
+                                    );
                                     setState(() => _dragMs = null);
                                     widget.onInteract();
                                   },
@@ -1738,8 +1761,10 @@ class _PreviewBubble extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             child: Text(
               time,
-              style: AppText.caption
-                  .copyWith(color: Colors.white, fontWeight: FontWeight.w600),
+              style: AppText.caption.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ),
@@ -1782,8 +1807,11 @@ class _SkipButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              const Icon(Icons.fast_forward_rounded,
-                  color: Colors.white, size: 18),
+              const Icon(
+                Icons.fast_forward_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
             ],
           ),
         ),
@@ -1925,7 +1953,9 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
         offset += _cardH;
       }
     }
-    return offset > _cardH * 2 ? offset - _cardH * 2 : 0; // leave a little above
+    return offset > _cardH * 2
+        ? offset - _cardH * 2
+        : 0; // leave a little above
   }
 
   @override
@@ -1957,8 +1987,10 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                     children: [
                       Expanded(child: Text('Episodes', style: AppText.title)),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            color: AppColors.textSecondary),
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: AppColors.textSecondary,
+                        ),
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -2008,84 +2040,78 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
     final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
         ? e.thumbnail!
         : (cover ?? '');
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-      child: Material(
-        color: cur ? AppColors.accentSoft : AppColors.surface2,
-        clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: cur
-              ? BorderSide(color: AppColors.accent.withValues(alpha: 0.6))
-              : BorderSide.none,
-        ),
-        child: InkWell(
-          onTap: () => onSelect(i),
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: SizedBox(
-                    width: 104,
-                    height: 58, // 16:9
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        thumb.isNotEmpty
-                            ? CachedNetworkImage(
-                                imageUrl: thumb,
-                                httpHeaders: coverHeaders,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 240,
-                                placeholder: (c, u) =>
-                                    const ColoredBox(color: AppColors.surface2),
-                                errorWidget: (c, u, e) =>
-                                    const ColoredBox(color: AppColors.surface2),
-                              )
-                            : const ColoredBox(color: AppColors.surface2),
-                        if (cur)
-                          const DecoratedBox(
-                            decoration: BoxDecoration(color: Color(0x55000000)),
-                            child: Center(
-                              child: Icon(Icons.play_arrow_rounded,
-                                  color: Colors.white, size: 26),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => onSelect(i),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 104,
+                  height: 58, // 16:9
+                  child: Stack(
+                    fit: StackFit.expand,
                     children: [
-                      Text(
-                        'E$n',
-                        style: AppText.body.copyWith(
-                          color: cur ? AppColors.accent : AppColors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      if (hasTitle)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Text(
-                            title,
-                            style: AppText.caption
-                                .copyWith(color: AppColors.textSecondary),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                      thumb.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: thumb,
+                              httpHeaders: coverHeaders,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 240,
+                              placeholder: (c, u) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                              errorWidget: (c, u, e) =>
+                                  const ColoredBox(color: AppColors.surface2),
+                            )
+                          : const ColoredBox(color: AppColors.surface2),
+                      if (cur)
+                        const DecoratedBox(
+                          decoration: BoxDecoration(color: Color(0x55000000)),
+                          child: Center(
+                            child: Icon(
+                              Icons.play_arrow_rounded,
+                              color: Colors.white,
+                              size: 26,
+                            ),
                           ),
                         ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'E$n',
+                      style: AppText.body.copyWith(
+                        color: cur ? AppColors.accent : AppColors.textPrimary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (hasTitle)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          title,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -2343,8 +2369,11 @@ class _SheetRow extends StatelessWidget {
                 if (icon != null)
                   Icon(icon, color: AppColors.textSecondary, size: 20)
                 else if (active)
-                  const Icon(Icons.check_circle_rounded,
-                      color: AppColors.accent, size: 20),
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    color: AppColors.accent,
+                    size: 20,
+                  ),
               ],
             ),
           ),
@@ -2408,8 +2437,11 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
           _stepBtn(Icons.add_rounded, () => _bump(_step)),
           IconButton(
             tooltip: 'Reset',
-            icon: const Icon(Icons.restart_alt_rounded,
-                color: AppColors.textSecondary, size: 20),
+            icon: const Icon(
+              Icons.restart_alt_rounded,
+              color: AppColors.textSecondary,
+              size: 20,
+            ),
             onPressed: _ms == 0 ? null : () => _bump(-_ms),
           ),
         ],
