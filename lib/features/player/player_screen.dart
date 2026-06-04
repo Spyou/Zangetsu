@@ -1656,49 +1656,65 @@ class _SeekRowState extends State<_SeekRow> {
                     children: [
                       SizedBox(
                         width: w,
-                        child: SliderTheme(
-                          data: SliderTheme.of(context).copyWith(
-                            activeTrackColor: AppColors.accent,
-                            inactiveTrackColor: Colors.white24,
-                            thumbColor: Colors.white,
-                            overlayColor: AppColors.accentSoft,
-                            trackHeight: 3,
-                            thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 7,
-                            ),
-                            overlayShape: const RoundSliderOverlayShape(
-                              overlayRadius: 16,
-                            ),
-                          ),
-                          child: Slider(
-                            min: 0,
-                            max: max,
-                            value: value,
-                            onChangeStart: totalMs <= 0
-                                ? null
-                                : (v) {
-                                    _ensurePreview();
-                                    setState(() => _dragMs = v);
-                                    _requestPreview(v);
-                                    widget.onInteract();
-                                  },
-                            onChanged: totalMs <= 0
-                                ? null
-                                : (v) {
-                                    setState(() => _dragMs = v);
-                                    _requestPreview(v);
-                                    widget.onInteract();
-                                  },
-                            onChangeEnd: totalMs <= 0
-                                ? null
-                                : (v) {
-                                    widget.controller.seekTo(
-                                      Duration(milliseconds: v.round()),
-                                    );
-                                    setState(() => _dragMs = null);
-                                    widget.onInteract();
-                                  },
-                          ),
+                        child: StreamBuilder<Duration>(
+                          stream: widget.controller.player.stream.buffer,
+                          builder: (context, bufSnap) {
+                            final bufMs =
+                                (bufSnap.data ?? Duration.zero).inMilliseconds;
+                            final bufferedFrac = totalMs > 0
+                                ? (bufMs / totalMs).clamp(0.0, 1.0)
+                                : 0.0;
+                            return SliderTheme(
+                              data: SliderTheme.of(context).copyWith(
+                                activeTrackColor: AppColors.accent,
+                                inactiveTrackColor: Colors.white24,
+                                trackShape: _BufferedSliderTrackShape(
+                                  buffered: bufferedFrac,
+                                  bufferedColor: Colors.white.withValues(
+                                    alpha: 0.45,
+                                  ),
+                                ),
+                                thumbColor: Colors.white,
+                                overlayColor: AppColors.accentSoft,
+                                trackHeight: 3,
+                                thumbShape: const RoundSliderThumbShape(
+                                  enabledThumbRadius: 7,
+                                ),
+                                overlayShape: const RoundSliderOverlayShape(
+                                  overlayRadius: 16,
+                                ),
+                              ),
+                              child: Slider(
+                                min: 0,
+                                max: max,
+                                value: value,
+                                onChangeStart: totalMs <= 0
+                                    ? null
+                                    : (v) {
+                                        _ensurePreview();
+                                        setState(() => _dragMs = v);
+                                        _requestPreview(v);
+                                        widget.onInteract();
+                                      },
+                                onChanged: totalMs <= 0
+                                    ? null
+                                    : (v) {
+                                        setState(() => _dragMs = v);
+                                        _requestPreview(v);
+                                        widget.onInteract();
+                                      },
+                                onChangeEnd: totalMs <= 0
+                                    ? null
+                                    : (v) {
+                                        widget.controller.seekTo(
+                                          Duration(milliseconds: v.round()),
+                                        );
+                                        setState(() => _dragMs = null);
+                                        widget.onInteract();
+                                      },
+                              ),
+                            );
+                          },
                         ),
                       ),
                       // Off-screen 1px Video that drives mpv frame rendering
@@ -1759,6 +1775,74 @@ class _SeekRowState extends State<_SeekRow> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Seek-bar track that draws three layers like YouTube/Netflix: faint
+/// background (unbuffered), a lighter "buffered" layer up to [buffered]
+/// (fetched-ahead), and the accent played layer up to the thumb.
+class _BufferedSliderTrackShape extends SliderTrackShape
+    with BaseSliderTrackShape {
+  _BufferedSliderTrackShape({
+    required this.buffered,
+    required this.bufferedColor,
+  });
+
+  /// Buffered fraction in [0, 1].
+  final double buffered;
+  final Color bufferedColor;
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    final rect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+    final radius = Radius.circular(rect.height / 2);
+    final canvas = context.canvas;
+
+    // 1. Background (unbuffered remainder).
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(rect, radius),
+      Paint()..color = sliderTheme.inactiveTrackColor ?? Colors.white24,
+    );
+
+    // 2. Buffered (fetched ahead).
+    if (buffered > 0) {
+      final bw = rect.width * buffered.clamp(0.0, 1.0);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(rect.left, rect.top, bw, rect.height),
+          radius,
+        ),
+        Paint()..color = bufferedColor,
+      );
+    }
+
+    // 3. Played (up to the thumb).
+    final activeRight = thumbCenter.dx.clamp(rect.left, rect.right);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTRB(rect.left, rect.top, activeRight, rect.bottom),
+        radius,
+      ),
+      Paint()..color = sliderTheme.activeTrackColor ?? AppColors.accent,
     );
   }
 }
