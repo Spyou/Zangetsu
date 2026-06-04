@@ -248,7 +248,10 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             ),
           ),
 
-          // Bottom gradient for title/meta legibility.
+          // Bottom gradient for title/meta legibility. Normal cinematic fade,
+          // but the LAST sliver snaps to the exact page colour so the card's
+          // bottom edge matches the page and disappears (no edge line) — without
+          // over-darkening the artwork above it.
           const Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
@@ -260,8 +263,9 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                       Color(0x00000000),
                       Color(0x8C000000),
                       Color(0xE6000000),
+                      AppColors.bg,
                     ],
-                    stops: [0.4, 0.74, 1.0],
+                    stops: [0.4, 0.74, 0.93, 1.0],
                   ),
                 ),
               ),
