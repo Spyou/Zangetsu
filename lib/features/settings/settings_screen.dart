@@ -523,7 +523,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.fast_forward_outlined,
                 title: 'Skip intro button',
-                subtitle: 'Accurate for anime, otherwise a quick skip',
+                subtitle: 'Show Skip opening/ending on anime (when detected)',
                 value: _prefs.skipIntro,
                 onChanged: (v) async {
                   await _prefs.setSkipIntro(v);

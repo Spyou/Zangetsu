@@ -104,7 +104,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
-  final int _skipIntroSecs = sl<PlaybackPrefs>().skipIntroSeconds;
   bool _dragIsBrightness = false; // left half = brightness, right half = volume
   double _dragValue = 0; // running 0..1 value during a vertical drag
   // HUD shown while adjusting (Netflix-style brightness/volume indicator).
@@ -371,9 +370,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   /// The skip button for the current [pos]: an accurate AniSkip "Skip
-  /// opening/ending" when inside a known interval, else the manual "Skip intro"
-  /// early in the episode (only when AniSkip has no opening data).
+  /// Shows "Skip opening/ending" ONLY when inside a real AniSkip interval
+  /// (anime). No blind manual fallback — movies/series with no skip data never
+  /// show an inaccurate "Skip intro".
   Widget? _skipButtonFor(Duration pos) {
+    if (!_skipIntroEnabled) return null;
     for (final iv in _c.currentSkips) {
       // Hide a beat before the interval ends so it doesn't flicker at the edge.
       if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
@@ -385,17 +386,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
           },
         );
       }
-    }
-    final hasOpData = _c.currentSkips.any((i) => i.type == 'op');
-    final s = pos.inSeconds;
-    if (_skipIntroEnabled && !hasOpData && s >= 2 && s <= 120) {
-      return _SkipButton(
-        label: 'Skip intro',
-        onTap: () {
-          _c.seekBy(Duration(seconds: _skipIntroSecs));
-          _bumpControls();
-        },
-      );
     }
     return null;
   }
@@ -1408,53 +1398,44 @@ class _ControlsOverlay extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 2),
-                  // Button row: Previous pinned far-left, Next far-right, the
-                  // rest spread across the middle.
+                  // Button row: every control evenly distributed edge-to-edge
+                  // (Previous flush-left, Next flush-right, uniform gaps).
                   Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // Far-left: Previous (only when there's a previous
-                      // episode — no placeholder, so no empty gap).
                       if (onPrev != null)
                         _ControlButton(
                           icon: Icons.skip_previous,
                           label: 'Previous',
                           onTap: onPrev!,
                         ),
-                      Expanded(
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            _ControlButton(
-                              icon: Icons.speed,
-                              label: 'Speed',
-                              onTap: onSpeed,
-                            ),
-                            _ControlButton(
-                              icon: Icons.subtitles_rounded,
-                              label: 'Audio & subs',
-                              onTap: onAudioSubs,
-                            ),
-                            if (state.qualities.isNotEmpty ||
-                                c.sourceQualities.length > 1)
-                              _ControlButton(
-                                icon: Icons.high_quality,
-                                label: 'Quality',
-                                onTap: onQuality,
-                              ),
-                            _ControlButton(
-                              icon: Icons.video_settings,
-                              label: 'Sources',
-                              onTap: onSources,
-                            ),
-                            _ControlButton(
-                              icon: Icons.aspect_ratio_rounded,
-                              label: zoomLabel,
-                              onTap: onZoom,
-                            ),
-                          ],
-                        ),
+                      _ControlButton(
+                        icon: Icons.speed,
+                        label: 'Speed',
+                        onTap: onSpeed,
                       ),
-                      // Far-right: Next (only when there's a next episode).
+                      _ControlButton(
+                        icon: Icons.subtitles_rounded,
+                        label: 'Audio & subs',
+                        onTap: onAudioSubs,
+                      ),
+                      if (state.qualities.isNotEmpty ||
+                          c.sourceQualities.length > 1)
+                        _ControlButton(
+                          icon: Icons.high_quality,
+                          label: 'Quality',
+                          onTap: onQuality,
+                        ),
+                      _ControlButton(
+                        icon: Icons.video_settings,
+                        label: 'Sources',
+                        onTap: onSources,
+                      ),
+                      _ControlButton(
+                        icon: Icons.aspect_ratio_rounded,
+                        label: zoomLabel,
+                        onTap: onZoom,
+                      ),
                       if (hasNext)
                         _ControlButton(
                           icon: Icons.skip_next,
