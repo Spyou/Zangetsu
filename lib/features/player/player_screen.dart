@@ -86,6 +86,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final PlayerCubit _c;
 
   bool _controlsVisible = true;
+  // When controls are visible we hide them on tap-DOWN (instant) instead of
+  // waiting for onTap's double-tap disambiguation (~300ms), so dismissing feels
+  // snappy like CloudStream. We record WHEN that happened so the trailing onTap
+  // (which fires ~300ms later) knows to swallow its toggle. A timestamp can't
+  // leak the way a bool would when a gesture fires onTapDown but never onTap.
+  int _hideOnTapDownMs = 0;
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
 
@@ -836,7 +842,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Positioned.fill(
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: _toggleControls,
+                  // Hide instantly on tap-down (no double-tap wait). Showing
+                  // still goes through onTap so the first tap of a double-tap
+                  // seek doesn't flash the controls.
+                  onTapDown: (_locked || !_controlsVisible)
+                      ? null
+                      : (_) {
+                          _hideTimer?.cancel();
+                          setState(() => _controlsVisible = false);
+                          _hideOnTapDownMs =
+                              DateTime.now().millisecondsSinceEpoch;
+                        },
+                  onTap: () {
+                    // Swallow the toggle if we just hid on tap-down.
+                    if (DateTime.now().millisecondsSinceEpoch -
+                            _hideOnTapDownMs <
+                        600) {
+                      return;
+                    }
+                    _toggleControls();
+                  },
                   onDoubleTapDown: _locked ? null : _onDoubleTapDown,
                   onDoubleTap: _locked ? null : () {},
                   onLongPressStart: (_locked || !_holdSpeedEnabled)
