@@ -1,21 +1,27 @@
+import 'dart:ui' as ui;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:palette_generator/palette_generator.dart';
 
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
-import 'buttons.dart';
 
-/// Amazon-Prime-style cinematic hero for the home spotlight.
-///
-/// Full-bleed backdrop (no floating info-card) with a slow Ken-Burns zoom, a
-/// gradient that melts the art into the page background, and bottom-anchored
-/// content: title → tagline (lazily fetched) → Play / My-List.
-///
-/// It FILLS whatever height the parent (the carousel) gives it — the carousel
-/// pins a fixed height so the container never resizes between slides. The root
-/// [Stack] clips (default hard-edge) so the Ken-Burns overflow stays bounded.
-class FeaturedHero extends StatelessWidget {
+/// Lightweight metadata shown under the hero title: a few genres + episode
+/// count (or year for movies). Lazily fetched, so it never blocks the banner.
+class HeroMeta {
+  const HeroMeta({this.genres = const [], this.episodeCount = 0, this.year});
+  final List<String> genres;
+  final int episodeCount;
+  final String? year;
+}
+
+/// Apple-TV+-style cinematic hero: a rounded inset artwork card floating on a
+/// blurred bleed of its own art, with a colour-matched top gradient pulled from
+/// the cover's dominant colour, a centred title, an uppercase genres·episodes
+/// line, and a clean white Play + glass My-List / Info.
+class FeaturedHero extends StatefulWidget {
   const FeaturedHero({
     super.key,
     required this.item,
@@ -23,7 +29,7 @@ class FeaturedHero extends StatelessWidget {
     required this.onPlay,
     required this.onInfo,
     required this.onToggleList,
-    this.descriptionFuture,
+    this.metaFuture,
   });
 
   final MediaItem item;
@@ -32,50 +38,92 @@ class FeaturedHero extends StatelessWidget {
   final VoidCallback onInfo;
   final VoidCallback onToggleList;
 
-  /// Lazily-fetched tagline for the show. While null/loading the box is
-  /// reserved (empty text), so the hero height never changes.
-  final Future<String?>? descriptionFuture;
+  /// Lazily-fetched genres + episode count for this title.
+  final Future<HeroMeta?>? metaFuture;
+
+  @override
+  State<FeaturedHero> createState() => _FeaturedHeroState();
+}
+
+class _FeaturedHeroState extends State<FeaturedHero> {
+  // Cache extracted colours so swiping back doesn't recompute the palette.
+  static final Map<String, Color> _paletteCache = {};
+  Color? _artColor;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPalette();
+  }
+
+  @override
+  void didUpdateWidget(FeaturedHero old) {
+    super.didUpdateWidget(old);
+    if (old.item.cover != widget.item.cover) {
+      _artColor = null;
+      _loadPalette();
+    }
+  }
+
+  Future<void> _loadPalette() async {
+    final cover = widget.item.cover;
+    if (cover == null || cover.isEmpty) return;
+    final cached = _paletteCache[cover];
+    if (cached != null) {
+      setState(() => _artColor = cached);
+      return;
+    }
+    try {
+      final pal = await PaletteGenerator.fromImageProvider(
+        CachedNetworkImageProvider(cover, headers: widget.item.coverHeaders),
+        size: const Size(180, 270),
+        maximumColorCount: 8,
+      );
+      final c = pal.vibrantColor?.color ??
+          pal.dominantColor?.color ??
+          pal.darkVibrantColor?.color ??
+          pal.mutedColor?.color;
+      if (c != null) {
+        _paletteCache[cover] = c;
+        if (mounted) setState(() => _artColor = c);
+      }
+    } catch (_) {/* keep fallback */}
+  }
 
   @override
   Widget build(BuildContext context) {
+    final item = widget.item;
+    final cover = item.cover;
+    final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();
+    final tint = _artColor ?? AppColors.surface2;
+
+    final provider = hasCover
+        ? CachedNetworkImageProvider(cover, headers: item.coverHeaders)
+        : null;
 
     return RepaintBoundary(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ── Full-bleed backdrop with a continuous Ken-Burns zoom ──────────
-          if (item.cover != null && item.cover!.isNotEmpty)
-            _KenBurns(
-              child: CachedNetworkImage(
-                imageUrl: item.cover!,
-                httpHeaders: item.coverHeaders,
-                memCacheWidth: memW,
-                fit: BoxFit.cover,
-                fadeInDuration: const Duration(milliseconds: 300),
-                placeholder: (context, url) =>
-                    const ColoredBox(color: AppColors.surface2),
-                errorWidget: (context, url, err) =>
-                    const ColoredBox(color: AppColors.surface2),
+          // ── 1. Blurred bleed of the cover (Apple depth) ───────────────────
+          if (provider != null)
+            Positioned.fill(
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(sigmaX: 42, sigmaY: 42),
+                child: Image(
+                  image: provider,
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                ),
               ),
             )
           else
             const ColoredBox(color: AppColors.surface2),
 
-          // ── Top scrim — status-bar legibility ─────────────────────────────
-          const IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(gradient: AppColors.topScrim),
-            ),
-          ),
-
-          // ── Bottom cinematic gradient — melts art into bg + text contrast ──
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 340,
+          // Darken the bleed + melt into the page bg at the bottom.
+          const Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -83,77 +131,144 @@ class FeaturedHero extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0x000B0B0F),
-                      Color(0xB30B0B0F),
+                      Color(0x8A0B0B0F),
+                      Color(0x660B0B0F),
                       AppColors.bg,
                     ],
-                    stops: [0.0, 0.55, 1.0],
+                    stops: [0.0, 0.5, 1.0],
                   ),
                 ),
               ),
             ),
           ),
 
-          // ── Bottom-anchored content ───────────────────────────────────────
+          // Colour-matched glow filling the upper area behind the card.
           Positioned(
-            left: 16,
-            right: 16,
-            bottom: 46,
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 320,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: Alignment.topCenter,
+                    radius: 1.1,
+                    colors: [tint.withValues(alpha: 0.5), tint.withValues(alpha: 0)],
+                    stops: const [0.0, 0.7],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── 2. Rounded inset artwork card ─────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
+            child: _card(provider, tint, memW),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _card(ImageProvider? provider, Color tint, int memW) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (provider != null)
+            Image(image: provider, fit: BoxFit.cover, gaplessPlayback: true)
+          else
+            const ColoredBox(color: AppColors.surface2),
+
+          // Colour-matched top gradient — pulled from the artwork.
+          Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      tint.withValues(alpha: 0.72),
+                      tint.withValues(alpha: 0.34),
+                      tint.withValues(alpha: 0.08),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.16, 0.34, 0.52],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // Bottom dark gradient for title/meta legibility.
+          const Positioned.fill(
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x00000000),
+                      Color(0x8C000000),
+                      Color(0xE6000000),
+                    ],
+                    stops: [0.4, 0.74, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Content ───────────────────────────────────────────────────────
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 26,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Title (tappable → info)
                 GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: onInfo,
+                  onTap: widget.onInfo,
                   child: Text(
-                    item.title,
+                    widget.item.title,
+                    textAlign: TextAlign.center,
                     style: AppText.largeTitle.copyWith(
-                      fontSize: 30,
-                      height: 1.05,
+                      fontSize: 34,
+                      height: 1.0,
+                      letterSpacing: -0.8,
                     ),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
-
-                const SizedBox(height: 10),
-
-                // Tagline — fixed 2-line box; empty while loading/null so the
-                // hero height stays constant.
-                SizedBox(
-                  height: 40,
-                  child: FutureBuilder<String?>(
-                    future: descriptionFuture,
-                    builder: (context, snap) {
-                      final d = (snap.data ?? '').trim();
-                      return Text(
-                        d,
-                        style: AppText.body.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      );
-                    },
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // Action buttons
+                const SizedBox(height: 14),
+                // Metadata line (reserve height so the card never jumps).
+                SizedBox(height: 18, child: Center(child: _metaLine())),
+                const SizedBox(height: 20),
+                _playButton(),
+                const SizedBox(height: 14),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: PrimaryButton(
-                        label: 'Play',
-                        icon: Icons.play_arrow,
-                        onPressed: onPlay,
-                      ),
+                    _MiniAction(
+                      icon: widget.inList ? Icons.check_rounded : Icons.add_rounded,
+                      label: 'My List',
+                      active: widget.inList,
+                      onTap: widget.onToggleList,
                     ),
-                    const SizedBox(width: 12),
-                    _ToggleButton(inList: inList, onTap: onToggleList),
+                    const SizedBox(width: 18),
+                    _MiniAction(
+                      icon: Icons.info_outline_rounded,
+                      label: 'Info',
+                      onTap: widget.onInfo,
+                    ),
                   ],
                 ),
               ],
@@ -163,74 +278,113 @@ class FeaturedHero extends StatelessWidget {
       ),
     );
   }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Ken-Burns — a slow, looping zoom on the backdrop. GPU-cheap (one Transform on
-// a RepaintBoundary child). Pauses nothing; the controller is disposed on unmount.
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _KenBurns extends StatefulWidget {
-  const _KenBurns({required this.child});
-  final Widget child;
-
-  @override
-  State<_KenBurns> createState() => _KenBurnsState();
-}
-
-class _KenBurnsState extends State<_KenBurns>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(seconds: 14),
-  )..repeat(reverse: true);
-
-  late final Animation<double> _scale = Tween<double>(
-    begin: 1.0,
-    end: 1.14,
-  ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  Widget _metaLine() {
+    return FutureBuilder<HeroMeta?>(
+      future: widget.metaFuture,
+      builder: (context, snap) {
+        final m = snap.data;
+        if (m == null) return const SizedBox.shrink();
+        final parts = <String>[...m.genres.take(3)];
+        if (m.episodeCount > 1) {
+          parts.add('${m.episodeCount} Episodes');
+        } else if (m.year != null && m.year!.isNotEmpty) {
+          parts.add(m.year!);
+        }
+        if (parts.isEmpty) return const SizedBox.shrink();
+        return Text(
+          parts.join('   ·   ').toUpperCase(),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.caption.copyWith(
+            color: Colors.white.withValues(alpha: 0.92),
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.8,
+          ),
+        );
+      },
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return ScaleTransition(scale: _scale, child: widget.child);
+  Widget _playButton() {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: widget.onPlay,
+        child: const SizedBox(
+          width: 200,
+          height: 50,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 24),
+              SizedBox(width: 8),
+              Text(
+                'Play',
+                style: TextStyle(
+                  fontFamily: 'Inter',
+                  color: AppColors.bg,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Square toggle (＋ / ✓) button — fixed 52×52, matches PrimaryButton height.
-// ─────────────────────────────────────────────────────────────────────────────
+/// Glass circular icon + label (My List / Info) under the Play button.
+class _MiniAction extends StatelessWidget {
+  const _MiniAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.active = false,
+  });
 
-class _ToggleButton extends StatelessWidget {
-  const _ToggleButton({required this.inList, required this.onTap});
-
-  final bool inList;
+  final IconData icon;
+  final String label;
   final VoidCallback onTap;
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 52,
-        height: 52,
-        decoration: BoxDecoration(
-          color: const Color(0x1AFFFFFF),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.hairline, width: 0.5),
-        ),
-        child: Center(
-          child: Icon(
-            inList ? Icons.check : Icons.add,
-            color: inList ? AppColors.accent : AppColors.textPrimary,
-            size: 24,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+            ),
+            child: Icon(
+              icon,
+              color: active ? AppColors.accent : Colors.white,
+              size: 22,
+            ),
           ),
-        ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: AppText.caption.copyWith(
+              color: Colors.white.withValues(alpha: 0.85),
+              fontSize: 11,
+            ),
+          ),
+        ],
       ),
     );
   }

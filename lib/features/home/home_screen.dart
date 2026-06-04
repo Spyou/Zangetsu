@@ -17,6 +17,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
+import '../../core/ui/featured_hero.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
@@ -52,9 +53,10 @@ class _HomeViewState extends State<_HomeView> {
   final _repo = sl<SourceRepository>();
   final _myList = sl<MyListStore>();
 
-  /// Description cache: key = "sourceId:id", value = lazily-fetched Future.
-  /// Futures are stored so they are never re-fetched on carousel rotation.
-  final Map<String, Future<String?>> _descCache = {};
+  /// Hero metadata cache: key = "sourceId:id". Futures are stored so they're
+  /// never re-fetched on carousel rotation; pre-warmed when hero items load.
+  final Map<String, Future<HeroMeta?>> _metaCache = {};
+  bool _heroPrewarmed = false;
 
   @override
   void initState() {
@@ -65,14 +67,29 @@ class _HomeViewState extends State<_HomeView> {
     if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
   }
 
-  Future<String?> _describe(MediaItem m) => _descCache.putIfAbsent(
+  /// Genres + episode count for the hero banner (lazily fetched, cached).
+  Future<HeroMeta?> _heroMeta(MediaItem m) => _metaCache.putIfAbsent(
     '${m.sourceId}:${m.id}',
-    () => _repo
-        .detail(m.url)
-        .then((d) => d.description)
-        // ignore: avoid_types_on_closure_parameters
-        .catchError((_) => null as String?),
+    () async {
+      final d = await _detailOf(m.url, m.sourceId);
+      if (d == null) return null;
+      return HeroMeta(
+        genres: d.genres,
+        episodeCount: d.episodes.length,
+        year: d.year,
+      );
+    },
   );
+
+  /// Fire all hero items' metadata up front so banners are ready (and rotated
+  /// slides are instant) instead of fetching one-at-a-time on display.
+  void _prewarmHeroMeta(List<MediaItem> items) {
+    if (_heroPrewarmed || items.isEmpty) return;
+    _heroPrewarmed = true;
+    for (final it in items) {
+      _heroMeta(it);
+    }
+  }
 
   void _openDetail(MediaItem item) {
     Navigator.push(
@@ -300,7 +317,8 @@ class _HomeViewState extends State<_HomeView> {
     return BlocListener<ActiveSourceCubit, String>(
       listener: (context, _) {
         if (!mounted) return;
-        _descCache.clear();
+        _metaCache.clear();
+        _heroPrewarmed = false;
         context.read<HomeCubit>().load();
       },
       child: Scaffold(
@@ -327,6 +345,7 @@ class _HomeViewState extends State<_HomeView> {
                       builder: (context) {
                         final heroItems = state.heroItems;
                         final hasHero = heroItems.isNotEmpty;
+                        if (hasHero) _prewarmHeroMeta(heroItems);
 
                         if (hasHero) {
                           return Stack(
@@ -347,7 +366,7 @@ class _HomeViewState extends State<_HomeView> {
                                   await _myList.toggle(m);
                                   if (mounted) setState(() {});
                                 },
-                                describe: _describe,
+                                meta: _heroMeta,
                               ),
                               // Floating header sits on top
                               Positioned(

@@ -70,6 +70,8 @@ dependencies:
   # Image caching
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1
+  # Dominant-colour extraction for the colour-matched hero banner
+  palette_generator: ^0.3.3+3
 
   # JSON
   json_annotation: ^4.11.0

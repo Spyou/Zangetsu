@@ -27,7 +27,7 @@ class FeaturedCarousel extends StatefulWidget {
     required this.onPlay,
     required this.onInfo,
     required this.onToggleList,
-    this.describe,
+    this.meta,
   });
 
   final List<MediaItem> items;
@@ -36,9 +36,9 @@ class FeaturedCarousel extends StatefulWidget {
   final void Function(MediaItem) onInfo;
   final void Function(MediaItem) onToggleList;
 
-  /// Optional lazily-fetched tagline resolver. Called once per item and the
-  /// Future is passed to [FeaturedHero]. Caching is handled by the caller.
-  final Future<String?> Function(MediaItem)? describe;
+  /// Optional lazily-fetched metadata resolver (genres + episodes). Called once
+  /// per item; the Future is passed to [FeaturedHero]. Caching is the caller's.
+  final Future<HeroMeta?> Function(MediaItem)? meta;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -121,7 +121,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
     onPlay: () => widget.onPlay(it),
     onInfo: () => widget.onInfo(it),
     onToggleList: () => widget.onToggleList(it),
-    descriptionFuture: widget.describe?.call(it),
+    metaFuture: widget.meta?.call(it),
   );
 
   @override
