@@ -198,12 +198,11 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28)),
+                borderRadius: BorderRadius.circular(28),
                 boxShadow: [
                   BoxShadow(
-                    color: tint.withValues(alpha: 0.34),
-                    blurRadius: 40,
+                    color: tint.withValues(alpha: 0.30),
+                    blurRadius: 38,
                     spreadRadius: -6,
                   ),
                 ],
@@ -218,7 +217,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
   Widget _card(ImageProvider? provider, Color tint, int memW) {
     return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      borderRadius: BorderRadius.circular(28),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -264,14 +263,12 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    // Fade to the EXACT page colour so the card bottom melts into
-                    // the page with no clip line.
                     colors: [
-                      Color(0x000B0B0F),
-                      Color(0x990B0B0F),
-                      AppColors.bg,
+                      Color(0x00000000),
+                      Color(0x8C000000),
+                      Color(0xE6000000),
                     ],
-                    stops: [0.34, 0.7, 1.0],
+                    stops: [0.4, 0.74, 1.0],
                   ),
                 ),
               ),
