@@ -198,18 +198,13 @@ class _FeaturedHeroState extends State<FeaturedHero> {
             padding: const EdgeInsets.fromLTRB(16, 90, 16, 40),
             child: DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(28)),
                 boxShadow: [
                   BoxShadow(
-                    color: tint.withValues(alpha: 0.40),
-                    blurRadius: 44,
-                    spreadRadius: -4,
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.45),
-                    blurRadius: 26,
-                    spreadRadius: -8,
-                    offset: const Offset(0, 14),
+                    color: tint.withValues(alpha: 0.34),
+                    blurRadius: 40,
+                    spreadRadius: -6,
                   ),
                 ],
               ),
@@ -223,7 +218,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
   Widget _card(ImageProvider? provider, Color tint, int memW) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -269,12 +264,14 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
+                    // Fade to the EXACT page colour so the card bottom melts into
+                    // the page with no clip line.
                     colors: [
-                      Color(0x00000000),
-                      Color(0x8C000000),
-                      Color(0xE6000000),
+                      Color(0x000B0B0F),
+                      Color(0x990B0B0F),
+                      AppColors.bg,
                     ],
-                    stops: [0.4, 0.74, 1.0],
+                    stops: [0.34, 0.7, 1.0],
                   ),
                 ),
               ),
