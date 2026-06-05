@@ -23,7 +23,13 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val TAG = "SeekPreview"
+        private const val EXT_PLAYER_REQUEST = 7001
     }
+
+    // The in-flight external-player launch, completed in onActivityResult so the
+    // Dart side learns whether the player actually played anything (for the
+    // auto-fallback to the built-in player).
+    private var pendingPlayerResult: MethodChannel.Result? = null
 
     // Cached retriever so rapid scrubbing on one title doesn't re-open the
     // source for every frame (setDataSource is expensive, esp. over network).
@@ -65,7 +71,7 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "getPlayers" -> result.success(installedPlayers())
-                    "launch" -> result.success(launchExternal(call))
+                    "launch" -> launchExternal(call, result)
                     else -> result.notImplemented()
                 }
             }
@@ -93,9 +99,10 @@ class MainActivity : FlutterActivity() {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun launchExternal(call: MethodCall): Boolean {
-        return try {
-            val url = call.argument<String>("url") ?: return false
+    private fun launchExternal(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val url = call.argument<String>("url")
+            if (url == null) { result.success(mapOf("launched" to false)); return }
             val pkg = call.argument<String>("package")
             val title = call.argument<String>("title")
             val headers = call.argument<Map<String, String>>("headers")
@@ -106,7 +113,8 @@ class MainActivity : FlutterActivity() {
             val intent = Intent(Intent.ACTION_VIEW)
             intent.setDataAndType(Uri.parse(url), mime)
             if (!pkg.isNullOrEmpty()) intent.setPackage(pkg)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            // No FLAG_ACTIVITY_NEW_TASK: it would break startActivityForResult,
+            // and we need the result back to know if the player actually played.
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
             title?.let { intent.putExtra("title", it); intent.putExtra("name", it) }
@@ -128,12 +136,51 @@ class MainActivity : FlutterActivity() {
                     intent.putExtra("subtitles_location", subs[0]["url"])
                 }
             }
-            startActivity(intent)
-            true
+
+            // Complete any stale pending launch defensively, then wait for this
+            // one's result in onActivityResult.
+            pendingPlayerResult?.let {
+                try { it.success(mapOf("launched" to true, "played" to true)) } catch (_: Exception) {}
+            }
+            pendingPlayerResult = result
+            startActivityForResult(intent, EXT_PLAYER_REQUEST)
         } catch (e: Exception) {
             Log.w(TAG, "launchExternal failed: ${e.message}")
-            false
+            pendingPlayerResult = null
+            result.success(mapOf("launched" to false))
         }
+    }
+
+    // Reads a position/duration extra whether the player stored it as Long or Int.
+    private fun longExtra(data: Intent, vararg keys: String): Long {
+        for (k in keys) {
+            val v = data.extras?.get(k)
+            if (v is Long) return v
+            if (v is Int) return v.toLong()
+        }
+        return -1L
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != EXT_PLAYER_REQUEST) return
+        val pos = if (data != null) longExtra(data, "position", "extra_position") else -1L
+        val dur = if (data != null) longExtra(data, "duration", "extra_duration") else -1L
+        // "Played" = the player reported real progress or that it loaded the
+        // media. Nothing reported → it failed / was dismissed → Dart falls back.
+        val played = pos > 0 || dur > 0
+        pendingPlayerResult?.let {
+            try {
+                it.success(
+                    mapOf(
+                        "launched" to true,
+                        "played" to played,
+                        "positionMs" to (if (pos > 0) pos else 0L),
+                    ),
+                )
+            } catch (_: Exception) {}
+        }
+        pendingPlayerResult = null
     }
 
     private fun ensureRetriever(

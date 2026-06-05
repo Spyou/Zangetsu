@@ -33,8 +33,15 @@ class ExternalPlayer {
   /// Launches [url] in the external player [package]. Forwards [headers]
   /// (so header-gated streams work in players that honour them, e.g. MX
   /// Player), [subtitles] (`[{url, name}]`), [title], and a resume [positionMs].
-  /// Returns true if the player was launched.
-  Future<bool> launch({
+  ///
+  /// The Future completes when the external player **returns** (closes), with:
+  ///  - `launched`: the player started at all (false = not installed / no
+  ///    activity → caller should fall back immediately).
+  ///  - `played`: the player reported it actually loaded/played the media.
+  ///    When false, the player opened but couldn't play it → caller should fall
+  ///    back to the built-in player.
+  ///  - `positionMs`: watched position reported back (0 if unknown).
+  Future<({bool launched, bool played, int positionMs})> launch({
     required String url,
     required String package,
     String? title,
@@ -42,9 +49,11 @@ class ExternalPlayer {
     List<Map<String, String>> subtitles = const [],
     int positionMs = 0,
   }) async {
-    if (!Platform.isAndroid) return false;
+    if (!Platform.isAndroid) {
+      return (launched: false, played: false, positionMs: 0);
+    }
     try {
-      final ok = await _ch.invokeMethod<bool>('launch', <String, dynamic>{
+      final res = await _ch.invokeMethod<dynamic>('launch', <String, dynamic>{
         'url': url,
         'package': package,
         'title': title,
@@ -52,9 +61,15 @@ class ExternalPlayer {
         'subtitles': subtitles,
         'positionMs': positionMs,
       });
-      return ok ?? false;
-    } catch (_) {
-      return false;
+      final m = res is Map ? Map<String, dynamic>.from(res) : const {};
+      return (
+        launched: m['launched'] == true,
+        played: m['played'] == true,
+        positionMs: (m['positionMs'] as num?)?.toInt() ?? 0,
+      );
+    } catch (e) {
+      debugPrint('[ExternalPlayer] launch failed: $e');
+      return (launched: false, played: false, positionMs: 0);
     }
   }
 }

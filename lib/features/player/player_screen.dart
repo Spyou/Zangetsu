@@ -201,7 +201,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           .whereType<String>()
           .where((s) => s.isNotEmpty)
           .join(' • ');
-      final ok = await ExternalPlayer().launch(
+      // Completes when the external player closes. `played` is false when it
+      // opened but couldn't play the stream (or wasn't installed) — in which
+      // case the built-in player automatically takes over.
+      final res = await ExternalPlayer().launch(
         url: src.url,
         package: sl<PlaybackPrefs>().externalPlayerPackage,
         title: title.isEmpty ? null : title,
@@ -210,10 +213,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
         positionMs: 0,
       );
       if (!mounted) return;
-      if (ok) {
+      if (res.launched && res.played) {
         Navigator.of(context).maybePop();
       } else {
-        _initInApp(); // launch failed → play in-app instead
+        _initInApp(); // not installed / opened but didn't play → built-in
         setState(() {});
       }
     } catch (_) {
