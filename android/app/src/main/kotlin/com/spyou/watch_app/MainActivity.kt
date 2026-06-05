@@ -1,5 +1,6 @@
 package com.spyou.watch_app
 
+import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -7,6 +8,7 @@ import android.os.Build
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
@@ -56,6 +58,82 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // External-player channel: list installed players + hand a stream off to
+        // one via ACTION_VIEW (URL + headers + subtitles + title).
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/external_player")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getPlayers" -> result.success(installedPlayers())
+                    "launch" -> result.success(launchExternal(call))
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    // Known external video players (package -> display label).
+    private val knownPlayers = linkedMapOf(
+        "com.mxtech.videoplayer.ad" to "MX Player",
+        "com.mxtech.videoplayer.pro" to "MX Player Pro",
+        "org.videolan.vlc" to "VLC",
+        "is.xyz.mpv" to "mpv",
+        "com.brouken.player" to "Just Player",
+        "dev.anilbeesetti.nextplayer" to "Next Player",
+    )
+
+    private fun installedPlayers(): List<Map<String, String>> {
+        val out = mutableListOf<Map<String, String>>()
+        for ((pkg, label) in knownPlayers) {
+            try {
+                packageManager.getPackageInfo(pkg, 0)
+                out.add(mapOf("package" to pkg, "label" to label))
+            } catch (_: Exception) { /* not installed */ }
+        }
+        return out
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun launchExternal(call: MethodCall): Boolean {
+        return try {
+            val url = call.argument<String>("url") ?: return false
+            val pkg = call.argument<String>("package")
+            val title = call.argument<String>("title")
+            val headers = call.argument<Map<String, String>>("headers")
+            val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
+            val subs = call.argument<List<Map<String, String>>>("subtitles")
+            val mime = if (url.contains(".m3u8")) "application/x-mpegURL" else "video/*"
+
+            val intent = Intent(Intent.ACTION_VIEW)
+            intent.setDataAndType(Uri.parse(url), mime)
+            if (!pkg.isNullOrEmpty()) intent.setPackage(pkg)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+
+            title?.let { intent.putExtra("title", it); intent.putExtra("name", it) }
+            if (positionMs > 0) intent.putExtra("position", positionMs.toInt())
+
+            // Headers: MX Player / Just Player read a flat String[] of k,v,k,v.
+            if (!headers.isNullOrEmpty()) {
+                val arr = ArrayList<String>()
+                for ((k, v) in headers) { arr.add(k); arr.add(v) }
+                intent.putExtra("headers", arr.toTypedArray())
+                headers["User-Agent"]?.let { intent.putExtra("User-Agent", it) }
+            }
+            // Subtitles: MX-style arrays + VLC single location.
+            if (!subs.isNullOrEmpty()) {
+                val uris = subs.mapNotNull { it["url"] }.map { Uri.parse(it) }
+                if (uris.isNotEmpty()) {
+                    intent.putExtra("subs", uris.toTypedArray())
+                    intent.putExtra("subs.name", subs.map { it["name"] ?: "Subtitle" }.toTypedArray())
+                    intent.putExtra("subtitles_location", subs[0]["url"])
+                }
+            }
+            startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "launchExternal failed: ${e.message}")
+            false
+        }
     }
 
     private fun ensureRetriever(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../di/injector.dart';
+import '../playback/playback_prefs.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -22,8 +23,15 @@ class SourceSwitcher extends StatelessWidget {
 
   /// Installed + enabled providers, mapped to `{id, label}` rows.
   List<({String id, String label})> _selectable() {
+    final reg = sl<ProviderRegistry>();
+    // Hide NSFW sources unless the Privacy toggle is on.
+    final blocked =
+        sl<PlaybackPrefs>().nsfwSources ? const <String>{} : reg.nsfwSourceIds();
     final entries =
-        sl<ProviderRegistry>().getAll().where((e) => e.enabled).toList()
+        reg
+            .getAll()
+            .where((e) => e.enabled && !blocked.contains(e.name))
+            .toList()
           ..sort((a, b) {
             final an = a.displayName.isNotEmpty ? a.displayName : a.name;
             final bn = b.displayName.isNotEmpty ? b.displayName : b.name;

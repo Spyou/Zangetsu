@@ -119,9 +119,7 @@ class ProviderRegistry {
 
   final ProviderJsFetcher _downloader;
   final ProviderRuntimeLoader _manager;
-  // Optional — reserved for repo-association lookups; not required for
-  // any runtime operation here.
-  // ignore: unused_field
+  // Used to resolve a source's manifest flags (e.g. NSFW) by repo + id.
   final ProviderReposRegistry? _repos;
 
   /// In-memory sourceId → jsSource for bundled providers. Populated at
@@ -188,6 +186,20 @@ class ProviderRegistry {
       }
     }
     return null;
+  }
+
+  /// Source ids advertised as NSFW by any cached repo manifest. Used to gate
+  /// adult sources behind the Privacy toggle.
+  Set<String> nsfwSourceIds() {
+    final repos = _repos;
+    if (repos == null) return const <String>{};
+    final out = <String>{};
+    for (final repo in repos.getAll()) {
+      for (final s in repo.sources) {
+        if (s.nsfw) out.add(s.id);
+      }
+    }
+    return out;
   }
 
   Stream<BoxEvent> watch() => _box.watch();

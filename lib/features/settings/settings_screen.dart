@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -5,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
+import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
@@ -41,6 +44,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final entry = _registry.entryFor(activeId);
     if (entry == null) return activeId;
     return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
+  }
+
+  bool get _nsfw => sl<PlaybackPrefs>().nsfwSources;
+
+  /// Privacy toggle. Enabling pops a confirmation; disabling demotes the active
+  /// source if it's now hidden.
+  Future<void> _onNsfwChanged(bool value) async {
+    final prefs = sl<PlaybackPrefs>();
+    if (value) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Enable NSFW sources?', style: AppText.title),
+          content: Text(
+            'This shows sources marked 18+ in the source list and switcher. '
+            'Only turn this on if you want adult content.',
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enable'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await prefs.setNsfwSources(true);
+    } else {
+      await prefs.setNsfwSources(false);
+      _demoteNsfwActiveSource();
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// When NSFW is turned off and the active source is now hidden, switch to the
+  /// first non-NSFW enabled source so Home stops showing it.
+  void _demoteNsfwActiveSource() {
+    final blocked = _registry.nsfwSourceIds();
+    if (!blocked.contains(_active.state)) return;
+    for (final e in _registry.getAll()) {
+      if (e.enabled && !blocked.contains(e.name)) {
+        _active.setSource(e.name);
+        return;
+      }
+    }
   }
 
   /// Bottom sheet listing enabled providers; sets the active source on the
@@ -234,6 +288,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
+                  const SettingsSectionLabel('Privacy'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.shield_outlined,
+                        title: 'Enable NSFW sources',
+                        subtitle: 'Show sources marked 18+',
+                        trailing: Switch.adaptive(
+                          value: _nsfw,
+                          activeThumbColor: AppColors.accent,
+                          onChanged: _onNsfwChanged,
+                        ),
+                      ),
+                    ],
+                  ),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -423,6 +492,38 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Default player picker: Built-in + any installed external players. Streams
+  /// then open in the chosen app instead of the in-app player.
+  Future<void> _pickPlayer() async {
+    final players = await ExternalPlayer().installed();
+    if (!mounted) return;
+    final options = <(String, String)>[
+      ('', 'Built-in player'),
+      for (final p in players) (p.package, p.label),
+    ];
+    if (players.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No external players found. Install MX Player, VLC, mpv, '
+            'Just Player or Next Player.',
+          ),
+        ),
+      );
+    }
+    final picked = await _pick<String>(
+      title: 'Default player',
+      options: options,
+      current: _prefs.externalPlayerPackage,
+    );
+    if (picked == null) return;
+    final label = options
+        .firstWhere((o) => o.$1 == picked, orElse: () => ('', ''))
+        .$2;
+    await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
+    if (mounted) setState(() {});
+  }
+
   /// A boolean row rendered as a [SwitchListTile.adaptive] styled to sit
   /// inside a [SettingsCard] alongside the [SettingsTile] picker rows.
   Widget _toggleRow({
@@ -496,6 +597,25 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
             ],
           ),
+
+          // ── Player (external app handoff — Android) ─────────────────────
+          if (Platform.isAndroid) ...[
+            const SettingsSectionLabel('Player'),
+            SettingsCard(
+              children: [
+                SettingsTile(
+                  icon: Icons.smart_display_outlined,
+                  title: 'Default player',
+                  subtitle: _prefs.externalPlayerPackage.isEmpty
+                      ? 'Built-in'
+                      : (_prefs.externalPlayerLabel.isNotEmpty
+                            ? _prefs.externalPlayerLabel
+                            : 'External app'),
+                  onTap: _pickPlayer,
+                ),
+              ],
+            ),
+          ],
 
           // ── Playback behaviour ──────────────────────────────────────────
           const SettingsSectionLabel('Playback'),

@@ -88,6 +88,24 @@ class PlaybackPrefs {
   Future<void> setSkipIntroSeconds(int value) =>
       _box.put('skipIntroSeconds', value);
 
+  /// Default player. Empty string = the built-in player; otherwise the package
+  /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.
+  /// [externalPlayerLabel] is the human name shown in settings.
+  String get externalPlayerPackage =>
+      _box.get('externalPlayerPackage', defaultValue: '') as String;
+  String get externalPlayerLabel =>
+      _box.get('externalPlayerLabel', defaultValue: '') as String;
+  Future<void> setExternalPlayer(String package, String label) async {
+    await _box.put('externalPlayerPackage', package);
+    await _box.put('externalPlayerLabel', label);
+  }
+
+  /// Whether sources flagged NSFW in their repo manifest are shown and usable.
+  /// Off by default; turning it on is gated behind a confirmation in Privacy
+  /// settings. When off, NSFW sources are hidden from the source list + switcher.
+  bool get nsfwSources => _box.get('nsfwSources', defaultValue: false) as bool;
+  Future<void> setNsfwSources(bool value) => _box.put('nsfwSources', value);
+
   // ── Subtitle styling (applied via mpv) ─────────────────────────────────────
   /// Subtitle size multiplier: 0.8 (small) / 1.0 / 1.3 (large).
   double get subtitleScale =>

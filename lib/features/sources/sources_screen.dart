@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
 import '../../core/theme/app_colors.dart';
@@ -648,7 +649,10 @@ class _RepoSectionState extends State<_RepoSection> {
                           ),
                         )
                       else
-                        for (final source in repo.sources) ...[
+                        // Hide NSFW sources unless the Privacy toggle is on.
+                        for (final source in repo.sources.where(
+                          (s) => !s.nsfw || sl<PlaybackPrefs>().nsfwSources,
+                        )) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
@@ -669,6 +673,32 @@ class _RepoSectionState extends State<_RepoSection> {
                   ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Small "NSFW" chip shown next to a source flagged 18+ in its manifest.
+class _NsfwBadge extends StatelessWidget {
+  const _NsfwBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+      ),
+      child: Text(
+        'NSFW',
+        style: AppText.overline.copyWith(
+          color: AppColors.accent,
+          fontWeight: FontWeight.w700,
+          fontSize: 9,
+          letterSpacing: 0.5,
+        ),
       ),
     );
   }
@@ -742,11 +772,21 @@ class _RepoSourceRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  source.name,
-                  style: AppText.headline.copyWith(fontSize: 15),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        source.name,
+                        style: AppText.headline.copyWith(fontSize: 15),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (source.nsfw) ...[
+                      const SizedBox(width: 8),
+                      const _NsfwBadge(),
+                    ],
+                  ],
                 ),
                 const SizedBox(height: 2),
                 Text(

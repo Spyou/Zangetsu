@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
@@ -12,6 +13,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -147,6 +149,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // Default external player: hand the stream off to the chosen app and close
+    // this screen instead of starting the in-app player. Falls back to in-app
+    // if the launch can't be set up, so playback never silently dies.
+    if (Platform.isAndroid &&
+        sl<PlaybackPrefs>().externalPlayerPackage.isNotEmpty) {
+      _launchExternalThenPop();
+      return;
+    }
+    _initInApp();
+  }
+
+  void _initInApp() {
     SystemChrome.setPreferredOrientations(const [
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -157,6 +171,56 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
     } else {
       _startSession(widget.episodes, widget.startIndex);
+    }
+  }
+
+  /// Resolve the start episode + its best source and open it in the user's
+  /// chosen external player, then pop. The branded loader shows briefly while
+  /// resolving. Any failure falls back to the in-app player.
+  Future<void> _launchExternalThenPop() async {
+    try {
+      var eps = widget.episodes;
+      if (eps.isEmpty && widget.episodesResolver != null) {
+        eps = await widget.episodesResolver!();
+      }
+      if (eps.isEmpty) throw StateError('no episodes');
+      var idx = widget.startIndex;
+      if (widget.resumeEpisodeId != null) {
+        final i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        if (i >= 0) idx = i;
+      }
+      final ep = eps[idx.clamp(0, eps.length - 1)];
+      final sources = await widget.resolveSources(ep.url);
+      final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
+      final src = pickDefault(sources, prefer: prefer);
+      if (src == null) throw StateError('no source');
+      final subs = src.subtitles
+          .map((s) => {'url': s.url, 'name': s.label ?? s.lang})
+          .toList();
+      final title = [widget.showTitle, ep.title]
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .join(' • ');
+      final ok = await ExternalPlayer().launch(
+        url: src.url,
+        package: sl<PlaybackPrefs>().externalPlayerPackage,
+        title: title.isEmpty ? null : title,
+        headers: src.headers ?? const {},
+        subtitles: subs,
+        positionMs: 0,
+      );
+      if (!mounted) return;
+      if (ok) {
+        Navigator.of(context).maybePop();
+      } else {
+        _initInApp(); // launch failed → play in-app instead
+        setState(() {});
+      }
+    } catch (_) {
+      if (mounted) {
+        _initInApp();
+        setState(() {});
+      }
     }
   }
 

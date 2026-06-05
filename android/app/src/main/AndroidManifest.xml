@@ -62,5 +62,13 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- External video players we can hand a stream to (package visibility
+             on Android 11+). -->
+        <package android:name="com.mxtech.videoplayer.ad"/>
+        <package android:name="com.mxtech.videoplayer.pro"/>
+        <package android:name="org.videolan.vlc"/>
+        <package android:name="is.xyz.mpv"/>
+        <package android:name="com.brouken.player"/>
+        <package android:name="dev.anilbeesetti.nextplayer"/>
     </queries>
 </manifest>
