@@ -71,14 +71,20 @@ class ProviderDownloader implements ProviderJsFetcher {
       return cached;
     }
     try {
+      // raw.githubusercontent.com sits behind a ~5 min Fastly edge cache, which
+      // ignores a request no-cache header. On a forced refresh, append a unique
+      // query so the CDN treats it as a new URL → always pulls fresh JS.
+      final fetchUrl = force
+          ? (url.contains('?')
+                ? '$url&_=${DateTime.now().millisecondsSinceEpoch}'
+                : '$url?_=${DateTime.now().millisecondsSinceEpoch}')
+          : url;
       final resp = await _dio.getUri<String>(
-        Uri.parse(url),
+        Uri.parse(fetchUrl),
         options: Options(
           responseType: ResponseType.plain,
           validateStatus: (s) => s != null && s < 500,
-          // raw.githubusercontent.com sits behind a ~5 min Fastly edge
-          // cache; force a revalidation so "Update" actually pulls fresh JS.
-          headers: force ? {'Cache-Control': 'no-cache'} : null,
+          headers: force ? const {'Cache-Control': 'no-cache'} : null,
         ),
       );
       if (resp.statusCode == null || resp.statusCode! >= 400) {

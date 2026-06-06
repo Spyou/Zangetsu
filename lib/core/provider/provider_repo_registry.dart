@@ -194,9 +194,18 @@ class ProviderReposRegistry {
         ? customName!.trim()
         : existing?.customName;
     try {
+      // raw.githubusercontent.com caches index.json on its CDN for ~5 min, so a
+      // refresh right after a push would otherwise show a stale manifest (no
+      // update). A cache-buster query + no-cache header forces the latest.
+      final sep = trimmed.contains('?') ? '&' : '?';
+      final fetchUrl =
+          '$trimmed${sep}_=${DateTime.now().millisecondsSinceEpoch}';
       final response = await dio.get<String>(
-        trimmed,
-        options: Options(responseType: ResponseType.plain),
+        fetchUrl,
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: const {'Cache-Control': 'no-cache'},
+        ),
       );
       final body = response.data;
       if (body == null || body.isEmpty) {
