@@ -18,12 +18,12 @@ import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
+import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../auth/auth_cubit.dart';
-import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
@@ -128,11 +128,13 @@ class _HomeViewState extends State<_HomeView> {
       onPlay: () => _playFeatured(item),
       onOpenDetail: () => _openDetail(item),
       onToggleMyList: () async {
-        if (!requireLogin(context, action: 'add to My List')) {
-          return _myList.contains(item);
-        }
-        await _myList.toggle(item);
-        if (mounted) setState(() {});
+        await showListStatusSheet(
+          context,
+          item: item,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
         return _myList.contains(item);
       },
     );
@@ -165,11 +167,13 @@ class _HomeViewState extends State<_HomeView> {
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
       onToggleMyList: () async {
-        if (!requireLogin(context, action: 'add to My List')) {
-          return _myList.contains(stub);
-        }
-        await _myList.toggle(stub);
-        if (mounted) setState(() {});
+        await showListStatusSheet(
+          context,
+          item: stub,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
         return _myList.contains(stub);
       },
       onRemoveFromContinue: () async {
@@ -360,16 +364,13 @@ class _HomeViewState extends State<_HomeView> {
                                 inList: (m) => _myList.contains(m),
                                 onPlay: _playFeatured,
                                 onInfo: _openDetail,
-                                onToggleList: (m) async {
-                                  if (!requireLogin(
-                                    context,
-                                    action: 'add to My List',
-                                  )) {
-                                    return;
-                                  }
-                                  await _myList.toggle(m);
-                                  if (mounted) setState(() {});
-                                },
+                                onToggleList: (m) => showListStatusSheet(
+                                  context,
+                                  item: m,
+                                  onChanged: () {
+                                    if (mounted) setState(() {});
+                                  },
+                                ),
                                 meta: _heroMeta,
                                 style: HeroTransition.cinematic,
                               ),
