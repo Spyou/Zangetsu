@@ -61,6 +61,15 @@ class MediaDetail extends Equatable {
   final int? subCount;
   final int? dubCount;
 
+  /// MyAnimeList id, when the source exposes it (anime). Drives tracker sync
+  /// (AniList/MAL/Simkl) — the scrobble target and the list-import match key.
+  final int? malId;
+
+  /// TMDB id (movies/series), when the source exposes it. Drives Simkl tracking
+  /// for non-anime content; [tmdbIsTv] selects TMDB's movie vs tv namespace.
+  final int? tmdbId;
+  final bool tmdbIsTv;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -79,6 +88,9 @@ class MediaDetail extends Equatable {
     required this.sourceId,
     this.subCount,
     this.dubCount,
+    this.malId,
+    this.tmdbId,
+    this.tmdbIsTv = false,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -104,5 +116,8 @@ class MediaDetail extends Equatable {
     sourceId,
     subCount,
     dubCount,
+    malId,
+    tmdbId,
+    tmdbIsTv,
   ];
 }

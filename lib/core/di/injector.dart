@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
 import '../playback/search_history.dart';
@@ -18,6 +19,11 @@ import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../trailer/trailer_service.dart';
+import '../anilist/anilist_service.dart';
+import '../anilist/anilist_store.dart';
+import '../tracker/mal_service.dart';
+import '../tracker/simkl_service.dart';
+import '../tracker/tracker_hub.dart';
 import '../appwrite/appwrite_service.dart';
 import '../download/download_manager.dart';
 import '../download/download_service.dart';
@@ -51,6 +57,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<MyListStore>(
     MyListStore(sl<AppwriteService>(), currentUserId),
   );
+  await ListStatusStore.init();
+  sl.registerSingleton<ListStatusStore>(ListStatusStore());
   await TitlePrefsStore.init();
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await PlaybackPrefs.init();
@@ -74,6 +82,23 @@ Future<void> initDependencies() async {
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));
+
+  // AniList account sync (auto-scrobble watched episodes + list import). The
+  // box holds the OAuth token; the service listens for the OAuth redirect.
+  await AniListStore.init();
+  sl.registerSingleton<AniListService>(AniListService(dio));
+  // Retry any scrobbles that queued while offline/disconnected last session.
+  sl<AniListService>().flushPending();
+
+  // Additional trackers (MyAnimeList, Simkl) + the fan-out hub. Each writes to
+  // its own service; the hub pushes every list/progress change to all connected.
+  await MalService.init();
+  sl.registerSingleton<MalService>(MalService(dio));
+  await SimklService.init();
+  sl.registerSingleton<SimklService>(SimklService(dio));
+  sl.registerSingleton<TrackerHub>(
+    TrackerHub([sl<AniListService>(), sl<MalService>(), sl<SimklService>()]),
+  );
 
   // AuthCubit is global so any widget can gate on login. AppwriteService is
   // already registered above (the library stores depend on it).

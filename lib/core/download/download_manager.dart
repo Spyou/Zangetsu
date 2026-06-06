@@ -188,6 +188,7 @@ class DownloadManager extends ChangeNotifier {
     required String quality,
     required List<Episode> episodes,
     required int nowMs,
+    int? malId,
   }) async {
     // Best-effort notification permission so the progress notification shows.
     try {
@@ -217,6 +218,7 @@ class DownloadManager extends ChangeNotifier {
         episodeTitle: ep.title,
         category: category,
         quality: quality,
+        malId: malId,
         createdAt: nowMs,
       );
       _put(rec);
@@ -244,6 +246,7 @@ class DownloadManager extends ChangeNotifier {
     required VideoSource source,
     required String qualityLabel,
     required int nowMs,
+    int? malId,
     List<VideoSource> fallbacks = const [],
   }) async {
     try {
@@ -263,6 +266,7 @@ class DownloadManager extends ChangeNotifier {
       episodeTitle: episode.title,
       category: category,
       quality: qualityLabel,
+      malId: malId,
       createdAt: nowMs,
     );
     _put(rec);

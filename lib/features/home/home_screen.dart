@@ -200,6 +200,8 @@ class _HomeViewState extends State<_HomeView> {
           coverHeaders: item.coverHeaders,
           showUrl: item.url,
           category: category,
+          malId: item.malId,
+          scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
         ),
       ),
     );
@@ -229,6 +231,8 @@ class _HomeViewState extends State<_HomeView> {
           coverHeaders: e.coverHeaders,
           showUrl: e.showUrl,
           category: e.category,
+          malId: e.malId,
+          scrobbleTitle: e.malId != null ? e.showTitle : null,
         ),
       ),
     );

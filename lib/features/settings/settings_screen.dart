@@ -5,7 +5,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
+import '../../core/tracker/mal_service.dart';
+import '../../core/tracker/simkl_service.dart';
+import '../../core/tracker/tracker.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -20,6 +24,7 @@ import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
+import 'tracker_settings_screen.dart';
 import '../sources/sources_screen.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
@@ -229,6 +234,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
     final activeId = context.watch<ActiveSourceCubit>().state;
+    final trackers = <Tracker>[
+      sl<AniListService>(),
+      sl<MalService>(),
+      sl<SimklService>(),
+    ];
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -286,6 +296,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Storage',
                         onTap: () => _push(const StorageSettingsScreen()),
                       ),
+                    ],
+                  ),
+                  const SettingsSectionLabel('Connections'),
+                  SettingsCard(
+                    children: [
+                      for (final t in trackers)
+                        SettingsTile(
+                          icon: Icons.sync_alt_rounded,
+                          title: t.displayName,
+                          subtitle: t.isConnected
+                              ? (t.viewerName ?? 'Connected')
+                              : 'Sync progress as you watch',
+                          onTap: () async {
+                            await _push(TrackerSettingsScreen(tracker: t));
+                            if (mounted) setState(() {});
+                          },
+                        ),
                     ],
                   ),
                   const SettingsSectionLabel('Privacy'),

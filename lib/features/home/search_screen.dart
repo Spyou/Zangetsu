@@ -139,6 +139,8 @@ class _SearchViewState extends State<_SearchView> {
           coverHeaders: item.coverHeaders,
           showUrl: item.url,
           category: category,
+          malId: item.malId,
+          scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
         ),
       ),
     );

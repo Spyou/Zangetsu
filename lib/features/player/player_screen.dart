@@ -13,6 +13,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/models/episode.dart';
@@ -51,6 +52,10 @@ class PlayerScreen extends StatefulWidget {
     this.coverHeaders,
     this.showUrl,
     this.category,
+    this.malId,
+    this.scrobbleTitle,
+    this.tmdbId,
+    this.tmdbIsTv = false,
     this.availableCategories = const [],
   });
 
@@ -74,6 +79,17 @@ class PlayerScreen extends StatefulWidget {
   final Map<String, String>? coverHeaders;
   final String? showUrl;
   final String? category;
+
+  /// MyAnimeList id (anime) for AniList auto-scrobble. Null = no scrobbling.
+  final int? malId;
+
+  /// Anime title used to resolve the AniList entry when [malId] is absent.
+  /// Non-null only for anime.
+  final String? scrobbleTitle;
+
+  /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
+  final int? tmdbId;
+  final bool tmdbIsTv;
 
   /// Sub/Dub categories this title offers. When length <= 1 the player hides
   /// the Version (Sub/Dub) section. Switching re-resolves the current episode
@@ -194,6 +210,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) throw StateError('no source');
+      // External players give no progress callback and the in-app scrobbler
+      // never runs for them — so scrobble the episode at hand-off (the only
+      // reliable signal). Anime-gated + de-duped inside the service.
+      final epNum = ep.number;
+      if (epNum != null && epNum > 0 && epNum == epNum.truncateToDouble()) {
+        sl<TrackerHub>().scrobble(
+          malId: widget.malId,
+          title: widget.scrobbleTitle,
+          tmdbId: widget.tmdbId,
+          tmdbIsTv: widget.tmdbIsTv,
+          episode: epNum.toInt(),
+        );
+      }
       final subs = src.subtitles
           .map((s) => {'url': s.url, 'name': s.label ?? s.lang})
           .toList();
@@ -242,6 +271,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       coverHeaders: widget.coverHeaders,
       showUrl: widget.showUrl,
       category: widget.category,
+      malId: widget.malId,
+      scrobbleTitle: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
       availableCategories: widget.availableCategories,
     )..init(startIndex);
     // Drive the "Up next" card on episode completion (the controller no longer

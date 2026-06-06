@@ -23,6 +23,7 @@ class HistoryEntry {
     required this.position,
     required this.duration,
     required this.updatedAt,
+    this.malId,
   });
   final String sourceId,
       showId,
@@ -34,6 +35,10 @@ class HistoryEntry {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final double? episodeNumber;
+
+  /// MyAnimeList id (anime), carried so a resume from Continue Watching can
+  /// still auto-scrobble to AniList. Local-only — not synced to Appwrite.
+  final int? malId;
   final Duration position, duration;
   final int updatedAt;
   bool get finished =>
@@ -85,6 +90,7 @@ class WatchHistory {
       'positionMs': e.position.inMilliseconds,
       'durationMs': e.duration.inMilliseconds,
       'updatedAt': e.updatedAt,
+      'malId': e.malId,
     });
     _pushToCloud(key, e);
   }
@@ -157,6 +163,7 @@ class WatchHistory {
       position: Duration(milliseconds: (m['positionMs'] as num?)?.toInt() ?? 0),
       duration: Duration(milliseconds: (m['durationMs'] as num?)?.toInt() ?? 0),
       updatedAt: (m['updatedAt'] as num?)?.toInt() ?? 0,
+      malId: (m['malId'] as num?)?.toInt(),
     );
   }
 

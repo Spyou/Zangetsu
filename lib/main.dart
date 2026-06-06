@@ -8,6 +8,7 @@ import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
+import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/onboarding_screen.dart';
@@ -112,6 +113,7 @@ class _WatchAppState extends State<WatchApp> {
               title: kAppName,
               theme: buildAppTheme(),
               debugShowCheckedModeBanner: false,
+              scaffoldMessengerKey: rootMessengerKey,
               home: home,
             ),
           ),

@@ -74,6 +74,7 @@ class DownloadRecord {
     this.filePath,
     this.error,
     this.subtitles = const [],
+    this.malId,
     required this.createdAt,
   });
 
@@ -96,6 +97,7 @@ class DownloadRecord {
   final String? filePath; // final shared-storage path once complete
   final String? error;
   final List<OfflineSubtitle> subtitles; // soft-sub files saved for offline use
+  final int? malId; // anime MAL id → AniList auto-scrobble on offline playback
   final int createdAt;
 
   bool get isActive =>
@@ -131,6 +133,7 @@ class DownloadRecord {
     filePath: filePath != null ? filePath() : this.filePath,
     error: error != null ? error() : this.error,
     subtitles: subtitles ?? this.subtitles,
+    malId: malId,
     createdAt: createdAt,
   );
 
@@ -154,6 +157,7 @@ class DownloadRecord {
     'filePath': filePath,
     'error': error,
     'subtitles': subtitles.map((s) => s.toMap()).toList(),
+    'malId': malId,
     'createdAt': createdAt,
   };
 
@@ -185,6 +189,7 @@ class DownloadRecord {
           .map(OfflineSubtitle.fromMap)
           .where((s) => s.path.isNotEmpty)
           .toList(),
+      malId: (m['malId'] as num?)?.toInt(),
       createdAt: (m['createdAt'] as num?)?.toInt() ?? 0,
     );
   }

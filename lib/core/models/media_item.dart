@@ -23,6 +23,14 @@ class MediaItem extends Equatable {
   final int? subCount;
   final int? dubCount;
 
+  /// MyAnimeList id, when the source exposes it (anime). Carried so tracker
+  /// sync (AniList) can match this title without re-fetching the detail.
+  final int? malId;
+
+  /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
+  final int? tmdbId;
+  final bool tmdbIsTv;
+
   const MediaItem({
     required this.id,
     required this.title,
@@ -34,25 +42,36 @@ class MediaItem extends Equatable {
     required this.sourceId,
     this.subCount,
     this.dubCount,
+    this.malId,
+    this.tmdbId,
+    this.tmdbIsTv = false,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
       _$MediaItemFromJson(json);
   Map<String, dynamic> toJson() => _$MediaItemToJson(this);
 
-  MediaItem copyWith({String? sourceId, int? subCount, int? dubCount}) =>
-      MediaItem(
-        id: id,
-        title: title,
-        englishTitle: englishTitle,
-        cover: cover,
-        coverHeaders: coverHeaders,
-        url: url,
-        type: type,
-        sourceId: sourceId ?? this.sourceId,
-        subCount: subCount ?? this.subCount,
-        dubCount: dubCount ?? this.dubCount,
-      );
+  MediaItem copyWith({
+    String? sourceId,
+    int? subCount,
+    int? dubCount,
+    int? malId,
+    int? tmdbId,
+  }) => MediaItem(
+    id: id,
+    title: title,
+    englishTitle: englishTitle,
+    cover: cover,
+    coverHeaders: coverHeaders,
+    url: url,
+    type: type,
+    sourceId: sourceId ?? this.sourceId,
+    subCount: subCount ?? this.subCount,
+    dubCount: dubCount ?? this.dubCount,
+    malId: malId ?? this.malId,
+    tmdbId: tmdbId ?? this.tmdbId,
+    tmdbIsTv: tmdbIsTv,
+  );
 
   @override
   List<Object?> get props => [
@@ -66,5 +85,8 @@ class MediaItem extends Equatable {
     sourceId,
     subCount,
     dubCount,
+    malId,
+    tmdbId,
+    tmdbIsTv,
   ];
 }

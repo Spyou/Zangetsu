@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
@@ -113,6 +114,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.coverHeaders,
     this.showUrl,
     this.category,
+    this.malId,
+    this.scrobbleTitle,
+    this.tmdbId,
+    this.tmdbIsTv = false,
     this.availableCategories = const [],
   }) : _resolveSources = resolveSources,
        _dio = dio,
@@ -131,6 +136,21 @@ class PlayerCubit extends Cubit<PlayerState> {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final String? showUrl;
+
+  /// MyAnimeList id for the show (anime), when known. Drives AniList
+  /// auto-scrobble: each episode is pushed once it crosses 92%.
+  final int? malId;
+
+  /// Anime title used to resolve the AniList entry when [malId] is absent (old
+  /// provider / AllAnime). Non-null only for anime — gates scrobbling.
+  final String? scrobbleTitle;
+
+  /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
+  final int? tmdbId;
+  final bool tmdbIsTv;
+
+  /// Episode indices already scrobbled this session (fire once per episode).
+  final Set<int> _scrobbled = {};
 
   /// The category (sub/dub) the session launched in. The LIVE category (which
   /// the user can flip mid-session) is [_activeCategory] — `category` is just
@@ -160,6 +180,17 @@ class PlayerCubit extends Cubit<PlayerState> {
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
   bool _recovering = false; // debounce: one error-recovery at a time
+  // True once the current source has actually produced playback (position
+  // advanced). libmpv emits transient "connection"/"failed to open" warnings
+  // mid-stream (HLS segment blips, a failed subtitle track) even while video +
+  // audio play fine — once a source is playing we must NOT treat those as a
+  // reason to cycle sources (which spuriously showed "No source could be
+  // played" over working playback and broke the watch-progress scrobble).
+  bool _startedThisSource = false;
+  // Fired once per session: mark the anime CURRENT on AniList as soon as
+  // playback starts (so "started watching" shows immediately, not only after
+  // an episode crosses the 92% scrobble threshold).
+  bool _markedWatching = false;
   bool _defaultRateApplied = false; // default speed applied once per session
 
   Episode get currentEpisode => episodes[state.currentIndex];
@@ -273,6 +304,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.position.listen((p) {
         _lastPos = p;
+        if (p > Duration.zero) {
+          _startedThisSource = true; // source is playing
+          if (!_markedWatching) {
+            _markedWatching = true;
+            _markWatching(); // "started watching" → CURRENT on AniList now
+          }
+        }
+
         // Throttled progress capture so Continue Watching fills mid-episode
         // (without waiting for an episode switch / dispose). Cheap: at most one
         // write every ~5s. NOT gated on duration — downloaded HLS (concatenated
@@ -296,7 +335,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     );
     // Completion is handled by the player screen (it shows the "Up next"
     // countdown card and then advances), so the controller doesn't auto-advance
-    // here — avoids double-advancing.
+    // here — avoids double-advancing. We DO use it to force an AniList scrobble
+    // (covers HLS streams that report no duration, so the 92% check never fires).
+    _subs.add(
+      player.stream.completed.listen((done) {
+        if (done) _maybeScrobble(force: true);
+      }),
+    );
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
     openEpisode(index);
   }
@@ -691,6 +736,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
     final g = gen ?? ++_gen;
+    _startedThisSource = false; // reset; set true once this source plays
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
@@ -753,6 +799,10 @@ class PlayerCubit extends Cubit<PlayerState> {
         lower.contains('recognize file format') ||
         lower.contains('ffurl') ||
         lower.contains('connection');
+    // If THIS source is already playing (position advanced), the error is a
+    // transient/secondary one (HLS segment blip, failed sub track) — ignore it.
+    // Only a source that NEVER started is worth cycling away from.
+    if (_startedThisSource) return;
     if (!fatal || _recovering) return;
     _recovering = true;
     final failed = state.active;
@@ -889,9 +939,57 @@ class PlayerCubit extends Cubit<PlayerState> {
           position: _lastPos,
           duration: _lastDur,
           updatedAt: DateTime.now().millisecondsSinceEpoch,
+          malId: malId,
         ),
       );
     }
+    _maybeScrobble();
+  }
+
+  /// AniList auto-scrobble: once the current episode crosses 92% (or the player
+  /// signals completion via [force], covering HLS streams with no reported
+  /// duration), push it once per episode per session (the service also de-dupes
+  /// persistently). Identifies the anime by [malId] when present, else by
+  /// [scrobbleTitle]. Whole-numbered episodes only.
+  /// Mark the anime CURRENT on AniList the instant playback starts.
+  void _markWatching() {
+    if (malId == null &&
+        (scrobbleTitle == null || scrobbleTitle!.isEmpty) &&
+        tmdbId == null) {
+      return;
+    }
+    if (!sl.isRegistered<TrackerHub>()) return;
+    sl<TrackerHub>().markWatching(
+      malId: malId,
+      title: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+    );
+  }
+
+  void _maybeScrobble({bool force = false}) {
+    if (malId == null &&
+        (scrobbleTitle == null || scrobbleTitle!.isEmpty) &&
+        tmdbId == null) {
+      return; // nothing to identify the title by
+    }
+    if (!force) {
+      if (_lastDur <= Duration.zero) return; // can't gauge % without duration
+      if (_lastPos.inMilliseconds < _lastDur.inMilliseconds * 0.92) return;
+    }
+    final idx = state.currentIndex;
+    if (_scrobbled.contains(idx)) return;
+    final ep = currentEpisode.number;
+    if (ep == null || ep <= 0 || ep != ep.truncateToDouble()) return;
+    if (!sl.isRegistered<TrackerHub>()) return;
+    _scrobbled.add(idx);
+    sl<TrackerHub>().scrobble(
+      malId: malId,
+      title: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      episode: ep.toInt(),
+    );
   }
 
   @override

@@ -179,6 +179,8 @@ class _DownloadTile extends StatelessWidget {
           coverHeaders: record.coverHeaders,
           showUrl: record.showUrl,
           category: record.category,
+          malId: record.malId,
+          scrobbleTitle: record.malId != null ? record.showTitle : null,
         ),
       ),
     );

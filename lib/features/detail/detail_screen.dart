@@ -15,7 +15,11 @@ import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/video_source.dart';
+import '../../core/models/provider_info.dart';
+import '../../core/models/watch_status.dart';
+import '../../core/playback/list_status_store.dart';
 import '../../core/playback/my_list.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
@@ -23,7 +27,6 @@ import '../../core/playback/watch_history.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
-import '../auth/auth_screens.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
 import '../../core/ui/badge.dart';
@@ -86,9 +89,11 @@ class _DetailViewState extends State<_DetailView>
     vsync: this,
   );
 
-  // ── My List (per-title store) ─────────────────────────────────────────────
+  // ── My List (status-organised library) ────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
-  late bool _inMyList = _myList.contains(widget.item);
+  final ListStatusStore _listStatus = sl<ListStatusStore>();
+  late WatchStatus? _status = _listStatus.statusOf(widget.item);
+  late bool _inMyList = _status != null || _myList.contains(widget.item);
 
   // ── Trailer (metadata-API lookup) ─────────────────────────────────────────
   // Resolved lazily once per detail load and cached so the hero player doesn't
@@ -138,11 +143,65 @@ class _DetailViewState extends State<_DetailView>
 
   // ── The 5-icon action row wiring ──────────────────────────────────────────
 
-  Future<void> _toggleMyList() async {
-    if (!requireLogin(context, action: 'add to My List')) return;
-    await _myList.toggle(widget.item);
+  /// Open the "Add to List" status sheet (Plan / Watching / Completed / Paused
+  /// / Dropped / Remove). Works locally for any title; for anime with a MAL id
+  /// and AniList connected, the choice is also pushed to AniList.
+  Future<void> _openListSheet(MediaDetail detail) async {
+    final malId = detail.malId ?? widget.item.malId;
+    final tmdbId = detail.tmdbId ?? widget.item.tmdbId;
+    final tmdbIsTv = detail.tmdbIsTv;
+    final picked = await showModalBottomSheet<Object?>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => _ListStatusSheet(current: _status, inList: _inMyList),
+    );
+    if (picked == null || !mounted) return;
+
+    if (picked == _kRemoveFromList) {
+      await _myList.remove(widget.item);
+      await _listStatus.remove(widget.item);
+      if (sl<TrackerHub>().anyConnected) {
+        unawaited(
+          sl<TrackerHub>().removeFromList(
+            malId: malId,
+            title: detail.title,
+            tmdbId: tmdbId,
+            tmdbIsTv: tmdbIsTv,
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _status = null;
+        _inMyList = false;
+      });
+      _snack('Removed from My List');
+      return;
+    }
+
+    final status = picked as WatchStatus;
+    await _myList.add(widget.item);
+    await _listStatus.setStatus(widget.item, status);
+    if (sl<TrackerHub>().anyConnected) {
+      unawaited(
+        sl<TrackerHub>().setStatus(
+          malId: malId,
+          title: detail.title,
+          tmdbId: tmdbId,
+          tmdbIsTv: tmdbIsTv,
+          status: status,
+        ),
+      );
+    }
     if (!mounted) return;
-    setState(() => _inMyList = _myList.contains(widget.item));
+    setState(() {
+      _status = status;
+      _inMyList = true;
+    });
+    _snack('Added to ${status.label}');
   }
 
   void _share(MediaDetail detail, String sourceName) {
@@ -236,6 +295,10 @@ class _DetailViewState extends State<_DetailView>
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           showUrl: widget.item.url,
           category: launchCategory,
+          malId: detail.malId ?? widget.item.malId,
+          scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+          tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+          tmdbIsTv: detail.tmdbIsTv,
           availableCategories: availableCategories,
         ),
       ),
@@ -400,6 +463,7 @@ class _DetailViewState extends State<_DetailView>
         qualityLabel: res.chosen.quality ?? 'auto',
         fallbacks: res.all,
         nowMs: DateTime.now().millisecondsSinceEpoch,
+        malId: detail.malId ?? item.malId,
       ),
     );
     _snack('Added to downloads');
@@ -424,6 +488,7 @@ class _DetailViewState extends State<_DetailView>
         quality: quality,
         episodes: episodes,
         nowMs: DateTime.now().millisecondsSinceEpoch,
+        malId: detail.malId ?? item.malId,
       ),
     );
     _snack(
@@ -705,9 +770,9 @@ class _DetailViewState extends State<_DetailView>
                 _IconAction(
                   icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
                   active: _inMyList,
-                  label: 'My List',
-                  tooltip: _inMyList ? 'In My List' : 'Add to My List',
-                  onTap: _toggleMyList,
+                  label: _status?.shortLabel ?? 'My List',
+                  tooltip: _inMyList ? 'Change status' : 'Add to My List',
+                  onTap: () => _openListSheet(detail),
                 ),
                 _IconAction(
                   icon: Icons.ios_share_rounded,
@@ -3228,4 +3293,84 @@ class _DetailRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Sentinel returned by [_ListStatusSheet] for the "Remove from list" row.
+const String _kRemoveFromList = '__remove__';
+
+/// "Add to List" status picker. Pops a [WatchStatus] when a status is chosen,
+/// [_kRemoveFromList] for remove, or null on dismiss.
+class _ListStatusSheet extends StatelessWidget {
+  const _ListStatusSheet({required this.current, required this.inList});
+
+  final WatchStatus? current;
+  final bool inList;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.hairline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Add to your list', style: AppText.headline),
+            ),
+          ),
+          for (final s in WatchStatus.values)
+            ListTile(
+              leading: Icon(
+                _iconFor(s),
+                color: current == s ? AppColors.accent : AppColors.textSecondary,
+              ),
+              title: Text(
+                s.label,
+                style: AppText.body.copyWith(
+                  color: current == s ? AppColors.accent : AppColors.textPrimary,
+                  fontWeight: current == s ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+              trailing: current == s
+                  ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                  : null,
+              onTap: () => Navigator.pop(context, s),
+            ),
+          if (inList) ...[
+            const Divider(height: 1, color: AppColors.hairline),
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.accent,
+              ),
+              title: Text(
+                'Remove from list',
+                style: AppText.body.copyWith(color: AppColors.accent),
+              ),
+              onTap: () => Navigator.pop(context, _kRemoveFromList),
+            ),
+          ],
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconFor(WatchStatus s) => switch (s) {
+    WatchStatus.planning => Icons.bookmark_add_outlined,
+    WatchStatus.watching => Icons.play_circle_outline_rounded,
+    WatchStatus.completed => Icons.check_circle_outline_rounded,
+    WatchStatus.paused => Icons.pause_circle_outline_rounded,
+    WatchStatus.dropped => Icons.cancel_outlined,
+  };
 }

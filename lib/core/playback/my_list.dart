@@ -51,6 +51,19 @@ class MyListStore {
       .map((raw) => MediaItem.fromJson(Map<String, dynamic>.from(raw)))
       .toList();
 
+  /// Ensure [m] is in the list (no-op if already present). Used by the status
+  /// sheet, where picking any status implies membership.
+  Future<void> add(MediaItem m) async {
+    if (_box.containsKey(_key(m))) return;
+    await toggle(m);
+  }
+
+  /// Remove [m] from the list (no-op if absent).
+  Future<void> remove(MediaItem m) async {
+    if (!_box.containsKey(_key(m))) return;
+    await toggle(m);
+  }
+
   Future<void> toggle(MediaItem m) async {
     final k = _key(m);
     final adding = !_box.containsKey(k);
