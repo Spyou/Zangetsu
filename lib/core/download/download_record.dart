@@ -15,6 +15,41 @@ DownloadStatus _statusFromName(String? n) => DownloadStatus.values.firstWhere(
   orElse: () => DownloadStatus.queued,
 );
 
+/// A subtitle track saved to disk alongside a download, so soft-subbed sources
+/// (e.g. HiAnime — the video stream carries no burned-in text) still have
+/// subtitles offline. [path] is a local file the player loads via
+/// `SubtitleTrack.uri`.
+class OfflineSubtitle {
+  const OfflineSubtitle({
+    required this.lang,
+    this.label,
+    required this.path,
+    this.isDefault = false,
+  });
+
+  final String lang;
+  final String? label;
+  final String path;
+  final bool isDefault;
+
+  Map<String, dynamic> toMap() => {
+    'lang': lang,
+    'label': label,
+    'path': path,
+    'default': isDefault,
+  };
+
+  factory OfflineSubtitle.fromMap(Map raw) {
+    final m = Map<String, dynamic>.from(raw);
+    return OfflineSubtitle(
+      lang: m['lang'] as String? ?? 'Sub',
+      label: m['label'] as String?,
+      path: m['path'] as String? ?? '',
+      isDefault: m['default'] == true,
+    );
+  }
+}
+
 /// A single download, persisted in the Hive `downloads` box (as a Map) so the
 /// library survives restarts. [id] doubles as the background_downloader task id
 /// and is deterministic per (source, episode) so re-downloads are idempotent.
@@ -38,6 +73,7 @@ class DownloadRecord {
     this.bytesTotal = 0,
     this.filePath,
     this.error,
+    this.subtitles = const [],
     required this.createdAt,
   });
 
@@ -59,6 +95,7 @@ class DownloadRecord {
   final int bytesTotal; // expected file size in bytes (0 when unknown)
   final String? filePath; // final shared-storage path once complete
   final String? error;
+  final List<OfflineSubtitle> subtitles; // soft-sub files saved for offline use
   final int createdAt;
 
   bool get isActive =>
@@ -73,6 +110,7 @@ class DownloadRecord {
     int? bytesTotal,
     String? Function()? filePath,
     String? Function()? error,
+    List<OfflineSubtitle>? subtitles,
   }) => DownloadRecord(
     id: id,
     sourceId: sourceId,
@@ -92,6 +130,7 @@ class DownloadRecord {
     bytesTotal: bytesTotal ?? this.bytesTotal,
     filePath: filePath != null ? filePath() : this.filePath,
     error: error != null ? error() : this.error,
+    subtitles: subtitles ?? this.subtitles,
     createdAt: createdAt,
   );
 
@@ -114,6 +153,7 @@ class DownloadRecord {
     'bytesTotal': bytesTotal,
     'filePath': filePath,
     'error': error,
+    'subtitles': subtitles.map((s) => s.toMap()).toList(),
     'createdAt': createdAt,
   };
 
@@ -140,6 +180,11 @@ class DownloadRecord {
       bytesTotal: (m['bytesTotal'] as num?)?.toInt() ?? 0,
       filePath: m['filePath'] as String?,
       error: m['error'] as String?,
+      subtitles: ((m['subtitles'] as List?) ?? const [])
+          .whereType<Map>()
+          .map(OfflineSubtitle.fromMap)
+          .where((s) => s.path.isNotEmpty)
+          .toList(),
       createdAt: (m['createdAt'] as num?)?.toInt() ?? 0,
     );
   }

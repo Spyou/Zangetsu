@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
@@ -36,6 +37,14 @@ class DownloadManager extends ChangeNotifier {
 
   Box<Map> get _box => Hive.box<Map>(boxName);
   final FileDownloader _dl = FileDownloader();
+  // Small HTTP client for fetching subtitle sidecar files (they're tiny, so a
+  // direct GET in the UI isolate beats threading them through the downloaders).
+  final Dio _dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 30),
+    ),
+  );
 
   /// In-memory cache of records, keyed by id (mirrors the Hive box).
   final Map<String, DownloadRecord> _records = {};
@@ -313,6 +322,9 @@ class DownloadManager extends ChangeNotifier {
   /// downloader, everything else via background_downloader.
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
     if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
+    // Save any soft subtitles this source advertises, in parallel with the
+    // video (they're tiny and best-effort — never block or fail the download).
+    unawaited(_fetchSubtitles(rec, source));
     if (_isHls(source)) {
       await _startHlsDownload(rec, source);
       return;
@@ -385,6 +397,65 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Download the soft-subtitle sidecar files a [source] advertises and record
+  /// their local paths on [rec], so soft-subbed sources keep subtitles offline.
+  /// Best-effort: stored in private app storage, idempotent (skips if already
+  /// saved), and any failure just leaves the download without sidecar subs.
+  Future<void> _fetchSubtitles(DownloadRecord rec, VideoSource source) async {
+    if (source.subtitles.isEmpty) return;
+    final live = _records[rec.id];
+    if (live == null || live.status == DownloadStatus.canceled) return;
+    if (live.subtitles.isNotEmpty) return; // already saved (e.g. a retry mirror)
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final safeShow = _safe(rec.showTitle);
+      final dir = Directory('${docs.path}/$_sharedDir/$safeShow/subs');
+      await dir.create(recursive: true);
+      final epTag = 'E${rec.episodeNumber?.toInt() ?? ''}';
+      final saved = <OfflineSubtitle>[];
+      var idx = 0;
+      for (final sub in source.subtitles) {
+        idx++;
+        try {
+          final path =
+              '${dir.path}/${safeShow}_${epTag}_${_safe(sub.lang)}_$idx'
+              '${_subExt(sub.url, sub.format)}';
+          final resp = await _dio.get<List<int>>(
+            sub.url,
+            options: Options(
+              responseType: ResponseType.bytes,
+              headers: source.headers,
+            ),
+          );
+          final bytes = resp.data;
+          if (bytes == null || bytes.isEmpty) continue;
+          await File(path).writeAsBytes(bytes, flush: true);
+          saved.add(
+            OfflineSubtitle(
+              lang: sub.lang,
+              label: sub.label,
+              path: path,
+              isDefault: sub.isDefault,
+            ),
+          );
+        } catch (_) {/* skip this track */}
+      }
+      if (saved.isEmpty) return;
+      // Re-read: the download may have been canceled/deleted while we fetched.
+      final cur = _records[rec.id];
+      if (cur == null || cur.status == DownloadStatus.canceled) {
+        for (final s in saved) {
+          try {
+            await File(s.path).delete();
+          } catch (_) {}
+        }
+        return;
+      }
+      _put(cur.copyWith(subtitles: saved));
+      notifyListeners();
+    } catch (_) {/* no subtitles offline — non-fatal */}
+  }
+
   // ── Controls ───────────────────────────────────────────────────────────────
 
   Future<void> pause(DownloadRecord rec) async {
@@ -428,6 +499,13 @@ class DownloadManager extends ChangeNotifier {
     } catch (_) {}
     DownloadService.instance.invoke('cancel', {'id': rec.id}); // stop HLS job
     _tasks.remove(rec.id);
+    // Remove any saved subtitle sidecar files too.
+    for (final s in rec.subtitles) {
+      try {
+        final f = File(s.path);
+        if (await f.exists()) await f.delete();
+      } catch (_) {}
+    }
     _records.remove(rec.id);
     await _box.delete(rec.id);
     notifyListeners();
@@ -560,6 +638,20 @@ class DownloadManager extends ChangeNotifier {
       if (path.endsWith(e)) return e;
     }
     return '.mp4';
+  }
+
+  /// Subtitle file extension (incl. dot) from the url, then the declared
+  /// [format], defaulting to .vtt.
+  static String _subExt(String url, String? format) {
+    final path = (Uri.tryParse(url)?.path ?? url).toLowerCase();
+    for (final e in const ['.vtt', '.srt', '.ass', '.ssa', '.sub']) {
+      if (path.endsWith(e)) return e;
+    }
+    final f = (format ?? '').toLowerCase();
+    if (f.contains('srt')) return '.srt';
+    if (f.contains('ass')) return '.ass';
+    if (f.contains('ssa')) return '.ssa';
+    return '.vtt';
   }
 
   /// HLS sources route through the in-app segment downloader; everything else

@@ -157,8 +157,22 @@ class _DownloadTile extends StatelessWidget {
           episodes: [ep],
           startIndex: 0,
           resume: sl<ResumeStore>(),
-          resolveSources: (_) async =>
-              [VideoSource(url: path, container: SourceContainer.mp4)],
+          resolveSources: (_) async => [
+            VideoSource(
+              url: path,
+              container: SourceContainer.mp4,
+              // Soft subs saved next to the video (e.g. HiAnime) → load from disk.
+              subtitles: [
+                for (final s in record.subtitles)
+                  Subtitle(
+                    url: s.path,
+                    lang: s.lang,
+                    label: s.label,
+                    isDefault: s.isDefault,
+                  ),
+              ],
+            ),
+          ],
           history: sl<WatchHistory>(),
           showTitle: record.showTitle,
           cover: record.cover,
