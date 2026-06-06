@@ -51,57 +51,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
   }
 
-  bool get _nsfw => sl<PlaybackPrefs>().nsfwSources;
-
-  /// Privacy toggle. Enabling pops a confirmation; disabling demotes the active
-  /// source if it's now hidden.
-  Future<void> _onNsfwChanged(bool value) async {
-    final prefs = sl<PlaybackPrefs>();
-    if (value) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: AppColors.surface,
-          title: Text('Enable NSFW sources?', style: AppText.title),
-          content: Text(
-            'This shows sources marked 18+ in the source list and switcher. '
-            'Only turn this on if you want adult content.',
-            style: AppText.body,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Enable'),
-            ),
-          ],
-        ),
-      );
-      if (ok != true) return;
-      await prefs.setNsfwSources(true);
-    } else {
-      await prefs.setNsfwSources(false);
-      _demoteNsfwActiveSource();
-    }
-    if (mounted) setState(() {});
-  }
-
-  /// When NSFW is turned off and the active source is now hidden, switch to the
-  /// first non-NSFW enabled source so Home stops showing it.
-  void _demoteNsfwActiveSource() {
-    final blocked = _registry.nsfwSourceIds();
-    if (!blocked.contains(_active.state)) return;
-    for (final e in _registry.getAll()) {
-      if (e.enabled && !blocked.contains(e.name)) {
-        _active.setSource(e.name);
-        return;
-      }
-    }
-  }
-
   /// Bottom sheet listing enabled providers; sets the active source on the
   /// [ActiveSourceCubit].
   Future<void> _pickActiveSource() async {
@@ -234,11 +183,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
     final activeId = context.watch<ActiveSourceCubit>().state;
-    final trackers = <Tracker>[
+    final connectedCount = <Tracker>[
       sl<AniListService>(),
       sl<MalService>(),
       sl<SimklService>(),
-    ];
+    ].where((t) => t.isConnected).length;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -298,35 +247,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ],
                   ),
-                  const SettingsSectionLabel('Connections'),
-                  SettingsCard(
-                    children: [
-                      for (final t in trackers)
-                        SettingsTile(
-                          icon: Icons.sync_alt_rounded,
-                          title: t.displayName,
-                          subtitle: t.isConnected
-                              ? (t.viewerName ?? 'Connected')
-                              : 'Sync progress as you watch',
-                          onTap: () async {
-                            await _push(TrackerSettingsScreen(tracker: t));
-                            if (mounted) setState(() {});
-                          },
-                        ),
-                    ],
-                  ),
-                  const SettingsSectionLabel('Privacy'),
                   SettingsCard(
                     children: [
                       SettingsTile(
+                        icon: Icons.sync_alt_rounded,
+                        title: 'Connections',
+                        subtitle: connectedCount > 0
+                            ? '$connectedCount connected'
+                            : 'AniList, MyAnimeList, Simkl',
+                        onTap: () async {
+                          await _push(const ConnectionsScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
                         icon: Icons.shield_outlined,
-                        title: 'Enable NSFW sources',
-                        subtitle: 'Show sources marked 18+',
-                        trailing: Switch.adaptive(
-                          value: _nsfw,
-                          activeThumbColor: AppColors.accent,
-                          onChanged: _onNsfwChanged,
-                        ),
+                        title: 'Privacy',
+                        subtitle: 'NSFW sources',
+                        onTap: () async {
+                          await _push(const PrivacySettingsScreen());
+                          if (mounted) setState(() {});
+                        },
                       ),
                     ],
                   ),
@@ -954,6 +895,174 @@ class AboutSettingsScreen extends StatelessWidget {
                 color: AppColors.textTertiary,
                 letterSpacing: 0.3,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Connections (trackers)
+// ---------------------------------------------------------------------------
+
+/// Lists the trackers (AniList / MyAnimeList / Simkl); each opens its own
+/// connect/disconnect screen.
+class ConnectionsScreen extends StatefulWidget {
+  const ConnectionsScreen({super.key});
+
+  @override
+  State<ConnectionsScreen> createState() => _ConnectionsScreenState();
+}
+
+class _ConnectionsScreenState extends State<ConnectionsScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final trackers = <Tracker>[
+      sl<AniListService>(),
+      sl<MalService>(),
+      sl<SimklService>(),
+    ];
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        title: const Text('Connections'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          SettingsCard(
+            children: [
+              for (final t in trackers)
+                SettingsTile(
+                  icon: Icons.sync_alt_rounded,
+                  title: t.displayName,
+                  subtitle: t.isConnected
+                      ? (t.viewerName ?? 'Connected')
+                      : 'Sync progress as you watch',
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => TrackerSettingsScreen(tracker: t),
+                      ),
+                    );
+                    if (mounted) setState(() {});
+                  },
+                ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: Text(
+              'Sync watch progress and list status to your accounts. Anime syncs '
+              'to all three; movies and series sync to Simkl.',
+              style: AppText.caption,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Privacy
+// ---------------------------------------------------------------------------
+
+/// NSFW-source toggle. Enabling pops a confirmation; disabling demotes the
+/// active source if it's now hidden.
+class PrivacySettingsScreen extends StatefulWidget {
+  const PrivacySettingsScreen({super.key});
+
+  @override
+  State<PrivacySettingsScreen> createState() => _PrivacySettingsScreenState();
+}
+
+class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
+  bool get _nsfw => sl<PlaybackPrefs>().nsfwSources;
+
+  Future<void> _onNsfwChanged(bool value) async {
+    final prefs = sl<PlaybackPrefs>();
+    if (value) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Enable NSFW sources?', style: AppText.title),
+          content: Text(
+            'This shows sources marked 18+ in the source list and switcher. '
+            'Only turn this on if you want adult content.',
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enable'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await prefs.setNsfwSources(true);
+    } else {
+      await prefs.setNsfwSources(false);
+      _demoteNsfwActiveSource();
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// When NSFW is turned off and the active source is now hidden, switch to the
+  /// first non-NSFW enabled source so Home stops showing it.
+  void _demoteNsfwActiveSource() {
+    final registry = sl<ProviderRegistry>();
+    final active = sl<ActiveSourceCubit>();
+    final blocked = registry.nsfwSourceIds();
+    if (!blocked.contains(active.state)) return;
+    for (final e in registry.getAll()) {
+      if (e.enabled && !blocked.contains(e.name)) {
+        active.setSource(e.name);
+        return;
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        backgroundColor: AppColors.bg,
+        title: const Text('Privacy'),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(top: 8, bottom: 24),
+        children: [
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.shield_outlined,
+                title: 'Enable NSFW sources',
+                subtitle: 'Show sources marked 18+',
+                trailing: Switch.adaptive(
+                  value: _nsfw,
+                  activeThumbColor: AppColors.accent,
+                  onChanged: _onNsfwChanged,
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+            child: Text(
+              'Sources marked 18+ stay hidden from the source list and switcher '
+              'unless this is on.',
+              style: AppText.caption,
             ),
           ),
         ],

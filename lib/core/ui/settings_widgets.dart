@@ -52,35 +52,38 @@ class SettingsTile extends StatelessWidget {
           children: [
             Icon(icon, color: fg ?? AppColors.textSecondary, size: 22),
             const SizedBox(width: 14),
-            // Title claims all remaining width so the trailing widget /
-            // chevron always lands at the same far-right position
-            // regardless of subtitle length.
+            // Title + subtitle stacked (subtitle sits UNDER the title, not off
+            // to the right), so long values read cleanly and the trailing
+            // widget / chevron always lands at the far right.
             Expanded(
-              child: Text(
-                title,
-                style: AppText.headline.copyWith(
-                  color: fg ?? AppColors.textPrimary,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 15,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: AppText.headline.copyWith(
+                      color: fg ?? AppColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 15,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle!,
+                      style: AppText.caption,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (subtitle != null) ...[
-              const SizedBox(width: 12),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 200),
-                child: Text(
-                  subtitle!,
-                  style: AppText.caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
             if (trailingWidget != null) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: 12),
               trailingWidget,
             ],
           ],
