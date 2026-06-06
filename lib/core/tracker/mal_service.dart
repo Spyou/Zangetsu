@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../environment.dart';
 import '../models/watch_status.dart';
-import '../ui/global_messenger.dart';
 import 'tracker.dart';
 
 /// MyAnimeList tracker. OAuth2 with PKCE (plain method, no client secret).
@@ -356,10 +355,7 @@ class MalService extends ChangeNotifier implements Tracker {
       'status': status,
       'num_watched_episodes': ep,
     });
-    if (ok) {
-      await _setScrobbled(a.id, ep);
-      showGlobalSnack('Synced to MyAnimeList — episode $episode');
-    }
+    if (ok) await _setScrobbled(a.id, ep);
   }
 
   @override

@@ -194,15 +194,10 @@ class AniListService extends ChangeNotifier implements Tracker {
     if (malId == null && (title == null || title.trim().isEmpty)) return;
     final r = await _scrobbleResolved(malId: malId, title: title, episode: episode);
     debugPrint('[AniList] scrobble ep$episode (mal=$malId title="$title") -> $r');
-    switch (r) {
-      case _Scrobble.synced:
-        showGlobalSnack('Synced to AniList — episode $episode');
-      case _Scrobble.unmatched:
-        showGlobalSnack("AniList: couldn't match this title");
-      case _Scrobble.failed:
-        showGlobalSnack('AniList sync failed — will retry');
-      case _Scrobble.skipped:
-        break; // already counted — stay quiet
+    // Stay silent on success — only surface a real failure (so a sync can't
+    // break unnoticed). Unmatched/skipped are quiet too.
+    if (r == _Scrobble.failed) {
+      showGlobalSnack('AniList sync failed — will retry');
     }
   }
 

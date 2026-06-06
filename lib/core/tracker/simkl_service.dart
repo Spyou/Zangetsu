@@ -8,7 +8,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../environment.dart';
 import '../models/watch_status.dart';
-import '../ui/global_messenger.dart';
 import 'tracker.dart';
 
 /// Simkl tracker (movies + TV + anime). OAuth2 authorization-code with a client
@@ -245,12 +244,7 @@ class SimklService extends ChangeNotifier implements Tracker {
               {'number': episode},
             ],
           };
-    final ok = await _post('/sync/history', _body(t, obj));
-    if (ok) {
-      showGlobalSnack(
-        isMovie ? 'Synced to Simkl' : 'Synced to Simkl — episode $episode',
-      );
-    }
+    await _post('/sync/history', _body(t, obj)); // silent on success
   }
 
   @override
