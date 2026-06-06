@@ -306,25 +306,56 @@ class _DetailViewState extends State<_DetailView>
       );
       return;
     }
-    final res = await showModalBottomSheet<({String quality, List<Episode> episodes})>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _DownloadSheet(
-        title: detail.title,
-        episodesBySeason: episodesBySeason,
-        initialSeason: initialSeason,
-        coverUrl: detail.cover ?? widget.item.cover ?? '',
-        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        resolve: (ep) =>
-            sl<SourceRepository>().sources(ep.url, sourceId: widget.item.sourceId),
-      ),
-    );
+    // Sub/Dub the title actually offers; the sheet only shows the toggle when
+    // there's more than one. Defaults to the page's current category (seeded
+    // from the per-title remembered choice).
+    final availableCategories = <String>[
+      if ((detail.subCount ?? 0) > 0) 'sub',
+      if ((detail.dubCount ?? 0) > 0) 'dub',
+    ];
+    final res =
+        await showModalBottomSheet<
+          ({String quality, String category, List<Episode> episodes})
+        >(
+          context: context,
+          backgroundColor: AppColors.surface,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => _DownloadSheet(
+            title: detail.title,
+            episodesBySeason: episodesBySeason,
+            initialSeason: initialSeason,
+            initialCategory: category,
+            availableCategories: availableCategories,
+            coverUrl: detail.cover ?? widget.item.cover ?? '',
+            coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+            resolve: (ep) => sl<SourceRepository>().sources(
+              ep.url,
+              sourceId: widget.item.sourceId,
+            ),
+            resolveEpisodes: _episodesByCategory,
+          ),
+        );
     if (res == null || !mounted) return;
-    _startDownload(detail, category, res.quality, res.episodes);
+    _startDownload(detail, res.category, res.quality, res.episodes);
+  }
+
+  /// Re-resolve a title's episodes for a given sub/dub [category] (without
+  /// touching the detail page's own toggle), grouped by season.
+  Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
+    final d = await sl<SourceRepository>().detail(
+      widget.item.url,
+      category: category,
+      sourceId: widget.item.sourceId,
+    );
+    final byS = <int, List<Episode>>{};
+    for (final e in d.episodes) {
+      (byS[parseSeason(e.title) ?? 1] ??= <Episode>[]).add(e);
+    }
+    if (byS.isEmpty) byS[1] = d.episodes;
+    return byS;
   }
 
   /// Per-episode / movie download → resolve sources, let the user pick a
@@ -2451,6 +2482,9 @@ class _DownloadSheet extends StatefulWidget {
     required this.resolve,
     required this.coverUrl,
     required this.coverHeaders,
+    required this.initialCategory,
+    required this.availableCategories,
+    required this.resolveEpisodes,
   });
 
   final String title;
@@ -2460,6 +2494,14 @@ class _DownloadSheet extends StatefulWidget {
   final String coverUrl;
   final Map<String, String>? coverHeaders;
 
+  /// Current sub/dub category + what the title offers. The Sub/Dub toggle is
+  /// only shown when [availableCategories] has more than one. Switching it
+  /// re-resolves the episode list via [resolveEpisodes].
+  final String initialCategory;
+  final List<String> availableCategories;
+  final Future<Map<int, List<Episode>>> Function(String category)
+  resolveEpisodes;
+
   @override
   State<_DownloadSheet> createState() => _DownloadSheetState();
 }
@@ -2467,8 +2509,10 @@ class _DownloadSheet extends StatefulWidget {
 class _DownloadSheetState extends State<_DownloadSheet> {
   String _quality = 'best';
   late int _season;
+  late String _category;
+  late Map<int, List<Episode>> _episodesBySeason;
   final Set<String> _selectedIds = {};
-  late final Map<String, Episode> _byId;
+  late Map<String, Episode> _byId;
 
   // Real, resolved download sources for the current season's first episode.
   List<VideoSource>? _sources; // null = loading, [] = none found
@@ -2479,17 +2523,58 @@ class _DownloadSheetState extends State<_DownloadSheet> {
   void initState() {
     super.initState();
     _season = widget.initialSeason;
+    _category = widget.initialCategory;
+    _episodesBySeason = widget.episodesBySeason;
     _byId = {
-      for (final eps in widget.episodesBySeason.values)
+      for (final eps in _episodesBySeason.values)
         for (final e in eps) e.id: e,
     };
     // Default to the whole current season selected so Download is enabled
     // immediately (the common "download this season" case); the user can Clear
     // or toggle tiles to narrow it.
     _selectedIds.addAll(
-      (widget.episodesBySeason[_season] ?? const <Episode>[]).map((e) => e.id),
+      (_episodesBySeason[_season] ?? const <Episode>[]).map((e) => e.id),
     );
     _resolveSources();
+  }
+
+  /// Switch sub/dub: re-resolve the episode list for [cat] (dub episodes have
+  /// different URLs), keep the season if it still exists, then re-resolve the
+  /// source/quality options.
+  Future<void> _setCategory(String cat) async {
+    if (cat == _category) return;
+    setState(() {
+      _category = cat;
+      _loadingSources = true;
+      _sources = null;
+    });
+    try {
+      final byS = await widget.resolveEpisodes(cat);
+      if (!mounted) return;
+      final seasons = byS.keys.toList()..sort();
+      final season = byS.containsKey(_season)
+          ? _season
+          : (seasons.isEmpty ? _season : seasons.first);
+      setState(() {
+        _episodesBySeason = byS;
+        _byId = {
+          for (final eps in byS.values)
+            for (final e in eps) e.id: e,
+        };
+        _season = season;
+        _selectedIds
+          ..clear()
+          ..addAll((byS[season] ?? const <Episode>[]).map((e) => e.id));
+      });
+      await _resolveSources();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _loadingSources = false;
+          _sources = [];
+        });
+      }
+    }
   }
 
   int _h(VideoSource s) {
@@ -2534,9 +2619,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     }
   }
 
-  List<int> get _seasons => widget.episodesBySeason.keys.toList()..sort();
+  List<int> get _seasons => _episodesBySeason.keys.toList()..sort();
   bool get _multiSeason => _seasons.length > 1;
-  List<Episode> get _seasonEps => widget.episodesBySeason[_season] ?? const [];
+  List<Episode> get _seasonEps => _episodesBySeason[_season] ?? const [];
 
   List<Episode> get _selectedEpisodes =>
       (_selectedIds.map((id) => _byId[id]).whereType<Episode>().toList())
@@ -2595,6 +2680,22 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               _seasonDropdown(),
             ],
 
+            // ── Audio (Sub / Dub) — only when the title offers both ─────────
+            if (widget.availableCategories.length > 1) ...[
+              const SizedBox(height: 18),
+              Text('Audio', style: AppText.overline),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  for (final c in widget.availableCategories)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _categoryChip(c),
+                    ),
+                ],
+              ),
+            ],
+
             // ── Source / quality (resolved from the first episode) ─────────
             const SizedBox(height: 18),
             Text('Source', style: AppText.overline),
@@ -2639,7 +2740,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                     ? null
                     : () => Navigator.pop(
                         context,
-                        (quality: _quality, episodes: _selectedEpisodes),
+                        (
+                          quality: _quality,
+                          category: _category,
+                          episodes: _selectedEpisodes,
+                        ),
                       ),
                 child: SizedBox(
                   height: 50,
@@ -2658,6 +2763,28 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryChip(String c) {
+    final selected = c == _category;
+    return Material(
+      color: selected ? AppColors.accent : AppColors.surface2,
+      borderRadius: BorderRadius.circular(8),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _setCategory(c),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+          child: Text(
+            c == 'dub' ? 'Dub' : 'Sub',
+            style: AppText.body.copyWith(
+              color: selected ? Colors.white : AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       ),
     );
