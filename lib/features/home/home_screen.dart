@@ -27,6 +27,7 @@ import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
+import 'see_all_screen.dart';
 
 /// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
 /// trending source) and kicks off the first load. The view itself stays
@@ -302,6 +303,7 @@ class _HomeViewState extends State<_HomeView> {
         itemWidth: 140,
         itemHeight: 236,
         itemCount: items.length,
+        onSeeAll: () => _openSeeAll(section),
         itemBuilder: (c, i) => PosterCard(
           title: items[i].title,
           imageUrl: items[i].cover,
@@ -312,6 +314,23 @@ class _HomeViewState extends State<_HomeView> {
         ),
       ),
     );
+  }
+
+  /// Open the full-grid "See All" view of a browse row.
+  void _openSeeAll(HomeSection section) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SeeAllScreen(
+          title: section.title,
+          items: section.items,
+          onTap: _openDetail,
+          onLongPress: _showInfo,
+        ),
+      ),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override

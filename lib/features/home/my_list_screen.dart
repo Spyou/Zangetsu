@@ -10,6 +10,7 @@ import '../../core/playback/list_status_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
+import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
 import '../auth/auth_cubit.dart';
@@ -120,6 +121,13 @@ class _MyListViewState extends State<_MyListView> {
                                     headers: entry.item.coverHeaders,
                                     cellWidth: cellW,
                                     onTap: () => _openItem(context, entry.item),
+                                    // Long-press to change status / remove —
+                                    // the sheet updates the stores, and the
+                                    // cubit auto-refreshes via their revisions.
+                                    onLongPress: () => showListStatusSheet(
+                                      context,
+                                      item: entry.item,
+                                    ),
                                   );
                                 },
                               ),
