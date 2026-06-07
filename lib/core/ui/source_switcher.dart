@@ -21,26 +21,37 @@ class SourceSwitcher extends StatelessWidget {
   final String currentId;
   final void Function(String id) onChanged;
 
-  /// Installed + enabled providers, mapped to `{id, label}` rows.
-  List<({String id, String label})> _selectable() {
+  /// Installed + enabled providers bucketed by manifest type. NSFW sources are
+  /// kept separate and only surfaced when the Privacy toggle is on.
+  ({
+    List<({String id, String label})> anime,
+    List<({String id, String label})> movies,
+    List<({String id, String label})> nsfw,
+  })
+  _buckets() {
     final reg = sl<ProviderRegistry>();
-    // Hide NSFW sources unless the Privacy toggle is on.
-    final blocked =
-        sl<PlaybackPrefs>().nsfwSources ? const <String>{} : reg.nsfwSourceIds();
-    final entries =
-        reg
-            .getAll()
-            .where((e) => e.enabled && !blocked.contains(e.name))
-            .toList()
-          ..sort((a, b) {
-            final an = a.displayName.isNotEmpty ? a.displayName : a.name;
-            final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
-            return an.toLowerCase().compareTo(bn.toLowerCase());
-          });
-    return [
-      for (final e in entries)
-        (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name),
-    ];
+    final nsfwEnabled = sl<PlaybackPrefs>().nsfwSources;
+    final nsfwIds = reg.nsfwSourceIds();
+    ({String id, String label}) row(e) =>
+        (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name);
+    int byLabel(a, b) => row(a).label.toLowerCase().compareTo(row(b).label.toLowerCase());
+
+    final enabled = reg.getAll().where((e) => e.enabled).toList();
+    final anime = <({String id, String label})>[];
+    final movies = <({String id, String label})>[];
+    final nsfw = <({String id, String label})>[];
+    for (final e in (enabled..sort(byLabel))) {
+      if (nsfwIds.contains(e.name)) {
+        if (nsfwEnabled) nsfw.add(row(e));
+        continue; // NSFW sources live only in their own group
+      }
+      if (reg.typeOf(e.name) == 'anime') {
+        anime.add(row(e));
+      } else {
+        movies.add(row(e)); // movie / series / unknown
+      }
+    }
+    return (anime: anime, movies: movies, nsfw: nsfw);
   }
 
   String get _label {
@@ -82,57 +93,131 @@ class SourceSwitcher extends StatelessWidget {
   }
 
   void _showPicker(BuildContext context) {
-    final sources = _selectable();
+    final b = _buckets();
+
+    void choose(BuildContext ctx, String id) {
+      Navigator.of(ctx).pop();
+      onChanged(id);
+    }
+
+    Widget rowFor(BuildContext ctx, ({String id, String label}) src) =>
+        _SourceRow(
+          label: src.label,
+          isActive: src.id == currentId,
+          onTap: () => choose(ctx, src.id),
+        );
+
+    // A scrollable flat list for a single tab.
+    Widget flat(BuildContext ctx, List<({String id, String label})> rows) {
+      if (rows.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('No sources here', style: AppText.body),
+          ),
+        );
+      }
+      return ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        children: [for (final s in rows) rowFor(ctx, s)],
+      );
+    }
+
+    // The "All" tab: each bucket under its own header.
+    Widget grouped(BuildContext ctx) {
+      Widget header(String t) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+        child: Text(
+          t.toUpperCase(),
+          style: AppText.overline.copyWith(color: AppColors.textTertiary),
+        ),
+      );
+      final children = <Widget>[];
+      if (b.anime.isNotEmpty) {
+        children.add(header('Anime'));
+        children.addAll(b.anime.map((s) => rowFor(ctx, s)));
+      }
+      if (b.movies.isNotEmpty) {
+        children.add(header('Movies & Series'));
+        children.addAll(b.movies.map((s) => rowFor(ctx, s)));
+      }
+      if (b.nsfw.isNotEmpty) {
+        children.add(header('NSFW'));
+        children.addAll(b.nsfw.map((s) => rowFor(ctx, s)));
+      }
+      if (children.isEmpty) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text('No enabled sources', style: AppText.body),
+          ),
+        );
+      }
+      return ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: children);
+    }
+
+    // Tabs: All, Anime, Movies/Series, and NSFW only when there are NSFW
+    // sources to show (Privacy toggle on).
+    final tabs = <({String title, Widget Function(BuildContext) body})>[
+      (title: 'All', body: grouped),
+      (title: 'Anime', body: (ctx) => flat(ctx, b.anime)),
+      (title: 'Movies/Series', body: (ctx) => flat(ctx, b.movies)),
+      if (b.nsfw.isNotEmpty) (title: 'NSFW', body: (ctx) => flat(ctx, b.nsfw)),
+    ];
+
+    // The "All" tab is the tallest; size the sheet to it (so it's compact for a
+    // few sources) but cap at 85% screen — TabBarView needs a bounded height.
+    final screenH = MediaQuery.of(context).size.height;
+    final headers = [b.anime, b.movies, b.nsfw].where((l) => l.isNotEmpty).length;
+    final allRows = b.anime.length + b.movies.length + b.nsfw.length + headers;
+    final sheetH = (24 + 48 + allRows * 52 + 24).clamp(240.0, screenH * 0.85);
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: AppColors.surface,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Drag handle
-              Container(
-                margin: const EdgeInsets.only(top: 12, bottom: 8),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textTertiary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                child: Text(
-                  'Choose Source',
-                  style: AppText.overline.copyWith(
-                    color: AppColors.textTertiary,
+          child: SizedBox(
+            height: sheetH.toDouble(),
+            child: DefaultTabController(
+              length: tabs.length,
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textTertiary.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
+                  TabBar(
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    padding: const EdgeInsets.only(left: 16),
+                    labelPadding: const EdgeInsets.only(right: 24),
+                    labelColor: AppColors.accent,
+                    unselectedLabelColor: AppColors.textSecondary,
+                    indicatorColor: AppColors.accent,
+                    indicatorSize: TabBarIndicatorSize.label,
+                    dividerColor: AppColors.hairline,
+                    labelStyle: AppText.body.copyWith(fontWeight: FontWeight.w600),
+                    tabs: [for (final t in tabs) Tab(text: t.title)],
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      children: [for (final t in tabs) t.body(ctx)],
+                    ),
+                  ),
+                ],
               ),
-              const Divider(color: AppColors.hairline, height: 1),
-              if (sources.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Text('No enabled sources', style: AppText.body),
-                )
-              else
-                ...sources.map((src) {
-                  final isActive = src.id == currentId;
-                  return _SourceRow(
-                    label: src.label,
-                    isActive: isActive,
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      onChanged(src.id);
-                    },
-                  );
-                }),
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         );
       },

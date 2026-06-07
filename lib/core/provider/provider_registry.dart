@@ -202,6 +202,19 @@ class ProviderRegistry {
     return out;
   }
 
+  /// Manifest content type for [sourceId] (`'anime'` / `'movie'`), or null when
+  /// no cached manifest declares it. Used to group the source picker.
+  String? typeOf(String sourceId) {
+    final repos = _repos;
+    if (repos == null) return null;
+    for (final repo in repos.getAll()) {
+      for (final s in repo.sources) {
+        if (s.id == sourceId) return s.type;
+      }
+    }
+    return null;
+  }
+
   Stream<BoxEvent> watch() => _box.watch();
 
   /// Installs (or refreshes) a bundled provider straight from in-memory

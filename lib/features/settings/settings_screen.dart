@@ -64,6 +64,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -94,20 +98,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Text('No enabled sources', style: AppText.body),
               )
             else
-              ...enabled.map((e) {
-                final label = e.displayName.isNotEmpty ? e.displayName : e.name;
-                final isActive = e.name == currentId;
-                return ListTile(
-                  onTap: () => Navigator.pop(ctx, e.name),
-                  title: Text(
-                    label,
-                    style: AppText.body.copyWith(color: AppColors.textPrimary),
-                  ),
-                  trailing: isActive
-                      ? const Icon(Icons.check, color: AppColors.accent)
-                      : null,
-                );
-              }),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final e in enabled)
+                      ListTile(
+                        onTap: () => Navigator.pop(ctx, e.name),
+                        title: Text(
+                          e.displayName.isNotEmpty ? e.displayName : e.name,
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        trailing: e.name == currentId
+                            ? const Icon(Icons.check, color: AppColors.accent)
+                            : null,
+                      ),
+                  ],
+                ),
+              ),
             const SizedBox(height: 8),
           ],
         ),
