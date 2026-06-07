@@ -1,11 +1,13 @@
 package com.spyou.watch_app
 
+import android.app.PictureInPictureParams
 import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import android.util.Rational
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -35,6 +37,12 @@ class MainActivity : FlutterActivity() {
     // source for every frame (setDataSource is expensive, esp. over network).
     private var retriever: MediaMetadataRetriever? = null
     private var currentUrl: String? = null
+
+    // Auto Picture-in-Picture: armed by Dart while a video is on screen. On
+    // Android 12+ we use the seamless setAutoEnterEnabled; on 8.0–11 (no
+    // auto-enter API) we trigger PiP from onUserLeaveHint (home press).
+    private var autoPipEnabled = false
+    private val pipAspect = Rational(16, 9)
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -75,6 +83,47 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // PiP channel: Dart arms/disarms auto-PiP while the player is on screen.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setAutoPip" -> {
+                        autoPipEnabled = (call.arguments as? Boolean) ?: false
+                        // Android 12+: seamless auto-enter (survives gesture nav).
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            try {
+                                setPictureInPictureParams(
+                                    PictureInPictureParams.Builder()
+                                        .setAutoEnterEnabled(autoPipEnabled)
+                                        .setAspectRatio(pipAspect)
+                                        .build(),
+                                )
+                            } catch (_: Exception) {}
+                        }
+                        result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    // Android 8.0–11 have no auto-enter API, so enter PiP here when the user
+    // leaves via Home/Recents while a video is armed. Android 12+ is handled by
+    // setAutoEnterEnabled above, so we skip it here to avoid a double trigger.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (autoPipEnabled &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
+            !isInPictureInPictureMode
+        ) {
+            try {
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder().setAspectRatio(pipAspect).build(),
+                )
+            } catch (_: Exception) {}
+        }
     }
 
     // Known external video players (package -> display label).

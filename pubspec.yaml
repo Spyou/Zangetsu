@@ -97,6 +97,7 @@ dependencies:
   # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
   # AniList account linking.
   app_links: ^6.3.2
+  floating: ^6.0.0
 
 dev_dependencies:
   flutter_test:

@@ -648,6 +648,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              if (Platform.isAndroid)
+                _toggleRow(
+                  icon: Icons.picture_in_picture_alt_outlined,
+                  title: 'Auto picture-in-picture',
+                  subtitle: 'Shrink to a floating window when you leave the app',
+                  value: _prefs.autoPip,
+                  onChanged: (v) async {
+                    await _prefs.setAutoPip(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
             ],
           ),
 

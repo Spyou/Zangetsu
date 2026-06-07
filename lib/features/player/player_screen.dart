@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:floating/floating.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -166,6 +167,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool _ready = false; // the player session (cubit) is built
 
+  // Picture-in-Picture (Android only; iOS has no PiP path with media_kit).
+  // `floating` powers the manual button + the status poll; auto-PiP-on-leave is
+  // done natively (MainActivity) because the plugin's OnLeavePiP only works on
+  // Android 12+ and silently no-ops on older devices.
+  final Floating _floating = Floating();
+  static const MethodChannel _pipChannel = MethodChannel('zangetsu/pip');
+  bool _pipSupported = false; // device supports PiP + we're on Android
+  bool _inPip = false; // currently rendering inside the PiP window
+  StreamSubscription<PiPStatus>? _pipSub;
+
   @override
   void initState() {
     super.initState();
@@ -187,11 +198,46 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
+    _setupPip();
     if (widget.episodesResolver != null && widget.episodes.isEmpty) {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
     } else {
       _startSession(widget.episodes, widget.startIndex);
     }
+  }
+
+  // ── Picture-in-Picture ────────────────────────────────────────────────────
+
+  /// Detect PiP support (Android only), then arm auto-PiP on app-leave and
+  /// track the PiP status so the UI can collapse to video-only inside the
+  /// floating window. Best-effort — any failure just leaves PiP disabled.
+  Future<void> _setupPip() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final available = await _floating.isPipAvailable;
+      if (!mounted || !available) return;
+      setState(() => _pipSupported = true);
+      _pipSub = _floating.pipStatusStream.listen((status) {
+        if (!mounted) return;
+        final inPip = status == PiPStatus.enabled;
+        if (inPip != _inPip) setState(() => _inPip = inPip);
+      });
+      // Arm auto-PiP-on-leave natively (works on Android 8.0+, unlike the
+      // plugin's OnLeavePiP which needs 12+) — gated by the Playback setting.
+      // The manual PiP button is unaffected by this toggle.
+      await _pipChannel.invokeMethod(
+        'setAutoPip',
+        sl<PlaybackPrefs>().autoPip,
+      );
+    } catch (_) {/* PiP just stays off */}
+  }
+
+  /// Enter PiP immediately (the player's PiP button).
+  Future<void> _enterPip() async {
+    if (!_pipSupported) return;
+    try {
+      await _floating.enable(const ImmediatePiP(aspectRatio: Rational.landscape()));
+    } catch (_) {}
   }
 
   /// Resolve the start episode + its best source and open it in the user's
@@ -319,6 +365,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _upNextTimer?.cancel();
     _sleepTimer?.cancel();
     _completedSub?.cancel();
+    _pipSub?.cancel();
+    // Disarm auto-PiP so leaving the closed player can't trigger it.
+    if (_pipSupported) _pipChannel.invokeMethod('setAutoPip', false);
     // Hand brightness back to the system when leaving the player.
     if (_gesturesEnabled) {
       ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
@@ -891,6 +940,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       body: BlocBuilder<PlayerCubit, PlayerState>(
         bloc: _c,
         builder: (context, state) {
+          // Inside the PiP window: render ONLY the video — no overlay, no
+          // gestures, no controls. The same controller keeps the texture live.
+          if (_inPip) {
+            return Center(
+              child: Video(
+                controller: _c.videoController,
+                controls: NoVideoControls,
+                fit: BoxFit.contain,
+              ),
+            );
+          }
           if (state.loadingSources) {
             return const Center(
               child: BrandLoader(label: 'Finding the best source…'),
@@ -1143,6 +1203,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onSources: _openSourceSheet,
                       onLock: _toggleLock,
                       onZoom: _cycleFit,
+                      onPip: _pipSupported ? _enterPip : null,
                       onSleep: _openSleepSheet,
                       sleepActive: _sleepActive,
                       onEpisodes: _c.episodes.length > 1
@@ -1310,6 +1371,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onSleep,
     required this.sleepActive,
     required this.onEpisodes,
+    this.onPip,
   });
 
   final PlayerCubit controller;
@@ -1330,6 +1392,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onSleep;
   final bool sleepActive;
   final VoidCallback? onEpisodes; // null = single episode (no picker)
+  final VoidCallback? onPip; // null = PiP unsupported (hide the button)
 
   @override
   Widget build(BuildContext context) {
@@ -1444,7 +1507,15 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Episodes + sleep + lock (top-right). Zoom is in bottom row.
+                  // PiP + episodes + sleep + lock (top-right). Zoom is bottom row.
+                  if (onPip != null)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.picture_in_picture_alt_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: onPip,
+                    ),
                   if (onEpisodes != null)
                     IconButton(
                       icon: const Icon(

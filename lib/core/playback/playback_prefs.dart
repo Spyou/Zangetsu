@@ -49,6 +49,11 @@ class PlaybackPrefs {
       _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
 
+  /// Auto-enter Picture-in-Picture when leaving the app mid-playback (Android).
+  /// The manual PiP button works regardless of this setting.
+  bool get autoPip => _box.get('autoPip', defaultValue: true) as bool;
+  Future<void> setAutoPip(bool value) => _box.put('autoPip', value);
+
   /// Whether to resume a title from its saved position automatically.
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);
