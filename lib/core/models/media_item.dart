@@ -31,6 +31,9 @@ class MediaItem extends Equatable {
   final int? tmdbId;
   final bool tmdbIsTv;
 
+  /// IMDb id (e.g. `tt1234567`) for Simkl tracking when no TMDB id is exposed.
+  final String? imdbId;
+
   const MediaItem({
     required this.id,
     required this.title,
@@ -45,6 +48,7 @@ class MediaItem extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.imdbId,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
@@ -57,6 +61,7 @@ class MediaItem extends Equatable {
     int? dubCount,
     int? malId,
     int? tmdbId,
+    String? imdbId,
   }) => MediaItem(
     id: id,
     title: title,
@@ -71,6 +76,7 @@ class MediaItem extends Equatable {
     malId: malId ?? this.malId,
     tmdbId: tmdbId ?? this.tmdbId,
     tmdbIsTv: tmdbIsTv,
+    imdbId: imdbId ?? this.imdbId,
   );
 
   @override
@@ -88,5 +94,6 @@ class MediaItem extends Equatable {
     malId,
     tmdbId,
     tmdbIsTv,
+    imdbId,
   ];
 }

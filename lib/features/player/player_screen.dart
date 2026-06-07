@@ -56,6 +56,7 @@ class PlayerScreen extends StatefulWidget {
     this.scrobbleTitle,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.imdbId,
     this.availableCategories = const [],
   });
 
@@ -90,6 +91,9 @@ class PlayerScreen extends StatefulWidget {
   /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
   final int? tmdbId;
   final bool tmdbIsTv;
+
+  /// IMDb id (movies/series) for Simkl tracking when no TMDB id is exposed.
+  final String? imdbId;
 
   /// Sub/Dub categories this title offers. When length <= 1 the player hides
   /// the Version (Sub/Dub) section. Switching re-resolves the current episode
@@ -220,6 +224,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           title: widget.scrobbleTitle,
           tmdbId: widget.tmdbId,
           tmdbIsTv: widget.tmdbIsTv,
+          imdbId: widget.imdbId,
           episode: epNum.toInt(),
         );
       }
@@ -275,6 +280,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       scrobbleTitle: widget.scrobbleTitle,
       tmdbId: widget.tmdbId,
       tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
       availableCategories: widget.availableCategories,
     )..init(startIndex);
     // Drive the "Up next" card on episode completion (the controller no longer

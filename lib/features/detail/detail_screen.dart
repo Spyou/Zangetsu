@@ -153,6 +153,7 @@ class _DetailViewState extends State<_DetailView>
       malId: detail.malId ?? widget.item.malId,
       tmdbId: detail.tmdbId ?? widget.item.tmdbId,
       tmdbIsTv: detail.tmdbIsTv,
+      imdbId: detail.imdbId ?? widget.item.imdbId,
       onChanged: () {
         if (!mounted) return;
         setState(() {
@@ -258,6 +259,7 @@ class _DetailViewState extends State<_DetailView>
           scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
+          imdbId: detail.imdbId ?? widget.item.imdbId,
           availableCategories: availableCategories,
         ),
       ),

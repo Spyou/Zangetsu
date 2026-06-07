@@ -70,6 +70,10 @@ class MediaDetail extends Equatable {
   final int? tmdbId;
   final bool tmdbIsTv;
 
+  /// IMDb id (e.g. `tt1234567`), when the source exposes it but not a TMDB id.
+  /// Also drives Simkl tracking — Simkl accepts an `imdb` id in its ids object.
+  final String? imdbId;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -91,6 +95,7 @@ class MediaDetail extends Equatable {
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.imdbId,
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -119,5 +124,6 @@ class MediaDetail extends Equatable {
     malId,
     tmdbId,
     tmdbIsTv,
+    imdbId,
   ];
 }

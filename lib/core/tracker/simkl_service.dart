@@ -161,19 +161,19 @@ class SimklService extends ChangeNotifier implements Tracker {
   // ── Writes (anime via MAL id, movies/series via TMDB id) ────────────────────
 
   /// Resolve which Simkl bucket + external id to use. Anime → `shows` with
-  /// `ids.mal`; series → `shows` with `ids.tmdb`; movie → `movies` with
-  /// `ids.tmdb`. Null when there's no usable id (Simkl needs one).
+  /// `ids.mal`; series → `shows`, movie → `movies`, each keyed by `tmdb` when
+  /// available else `imdb`. Null when there's no usable id (Simkl needs one).
   ({String bucket, Map<String, dynamic> ids})? _target(
     int? malId,
     int? tmdbId,
     bool tmdbIsTv,
+    String? imdbId,
   ) {
     if (malId != null) return (bucket: 'shows', ids: {'mal': '$malId'});
-    if (tmdbId != null) {
-      return (
-        bucket: tmdbIsTv ? 'shows' : 'movies',
-        ids: {'tmdb': '$tmdbId'},
-      );
+    final bucket = tmdbIsTv ? 'shows' : 'movies';
+    if (tmdbId != null) return (bucket: bucket, ids: {'tmdb': '$tmdbId'});
+    if (imdbId != null && imdbId.isNotEmpty) {
+      return (bucket: bucket, ids: {'imdb': imdbId});
     }
     return null;
   }
@@ -217,11 +217,13 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected || !autoSync) return;
     // Movies are watched-once; "watching" is meaningless — wait for completion.
-    if (malId == null && tmdbId != null && !tmdbIsTv) return;
-    await _addToList(_target(malId, tmdbId, tmdbIsTv), 'watching');
+    final hasMovieId = tmdbId != null || (imdbId != null && imdbId.isNotEmpty);
+    if (malId == null && !tmdbIsTv && hasMovieId) return;
+    await _addToList(_target(malId, tmdbId, tmdbIsTv, imdbId), 'watching');
   }
 
   @override
@@ -230,10 +232,11 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required int episode,
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
-    final t = _target(malId, tmdbId, tmdbIsTv);
+    final t = _target(malId, tmdbId, tmdbIsTv, imdbId);
     if (t == null) return;
     final bool isMovie = t.bucket == 'movies';
     final obj = isMovie
@@ -253,10 +256,11 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required WatchStatus status,
   }) async {
     if (!isConnected) return;
-    await _addToList(_target(malId, tmdbId, tmdbIsTv), status.simkl);
+    await _addToList(_target(malId, tmdbId, tmdbIsTv, imdbId), status.simkl);
   }
 
   @override
@@ -265,9 +269,10 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected) return;
-    final t = _target(malId, tmdbId, tmdbIsTv);
+    final t = _target(malId, tmdbId, tmdbIsTv, imdbId);
     if (t == null) return;
     await _post('/sync/history/remove', _body(t, {'ids': t.ids}));
   }

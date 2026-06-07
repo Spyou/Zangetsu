@@ -22,6 +22,7 @@ MediaItem _$MediaItemFromJson(Map<String, dynamic> json) => MediaItem(
   malId: (json['malId'] as num?)?.toInt(),
   tmdbId: (json['tmdbId'] as num?)?.toInt(),
   tmdbIsTv: json['tmdbIsTv'] as bool? ?? false,
+  imdbId: json['imdbId'] as String?,
 );
 
 Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
@@ -38,6 +39,7 @@ Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
   'malId': instance.malId,
   'tmdbId': instance.tmdbId,
   'tmdbIsTv': instance.tmdbIsTv,
+  'imdbId': instance.imdbId,
 };
 
 const _$ProviderTypeEnumMap = {

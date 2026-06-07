@@ -18,12 +18,14 @@ class TrackerHub {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) => _fan(
     (t) => t.markWatching(
       malId: malId,
       title: title,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
     ),
   );
 
@@ -32,6 +34,7 @@ class TrackerHub {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required int episode,
   }) => _fan(
     (t) => t.scrobble(
@@ -39,6 +42,7 @@ class TrackerHub {
       title: title,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
       episode: episode,
     ),
   );
@@ -48,6 +52,7 @@ class TrackerHub {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required WatchStatus status,
   }) => _fan(
     (t) => t.setStatus(
@@ -55,6 +60,7 @@ class TrackerHub {
       title: title,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
       status: status,
     ),
   );
@@ -64,12 +70,14 @@ class TrackerHub {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) => _fan(
     (t) => t.removeFromList(
       malId: malId,
       title: title,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
     ),
   );
 

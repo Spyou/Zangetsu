@@ -22,12 +22,14 @@ abstract interface class Tracker implements Listenable {
   Future<void> disconnect();
 
   /// Mark a title as currently-watching (called when playback starts). Anime is
-  /// identified by [malId]/[title]; movies/series by [tmdbId] (+ [tmdbIsTv]).
+  /// identified by [malId]/[title]; movies/series by [tmdbId] (+ [tmdbIsTv]) or,
+  /// failing that, [imdbId] (Simkl accepts an imdb id).
   Future<void> markWatching({
     int? malId,
     String? title,
     int? tmdbId,
     bool tmdbIsTv,
+    String? imdbId,
   });
 
   /// Record that [episode] was watched (for a movie, episode is ignored).
@@ -36,6 +38,7 @@ abstract interface class Tracker implements Listenable {
     String? title,
     int? tmdbId,
     bool tmdbIsTv,
+    String? imdbId,
     required int episode,
   });
 
@@ -45,6 +48,7 @@ abstract interface class Tracker implements Listenable {
     String? title,
     int? tmdbId,
     bool tmdbIsTv,
+    String? imdbId,
     required WatchStatus status,
   });
 
@@ -54,5 +58,6 @@ abstract interface class Tracker implements Listenable {
     String? title,
     int? tmdbId,
     bool tmdbIsTv,
+    String? imdbId,
   });
 }

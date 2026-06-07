@@ -326,6 +326,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected || !autoSync) return;
     final a = await _resolve(malId, title);
@@ -340,6 +341,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required int episode,
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
@@ -364,6 +366,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required WatchStatus status,
   }) async {
     if (!isConnected) return;
@@ -383,6 +386,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected) return;
     final a = await _resolve(malId, title);

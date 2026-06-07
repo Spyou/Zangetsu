@@ -188,6 +188,7 @@ class AniListService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required int episode,
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
@@ -261,6 +262,7 @@ class AniListService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
     required WatchStatus status,
   }) async {
     if (!isConnected) return;
@@ -290,6 +292,7 @@ class AniListService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected || !autoSync) return;
     if (malId == null && (title == null || title.trim().isEmpty)) return;
@@ -311,6 +314,7 @@ class AniListService extends ChangeNotifier implements Tracker {
     String? title,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!isConnected) return;
     final media = await _resolveMedia(malId, title);

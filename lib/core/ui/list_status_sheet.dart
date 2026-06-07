@@ -26,6 +26,7 @@ Future<void> showListStatusSheet(
   int? malId,
   int? tmdbId,
   bool tmdbIsTv = false,
+  String? imdbId,
   VoidCallback? onChanged,
 }) async {
   final myList = sl<MyListStore>();
@@ -49,7 +50,8 @@ Future<void> showListStatusSheet(
     await myList.remove(item);
     await statusStore.remove(item);
     onChanged?.call();
-    _syncToTrackers(item, null, malId, tmdbId, tmdbIsTv, isAnime, remove: true);
+    _syncToTrackers(item, null, malId, tmdbId, tmdbIsTv, imdbId, isAnime,
+        remove: true);
     return;
   }
 
@@ -57,7 +59,7 @@ Future<void> showListStatusSheet(
   await myList.add(item);
   await statusStore.setStatus(item, status);
   onChanged?.call();
-  _syncToTrackers(item, status, malId, tmdbId, tmdbIsTv, isAnime);
+  _syncToTrackers(item, status, malId, tmdbId, tmdbIsTv, imdbId, isAnime);
 }
 
 /// Best-effort tracker push. Resolves the MAL/TMDB id from the detail when the
@@ -68,6 +70,7 @@ Future<void> _syncToTrackers(
   int? malId,
   int? tmdbId,
   bool tmdbIsTv,
+  String? imdbId,
   bool isAnime, {
   bool remove = false,
 }) async {
@@ -75,8 +78,9 @@ Future<void> _syncToTrackers(
   if (!hub.anyConnected) return;
   var mal = malId ?? item.malId;
   var tmdb = tmdbId ?? item.tmdbId;
+  var imdb = imdbId ?? item.imdbId;
   var isTv = tmdbIsTv;
-  if (mal == null && tmdb == null) {
+  if (mal == null && tmdb == null && (imdb == null || imdb.isEmpty)) {
     try {
       final d = await sl<SourceRepository>().detail(
         item.url,
@@ -84,6 +88,7 @@ Future<void> _syncToTrackers(
       );
       mal = d.malId;
       tmdb = d.tmdbId;
+      imdb = d.imdbId;
       isTv = d.tmdbIsTv;
     } catch (_) {/* leave ids null — title fallback still covers anime */}
   }
@@ -94,6 +99,7 @@ Future<void> _syncToTrackers(
       title: title,
       tmdbId: tmdb,
       tmdbIsTv: isTv,
+      imdbId: imdb,
     );
   } else if (status != null) {
     await hub.setStatus(
@@ -101,6 +107,7 @@ Future<void> _syncToTrackers(
       title: title,
       tmdbId: tmdb,
       tmdbIsTv: isTv,
+      imdbId: imdb,
       status: status,
     );
   }

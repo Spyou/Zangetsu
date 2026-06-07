@@ -118,6 +118,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.scrobbleTitle,
     this.tmdbId,
     this.tmdbIsTv = false,
+    this.imdbId,
     this.availableCategories = const [],
   }) : _resolveSources = resolveSources,
        _dio = dio,
@@ -148,6 +149,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
   final int? tmdbId;
   final bool tmdbIsTv;
+
+  /// IMDb id (movies/series) for Simkl tracking when no TMDB id is exposed.
+  final String? imdbId;
 
   /// Episode indices already scrobbled this session (fire once per episode).
   final Set<int> _scrobbled = {};
@@ -955,7 +959,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   void _markWatching() {
     if (malId == null &&
         (scrobbleTitle == null || scrobbleTitle!.isEmpty) &&
-        tmdbId == null) {
+        tmdbId == null &&
+        (imdbId == null || imdbId!.isEmpty)) {
       return;
     }
     if (!sl.isRegistered<TrackerHub>()) return;
@@ -964,13 +969,15 @@ class PlayerCubit extends Cubit<PlayerState> {
       title: scrobbleTitle,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
     );
   }
 
   void _maybeScrobble({bool force = false}) {
     if (malId == null &&
         (scrobbleTitle == null || scrobbleTitle!.isEmpty) &&
-        tmdbId == null) {
+        tmdbId == null &&
+        (imdbId == null || imdbId!.isEmpty)) {
       return; // nothing to identify the title by
     }
     if (!force) {
@@ -988,6 +995,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       title: scrobbleTitle,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
       episode: ep.toInt(),
     );
   }
