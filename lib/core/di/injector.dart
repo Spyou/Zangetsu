@@ -18,6 +18,7 @@ import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
+import '../metadata/metadata_enrichment.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
@@ -79,6 +80,10 @@ Future<void> initDependencies() async {
 
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
+
+  // Detail-screen Cast + Relations enrichment (AniList for anime, TMDB for
+  // movie/TV). Keys off the malId/tmdbId the providers already expose.
+  sl.registerSingleton<MetadataEnrichment>(MetadataEnrichment(dio));
 
   // Accurate OP/ED skip times for anime (AniList → MAL id → AniSkip).
   sl.registerSingleton<SkipService>(SkipService(dio));

@@ -2,8 +2,10 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/metadata/metadata_enrichment.dart';
 import '../../../core/models/episode.dart';
 import '../../../core/models/media_detail.dart';
+import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/source_repository.dart';
@@ -26,10 +28,17 @@ class DetailState extends Equatable {
     this.selectedSeason = 1,
     this.descExpanded = false,
     this.error,
+    this.cast = const [],
+    this.relations = const [],
   });
 
   final DetailStatus status;
   final MediaDetail? detail;
+
+  /// Cast + related titles, fetched async from a metadata API after the detail
+  /// loads (AniList for anime, TMDB for movie/TV). Empty until resolved.
+  final List<CastMember> cast;
+  final List<MediaRelation> relations;
 
   /// 'sub' | 'dub'. Drives the Sub/Dub toggle and the player `category`.
   final String category;
@@ -44,6 +53,8 @@ class DetailState extends Equatable {
     int? selectedSeason,
     bool? descExpanded,
     String? error,
+    List<CastMember>? cast,
+    List<MediaRelation>? relations,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -51,6 +62,8 @@ class DetailState extends Equatable {
     selectedSeason: selectedSeason ?? this.selectedSeason,
     descExpanded: descExpanded ?? this.descExpanded,
     error: error ?? this.error,
+    cast: cast ?? this.cast,
+    relations: relations ?? this.relations,
   );
 
   @override
@@ -61,6 +74,8 @@ class DetailState extends Equatable {
     selectedSeason,
     descExpanded,
     error,
+    cast,
+    relations,
   ];
 }
 
@@ -109,9 +124,24 @@ class DetailCubit extends Cubit<DetailState> {
         sourceId: _sourceId,
       );
       emit(state.copyWith(status: DetailStatus.success, detail: detail));
+      _enrich(detail);
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
     }
+  }
+
+  /// Fetch Cast + Relations in the background (AniList for anime, TMDB for
+  /// movie/TV) and merge into state. Best-effort — failures leave the tabs in
+  /// their empty state. Runs once per title; Sub/Dub switches keep the result.
+  Future<void> _enrich(MediaDetail detail) async {
+    if (state.cast.isNotEmpty || state.relations.isNotEmpty) return;
+    if (detail.malId == null && detail.tmdbId == null) return;
+    try {
+      final extras = await sl<MetadataEnrichment>().fetch(detail);
+      if (isClosed) return;
+      if (extras.cast.isEmpty && extras.relations.isEmpty) return;
+      emit(state.copyWith(cast: extras.cast, relations: extras.relations));
+    } catch (_) {/* leave tabs empty */}
   }
 
   /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise

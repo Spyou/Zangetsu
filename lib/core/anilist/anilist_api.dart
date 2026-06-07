@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../models/media_extras.dart';
+
 /// The signed-in AniList user.
 class AniListViewer {
   const AniListViewer({required this.id, required this.name, this.avatar});
@@ -88,6 +90,82 @@ class AniListApi {
     final m = d?['Media'];
     if (m is! Map || m['id'] == null) return null;
     return (id: (m['id'] as num).toInt(), episodes: (m['episodes'] as num?)?.toInt());
+  }
+
+  /// Cast (characters + their Japanese voice actors) and related anime titles
+  /// for an anime, by MAL id. Unauthenticated; returns empty lists on miss.
+  Future<({List<CastMember> cast, List<MediaRelation> relations})> mediaExtras(
+    int idMal,
+  ) async {
+    const q =
+        'query(\$idMal:Int){ Media(idMal:\$idMal,type:ANIME){ '
+        'characters(sort:[ROLE,RELEVANCE],perPage:24){ edges{ role '
+        'node{ name{full} image{medium} } '
+        'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
+        'relations{ edges{ relationType '
+        'node{ idMal type format title{romaji english} coverImage{medium} } } } } }';
+    final d = await _gql(q, {'idMal': idMal});
+    final media = d?['Media'];
+    if (media is! Map) {
+      return (cast: <CastMember>[], relations: <MediaRelation>[]);
+    }
+
+    final cast = <CastMember>[];
+    final cEdges = media['characters'] is Map ? media['characters']['edges'] : null;
+    if (cEdges is List) {
+      for (final e in cEdges) {
+        if (e is! Map) continue;
+        final node = e['node'];
+        final name = (node is Map && node['name'] is Map)
+            ? node['name']['full'] as String?
+            : null;
+        if (name == null || name.isEmpty) continue;
+        final img = (node is Map && node['image'] is Map)
+            ? node['image']['medium'] as String?
+            : null;
+        final vas = e['voiceActors'];
+        final va = (vas is List &&
+                vas.isNotEmpty &&
+                vas.first is Map &&
+                (vas.first as Map)['name'] is Map)
+            ? (vas.first as Map)['name']['full'] as String?
+            : null;
+        cast.add(CastMember(name: name, role: va, photo: img));
+      }
+    }
+
+    final relations = <MediaRelation>[];
+    final rEdges = media['relations'] is Map ? media['relations']['edges'] : null;
+    if (rEdges is List) {
+      for (final e in rEdges) {
+        if (e is! Map) continue;
+        final node = e['node'];
+        if (node is! Map || node['type'] != 'ANIME') continue; // video app only
+        final t = node['title'];
+        final title =
+            (t is Map) ? (t['english'] ?? t['romaji']) as String? : null;
+        if (title == null || title.isEmpty) continue;
+        final cover = (node['coverImage'] is Map)
+            ? node['coverImage']['medium'] as String?
+            : null;
+        relations.add(MediaRelation(
+          title: title,
+          cover: cover,
+          relation: _relationLabel(
+            e['relationType'] as String?,
+            node['format'] as String?,
+          ),
+          malId: (node['idMal'] as num?)?.toInt(),
+        ));
+      }
+    }
+    return (cast: cast, relations: relations);
+  }
+
+  static String _relationLabel(String? type, String? format) {
+    if (type == null || type.isEmpty) return format ?? 'Related';
+    final t = type.replaceAll('_', ' ').toLowerCase();
+    return t.isEmpty ? 'Related' : t[0].toUpperCase() + t.substring(1);
   }
 
   /// Push progress/status for [mediaId]. Returns true on success.

@@ -14,6 +14,7 @@ import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
+import '../../core/models/media_extras.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -162,6 +163,29 @@ class _DetailViewState extends State<_DetailView>
         });
       },
     );
+  }
+
+  /// Open a related title. Relations come from a metadata API (not tied to a
+  /// provider URL), so we search the CURRENT source for the title and open the
+  /// first match's detail. Falls back to a snackbar when nothing is found.
+  Future<void> _openRelation(MediaRelation r) async {
+    _snack('Finding “${r.title}”…');
+    try {
+      final results = await sl<SourceRepository>().search(
+        r.title,
+        sourceId: widget.item.sourceId,
+      );
+      if (!mounted) return;
+      if (results.isEmpty) {
+        _snack('“${r.title}” isn’t on this source');
+        return;
+      }
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => DetailScreen(item: results.first)),
+      );
+    } catch (_) {
+      if (mounted) _snack('Couldn’t open “${r.title}”');
+    }
   }
 
   void _share(MediaDetail detail, String sourceName) {
@@ -557,10 +581,12 @@ class _DetailViewState extends State<_DetailView>
     );
 
     // ── Starring / Creators (Genres fallback) muted lines ───────────────────
-    final starring = detail.cast.isNotEmpty
-        ? detail.cast.take(3).join(', ')
-        : null;
-    final starringMore = detail.cast.length > 3;
+    // Prefer enriched cast (AniList/TMDB) when available, else the provider's.
+    final castNames = state.cast.isNotEmpty
+        ? state.cast.map((c) => c.name).toList()
+        : detail.cast;
+    final starring = castNames.isNotEmpty ? castNames.take(3).join(', ') : null;
+    final starringMore = castNames.length > 3;
     final creators = detail.studios.isNotEmpty
         ? detail.studios.join(', ')
         : null;
@@ -817,9 +843,13 @@ class _DetailViewState extends State<_DetailView>
             onDownload: (ep) => _downloadSingle(ep, detail, category),
           ),
           // ── Cast ────────────────────────────────────────────────────────────
-          _CastTab(cast: detail.cast),
-          // ── Relations (no data) ──────────────────────────────────────────────
-          const _RelationsTab(),
+          _CastTab(
+            cast: state.cast.isNotEmpty
+                ? state.cast
+                : [for (final n in detail.cast) CastMember(name: n)],
+          ),
+          // ── Relations ─────────────────────────────────────────────────────────
+          _RelationsTab(relations: state.relations, onOpen: _openRelation),
           // ── Details ──────────────────────────────────────────────────────────
           _DetailsTab(
             sourceName: sourceName,
@@ -3088,7 +3118,7 @@ class _ThumbnailProgressBar extends StatelessWidget {
 
 class _CastTab extends StatelessWidget {
   const _CastTab({required this.cast});
-  final List<String> cast;
+  final List<CastMember> cast;
 
   @override
   Widget build(BuildContext context) {
@@ -3098,61 +3128,150 @@ class _CastTab extends StatelessWidget {
         message: 'No cast information',
       );
     }
-    return ListView(
+    return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
-      children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 10,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.66,
+      ),
+      itemCount: cast.length,
+      itemBuilder: (_, i) {
+        final m = cast[i];
+        return Column(
           children: [
-            for (final name in cast)
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 9,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppColors.hairline, width: 0.5),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.person_rounded,
-                      size: 16,
-                      color: AppColors.textSecondary,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      name,
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                  ],
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: (m.photo != null && m.photo!.isNotEmpty)
+                    ? CachedNetworkImage(
+                        imageUrl: m.photo!,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) =>
+                            Container(color: AppColors.surface2),
+                        errorWidget: (_, _, _) => const _AvatarFallback(),
+                      )
+                    : const _AvatarFallback(),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              m.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppText.caption.copyWith(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (m.role != null && m.role!.isNotEmpty)
+              Text(
+                m.role!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
                 ),
               ),
           ],
-        ),
-      ],
+        );
+      },
     );
   }
 }
 
+class _AvatarFallback extends StatelessWidget {
+  const _AvatarFallback();
+  @override
+  Widget build(BuildContext context) => Container(
+    color: AppColors.surface2,
+    alignment: Alignment.center,
+    child: const Icon(
+      Icons.person_rounded,
+      color: AppColors.textTertiary,
+      size: 30,
+    ),
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Relations tab — no relations data in our model; tasteful empty state.
+// Relations tab — related/recommended titles; tap searches the active source.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RelationsTab extends StatelessWidget {
-  const _RelationsTab();
+  const _RelationsTab({required this.relations, required this.onOpen});
+  final List<MediaRelation> relations;
+  final void Function(MediaRelation) onOpen;
 
   @override
   Widget build(BuildContext context) {
-    return const EmptyState(
-      icon: Icons.account_tree_outlined,
-      message: 'No related titles',
+    if (relations.isEmpty) {
+      return const EmptyState(
+        icon: Icons.account_tree_outlined,
+        message: 'No related titles',
+      );
+    }
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 16,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.47,
+      ),
+      itemCount: relations.length,
+      itemBuilder: (_, i) {
+        final r = relations[i];
+        return GestureDetector(
+          onTap: () => onOpen(r),
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: AspectRatio(
+                  aspectRatio: 2 / 3,
+                  child: (r.cover != null && r.cover!.isNotEmpty)
+                      ? CachedNetworkImage(
+                          imageUrl: r.cover!,
+                          fit: BoxFit.cover,
+                          placeholder: (_, _) =>
+                              Container(color: AppColors.surface2),
+                          errorWidget: (_, _, _) =>
+                              Container(color: AppColors.surface2),
+                        )
+                      : Container(color: AppColors.surface2),
+                ),
+              ),
+              const SizedBox(height: 6),
+              if (r.relation != null && r.relation!.isNotEmpty)
+                Text(
+                  r.relation!.toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(
+                    color: AppColors.accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              Text(
+                r.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
