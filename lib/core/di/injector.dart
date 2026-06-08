@@ -178,7 +178,12 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ActiveSourceCubit>(
     ActiveSourceCubit(
       box: Hive.box(ActiveSourceCubit.boxName),
-      valid: manager.installedIds.toSet(),
+      // Valid ids = JS providers + loaded CloudStream sources, so a saved
+      // `cs:` active source survives a cold restart instead of falling back.
+      valid: {
+        ...manager.installedIds,
+        ...csManager.all.map((p) => p.sourceId),
+      },
     ),
   );
 

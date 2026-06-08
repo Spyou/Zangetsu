@@ -342,11 +342,14 @@ class _HomeViewState extends State<_HomeView> {
         : const <HistoryEntry>[];
 
     return BlocListener<ActiveSourceCubit, String>(
+      listenWhen: (prev, curr) => prev != curr,
       listener: (context, _) {
         if (!mounted) return;
         _metaCache.clear();
         _heroPrewarmed = false;
-        context.read<HomeCubit>().load();
+        // reset:true clears the old source's rows so the switch is visible
+        // immediately (skeletons), even if the new source's home is slow.
+        context.read<HomeCubit>().load(reset: true);
       },
       child: Scaffold(
         backgroundColor: AppColors.bg,

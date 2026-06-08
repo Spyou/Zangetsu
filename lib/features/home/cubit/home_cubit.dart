@@ -48,8 +48,11 @@ class HomeCubit extends Cubit<HomeState> {
   /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
   /// rows don't flash empty), fetches the provider's home, and emits the fresh
   /// result. A total failure yields an empty section list rather than throwing.
-  Future<void> load() async {
-    emit(state.copyWith(loading: true));
+  /// [reset] clears the current rows first (used on a source switch) so the UI
+  /// shows loading skeletons for the NEW source instead of lingering on the old
+  /// source's content while the (possibly slow) fetch runs.
+  Future<void> load({bool reset = false}) async {
+    emit(reset ? const HomeState(loading: true) : state.copyWith(loading: true));
 
     List<HomeSection> sections;
     try {
