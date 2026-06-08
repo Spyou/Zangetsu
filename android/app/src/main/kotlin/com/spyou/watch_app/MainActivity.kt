@@ -152,9 +152,7 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "listSources" -> {
-                        host.flog("listSources RECV")
                         csExecutor.execute {
-                            host.flog("listSources EXEC start")
                             try {
                                 host.loadAll(repo.cachedFiles())
                                 val apis = host.installedApis()
@@ -205,9 +203,7 @@ class MainActivity : FlutterActivity() {
                     }
                     "getHome" -> {
                         val name = call.argument<String>("name")
-                        host.flog("getHome RECV '$name'")
                         csReadPool.execute {
-                            host.flog("getHome EXEC start '$name'")
                             try {
                                 val res = host.getHome(name ?: "")
                                 runOnUiThread { result.success(res) }
