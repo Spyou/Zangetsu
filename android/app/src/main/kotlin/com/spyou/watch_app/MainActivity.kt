@@ -126,26 +126,50 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cloudstream")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    // Add (or refresh) a repo: fetch its catalog only — does NOT
+                    // download/install anything. The user installs plugins one by
+                    // one via "installPlugin". Returns the repo name + its full
+                    // advertised plugin list (the catalog).
                     "addRepo" -> {
                         val url = call.argument<String>("url")
                         csExecutor.execute {
                             try {
                                 val (repoName, plugins) = repo.loadRepo(url ?: "")
-                                for (plugin in plugins) {
-                                    try {
-                                        host.loadPlugin(repo.download(plugin))
-                                    } catch (_: Exception) { /* skip a bad plugin */ }
-                                }
-                                // Report the repo's name + its plugin FILE ids
-                                // ("<internalName>@<version>") — these match each
-                                // source's `sourcePlugin`, so Dart can group + delete
-                                // by repo reliably (handles multi-API plugins).
                                 val info = mapOf(
                                     "name" to repoName,
                                     "url" to (url ?: ""),
-                                    "files" to plugins.map { "${it.internalName}@${it.version}" },
+                                    "plugins" to plugins.map { it.toMap() },
                                 )
                                 runOnUiThread { result.success(info) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    // Install ONE plugin (download its .cs3 + load it). Returns the
+                    // updated installed-source list so Dart can rebuild.
+                    "installPlugin" -> {
+                        val cs3Url = call.argument<String>("url")
+                        val internalName = call.argument<String>("internalName")
+                        val version = call.argument<Int>("version") ?: 1
+                        csExecutor.execute {
+                            try {
+                                val file = repo.download(cs3Url ?: "", internalName ?: "", version)
+                                host.loadPlugin(file)
+                                runOnUiThread { result.success(host.installedApis()) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    // Uninstall ONE plugin by internalName (every cached version +
+                    // its registered sources). Returns the updated source list.
+                    "uninstallPlugin" -> {
+                        val internalName = call.argument<String>("internalName")
+                        csExecutor.execute {
+                            try {
+                                host.deleteByInternalNames(setOf(internalName ?: ""))
+                                runOnUiThread { result.success(host.installedApis()) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }
@@ -175,25 +199,32 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // Check a repo for updates: re-fetch its catalog and re-install
+                    // ONLY the plugins that are currently installed whose version
+                    // changed (never auto-installs new ones). Returns fresh catalog
+                    // + the updated source list.
                     "updateRepo" -> {
                         val url = call.argument<String>("url")
                         csExecutor.execute {
                             try {
                                 val (repoName, plugins) = repo.loadRepo(url ?: "")
-                                // Drop every cached version of this repo's plugins,
-                                // then download + load the current versions fresh.
-                                host.deleteByInternalNames(
-                                    plugins.map { it.internalName }.toSet(),
-                                )
+                                val installed = host.installedFileIds() // "name@ver"
+                                val installedNames =
+                                    installed.map { it.substringBefore('@') }.toSet()
                                 for (plugin in plugins) {
+                                    if (plugin.internalName !in installedNames) continue
+                                    val newId = "${plugin.internalName}@${plugin.version}"
+                                    if (installed.contains(newId)) continue // already current
                                     try {
+                                        host.deleteByInternalNames(setOf(plugin.internalName))
                                         host.loadPlugin(repo.download(plugin))
                                     } catch (_: Exception) { /* skip a bad plugin */ }
                                 }
                                 val info = mapOf(
                                     "name" to repoName,
                                     "url" to (url ?: ""),
-                                    "files" to plugins.map { "${it.internalName}@${it.version}" },
+                                    "plugins" to plugins.map { it.toMap() },
+                                    "sources" to host.installedApis(),
                                 )
                                 runOnUiThread { result.success(info) }
                             } catch (e: Exception) {

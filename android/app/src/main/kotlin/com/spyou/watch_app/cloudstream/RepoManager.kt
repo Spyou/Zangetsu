@@ -16,7 +16,18 @@ data class CsPlugin(
     val tvTypes: List<String>,
     val iconUrl: String?,
     val repoUrl: String,
-)
+) {
+    /** JSON-able view for the Flutter bridge (the repo catalog). */
+    fun toMap(): Map<String, Any?> = mapOf(
+        "internalName" to internalName,
+        "name" to name,
+        "url" to url,
+        "version" to version,
+        "language" to language,
+        "tvTypes" to tvTypes,
+        "iconUrl" to iconUrl,
+    )
+}
 
 /**
  * Downloads a CloudStream `repo.json`, walks its `pluginLists`, and caches the
@@ -80,10 +91,17 @@ class RepoManager(private val context: Context) {
         try { URL(repoUrl).host?.ifEmpty { null } ?: repoUrl } catch (_: Exception) { repoUrl }
 
     /** Download (or reuse) a plugin's `.cs3` into the cache and return the file. */
-    fun download(plugin: CsPlugin): File {
-        val f = File(cs3Dir, "${plugin.internalName}@${plugin.version}.cs3")
+    fun download(plugin: CsPlugin): File =
+        download(plugin.url, plugin.internalName, plugin.version)
+
+    /**
+     * Download (or reuse) a single `.cs3` by its raw fields — used to install one
+     * plugin on demand (the catalog lives in Dart, so installs pass the fields).
+     */
+    fun download(cs3Url: String, internalName: String, version: Int): File {
+        val f = File(cs3Dir, "$internalName@$version.cs3")
         if (f.exists() && f.length() > 0) return f
-        val conn = URL(plugin.url).openConnection()
+        val conn = URL(cs3Url).openConnection()
         conn.connectTimeout = 15000
         conn.readTimeout = 30000
         conn.setRequestProperty("User-Agent", UA)

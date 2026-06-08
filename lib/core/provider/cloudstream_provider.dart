@@ -285,24 +285,78 @@ class CloudStreamProvider implements BaseProvider {
   }
 }
 
-/// A persisted CloudStream repo and the loaded sources that belong to it. Built
-/// by [CloudStreamManager.repoGroups] for the grouped Providers UI.
+/// One installable plugin from a repo's catalog (metadata only — installing it
+/// downloads the `.cs3`). `id` is the file id ("internalName@version") used by
+/// the host for download/grouping.
+class CsPluginMeta {
+  const CsPluginMeta({
+    required this.internalName,
+    required this.name,
+    required this.url,
+    required this.version,
+    this.language,
+    this.tvTypes = const [],
+    this.iconUrl,
+  });
+
+  final String internalName;
+  final String name;
+  final String url; // the .cs3 download URL
+  final int version;
+  final String? language;
+  final List<String> tvTypes;
+  final String? iconUrl;
+
+  String get id => '$internalName@$version';
+
+  factory CsPluginMeta.fromMap(Map<dynamic, dynamic> m) => CsPluginMeta(
+    internalName: (m['internalName'] ?? '').toString(),
+    name: (m['name'] ?? m['internalName'] ?? '').toString(),
+    url: (m['url'] ?? '').toString(),
+    version: (m['version'] is num) ? (m['version'] as num).toInt() : 1,
+    language: (m['language'] as String?)?.isNotEmpty == true
+        ? m['language'] as String
+        : null,
+    tvTypes: (m['tvTypes'] is List)
+        ? [for (final t in m['tvTypes'] as List) '$t']
+        : const [],
+    iconUrl: (m['iconUrl'] as String?)?.isNotEmpty == true
+        ? m['iconUrl'] as String
+        : null,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'internalName': internalName,
+    'name': name,
+    'url': url,
+    'version': version,
+    'language': language,
+    'tvTypes': tvTypes,
+    'iconUrl': iconUrl,
+  };
+}
+
+/// A persisted CloudStream repo, its installable catalog, and the loaded sources
+/// that belong to it. Built by [CloudStreamManager.repoGroups] for the grouped
+/// Providers/CloudStream UI.
 ///   * [url]    — the repo manifest URL (empty for the synthetic "Other" group).
 ///   * [name]   — the repo's advertised name.
 ///   * [owner]  — parsed from the URL (GitHub owner, else the host).
-///   * [sources]— the loaded providers whose [CloudStreamProvider.displayName]
-///                matches one of the repo's advertised plugin names.
+///   * [catalog]— every plugin the repo advertises (install one by one).
+///   * [sources]— the loaded providers that belong to this repo.
 class CsRepoGroup {
   const CsRepoGroup({
     required this.url,
     required this.name,
     required this.owner,
+    required this.catalog,
     required this.sources,
   });
 
   final String url;
   final String name;
   final String owner;
+  final List<CsPluginMeta> catalog;
   final List<CloudStreamProvider> sources;
 }
 
@@ -401,8 +455,10 @@ class CloudStreamManager extends ChangeNotifier {
         {'url': url},
       );
       _upsertRepo(repo, fallbackUrl: url);
-      final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
-      _rebuildFrom(raw);
+      // Native returns the refreshed source list (only installed plugins are
+      // re-loaded); rebuild from it.
+      final sources = (repo?['sources'] as List?);
+      _rebuildFrom(sources);
       notifyListeners();
       return _providers.length;
     } catch (e) {
@@ -430,11 +486,18 @@ class CloudStreamManager extends ChangeNotifier {
           files.add('$f');
         }
       }
+      final catalog = _catalogOf(repo);
+      // A repo's plugins by internalName (catalog + legacy file ids) — used to
+      // attribute loaded sources even when the installed version differs from
+      // the currently-advertised one.
+      final internalNames = <String>{
+        for (final p in catalog) p.internalName,
+        for (final f in files) f.split('@').first,
+      };
       final sources = <CloudStreamProvider>[];
       for (final p in _providers.values) {
-        // Attribute by the plugin FILE the source came from (sourcePlugin) —
-        // robust to plugins that register several differently-named MainAPIs.
-        if (p.sourcePlugin != null && files.contains(p.sourcePlugin)) {
+        final sp = p.sourcePlugin;
+        if (sp != null && internalNames.contains(sp.split('@').first)) {
           sources.add(p);
           claimed.add(p.sourceId);
         }
@@ -444,6 +507,7 @@ class CloudStreamManager extends ChangeNotifier {
           url: (repo['url'] ?? '').toString(),
           name: (repo['name'] ?? '').toString(),
           owner: _ownerOf((repo['url'] ?? '').toString()),
+          catalog: catalog,
           sources: sources,
         ),
       );
@@ -454,10 +518,88 @@ class CloudStreamManager extends ChangeNotifier {
         .toList();
     if (orphans.isNotEmpty) {
       groups.add(
-        CsRepoGroup(url: '', name: 'Other', owner: '', sources: orphans),
+        CsRepoGroup(
+          url: '',
+          name: 'Other',
+          owner: '',
+          catalog: const [],
+          sources: orphans,
+        ),
       );
     }
     return groups;
+  }
+
+  /// The parsed catalog for a persisted repo record (empty if not fetched yet).
+  List<CsPluginMeta> _catalogOf(Map<String, dynamic> repo) {
+    final raw = repo['catalog'];
+    if (raw is! List) return const [];
+    return [
+      for (final m in raw)
+        if (m is Map) CsPluginMeta.fromMap(m),
+    ];
+  }
+
+  /// Whether a plugin (by internalName) currently has a loaded source.
+  bool isPluginInstalled(String internalName) => _providers.values.any((p) {
+    final sp = p.sourcePlugin;
+    return sp != null && sp.split('@').first == internalName;
+  });
+
+  /// Installs one plugin from a repo's catalog (download + load). Rebuilds the
+  /// provider set from the host. No-op on non-Android.
+  Future<void> installPlugin(CsPluginMeta plugin) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final raw = await _csChannel.invokeMethod<List<dynamic>>('installPlugin', {
+        'url': plugin.url,
+        'internalName': plugin.internalName,
+        'version': plugin.version,
+      });
+      _rebuildFrom(raw);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[cloudstream] installPlugin failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Uninstalls one plugin (by internalName) and its sources. Rebuilds.
+  Future<void> uninstallPlugin(String internalName) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final raw = await _csChannel.invokeMethod<List<dynamic>>(
+        'uninstallPlugin',
+        {'internalName': internalName},
+      );
+      _rebuildFrom(raw);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[cloudstream] uninstallPlugin failed: $e');
+      rethrow;
+    }
+  }
+
+  /// Lazily fetches a repo's catalog if it isn't loaded yet (e.g. a repo added
+  /// before per-plugin install existed). Best-effort; safe to call repeatedly.
+  Future<void> ensureCatalog(String url) async {
+    if (!Platform.isAndroid || url.isEmpty) return;
+    final repo = _repos.firstWhere(
+      (r) => (r['url'] ?? '').toString() == url,
+      orElse: () => const {},
+    );
+    if (repo.isEmpty) return;
+    if (_catalogOf(Map<String, dynamic>.from(repo)).isNotEmpty) return;
+    try {
+      final info = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'addRepo',
+        {'url': url},
+      );
+      _upsertRepo(info, fallbackUrl: url);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[cloudstream] ensureCatalog failed: $e');
+    }
   }
 
   /// Parses the repo owner from [url]: the GitHub owner for
@@ -478,9 +620,10 @@ class CloudStreamManager extends ChangeNotifier {
     return uri.host;
   }
 
-  /// Adds a CloudStream repo by [url], persisting the repo's advertised name +
-  /// plugin names, then (re)building the provider set from ALL loaded sources.
-  /// Returns the count of sources now loaded. No-op on non-Android.
+  /// Adds a CloudStream repo by [url], fetching + persisting its catalog. Does
+  /// NOT install anything — the user installs plugins one by one via
+  /// [installPlugin]. Returns the number of installable plugins the repo
+  /// advertises. No-op on non-Android.
   Future<int> addRepo(String url) async {
     if (!Platform.isAndroid) return 0;
     try {
@@ -489,33 +632,64 @@ class CloudStreamManager extends ChangeNotifier {
         {'url': url},
       );
       _upsertRepo(repo, fallbackUrl: url);
-      // Reload the full source set (the host now includes the new plugins).
-      final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
-      _rebuildFrom(raw);
       notifyListeners();
-      return _providers.length;
+      final added = _repos.firstWhere(
+        (r) => (r['url'] ?? '').toString() == url,
+        orElse: () => const {},
+      );
+      return _catalogOf(Map<String, dynamic>.from(added)).length;
     } catch (e) {
       debugPrint('[cloudstream] addRepo failed: $e');
       rethrow;
     }
   }
 
-  /// Upserts a `{name, url, pluginNames}` repo map into the persisted list,
-  /// replacing any existing entry with the same url. Tolerant of missing keys.
+  /// Upserts a `{name, url, plugins}` repo map (the native catalog response) into
+  /// the persisted list, replacing any existing entry with the same url. Keeps
+  /// `files` as the UNION of any legacy file ids and the catalog's file ids so
+  /// grouping/delete keep working across the migration. Tolerant of missing keys.
   void _upsertRepo(Map<dynamic, dynamic>? repo, {required String fallbackUrl}) {
     final m = repo == null ? const {} : Map<String, dynamic>.from(repo);
     final repoUrl = (m['url'] ?? fallbackUrl).toString();
-    final files = <String>[];
+
+    final catalog = <Map<String, dynamic>>[];
+    final rawPlugins = m['plugins'];
+    if (rawPlugins is List) {
+      for (final p in rawPlugins) {
+        if (p is Map) catalog.add(CsPluginMeta.fromMap(p).toJson());
+      }
+    }
+
+    // Preserve any legacy/installed file ids from the existing record, then add
+    // the catalog's current file ids.
+    final files = <String>{};
+    final existing = _repos.firstWhere(
+      (r) => (r['url'] ?? '').toString() == repoUrl,
+      orElse: () => const {},
+    );
+    final exFiles = existing['files'];
+    if (exFiles is List) {
+      for (final f in exFiles) {
+        files.add('$f');
+      }
+    }
+    for (final p in catalog) {
+      files.add('${p['internalName']}@${p['version']}');
+    }
+    // If the native response carried explicit file ids (legacy), keep them too.
     final rawFiles = m['files'];
     if (rawFiles is List) {
       for (final f in rawFiles) {
         files.add('$f');
       }
     }
+
     final entry = <String, dynamic>{
       'url': repoUrl,
-      'name': (m['name'] ?? '').toString(),
-      'files': files,
+      'name': (m['name'] ?? existing['name'] ?? '').toString(),
+      'files': files.toList(),
+      // Keep the prior catalog if the new response has none (defensive).
+      'catalog': catalog.isNotEmpty ? catalog : (existing['catalog'] ?? const []),
     };
     _repos.removeWhere((r) => (r['url'] ?? '').toString() == repoUrl);
     _repos.add(entry);
@@ -552,10 +726,18 @@ class CloudStreamManager extends ChangeNotifier {
           files.add('$f');
         }
       }
+      final catalog = <Map<String, dynamic>>[];
+      final rawCatalog = m['catalog'];
+      if (rawCatalog is List) {
+        for (final c in rawCatalog) {
+          if (c is Map) catalog.add(Map<String, dynamic>.from(c));
+        }
+      }
       _repos.add({
         'url': (m['url'] ?? '').toString(),
         'name': (m['name'] ?? '').toString(),
         'files': files,
+        'catalog': catalog,
       });
     }
   }

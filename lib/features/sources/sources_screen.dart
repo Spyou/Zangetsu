@@ -157,7 +157,14 @@ Future<void> _showAddCsRepoDialog(BuildContext context) async {
     messenger
       ..clearSnackBars()
       ..showSnackBar(
-        SnackBar(content: Text('Added $count source${count == 1 ? '' : 's'}.')),
+        SnackBar(
+          content: Text(
+            count == 0
+                ? 'Repo added.'
+                : 'Repo added — $count source${count == 1 ? '' : 's'} '
+                      'available. Install the ones you want.',
+          ),
+        ),
       );
   } catch (e) {
     messenger
@@ -1042,8 +1049,12 @@ class _CloudStreamGroup extends StatelessWidget {
           builder: (context, activeId) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Only repos with at least one INSTALLED source belong here; a
+              // freshly-added repo (catalog only, nothing installed) shows on
+              // the CloudStream tab instead.
               for (final group in groups)
-                _CsInstalledGroup(group: group, activeId: activeId),
+                if (group.sources.isNotEmpty)
+                  _CsInstalledGroup(group: group, activeId: activeId),
             ],
           ),
         );
@@ -1245,12 +1256,17 @@ Future<void> _checkCsUpdates(BuildContext context, CsRepoGroup group) async {
   }
 }
 
-/// A CloudStream repo card on the CloudStream tab — mirrors the Repos-tab
-/// [_RepoSectionState] card design: a `Container(margin bottom16, surface,
-/// radius14)` with a chevron header (repo [CsRepoGroup.name] + owner secondary
-/// line) and a delete [IconButton], over a collapsible list of shared
-/// [_CsSourceRow]s. The synthetic "Other" group (empty url) hides the delete
-/// button — it isn't a removable repo.
+/// A CloudStream repo card on the CloudStream tab. Lists the repo's CATALOG —
+/// every plugin it advertises — each with an Install / Installed (uninstall)
+/// button, CloudStream-Extensions style. Adding a repo no longer installs
+/// anything; the user installs the ones they want from here. The ⋮ menu checks
+/// for updates / removes the repo. Activation + enable/disable of installed
+/// sources lives on the Installed tab.
+///
+/// For repos added before per-plugin install existed the catalog is fetched
+/// lazily ([CloudStreamManager.ensureCatalog]); already-installed sources are
+/// shown as Installed. The synthetic "Other" group (empty url) lists orphan
+/// installed sources with an uninstall action and no ⋮ menu.
 class _CsRepoSection extends StatefulWidget {
   const _CsRepoSection({required this.group, required this.activeId});
 
@@ -1263,16 +1279,61 @@ class _CsRepoSection extends StatefulWidget {
 
 class _CsRepoSectionState extends State<_CsRepoSection> {
   bool _expanded = true;
+  bool _fetching = false;
 
   CsRepoGroup get group => widget.group;
 
   @override
+  void initState() {
+    super.initState();
+    _maybeFetchCatalog();
+  }
+
+  @override
+  void didUpdateWidget(covariant _CsRepoSection old) {
+    super.didUpdateWidget(old);
+    if (old.group.url != group.url) _maybeFetchCatalog();
+  }
+
+  /// Lazily pull a repo's catalog if we don't have it yet (legacy repos).
+  void _maybeFetchCatalog() {
+    if (group.url.isEmpty || group.catalog.isNotEmpty || _fetching) return;
+    setState(() => _fetching = true);
+    sl<CloudStreamManager>().ensureCatalog(group.url).whenComplete(() {
+      if (mounted) setState(() => _fetching = false);
+    });
+  }
+
+  /// Pseudo-catalog for the synthetic "Other" group, built from orphan sources
+  /// so they can still be uninstalled.
+  List<CsPluginMeta> get _otherCatalog => [
+    for (final s in group.sources)
+      CsPluginMeta(
+        internalName: (s.sourcePlugin ?? s.name).split('@').first,
+        name: s.displayName,
+        url: '',
+        version: 0,
+      ),
+  ];
+
+  @override
   Widget build(BuildContext context) {
-    final sources = group.sources;
+    final manager = sl<CloudStreamManager>();
+    final isOther = group.url.isEmpty;
+    final catalog = isOther ? _otherCatalog : group.catalog;
+    final installedCount = isOther
+        ? group.sources.length
+        : catalog.where((p) => manager.isPluginInstalled(p.internalName)).length;
     final title = group.name.isNotEmpty ? group.name : 'CloudStream';
     final owner = group.owner.isNotEmpty
         ? group.owner
         : (group.url.isNotEmpty ? group.url : null);
+    final subtitle = isOther
+        ? '${group.sources.length} installed'
+        : (catalog.isEmpty
+              ? (owner ?? 'cloudstream')
+              : '$installedCount of ${catalog.length} installed'
+                    '${owner != null ? ' • $owner' : ''}');
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       clipBehavior: Clip.antiAlias,
@@ -1315,9 +1376,7 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                owner != null
-                                    ? '${sources.length} sources • $owner'
-                                    : '${sources.length} sources',
+                                subtitle,
                                 style: AppText.caption.copyWith(
                                   color: AppColors.textTertiary,
                                 ),
@@ -1368,7 +1427,7 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
               ],
             ),
           ),
-          // Collapsible source list.
+          // Collapsible catalog list (install one by one).
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
@@ -1378,30 +1437,209 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (sources.isEmpty)
+                      if (catalog.isEmpty && _fetching)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: Center(
+                            child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppColors.accent,
+                              ),
+                            ),
+                          ),
+                        )
+                      else if (catalog.isEmpty)
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            'No sources in this repo yet.',
+                            'No installable sources found in this repo.',
                             textAlign: TextAlign.center,
                             style: AppText.caption,
                           ),
                         )
                       else
-                        for (final source in sources) ...[
+                        for (final plugin in catalog) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
                             color: AppColors.hairline,
                           ),
-                          _CsSourceRow(
-                            source: source,
-                            activeId: widget.activeId,
+                          _CsPluginRow(
+                            plugin: plugin,
+                            installed: manager.isPluginInstalled(
+                              plugin.internalName,
+                            ),
                           ),
                         ],
                     ],
                   ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One catalog plugin row: name + (language · types) and an Install / Installed
+/// button. Install downloads + loads the `.cs3`; Installed taps to uninstall
+/// (with a confirm). A spinner shows while the install/uninstall runs.
+class _CsPluginRow extends StatefulWidget {
+  const _CsPluginRow({required this.plugin, required this.installed});
+
+  final CsPluginMeta plugin;
+  final bool installed;
+
+  @override
+  State<_CsPluginRow> createState() => _CsPluginRowState();
+}
+
+class _CsPluginRowState extends State<_CsPluginRow> {
+  bool _busy = false;
+
+  String get _meta {
+    final parts = <String>[
+      if (widget.plugin.language != null) widget.plugin.language!,
+      if (widget.plugin.tvTypes.isNotEmpty) widget.plugin.tvTypes.join(' / '),
+    ];
+    return parts.isEmpty ? 'cloudstream' : parts.join(' • ');
+  }
+
+  Future<void> _install() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await sl<CloudStreamManager>().installPlugin(widget.plugin);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('Installed ${widget.plugin.name}')),
+        );
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _uninstall() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Uninstall ${widget.plugin.name}?', style: AppText.headline),
+        content: Text(
+          'This removes the source from your installed list.',
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Uninstall',
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    try {
+      await sl<CloudStreamManager>().uninstallPlugin(widget.plugin.internalName);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('Uninstalled ${widget.plugin.name}')),
+        );
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final installed = widget.installed;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.plugin.name,
+                  style: AppText.headline.copyWith(fontSize: 15),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(_meta, style: AppText.caption),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (_busy)
+            const SizedBox(
+              width: 96,
+              height: 36,
+              child: Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            )
+          else if (installed)
+            OutlinedButton(
+              onPressed: _uninstall,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.textSecondary,
+                side: BorderSide(
+                  color: AppColors.textSecondary.withValues(alpha: 0.4),
+                ),
+                minimumSize: const Size(96, 36),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Installed'),
+            )
+          else
+            FilledButton(
+              onPressed: _install,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(96, 36),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Install'),
+            ),
         ],
       ),
     );

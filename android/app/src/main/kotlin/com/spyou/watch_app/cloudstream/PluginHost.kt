@@ -87,6 +87,10 @@ class PluginHost(private val context: Context) {
             )
         }
 
+    /** The file ids ("internalName@version") of every currently-loaded plugin. */
+    fun installedFileIds(): Set<String> =
+        APIHolder.allProviders.mapNotNull { it.sourcePlugin }.toSet()
+
     /** Unregister + delete the cached `.cs3`s for a repo (by their file ids,
      * e.g. "VegaMovies@80"). Returns how many MainAPIs were removed. */
     fun deleteByFiles(fileNames: Set<String>): Int {
