@@ -76,10 +76,58 @@ class MetadataEnrichment {
     return (cast: cast, relations: relations);
   }
 
-  Future<Map<String, dynamic>?> _get(String url) async {
+  /// Resolves a TMDB id for a title that exposes none, by searching TMDB by
+  /// [title] (+ [year] when known). Used as a fallback so id-less movie/TV
+  /// titles (e.g. some CloudStream sources) can still track on Simkl and pull
+  /// rich Cast/Relations. Conservative: prefers a year-constrained, exact-title
+  /// match; returns null when nothing reasonable is found. Best-effort.
+  Future<int?> resolveTmdbId(String title, String? year, bool isTv) async {
+    final q = _norm(title);
+    if (q.isEmpty) return null;
+    final kind = isTv ? 'tv' : 'movie';
+    final yr = int.tryParse((year ?? '').trim());
+
+    // Pass 1 (year-constrained, high confidence) then pass 2 (unconstrained).
+    for (final useYear in [if (yr != null) true, false]) {
+      final params = <String, dynamic>{'query': title.trim()};
+      if (useYear && yr != null) {
+        params[isTv ? 'first_air_date_year' : 'year'] = yr;
+      }
+      final res = await _get('$_tmdbBase/search/$kind', params);
+      final results = res?['results'];
+      if (results is! List || results.isEmpty) continue;
+
+      // Prefer an exact normalized-title match; else the top (most relevant).
+      Map<String, dynamic>? best;
+      for (final r in results) {
+        if (r is! Map) continue;
+        final name = ((r['title'] ?? r['name']) as String?) ?? '';
+        if (_norm(name) == q) {
+          best = Map<String, dynamic>.from(r);
+          break;
+        }
+      }
+      best ??= (results.first is Map)
+          ? Map<String, dynamic>.from(results.first as Map)
+          : null;
+      final id = (best?['id'] as num?)?.toInt();
+      if (id != null) return id;
+    }
+    return null;
+  }
+
+  /// Lowercase, strip non-alphanumerics — for tolerant title comparison.
+  String _norm(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+  Future<Map<String, dynamic>?> _get(
+    String url, [
+    Map<String, dynamic>? query,
+  ]) async {
     try {
       final res = await _dio.get<dynamic>(
         url,
+        queryParameters: query,
         options: Options(validateStatus: (s) => s != null && s < 500),
       );
       final data = res.data;

@@ -135,11 +135,35 @@ class DetailCubit extends Cubit<DetailState> {
   /// their empty state. Runs once per title; Sub/Dub switches keep the result.
   Future<void> _enrich(MediaDetail detail) async {
     if (state.cast.isNotEmpty || state.relations.isNotEmpty) return;
+    var d = detail;
+
+    // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
+    // can't track on Simkl and can't be id-enriched. Resolve a TMDB id from
+    // title (+ year) so it gains BOTH — then re-emit the detail so the player
+    // scrobbles by the resolved id.
+    if (d.malId == null &&
+        d.tmdbId == null &&
+        (d.imdbId == null || d.imdbId!.isEmpty) &&
+        d.type != ProviderType.anime) {
+      try {
+        final id = await sl<MetadataEnrichment>().resolveTmdbId(
+          d.title,
+          d.year,
+          d.tmdbIsTv,
+        );
+        if (isClosed) return;
+        if (id != null) {
+          d = d.copyWith(tmdbId: id);
+          emit(state.copyWith(detail: d));
+        }
+      } catch (_) {/* keep going with what we have */}
+    }
+
     // Prefer id-based enrichment (AniList/TMDB) — it's richer: actor photos,
     // more entries, properly-linked relations.
-    if (detail.malId != null || detail.tmdbId != null) {
+    if (d.malId != null || d.tmdbId != null) {
       try {
-        final extras = await sl<MetadataEnrichment>().fetch(detail);
+        final extras = await sl<MetadataEnrichment>().fetch(d);
         if (isClosed) return;
         if (extras.cast.isNotEmpty || extras.relations.isNotEmpty) {
           emit(state.copyWith(cast: extras.cast, relations: extras.relations));
