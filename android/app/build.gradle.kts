@@ -48,6 +48,20 @@ android {
         jniLibs {
             excludes += listOf("**/x86/**", "**/x86_64/**")
         }
+        // CloudStream library (feature/extra) pulls okhttp/jspecify/etc. that
+        // clash on duplicate META-INF entries — drop the non-essential ones.
+        resources {
+            excludes += listOf(
+                "META-INF/*.kotlin_module",
+                "META-INF/INDEX.LIST",
+                "META-INF/io.netty.versions.properties",
+                "META-INF/*.version",
+                "META-INF/LICENSE*",
+                "META-INF/NOTICE*",
+                "META-INF/DEPENDENCIES",
+                "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+            )
+        }
     }
 
     signingConfigs {
@@ -83,4 +97,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// ── CloudStream extension support (feature/extra) ─────────────────────────────
+// Bundles the CloudStream runtime so .cs3 plugins can be DexClassLoaded against
+// it. GPL-3.0 — see docs/cloudstream-integration-spec.md §7.
+dependencies {
+    implementation("com.github.recloudstream.cloudstream:library:v4.7.0")
 }
