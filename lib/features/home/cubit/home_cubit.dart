@@ -45,6 +45,11 @@ class HomeCubit extends Cubit<HomeState> {
 
   final SourceRepository _repo;
 
+  /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
+  /// it's still the latest. This makes source switches "latest wins" — a slow
+  /// previous-source fetch can't land after a newer switch and clobber the UI.
+  int _gen = 0;
+
   /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
   /// rows don't flash empty), fetches the provider's home, and emits the fresh
   /// result. A total failure yields an empty section list rather than throwing.
@@ -52,6 +57,7 @@ class HomeCubit extends Cubit<HomeState> {
   /// shows loading skeletons for the NEW source instead of lingering on the old
   /// source's content while the (possibly slow) fetch runs.
   Future<void> load({bool reset = false}) async {
+    final gen = ++_gen;
     emit(reset ? const HomeState(loading: true) : state.copyWith(loading: true));
 
     List<HomeSection> sections;
@@ -61,7 +67,8 @@ class HomeCubit extends Cubit<HomeState> {
       sections = const <HomeSection>[];
     }
 
-    if (isClosed) return;
+    // A newer load started while we were fetching — discard this stale result.
+    if (isClosed || gen != _gen) return;
     emit(HomeState(sections: sections, loading: false));
   }
 }

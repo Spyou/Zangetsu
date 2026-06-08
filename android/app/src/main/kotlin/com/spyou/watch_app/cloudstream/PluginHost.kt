@@ -20,6 +20,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.Collections
 import org.json.JSONObject
 import java.io.File
 
@@ -35,12 +37,23 @@ import java.io.File
  */
 class PluginHost(private val context: Context) {
 
-    private val loaded = HashSet<String>() // absolute paths already loaded
+    // Absolute paths already loaded. Thread-safe: installs run on csExecutor
+    // while read ops run on csReadPool, so both may touch this concurrently.
+    private val loaded = Collections.synchronizedSet(HashSet<String>())
+
+    /** Append a timestamped line to cs_timing.log (logcat is blocked on vivo). */
+    fun flog(s: String) {
+        runCatching {
+            File(context.getExternalFilesDir(null), "cs_timing.log")
+                .appendText("[${System.currentTimeMillis() % 1000000}] $s\n")
+        }
+    }
 
     /** PathClassLoader → manifest.json → instantiate → load(). Returns success. */
     fun loadPlugin(file: File): Boolean {
         if (loaded.contains(file.absolutePath)) return true
-        return try {
+        val s = System.currentTimeMillis()
+        val ok = try {
             // Android 8+ refuses to load a dex/.cs3 the app can WRITE to (W^X
             // security). Mark it read-only first — exactly what CloudStream does.
             if (file.canWrite()) file.setReadOnly()
@@ -63,9 +76,16 @@ class PluginHost(private val context: Context) {
             Log.w(TAG, "loadPlugin failed for ${file.name}: ${t.message}")
             false
         }
+        flog("loadPlugin '${file.nameWithoutExtension}' ${System.currentTimeMillis() - s}ms (ok=$ok)")
+        return ok
     }
 
-    fun loadAll(files: List<File>): Int = files.count { loadPlugin(it) }
+    fun loadAll(files: List<File>): Int {
+        val s = System.currentTimeMillis()
+        val n = files.count { loadPlugin(it) }
+        flog("loadAll ${files.size} files -> $n loaded in ${System.currentTimeMillis() - s}ms")
+        return n
+    }
 
     private fun apiByName(name: String): MainAPI? =
         APIHolder.allProviders.firstOrNull { it.name == name }
@@ -137,17 +157,29 @@ class PluginHost(private val context: Context) {
         val api = apiByName(apiName) ?: return emptyList()
         if (!api.hasMainPage) return emptyList()
         val rows = mutableListOf<Map<String, Any?>>()
+        val log = StringBuilder()
+        val t0 = System.currentTimeMillis()
         runBlocking {
             // Fetch the home rows CONCURRENTLY (each getMainPage is a network
             // call) instead of sequentially — much faster home load.
-            val responses = api.mainPage.take(6).map { mp ->
+            val pages = api.mainPage.take(6)
+            val timings = pages.map { mp ->
                 async(Dispatchers.IO) {
-                    runCatching {
-                        api.getMainPage(1, MainPageRequest(mp.name, mp.data, false))
-                    }.getOrNull()
+                    val s = System.currentTimeMillis()
+                    // Cap each row so one stuck/slow category can't hold up the
+                    // whole home (awaitAll waits for the slowest row).
+                    val r = withTimeoutOrNull(HOME_ROW_TIMEOUT_MS) {
+                        runCatching {
+                            api.getMainPage(1, MainPageRequest(mp.name, mp.data, false))
+                        }.getOrNull()
+                    }
+                    val ms = System.currentTimeMillis() - s
+                    Triple(mp.name, ms, r)
                 }
             }.awaitAll()
-            for (resp in responses) {
+            for ((name, ms, resp) in timings) {
+                val count = resp?.items?.sumOf { it.list.size } ?: 0
+                log.append("  row '$name' ${ms}ms (${if (resp == null) "FAIL/empty" else "$count items"})\n")
                 if (resp == null) continue
                 for (hpl in resp.items) {
                     val items = hpl.list.map { it.toMap(apiName) }
@@ -156,6 +188,15 @@ class PluginHost(private val context: Context) {
                     }
                 }
             }
+        }
+        val total = System.currentTimeMillis() - t0
+        log.insert(0, "getHome[$apiName] TOTAL ${total}ms, ${rows.size} rows, ${api.mainPage.size} categories\n")
+        Log.d(TAG, log.toString())
+        // logcat is blocked on some OEM builds (vivo) — also append to a file
+        // we can read over ADB. Debug-only, harmless on release.
+        runCatching {
+            File(context.getExternalFilesDir(null), "cs_timing.log")
+                .appendText(log.toString() + "\n")
         }
         return rows
     }
@@ -242,5 +283,8 @@ class PluginHost(private val context: Context) {
 
     companion object {
         const val TAG = "CloudStream"
+
+        /** Per-row deadline for [getHome] so one slow category can't stall it. */
+        private const val HOME_ROW_TIMEOUT_MS = 8000L
     }
 }

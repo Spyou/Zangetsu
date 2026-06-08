@@ -211,8 +211,17 @@ class CloudStreamProvider implements BaseProvider {
     return const [];
   }
 
+  /// In-flight getHome, shared so concurrent callers (e.g. the home screen's
+  /// initState load AND the source-switch listener firing for the same source)
+  /// collapse into ONE native fetch instead of two.
+  Future<List<HomeSection>?>? _inflightHome;
+
   @override
-  Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
+  Future<List<HomeSection>?> getHome({String category = 'sub'}) {
+    return _inflightHome ??= _fetchHome().whenComplete(() => _inflightHome = null);
+  }
+
+  Future<List<HomeSection>?> _fetchHome() async {
     if (!Platform.isAndroid) return null;
     final raw = await _csChannel.invokeMethod<List<dynamic>>(
       'getHome',

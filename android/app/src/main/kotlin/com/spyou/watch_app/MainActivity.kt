@@ -25,10 +25,13 @@ class MainActivity : FlutterActivity() {
     private val channelName = "zangetsu/seek_preview"
     private val executor = Executors.newSingleThreadExecutor()
 
-    // CloudStream bridge: a dedicated single-thread executor (separate from the
-    // seek_preview [executor] to avoid contention) plus a lazily-created repo
-    // downloader + plugin host, both backed by the application context.
+    // CloudStream bridge. Mutating ops (install/load/delete repos) run on a
+    // single thread [csExecutor] so plugin (un)registration stays serialized
+    // and race-free. Read ops (getHome/search/load/loadLinks) run on a small
+    // pool [csReadPool] so a slow or stale source request can't block the
+    // active source's load — switching sources stays responsive.
     private val csExecutor = Executors.newSingleThreadExecutor()
+    private val csReadPool = Executors.newFixedThreadPool(4)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
 
@@ -149,7 +152,9 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "listSources" -> {
+                        host.flog("listSources RECV")
                         csExecutor.execute {
+                            host.flog("listSources EXEC start")
                             try {
                                 host.loadAll(repo.cachedFiles())
                                 val apis = host.installedApis()
@@ -200,7 +205,9 @@ class MainActivity : FlutterActivity() {
                     }
                     "getHome" -> {
                         val name = call.argument<String>("name")
-                        csExecutor.execute {
+                        host.flog("getHome RECV '$name'")
+                        csReadPool.execute {
+                            host.flog("getHome EXEC start '$name'")
                             try {
                                 val res = host.getHome(name ?: "")
                                 runOnUiThread { result.success(res) }
@@ -212,7 +219,7 @@ class MainActivity : FlutterActivity() {
                     "search" -> {
                         val name = call.argument<String>("name")
                         val query = call.argument<String>("query")
-                        csExecutor.execute {
+                        csReadPool.execute {
                             try {
                                 val res = host.search(name ?: "", query ?: "")
                                 runOnUiThread { result.success(res) }
@@ -224,7 +231,7 @@ class MainActivity : FlutterActivity() {
                     "load" -> {
                         val name = call.argument<String>("name")
                         val url = call.argument<String>("url")
-                        csExecutor.execute {
+                        csReadPool.execute {
                             try {
                                 val res = host.load(name ?: "", url ?: "")
                                 runOnUiThread { result.success(res) }
@@ -236,7 +243,7 @@ class MainActivity : FlutterActivity() {
                     "loadLinks" -> {
                         val name = call.argument<String>("name")
                         val data = call.argument<String>("data")
-                        csExecutor.execute {
+                        csReadPool.execute {
                             try {
                                 val res = host.loadLinks(name ?: "", data ?: "")
                                 runOnUiThread { result.success(res) }
@@ -456,6 +463,7 @@ class MainActivity : FlutterActivity() {
         releaseRetriever()
         executor.shutdown()
         csExecutor.shutdown()
+        csReadPool.shutdown()
         super.onDestroy()
     }
 }
