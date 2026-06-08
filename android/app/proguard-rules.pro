@@ -17,3 +17,9 @@
 # Flutter embedding / deferred components (defensive; Flutter also adds these).
 -keep class io.flutter.embedding.** { *; }
 -dontwarn io.flutter.embedding.**
+
+# CloudStream extension support (feature/extra): plugins link by reflection
+# against these classes, so they must keep their names + members in release.
+-keep class com.lagradost.cloudstream3.** { *; }
+-keep class com.spyou.watch_app.cloudstream.** { *; }
+-dontwarn com.lagradost.cloudstream3.**
