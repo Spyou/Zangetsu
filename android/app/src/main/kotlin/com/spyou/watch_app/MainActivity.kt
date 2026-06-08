@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.util.Rational
+import com.spyou.watch_app.cloudstream.PluginHost
+import com.spyou.watch_app.cloudstream.RepoManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
@@ -22,6 +24,13 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val channelName = "zangetsu/seek_preview"
     private val executor = Executors.newSingleThreadExecutor()
+
+    // CloudStream bridge: a dedicated single-thread executor (separate from the
+    // seek_preview [executor] to avoid contention) plus a lazily-created repo
+    // downloader + plugin host, both backed by the application context.
+    private val csExecutor = Executors.newSingleThreadExecutor()
+    private val repo: RepoManager by lazy { RepoManager(applicationContext) }
+    private val host: PluginHost by lazy { PluginHost(applicationContext) }
 
     companion object {
         private const val TAG = "SeekPreview"
@@ -102,6 +111,80 @@ class MainActivity : FlutterActivity() {
                             } catch (_: Exception) {}
                         }
                         result.success(true)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // CloudStream channel: install repos and drive `.cs3` plugins' search /
+        // load / loadLinks. All handlers run on [csExecutor] (network + plugin
+        // work is blocking) and post back via runOnUiThread; any failure is
+        // surfaced to Dart as a "cs_error".
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cloudstream")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "addRepo" -> {
+                        val url = call.argument<String>("url")
+                        csExecutor.execute {
+                            try {
+                                for (plugin in repo.listPlugins(url ?: "")) {
+                                    try {
+                                        host.loadPlugin(repo.download(plugin))
+                                    } catch (_: Exception) { /* skip a bad plugin */ }
+                                }
+                                val apis = host.installedApis()
+                                runOnUiThread { result.success(apis) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    "listSources" -> {
+                        csExecutor.execute {
+                            try {
+                                host.loadAll(repo.cachedFiles())
+                                val apis = host.installedApis()
+                                runOnUiThread { result.success(apis) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    "search" -> {
+                        val name = call.argument<String>("name")
+                        val query = call.argument<String>("query")
+                        csExecutor.execute {
+                            try {
+                                val res = host.search(name ?: "", query ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    "load" -> {
+                        val name = call.argument<String>("name")
+                        val url = call.argument<String>("url")
+                        csExecutor.execute {
+                            try {
+                                val res = host.load(name ?: "", url ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    "loadLinks" -> {
+                        val name = call.argument<String>("name")
+                        val data = call.argument<String>("data")
+                        csExecutor.execute {
+                            try {
+                                val res = host.loadLinks(name ?: "", data ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
                     }
                     else -> result.notImplemented()
                 }
@@ -313,6 +396,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         releaseRetriever()
         executor.shutdown()
+        csExecutor.shutdown()
         super.onDestroy()
     }
 }

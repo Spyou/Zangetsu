@@ -11,6 +11,7 @@ import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
+import '../provider/cloudstream_provider.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
@@ -114,6 +115,13 @@ Future<void> initDependencies() async {
   final downloader = ProviderDownloader(dio: dio);
   sl.registerSingleton<ProviderDownloader>(downloader);
 
+  // CloudStream sources route through a native MethodChannel (Android-only).
+  // Construct + load any cached plugins now so they appear in the picker; the
+  // load is a no-op on non-Android and swallows native channel errors.
+  final csManager = CloudStreamManager();
+  sl.registerSingleton<CloudStreamManager>(csManager);
+  await csManager.loadInstalled();
+
   // --- Provider registry data layer ---------------------------------
   await ProviderReposRegistry.init();
   await ProviderRegistry.init();
@@ -172,7 +180,11 @@ Future<void> initDependencies() async {
   );
 
   sl.registerSingleton<SourceRepository>(
-    SourceRepository(manager: manager, activeSource: sl<ActiveSourceCubit>()),
+    SourceRepository(
+      manager: manager,
+      csManager: csManager,
+      activeSource: sl<ActiveSourceCubit>(),
+    ),
   );
 
   // Offline downloads (background_downloader). setup() restores persisted

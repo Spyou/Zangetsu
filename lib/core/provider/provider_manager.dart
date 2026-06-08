@@ -292,6 +292,7 @@ class JsProvider implements BaseProvider {
   @override
   final String sourceId;
   final String originRepoUrl;
+  @override
   final String displayName;
   final _JsHost _host;
 
@@ -321,6 +322,7 @@ class JsProvider implements BaseProvider {
   /// synthesizes default rows from [popular]). Never returns partial garbage:
   /// items without the basics are dropped, empty/untitled sections are kept
   /// out. Given a generous timeout since it may fan out several listing calls.
+  @override
   Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
     try {
       final raw = await _call('getHome', [

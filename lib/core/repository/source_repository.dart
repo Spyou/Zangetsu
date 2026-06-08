@@ -3,6 +3,8 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/video_source.dart';
+import '../provider/base_provider.dart';
+import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../state/active_source_cubit.dart';
 
@@ -12,33 +14,50 @@ import '../state/active_source_cubit.dart';
 class SourceRepository {
   SourceRepository({
     required ProviderManager manager,
+    required CloudStreamManager csManager,
     required ActiveSourceCubit activeSource,
   }) : _manager = manager,
+       _csManager = csManager,
        _active = activeSource;
 
   final ProviderManager _manager;
+  final CloudStreamManager _csManager;
   final ActiveSourceCubit _active;
+
+  /// True for CloudStream source ids (`cs:<name>`), which route to the native
+  /// plugin host instead of the JS runtime.
+  static bool _isCloudStream(String id) => id.startsWith('cs:');
 
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
   /// All currently-loaded sources (id + display name), for cross-source search
-  /// and source labelling. Order follows the provider registry.
-  List<({String id, String name})> get loadedSources => _manager.all
-      .map((p) => (id: p.sourceId, name: p.displayName))
-      .toList();
+  /// and source labelling. JS providers first (registry order), then any
+  /// installed CloudStream sources.
+  List<({String id, String name})> get loadedSources => [
+    ..._manager.all.map((p) => (id: p.sourceId, name: p.displayName)),
+    ..._csManager.all.map((p) => (id: p.sourceId, name: p.displayName)),
+  ];
 
   /// Human-friendly name for a source id (falls back to the id itself).
-  String displayName(String sourceId) =>
-      _manager.get(sourceId)?.displayName ?? sourceId;
+  String displayName(String sourceId) {
+    if (_isCloudStream(sourceId)) {
+      return _csManager.get(sourceId)?.displayName ?? sourceId;
+    }
+    return _manager.get(sourceId)?.displayName ?? sourceId;
+  }
 
   /// Resolves the provider for a per-call [id], falling back to the active
   /// source when [id] is null. Lets cross-source items (Continue Watching,
   /// My List, etc.) route to their OWN provider instead of the active one.
-  JsProvider _providerFor(String? id) {
-    final p = _manager.get(id ?? _active.state);
+  /// CloudStream ids (`cs:<name>`) route to the native plugin host.
+  BaseProvider _providerFor(String? id) {
+    final resolved = id ?? _active.state;
+    final p = _isCloudStream(resolved)
+        ? _csManager.get(resolved)
+        : _manager.get(resolved);
     if (p == null) {
-      throw StateError('Provider not loaded: ${id ?? _active.state}');
+      throw StateError('Provider not loaded: $resolved');
     }
     return p;
   }

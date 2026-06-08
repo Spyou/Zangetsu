@@ -1,4 +1,5 @@
 import '../models/episode.dart';
+import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
@@ -15,7 +16,16 @@ import '../models/video_source.dart';
 abstract class BaseProvider {
   String get sourceId;
 
+  /// Human-friendly label for the source picker / labelling. Falls back to
+  /// [sourceId] when a provider has no nicer name.
+  String get displayName;
+
   Future<ProviderInfo> getInfo();
+
+  /// CloudStream-style Home rows. Returns the provider's own named sections,
+  /// or `null` when the provider can't supply them (the repository then
+  /// synthesizes default rows from [popular]).
+  Future<List<HomeSection>?> getHome({String category = 'sub'});
 
   /// Returns the popular/trending feed. [category] is 'sub' or 'dub'.
   /// [dateRange] is the trending window in days; [page] for pagination.

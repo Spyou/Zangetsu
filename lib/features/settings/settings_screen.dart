@@ -13,6 +13,7 @@ import '../../core/tracker/tracker.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -41,11 +42,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   ProviderRegistry get _registry => sl<ProviderRegistry>();
 
+  CloudStreamManager get _csManager => sl<CloudStreamManager>();
+
   Future<void> _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
 
   String _activeLabel(String activeId) {
+    if (activeId.startsWith('cs:')) {
+      return _csManager.get(activeId)?.displayName ?? activeId;
+    }
     final entry = _registry.entryFor(activeId);
     if (entry == null) return activeId;
     return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
@@ -60,6 +66,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
         return an.toLowerCase().compareTo(bn.toLowerCase());
       });
+    // CloudStream sources (`cs:<name>`) live outside the registry; surface them
+    // alongside the JS providers so the user can switch to one.
+    final csSources = _csManager.all.toList()
+      ..sort(
+        (a, b) => a.displayName.toLowerCase().compareTo(
+          b.displayName.toLowerCase(),
+        ),
+      );
     final currentId = _active.state;
     final picked = await showModalBottomSheet<String>(
       context: context,
@@ -92,7 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
             const Divider(color: AppColors.hairline, height: 1),
-            if (enabled.isEmpty)
+            if (enabled.isEmpty && csSources.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(20),
                 child: Text('No enabled sources', style: AppText.body),
@@ -116,6 +130,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ? const Icon(Icons.check, color: AppColors.accent)
                             : null,
                       ),
+                    for (final p in csSources)
+                      ListTile(
+                        onTap: () => Navigator.pop(ctx, p.sourceId),
+                        title: Text(
+                          p.displayName,
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text('CloudStream', style: AppText.caption),
+                        trailing: p.sourceId == currentId
+                            ? const Icon(Icons.check, color: AppColors.accent)
+                            : null,
+                      ),
                   ],
                 ),
               ),
@@ -127,6 +155,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (picked != null && picked != currentId) {
       _active.setSource(picked);
       if (mounted) setState(() {});
+    }
+  }
+
+  /// Prompts for a CloudStream repo URL, installs it via the native channel,
+  /// and reports how many sources are now available. Android-only.
+  Future<void> _addCloudStreamRepo() async {
+    final controller = TextEditingController();
+    final url = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Add CloudStream repository', style: AppText.headline),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          cursorColor: AppColors.accent,
+          style: AppText.body.copyWith(color: AppColors.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'Repository URL',
+            hintText: 'https://.../repo.json',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (url == null || url.isEmpty || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final count = await _csManager.addRepo(url);
+      messenger.showSnackBar(
+        SnackBar(content: Text('Added — $count CloudStream source(s) available')),
+      );
+      if (mounted) setState(() {});
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('Failed to add repository: $e')),
+      );
     }
   }
 
@@ -231,6 +314,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSource,
                       ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.extension_outlined,
+                          title: 'Add CloudStream repository',
+                          subtitle: 'Install CloudStream sources',
+                          onTap: _addCloudStreamRepo,
+                        ),
                     ],
                   ),
                   SettingsCard(
