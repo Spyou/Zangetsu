@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/di/injector.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/playback/search_history.dart';
+import '../../../core/playback/search_source_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 import 'search_event.dart';
 import 'search_state.dart';
@@ -89,7 +91,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       clearError: true,
     ));
 
-    final sources = _repo.loadedSources;
+    // Search every loaded source EXCEPT the ones the user switched off for
+    // search (search-only — doesn't affect their Home/active-source use).
+    final prefs = sl<SearchSourcePrefs>();
+    final sources = _repo.loadedSources
+        .where((s) => prefs.isIncluded(s.id))
+        .toList();
     if (sources.isEmpty) {
       emit(state.copyWith(status: SearchStatus.error));
       return;

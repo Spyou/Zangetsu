@@ -8,6 +8,61 @@ import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
+/// Installed-and-enabled sources bucketed by category, each as an `(id, label)`
+/// row. Reused by the source switcher and the search source picker.
+typedef SourceBuckets = ({
+  List<({String id, String label})> anime,
+  List<({String id, String label})> movies,
+  List<({String id, String label})> nsfw,
+});
+
+/// Buckets installed + enabled providers (JS + CloudStream) by manifest type.
+/// NSFW sources are kept separate and only surfaced when the Privacy toggle is
+/// on. CS rows are prefixed "CS · " and interleaved alphabetically.
+SourceBuckets categorizedSources() {
+  final reg = sl<ProviderRegistry>();
+  final nsfwEnabled = sl<PlaybackPrefs>().nsfwSources;
+  final nsfwIds = reg.nsfwSourceIds();
+  ({String id, String label}) row(e) =>
+      (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name);
+  int byLabel(a, b) =>
+      row(a).label.toLowerCase().compareTo(row(b).label.toLowerCase());
+
+  final enabled = reg.getAll().where((e) => e.enabled).toList();
+  final anime = <({String id, String label})>[];
+  final movies = <({String id, String label})>[];
+  final nsfw = <({String id, String label})>[];
+  for (final e in (enabled..sort(byLabel))) {
+    if (nsfwIds.contains(e.name)) {
+      if (nsfwEnabled) nsfw.add(row(e));
+      continue; // NSFW sources live only in their own group
+    }
+    if (reg.typeOf(e.name) == 'anime') {
+      anime.add(row(e));
+    } else {
+      movies.add(row(e)); // movie / series / unknown
+    }
+  }
+
+  // Loaded CloudStream plugins. No NSFW flag, so they only ever land in the
+  // anime or movies buckets. Sort each combined bucket by label so CS rows
+  // interleave alphabetically with the JS rows rather than trailing them.
+  int byRowLabel(({String id, String label}) a, ({String id, String label}) b) =>
+      a.label.toLowerCase().compareTo(b.label.toLowerCase());
+  for (final p in sl<CloudStreamManager>().enabled) {
+    final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}');
+    if (p.providerType == ProviderType.anime) {
+      anime.add(csRow);
+    } else {
+      movies.add(csRow);
+    }
+  }
+  anime.sort(byRowLabel);
+  movies.sort(byRowLabel);
+
+  return (anime: anime, movies: movies, nsfw: nsfw);
+}
+
 /// A compact pill button that shows the active source and opens a
 /// bottom-sheet picker when tapped. The selectable list is built
 /// dynamically from the installed-and-enabled providers in
@@ -23,55 +78,8 @@ class SourceSwitcher extends StatelessWidget {
   final String currentId;
   final void Function(String id) onChanged;
 
-  /// Installed + enabled providers bucketed by manifest type. NSFW sources are
-  /// kept separate and only surfaced when the Privacy toggle is on.
-  ({
-    List<({String id, String label})> anime,
-    List<({String id, String label})> movies,
-    List<({String id, String label})> nsfw,
-  })
-  _buckets() {
-    final reg = sl<ProviderRegistry>();
-    final nsfwEnabled = sl<PlaybackPrefs>().nsfwSources;
-    final nsfwIds = reg.nsfwSourceIds();
-    ({String id, String label}) row(e) =>
-        (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name);
-    int byLabel(a, b) => row(a).label.toLowerCase().compareTo(row(b).label.toLowerCase());
-
-    final enabled = reg.getAll().where((e) => e.enabled).toList();
-    final anime = <({String id, String label})>[];
-    final movies = <({String id, String label})>[];
-    final nsfw = <({String id, String label})>[];
-    for (final e in (enabled..sort(byLabel))) {
-      if (nsfwIds.contains(e.name)) {
-        if (nsfwEnabled) nsfw.add(row(e));
-        continue; // NSFW sources live only in their own group
-      }
-      if (reg.typeOf(e.name) == 'anime') {
-        anime.add(row(e));
-      } else {
-        movies.add(row(e)); // movie / series / unknown
-      }
-    }
-
-    // Loaded CloudStream plugins. No NSFW flag, so they only ever land in the
-    // anime or movies buckets. Sort each combined bucket by label so CS rows
-    // interleave alphabetically with the JS rows rather than trailing them.
-    int byRowLabel(({String id, String label}) a, ({String id, String label}) b) =>
-        a.label.toLowerCase().compareTo(b.label.toLowerCase());
-    for (final p in sl<CloudStreamManager>().enabled) {
-      final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}');
-      if (p.providerType == ProviderType.anime) {
-        anime.add(csRow);
-      } else {
-        movies.add(csRow);
-      }
-    }
-    anime.sort(byRowLabel);
-    movies.sort(byRowLabel);
-
-    return (anime: anime, movies: movies, nsfw: nsfw);
-  }
+  /// Installed + enabled providers bucketed by category (shared helper).
+  SourceBuckets _buckets() => categorizedSources();
 
   String get _label {
     if (currentId.startsWith('cs:')) {

@@ -9,12 +9,14 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/search_history.dart';
+import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/media_info_sheet.dart';
+import '../../core/ui/source_switcher.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
 import '../auth/auth_screens.dart';
@@ -241,6 +243,25 @@ class _SearchViewState extends State<_SearchView> {
     );
   }
 
+  // ── Search-sources picker ───────────────────────────────────────────────────
+  /// Opens the categorised "search in these sources" sheet, then re-runs the
+  /// current query so toggled sources drop out / reappear immediately.
+  Future<void> _openSourcePicker(BuildContext context) async {
+    final bloc = context.read<SearchBloc>();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const _SearchSourceSheet(),
+    );
+    if (bloc.state.query.trim().isNotEmpty) {
+      bloc.add(const SearchSubmitted());
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
@@ -415,6 +436,25 @@ class _SearchViewState extends State<_SearchView> {
                       ),
                       tooltip: 'Sort',
                       onPressed: () => _openSortSheet(context),
+                      padding: EdgeInsets.zero,
+                      constraints:
+                          const BoxConstraints(minWidth: 36, minHeight: 36),
+                    ),
+                  ),
+                  // Search-sources picker — tinted coral when any source is
+                  // switched off for search.
+                  ListenableBuilder(
+                    listenable: sl<SearchSourcePrefs>(),
+                    builder: (context, _) => IconButton(
+                      icon: Icon(
+                        Icons.tune_rounded,
+                        size: 20,
+                        color: sl<SearchSourcePrefs>().excluded.isNotEmpty
+                            ? AppColors.accent
+                            : AppColors.textTertiary,
+                      ),
+                      tooltip: 'Search in sources',
+                      onPressed: () => _openSourcePicker(context),
                       padding: EdgeInsets.zero,
                       constraints:
                           const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -650,6 +690,159 @@ class _SearchViewState extends State<_SearchView> {
                 child: Icon(Icons.close_rounded,
                     size: 14, color: AppColors.textTertiary),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet that picks which sources participate in search, grouped by
+/// category (Anime / Movies & Series / NSFW) — CloudStream-style. Every source
+/// is on by default; switching one off only hides it from search results.
+class _SearchSourceSheet extends StatelessWidget {
+  const _SearchSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final buckets = categorizedSources();
+    final prefs = sl<SearchSourcePrefs>();
+    final sections = <({String title, List<({String id, String label})> rows})>[
+      if (buckets.anime.isNotEmpty) (title: 'Anime', rows: buckets.anime),
+      if (buckets.movies.isNotEmpty)
+        (title: 'Movies & Series', rows: buckets.movies),
+      if (buckets.nsfw.isNotEmpty) (title: 'NSFW', rows: buckets.nsfw),
+    ];
+    final allIds = [for (final s in sections) ...s.rows.map((r) => r.id)];
+
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.82,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.fromLTRB(0, 12, 0, 12),
+              decoration: BoxDecoration(
+                color: AppColors.hairline,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Search in sources', style: AppText.headline),
+                  ),
+                  ListenableBuilder(
+                    listenable: prefs,
+                    builder: (context, _) => prefs.excluded.isEmpty
+                        ? const SizedBox.shrink()
+                        : TextButton(
+                            onPressed: () =>
+                                prefs.setManyIncluded(allIds, true),
+                            child: Text(
+                              'Reset',
+                              style: AppText.body
+                                  .copyWith(color: AppColors.accent),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            if (sections.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Text('No sources installed', style: AppText.body),
+              )
+            else
+              Flexible(
+                child: ListenableBuilder(
+                  listenable: prefs,
+                  builder: (context, _) => ListView(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    children: [
+                      for (final sec in sections) ...[
+                        _categoryHeader(prefs, sec.title, sec.rows),
+                        for (final r in sec.rows) _sourceRow(prefs, r),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _categoryHeader(
+    SearchSourcePrefs prefs,
+    String title,
+    List<({String id, String label})> rows,
+  ) {
+    final ids = rows.map((r) => r.id).toList();
+    final onCount = ids.where(prefs.isIncluded).length;
+    final allOn = onCount == ids.length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 12, 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${title.toUpperCase()}  ·  $onCount/${ids.length}',
+              style: AppText.caption.copyWith(
+                color: AppColors.textTertiary,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () => prefs.setManyIncluded(ids, !allOn),
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            child: Text(
+              allOn ? 'Turn all off' : 'Turn all on',
+              style: AppText.caption.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sourceRow(SearchSourcePrefs prefs, ({String id, String label}) r) {
+    final on = prefs.isIncluded(r.id);
+    return InkWell(
+      onTap: () => prefs.setIncluded(r.id, !on),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 6, 12, 6),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                r.label,
+                style: AppText.body.copyWith(
+                  color: on ? AppColors.textPrimary : AppColors.textSecondary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            Switch.adaptive(
+              value: on,
+              activeThumbColor: AppColors.accent,
+              onChanged: (v) => prefs.setIncluded(r.id, v),
             ),
           ],
         ),
