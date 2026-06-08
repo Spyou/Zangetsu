@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../di/injector.dart';
+import '../models/provider_info.dart';
 import '../playback/playback_prefs.dart';
+import '../provider/cloudstream_provider.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -51,10 +53,33 @@ class SourceSwitcher extends StatelessWidget {
         movies.add(row(e)); // movie / series / unknown
       }
     }
+
+    // Loaded CloudStream plugins. No NSFW flag, so they only ever land in the
+    // anime or movies buckets. Sort each combined bucket by label so CS rows
+    // interleave alphabetically with the JS rows rather than trailing them.
+    int byRowLabel(({String id, String label}) a, ({String id, String label}) b) =>
+        a.label.toLowerCase().compareTo(b.label.toLowerCase());
+    for (final p in sl<CloudStreamManager>().all) {
+      final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}');
+      if (p.providerType == ProviderType.anime) {
+        anime.add(csRow);
+      } else {
+        movies.add(csRow);
+      }
+    }
+    anime.sort(byRowLabel);
+    movies.sort(byRowLabel);
+
     return (anime: anime, movies: movies, nsfw: nsfw);
   }
 
   String get _label {
+    if (currentId.startsWith('cs:')) {
+      final cs = sl<CloudStreamManager>().get(currentId);
+      final name = cs?.displayName;
+      if (name != null && name.isNotEmpty) return 'CS · $name';
+      return currentId;
+    }
     final entry = sl<ProviderRegistry>().entryFor(currentId);
     if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
     return entry?.name ?? currentId;

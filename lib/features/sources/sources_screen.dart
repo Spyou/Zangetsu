@@ -55,7 +55,7 @@ class _SourcesViewState extends State<_SourcesView>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 2, vsync: this);
+    _tab = TabController(length: 3, vsync: this);
     _tab.addListener(() {
       if (_tab.indexIsChanging) return;
       if (_index != _tab.index) setState(() => _index = _tab.index);
@@ -97,6 +97,7 @@ class _SourcesViewState extends State<_SourcesView>
             tabs: const [
               Tab(text: 'Installed'),
               Tab(text: 'Repos'),
+              Tab(text: 'CloudStream'),
             ],
           ),
         ),
@@ -111,10 +112,21 @@ class _SourcesViewState extends State<_SourcesView>
                   style: AppText.button.copyWith(color: Colors.white),
                 ),
               )
+            : _index == 2
+            ? FloatingActionButton.extended(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                onPressed: () => _showAddCsRepoDialog(context),
+                icon: const Icon(Icons.add),
+                label: Text(
+                  'Add CS repo',
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
+              )
             : null,
         body: TabBarView(
           controller: _tab,
-          children: const [_InstalledTab(), _ReposTab()],
+          children: const [_InstalledTab(), _ReposTab(), _CloudStreamTab()],
         ),
       ),
     );
@@ -127,6 +139,31 @@ Future<void> _showAddRepoDialog(BuildContext context) {
     context: context,
     builder: (_) => _AddRepoDialog(bloc: bloc),
   );
+}
+
+/// Prompts for a CloudStream repo URL, then adds it via [CloudStreamManager].
+/// The dialog owns its own controller (see [_CsAddRepoDialog]) — building one
+/// here and disposing it right after the await crashes the exit animation.
+Future<void> _showAddCsRepoDialog(BuildContext context) async {
+  final url = await showDialog<String>(
+    context: context,
+    builder: (_) => const _CsAddRepoDialog(),
+  );
+  if (url == null || url.isEmpty) return;
+  if (!context.mounted) return;
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    final count = await sl<CloudStreamManager>().addRepo(url);
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text('Added $count source${count == 1 ? '' : 's'}.')),
+      );
+  } catch (e) {
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text('Failed to add repo: $e')));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,7 +1089,7 @@ class _CloudStreamGroup extends StatelessWidget {
                           size: 22,
                         ),
                         title: Text(
-                          sources[i].displayName,
+                          'CS · ${sources[i].displayName}',
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -1093,6 +1130,173 @@ class _CloudStreamGroup extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CloudStream tab
+// ---------------------------------------------------------------------------
+
+/// Dedicated tab listing every loaded CloudStream source. Reads straight from
+/// [CloudStreamManager] (a [ChangeNotifier]) so it refreshes live after a repo
+/// is added via the "Add CS repo" FAB. Tapping a row makes it the active source.
+class _CloudStreamTab extends StatelessWidget {
+  const _CloudStreamTab();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: sl<CloudStreamManager>(),
+      builder: (context, _) {
+        final sources = sl<CloudStreamManager>().all;
+        if (sources.isEmpty) {
+          return const EmptyState(
+            icon: Icons.cloud_outlined,
+            message: 'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
+          );
+        }
+        return BlocBuilder<ActiveSourceCubit, String>(
+          builder: (context, activeId) => ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+            itemCount: 1,
+            itemBuilder: (_, _) => Container(
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                children: [
+                  for (var i = 0; i < sources.length; i++) ...[
+                    if (i > 0)
+                      const Divider(
+                        height: 0.5,
+                        thickness: 0.5,
+                        color: AppColors.hairline,
+                      ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.cloud_outlined,
+                        color: AppColors.textSecondary,
+                        size: 22,
+                      ),
+                      title: Text(
+                        sources[i].displayName,
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      subtitle: Text('CloudStream', style: AppText.caption),
+                      trailing: sources[i].sourceId == activeId
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: AppColors.accent,
+                              size: 20,
+                            )
+                          : const Icon(
+                              Icons.play_circle_outline,
+                              color: AppColors.textTertiary,
+                              size: 20,
+                            ),
+                      onTap: () {
+                        context.read<ActiveSourceCubit>().setSource(
+                          sources[i].sourceId,
+                        );
+                        ScaffoldMessenger.of(context)
+                          ..clearSnackBars()
+                          ..showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Active source: ${sources[i].displayName}',
+                              ),
+                            ),
+                          );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Add-CloudStream-repo dialog
+// ---------------------------------------------------------------------------
+
+/// URL-input dialog for adding a CloudStream repo. Owns its own controller and
+/// disposes it in [dispose] — the controller must outlive the dialog's exit
+/// animation, so it cannot be created/disposed around an `await showDialog`.
+/// Returns the trimmed URL via `Navigator.pop`, or null on cancel.
+class _CsAddRepoDialog extends StatefulWidget {
+  const _CsAddRepoDialog();
+
+  @override
+  State<_CsAddRepoDialog> createState() => _CsAddRepoDialogState();
+}
+
+class _CsAddRepoDialogState extends State<_CsAddRepoDialog> {
+  final _urlCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _urlCtrl.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('Add CS repo', style: AppText.headline),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TextField(
+            controller: _urlCtrl,
+            autofocus: true,
+            keyboardType: TextInputType.url,
+            cursorColor: AppColors.accent,
+            style: AppText.body.copyWith(color: AppColors.textPrimary),
+            onSubmitted: (_) => _submit(),
+            decoration: const InputDecoration(
+              labelText: 'Repo URL',
+              hintText: 'https://.../repo.json',
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            "Paste a CloudStream repository URL — the app loads every "
+            'source it lists.',
+            style: AppText.caption,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(
+            'Cancel',
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: _submit,
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }

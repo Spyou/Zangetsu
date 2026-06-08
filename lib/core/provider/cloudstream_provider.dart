@@ -60,6 +60,10 @@ class CloudStreamProvider implements BaseProvider {
   ProviderType get _providerType =>
       types.any(_kAnimeTypes.contains) ? ProviderType.anime : ProviderType.movie;
 
+  /// Public type accessor (anime vs movie/series) for UI bucketing — e.g. the
+  /// home source switcher.
+  ProviderType get providerType => _providerType;
+
   @override
   Future<ProviderInfo> getInfo() async => ProviderInfo(
         name: name,
