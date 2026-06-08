@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:json_annotation/json_annotation.dart';
 
 import 'episode.dart';
+import 'media_extras.dart';
 import 'provider_info.dart';
 
 part 'media_detail.g.dart';
@@ -74,6 +75,18 @@ class MediaDetail extends Equatable {
   /// Also drives Simkl tracking — Simkl accepts an `imdb` id in its ids object.
   final String? imdbId;
 
+  /// Rich cast (name + role + photo) supplied directly by the source, when it
+  /// has one (e.g. CloudStream's `actors`). Runtime-only — never persisted.
+  /// When present it feeds the Cast tab directly, skipping id-based enrichment.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<CastMember> castMembers;
+
+  /// Related/recommended titles supplied directly by the source (e.g.
+  /// CloudStream's `recommendations`). Runtime-only — never persisted. When
+  /// present it feeds the Relations tab directly, skipping id-based enrichment.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final List<MediaRelation> relations;
+
   const MediaDetail({
     required this.id,
     required this.title,
@@ -96,6 +109,8 @@ class MediaDetail extends Equatable {
     this.tmdbId,
     this.tmdbIsTv = false,
     this.imdbId,
+    this.castMembers = const [],
+    this.relations = const [],
   });
 
   factory MediaDetail.fromJson(Map<String, dynamic> json) =>
@@ -125,5 +140,7 @@ class MediaDetail extends Equatable {
     tmdbId,
     tmdbIsTv,
     imdbId,
+    castMembers,
+    relations,
   ];
 }

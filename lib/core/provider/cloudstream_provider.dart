@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
+import '../models/media_extras.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
@@ -122,6 +123,8 @@ class CloudStreamProvider implements BaseProvider {
         episodes.add(_episodeFromMap(_asMap(e)));
       }
     }
+    final csType = m['type'] as String?;
+    final ids = _parseSyncIds(m['syncData']);
     return MediaDetail(
       id: (m['url'] ?? url).toString(),
       title: (m['name'] ?? '').toString(),
@@ -130,9 +133,95 @@ class CloudStreamProvider implements BaseProvider {
       description: (m['plot'] as String?),
       episodes: episodes,
       year: (m['year'] as num?)?.toInt().toString(),
-      type: _typeFromCsType(m['type'] as String?) ?? _providerType,
+      type: _typeFromCsType(csType) ?? _providerType,
       sourceId: sourceId,
+      // Ids drive tracker sync (AniList/MAL/Simkl) + id-based Cast/Relations.
+      malId: ids.malId,
+      tmdbId: ids.tmdbId,
+      tmdbIsTv: _csTypeIsTv(csType),
+      imdbId: ids.imdbId,
+      // Cast/Relations straight from the provider (works without ids).
+      castMembers: _castFrom(m['actors']),
+      relations: _relationsFrom(m['recommendations']),
     );
+  }
+
+  /// Extracts the ids a CloudStream provider stamped into `syncData`. Keys vary
+  /// by version (e.g. `mal`, `anilist`, `imdb`, `tmdb`), so match by substring.
+  ({int? malId, int? tmdbId, String? imdbId}) _parseSyncIds(dynamic raw) {
+    int? malId;
+    int? tmdbId;
+    String? imdbId;
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        final key = k.toString().toLowerCase();
+        final val = v?.toString() ?? '';
+        if (val.isEmpty) return;
+        if (key.contains('imdb')) {
+          imdbId = val;
+        } else if (key.contains('tmdb')) {
+          tmdbId = int.tryParse(val) ?? tmdbId;
+        } else if (key.contains('anilist')) {
+          // No anilist-id field on MediaDetail; AniList sync keys off malId.
+        } else if (key.contains('mal')) {
+          malId = int.tryParse(val) ?? malId;
+        }
+      });
+    }
+    return (malId: malId, tmdbId: tmdbId, imdbId: imdbId);
+  }
+
+  /// True for CloudStream types that map to TMDB's `tv` namespace (series),
+  /// false for movies — picks the right Simkl/TMDB lookup for [MediaDetail].
+  bool _csTypeIsTv(String? csType) {
+    switch (csType) {
+      case 'Movie':
+      case 'AnimeMovie':
+      case 'Torrent':
+        return false;
+      default:
+        return true; // TvSeries, Anime, OVA, Cartoon, AsianDrama, Documentary…
+    }
+  }
+
+  List<CastMember> _castFrom(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <CastMember>[];
+    for (final a in raw) {
+      final am = _asMap(a);
+      final name = (am['name'] ?? '').toString();
+      if (name.isEmpty) continue;
+      out.add(
+        CastMember(
+          name: name,
+          role: (am['role'] as String?)?.isNotEmpty == true
+              ? am['role'] as String
+              : null,
+          photo: (am['image'] as String?)?.isNotEmpty == true
+              ? am['image'] as String
+              : null,
+        ),
+      );
+    }
+    return out;
+  }
+
+  List<MediaRelation> _relationsFrom(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <MediaRelation>[];
+    for (final r in raw) {
+      final rm = _asMap(r);
+      final title = (rm['name'] ?? '').toString();
+      if (title.isEmpty) continue;
+      out.add(
+        MediaRelation(
+          title: title,
+          cover: (rm['posterUrl'] as String?),
+          relation: 'Recommended',
+        ),
+      );
+    }
+    return out;
   }
 
   @override

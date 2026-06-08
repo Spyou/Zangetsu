@@ -232,6 +232,23 @@ class PluginHost(private val context: Context) {
             )
             else -> emptyList()
         }
+        // Ids the provider exposed (mal/anilist/imdb/tmdb/simkl) — used app-side
+        // for tracker sync + Cast/Relations enrichment. Plus the provider's own
+        // cast (actors) and related titles (recommendations), so those tabs work
+        // even when the provider sets no ids. All best-effort.
+        val sync = runCatching { this.syncData }.getOrNull() ?: emptyMap<String, String>()
+        val actors = runCatching {
+            this.actors?.map { ad ->
+                mapOf(
+                    "name" to ad.actor.name,
+                    "image" to ad.actor.image,
+                    "role" to (ad.roleString ?: ad.role?.name),
+                )
+            }
+        }.getOrNull() ?: emptyList<Map<String, Any?>>()
+        val recommendations = runCatching {
+            this.recommendations?.map { it.toMap(apiName) }
+        }.getOrNull() ?: emptyList<Map<String, Any?>>()
         return mapOf(
             "name" to name,
             "url" to url,
@@ -241,6 +258,9 @@ class PluginHost(private val context: Context) {
             "type" to type?.name,
             "apiName" to apiName,
             "episodes" to episodes,
+            "syncData" to sync,
+            "actors" to actors,
+            "recommendations" to recommendations,
         )
     }
 

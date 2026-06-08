@@ -135,13 +135,26 @@ class DetailCubit extends Cubit<DetailState> {
   /// their empty state. Runs once per title; Sub/Dub switches keep the result.
   Future<void> _enrich(MediaDetail detail) async {
     if (state.cast.isNotEmpty || state.relations.isNotEmpty) return;
-    if (detail.malId == null && detail.tmdbId == null) return;
-    try {
-      final extras = await sl<MetadataEnrichment>().fetch(detail);
-      if (isClosed) return;
-      if (extras.cast.isEmpty && extras.relations.isEmpty) return;
-      emit(state.copyWith(cast: extras.cast, relations: extras.relations));
-    } catch (_) {/* leave tabs empty */}
+    // Prefer id-based enrichment (AniList/TMDB) — it's richer: actor photos,
+    // more entries, properly-linked relations.
+    if (detail.malId != null || detail.tmdbId != null) {
+      try {
+        final extras = await sl<MetadataEnrichment>().fetch(detail);
+        if (isClosed) return;
+        if (extras.cast.isNotEmpty || extras.relations.isNotEmpty) {
+          emit(state.copyWith(cast: extras.cast, relations: extras.relations));
+          return;
+        }
+      } catch (_) {/* fall through to source-supplied extras */}
+    }
+    // Fall back to Cast/Relations the source supplied directly (e.g.
+    // CloudStream's actors/recommendations) — so the tabs fill even without ids.
+    if (isClosed) return;
+    if (detail.castMembers.isNotEmpty || detail.relations.isNotEmpty) {
+      emit(
+        state.copyWith(cast: detail.castMembers, relations: detail.relations),
+      );
+    }
   }
 
   /// Sub/Dub re-fetch. No-op when the category is unchanged. Otherwise
