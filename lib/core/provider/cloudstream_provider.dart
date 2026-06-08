@@ -381,6 +381,27 @@ class CloudStreamManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Check a repo for updates: re-fetch its manifest, drop every cached version
+  /// of its plugins, and re-download + load the current versions. Updates the
+  /// persisted record + rebuilds. Returns the source count. No-op on non-Android.
+  Future<int> updateRepo(String url) async {
+    if (!Platform.isAndroid) return _providers.length;
+    try {
+      final repo = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'updateRepo',
+        {'url': url},
+      );
+      _upsertRepo(repo, fallbackUrl: url);
+      final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
+      _rebuildFrom(raw);
+      notifyListeners();
+      return _providers.length;
+    } catch (e) {
+      debugPrint('[cloudstream] updateRepo failed: $e');
+      rethrow;
+    }
+  }
+
   /// The loaded sources grouped by their origin repo (for the grouped UI).
   ///
   /// For each persisted repo, [CsRepoGroup.sources] are the loaded providers

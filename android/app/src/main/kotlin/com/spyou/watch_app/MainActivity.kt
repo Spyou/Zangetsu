@@ -172,6 +172,32 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    "updateRepo" -> {
+                        val url = call.argument<String>("url")
+                        csExecutor.execute {
+                            try {
+                                val (repoName, plugins) = repo.loadRepo(url ?: "")
+                                // Drop every cached version of this repo's plugins,
+                                // then download + load the current versions fresh.
+                                host.deleteByInternalNames(
+                                    plugins.map { it.internalName }.toSet(),
+                                )
+                                for (plugin in plugins) {
+                                    try {
+                                        host.loadPlugin(repo.download(plugin))
+                                    } catch (_: Exception) { /* skip a bad plugin */ }
+                                }
+                                val info = mapOf(
+                                    "name" to repoName,
+                                    "url" to (url ?: ""),
+                                    "files" to plugins.map { "${it.internalName}@${it.version}" },
+                                )
+                                runOnUiThread { result.success(info) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     "getHome" -> {
                         val name = call.argument<String>("name")
                         csExecutor.execute {

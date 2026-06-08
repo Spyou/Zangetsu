@@ -1226,6 +1226,25 @@ Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async
     ..showSnackBar(const SnackBar(content: Text('Removed')));
 }
 
+/// Re-checks a CloudStream repo for updates (re-download newer `.cs3`s) via
+/// [CloudStreamManager.updateRepo], with progress + result snackbars.
+Future<void> _checkCsUpdates(BuildContext context, CsRepoGroup group) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(const SnackBar(content: Text('Checking for updates…')));
+  try {
+    final count = await sl<CloudStreamManager>().updateRepo(group.url);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Updated — $count source(s)')));
+  } catch (e) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+  }
+}
+
 /// A CloudStream repo card on the CloudStream tab — mirrors the Repos-tab
 /// [_RepoSectionState] card design: a `Container(margin bottom16, surface,
 /// radius14)` with a chevron header (repo [CsRepoGroup.name] + owner secondary
@@ -1312,14 +1331,39 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                     ),
                   ),
                 ),
-                // The synthetic "Other" group has an empty url and can't be
-                // deleted as a repo; hide the button for it.
+                // The synthetic "Other" group has an empty url and isn't a real
+                // repo, so it gets no actions menu.
                 if (group.url.isNotEmpty)
-                  IconButton(
-                    tooltip: 'Remove repository',
-                    icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                    color: AppColors.textSecondary,
-                    onPressed: () => _confirmDeleteCsRepo(context, group),
+                  PopupMenuButton<String>(
+                    icon: const Icon(
+                      Icons.more_vert,
+                      color: AppColors.textSecondary,
+                    ),
+                    color: AppColors.surface2,
+                    onSelected: (v) {
+                      if (v == 'update') _checkCsUpdates(context, group);
+                      if (v == 'remove') _confirmDeleteCsRepo(context, group);
+                    },
+                    itemBuilder: (_) => [
+                      PopupMenuItem(
+                        value: 'update',
+                        child: Text(
+                          'Check for updates',
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'remove',
+                        child: Text(
+                          'Remove repo',
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
               ],
             ),

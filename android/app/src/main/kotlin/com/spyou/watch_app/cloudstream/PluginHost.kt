@@ -102,6 +102,33 @@ class PluginHost(private val context: Context) {
         return removed
     }
 
+    /** Like [deleteByFiles] but matches by the part before '@' (the plugin's
+     * internalName), so it clears ALL cached versions of a plugin — used by the
+     * update flow to drop the old version before downloading the new one. */
+    fun deleteByInternalNames(internalNames: Set<String>): Int {
+        fun internalOf(fileId: String) = fileId.substringBefore('@')
+        var removed = 0
+        val providers = APIHolder.allProviders
+        synchronized(providers) {
+            val gone = providers.filter {
+                it.sourcePlugin != null && internalNames.contains(internalOf(it.sourcePlugin!!))
+            }
+            for (api in gone) {
+                providers.remove(api)
+                try { APIHolder.removePluginMapping(api) } catch (_: Exception) {}
+                removed++
+            }
+        }
+        val paths = loaded.filter { p ->
+            internalNames.contains(internalOf(File(p).nameWithoutExtension))
+        }
+        for (p in paths) {
+            try { File(p).delete() } catch (_: Exception) {}
+            loaded.remove(p)
+        }
+        return removed
+    }
+
     /** The source's home rows (its `mainPage` categories), capped for latency. */
     fun getHome(apiName: String): List<Map<String, Any?>> {
         val api = apiByName(apiName) ?: return emptyList()
