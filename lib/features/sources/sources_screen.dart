@@ -1025,9 +1025,9 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
 /// CloudStream sources (loaded `.cs3` plugins) shown at the top of the Installed
 /// tab. They live outside the JS [ProviderRegistry], so this reads them straight
 /// from [CloudStreamManager] (a [ChangeNotifier], so it updates live after a
-/// repo is added). Rendered as one collapsible repo group per [CsRepoGroup]
-/// (same widget the CloudStream tab uses), with `'CS · '`-prefixed row titles
-/// to distinguish CloudStream sources from JS providers. Hidden when none.
+/// repo is added). Rendered as one collapsible group per [CsRepoGroup] that
+/// mirrors the JS [_InstalledGroup] exactly (chevron + UPPERCASE repo name +
+/// source count over a surface card of shared rows). Hidden when none.
 class _CloudStreamGroup extends StatelessWidget {
   const _CloudStreamGroup();
 
@@ -1043,15 +1043,110 @@ class _CloudStreamGroup extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final group in groups)
-                _CsRepoSection(
-                  group: group,
-                  activeId: activeId,
-                  rowPrefix: 'CS · ',
-                ),
+                _CsInstalledGroup(group: group, activeId: activeId),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+/// Installed-tab CloudStream group — mirrors [_InstalledGroupState] exactly:
+/// a chevron header with the UPPERCASE repo [CsRepoGroup.name] and source
+/// count, over a surface card of shared [_CsSourceRow]s with 0.5 dividers. No
+/// delete here (matches the JS Installed groups, which also have none).
+class _CsInstalledGroup extends StatefulWidget {
+  const _CsInstalledGroup({required this.group, required this.activeId});
+
+  final CsRepoGroup group;
+  final String activeId;
+
+  @override
+  State<_CsInstalledGroup> createState() => _CsInstalledGroupState();
+}
+
+class _CsInstalledGroupState extends State<_CsInstalledGroup> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final sources = widget.group.sources;
+    final title = widget.group.name.isNotEmpty
+        ? widget.group.name
+        : 'CloudStream';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+            child: Row(
+              children: [
+                AnimatedRotation(
+                  turns: _expanded ? 0 : -0.25,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    Icons.expand_more,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    title.toUpperCase(),
+                    style: AppText.overline.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Text(
+                  '${sources.length}',
+                  style: AppText.overline.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: !_expanded
+              ? const SizedBox(width: double.infinity)
+              : Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    children: [
+                      for (var i = 0; i < sources.length; i++) ...[
+                        if (i > 0)
+                          const Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: AppColors.hairline,
+                          ),
+                        _CsSourceRow(
+                          source: sources[i],
+                          activeId: widget.activeId,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+        const SizedBox(height: 18),
+      ],
     );
   }
 }
@@ -1131,22 +1226,17 @@ Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async
     ..showSnackBar(const SnackBar(content: Text('Removed')));
 }
 
-/// A single collapsible CloudStream repo section: a chevron header showing the
-/// repo name (title), owner (secondary line) and source count, over the
-/// source rows. Mirrors [_InstalledGroupState]'s collapse pattern.
+/// A CloudStream repo card on the CloudStream tab — mirrors the Repos-tab
+/// [_RepoSectionState] card design: a `Container(margin bottom16, surface,
+/// radius14)` with a chevron header (repo [CsRepoGroup.name] + owner secondary
+/// line) and a delete [IconButton], over a collapsible list of shared
+/// [_CsSourceRow]s. The synthetic "Other" group (empty url) hides the delete
+/// button — it isn't a removable repo.
 class _CsRepoSection extends StatefulWidget {
-  const _CsRepoSection({
-    required this.group,
-    required this.activeId,
-    this.rowPrefix = '',
-  });
+  const _CsRepoSection({required this.group, required this.activeId});
 
   final CsRepoGroup group;
   final String activeId;
-
-  /// Prefix for each source row's title ('' on the CloudStream tab, 'CS · ' on
-  /// the Installed tab to distinguish CloudStream sources from JS providers).
-  final String rowPrefix;
 
   @override
   State<_CsRepoSection> createState() => _CsRepoSectionState();
@@ -1155,63 +1245,71 @@ class _CsRepoSection extends StatefulWidget {
 class _CsRepoSectionState extends State<_CsRepoSection> {
   bool _expanded = true;
 
+  CsRepoGroup get group => widget.group;
+
   @override
   Widget build(BuildContext context) {
-    final group = widget.group;
     final sources = group.sources;
     final title = group.name.isNotEmpty ? group.name : 'CloudStream';
-    final subtitle = group.owner.isNotEmpty
+    final owner = group.owner.isNotEmpty
         ? group.owner
         : (group.url.isNotEmpty ? group.url : null);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
             child: Row(
               children: [
-                AnimatedRotation(
-                  turns: _expanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(
-                    Icons.expand_more,
-                    color: AppColors.textTertiary,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 4),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: AppText.headline,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (subtitle != null) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textTertiary,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _expanded = !_expanded),
+                    child: Row(
+                      children: [
+                        AnimatedRotation(
+                          turns: _expanded ? 0 : -0.25,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(
+                            Icons.expand_more,
+                            color: AppColors.textSecondary,
+                            size: 22,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title,
+                                style: AppText.headline,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                owner != null
+                                    ? '${sources.length} sources • $owner'
+                                    : '${sources.length} sources',
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textTertiary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${sources.length}',
-                  style: AppText.overline.copyWith(
-                    color: AppColors.textTertiary,
+                    ),
                   ),
                 ),
                 // The synthetic "Other" group has an empty url and can't be
@@ -1226,104 +1324,108 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
               ],
             ),
           ),
-        ),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          alignment: Alignment.topCenter,
-          child: !_expanded
-              ? const SizedBox(width: double.infinity)
-              : Container(
-                  clipBehavior: Clip.antiAlias,
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Column(
+          // Collapsible source list.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: !_expanded
+                ? const SizedBox(width: double.infinity)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (var i = 0; i < sources.length; i++) ...[
-                        if (i > 0)
+                      if (sources.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          child: Text(
+                            'No sources in this repo yet.',
+                            textAlign: TextAlign.center,
+                            style: AppText.caption,
+                          ),
+                        )
+                      else
+                        for (final source in sources) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
                             color: AppColors.hairline,
                           ),
-                        _CsSourceRow(
-                          source: sources[i],
-                          active: sources[i].sourceId == widget.activeId,
-                          prefix: widget.rowPrefix,
-                        ),
-                      ],
+                          _CsSourceRow(
+                            source: source,
+                            activeId: widget.activeId,
+                          ),
+                        ],
                     ],
                   ),
-                ),
-        ),
-        const SizedBox(height: 18),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }
 
-/// A single CloudStream source row: tap the body to make it the active source;
-/// the trailing [Switch.adaptive] enables/disables the source (persisted, hides
-/// it from the source pickers). Disabled rows render dimmed. [prefix] is '' on
-/// the CloudStream tab and 'CS · ' on the Installed tab.
+/// The shared CloudStream source row — mirrors the JS [_InstalledRow] exactly:
+/// no leading icon, `Padding(16,8,6,8)` over a name (accented + w600 when this
+/// is the active source, dimmed when disabled) and a `'cloudstream'` meta line,
+/// then a [Switch.adaptive] for enable/disable. The row body (not the switch)
+/// is tappable to make this the active source. CloudStream has no per-source
+/// settings or delete, so there's no tune/delete button.
 class _CsSourceRow extends StatelessWidget {
-  const _CsSourceRow({
-    required this.source,
-    required this.active,
-    this.prefix = '',
-  });
+  const _CsSourceRow({required this.source, required this.activeId});
 
   final CloudStreamProvider source;
-  final bool active;
-  final String prefix;
+  final String activeId;
 
   @override
   Widget build(BuildContext context) {
     final manager = sl<CloudStreamManager>();
     final enabled = manager.isEnabled(source.sourceId);
-    return ListTile(
-      leading: Icon(
-        Icons.cloud_outlined,
-        color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
-        size: 22,
-      ),
-      title: Text(
-        '$prefix${source.displayName}',
-        style: AppText.body.copyWith(
-          color: enabled ? AppColors.textPrimary : AppColors.textSecondary,
-        ),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (active)
-            const Icon(Icons.check_circle, color: AppColors.accent, size: 20)
-          else
-            const Icon(
-              Icons.play_circle_outline,
-              color: AppColors.textTertiary,
-              size: 20,
-            ),
-          const SizedBox(width: 4),
-          Switch.adaptive(
-            value: enabled,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) => manager.setEnabled(source.sourceId, v),
-          ),
-        ],
-      ),
+    final active = source.sourceId == activeId;
+    final nameColor = !enabled
+        ? AppColors.textSecondary
+        : active
+        ? AppColors.accent
+        : AppColors.textPrimary;
+    return InkWell(
       onTap: () {
         context.read<ActiveSourceCubit>().setSource(source.sourceId);
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(
-              content: Text('Active source: ${source.displayName}'),
-            ),
+            SnackBar(content: Text('Active source: ${source.displayName}')),
           );
       },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    source.displayName,
+                    style: AppText.headline.copyWith(
+                      fontSize: 15,
+                      color: nameColor,
+                      fontWeight: active ? FontWeight.w600 : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text('cloudstream', style: AppText.caption),
+                ],
+              ),
+            ),
+            Switch.adaptive(
+              value: enabled,
+              activeThumbColor: AppColors.accent,
+              onChanged: (v) => manager.setEnabled(source.sourceId, v),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
