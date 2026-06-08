@@ -367,6 +367,12 @@ class _HomeViewState extends State<_HomeView> {
                   ? sections.sublist(1)
                   : const <HomeSection>[];
               final showSkeletons = state.loading && sections.isEmpty;
+              // The load finished but the source returned no rows — almost
+              // always a dead/blocked site (or a search-only source). Show a
+              // clear message instead of a blank screen.
+              final loadedEmpty = !state.loading &&
+                  state.sections != null &&
+                  state.sections!.isEmpty;
               return CustomScrollView(
                 slivers: [
                   // ── Hero + floating header (first sliver) ─────────────────
@@ -462,6 +468,17 @@ class _HomeViewState extends State<_HomeView> {
                         ),
                       ),
                     )
+                  else if (loadedEmpty)
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: _SourceUnavailable(
+                        sourceName: sl<SourceRepository>().displayName(
+                          context.read<ActiveSourceCubit>().state,
+                        ),
+                        onRetry: () =>
+                            context.read<HomeCubit>().load(reset: true),
+                      ),
+                    )
                   else
                     ...rowSections.map(
                       (s) => SliverToBoxAdapter(
@@ -479,6 +496,82 @@ class _HomeViewState extends State<_HomeView> {
             },
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Shown on Home when the active source finished loading but returned no rows —
+/// typically a dead/blocked site. Offers a retry and points to the source
+/// switcher. Continue Watching (app-side) still renders above this.
+class _SourceUnavailable extends StatelessWidget {
+  const _SourceUnavailable({required this.sourceName, required this.onRetry});
+
+  final String sourceName;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(36, 40, 36, 56),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 88,
+            height: 88,
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.cloud_off_rounded,
+              size: 40,
+              color: AppColors.textTertiary,
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            "Couldn't load $sourceName",
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            "This source isn't responding right now. It may be down or "
+            "blocking requests — try again, or switch to another source "
+            "from the top.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            label: const Text('Retry'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+              textStyle: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(26),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
