@@ -3,8 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
@@ -140,7 +142,8 @@ class _InstalledTab extends StatelessWidget {
       buildWhen: (a, b) => a.installed != b.installed || a.repos != b.repos,
       builder: (context, state) {
         final entries = state.installed;
-        if (entries.isEmpty) {
+        final hasCs = sl<CloudStreamManager>().all.isNotEmpty;
+        if (entries.isEmpty && !hasCs) {
           return const EmptyState(
             icon: Icons.dns_rounded,
             message: 'No providers installed.',
@@ -176,9 +179,12 @@ class _InstalledTab extends StatelessWidget {
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-          itemCount: keys.length,
+          // Index 0 is the CloudStream section (hides itself when empty); the
+          // JS provider groups follow.
+          itemCount: keys.length + 1,
           itemBuilder: (_, i) {
-            final key = keys[i];
+            if (i == 0) return const _CloudStreamGroup();
+            final key = keys[i - 1];
             final items = groups[key]!
               ..sort((a, b) {
                 final an = a.displayName.isNotEmpty ? a.displayName : a.name;
@@ -975,6 +981,118 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
               : const Text('Add'),
         ),
       ],
+    );
+  }
+}
+
+/// CloudStream sources (loaded `.cs3` plugins) shown at the top of the Installed
+/// tab. They live outside the JS [ProviderRegistry], so this reads them straight
+/// from [CloudStreamManager] (a [ChangeNotifier], so it updates live after a
+/// repo is added) and lets a tap make one the active source. Hidden when none.
+class _CloudStreamGroup extends StatelessWidget {
+  const _CloudStreamGroup();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: sl<CloudStreamManager>(),
+      builder: (context, _) {
+        final sources = sl<CloudStreamManager>().all;
+        if (sources.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.extension_rounded,
+                    color: AppColors.textTertiary,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'CLOUDSTREAM',
+                      style: AppText.overline.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${sources.length}',
+                    style: AppText.overline.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            BlocBuilder<ActiveSourceCubit, String>(
+              builder: (context, activeId) => Container(
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < sources.length; i++) ...[
+                      if (i > 0)
+                        const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: AppColors.hairline,
+                        ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.cloud_outlined,
+                          color: AppColors.textSecondary,
+                          size: 22,
+                        ),
+                        title: Text(
+                          sources[i].displayName,
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        subtitle: Text('CloudStream', style: AppText.caption),
+                        trailing: sources[i].sourceId == activeId
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: AppColors.accent,
+                                size: 20,
+                              )
+                            : const Icon(
+                                Icons.play_circle_outline,
+                                color: AppColors.textTertiary,
+                                size: 20,
+                              ),
+                        onTap: () {
+                          context.read<ActiveSourceCubit>().setSource(
+                            sources[i].sourceId,
+                          );
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Active source: ${sources[i].displayName}',
+                                ),
+                              ),
+                            );
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
+        );
+      },
     );
   }
 }
