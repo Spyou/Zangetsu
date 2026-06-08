@@ -49,6 +49,10 @@ class PluginHost(private val context: Context) {
             if (className.isEmpty()) return false
             val instance = loader.loadClass(className)
                 .getDeclaredConstructor().newInstance() as BasePlugin
+            // Stamp the plugin file id so every MainAPI it registers carries
+            // `sourcePlugin` = this file's name (registerMainAPI copies it).
+            // That's how we attribute a source back to its repo + delete it.
+            instance.filename = file.nameWithoutExtension
             if (instance is Plugin) instance.load(context) else instance.load()
             loaded.add(file.absolutePath)
             true
@@ -63,7 +67,8 @@ class PluginHost(private val context: Context) {
     private fun apiByName(name: String): MainAPI? =
         APIHolder.allProviders.firstOrNull { it.name == name }
 
-    /** Every currently-registered source. */
+    /** Every currently-registered source. `sourcePlugin` = the .cs3 file id that
+     * registered it, used by Dart to group sources under their repo. */
     fun installedApis(): List<Map<String, Any?>> =
         APIHolder.allProviders.map { api ->
             mapOf(
@@ -71,8 +76,31 @@ class PluginHost(private val context: Context) {
                 "lang" to api.lang,
                 "hasMainPage" to api.hasMainPage,
                 "types" to api.supportedTypes.map { it.name },
+                "sourcePlugin" to api.sourcePlugin,
             )
         }
+
+    /** Unregister + delete the cached `.cs3`s for a repo (by their file ids,
+     * e.g. "VegaMovies@80"). Returns how many MainAPIs were removed. */
+    fun deleteByFiles(fileNames: Set<String>): Int {
+        var removed = 0
+        val providers = APIHolder.allProviders
+        synchronized(providers) {
+            val gone = providers.filter { it.sourcePlugin != null && fileNames.contains(it.sourcePlugin) }
+            for (api in gone) {
+                providers.remove(api)
+                try { APIHolder.removePluginMapping(api) } catch (_: Exception) {}
+                removed++
+            }
+        }
+        // Delete the cached files + forget them so they don't reload next launch.
+        val paths = loaded.filter { p -> fileNames.contains(File(p).nameWithoutExtension) }
+        for (p in paths) {
+            try { File(p).delete() } catch (_: Exception) {}
+            loaded.remove(p)
+        }
+        return removed
+    }
 
     /** The source's home rows (its `mainPage` categories), capped for latency. */
     fun getHome(apiName: String): List<Map<String, Any?>> {

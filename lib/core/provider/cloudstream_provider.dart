@@ -43,12 +43,18 @@ class CloudStreamProvider implements BaseProvider {
     required this.name,
     required this.lang,
     required this.types,
+    this.sourcePlugin,
   });
 
   /// The bare CloudStream source name (no `cs:` prefix). Passed to the channel.
   final String name;
   final String lang;
   final List<String> types;
+
+  /// The `.cs3` file id (`internalName@version`) that registered this source.
+  /// Used to group it under (and delete it with) its repo. Null for sources
+  /// loaded by an older build that didn't stamp it.
+  final String? sourcePlugin;
 
   @override
   String get sourceId => 'cs:$name';
@@ -301,6 +307,7 @@ class CloudStreamManager extends ChangeNotifier {
   /// Hive box name for the persisted repo list.
   static const String boxName = 'cs_repos';
   static const String _reposKey = 'repos';
+  static const String _disabledKey = 'disabled';
 
   /// Opens the persisted-repo box. Safe on every platform (only the channel
   /// calls are Android-gated). Must be called before constructing the manager.
@@ -313,22 +320,71 @@ class CloudStreamManager extends ChangeNotifier {
   final Map<String, CloudStreamProvider> _providers = {};
 
   /// In-memory mirror of the persisted repo list: each entry is
-  /// `{url, name, pluginNames:[...]}`. Loaded on [loadInstalled], upserted on
+  /// `{url, name, files:[...]}`. Loaded on [loadInstalled], upserted on
   /// [addRepo].
   final List<Map<String, dynamic>> _repos = [];
 
+  /// sourceIds the user has toggled off. Persisted under [_disabledKey].
+  final Set<String> _disabled = {};
+
   Box? get _box => Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
-  /// All installed CloudStream providers.
+  /// All installed CloudStream providers (enabled + disabled — for the
+  /// Providers management UI).
   List<CloudStreamProvider> get all => _providers.values.toList();
+
+  /// Only the enabled providers — for the home / active-source pickers.
+  List<CloudStreamProvider> get enabled =>
+      _providers.values.where((p) => isEnabled(p.sourceId)).toList();
 
   /// Provider for a `cs:<name>` source id, or null when not installed.
   BaseProvider? get(String sourceId) => _providers[sourceId];
 
+  /// Whether a source is enabled (not toggled off by the user).
+  bool isEnabled(String sourceId) => !_disabled.contains(sourceId);
+
+  /// Toggle a source on/off (persisted). Disabled sources stay listed in the
+  /// Providers screen but are hidden from the source pickers.
+  Future<void> setEnabled(String sourceId, bool value) async {
+    if (value) {
+      _disabled.remove(sourceId);
+    } else {
+      _disabled.add(sourceId);
+    }
+    _box?.put(_disabledKey, _disabled.toList());
+    notifyListeners();
+  }
+
+  /// Remove a repo entirely: unregister + delete its cached `.cs3`s natively,
+  /// drop the persisted record, and rebuild. No-op channel on non-Android.
+  Future<void> deleteRepo(String url) async {
+    final repo = _repos.firstWhere(
+      (r) => (r['url'] ?? '').toString() == url,
+      orElse: () => const {},
+    );
+    final files = <String>[
+      for (final f in (repo['files'] as List? ?? const [])) '$f',
+    ];
+    if (Platform.isAndroid && files.isNotEmpty) {
+      try {
+        final raw = await _csChannel.invokeMethod<List<dynamic>>(
+          'deleteRepo',
+          {'files': files},
+        );
+        _rebuildFrom(raw);
+      } catch (e) {
+        debugPrint('[cloudstream] deleteRepo failed: $e');
+      }
+    }
+    _repos.removeWhere((r) => (r['url'] ?? '').toString() == url);
+    _persistRepos();
+    notifyListeners();
+  }
+
   /// The loaded sources grouped by their origin repo (for the grouped UI).
   ///
   /// For each persisted repo, [CsRepoGroup.sources] are the loaded providers
-  /// whose [CloudStreamProvider.displayName] is in that repo's `pluginNames`
+  /// whose `sourcePlugin` file id is in that repo's `files`
   /// (case-insensitive). Any loaded providers not matched to a persisted repo
   /// are collected into a trailing synthetic "Other" group (only when present)
   /// — this covers sources loaded from the host cache before persistence.
@@ -337,16 +393,18 @@ class CloudStreamManager extends ChangeNotifier {
     final claimed = <String>{}; // sourceIds already placed in a repo group
 
     for (final repo in _repos) {
-      final names = <String>{};
-      final rawNames = repo['pluginNames'];
-      if (rawNames is List) {
-        for (final n in rawNames) {
-          names.add('$n'.toLowerCase());
+      final files = <String>{};
+      final rawFiles = repo['files'];
+      if (rawFiles is List) {
+        for (final f in rawFiles) {
+          files.add('$f');
         }
       }
       final sources = <CloudStreamProvider>[];
       for (final p in _providers.values) {
-        if (names.contains(p.displayName.toLowerCase())) {
+        // Attribute by the plugin FILE the source came from (sourcePlugin) —
+        // robust to plugins that register several differently-named MainAPIs.
+        if (p.sourcePlugin != null && files.contains(p.sourcePlugin)) {
           sources.add(p);
           claimed.add(p.sourceId);
         }
@@ -417,17 +475,17 @@ class CloudStreamManager extends ChangeNotifier {
   void _upsertRepo(Map<dynamic, dynamic>? repo, {required String fallbackUrl}) {
     final m = repo == null ? const {} : Map<String, dynamic>.from(repo);
     final repoUrl = (m['url'] ?? fallbackUrl).toString();
-    final names = <String>[];
-    final rawNames = m['pluginNames'];
-    if (rawNames is List) {
-      for (final n in rawNames) {
-        names.add('$n');
+    final files = <String>[];
+    final rawFiles = m['files'];
+    if (rawFiles is List) {
+      for (final f in rawFiles) {
+        files.add('$f');
       }
     }
     final entry = <String, dynamic>{
       'url': repoUrl,
       'name': (m['name'] ?? '').toString(),
-      'pluginNames': names,
+      'files': files,
     };
     _repos.removeWhere((r) => (r['url'] ?? '').toString() == repoUrl);
     _repos.add(entry);
@@ -442,25 +500,32 @@ class CloudStreamManager extends ChangeNotifier {
   }
 
   /// Reads the persisted repo list into [_repos]. Each entry is normalized to
-  /// `{url, name, pluginNames:[String...]}`.
+  /// `{url, name, files:[String...]}`.
   void _loadRepos() {
     _repos.clear();
+    _disabled.clear();
+    final dis = _box?.get(_disabledKey);
+    if (dis is List) {
+      for (final d in dis) {
+        _disabled.add('$d');
+      }
+    }
     final raw = _box?.get(_reposKey);
     if (raw is! List) return;
     for (final r in raw) {
       if (r is! Map) continue;
       final m = Map<String, dynamic>.from(r);
-      final names = <String>[];
-      final rawNames = m['pluginNames'];
-      if (rawNames is List) {
-        for (final n in rawNames) {
-          names.add('$n');
+      final files = <String>[];
+      final rawFiles = m['files'];
+      if (rawFiles is List) {
+        for (final f in rawFiles) {
+          files.add('$f');
         }
       }
       _repos.add({
         'url': (m['url'] ?? '').toString(),
         'name': (m['name'] ?? '').toString(),
-        'pluginNames': names,
+        'files': files,
       });
     }
   }
@@ -501,6 +566,7 @@ class CloudStreamManager extends ChangeNotifier {
         name: name,
         lang: (m['lang'] ?? '').toString(),
         types: types,
+        sourcePlugin: (m['sourcePlugin'] as String?),
       );
       _providers[provider.sourceId] = provider;
     }

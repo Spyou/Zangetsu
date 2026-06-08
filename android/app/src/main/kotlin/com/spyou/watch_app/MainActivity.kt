@@ -133,13 +133,14 @@ class MainActivity : FlutterActivity() {
                                         host.loadPlugin(repo.download(plugin))
                                     } catch (_: Exception) { /* skip a bad plugin */ }
                                 }
-                                // Report the repo's name + every advertised plugin name
-                                // (not the load-success subset) so Dart can group sources
-                                // by repo, stable across re-adds.
+                                // Report the repo's name + its plugin FILE ids
+                                // ("<internalName>@<version>") — these match each
+                                // source's `sourcePlugin`, so Dart can group + delete
+                                // by repo reliably (handles multi-API plugins).
                                 val info = mapOf(
                                     "name" to repoName,
                                     "url" to (url ?: ""),
-                                    "pluginNames" to plugins.map { it.name },
+                                    "files" to plugins.map { "${it.internalName}@${it.version}" },
                                 )
                                 runOnUiThread { result.success(info) }
                             } catch (e: Exception) {
@@ -151,6 +152,19 @@ class MainActivity : FlutterActivity() {
                         csExecutor.execute {
                             try {
                                 host.loadAll(repo.cachedFiles())
+                                val apis = host.installedApis()
+                                runOnUiThread { result.success(apis) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    "deleteRepo" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val files = (call.argument<List<String>>("files") ?: emptyList())
+                        csExecutor.execute {
+                            try {
+                                host.deleteByFiles(files.toSet())
                                 val apis = host.installedApis()
                                 runOnUiThread { result.success(apis) }
                             } catch (e: Exception) {

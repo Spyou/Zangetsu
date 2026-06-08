@@ -68,7 +68,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     // CloudStream sources (`cs:<name>`) live outside the registry; surface them
     // alongside the JS providers so the user can switch to one.
-    final csSources = _csManager.all.toList()
+    final csSources = _csManager.enabled.toList()
       ..sort(
         (a, b) => a.displayName.toLowerCase().compareTo(
           b.displayName.toLowerCase(),

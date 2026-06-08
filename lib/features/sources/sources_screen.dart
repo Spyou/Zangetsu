@@ -1025,142 +1025,31 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
 /// CloudStream sources (loaded `.cs3` plugins) shown at the top of the Installed
 /// tab. They live outside the JS [ProviderRegistry], so this reads them straight
 /// from [CloudStreamManager] (a [ChangeNotifier], so it updates live after a
-/// repo is added) and lets a tap make one the active source. Hidden when none.
-/// The "CLOUDSTREAM" section is expandable/collapsible (mirrors
-/// [_InstalledGroupState]); default expanded.
-class _CloudStreamGroup extends StatefulWidget {
+/// repo is added). Rendered as one collapsible repo group per [CsRepoGroup]
+/// (same widget the CloudStream tab uses), with `'CS · '`-prefixed row titles
+/// to distinguish CloudStream sources from JS providers. Hidden when none.
+class _CloudStreamGroup extends StatelessWidget {
   const _CloudStreamGroup();
-
-  @override
-  State<_CloudStreamGroup> createState() => _CloudStreamGroupState();
-}
-
-class _CloudStreamGroupState extends State<_CloudStreamGroup> {
-  bool _expanded = true;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: sl<CloudStreamManager>(),
       builder: (context, _) {
-        final sources = sl<CloudStreamManager>().all;
-        if (sources.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => setState(() => _expanded = !_expanded),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
-                child: Row(
-                  children: [
-                    AnimatedRotation(
-                      turns: _expanded ? 0 : -0.25,
-                      duration: const Duration(milliseconds: 200),
-                      child: const Icon(
-                        Icons.expand_more,
-                        color: AppColors.textTertiary,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    const Icon(
-                      Icons.extension_rounded,
-                      color: AppColors.textTertiary,
-                      size: 18,
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'CLOUDSTREAM',
-                        style: AppText.overline.copyWith(
-                          color: AppColors.textTertiary,
-                        ),
-                      ),
-                    ),
-                    Text(
-                      '${sources.length}',
-                      style: AppText.overline.copyWith(
-                        color: AppColors.textTertiary,
-                      ),
-                    ),
-                  ],
+        final groups = sl<CloudStreamManager>().repoGroups;
+        if (groups.isEmpty) return const SizedBox.shrink();
+        return BlocBuilder<ActiveSourceCubit, String>(
+          builder: (context, activeId) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final group in groups)
+                _CsRepoSection(
+                  group: group,
+                  activeId: activeId,
+                  rowPrefix: 'CS · ',
                 ),
-              ),
-            ),
-            BlocBuilder<ActiveSourceCubit, String>(
-              builder: (context, activeId) => AnimatedSize(
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeOut,
-                alignment: Alignment.topCenter,
-                child: !_expanded
-                    ? const SizedBox(width: double.infinity)
-                    : Container(
-                        clipBehavior: Clip.antiAlias,
-                        decoration: BoxDecoration(
-                          color: AppColors.surface,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < sources.length; i++) ...[
-                              if (i > 0)
-                                const Divider(
-                                  height: 0.5,
-                                  thickness: 0.5,
-                                  color: AppColors.hairline,
-                                ),
-                              ListTile(
-                                leading: const Icon(
-                                  Icons.cloud_outlined,
-                                  color: AppColors.textSecondary,
-                                  size: 22,
-                                ),
-                                title: Text(
-                                  'CS · ${sources[i].displayName}',
-                                  style: AppText.body.copyWith(
-                                    color: AppColors.textPrimary,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  'CloudStream',
-                                  style: AppText.caption,
-                                ),
-                                trailing: sources[i].sourceId == activeId
-                                    ? const Icon(
-                                        Icons.check_circle,
-                                        color: AppColors.accent,
-                                        size: 20,
-                                      )
-                                    : const Icon(
-                                        Icons.play_circle_outline,
-                                        color: AppColors.textTertiary,
-                                        size: 20,
-                                      ),
-                                onTap: () {
-                                  context.read<ActiveSourceCubit>().setSource(
-                                    sources[i].sourceId,
-                                  );
-                                  ScaffoldMessenger.of(context)
-                                    ..clearSnackBars()
-                                    ..showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          'Active source: ${sources[i].displayName}',
-                                        ),
-                                      ),
-                                    );
-                                },
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-              ),
-            ),
-            const SizedBox(height: 18),
-          ],
+            ],
+          ),
         );
       },
     );
@@ -1204,14 +1093,60 @@ class _CloudStreamTab extends StatelessWidget {
   }
 }
 
+/// Confirms then removes an entire CloudStream repo (its sources too) via
+/// [CloudStreamManager.deleteRepo]; shows a "Removed" snackbar on success.
+Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('Remove repository?', style: AppText.headline),
+      content: Text(
+        'Remove this repository and its sources?',
+        style: AppText.body,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text(
+            'Cancel',
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text(
+            'Remove',
+            style: AppText.body.copyWith(color: AppColors.accent),
+          ),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  await sl<CloudStreamManager>().deleteRepo(group.url);
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(const SnackBar(content: Text('Removed')));
+}
+
 /// A single collapsible CloudStream repo section: a chevron header showing the
 /// repo name (title), owner (secondary line) and source count, over the
 /// source rows. Mirrors [_InstalledGroupState]'s collapse pattern.
 class _CsRepoSection extends StatefulWidget {
-  const _CsRepoSection({required this.group, required this.activeId});
+  const _CsRepoSection({
+    required this.group,
+    required this.activeId,
+    this.rowPrefix = '',
+  });
 
   final CsRepoGroup group;
   final String activeId;
+
+  /// Prefix for each source row's title ('' on the CloudStream tab, 'CS · ' on
+  /// the Installed tab to distinguish CloudStream sources from JS providers).
+  final String rowPrefix;
 
   @override
   State<_CsRepoSection> createState() => _CsRepoSectionState();
@@ -1279,6 +1214,15 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                     color: AppColors.textTertiary,
                   ),
                 ),
+                // The synthetic "Other" group has an empty url and can't be
+                // deleted as a repo; hide the button for it.
+                if (group.url.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Remove repository',
+                    icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                    color: AppColors.textSecondary,
+                    onPressed: () => _confirmDeleteCsRepo(context, group),
+                  ),
               ],
             ),
           ),
@@ -1307,6 +1251,7 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                         _CsSourceRow(
                           source: sources[i],
                           active: sources[i].sourceId == widget.activeId,
+                          prefix: widget.rowPrefix,
                         ),
                       ],
                     ],
@@ -1319,33 +1264,56 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
   }
 }
 
-/// A single CloudStream source row: tap to make it the active source.
+/// A single CloudStream source row: tap the body to make it the active source;
+/// the trailing [Switch.adaptive] enables/disables the source (persisted, hides
+/// it from the source pickers). Disabled rows render dimmed. [prefix] is '' on
+/// the CloudStream tab and 'CS · ' on the Installed tab.
 class _CsSourceRow extends StatelessWidget {
-  const _CsSourceRow({required this.source, required this.active});
+  const _CsSourceRow({
+    required this.source,
+    required this.active,
+    this.prefix = '',
+  });
 
   final CloudStreamProvider source;
   final bool active;
+  final String prefix;
 
   @override
   Widget build(BuildContext context) {
+    final manager = sl<CloudStreamManager>();
+    final enabled = manager.isEnabled(source.sourceId);
     return ListTile(
-      leading: const Icon(
+      leading: Icon(
         Icons.cloud_outlined,
-        color: AppColors.textSecondary,
+        color: enabled ? AppColors.textSecondary : AppColors.textTertiary,
         size: 22,
       ),
       title: Text(
-        source.displayName,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        '$prefix${source.displayName}',
+        style: AppText.body.copyWith(
+          color: enabled ? AppColors.textPrimary : AppColors.textSecondary,
+        ),
       ),
-      subtitle: Text('CloudStream', style: AppText.caption),
-      trailing: active
-          ? const Icon(Icons.check_circle, color: AppColors.accent, size: 20)
-          : const Icon(
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (active)
+            const Icon(Icons.check_circle, color: AppColors.accent, size: 20)
+          else
+            const Icon(
               Icons.play_circle_outline,
               color: AppColors.textTertiary,
               size: 20,
             ),
+          const SizedBox(width: 4),
+          Switch.adaptive(
+            value: enabled,
+            activeThumbColor: AppColors.accent,
+            onChanged: (v) => manager.setEnabled(source.sourceId, v),
+          ),
+        ],
+      ),
       onTap: () {
         context.read<ActiveSourceCubit>().setSource(source.sourceId);
         ScaffoldMessenger.of(context)

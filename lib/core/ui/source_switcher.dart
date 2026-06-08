@@ -59,7 +59,7 @@ class SourceSwitcher extends StatelessWidget {
     // interleave alphabetically with the JS rows rather than trailing them.
     int byRowLabel(({String id, String label}) a, ({String id, String label}) b) =>
         a.label.toLowerCase().compareTo(b.label.toLowerCase());
-    for (final p in sl<CloudStreamManager>().all) {
+    for (final p in sl<CloudStreamManager>().enabled) {
       final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}');
       if (p.providerType == ProviderType.anime) {
         anime.add(csRow);
