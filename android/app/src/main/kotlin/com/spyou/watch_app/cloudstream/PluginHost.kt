@@ -174,7 +174,14 @@ class PluginHost(private val context: Context) {
 
     fun search(apiName: String, query: String): List<Map<String, Any?>> {
         val api = apiByName(apiName) ?: return emptyList()
-        val res = runBlocking { runCatching { api.search(query) }.getOrNull() } ?: return emptyList()
+        // Cap each search: with many installed sources, search fans out across
+        // all of them on a shared pool — a dead/slow source must not hold a
+        // worker thread (which would starve the others). Returns empty on timeout.
+        val res = runBlocking {
+            withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                runCatching { api.search(query) }.getOrNull()
+            }
+        } ?: return emptyList()
         return res.map { it.toMap(apiName) }
     }
 
@@ -277,5 +284,8 @@ class PluginHost(private val context: Context) {
 
         /** Per-row deadline for [getHome] so one slow category can't stall it. */
         private const val HOME_ROW_TIMEOUT_MS = 8000L
+
+        /** Per-source deadline for [search] so a dead source can't hold a worker. */
+        private const val SEARCH_TIMEOUT_MS = 10000L
     }
 }

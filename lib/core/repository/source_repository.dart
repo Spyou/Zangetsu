@@ -36,7 +36,9 @@ class SourceRepository {
   /// installed CloudStream sources.
   List<({String id, String name})> get loadedSources => [
     ..._manager.all.map((p) => (id: p.sourceId, name: p.displayName)),
-    ..._csManager.all.map((p) => (id: p.sourceId, name: p.displayName)),
+    // Only ENABLED CloudStream sources — a disabled source shouldn't be
+    // searched (and skipping them trims the search fan-out).
+    ..._csManager.enabled.map((p) => (id: p.sourceId, name: p.displayName)),
   ];
 
   /// Human-friendly name for a source id (falls back to the id itself).

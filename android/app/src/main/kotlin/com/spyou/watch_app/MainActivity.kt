@@ -31,7 +31,10 @@ class MainActivity : FlutterActivity() {
     // pool [csReadPool] so a slow or stale source request can't block the
     // active source's load — switching sources stays responsive.
     private val csExecutor = Executors.newSingleThreadExecutor()
-    private val csReadPool = Executors.newFixedThreadPool(4)
+    // Sized for search fan-out: a query hits every installed source at once, so
+    // a few extra workers let results come back without one slow source choking
+    // the rest (each call is also time-capped in PluginHost).
+    private val csReadPool = Executors.newFixedThreadPool(8)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
 
