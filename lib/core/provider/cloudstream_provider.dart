@@ -563,10 +563,28 @@ class CloudStreamManager extends ChangeNotifier {
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
       _rebuildFrom(raw);
+      _migrateLegacyRepo();
     } catch (e) {
       debugPrint('[cloudstream] listSources failed: $e');
     }
     notifyListeners();
+  }
+
+  /// One-time migration for repos saved before file-based attribution existed:
+  /// if there's exactly one persisted repo and it has no `files`, attribute all
+  /// loaded sources to it (so they group under the real repo + get the ⋮ menu
+  /// instead of falling into "Other"). Multi-repo legacy installs re-add to fix.
+  void _migrateLegacyRepo() {
+    if (_repos.length != 1) return;
+    final files = _repos[0]['files'];
+    if (files is List && files.isNotEmpty) return;
+    final stamped = _providers.values
+        .map((p) => p.sourcePlugin)
+        .whereType<String>()
+        .toList();
+    if (stamped.isEmpty) return;
+    _repos[0]['files'] = stamped;
+    _persistRepos();
   }
 
   void _rebuildFrom(List<dynamic>? raw) {

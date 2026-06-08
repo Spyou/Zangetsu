@@ -16,6 +16,9 @@ import com.lagradost.cloudstream3.plugins.BasePlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import dalvik.system.PathClassLoader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import java.io.File
@@ -135,16 +138,21 @@ class PluginHost(private val context: Context) {
         if (!api.hasMainPage) return emptyList()
         val rows = mutableListOf<Map<String, Any?>>()
         runBlocking {
-            runCatching {
-                for (mp in api.mainPage.take(6)) {
-                    val resp = api.getMainPage(
-                        1, MainPageRequest(mp.name, mp.data, false),
-                    ) ?: continue
-                    for (hpl in resp.items) {
-                        val items = hpl.list.map { it.toMap(apiName) }
-                        if (items.isNotEmpty()) {
-                            rows.add(mapOf("title" to hpl.name, "items" to items))
-                        }
+            // Fetch the home rows CONCURRENTLY (each getMainPage is a network
+            // call) instead of sequentially — much faster home load.
+            val responses = api.mainPage.take(6).map { mp ->
+                async(Dispatchers.IO) {
+                    runCatching {
+                        api.getMainPage(1, MainPageRequest(mp.name, mp.data, false))
+                    }.getOrNull()
+                }
+            }.awaitAll()
+            for (resp in responses) {
+                if (resp == null) continue
+                for (hpl in resp.items) {
+                    val items = hpl.list.map { it.toMap(apiName) }
+                    if (items.isNotEmpty()) {
+                        rows.add(mapOf("title" to hpl.name, "items" to items))
                     }
                 }
             }
