@@ -3116,6 +3116,20 @@ class _ThumbnailProgressBar extends StatelessWidget {
 // Cast tab — chips of cast members; graceful empty state.
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// [EmptyState] wrapped so it can sit in a [TabBarView] body inside a
+/// [NestedScrollView]: scrollable (so the header can still collapse) and
+/// centered via a min-height box, which avoids the bottom overflow when the
+/// collapsed viewport is shorter than the icon + text.
+Widget _emptyTab(IconData icon, String message) => LayoutBuilder(
+  builder: (context, constraints) => SingleChildScrollView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+      child: EmptyState(icon: icon, message: message),
+    ),
+  ),
+);
+
 class _CastTab extends StatelessWidget {
   const _CastTab({required this.cast});
   final List<CastMember> cast;
@@ -3123,10 +3137,7 @@ class _CastTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) {
-      return const EmptyState(
-        icon: Icons.people_outline_rounded,
-        message: 'No cast information',
-      );
+      return _emptyTab(Icons.people_outline_rounded, 'No cast information');
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
@@ -3211,10 +3222,7 @@ class _RelationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (relations.isEmpty) {
-      return const EmptyState(
-        icon: Icons.account_tree_outlined,
-        message: 'No related titles',
-      );
+      return _emptyTab(Icons.account_tree_outlined, 'No related titles');
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
