@@ -37,6 +37,9 @@ class PluginHost(private val context: Context) {
     fun loadPlugin(file: File): Boolean {
         if (loaded.contains(file.absolutePath)) return true
         return try {
+            // Android 8+ refuses to load a dex/.cs3 the app can WRITE to (W^X
+            // security). Mark it read-only first — exactly what CloudStream does.
+            if (file.canWrite()) file.setReadOnly()
             val loader = PathClassLoader(file.absolutePath, context.classLoader)
             val manifestText = loader.getResourceAsStream("manifest.json")
                 ?.bufferedReader()?.use { it.readText() }
