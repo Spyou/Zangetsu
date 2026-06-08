@@ -127,13 +127,21 @@ class MainActivity : FlutterActivity() {
                         val url = call.argument<String>("url")
                         csExecutor.execute {
                             try {
-                                for (plugin in repo.listPlugins(url ?: "")) {
+                                val (repoName, plugins) = repo.loadRepo(url ?: "")
+                                for (plugin in plugins) {
                                     try {
                                         host.loadPlugin(repo.download(plugin))
                                     } catch (_: Exception) { /* skip a bad plugin */ }
                                 }
-                                val apis = host.installedApis()
-                                runOnUiThread { result.success(apis) }
+                                // Report the repo's name + every advertised plugin name
+                                // (not the load-success subset) so Dart can group sources
+                                // by repo, stable across re-adds.
+                                val info = mapOf(
+                                    "name" to repoName,
+                                    "url" to (url ?: ""),
+                                    "pluginNames" to plugins.map { it.name },
+                                )
+                                runOnUiThread { result.success(info) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }

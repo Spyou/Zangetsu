@@ -35,9 +35,17 @@ class RepoManager(private val context: Context) {
     }
 
     /** repo.json → `pluginLists[]` (each a URL to a JSON array of plugin objects). */
-    fun listPlugins(repoUrl: String): List<CsPlugin> {
+    fun listPlugins(repoUrl: String): List<CsPlugin> = loadRepo(repoUrl).second
+
+    /**
+     * Fetch `repo.json` once and return its top-level `name` (falling back to the
+     * URL host) paired with the full advertised plugin list. Combined so callers
+     * that need both don't re-fetch repo.json.
+     */
+    fun loadRepo(repoUrl: String): Pair<String, List<CsPlugin>> {
         val out = mutableListOf<CsPlugin>()
         val repo = JSONObject(fetch(repoUrl))
+        val name = repo.optString("name").ifEmpty { hostOf(repoUrl) }
         val lists = repo.optJSONArray("pluginLists") ?: JSONArray()
         for (i in 0 until lists.length()) {
             val listUrl = lists.optString(i).ifEmpty { continue }
@@ -64,8 +72,12 @@ class RepoManager(private val context: Context) {
                 }
             } catch (_: Exception) { /* skip a bad list */ }
         }
-        return out
+        return name to out
     }
+
+    /** Best-effort host of a repo URL, used as a display name when repo.json has none. */
+    private fun hostOf(repoUrl: String): String =
+        try { URL(repoUrl).host?.ifEmpty { null } ?: repoUrl } catch (_: Exception) { repoUrl }
 
     /** Download (or reuse) a plugin's `.cs3` into the cache and return the file. */
     fun download(plugin: CsPlugin): File {

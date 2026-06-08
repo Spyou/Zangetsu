@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:hive/hive.dart';
 
 import '../models/episode.dart';
 import '../models/home_section.dart';
@@ -269,10 +270,54 @@ class CloudStreamProvider implements BaseProvider {
   }
 }
 
+/// A persisted CloudStream repo and the loaded sources that belong to it. Built
+/// by [CloudStreamManager.repoGroups] for the grouped Providers UI.
+///   * [url]    — the repo manifest URL (empty for the synthetic "Other" group).
+///   * [name]   — the repo's advertised name.
+///   * [owner]  — parsed from the URL (GitHub owner, else the host).
+///   * [sources]— the loaded providers whose [CloudStreamProvider.displayName]
+///                matches one of the repo's advertised plugin names.
+class CsRepoGroup {
+  const CsRepoGroup({
+    required this.url,
+    required this.name,
+    required this.owner,
+    required this.sources,
+  });
+
+  final String url;
+  final String name;
+  final String owner;
+  final List<CloudStreamProvider> sources;
+}
+
 /// Owns the set of installed CloudStream sources and the channel calls that
 /// build them. Android-only: every method is a no-op (returns empty) elsewhere.
+///
+/// Repos added via [addRepo] are persisted to a small Hive box ([boxName]) so
+/// the owner/repo grouping survives a restart even though the loaded sources
+/// themselves are rebuilt from the native host each launch.
 class CloudStreamManager extends ChangeNotifier {
+  /// Hive box name for the persisted repo list.
+  static const String boxName = 'cs_repos';
+  static const String _reposKey = 'repos';
+
+  /// Opens the persisted-repo box. Safe on every platform (only the channel
+  /// calls are Android-gated). Must be called before constructing the manager.
+  static Future<void> init() async {
+    if (!Hive.isBoxOpen(boxName)) {
+      await Hive.openBox(boxName);
+    }
+  }
+
   final Map<String, CloudStreamProvider> _providers = {};
+
+  /// In-memory mirror of the persisted repo list: each entry is
+  /// `{url, name, pluginNames:[...]}`. Loaded on [loadInstalled], upserted on
+  /// [addRepo].
+  final List<Map<String, dynamic>> _repos = [];
+
+  Box? get _box => Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
   /// All installed CloudStream providers.
   List<CloudStreamProvider> get all => _providers.values.toList();
@@ -280,15 +325,84 @@ class CloudStreamManager extends ChangeNotifier {
   /// Provider for a `cs:<name>` source id, or null when not installed.
   BaseProvider? get(String sourceId) => _providers[sourceId];
 
-  /// Adds a CloudStream repo by [url], (re)building the provider set from the
-  /// installed sources the host returns. Returns the count of sources now
-  /// installed. No-op on non-Android.
+  /// The loaded sources grouped by their origin repo (for the grouped UI).
+  ///
+  /// For each persisted repo, [CsRepoGroup.sources] are the loaded providers
+  /// whose [CloudStreamProvider.displayName] is in that repo's `pluginNames`
+  /// (case-insensitive). Any loaded providers not matched to a persisted repo
+  /// are collected into a trailing synthetic "Other" group (only when present)
+  /// — this covers sources loaded from the host cache before persistence.
+  List<CsRepoGroup> get repoGroups {
+    final groups = <CsRepoGroup>[];
+    final claimed = <String>{}; // sourceIds already placed in a repo group
+
+    for (final repo in _repos) {
+      final names = <String>{};
+      final rawNames = repo['pluginNames'];
+      if (rawNames is List) {
+        for (final n in rawNames) {
+          names.add('$n'.toLowerCase());
+        }
+      }
+      final sources = <CloudStreamProvider>[];
+      for (final p in _providers.values) {
+        if (names.contains(p.displayName.toLowerCase())) {
+          sources.add(p);
+          claimed.add(p.sourceId);
+        }
+      }
+      groups.add(
+        CsRepoGroup(
+          url: (repo['url'] ?? '').toString(),
+          name: (repo['name'] ?? '').toString(),
+          owner: _ownerOf((repo['url'] ?? '').toString()),
+          sources: sources,
+        ),
+      );
+    }
+
+    final orphans = _providers.values
+        .where((p) => !claimed.contains(p.sourceId))
+        .toList();
+    if (orphans.isNotEmpty) {
+      groups.add(
+        CsRepoGroup(url: '', name: 'Other', owner: '', sources: orphans),
+      );
+    }
+    return groups;
+  }
+
+  /// Parses the repo owner from [url]: the GitHub owner for
+  /// `raw.githubusercontent.com/<owner>/...` or `github.com/<owner>/...`,
+  /// otherwise the URL host. Empty when unparseable.
+  String _ownerOf(String url) {
+    if (url.isEmpty) return '';
+    final uri = Uri.tryParse(url);
+    if (uri == null) return '';
+    final host = uri.host.toLowerCase();
+    if (host == 'raw.githubusercontent.com' ||
+        host == 'github.com' ||
+        host == 'www.github.com') {
+      if (uri.pathSegments.isNotEmpty && uri.pathSegments.first.isNotEmpty) {
+        return uri.pathSegments.first;
+      }
+    }
+    return uri.host;
+  }
+
+  /// Adds a CloudStream repo by [url], persisting the repo's advertised name +
+  /// plugin names, then (re)building the provider set from ALL loaded sources.
+  /// Returns the count of sources now loaded. No-op on non-Android.
   Future<int> addRepo(String url) async {
     if (!Platform.isAndroid) return 0;
     try {
-      final raw = await _csChannel.invokeMethod<List<dynamic>>('addRepo', {
-        'url': url,
-      });
+      final repo = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'addRepo',
+        {'url': url},
+      );
+      _upsertRepo(repo, fallbackUrl: url);
+      // Reload the full source set (the host now includes the new plugins).
+      final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
       _rebuildFrom(raw);
       notifyListeners();
       return _providers.length;
@@ -298,18 +412,75 @@ class CloudStreamManager extends ChangeNotifier {
     }
   }
 
-  /// Loads any cached/installed plugins into the provider set. No-op on
-  /// non-Android; failures are swallowed so a missing native channel can't
-  /// break startup.
+  /// Upserts a `{name, url, pluginNames}` repo map into the persisted list,
+  /// replacing any existing entry with the same url. Tolerant of missing keys.
+  void _upsertRepo(Map<dynamic, dynamic>? repo, {required String fallbackUrl}) {
+    final m = repo == null ? const {} : Map<String, dynamic>.from(repo);
+    final repoUrl = (m['url'] ?? fallbackUrl).toString();
+    final names = <String>[];
+    final rawNames = m['pluginNames'];
+    if (rawNames is List) {
+      for (final n in rawNames) {
+        names.add('$n');
+      }
+    }
+    final entry = <String, dynamic>{
+      'url': repoUrl,
+      'name': (m['name'] ?? '').toString(),
+      'pluginNames': names,
+    };
+    _repos.removeWhere((r) => (r['url'] ?? '').toString() == repoUrl);
+    _repos.add(entry);
+    _persistRepos();
+  }
+
+  void _persistRepos() {
+    _box?.put(
+      _reposKey,
+      _repos.map((r) => Map<String, dynamic>.from(r)).toList(),
+    );
+  }
+
+  /// Reads the persisted repo list into [_repos]. Each entry is normalized to
+  /// `{url, name, pluginNames:[String...]}`.
+  void _loadRepos() {
+    _repos.clear();
+    final raw = _box?.get(_reposKey);
+    if (raw is! List) return;
+    for (final r in raw) {
+      if (r is! Map) continue;
+      final m = Map<String, dynamic>.from(r);
+      final names = <String>[];
+      final rawNames = m['pluginNames'];
+      if (rawNames is List) {
+        for (final n in rawNames) {
+          names.add('$n');
+        }
+      }
+      _repos.add({
+        'url': (m['url'] ?? '').toString(),
+        'name': (m['name'] ?? '').toString(),
+        'pluginNames': names,
+      });
+    }
+  }
+
+  /// Loads any cached/installed plugins into the provider set AND reads the
+  /// persisted repo list into memory. No-op (channel) on non-Android; failures
+  /// are swallowed so a missing native channel can't break startup.
   Future<void> loadInstalled() async {
-    if (!Platform.isAndroid) return;
+    _loadRepos();
+    if (!Platform.isAndroid) {
+      notifyListeners();
+      return;
+    }
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
       _rebuildFrom(raw);
-      notifyListeners();
     } catch (e) {
       debugPrint('[cloudstream] listSources failed: $e');
     }
+    notifyListeners();
   }
 
   void _rebuildFrom(List<dynamic>? raw) {

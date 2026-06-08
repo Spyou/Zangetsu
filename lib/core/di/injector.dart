@@ -117,7 +117,10 @@ Future<void> initDependencies() async {
 
   // CloudStream sources route through a native MethodChannel (Android-only).
   // Construct + load any cached plugins now so they appear in the picker; the
-  // load is a no-op on non-Android and swallows native channel errors.
+  // load is a no-op on non-Android and swallows native channel errors. The
+  // repo box (persisted owner/repo grouping) MUST be opened before the manager
+  // touches it.
+  await CloudStreamManager.init();
   final csManager = CloudStreamManager();
   sl.registerSingleton<CloudStreamManager>(csManager);
   await csManager.loadInstalled();
