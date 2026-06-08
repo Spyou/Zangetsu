@@ -161,43 +161,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
   Future<void> _addCloudStreamRepo() async {
-    final controller = TextEditingController();
     final url = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.surface,
-        title: Text('Add CloudStream repository', style: AppText.headline),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          cursorColor: AppColors.accent,
-          style: AppText.body.copyWith(color: AppColors.textPrimary),
-          decoration: const InputDecoration(
-            labelText: 'Repository URL',
-            hintText: 'https://.../repo.json',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              'Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
-            ),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
-            ),
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('Add'),
-          ),
-        ],
-      ),
+      builder: (_) => const _AddRepoDialog(),
     );
-    controller.dispose();
     if (url == null || url.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -1179,6 +1146,64 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Self-contained URL-entry dialog for adding a CloudStream repository. Owns its
+/// own [TextEditingController] and disposes it on unmount (after the route's
+/// exit animation finishes) — avoids the "used after dispose" crash that a
+/// caller-owned controller disposed right after `await showDialog` would hit.
+class _AddRepoDialog extends StatefulWidget {
+  const _AddRepoDialog();
+
+  @override
+  State<_AddRepoDialog> createState() => _AddRepoDialogState();
+}
+
+class _AddRepoDialogState extends State<_AddRepoDialog> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('Add CloudStream repository', style: AppText.headline),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        keyboardType: TextInputType.url,
+        cursorColor: AppColors.accent,
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        decoration: const InputDecoration(
+          labelText: 'Repository URL',
+          hintText: 'https://.../repo.json',
+        ),
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            'Cancel',
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Add'),
+        ),
+      ],
     );
   }
 }
