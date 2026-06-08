@@ -202,10 +202,24 @@ class CloudStreamProvider implements BaseProvider {
 
   @override
   Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
-    // Returning null lets [SourceRepository.home] fall back to its default rows
-    // (built from [popular], which is empty here). The CloudStream home feed is
-    // not yet wired through the channel.
-    return null;
+    if (!Platform.isAndroid) return null;
+    final raw = await _csChannel.invokeMethod<List<dynamic>>(
+      'getHome',
+      {'name': name},
+    );
+    if (raw == null || raw.isEmpty) return null;
+    final sections = <HomeSection>[];
+    for (final r in raw) {
+      final m = _asMap(r);
+      final items =
+          (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
+          const <MediaItem>[];
+      if (items.isEmpty) continue;
+      sections.add(
+        HomeSection(title: (m['title'] ?? '').toString(), items: items),
+      );
+    }
+    return sections.isEmpty ? null : sections;
   }
 
   // ── mapping helpers ───────────────────────────────────────────────────────

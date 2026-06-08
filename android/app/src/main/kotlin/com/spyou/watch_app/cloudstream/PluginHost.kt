@@ -7,6 +7,7 @@ import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.MovieLoadResponse
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
@@ -72,6 +73,29 @@ class PluginHost(private val context: Context) {
                 "types" to api.supportedTypes.map { it.name },
             )
         }
+
+    /** The source's home rows (its `mainPage` categories), capped for latency. */
+    fun getHome(apiName: String): List<Map<String, Any?>> {
+        val api = apiByName(apiName) ?: return emptyList()
+        if (!api.hasMainPage) return emptyList()
+        val rows = mutableListOf<Map<String, Any?>>()
+        runBlocking {
+            runCatching {
+                for (mp in api.mainPage.take(6)) {
+                    val resp = api.getMainPage(
+                        1, MainPageRequest(mp.name, mp.data, false),
+                    ) ?: continue
+                    for (hpl in resp.items) {
+                        val items = hpl.list.map { it.toMap(apiName) }
+                        if (items.isNotEmpty()) {
+                            rows.add(mapOf("title" to hpl.name, "items" to items))
+                        }
+                    }
+                }
+            }
+        }
+        return rows
+    }
 
     fun search(apiName: String, query: String): List<Map<String, Any?>> {
         val api = apiByName(apiName) ?: return emptyList()

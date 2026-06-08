@@ -150,6 +150,17 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    "getHome" -> {
+                        val name = call.argument<String>("name")
+                        csExecutor.execute {
+                            try {
+                                val res = host.getHome(name ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     "search" -> {
                         val name = call.argument<String>("name")
                         val query = call.argument<String>("query")
