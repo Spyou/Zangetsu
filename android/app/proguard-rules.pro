@@ -23,3 +23,10 @@
 -keep class com.lagradost.cloudstream3.** { *; }
 -keep class com.spyou.watch_app.cloudstream.** { *; }
 -dontwarn com.lagradost.cloudstream3.**
+
+# Optional/desktop-only deps referenced by the CloudStream library's transitive
+# libs (jsoup's re2j regex, Rhino's java.beans/javax.script) that don't exist on
+# Android. Not used at runtime — suppress R8's missing-class warnings.
+-dontwarn com.google.re2j.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
