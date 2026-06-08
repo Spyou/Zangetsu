@@ -82,15 +82,16 @@ android {
             else
                 signingConfigs.getByName("debug")
 
-            // R8: shrink + obfuscate the Java/Kotlin code and strip unused
-            // resources. (The bulk of the app is native libs + AOT Dart, which
-            // R8 can't touch — the real size win is the per-ABI build.)
-            isMinifyEnabled = true
-            isShrinkResources = true
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            // Minification stays OFF: CloudStream `.cs3` plugins are external
+            // DEX loaded at runtime that link BY NAME against the bundled
+            // CloudStream library and its deps (jsoup, jackson, NiceHttp, …).
+            // R8 renaming/stripping those classes breaks plugin loading — a repo
+            // adds fine but its sources fail to install. Disabling R8 keeps every
+            // linked class intact. (The bulk of the app is native libs + AOT
+            // Dart, which R8 can't shrink anyway — the size win is the per-ABI
+            // split, which we keep.)
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
