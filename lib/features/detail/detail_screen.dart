@@ -41,6 +41,34 @@ class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item});
   final MediaItem item;
 
+  /// Opening transition: the page fades in while sliding up and scaling from
+  /// 0.96 — a smooth "rise" into the detail rather than the platform push.
+  static Route<void> route(MediaItem item) => PageRouteBuilder<void>(
+    transitionDuration: const Duration(milliseconds: 340),
+    reverseTransitionDuration: const Duration(milliseconds: 260),
+    pageBuilder: (_, _, _) => DetailScreen(item: item),
+    transitionsBuilder: (_, animation, _, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+        reverseCurve: Curves.easeInCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: SlideTransition(
+          position: Tween(
+            begin: const Offset(0, 0.035),
+            end: Offset.zero,
+          ).animate(curved),
+          child: ScaleTransition(
+            scale: Tween(begin: 0.96, end: 1.0).animate(curved),
+            child: child,
+          ),
+        ),
+      );
+    },
+  );
+
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
@@ -142,6 +170,24 @@ class _DetailViewState extends State<_DetailView>
     }
   }
 
+  /// Switch to [index] AND collapse the header so the tab's content is actually
+  /// in view — otherwise tapping "… more"/"Read more" silently changes a tab
+  /// that's still below the fold (feels like nothing happened). Animates both
+  /// for a smooth transition into the Cast / Details tab.
+  void _revealTab(int index) {
+    _tabController.animateTo(index);
+    if (_scrollController.hasClients) {
+      final target = _scrollController.position.maxScrollExtent;
+      if (_scrollController.offset < target - 1) {
+        _scrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 380),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
+  }
+
   // ── The 5-icon action row wiring ──────────────────────────────────────────
 
   /// Open the "Add to List" status sheet (Plan / Watching / Completed / Paused
@@ -181,7 +227,7 @@ class _DetailViewState extends State<_DetailView>
         return;
       }
       Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => DetailScreen(item: results.first)),
+        DetailScreen.route(results.first),
       );
     } catch (_) {
       if (mounted) _snack('Couldn’t open “${r.title}”');
@@ -710,9 +756,9 @@ class _DetailViewState extends State<_DetailView>
               padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
               child: _Description(
                 text: detail.description!,
-                // "Read more" jumps to the Details tab (full synopsis) rather
+                // "Read more" reveals the Details tab (full synopsis) rather
                 // than expanding inline; the header stays clamped to 3 lines.
-                onReadMore: () => _tabController.animateTo(3),
+                onReadMore: () => _revealTab(3),
               ),
             ),
           ),
@@ -730,10 +776,8 @@ class _DetailViewState extends State<_DetailView>
                       label: 'Starring',
                       value: starring,
                       more: starringMore,
-                      // Tapping the line (or its "… more") opens the Cast tab.
-                      onMore: starringMore
-                          ? () => _tabController.animateTo(1)
-                          : null,
+                      // Tapping the line (or its "… more") reveals the Cast tab.
+                      onMore: starringMore ? () => _revealTab(1) : null,
                     ),
                   if (genresLine != null)
                     _CreditLine(label: 'Genres', value: genresLine),
@@ -1299,7 +1343,10 @@ class _CreditLine extends StatelessWidget {
             if (more)
               TextSpan(
                 text: '… more',
-                style: base.copyWith(color: AppColors.textPrimary),
+                style: base.copyWith(
+                  color: AppColors.accent,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
           ],
         ),

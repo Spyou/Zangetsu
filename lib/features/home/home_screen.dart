@@ -95,7 +95,7 @@ class _HomeViewState extends State<_HomeView> {
   void _openDetail(MediaItem item) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
+      DetailScreen.route(item),
     ).then((_) {
       // Refresh Continue Watching + My List row when returning from detail.
       if (mounted) setState(() {});

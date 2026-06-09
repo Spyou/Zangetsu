@@ -47,7 +47,7 @@ class _MyListViewState extends State<_MyListView> {
     final cubit = context.read<MyListCubit>();
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
+      DetailScreen.route(item),
     );
     cubit.reload();
   }

@@ -117,7 +117,7 @@ class _SearchViewState extends State<_SearchView> {
   void _openDetail(MediaItem item) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => DetailScreen(item: item)),
+      DetailScreen.route(item),
     ).then((_) {
       if (mounted) setState(() {});
     });
