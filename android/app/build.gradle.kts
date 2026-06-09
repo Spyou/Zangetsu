@@ -109,4 +109,7 @@ dependencies {
     // dep). compileOnly lets our clean-room DataStore reference JsonMapper for the
     // plugin-settings API without duplicating Jackson at runtime. Same version.
     compileOnly("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
+    // okhttp is on the runtime classpath via NiceHttp (CloudStream transitive);
+    // compileOnly lets our clean-room CloudflareKiller implement Interceptor.
+    compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
 }
