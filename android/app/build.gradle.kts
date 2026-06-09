@@ -112,4 +112,15 @@ dependencies {
     // okhttp is on the runtime classpath via NiceHttp (CloudStream transitive);
     // compileOnly lets our clean-room CloudflareKiller implement Interceptor.
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+    // NiceHttp (the `app` global Requests type) is a runtime-transitive dep of
+    // the CloudStream library; compileOnly lets PluginHost set app.baseClient to
+    // attach our cookie jar without bundling NiceHttp twice. Same version.
+    compileOnly("com.github.Blatzar:NiceHttp:0.4.17")
+    // AppCompat + Material: required at runtime so a plugin's own settings UI
+    // resolves — plugins cast the Context to androidx.appcompat.app.AppCompatActivity
+    // and show com.google.android.material BottomSheetDialogFragment/AlertDialog.
+    // Only the dedicated CloudStreamSettingsActivity uses these themes; the
+    // Flutter UI keeps its own theme, so this doesn't affect the main app.
+    implementation("androidx.appcompat:appcompat:1.7.0")
+    implementation("com.google.android.material:material:1.12.0")
 }

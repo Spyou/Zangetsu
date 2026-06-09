@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.lagradost.cloudstream3.AnimeLoadResponse
 import com.lagradost.cloudstream3.APIHolder
+import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.Episode
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
@@ -41,10 +42,34 @@ class PluginHost(private val context: Context) {
     // while read ops run on csReadPool, so both may touch this concurrently.
     private val loaded = Collections.synchronizedSet(HashSet<String>())
 
+    // file id ("Name@version") -> the Plugin instance that registered it.
+    // Kept so we can reach a source's plugin to invoke its openSettings (the
+    // plugin's own settings UI). Only Plugin (not bare BasePlugin) instances.
+    private val pluginsByFile =
+        Collections.synchronizedMap(HashMap<String, Plugin>())
+
     init {
+        INSTANCE = this
         // Plugins reach for the global app context via CloudStreamApp; set it
         // before any plugin loads so requiresResources/settings plugins work.
         com.lagradost.cloudstream3.CloudStreamApp.setContext(context)
+
+        // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
+        // cookie jar, so cookies never persist between requests. Give it a
+        // CookieManager-backed jar: the WebView CF solver writes cf_clearance to
+        // CookieManager, and this lets EVERY app.get() (incl. provider requests
+        // made without the CloudflareKiller interceptor, e.g. AnimePahe's episode
+        // fetch) send it. Additive + best-effort — never throws.
+        runCatching {
+            val app = com.lagradost.cloudstream3.app
+            app.baseClient = app.baseClient.newBuilder()
+                .cookieJar(WebkitCookieJar())
+                // cf_clearance is User-Agent-bound; this network interceptor
+                // realigns the UA to the WebView solver's on requests that carry
+                // the clearance cookie (incl. redirected hops).
+                .addNetworkInterceptor(CfClearance.interceptor)
+                .build()
+        }
     }
 
     /** PathClassLoader → manifest.json → instantiate → load(). Returns success. */
@@ -77,6 +102,9 @@ class PluginHost(private val context: Context) {
             }
             if (instance is Plugin) instance.load(context) else instance.load()
             loaded.add(file.absolutePath)
+            // Remember Plugin instances so we can surface/invoke their own
+            // settings UI (openSettings, set during load()) later.
+            if (instance is Plugin) pluginsByFile[file.nameWithoutExtension] = instance
             true
         } catch (t: Throwable) {
             Log.w(TAG, "loadPlugin failed for ${file.name}: ${t.message}")
@@ -104,6 +132,20 @@ class PluginHost(private val context: Context) {
 
     private fun apiByName(name: String): MainAPI? =
         APIHolder.allProviders.firstOrNull { it.name == name }
+
+    /** The plugin that registered the source [apiName], if it's one we track. */
+    private fun pluginFor(apiName: String): Plugin? {
+        val fileId = apiByName(apiName)?.sourcePlugin ?: return null
+        return pluginsByFile[fileId]
+    }
+
+    /** True when [apiName]'s plugin exposes its own settings UI (openSettings). */
+    fun hasSettings(apiName: String): Boolean = pluginFor(apiName)?.openSettings != null
+
+    /** The plugin's settings opener for [apiName] — call with an AppCompatActivity
+     * (plugins cast the Context to one). Null when the source has no settings. */
+    fun settingsInvokerFor(apiName: String): ((android.content.Context) -> Unit)? =
+        pluginFor(apiName)?.openSettings
 
     /** Every currently-registered source. `sourcePlugin` = the .cs3 file id that
      * registered it, used by Dart to group sources under their repo. */
@@ -141,6 +183,7 @@ class PluginHost(private val context: Context) {
             try { File(p).delete() } catch (_: Exception) {}
             loaded.remove(p)
         }
+        fileNames.forEach { pluginsByFile.remove(it) }
         return removed
     }
 
@@ -167,6 +210,10 @@ class PluginHost(private val context: Context) {
         for (p in paths) {
             try { File(p).delete() } catch (_: Exception) {}
             loaded.remove(p)
+        }
+        synchronized(pluginsByFile) {
+            pluginsByFile.keys.filter { internalNames.contains(internalOf(it)) }
+                .forEach { pluginsByFile.remove(it) }
         }
         return removed
     }
@@ -216,10 +263,10 @@ class PluginHost(private val context: Context) {
         return res.map { it.toMap(apiName) }
     }
 
-    fun load(apiName: String, url: String): Map<String, Any?>? {
+    fun load(apiName: String, url: String, category: String = "sub"): Map<String, Any?>? {
         val api = apiByName(apiName) ?: return null
         val lr = runBlocking { runCatching { api.load(url) }.getOrNull() } ?: return null
-        return lr.toDetailMap(apiName)
+        return lr.toDetailMap(apiName, category)
     }
 
     fun loadLinks(apiName: String, data: String): Map<String, Any?> {
@@ -258,10 +305,26 @@ class PluginHost(private val context: Context) {
         "apiName" to apiName,
     )
 
-    private fun LoadResponse.toDetailMap(apiName: String): Map<String, Any?> {
+    private fun LoadResponse.toDetailMap(apiName: String, category: String = "sub"): Map<String, Any?> {
+        // Anime sources key episodes by DubStatus (Subbed/Dubbed). Report both
+        // counts so the app can offer a Sub/Dub toggle, and return the episode
+        // list for the REQUESTED category (the toggle re-fetches with the other).
+        var subCount = 0
+        var dubCount = 0
         val episodes: List<Map<String, Any?>> = when (this) {
             is TvSeriesLoadResponse -> this.episodes.map { it.toMap() }
-            is AnimeLoadResponse -> this.episodes.values.flatten().map { it.toMap() }
+            is AnimeLoadResponse -> {
+                val byStatus = this.episodes
+                subCount = byStatus[DubStatus.Subbed]?.size ?: 0
+                dubCount = byStatus[DubStatus.Dubbed]?.size ?: 0
+                val wantDub = category.equals("dub", ignoreCase = true)
+                val chosen = if (wantDub) {
+                    byStatus[DubStatus.Dubbed] ?: byStatus[DubStatus.Subbed]
+                } else {
+                    byStatus[DubStatus.Subbed] ?: byStatus[DubStatus.Dubbed]
+                } ?: byStatus.values.flatten() // sources keyed under None, etc.
+                chosen.map { it.toMap() }
+            }
             is MovieLoadResponse -> listOf(
                 mapOf(
                     "data" to this.dataUrl, "name" to name,
@@ -296,6 +359,8 @@ class PluginHost(private val context: Context) {
             "type" to type?.name,
             "apiName" to apiName,
             "episodes" to episodes,
+            "subCount" to subCount,
+            "dubCount" to dubCount,
             "syncData" to sync,
             "actors" to actors,
             "recommendations" to recommendations,
@@ -312,6 +377,12 @@ class PluginHost(private val context: Context) {
 
     companion object {
         const val TAG = "CloudStream"
+
+        /** The live host, so the settings Activity (a separate AppCompatActivity)
+         * can reach the plugin registry to invoke a source's openSettings. */
+        @Volatile
+        var INSTANCE: PluginHost? = null
+            private set
 
         /** Per-row deadline for [getHome] so one slow category can't stall it. */
         private const val HOME_ROW_TIMEOUT_MS = 8000L

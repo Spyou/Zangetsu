@@ -1,21 +1,218 @@
 package com.lagradost.cloudstream3.network
 
+import android.annotation.SuppressLint
+import android.os.Handler
+import android.os.Looper
+import android.webkit.CookieManager
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import com.lagradost.cloudstream3.CloudStreamApp
 import okhttp3.Interceptor
+import okhttp3.Request
 import okhttp3.Response
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Clean-room stand-in for CloudStream's `CloudflareKiller`.
+ * Clean-room `CloudflareKiller` — the WebView-based Cloudflare solver that lets
+ * CF-gated sources (AnimePahe, …) work, mirroring CloudStream's approach.
  *
- * The real one uses a WebView to solve Cloudflare/anti-bot challenges. We don't
- * bundle a WebView-based solver, so this is a PASS-THROUGH interceptor: it lets
- * plugins that attach a CloudflareKiller load + run (no `NoClassDefFoundError`),
- * and their requests work on sites that AREN'T actively challenging. Sites that
- * genuinely gate behind Cloudflare still won't load (they'd need the real
- * WebView solver — out of scope).
+ * When a response is the Cloudflare "Just a moment…" challenge, it loads the URL
+ * in a hidden WebView so Cloudflare's JS runs, harvests the `cf_clearance`
+ * cookie (+ the WebView's User-Agent), then replays the request with them.
+ * Solved cookies are reused per-host until they expire (a later challenge
+ * re-solves). Safe by design: for any NON-challenge response it returns the
+ * response untouched, and every step is guarded — a failure just yields the
+ * original (blocked) response, exactly like before.
  */
 class CloudflareKiller : Interceptor {
+    // Kept for binary compat with plugins that read it; we manage cookies below.
     val savedCookies: MutableMap<String, Map<String, String>> = mutableMapOf()
 
-    override fun intercept(chain: Interceptor.Chain): Response =
-        chain.proceed(chain.request())
+    private val cookieByHost = ConcurrentHashMap<String, String>()
+    private val locks = ConcurrentHashMap<String, Any>()
+
+    @Volatile
+    private var userAgent: String? = null
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val host = request.url.host
+
+        val response = chain.proceed(applySaved(request, host))
+        if (!isCloudflareChallenge(response)) return response
+
+        // The URL that actually produced the challenge — AFTER any redirects
+        // (e.g. animepahe.com → animepahe.pw). The clearance cookie belongs to
+        // THIS host, and we retry against THIS url so okhttp can't strip the
+        // cookie across a cross-domain redirect.
+        val finalUrl = response.request.url
+        val finalHost = finalUrl.host
+        synchronized(locks.getOrPut(finalHost) { Any() }) {
+            if (!cookieByHost.containsKey(finalHost)) {
+                val solved = WebViewResolver.solve(finalUrl.toString())
+                    ?: return response // give back the (unconsumed) challenge
+                cookieByHost[finalHost] = solved.cookie
+                userAgent = solved.userAgent
+            }
+        }
+        response.close()
+        val cookie = cookieByHost[finalHost]
+        val retried = request.newBuilder()
+            .url(finalUrl)
+            .apply {
+                if (cookie != null) {
+                    val existing = request.header("Cookie")
+                    header("Cookie", if (existing.isNullOrBlank()) cookie else "$existing; $cookie")
+                }
+                userAgent?.let { header("User-Agent", it) }
+            }
+            .build()
+        return chain.proceed(retried)
+    }
+
+    /** Attach the harvested clearance cookie + UA for [host], if we have them. */
+    private fun applySaved(request: Request, host: String): Request {
+        val cookie = cookieByHost[host]
+        val ua = userAgent
+        if (cookie == null && ua == null) return request
+        val b = request.newBuilder()
+        if (cookie != null) {
+            val existing = request.header("Cookie")
+            b.header("Cookie", if (existing.isNullOrBlank()) cookie else "$existing; $cookie")
+        }
+        if (ua != null) b.header("User-Agent", ua)
+        return b.build()
+    }
+
+    /** True when [response] is a Cloudflare interstitial challenge page. Only
+     * peeks HTML-ish bodies so JSON/media responses are cheap. */
+    private fun isCloudflareChallenge(response: Response): Boolean {
+        val server = response.header("Server").orEmpty().lowercase()
+        val cfMitigated = response.header("cf-mitigated") != null
+        val statusFlag = response.code in intArrayOf(403, 503, 429) &&
+            server.contains("cloudflare")
+        val ct = response.header("Content-Type").orEmpty().lowercase()
+        val htmlish = ct.contains("text/html") || ct.isEmpty()
+        if (!htmlish && !cfMitigated && !statusFlag) return false
+        val body = try {
+            response.peekBody(20_000L).string() // peek doesn't consume the body
+        } catch (_: Exception) {
+            return cfMitigated || statusFlag
+        }
+        return cfMitigated || statusFlag ||
+            body.contains("Just a moment", ignoreCase = true) ||
+            body.contains("challenge-platform") ||
+            body.contains("challenges.cloudflare.com") ||
+            body.contains("_cf_chl_opt") ||
+            body.contains("cf-browser-verification")
+    }
+}
+
+/** Loads a URL in a hidden WebView and waits for Cloudflare's `cf_clearance`
+ * cookie. WebView work runs on the main thread; the (background) caller blocks
+ * on a latch with a timeout. */
+private object WebViewResolver {
+    data class Result(val cookie: String, val userAgent: String)
+
+    fun solve(url: String): Result? {
+        // Prefer the foreground Activity: the solver WebView must be attached to
+        // a real window and rendered, or Cloudflare's JS challenge never runs.
+        val activity = com.spyou.watch_app.MainActivity.current?.get()
+        val context = activity ?: CloudStreamApp.getContext() ?: return null
+        val latch = CountDownLatch(1)
+        val ref = AtomicReference<Result?>()
+        val main = Handler(Looper.getMainLooper())
+        val webViewRef = AtomicReference<WebView?>()
+
+        fun captureIfReady() {
+            CookieManager.getInstance().flush()
+            val wv = webViewRef.get()
+            val curUrl = wv?.url ?: url
+            val cookieCur = CookieManager.getInstance().getCookie(curUrl)
+            val cookieOrig = CookieManager.getInstance().getCookie(url)
+            val cookie = listOfNotNull(cookieCur, cookieOrig)
+                .firstOrNull { it.contains("cf_clearance") }
+            if (cookie != null) {
+                val ua = wv?.settings?.userAgentString ?: ""
+                // Publish the solving UA so plain (interceptor-less) NiceHttp
+                // requests carrying cf_clearance present the matching UA.
+                if (ua.isNotEmpty()) com.spyou.watch_app.cloudstream.CfClearance.userAgent = ua
+                if (ref.compareAndSet(null, Result(cookie, ua))) latch.countDown()
+            }
+        }
+
+        val poll = object : Runnable {
+            override fun run() {
+                captureIfReady()
+                if (ref.get() == null) main.postDelayed(this, 600)
+            }
+        }
+
+        main.post {
+            try {
+                @SuppressLint("SetJavaScriptEnabled")
+                val wv = WebView(context)
+                webViewRef.set(wv)
+                wv.settings.javaScriptEnabled = true
+                wv.settings.domStorageEnabled = true
+                wv.settings.databaseEnabled = true
+                wv.settings.userAgentString = wv.settings.userAgentString
+                    .replace("; wv", "") // drop the WebView marker some CF checks flag
+                CookieManager.getInstance().setAcceptCookie(true)
+                CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+                wv.webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, finishedUrl: String?) {
+                        captureIfReady()
+                    }
+                }
+                // Attach the WebView to the window so it actually renders —
+                // required for the challenge JS to execute. Removed after solve.
+                if (activity != null) {
+                    try {
+                        // Must be full-size + genuinely VISIBLE for Cloudflare's
+                        // JS challenge to run (occluded/1px/alpha-0 WebViews don't
+                        // render → no solve). The user sees the challenge briefly
+                        // on the FIRST load of a CF source (~8s), then it's
+                        // removed and the clearance cookie is cached (~30min) so
+                        // subsequent loads are instant — same as CloudStream.
+                        activity.addContentView(
+                            wv,
+                            android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            ),
+                        )
+                    } catch (_: Throwable) {
+                    }
+                }
+                wv.loadUrl(url)
+                main.postDelayed(poll, 2000) // CF sets the cookie after its JS runs
+            } catch (_: Throwable) {
+                latch.countDown()
+            }
+        }
+
+        val solved = try {
+            latch.await(30, TimeUnit.SECONDS)
+        } catch (_: InterruptedException) {
+            false
+        }
+
+        // Tear the WebView down on the main thread regardless of outcome.
+        main.post {
+            main.removeCallbacks(poll)
+            try {
+                webViewRef.get()?.let { w ->
+                    (w.parent as? android.view.ViewGroup)?.removeView(w)
+                    w.stopLoading()
+                    w.destroy()
+                }
+            } catch (_: Throwable) {
+            }
+        }
+        return if (solved) ref.get() else null
+    }
 }

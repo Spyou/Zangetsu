@@ -57,6 +57,14 @@
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
             </intent-filter>
         </activity>
+        <!-- Hosts a CloudStream plugin's own settings UI (it casts the Context to
+             AppCompatActivity and shows a BottomSheetDialogFragment). Transparent
+             Material theme; finishes when the sheet is dismissed. -->
+        <activity
+            android:name=".cloudstream.CloudStreamSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CloudStreamSettings"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

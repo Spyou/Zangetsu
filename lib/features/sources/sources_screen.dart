@@ -1705,6 +1705,20 @@ class _CsSourceRow extends StatelessWidget {
               activeThumbColor: AppColors.accent,
               onChanged: (v) => manager.setEnabled(source.sourceId, v),
             ),
+            IconButton(
+              tooltip: 'Source settings',
+              icon: const Icon(Icons.tune_rounded, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SourceSettingsScreen(
+                    sourceId: source.sourceId,
+                    repoUrl: '',
+                    displayName: source.displayName,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

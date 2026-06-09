@@ -41,6 +41,22 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "SeekPreview"
         private const val EXT_PLAYER_REQUEST = 7001
+
+        /** The foreground activity, so the CloudStream CloudflareKiller can
+         * attach its solver WebView to a real window (JS only runs when the
+         * WebView renders). Weak ref; null while backgrounded. */
+        @Volatile
+        var current: java.lang.ref.WeakReference<android.app.Activity>? = null
+    }
+
+    override fun onResume() {
+        super.onResume()
+        current = java.lang.ref.WeakReference(this)
+    }
+
+    override fun onPause() {
+        if (current?.get() === this) current = null
+        super.onPause()
     }
 
     // The in-flight external-player launch, completed in onActivityResult so the
@@ -261,9 +277,10 @@ class MainActivity : FlutterActivity() {
                     "load" -> {
                         val name = call.argument<String>("name")
                         val url = call.argument<String>("url")
+                        val category = call.argument<String>("category") ?: "sub"
                         csReadPool.execute {
                             try {
-                                val res = host.load(name ?: "", url ?: "")
+                                val res = host.load(name ?: "", url ?: "", category)
                                 runOnUiThread { result.success(res) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
@@ -279,6 +296,35 @@ class MainActivity : FlutterActivity() {
                                 runOnUiThread { result.success(res) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    // Does this source's plugin expose its own settings UI?
+                    "hasPluginSettings" -> {
+                        val name = call.argument<String>("name")
+                        try {
+                            result.success(host.hasSettings(name ?: ""))
+                        } catch (e: Exception) {
+                            result.error("cs_error", e.message, null)
+                        }
+                    }
+                    // Open the plugin's own settings UI in a dedicated
+                    // AppCompatActivity (plugins cast the Context to one).
+                    "openPluginSettings" -> {
+                        val name = call.argument<String>("name")
+                        runOnUiThread {
+                            try {
+                                val intent = android.content.Intent(
+                                    this,
+                                    com.spyou.watch_app.cloudstream.CloudStreamSettingsActivity::class.java,
+                                ).putExtra(
+                                    com.spyou.watch_app.cloudstream.CloudStreamSettingsActivity.EXTRA_API_NAME,
+                                    name,
+                                )
+                                startActivity(intent)
+                                result.success(true)
+                            } catch (e: Exception) {
+                                result.error("cs_error", e.message, null)
                             }
                         }
                     }

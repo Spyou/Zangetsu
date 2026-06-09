@@ -19,6 +19,32 @@ import 'base_provider.dart';
 /// throws past the guards below (failures degrade to empty/safe values).
 const MethodChannel _csChannel = MethodChannel('zangetsu/cloudstream');
 
+/// Whether the CloudStream source [apiName] exposes its OWN settings UI
+/// (the plugin's `openSettings`, e.g. AnimePahe's server picker). Android-only;
+/// any failure degrades to `false`.
+Future<bool> csPluginHasSettings(String apiName) async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await _csChannel.invokeMethod<bool>(
+          'hasPluginSettings',
+          {'name': apiName},
+        ) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
+/// Opens the CloudStream source [apiName]'s OWN settings UI in the native host
+/// activity (the plugin renders its bottom sheet / dialog). Android-only; safe
+/// no-op on failure or other platforms.
+Future<void> csPluginOpenSettings(String apiName) async {
+  if (!Platform.isAndroid) return;
+  try {
+    await _csChannel.invokeMethod('openPluginSettings', {'name': apiName});
+  } catch (_) {}
+}
+
 /// CloudStream source types that map to the [ProviderType.anime] bucket.
 /// Everything else (Movie, TvSeries, AsianDrama, etc.) is treated as
 /// [ProviderType.movie] — the catalog's non-anime value.
@@ -114,6 +140,9 @@ class CloudStreamProvider implements BaseProvider {
     final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>('load', {
       'name': name,
       'url': url,
+      // Anime sources key episodes by Sub/Dub; the native side returns the
+      // requested category's list (the Sub/Dub toggle re-fetches with 'dub').
+      'category': category,
     });
     final m = _asMap(raw);
     final episodesRaw = m['episodes'];
@@ -135,6 +164,10 @@ class CloudStreamProvider implements BaseProvider {
       year: (m['year'] as num?)?.toInt().toString(),
       type: _typeFromCsType(csType) ?? _providerType,
       sourceId: sourceId,
+      // Sub/Dub episode counts → drive the app's Sub/Dub toggle (download +
+      // player). Both are reported regardless of the requested category.
+      subCount: (m['subCount'] as num?)?.toInt(),
+      dubCount: (m['dubCount'] as num?)?.toInt(),
       // Ids drive tracker sync (AniList/MAL/Simkl) + id-based Cast/Relations.
       malId: ids.malId,
       tmdbId: ids.tmdbId,

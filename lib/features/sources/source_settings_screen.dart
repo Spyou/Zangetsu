@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/provider_setting_schema.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/repository/provider_settings_repository.dart';
@@ -34,7 +35,15 @@ class SourceSettingsScreen extends StatefulWidget {
 
 class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   late Future<List<ProviderSettingSchema>?> _schemaFuture;
+  // Whether the underlying CloudStream plugin exposes its OWN settings UI
+  // (separate from our app-side schema settings). Always false for non-CS.
+  late Future<bool> _nativeSettingsFuture;
   Map<String, dynamic> _values = <String, dynamic>{};
+
+  /// The bare CloudStream api name for this source (`cs:AnimePahe` → `AnimePahe`),
+  /// or null when this isn't a CloudStream source.
+  String? get _csApiName =>
+      widget.sourceId.startsWith('cs:') ? widget.sourceId.substring(3) : null;
 
   // One debounce timer per text field so typing in two boxes back to
   // back doesn't cancel each other's pending save.
@@ -49,6 +58,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   void initState() {
     super.initState();
     _schemaFuture = _loadSchema();
+    final api = _csApiName;
+    _nativeSettingsFuture =
+        api == null ? Future.value(false) : csPluginHasSettings(api);
   }
 
   @override
@@ -213,41 +225,76 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
               message: 'Could not load settings:\n${snapshot.error}',
             );
           }
-          final schema = snapshot.data;
-          if (schema == null || schema.isEmpty) {
-            return const EmptyState(
-              icon: Icons.tune,
-              message: 'This source has no settings',
-            );
-          }
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-            children: [
-              for (final entry in schema) _buildEntry(entry),
-              const SizedBox(height: 16),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: TextButton.icon(
-                  onPressed: () => _resetDefaults(schema),
-                  icon: const Icon(
-                    Icons.restore_rounded,
-                    color: AppColors.textSecondary,
-                    size: 20,
-                  ),
-                  label: Text(
-                    'Reset to defaults',
-                    style: AppText.body.copyWith(
-                      color: AppColors.textSecondary,
+          final data = snapshot.data;
+          final schema =
+              (data != null && data.isNotEmpty) ? data : null;
+          return FutureBuilder<bool>(
+            future: _nativeSettingsFuture,
+            builder: (context, nativeSnap) {
+              final hasNative = nativeSnap.data ?? false;
+              if (schema == null && !hasNative) {
+                return const EmptyState(
+                  icon: Icons.tune,
+                  message: 'This source has no settings',
+                );
+              }
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+                children: [
+                  // The plugin's OWN settings UI (e.g. server picker), opened
+                  // natively. Shown above the app-side schema settings.
+                  if (hasNative) _providerSettingsCard(),
+                  if (hasNative && schema != null) const SizedBox(height: 8),
+                  if (schema != null) ...[
+                    for (final entry in schema) _buildEntry(entry),
+                    const SizedBox(height: 16),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: TextButton.icon(
+                        onPressed: () => _resetDefaults(schema),
+                        icon: const Icon(
+                          Icons.restore_rounded,
+                          color: AppColors.textSecondary,
+                          size: 20,
+                        ),
+                        label: Text(
+                          'Reset to defaults',
+                          style: AppText.body.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ),
-            ],
+                  ],
+                ],
+              );
+            },
           );
         },
       ),
     );
   }
+
+  /// Tile that opens the CloudStream plugin's OWN settings UI (native sheet).
+  Widget _providerSettingsCard() => _card(
+    child: ListTile(
+      leading: const Icon(Icons.tune_rounded, color: AppColors.accent),
+      title: Text('Provider settings', style: AppText.body),
+      subtitle: Text(
+        "Open this source's own settings (e.g. server, language)",
+        style: AppText.caption,
+      ),
+      trailing: const Icon(
+        Icons.open_in_new_rounded,
+        size: 18,
+        color: AppColors.textSecondary,
+      ),
+      onTap: () {
+        final api = _csApiName;
+        if (api != null) csPluginOpenSettings(api);
+      },
+    ),
+  );
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
     margin: const EdgeInsets.symmetric(vertical: 4),
