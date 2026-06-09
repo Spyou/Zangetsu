@@ -105,4 +105,8 @@ flutter {
 // it. GPL-3.0 — see docs/cloudstream-integration-spec.md §7.
 dependencies {
     implementation("com.github.recloudstream.cloudstream:library:v4.7.0")
+    // Jackson is already on the RUNTIME classpath (CloudStream library transitive
+    // dep). compileOnly lets our clean-room DataStore reference JsonMapper for the
+    // plugin-settings API without duplicating Jackson at runtime. Same version.
+    compileOnly("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
 }

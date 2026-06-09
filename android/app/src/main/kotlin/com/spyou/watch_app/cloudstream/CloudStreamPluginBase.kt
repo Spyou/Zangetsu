@@ -15,8 +15,17 @@ import android.content.res.Resources
  * Extend as on-device testing reveals plugins referencing more members.
  */
 abstract class Plugin : BasePlugin() {
-    /** Overridden by plugins; called once after the plugin is instantiated. */
-    open fun load(context: Context) {}
+    /**
+     * Called once after the plugin is instantiated. Plugins override EITHER this
+     * (Context) overload OR the no-arg [BasePlugin.load]. CloudStream's real
+     * `Plugin.load(Context)` default delegates to `load()`, so a plugin that
+     * only overrides the no-arg `load()` (e.g. AnimePahe, which registers its
+     * MainAPI there) still runs. Our stub must do the same or those plugins
+     * load but register nothing ("won't install").
+     */
+    open fun load(context: Context) {
+        load()
+    }
 
     var resources: Resources? = null
     var needsResources: Boolean = false

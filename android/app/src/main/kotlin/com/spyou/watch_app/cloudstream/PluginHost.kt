@@ -41,6 +41,12 @@ class PluginHost(private val context: Context) {
     // while read ops run on csReadPool, so both may touch this concurrently.
     private val loaded = Collections.synchronizedSet(HashSet<String>())
 
+    init {
+        // Plugins reach for the global app context via CloudStreamApp; set it
+        // before any plugin loads so requiresResources/settings plugins work.
+        com.lagradost.cloudstream3.CloudStreamApp.setContext(context)
+    }
+
     /** PathClassLoader → manifest.json → instantiate → load(). Returns success. */
     fun loadPlugin(file: File): Boolean {
         if (loaded.contains(file.absolutePath)) return true
@@ -52,7 +58,8 @@ class PluginHost(private val context: Context) {
             val manifestText = loader.getResourceAsStream("manifest.json")
                 ?.bufferedReader()?.use { it.readText() }
                 ?: return false
-            val className = JSONObject(manifestText).optString("pluginClassName")
+            val manifest = JSONObject(manifestText)
+            val className = manifest.optString("pluginClassName")
             if (className.isEmpty()) return false
             val instance = loader.loadClass(className)
                 .getDeclaredConstructor().newInstance() as BasePlugin
@@ -60,6 +67,14 @@ class PluginHost(private val context: Context) {
             // `sourcePlugin` = this file's name (registerMainAPI copies it).
             // That's how we attribute a source back to its repo + delete it.
             instance.filename = file.nameWithoutExtension
+            // Plugins with their own settings UI bundle Android resources and
+            // declare requiresResources; build a Resources backed by the .cs3
+            // (it's an APK with resources.arsc + res/) and hand it to the plugin
+            // BEFORE load(), exactly like CloudStream — otherwise these plugins
+            // throw on load and never install (e.g. AnimePahe).
+            if (instance is Plugin && manifest.optBoolean("requiresResources")) {
+                instance.resources = buildPluginResources(file)
+            }
             if (instance is Plugin) instance.load(context) else instance.load()
             loaded.add(file.absolutePath)
             true
@@ -67,6 +82,22 @@ class PluginHost(private val context: Context) {
             Log.w(TAG, "loadPlugin failed for ${file.name}: ${t.message}")
             false
         }
+    }
+
+    /** Build a [Resources] backed by the plugin's `.cs3` (an APK carrying
+     * resources.arsc + res/). Mirrors CloudStream's PluginManager so plugins
+     * that declare `requiresResources` can inflate their own settings UI. */
+    private fun buildPluginResources(file: File): android.content.res.Resources {
+        val assets = android.content.res.AssetManager::class.java
+            .getDeclaredConstructor().newInstance()
+        android.content.res.AssetManager::class.java
+            .getMethod("addAssetPath", String::class.java)
+            .invoke(assets, file.absolutePath)
+        return android.content.res.Resources(
+            assets,
+            context.resources.displayMetrics,
+            context.resources.configuration,
+        )
     }
 
     fun loadAll(files: List<File>): Int = files.count { loadPlugin(it) }
