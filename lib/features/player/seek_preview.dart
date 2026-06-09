@@ -111,6 +111,13 @@ class SeekPreview {
         await plat.setProperty('hwdec', 'no');
         await plat.setProperty('force-seekable', 'yes');
         await plat.setProperty('hls-bitrate', 'min');
+        // Match the main player's HLS workarounds (disguised .js/.css segments
+        // + anti-leech CDNs that break FFmpeg's keepalive) so seek previews work
+        // on those sites too.
+        await plat.setProperty(
+          'demuxer-lavf-o',
+          'extension_picky=0,allowed_extensions=ALL,http_persistent=0',
+        );
       } catch (_) {}
     }
     await p.open(Media(uri, httpHeaders: headers), play: false);

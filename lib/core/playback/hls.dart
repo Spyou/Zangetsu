@@ -2,9 +2,14 @@ import 'package:dio/dio.dart';
 
 /// One selectable quality from an HLS master playlist.
 class HlsVariant {
-  HlsVariant({required this.quality, required this.url});
+  HlsVariant({required this.quality, required this.url, this.bandwidth = 0});
   final String quality; // e.g. '1080p'
   final String url;
+
+  /// The variant's `BANDWIDTH` (bits/s), 0 when the master omits it. Used to
+  /// pin the quality via mpv's `hls-bitrate` while keeping the master open
+  /// (so separately-muxed audio renditions aren't lost).
+  final int bandwidth;
 }
 
 /// Resolves [ref] (which may be relative) against the directory of [base].
@@ -32,6 +37,8 @@ List<HlsVariant> parseHlsMaster(String playlist, String masterUrl) {
     }
     if (uri == null) continue;
     final res = RegExp(r'RESOLUTION=(\d+)x(\d+)').firstMatch(line);
+    final bwMatch = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
+    final bandwidth = bwMatch != null ? int.parse(bwMatch.group(1)!) : 0;
     final String quality;
     final int rank;
     if (res != null) {
@@ -39,8 +46,7 @@ List<HlsVariant> parseHlsMaster(String playlist, String masterUrl) {
       quality = '${h}p';
       rank = h;
     } else {
-      final bw = RegExp(r'BANDWIDTH=(\d+)').firstMatch(line);
-      final kbps = bw != null ? (int.parse(bw.group(1)!) ~/ 1000) : 0;
+      final kbps = bandwidth ~/ 1000;
       quality = kbps > 0 ? '${kbps}k' : 'auto';
       rank = kbps;
     }
@@ -49,6 +55,7 @@ List<HlsVariant> parseHlsMaster(String playlist, String masterUrl) {
         quality: quality,
         url: _resolve(uri, masterUrl),
         rank: rank,
+        bandwidth: bandwidth,
       ),
     );
   }
@@ -61,6 +68,7 @@ class _RankedVariant extends HlsVariant {
     required super.quality,
     required super.url,
     required this.rank,
+    required super.bandwidth,
   });
   final int rank;
 }

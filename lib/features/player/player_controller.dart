@@ -174,6 +174,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
 
+  /// One-shot mpv tuning, started on first access and awaited before every
+  /// [_open]. Must complete BEFORE `player.open` or its demuxer options (e.g.
+  /// the HLS fake-extension relaxation) don't apply to the file being opened.
+  late final Future<void> _mpvConfigured = _configureMpv();
+
   VideoSource?
   _hlsMaster; // the HLS master among `sources` that the quality menu expands
 
@@ -290,12 +295,26 @@ class PlayerCubit extends Cubit<PlayerState> {
           'reconnect=1,reconnect_streamed=1,'
               'reconnect_on_network_error=1,reconnect_delay_max=5',
         );
+        // HLS workarounds for anti-leech CDNs (AnimeSalt/AnimixStream, …):
+        //  • extension_picky=0 + allowed_extensions=ALL — segments are disguised
+        //    with non-media extensions (.js/.css/.woff); FFmpeg 7 otherwise
+        //    rejects them by URL extension (segment bytes are still validated).
+        //  • http_persistent=0 — these CDNs break FFmpeg's HLS keepalive
+        //    ("keepalive request failed … Invalid argument"), which corrupts the
+        //    sub-playlist/segment fetches ("parse_playlist error Invalid data").
+        //    Forcing a fresh connection per request fixes playback.
+        await p.setProperty(
+          'demuxer-lavf-o',
+          'extension_picky=0,allowed_extensions=ALL,http_persistent=0',
+        );
       } catch (_) {}
     }
   }
 
   void init(int index) {
-    _configureMpv();
+    // Start mpv tuning now; [_open] awaits it before opening so the options
+    // (HLS fake-extension relaxation, reconnect, …) are in effect for the file.
+    unawaited(_mpvConfigured);
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -677,16 +696,26 @@ class PlayerCubit extends Cubit<PlayerState> {
     });
   }
 
-  /// Switch the HLS resolution. [v] == null → Auto (the adaptive master);
-  /// otherwise the chosen variant. Plays via the HLS master's headers/kind and
-  /// resumes at the live position. No-op if there's no HLS master.
+  /// Switch the HLS resolution. [v] == null → Auto (highest); otherwise the
+  /// chosen variant. Keeps the MASTER playlist open and pins the rung via mpv's
+  /// `hls-bitrate` rather than opening the bare variant URL — some masters
+  /// (e.g. AnimeSalt) carry audio in separate renditions, so a bare video
+  /// variant would play silently. Resumes at the live position.
   Future<void> selectQuality(HlsVariant? v) async {
     final master = _hlsMaster;
     if (master == null) return;
-    final url = v?.url ?? master.url;
+    // Target the variant by bitrate; 'max' for Auto (or when BANDWIDTH is
+    // missing, since we can't pin precisely without it).
+    final target = (v == null || v.bandwidth <= 0) ? 'max' : '${v.bandwidth}';
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('hls-bitrate', target);
+      } catch (_) {}
+    }
     await _open(
       VideoSource(
-        url: url,
+        url: master.url, // always the master — preserves the audio renditions
         quality: v?.quality ?? 'auto',
         container: SourceContainer.hls,
         headers: master.headers,
@@ -754,6 +783,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     // an early default-quality switch would re-open at 0 and wipe the resume.
     // Fall back to the resume mark whenever the seek target is non-positive.
     final start = (seekTo != null && seekTo > Duration.zero) ? seekTo : resumeAt;
+    // Ensure mpv tuning (incl. the HLS fake-extension relaxation) is applied
+    // before opening — otherwise the first file opens without it (black screen
+    // on AnimeSalt/AnimixStream-style streams).
+    await _mpvConfigured;
     await player.open(
       Media(
         s.url,
