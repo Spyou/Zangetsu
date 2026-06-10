@@ -332,13 +332,12 @@ class PlayerCubit extends Cubit<PlayerState> {
         await p.setProperty('demuxer-readahead-secs', '60');
         await p.setProperty('demuxer-max-bytes', '128MiB');
         await p.setProperty('demuxer-max-back-bytes', '48MiB');
-        // ── In-app volume + boost (CloudStream-style, independent of the
-        // Android system volume). Allow boosting up to 200%, then apply the
-        // saved level and the optional dynamic normalization filter. ────────
-        final prefs = sl<PlaybackPrefs>();
+        // ── In-app volume + boost (CloudStream-style). The gain is a SOFTWARE
+        // audio filter (af=volume=N), so a >100% boost is genuinely louder than
+        // the source even when the phone's system volume is low. ────────────
         await p.setProperty('volume-max', '200');
-        await p.setProperty('volume', prefs.volumeBoost.toString());
-        await p.setProperty('af', prefs.audioNormalize ? 'dynaudnorm' : '');
+        await p.setProperty('volume', '100'); // neutral base — gain is via af
+        await p.setProperty('af', _audioFilterChain());
       } catch (_) {}
       // Make the bundled subtitle fonts available to mpv/libass (which can't
       // read Flutter's asset bundle). Fire-and-forget so it never delays the
@@ -1200,27 +1199,37 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Set the in-app volume (0–200%) via mpv's own 'volume' property — this is
   /// independent of the Android system volume — and persist it as the default.
   Future<void> setVolumeBoost(int percent) async {
-    final v = percent.clamp(0, 200);
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('volume', v.toString());
-      } catch (_) {}
+    await sl<PlaybackPrefs>().setVolumeBoost(percent.clamp(0, 200));
+    await _applyAudioFilters();
+  }
+
+  /// The mpv audio-filter chain from prefs. `volume=N` is a SOFTWARE gain on the
+  /// decoded audio (applied inside libmpv, before the output) — so a >100% boost
+  /// is genuinely louder than the source, independent of the Android system
+  /// volume. dynaudnorm runs first so the user's boost isn't normalized away.
+  String _audioFilterChain() {
+    final prefs = sl<PlaybackPrefs>();
+    final parts = <String>[];
+    if (prefs.audioNormalize) parts.add('dynaudnorm');
+    if (prefs.volumeBoost != 100) {
+      parts.add('volume=${(prefs.volumeBoost / 100).toStringAsFixed(2)}');
     }
-    await sl<PlaybackPrefs>().setVolumeBoost(v);
+    return parts.join(',');
+  }
+
+  Future<void> _applyAudioFilters() async {
+    final p = player.platform;
+    if (p is! NativePlayer) return;
+    try {
+      await p.setProperty('af', _audioFilterChain());
+    } catch (_) {}
   }
 
   /// Toggle dynamic audio normalization (mpv 'dynaudnorm' filter) and persist.
   Future<void> toggleAudioNormalize() async {
     final prefs = sl<PlaybackPrefs>();
-    final enabled = !prefs.audioNormalize;
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('af', enabled ? 'dynaudnorm' : '');
-      } catch (_) {}
-    }
-    await prefs.setAudioNormalize(enabled);
+    await prefs.setAudioNormalize(!prefs.audioNormalize);
+    await _applyAudioFilters();
   }
 
   Future<void> _persist() async {
