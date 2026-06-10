@@ -342,6 +342,15 @@ class DownloadManager extends ChangeNotifier {
       directory: '$_sharedDir/${_safe(rec.showTitle)}',
       baseDirectory: BaseDirectory.applicationDocuments,
       updates: Updates.statusAndProgress,
+      // Flaky file hosts (4khdhub's HubCloud/gamerxyt CDN) drop the connection
+      // mid-transfer. The streaming path survives this via mpv's auto-reconnect;
+      // the download path had retries:0, so a single drop failed the task and
+      // we cycled to the next mirror from 0 (the "restart at 3%" loop). With
+      // retries + allowPause, background_downloader RESUMES from the partial
+      // (the host supports range — mpv can seek it) on each drop instead of
+      // restarting. waitingToRetry / negative retry-progress are already handled
+      // in _onUpdate, so this only adds resilience.
+      retries: 5,
       allowPause: true,
       displayName: '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}',
     );
