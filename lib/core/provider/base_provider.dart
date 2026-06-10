@@ -50,5 +50,12 @@ abstract class BaseProvider {
 
   /// The video leaf — returns one or more playable [VideoSource]s for an
   /// episode (the UI filters by kind/quality/lang).
-  Future<List<VideoSource>> getVideoSources(String episodeUrl);
+  ///
+  /// [fast] (playback only) asks the provider to return as soon as the first
+  /// playable link(s) are ready instead of waiting for every mirror — trims the
+  /// "tap → playing" delay. Downloads leave it false to get all servers.
+  Future<List<VideoSource>> getVideoSources(
+    String episodeUrl, {
+    bool fast = false,
+  });
 }

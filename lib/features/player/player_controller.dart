@@ -303,10 +303,16 @@ class PlayerCubit extends Cubit<PlayerState> {
         //    ("keepalive request failed … Invalid argument"), which corrupts the
         //    sub-playlist/segment fetches ("parse_playlist error Invalid data").
         //    Forcing a fresh connection per request fixes playback.
+        //  • analyzeduration=2000000 (2s) — cap FFmpeg's pre-play stream probe
+        //    so the first frame appears sooner. 2s is ample to detect audio+
+        //    video on normal streams; raise it if a source ever loses a track.
         await p.setProperty(
           'demuxer-lavf-o',
-          'extension_picky=0,allowed_extensions=ALL,http_persistent=0',
+          'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
+              'analyzeduration=2000000',
         );
+        // Read-ahead cache for smoother start/seek (no effect on correctness).
+        await p.setProperty('cache', 'yes');
       } catch (_) {}
     }
   }

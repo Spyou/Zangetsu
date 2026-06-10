@@ -419,7 +419,10 @@ class JsProvider implements BaseProvider {
   }
 
   @override
-  Future<List<VideoSource>> getVideoSources(String episodeUrl) async {
+  Future<List<VideoSource>> getVideoSources(
+    String episodeUrl, {
+    bool fast = false, // JS providers resolve in one call; no incremental mode.
+  }) async {
     // Video source resolution makes several network hops (decrypt + multiple
     // embed/clock resolves), so it needs a longer ceiling than the 15s default.
     final raw = await _call('getVideoSources', [

@@ -290,9 +290,10 @@ class MainActivity : FlutterActivity() {
                     "loadLinks" -> {
                         val name = call.argument<String>("name")
                         val data = call.argument<String>("data")
+                        val fast = call.argument<Boolean>("fast") ?: false
                         csReadPool.execute {
                             try {
-                                val res = host.loadLinks(name ?: "", data ?: "")
+                                val res = host.loadLinks(name ?: "", data ?: "", fast)
                                 runOnUiThread { result.success(res) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }

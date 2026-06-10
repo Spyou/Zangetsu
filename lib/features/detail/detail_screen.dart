@@ -104,6 +104,10 @@ class _DetailViewState extends State<_DetailView>
   static const double _expandedHeight = 320;
   bool _showAppBarTitle = false;
 
+  // The episode url we've already kicked a background source-prefetch for, so we
+  // don't re-fire it on every rebuild (see _maybePrefetch).
+  String? _prefetchedEpUrl;
+
   // Outer scroll position (the hero/header viewport). We listen to THIS instead
   // of a NotificationListener: the listener also fires for the inner TabBarView
   // lists (whose pixels start at 0), which flipped the title back OFF as soon as
@@ -156,6 +160,19 @@ class _DetailViewState extends State<_DetailView>
     _scrollController.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  /// Background-resolve [epUrl]'s sources once for this title, AFTER the current
+  /// frame (so it never competes with rendering/scrolling), so the next Play
+  /// reuses the work. Fire-and-forget; cancelled implicitly by leaving (the
+  /// result just lands in the repo's prefetch cache, unused).
+  void _maybePrefetch(String epUrl, String sourceId) {
+    if (_prefetchedEpUrl == epUrl) return;
+    _prefetchedEpUrl = epUrl;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      sl<SourceRepository>().prefetch(epUrl, sourceId: sourceId);
+    });
   }
 
   // ── Scroll-driven app-bar title fade. PRESERVED EFFECT — reads the outer
@@ -317,8 +334,11 @@ class _DetailViewState extends State<_DetailView>
           episodes: episodes,
           startIndex: index,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) =>
-              sl<SourceRepository>().sources(u, sourceId: widget.item.sourceId),
+          resolveSources: (u) => sl<SourceRepository>().sources(
+            u,
+            sourceId: widget.item.sourceId,
+            fast: true,
+          ),
           history: sl<WatchHistory>(),
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
@@ -564,6 +584,10 @@ class _DetailViewState extends State<_DetailView>
 
     // Resume / play button logic. PRESERVED.
     final resumeIdx = _resumeIndex(eps);
+    // Warm the stream for the episode Play will start, in the background, so
+    // tapping Play is near-instant. Deferred to after this frame so it can't
+    // affect the detail screen's rendering/scroll.
+    if (eps.isNotEmpty) _maybePrefetch(eps[resumeIdx].url, item.sourceId);
     final hasAnyMark =
         eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
     final episodeNum = eps.isNotEmpty

@@ -134,7 +134,8 @@ class _SearchViewState extends State<_SearchView> {
           episodesResolver: () =>
               _repo.episodes(item.url, sourceId: item.sourceId),
           resume: sl<ResumeStore>(),
-          resolveSources: (u) => _repo.sources(u, sourceId: item.sourceId),
+          resolveSources: (u) =>
+              _repo.sources(u, sourceId: item.sourceId, fast: true),
           history: sl<WatchHistory>(),
           showTitle: item.title,
           cover: item.cover,

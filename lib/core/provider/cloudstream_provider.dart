@@ -264,11 +264,14 @@ class CloudStreamProvider implements BaseProvider {
   }
 
   @override
-  Future<List<VideoSource>> getVideoSources(String episodeUrl) async {
+  Future<List<VideoSource>> getVideoSources(
+    String episodeUrl, {
+    bool fast = false,
+  }) async {
     if (!Platform.isAndroid) return const [];
     final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
       'loadLinks',
-      {'name': name, 'data': episodeUrl},
+      {'name': name, 'data': episodeUrl, 'fast': fast},
     );
     final m = _asMap(raw);
 

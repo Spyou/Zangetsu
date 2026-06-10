@@ -20,6 +20,8 @@ import dalvik.system.PathClassLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
@@ -269,18 +271,35 @@ class PluginHost(private val context: Context) {
         return lr.toDetailMap(apiName, category)
     }
 
-    fun loadLinks(apiName: String, data: String): Map<String, Any?> {
+    fun loadLinks(apiName: String, data: String, fast: Boolean = false): Map<String, Any?> {
         val empty = mapOf("sources" to emptyList<Any?>(), "subtitles" to emptyList<Any?>())
         val api = apiByName(apiName) ?: return empty
-        val links = mutableListOf<ExtractorLink>()
-        val subs = mutableListOf<SubtitleFile>()
+        // Synchronized: the provider emits links from a background coroutine while
+        // the (fast) path reads them to return early.
+        val links = Collections.synchronizedList(mutableListOf<ExtractorLink>())
+        val subs = Collections.synchronizedList(mutableListOf<SubtitleFile>())
         runBlocking {
-            runCatching {
-                api.loadLinks(data, false, { sf -> subs.add(sf) }, { el -> links.add(el) })
+            val job = launch(Dispatchers.IO) {
+                runCatching {
+                    api.loadLinks(data, false, { sf -> subs.add(sf) }, { el -> links.add(el) })
+                }
+            }
+            if (fast) {
+                // Playback: return as soon as the first link(s) land (+ a short
+                // grace to gather a couple of alternatives) instead of waiting for
+                // EVERY mirror — that's the bulk of the "tap → playing" delay. The
+                // download path keeps fast=false and still waits for all servers.
+                withTimeoutOrNull(LOADLINKS_FAST_CAP_MS) {
+                    while (links.isEmpty() && job.isActive) delay(50)
+                    if (links.isNotEmpty()) delay(LOADLINKS_FAST_GRACE_MS)
+                }
+                job.cancel() // stop resolving the remaining (unneeded) mirrors
+            } else {
+                job.join() // wait for ALL servers (unchanged behavior)
             }
         }
         return mapOf(
-            "sources" to links.map { el ->
+            "sources" to links.toList().map { el ->
                 mapOf(
                     "url" to el.url,
                     "name" to el.name,
@@ -290,7 +309,7 @@ class PluginHost(private val context: Context) {
                     "isM3u8" to el.isM3u8,
                 )
             },
-            "subtitles" to subs.map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },
+            "subtitles" to subs.toList().map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },
         )
     }
 
@@ -389,5 +408,10 @@ class PluginHost(private val context: Context) {
 
         /** Per-source deadline for [search] so a dead source can't hold a worker. */
         private const val SEARCH_TIMEOUT_MS = 10000L
+
+        /** Fast (playback) loadLinks: grace window after the first link to gather a
+         * few alternatives before returning, and a hard cap if no link arrives. */
+        private const val LOADLINKS_FAST_GRACE_MS = 700L
+        private const val LOADLINKS_FAST_CAP_MS = 15000L
     }
 }

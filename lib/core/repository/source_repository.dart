@@ -24,6 +24,17 @@ class SourceRepository {
   final CloudStreamManager _csManager;
   final ActiveSourceCubit _active;
 
+  /// Prefetch cache: `sourceId|episodeUrl` → an in-flight/complete fast
+  /// resolution started on the detail screen, so "tap Play" reuses work already
+  /// done. Consumed once per key by the next fast [sources] call; never used by
+  /// downloads (fast=false).
+  final Map<String, ({DateTime at, Future<List<VideoSource>> future})>
+  _prefetch = {};
+  static const Duration _prefetchTtl = Duration(minutes: 2);
+
+  String _prefetchKey(String url, String? sourceId) =>
+      '${sourceId ?? _active.state}|$url';
+
   /// True for CloudStream source ids (`cs:<name>`), which route to the native
   /// plugin host instead of the JS runtime.
   static bool _isCloudStream(String id) => id.startsWith('cs:');
@@ -127,6 +138,40 @@ class SourceRepository {
     String? sourceId,
   }) => _providerFor(sourceId).getEpisodes(url, category: category);
 
-  Future<List<VideoSource>> sources(String episodeUrl, {String? sourceId}) =>
-      _providerFor(sourceId).getVideoSources(episodeUrl);
+  /// Resolve playable sources. [fast] (playback) returns as soon as the first
+  /// link(s) are ready; downloads leave it false to get every mirror. A fast
+  /// call reuses a fresh [prefetch] for the same episode when one exists.
+  Future<List<VideoSource>> sources(
+    String episodeUrl, {
+    String? sourceId,
+    bool fast = false,
+  }) async {
+    if (fast) {
+      final entry = _prefetch.remove(_prefetchKey(episodeUrl, sourceId));
+      if (entry != null &&
+          DateTime.now().difference(entry.at) < _prefetchTtl) {
+        final cached = await entry.future;
+        // Fall through to a fresh resolve only if the prefetch came back empty
+        // (or had failed → []), so this is never worse than no prefetch.
+        if (cached.isNotEmpty) return cached;
+      }
+    }
+    return _providerFor(sourceId).getVideoSources(episodeUrl, fast: fast);
+  }
+
+  /// Fire-and-forget background resolution for [episodeUrl] (the episode the
+  /// detail screen's Play will start) so the actual play is near-instant. Safe
+  /// to call repeatedly — deduped within [_prefetchTtl], errors swallowed.
+  void prefetch(String episodeUrl, {String? sourceId}) {
+    final key = _prefetchKey(episodeUrl, sourceId);
+    final existing = _prefetch[key];
+    if (existing != null &&
+        DateTime.now().difference(existing.at) < _prefetchTtl) {
+      return;
+    }
+    final future = _providerFor(sourceId)
+        .getVideoSources(episodeUrl, fast: true)
+        .catchError((_) => <VideoSource>[]);
+    _prefetch[key] = (at: DateTime.now(), future: future);
+  }
 }
