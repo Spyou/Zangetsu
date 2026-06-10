@@ -227,18 +227,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Arm auto-PiP-on-leave natively (works on Android 8.0+, unlike the
       // plugin's OnLeavePiP which needs 12+) — gated by the Playback setting.
       // The manual PiP button is unaffected by this toggle.
-      await _pipChannel.invokeMethod(
-        'setAutoPip',
-        sl<PlaybackPrefs>().autoPip,
-      );
-    } catch (_) {/* PiP just stays off */}
+      await _pipChannel.invokeMethod('setAutoPip', sl<PlaybackPrefs>().autoPip);
+    } catch (_) {
+      /* PiP just stays off */
+    }
   }
 
   /// Enter PiP immediately (the player's PiP button).
   Future<void> _enterPip() async {
     if (!_pipSupported) return;
     try {
-      await _floating.enable(const ImmediatePiP(aspectRatio: Rational.landscape()));
+      await _floating.enable(
+        const ImmediatePiP(aspectRatio: Rational.landscape()),
+      );
     } catch (_) {}
   }
 
@@ -279,10 +280,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final subs = src.subtitles
           .map((s) => {'url': s.url, 'name': s.label ?? s.lang})
           .toList();
-      final title = [widget.showTitle, ep.title]
-          .whereType<String>()
-          .where((s) => s.isNotEmpty)
-          .join(' • ');
+      final title = [
+        widget.showTitle,
+        ep.title,
+      ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
       // Completes when the external player closes. `played` is false when it
       // opened but couldn't play the stream (or wasn't installed) — in which
       // case the built-in player automatically takes over.
@@ -2622,63 +2623,68 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
         final subId = track.subtitle.id;
         return Padding(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(2),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.symmetric(vertical: 10),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface2,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-              ConstrainedBox(
-                constraints: BoxConstraints(maxHeight: h * 0.5),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: _audioColumn(c, audioId)),
-                    Container(
-                      width: 0.5,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      color: AppColors.hairline,
-                    ),
-                    Expanded(child: _subColumn(c, subId)),
-                  ],
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: h * 0.5),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _audioColumn(c, audioId)),
+                      Container(
+                        width: 0.5,
+                        margin: const EdgeInsets.symmetric(vertical: 8),
+                        color: AppColors.hairline,
+                      ),
+                      Expanded(child: _subColumn(c, subId)),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(color: AppColors.hairline, height: 18),
-              _DelayAdjuster(
-                label: 'Subtitle delay',
-                initial: c.subtitleDelay,
-                onChanged: (d) => c.setSubtitleDelay(d),
-              ),
-              _DelayAdjuster(
-                label: 'Audio delay',
-                initial: c.audioDelay,
-                onChanged: (d) => c.setAudioDelay(d),
-              ),
-              _SheetRow(
-                label: 'Audio normalization',
-                active: sl<PlaybackPrefs>().audioNormalize,
-                onTap: () async {
-                  await c.toggleAudioNormalize();
-                  if (mounted) setState(() {});
-                  widget.onInteract();
-                },
-              ),
-              _SheetRow(
-                label: 'Subtitle style',
-                icon: Icons.text_fields_rounded,
-                active: false,
-                onTap: () {
-                  widget.onInteract();
-                  _openSubtitleStyleSheet(context, c, widget.onInteract);
-                },
-              ),
-            ],
+                const Divider(color: AppColors.hairline, height: 18),
+                _DelayAdjuster(
+                  label: 'Subtitle delay',
+                  initial: c.subtitleDelay,
+                  onChanged: (d) => c.setSubtitleDelay(d),
+                ),
+                _DelayAdjuster(
+                  label: 'Audio delay',
+                  initial: c.audioDelay,
+                  onChanged: (d) => c.setAudioDelay(d),
+                ),
+                _SheetRow(
+                  label: 'Audio normalization',
+                  subtitle:
+                      'Evens out the volume — boosts quiet dialogue, '
+                      'tames loud scenes',
+                  active: sl<PlaybackPrefs>().audioNormalize,
+                  onTap: () async {
+                    await c.toggleAudioNormalize();
+                    if (mounted) setState(() {});
+                    widget.onInteract();
+                  },
+                ),
+                _SheetRow(
+                  label: 'Subtitle style',
+                  icon: Icons.text_fields_rounded,
+                  active: false,
+                  onTap: () {
+                    widget.onInteract();
+                    _openSubtitleStyleSheet(context, c, widget.onInteract);
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
@@ -3030,7 +3036,10 @@ void _openSubtitleStyleSheet(
 /// background-opacity slider, a vertical-position slider, and size. Each change
 /// persists to [PlaybackPrefs] and re-applies via [PlayerCubit.applySubtitleStyle].
 class _SubtitleStyleSheet extends StatefulWidget {
-  const _SubtitleStyleSheet({required this.controller, required this.onInteract});
+  const _SubtitleStyleSheet({
+    required this.controller,
+    required this.onInteract,
+  });
   final PlayerCubit controller;
   final VoidCallback onInteract;
 
@@ -3321,6 +3330,7 @@ class _SheetRow extends StatelessWidget {
     required this.active,
     required this.onTap,
     this.icon,
+    this.subtitle,
   });
 
   final String label;
@@ -3329,6 +3339,10 @@ class _SheetRow extends StatelessWidget {
 
   /// Optional trailing icon (e.g. upload for "Load from file…").
   final IconData? icon;
+
+  /// Optional secondary line under the label — explains what a setting does
+  /// (e.g. for jargon like "Audio normalization") so it's self-describing.
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -3347,14 +3361,35 @@ class _SheetRow extends StatelessWidget {
             child: Row(
               children: [
                 Expanded(
-                  child: Text(
-                    label,
-                    style: AppText.body.copyWith(
-                      color: active ? AppColors.accent : AppColors.textPrimary,
-                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        label,
+                        style: AppText.body.copyWith(
+                          color: active
+                              ? AppColors.accent
+                              : AppColors.textPrimary,
+                          fontWeight: active
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
                 const SizedBox(width: 10),
