@@ -1093,17 +1093,28 @@ class PlayerCubit extends Cubit<PlayerState> {
     final back = bgOpacity > 0
         ? '#${_alphaHex(bgOpacity)}000000'
         : (prefs.subtitleBackground ? '#A0000000' : '#00000000');
-    try {
-      await p.setProperty('sub-scale', prefs.subtitleScale.toString());
-      if (prefs.subtitleFont.isNotEmpty) {
-        await p.setProperty('sub-font', prefs.subtitleFont);
-      }
-      await p.setProperty('sub-color', color);
-      await p.setProperty('sub-back-color', back);
-      // A thin border keeps text legible without a box; mpv default is ~3.
-      await p.setProperty('sub-border-size', '3');
-      await p.setProperty('sub-pos', prefs.subtitlePosition.toString());
-    } catch (_) {}
+    // Each property is set independently so a single rejected value can't abort
+    // the rest (the old single try/catch did).
+    Future<void> set(String k, String v) async {
+      try {
+        await p.setProperty(k, v);
+      } catch (_) {}
+    }
+
+    // CRITICAL: ASS/SSA subtitles (common for anime/scraped sources) carry their
+    // OWN embedded styling, so mpv ignores sub-color/sub-font/sub-scale/sub-pos
+    // by default → "changing the style does nothing". 'force' makes our settings
+    // win for both ASS and plain (srt/vtt) subtitles.
+    await set('sub-ass-override', 'force');
+    await set('sub-scale', prefs.subtitleScale.toString());
+    if (prefs.subtitleFont.isNotEmpty) {
+      await set('sub-font', prefs.subtitleFont);
+    }
+    await set('sub-color', color);
+    await set('sub-back-color', back);
+    // A thin border keeps text legible without a box; mpv default is ~3.
+    await set('sub-border-size', '3');
+    await set('sub-pos', prefs.subtitlePosition.toString());
   }
 
   /// Convert a `#RRGGBBAA` (or `#RRGGBB`) hex string into mpv's alpha-first
