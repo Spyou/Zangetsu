@@ -96,6 +96,48 @@ class TitlePrefsStore {
     await _box.put(k, m);
   }
 
+  /// Remembered quality choice for this title (e.g. '1080p', '4K', 'highest',
+  /// 'auto'). Applied on reopen, taking precedence over the global default.
+  String? quality(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    final v = m == null ? null : Map<String, dynamic>.from(m)['quality'];
+    return (v is String && v.isNotEmpty) ? v : null;
+  }
+
+  Future<void> setQuality(
+    String sourceId,
+    String showUrl,
+    String pref,
+  ) async {
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    m['quality'] = pref;
+    await _box.put(k, m);
+  }
+
+  /// Remembered playback-speed multiplier for this title (e.g. 1.25, 1.5).
+  /// Applied on reopen, taking precedence over the global default.
+  double? speed(String sourceId, String showUrl) {
+    final m = _box.get(_key(sourceId, showUrl));
+    final v = m == null ? null : Map<String, dynamic>.from(m)['speed'];
+    return v is num ? v.toDouble() : null;
+  }
+
+  Future<void> setSpeed(
+    String sourceId,
+    String showUrl,
+    double rate,
+  ) async {
+    final k = _key(sourceId, showUrl);
+    final m = _box.get(k) == null
+        ? <String, dynamic>{}
+        : Map<String, dynamic>.from(_box.get(k)!);
+    m['speed'] = rate;
+    await _box.put(k, m);
+  }
+
   /// Whether this title is marked as a favorite. Keyed identically to the
   /// sub/dub choice so a title's UI prefs all travel together.
   bool isFavorite(String sourceId, String showUrl) {

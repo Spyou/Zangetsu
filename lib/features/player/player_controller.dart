@@ -18,6 +18,7 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/repository/source_repository.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
@@ -311,8 +312,24 @@ class PlayerCubit extends Cubit<PlayerState> {
           'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
               'analyzeduration=2000000',
         );
-        // Read-ahead cache for smoother start/seek (no effect on correctness).
+        // ── Anti-buffering: prefetch a LARGE read-ahead. ──────────────────
+        // mpv's default read-ahead is ~1s, so any CDN/network dip — made worse
+        // by http_persistent=0's per-segment reconnects — stalls playback
+        // instantly. Buffering ~30–60s ahead absorbs those dips. Playback still
+        // starts as soon as there's enough to begin, then keeps filling ahead,
+        // so this doesn't slow startup; ~128 MiB forward buffer is fine on phones.
         await p.setProperty('cache', 'yes');
+        await p.setProperty('cache-secs', '60');
+        await p.setProperty('demuxer-readahead-secs', '60');
+        await p.setProperty('demuxer-max-bytes', '128MiB');
+        await p.setProperty('demuxer-max-back-bytes', '48MiB');
+        // ── In-app volume + boost (CloudStream-style, independent of the
+        // Android system volume). Allow boosting up to 200%, then apply the
+        // saved level and the optional dynamic normalization filter. ────────
+        final prefs = sl<PlaybackPrefs>();
+        await p.setProperty('volume-max', '200');
+        await p.setProperty('volume', prefs.volumeBoost.toString());
+        await p.setProperty('af', prefs.audioNormalize ? 'dynaudnorm' : '');
       } catch (_) {}
     }
   }
@@ -350,6 +367,19 @@ class PlayerCubit extends Cubit<PlayerState> {
           _lastHistoryMs = now;
           _persist();
         }
+
+        // Seamless binge: once we pass ~85% of the episode, resolve the NEXT
+        // episode's stream in the background so advancing is instant. Fires at
+        // most once per current episode (re-armed when the index changes).
+        final idx = state.currentIndex;
+        if (_prefetchedNextForIndex != idx &&
+            idx + 1 < episodes.length &&
+            _lastDur > Duration.zero &&
+            p >= _lastDur * 0.85) {
+          _prefetchedNextForIndex = idx;
+          sl<SourceRepository>()
+              .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
+        }
       }),
     );
     _subs.add(
@@ -378,6 +408,19 @@ class PlayerCubit extends Cubit<PlayerState> {
   // ── Public playback helpers (used by the Netflix-style overlay) ───────────
 
   void setRate(double r) => player.setRate(r);
+
+  /// Apply a USER-chosen playback speed and persist it — per-title (this
+  /// movie/series) AND globally (so new titles start at the same preference).
+  /// Best-effort; mirrors [_rememberQuality].
+  void setRateRemembered(double r) {
+    player.setRate(r);
+    final url = showUrl;
+    if (url != null && url.isNotEmpty) {
+      sl<TitlePrefsStore>().setSpeed(sourceId, url, r);
+    }
+    sl<PlaybackPrefs>().setDefaultSpeed(r);
+  }
+
   void togglePlay() => player.playOrPause();
   void seekTo(Duration d) => player.seek(d);
 
@@ -541,8 +584,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     // No match yet — embedded tracks may still be loading; retry later.
   }
 
-  // TODO(player): defer online subtitle search/download, full subtitle
-  // styling, and subtitle delay/sync (CloudStream parity, post-v1).
+  // Online subtitle search/download is wired in the player UI via
+  // SubtitleSearchService (OpenSubtitles); results apply through
+  // setSubtitleFromFile. Full subtitle styling + delay/sync are handled above.
 
   /// Resolves sources for [index] and starts the best one.
   Future<void> openEpisode(int index) async {
@@ -552,6 +596,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _recovering = false;
     _skips = const []; // clear previous episode's skip markers
     _skipsForIndex = -1; // refetched when the new duration arrives
+    _prefetchedNextForIndex = -1; // re-arm next-episode prefetch for the new ep
     _subApplied = false; // restore the remembered subtitle for the new episode
     _audioApplied = false; // restore the remembered audio track too
     emit(
@@ -600,7 +645,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// quality. '1080p'/'720p'/'480p' select the matching HLS variant or source
   /// quality by label, falling back to the current default when absent.
   void _applyDefaultQuality() {
-    final pref = sl<PlaybackPrefs>().defaultQuality;
+    // Per-title remembered quality wins over the global default.
+    final url = showUrl;
+    final pref =
+        (url != null && url.isNotEmpty
+            ? sl<TitlePrefsStore>().quality(sourceId, url)
+            : null) ??
+        sl<PlaybackPrefs>().defaultQuality;
     if (pref == 'auto') return;
 
     final variants = state.qualities; // already sorted high→low
@@ -615,7 +666,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       return;
     }
 
-    // Specific resolution: match an HLS variant by label, else a source quality.
+    // Exact resolution match: an HLS variant by label, else a source quality.
     for (final v in variants) {
       if (v.quality == pref) {
         selectQuality(v);
@@ -624,8 +675,57 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     if (srcQualities.contains(pref)) {
       selectSourceQuality(pref);
+      return;
     }
-    // No match → leave the current adaptive default (no-op).
+
+    // Fallback: the preferred resolution isn't offered → pick the NEAREST
+    // available (e.g. 1080p wanted but only 4K/720p → closest, higher on a tie),
+    // instead of silently leaving it on the adaptive default.
+    final wanted = _resPx(pref);
+    if (wanted == null) return;
+    final nearVar = _nearestByRes(variants, (v) => v.quality, wanted);
+    if (nearVar != null) {
+      selectQuality(nearVar);
+      return;
+    }
+    final nearSrc = _nearestByRes(srcQualities, (q) => q, wanted);
+    if (nearSrc != null) selectSourceQuality(nearSrc);
+  }
+
+  /// Approximate vertical resolution (px) parsed from a quality label, for the
+  /// nearest-available fallback. Handles 4K/2K/FHD/HD shorthand + bare numbers.
+  static int? _resPx(String label) {
+    final l = label.toLowerCase();
+    if (l.contains('2160') || l.contains('4k') || l.contains('uhd')) return 2160;
+    if (l.contains('1440') || l.contains('2k')) return 1440;
+    if (l.contains('1080') || l.contains('fhd')) return 1080;
+    if (l.contains('720')) return 720;
+    if (l.contains('480')) return 480;
+    if (l.contains('360')) return 360;
+    if (l.contains('240')) return 240;
+    final m = RegExp(r'(\d{3,4})').firstMatch(l);
+    return m != null ? int.tryParse(m.group(1)!) : null;
+  }
+
+  /// The item whose label-resolution is closest to [wanted]. Inputs are sorted
+  /// high→low, so a strict `<` keeps the HIGHER option on a tie.
+  static T? _nearestByRes<T>(
+    List<T> items,
+    String? Function(T) labelOf,
+    int wanted,
+  ) {
+    T? best;
+    var bestDiff = 1 << 30;
+    for (final it in items) {
+      final px = _resPx(labelOf(it) ?? '');
+      if (px == null) continue;
+      final d = (px - wanted).abs();
+      if (d < bestDiff) {
+        bestDiff = d;
+        best = it;
+      }
+    }
+    return best;
   }
 
   /// Switch to a specific source (sub/dub or quality change), preserving position.
@@ -734,6 +834,30 @@ class PlayerCubit extends Cubit<PlayerState> {
     emit(state.copyWith(activeQuality: () => v));
   }
 
+  /// Persist a manual quality pick — per-title (this movie/series) AND globally
+  /// (so new titles start at the same preference). Best-effort.
+  void _rememberQuality(String label) {
+    final url = showUrl;
+    if (url != null && url.isNotEmpty) {
+      sl<TitlePrefsStore>().setQuality(sourceId, url, label);
+    }
+    sl<PlaybackPrefs>().setDefaultQuality(label);
+  }
+
+  /// User explicitly chose an HLS variant in the Quality sheet (null = Auto):
+  /// remember it, then apply. (Programmatic [selectQuality] does NOT persist, so
+  /// applying a 'highest'/fallback pick can't overwrite the user's stored label.)
+  Future<void> chooseQuality(HlsVariant? v) async {
+    _rememberQuality(v?.quality ?? 'auto');
+    await selectQuality(v);
+  }
+
+  /// User explicitly chose a per-source quality label: remember it, then apply.
+  Future<void> chooseSourceQuality(String q) async {
+    _rememberQuality(q);
+    await selectSourceQuality(q);
+  }
+
   // ── Source-based quality (when there's no multi-variant HLS master) ───────
   // AllAnime etc. return several distinct sources that each carry a resolution
   // label but no HLS master playlist, so [qualities] is empty. Surface those
@@ -809,7 +933,11 @@ class PlayerCubit extends Cubit<PlayerState> {
     // are never clobbered afterwards.
     if (!_defaultRateApplied) {
       _defaultRateApplied = true;
-      player.setRate(sl<PlaybackPrefs>().defaultSpeed);
+      final url = showUrl;
+      final perTitle = (url != null && url.isNotEmpty)
+          ? sl<TitlePrefsStore>().speed(sourceId, url)
+          : null;
+      player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
     if (s.subtitles.isNotEmpty) {
       final sub = s.subtitles.firstWhere(
@@ -858,6 +986,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
     if (next != null) {
       await _open(next, seekTo: _lastPos);
+      _applyDefaultQuality(); // honor the quality pref on the fallback source too
     } else {
       emit(
         state.copyWith(
@@ -897,6 +1026,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   // ── Accurate skip times (AniSkip, anime only) ─────────────────────────────
   List<SkipInterval> _skips = const [];
   int _skipsForIndex = -1;
+  // Next-episode prefetch fires once per current episode, near the end, so the
+  // following episode's stream is already resolved when binge-advancing. Tracks
+  // the index it fired for so it re-arms whenever the episode/index changes.
+  int _prefetchedNextForIndex = -1;
   List<SkipInterval> get currentSkips => _skips;
 
   Future<void> _fetchSkips(int index, Duration dur) async {
@@ -942,20 +1075,81 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (audioDelay != Duration.zero) await setAudioDelay(audioDelay);
   }
 
-  /// Apply the saved subtitle styling (size / colour / background) via mpv.
-  /// Called after each open and whenever the user changes a style preference.
+  /// Apply the saved subtitle styling (size / font / colour / background /
+  /// position) via mpv. Called after each open and whenever the user changes a
+  /// style preference.
   Future<void> applySubtitleStyle() async {
     final p = player.platform;
     if (p is! NativePlayer) return;
     final prefs = sl<PlaybackPrefs>();
-    final color = prefs.subtitleColor == 'yellow' ? '#FFFF00' : '#FFFFFF';
-    // mpv colour is #AARRGGBB (alpha first); FF = opaque, 00 = transparent.
-    final back = prefs.subtitleBackground ? '#A0000000' : '#00000000';
+    // Text colour: prefer the new hex pref (#RRGGBBAA → mpv #AARRGGBB), else
+    // fall back to the legacy white/yellow token.
+    final color =
+        _mpvColor(prefs.subtitleColorHex) ??
+        (prefs.subtitleColor == 'yellow' ? '#FFFFFF00' : '#FFFFFFFF');
+    // Box behind subtitles: prefer the new opacity slider (0–1 → alpha over
+    // black), else the legacy on/off toggle. mpv colour is #AARRGGBB.
+    final bgOpacity = prefs.subtitleBgOpacity;
+    final back = bgOpacity > 0
+        ? '#${_alphaHex(bgOpacity)}000000'
+        : (prefs.subtitleBackground ? '#A0000000' : '#00000000');
     try {
       await p.setProperty('sub-scale', prefs.subtitleScale.toString());
+      if (prefs.subtitleFont.isNotEmpty) {
+        await p.setProperty('sub-font', prefs.subtitleFont);
+      }
       await p.setProperty('sub-color', color);
       await p.setProperty('sub-back-color', back);
+      // A thin border keeps text legible without a box; mpv default is ~3.
+      await p.setProperty('sub-border-size', '3');
+      await p.setProperty('sub-pos', prefs.subtitlePosition.toString());
     } catch (_) {}
+  }
+
+  /// Convert a `#RRGGBBAA` (or `#RRGGBB`) hex string into mpv's alpha-first
+  /// `#AARRGGBB` form. Returns null on a malformed/empty value so the caller
+  /// can fall back to the legacy token.
+  static String? _mpvColor(String hex) {
+    final h = hex.replaceFirst('#', '').trim();
+    if (h.length == 6) return '#FF${h.toUpperCase()}';
+    if (h.length == 8) {
+      final rgb = h.substring(0, 6);
+      final a = h.substring(6, 8);
+      return '#${a.toUpperCase()}${rgb.toUpperCase()}';
+    }
+    return null;
+  }
+
+  /// Two-digit hex (00–FF) for an opacity in 0–1, for mpv's alpha-first colour.
+  static String _alphaHex(double opacity) {
+    final v = (opacity.clamp(0.0, 1.0) * 255).round();
+    return v.toRadixString(16).padLeft(2, '0').toUpperCase();
+  }
+
+  /// Set the in-app volume (0–200%) via mpv's own 'volume' property — this is
+  /// independent of the Android system volume — and persist it as the default.
+  Future<void> setVolumeBoost(int percent) async {
+    final v = percent.clamp(0, 200);
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('volume', v.toString());
+      } catch (_) {}
+    }
+    await sl<PlaybackPrefs>().setVolumeBoost(v);
+  }
+
+  /// Toggle dynamic audio normalization (mpv 'dynaudnorm' filter) and persist.
+  Future<void> toggleAudioNormalize() async {
+    final prefs = sl<PlaybackPrefs>();
+    final enabled = !prefs.audioNormalize;
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('af', enabled ? 'dynaudnorm' : '');
+      } catch (_) {}
+    }
+    await prefs.setAudioNormalize(enabled);
   }
 
   Future<void> _persist() async {

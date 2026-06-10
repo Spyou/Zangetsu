@@ -519,12 +519,12 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   Future<void> _pickSkip() async {
     final picked = await _pick<int>(
-      title: 'Skip interval',
+      title: 'Double-tap skip',
       options: _skipOptions,
-      current: _prefs.seekSeconds,
+      current: _prefs.doubleTapSeconds,
     );
     if (picked == null) return;
-    await _prefs.setSeekSeconds(picked);
+    await _prefs.setDoubleTapSeconds(picked);
     if (mounted) setState(() {});
   }
 
@@ -728,8 +728,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 title: 'Double-tap skip',
                 subtitle: _labelFor(
                   _skipOptions,
-                  _prefs.seekSeconds,
-                  '${_prefs.seekSeconds}s',
+                  _prefs.doubleTapSeconds,
+                  '${_prefs.doubleTapSeconds}s',
                 ),
                 onTap: _pickSkip,
               ),
@@ -790,11 +790,31 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              SettingsTile(
+                icon: Icons.vpn_key_outlined,
+                title: 'OpenSubtitles API key',
+                subtitle: _prefs.subtitleApiKey.trim().isEmpty
+                    ? 'Required for online subtitle search'
+                    : 'Key saved — online search enabled',
+                onTap: _editSubtitleApiKey,
+              ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// Prompts for the OpenSubtitles API key and saves it to [PlaybackPrefs].
+  /// A free key is created at opensubtitles.com → Consumers.
+  Future<void> _editSubtitleApiKey() async {
+    final key = await showDialog<String>(
+      context: context,
+      builder: (_) => _ApiKeyDialog(initial: _prefs.subtitleApiKey),
+    );
+    if (key == null) return; // dismissed
+    await _prefs.setSubtitleApiKey(key.trim());
+    if (mounted) setState(() {});
   }
 
   static const List<(double, String)> _subSizeOptions = [
@@ -1154,6 +1174,76 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
 /// own [TextEditingController] and disposes it on unmount (after the route's
 /// exit animation finishes) — avoids the "used after dispose" crash that a
 /// caller-owned controller disposed right after `await showDialog` would hit.
+/// Text-entry dialog for the OpenSubtitles API key. Returns the entered string
+/// on save (empty clears the key) or null when dismissed. Mirrors
+/// [_AddRepoDialog] for visual consistency.
+class _ApiKeyDialog extends StatefulWidget {
+  const _ApiKeyDialog({required this.initial});
+  final String initial;
+
+  @override
+  State<_ApiKeyDialog> createState() => _ApiKeyDialogState();
+}
+
+class _ApiKeyDialogState extends State<_ApiKeyDialog> {
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('OpenSubtitles API key', style: AppText.headline),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            cursorColor: AppColors.accent,
+            style: AppText.body.copyWith(color: AppColors.textPrimary),
+            decoration: const InputDecoration(
+              labelText: 'API key',
+              hintText: 'Paste your key',
+            ),
+            onSubmitted: (v) => Navigator.pop(context, v.trim()),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Create a free key at opensubtitles.com → Consumers.',
+            style: AppText.caption,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            'Cancel',
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+          ),
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
 class _AddRepoDialog extends StatefulWidget {
   const _AddRepoDialog();
 

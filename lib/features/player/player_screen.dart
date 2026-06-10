@@ -21,6 +21,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -33,7 +34,7 @@ import 'player_controller.dart';
 import 'seek_preview.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
-/// overlay (auto-hiding), double-tap ±10s seek, long-press 2x speed, a
+/// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
 /// stream-bound seek slider, and Speed / Audio / Quality / Source / Next
 /// controls. Forces landscape + immersive UI while open and restores portrait
 /// on dispose.
@@ -127,8 +128,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // a position event arrives.
   Duration _duration = Duration.zero;
 
-  // User's preferred double-tap seek step, read once at session start.
-  final int _seekSeconds = sl<PlaybackPrefs>().seekSeconds;
+  // User's preferred double-tap seek step (±5/10/15/30s), read once at session
+  // start. Backed by PlaybackPrefs.doubleTapSeconds.
+  final int _seekSeconds = sl<PlaybackPrefs>().doubleTapSeconds;
 
   // ── Brightness / volume swipe gestures ──────────────────────────────────
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
@@ -453,7 +455,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _dragValue = 0.5;
       }
     } else {
-      _dragValue = (_c.player.state.volume / 100).clamp(0.0, 1.0);
+      // In-app mpv volume runs 0–200% (CloudStream-style boost), so the drag
+      // value is normalised over that range: 1.0 = 200%.
+      _dragValue = (sl<PlaybackPrefs>().volumeBoost / 200).clamp(0.0, 1.0);
     }
   }
 
@@ -467,7 +471,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           .setApplicationScreenBrightness(_dragValue)
           .catchError((_) {});
     } else {
-      _c.player.setVolume(_dragValue * 100);
+      // Drive mpv's own volume 0–200% (independent of system volume) and persist.
+      _c.setVolumeBoost((_dragValue * 200).round());
     }
     setState(() {
       _hudVisible = true;
@@ -797,7 +802,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               active: (current - r).abs() < 0.01,
               onTap: () {
                 Navigator.pop(context);
-                _c.setRate(r);
+                _c.setRateRemembered(r);
                 _bumpControls();
               },
             ),
@@ -826,6 +831,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Navigator.pop(context);
               _loadSubtitleFromFile();
             },
+            onSearchOnline: () {
+              Navigator.pop(context);
+              _openOnlineSubtitleSheet();
+            },
           ),
         ),
       ),
@@ -852,6 +861,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _bumpControls();
   }
 
+  /// Online subtitle search (OpenSubtitles). Prefills with the show title and,
+  /// on tap, downloads the chosen subtitle then applies it to the player.
+  void _openOnlineSubtitleSheet() {
+    final initialQuery = (widget.showTitle?.trim().isNotEmpty ?? false)
+        ? widget.showTitle!.trim()
+        : (widget.scrobbleTitle?.trim() ?? '');
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => FrostedSurface(
+        blur: true,
+        opacity: 0.82,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        child: SafeArea(
+          top: false,
+          child: _OnlineSubtitleSheet(
+            initialQuery: initialQuery,
+            onApply: (path) async {
+              await _c.setSubtitleFromFile(path);
+              _bumpControls();
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   void _openQualitySheet() {
     // Prefer adaptive HLS-master variants when present (Auto + variants);
     // otherwise fall back to the distinct per-source qualities (e.g. AllAnime
@@ -864,7 +901,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           active: _c.state.activeQuality == null,
           onTap: () {
             Navigator.pop(context);
-            _c.selectQuality(null);
+            _c.chooseQuality(null);
             _bumpControls();
           },
         ),
@@ -874,7 +911,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             active: _c.state.activeQuality?.url == v.url,
             onTap: () {
               Navigator.pop(context);
-              _c.selectQuality(v);
+              _c.chooseQuality(v);
               _bumpControls();
             },
           ),
@@ -887,7 +924,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             active: _c.activeSourceQuality == q,
             onTap: () {
               Navigator.pop(context);
-              _c.selectSourceQuality(q);
+              _c.chooseSourceQuality(q);
               _bumpControls();
             },
           ),
@@ -1072,60 +1109,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-              // 4. Double-tap seek indicator — pinned to the tapped side, with
-              // the accumulated amount (−10s, −20s… / +10s, +20s…).
+              // 4. Double-tap seek indicator — a ripple + animated chevrons +
+              // the accumulated amount (−10s, −20s… / +10s, +20s…), pinned to
+              // the tapped side and re-pulsing on each rapid tap (YouTube-style).
               if (_seekSide != 0)
-                Align(
-                  alignment: _seekSide < 0
-                      ? const Alignment(-0.55, 0)
-                      : const Alignment(0.55, 0),
-                  child: DecoratedBox(
-                    decoration: const BoxDecoration(
-                      color: Color(0x73000000),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            _seekSide < 0
-                                ? Icons.fast_rewind_rounded
-                                : Icons.fast_forward_rounded,
-                            color: Colors.white,
-                            size: 30,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '${_seekSide < 0 ? '−' : '+'}$_seekAccum s',
-                            style: AppText.body.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
+                _SeekIndicator(
+                  side: _seekSide,
+                  // The accumulated value doubles as an animation trigger: each
+                  // new tap bumps it, restarting the ripple via the widget key.
+                  accumSeconds: _seekAccum,
                 ),
 
               // 4b. Brightness / volume HUD (Netflix-style) while swiping —
-              // pinned to the side being adjusted (left = brightness,
-              // right = volume).
-              if (_hudVisible)
-                Align(
-                  alignment: _hudIsBrightness
-                      ? Alignment.centerLeft
-                      : Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 36),
+              // a clean centered pill that fades out on release (auto-hide).
+              IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _hudVisible ? 1 : 0,
+                  duration: Duration(milliseconds: _hudVisible ? 120 : 260),
+                  curve: Curves.easeOut,
+                  child: Center(
                     child: _AdjustHud(
                       value: _hudValue,
                       isBrightness: _hudIsBrightness,
                     ),
                   ),
                 ),
+              ),
 
               // 5. 2x-hold chip (top-center).
               if (_holding)
@@ -1298,7 +1307,11 @@ class _AdjustHud extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = (value * 100).round();
+    // Volume runs 0–200% (in-app boost); brightness stays 0–100%.
+    final pct = ((isBrightness ? 1 : 2) * value * 100).round();
+    // Tint the boost zone (>100%) red as a warning, like CloudStream.
+    final boosted = !isBrightness && pct > 100;
+    final fillColor = boosted ? Colors.red : AppColors.accent;
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.62),
@@ -1325,7 +1338,7 @@ class _AdjustHud extends StatelessWidget {
                       alignment: Alignment.bottomCenter,
                       child: FractionallySizedBox(
                         heightFactor: value.clamp(0.0, 1.0),
-                        child: const ColoredBox(color: AppColors.accent),
+                        child: ColoredBox(color: fillColor),
                       ),
                     ),
                   ],
@@ -1336,13 +1349,159 @@ class _AdjustHud extends StatelessWidget {
             Text(
               '$pct%',
               style: AppText.caption.copyWith(
-                color: Colors.white,
+                color: boosted ? Colors.red : Colors.white,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Double-tap seek indicator — a soft side-anchored ripple with animated
+// chevrons and the running ±Ns amount, YouTube-style. Re-pulses whenever the
+// accumulated value changes (each rapid tap), and fades as the burst ends.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SeekIndicator extends StatefulWidget {
+  const _SeekIndicator({required this.side, required this.accumSeconds});
+
+  final int side; // -1 = rewind (left), +1 = forward (right)
+  final int accumSeconds; // total seconds this burst (drives the label + pulse)
+
+  @override
+  State<_SeekIndicator> createState() => _SeekIndicatorState();
+}
+
+class _SeekIndicatorState extends State<_SeekIndicator>
+    with TickerProviderStateMixin {
+  // One controller drives the ripple pulse; restarted on every tap.
+  late final AnimationController _pulse;
+  // A continuously looping controller animates the three chevrons in sequence.
+  late final AnimationController _chevrons;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+    )..forward();
+    _chevrons = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SeekIndicator old) {
+    super.didUpdateWidget(old);
+    // Each rapid tap bumps accumSeconds — restart the ripple to re-pulse.
+    if (old.accumSeconds != widget.accumSeconds) _pulse.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    _chevrons.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final back = widget.side < 0;
+    return Align(
+      alignment: back ? const Alignment(-0.6, 0) : const Alignment(0.6, 0),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Expanding, fading ripple behind the badge.
+          AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              final t = Curves.easeOut.transform(_pulse.value);
+              return Container(
+                width: 150 + 40 * t,
+                height: 150 + 40 * t,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.10 * (1 - t)),
+                ),
+              );
+            },
+          ),
+          // Static dark disc with the chevrons + amount.
+          DecoratedBox(
+            decoration: const BoxDecoration(
+              color: Color(0x73000000),
+              shape: BoxShape.circle,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AnimatedChevrons(back: back, controller: _chevrons),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${back ? '−' : '+'}${widget.accumSeconds}s',
+                    style: AppText.body.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Three chevrons that brighten in sequence (pointing back when rewinding,
+/// forward when seeking ahead), giving the badge a "moving" feel.
+class _AnimatedChevrons extends StatelessWidget {
+  const _AnimatedChevrons({required this.back, required this.controller});
+
+  final bool back;
+  final AnimationController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = back
+        ? Icons.keyboard_arrow_left_rounded
+        : Icons.keyboard_arrow_right_rounded;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        // Three staggered phases (0,1,2) cycle so chevrons light up in order;
+        // when rewinding the order is reversed so motion reads right-to-left.
+        final phase = (controller.value * 3).floor() % 3;
+        Widget chev(int index) {
+          final logical = back ? 2 - index : index;
+          final active = logical == phase;
+          return Icon(
+            icon,
+            size: 26,
+            color: Colors.white.withValues(alpha: active ? 1.0 : 0.4),
+          );
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Overlap the chevrons slightly for a tight ">>>" cluster.
+            chev(0),
+            Transform.translate(offset: const Offset(-12, 0), child: chev(1)),
+            Transform.translate(offset: const Offset(-24, 0), child: chev(2)),
+          ],
+        );
+      },
     );
   }
 }
@@ -2437,10 +2596,12 @@ class _AudioSubsSheet extends StatefulWidget {
     required this.controller,
     required this.onInteract,
     required this.onLoadFile,
+    required this.onSearchOnline,
   });
   final PlayerCubit controller;
   final VoidCallback onInteract;
   final VoidCallback onLoadFile;
+  final VoidCallback onSearchOnline;
 
   @override
   State<_AudioSubsSheet> createState() => _AudioSubsSheetState();
@@ -2498,6 +2659,24 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 label: 'Audio delay',
                 initial: c.audioDelay,
                 onChanged: (d) => c.setAudioDelay(d),
+              ),
+              _SheetRow(
+                label: 'Audio normalization',
+                active: sl<PlaybackPrefs>().audioNormalize,
+                onTap: () async {
+                  await c.toggleAudioNormalize();
+                  if (mounted) setState(() {});
+                  widget.onInteract();
+                },
+              ),
+              _SheetRow(
+                label: 'Subtitle style',
+                icon: Icons.text_fields_rounded,
+                active: false,
+                onTap: () {
+                  widget.onInteract();
+                  _openSubtitleStyleSheet(context, c, widget.onInteract);
+                },
               ),
             ],
           ),
@@ -2588,6 +2767,12 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
               _SheetRow(
+                label: 'Search subtitles online',
+                icon: Icons.search_rounded,
+                active: false,
+                onTap: widget.onSearchOnline,
+              ),
+              _SheetRow(
                 label: 'Load from file…',
                 icon: Icons.upload_file,
                 active: false,
@@ -2597,6 +2782,502 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Online subtitle search (OpenSubtitles). A query field (prefilled with the
+/// show title) + a results list; tapping a result downloads it and calls
+/// [onApply] with the local file path. Surfaces a loading state and readable
+/// errors (including the "add an API key" hint when no key is set).
+class _OnlineSubtitleSheet extends StatefulWidget {
+  const _OnlineSubtitleSheet({
+    required this.initialQuery,
+    required this.onApply,
+  });
+  final String initialQuery;
+  final Future<void> Function(String localPath) onApply;
+
+  @override
+  State<_OnlineSubtitleSheet> createState() => _OnlineSubtitleSheetState();
+}
+
+class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
+  final _service = SubtitleSearchService();
+  late final TextEditingController _query = TextEditingController(
+    text: widget.initialQuery,
+  );
+
+  bool _searching = false;
+  bool _downloading = false;
+  String? _error;
+  List<SubtitleSearchResult> _results = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _search());
+    }
+  }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final q = _query.text.trim();
+    if (q.isEmpty || _searching) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _searching = true;
+      _error = null;
+      _results = const [];
+    });
+    try {
+      final results = await _service.search(q);
+      if (!mounted) return;
+      setState(() {
+        _results = results;
+        _searching = false;
+        if (results.isEmpty) _error = 'No subtitles found for “$q”.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _searching = false;
+        _error = e is SubtitleSearchException ? e.message : 'Search failed: $e';
+      });
+    }
+  }
+
+  Future<void> _pick(SubtitleSearchResult r) async {
+    if (_downloading) return;
+    setState(() {
+      _downloading = true;
+      _error = null;
+    });
+    try {
+      final path = await _service.download(r);
+      if (!mounted) return;
+      await widget.onApply(path);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _downloading = false;
+        _error = e is SubtitleSearchException
+            ? e.message
+            : 'Download failed: $e';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(12, 0, 12, 10 + bottomInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+            child: Text('Search subtitles online', style: AppText.headline),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: TextField(
+              controller: _query,
+              autofocus: widget.initialQuery.trim().isEmpty,
+              textInputAction: TextInputAction.search,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                hintText: 'Movie or show title',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                  onPressed: _search,
+                ),
+              ),
+              onSubmitted: (_) => _search(),
+            ),
+          ),
+          const SizedBox(height: 6),
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: h * 0.42),
+            child: _body(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
+    if (_searching) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.accent,
+            ),
+          ),
+        ),
+      );
+    }
+    if (_error != null && _results.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+        child: Center(
+          child: Text(
+            _error!,
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+        ),
+      );
+    }
+    return Stack(
+      children: [
+        ListView(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          children: [
+            if (_error != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 6, 20, 6),
+                child: Text(
+                  _error!,
+                  style: AppText.caption.copyWith(color: AppColors.accent),
+                ),
+              ),
+            for (final r in _results)
+              _SheetRow(
+                label: r.language.isNotEmpty
+                    ? '[${r.language.toUpperCase()}] ${r.name}'
+                    : r.name,
+                active: false,
+                onTap: () => _pick(r),
+              ),
+          ],
+        ),
+        if (_downloading)
+          const Positioned.fill(
+            child: ColoredBox(
+              color: Color(0x66000000),
+              child: Center(
+                child: SizedBox(
+                  width: 26,
+                  height: 26,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: AppColors.accent,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Opens the Subtitle-style sheet (font / colour / background / position /
+/// size). Lives over whatever opened it; changes apply live via the controller.
+void _openSubtitleStyleSheet(
+  BuildContext context,
+  PlayerCubit controller,
+  VoidCallback onInteract,
+) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (_) => FrostedSurface(
+      blur: true,
+      opacity: 0.82,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      child: SafeArea(
+        top: false,
+        child: _SubtitleStyleSheet(
+          controller: controller,
+          onInteract: onInteract,
+        ),
+      ),
+    ),
+  );
+}
+
+/// Live subtitle styling: bundled-font picker, text colour swatches, a
+/// background-opacity slider, a vertical-position slider, and size. Each change
+/// persists to [PlaybackPrefs] and re-applies via [PlayerCubit.applySubtitleStyle].
+class _SubtitleStyleSheet extends StatefulWidget {
+  const _SubtitleStyleSheet({required this.controller, required this.onInteract});
+  final PlayerCubit controller;
+  final VoidCallback onInteract;
+
+  @override
+  State<_SubtitleStyleSheet> createState() => _SubtitleStyleSheetState();
+}
+
+class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
+  PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
+
+  // Text-colour swatches, stored as #RRGGBBAA (opaque).
+  static const List<(String, String)> _colors = [
+    ('#FFFFFFFF', 'White'),
+    ('#FFFF00FF', 'Yellow'),
+    ('#00E5FFFF', 'Cyan'),
+    ('#7CFC00FF', 'Green'),
+    ('#FF6B6BFF', 'Red'),
+    ('#000000FF', 'Black'),
+  ];
+
+  static const List<(double, String)> _sizes = [
+    (0.8, 'Small'),
+    (1.0, 'Medium'),
+    (1.3, 'Large'),
+  ];
+
+  Future<void> _apply(Future<void> Function() mutate) async {
+    await mutate();
+    await widget.controller.applySubtitleStyle();
+    if (mounted) setState(() {});
+    widget.onInteract();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    final font = _prefs.subtitleFont;
+    final colorHex = _prefs.subtitleColorHex.toUpperCase();
+    final size = _prefs.subtitleScale;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Text('Subtitle style', style: AppText.headline),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                const _SheetSectionHeader('Font'),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: h * 0.28),
+                  child: ListView(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    children: [
+                      for (final f in kBundledSubtitleFonts)
+                        _SheetRow(
+                          label: f.isEmpty ? 'Default' : f,
+                          active: font == f,
+                          onTap: () => _apply(() => _prefs.setSubtitleFont(f)),
+                        ),
+                    ],
+                  ),
+                ),
+                const _SheetSectionHeader('Text colour'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final (hex, name) in _colors)
+                        _ColorSwatch(
+                          color: _colorFromHex(hex),
+                          label: name,
+                          active: colorHex == hex,
+                          onTap: () =>
+                              _apply(() => _prefs.setSubtitleColorHex(hex)),
+                        ),
+                    ],
+                  ),
+                ),
+                const _SheetSectionHeader('Background'),
+                _SliderRow(
+                  value: _prefs.subtitleBgOpacity,
+                  min: 0,
+                  max: 1,
+                  divisions: 10,
+                  label: '${(_prefs.subtitleBgOpacity * 100).round()}%',
+                  onChanged: (v) =>
+                      _apply(() => _prefs.setSubtitleBgOpacity(v)),
+                ),
+                const _SheetSectionHeader('Position'),
+                _SliderRow(
+                  value: _prefs.subtitlePosition.toDouble(),
+                  min: 0,
+                  max: 100,
+                  divisions: 20,
+                  label: _prefs.subtitlePosition >= 50 ? 'Bottom' : 'Top',
+                  onChanged: (v) =>
+                      _apply(() => _prefs.setSubtitlePosition(v.round())),
+                ),
+                const _SheetSectionHeader('Size'),
+                for (final (s, name) in _sizes)
+                  _SheetRow(
+                    label: name,
+                    active: (size - s).abs() < 0.01,
+                    onTap: () => _apply(() => _prefs.setSubtitleScale(s)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Color _colorFromHex(String hex) {
+    // Stored as #RRGGBBAA → Flutter wants 0xAARRGGBB.
+    final h = hex.replaceFirst('#', '');
+    if (h.length != 8) return Colors.white;
+    final rgb = h.substring(0, 6);
+    final a = h.substring(6, 8);
+    return Color(int.parse('$a$rgb', radix: 16));
+  }
+}
+
+/// A circular colour swatch with a label, accent-ringed when active.
+class _ColorSwatch extends StatelessWidget {
+  const _ColorSwatch({
+    required this.color,
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+  final Color color;
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: active ? AppColors.accent : AppColors.hairline,
+                width: active ? 3 : 1,
+              ),
+            ),
+            child: active
+                ? Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: color.computeLuminance() > 0.5
+                        ? Colors.black
+                        : Colors.white,
+                  )
+                : null,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: AppText.caption.copyWith(
+              color: active ? AppColors.accent : AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A labelled slider row used inside the Subtitle-style sheet.
+class _SliderRow extends StatelessWidget {
+  const _SliderRow({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.label,
+    required this.onChanged,
+  });
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String label;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: AppColors.accent,
+                thumbColor: AppColors.accent,
+                inactiveTrackColor: AppColors.surface2,
+              ),
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                onChanged: onChanged,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 64,
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: AppText.body.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

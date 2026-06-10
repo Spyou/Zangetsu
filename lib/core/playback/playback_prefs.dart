@@ -1,5 +1,23 @@
 import 'package:hive/hive.dart';
 
+/// Subtitle font families bundled in the app (registered in pubspec's
+/// `flutter: fonts:`). Used by the player's Subtitle-style font picker; the
+/// stored value is the mpv `sub-font` family name. The leading empty entry is
+/// "Default" (let mpv pick / use the embedded ASS font).
+const List<String> kBundledSubtitleFonts = [
+  '',
+  'Inter',
+  'Poppins',
+  'Roboto',
+  'Open Sans',
+  'Lato',
+  'Montserrat',
+  'Nunito',
+  'Rubik',
+  'Noto Sans',
+  'Source Sans 3',
+];
+
 /// Persistent, app-wide playback preferences (default quality, sub/dub
 /// category, autoplay, speed, seek step, keep-screen-on, auto-resume). Backed
 /// by a tiny untyped Hive box read anywhere via `sl<PlaybackPrefs>()`. Values
@@ -44,6 +62,13 @@ class PlaybackPrefs {
       (_box.get('seekSeconds', defaultValue: 10) as num).toInt();
   Future<void> setSeekSeconds(int value) => _box.put('seekSeconds', value);
 
+  /// How many seconds a double-tap-to-seek jumps (±5/10/15/30s). Aliases the
+  /// same stored key as [seekSeconds] so the player and the "Double-tap skip"
+  /// setting share one source of truth; exposed under this name for clarity at
+  /// the double-tap call sites.
+  int get doubleTapSeconds => seekSeconds;
+  Future<void> setDoubleTapSeconds(int value) => setSeekSeconds(value);
+
   /// Whether to keep the screen awake while playing.
   bool get keepScreenOn =>
       _box.get('keepScreenOn', defaultValue: true) as bool;
@@ -68,6 +93,21 @@ class PlaybackPrefs {
   /// Whether long-pressing the video plays at 2× while held.
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
+
+  /// In-app volume level (0–200%), applied via mpv's own volume — independent of
+  /// the Android system volume. 100 = original loudness; >100 boosts (with
+  /// volume-max raised to 200, CloudStream-style).
+  int get volumeBoost =>
+      (_box.get('volumeBoost', defaultValue: 100) as num).toInt().clamp(0, 200);
+  Future<void> setVolumeBoost(int value) =>
+      _box.put('volumeBoost', value.clamp(0, 200));
+
+  /// Whether to apply dynamic audio normalization (mpv 'dynaudnorm' filter) so
+  /// quiet/loud passages are levelled out.
+  bool get audioNormalize =>
+      _box.get('audioNormalize', defaultValue: false) as bool;
+  Future<void> setAudioNormalize(bool value) =>
+      _box.put('audioNormalize', value);
 
   /// Home hero banner animation: 'cinematic' (cross-fade + Ken-Burns) or
   /// 'parallax' (parallax slide). A/B while we settle on the final one.
@@ -129,4 +169,43 @@ class PlaybackPrefs {
       _box.get('subtitleBackground', defaultValue: false) as bool;
   Future<void> setSubtitleBackground(bool value) =>
       _box.put('subtitleBackground', value);
+
+  /// Subtitle font family — one of [kBundledSubtitleFonts]. Empty = mpv default
+  /// (don't override the font). Maps to mpv's `sub-font`.
+  String get subtitleFont => _box.get('subtitleFont', defaultValue: '') as String;
+  Future<void> setSubtitleFont(String value) => _box.put('subtitleFont', value);
+
+  /// Subtitle text colour as an 8-digit hex (`#RRGGBBAA`), default opaque white.
+  /// When non-empty this takes precedence over the legacy [subtitleColor] token.
+  String get subtitleColorHex =>
+      _box.get('subtitleColorHex', defaultValue: '#FFFFFFFF') as String;
+  Future<void> setSubtitleColorHex(String value) =>
+      _box.put('subtitleColorHex', value);
+
+  /// Opacity (0–1) of the black box drawn behind subtitles. 0 = no box. When
+  /// >0 this takes precedence over the legacy [subtitleBackground] toggle.
+  double get subtitleBgOpacity =>
+      (_box.get('subtitleBgOpacity', defaultValue: 0.0) as num)
+          .toDouble()
+          .clamp(0.0, 1.0);
+  Future<void> setSubtitleBgOpacity(double value) =>
+      _box.put('subtitleBgOpacity', value.clamp(0.0, 1.0));
+
+  /// OpenSubtitles REST API key (https://www.opensubtitles.com/consumers).
+  /// Empty by default — the user pastes a free key in Settings to enable online
+  /// subtitle search/download. Stored verbatim (trimmed at use sites).
+  String get subtitleApiKey =>
+      _box.get('subtitleApiKey', defaultValue: '') as String;
+  Future<void> setSubtitleApiKey(String value) =>
+      _box.put('subtitleApiKey', value);
+
+  /// Vertical subtitle position (0 = top, 100 = bottom), maps to mpv `sub-pos`.
+  /// Default 95 keeps subtitles near the bottom edge.
+  int get subtitlePosition =>
+      (_box.get('subtitlePosition', defaultValue: 95) as num).toInt().clamp(
+        0,
+        100,
+      );
+  Future<void> setSubtitlePosition(int value) =>
+      _box.put('subtitlePosition', value.clamp(0, 100));
 }
