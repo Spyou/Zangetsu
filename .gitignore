@@ -46,4 +46,5 @@ app.*.map.json
 
 # Internal docs (plans, specs, audits) — not part of the shipped app
 /docs/
-release-v1.1.0/
+# Built release APK artifacts (any version)
+release-v*/

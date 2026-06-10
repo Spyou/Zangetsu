@@ -52,7 +52,7 @@ class CloudflareKiller : Interceptor {
         val finalHost = finalUrl.host
         synchronized(locks.getOrPut(finalHost) { Any() }) {
             if (!cookieByHost.containsKey(finalHost)) {
-                val solved = WebViewResolver.solve(finalUrl.toString())
+                val solved = CfWebViewSolver.solve(finalUrl.toString())
                     ?: return response // give back the (unconsumed) challenge
                 cookieByHost[finalHost] = solved.cookie
                 userAgent = solved.userAgent
@@ -114,7 +114,7 @@ class CloudflareKiller : Interceptor {
 /** Loads a URL in a hidden WebView and waits for Cloudflare's `cf_clearance`
  * cookie. WebView work runs on the main thread; the (background) caller blocks
  * on a latch with a timeout. */
-private object WebViewResolver {
+private object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
     fun solve(url: String): Result? {
