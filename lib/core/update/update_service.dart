@@ -1,0 +1,181 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:hive/hive.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+
+/// A newer release found on GitHub.
+class UpdateInfo {
+  const UpdateInfo({
+    required this.version,
+    required this.notes,
+    required this.apkUrl,
+    required this.assetName,
+  });
+
+  /// Normalised version, e.g. "1.3.0".
+  final String version;
+
+  /// Release notes (the GitHub release body).
+  final String notes;
+
+  /// Direct download URL of the chosen .apk asset.
+  final String apkUrl;
+
+  /// File name of the chosen asset (shown while downloading).
+  final String assetName;
+}
+
+/// In-app updater: checks the public GitHub Releases of the app repo, compares
+/// the latest tag to the running build, downloads the matching APK and hands it
+/// to the Android package installer. The repo is public, so no token is needed.
+class UpdateService {
+  static const String _repo = 'Spyou/Zangetsu';
+  static const String _latestUrl =
+      'https://api.github.com/repos/$_repo/releases/latest';
+  static const String _boxName = 'updates';
+  static const String _skipKey = 'skippedVersion';
+
+  final Dio _dio = Dio();
+
+  /// Query GitHub for the latest release. Returns an [UpdateInfo] when it is
+  /// newer than the installed version (and, when [respectSkip] is true, not the
+  /// version the user chose to skip). Returns null on no-update or any error —
+  /// callers must treat null as "nothing to do" (never throws).
+  Future<UpdateInfo?> checkForUpdate({bool respectSkip = false}) async {
+    try {
+      final res = await _dio.get<Map<String, dynamic>>(
+        _latestUrl,
+        options: Options(
+          headers: const {'Accept': 'application/vnd.github+json'},
+          receiveTimeout: const Duration(seconds: 12),
+          sendTimeout: const Duration(seconds: 12),
+        ),
+      );
+      final data = res.data;
+      if (data == null) return null;
+
+      final latest = _normalize((data['tag_name'] as String?) ?? '');
+      if (latest.isEmpty) return null;
+
+      final info = await PackageInfo.fromPlatform();
+      final current = _normalize(info.version);
+      if (!_isNewer(latest, current)) return null;
+
+      if (respectSkip && await _skippedVersion() == latest) return null;
+
+      final apk = _pickApk((data['assets'] as List?) ?? const []);
+      if (apk == null) return null;
+
+      return UpdateInfo(
+        version: latest,
+        notes: ((data['body'] as String?) ?? '').trim(),
+        apkUrl: apk.$2,
+        assetName: apk.$1,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The installed version string (e.g. "1.2.0"), for display.
+  Future<String> currentVersion() async {
+    try {
+      return (await PackageInfo.fromPlatform()).version;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Download the APK to the cache dir, reporting 0..1 progress. Throws on
+  /// failure so the dialog can surface an error.
+  Future<File> downloadApk(
+    String url, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/zangetsu-update.apk';
+    final file = File(path);
+    if (await file.exists()) await file.delete(); // drop any stale partial
+    await _dio.download(
+      url,
+      path,
+      onReceiveProgress: (received, total) {
+        if (total > 0) onProgress?.call(received / total);
+      },
+    );
+    return file;
+  }
+
+  /// Hand the APK to the system installer. Requests the "install unknown apps"
+  /// permission first. Returns false if the permission was denied or the
+  /// installer couldn't be launched.
+  Future<bool> installApk(File apk) async {
+    if (Platform.isAndroid) {
+      final status = await Permission.requestInstallPackages.request();
+      if (!status.isGranted) return false;
+    }
+    final res = await OpenFilex.open(
+      apk.path,
+      type: 'application/vnd.android.package-archive',
+    );
+    return res.type == ResultType.done;
+  }
+
+  /// Remember a version the user chose to skip (so auto-check won't re-prompt).
+  Future<void> skipVersion(String version) async {
+    (await _box()).put(_skipKey, version);
+  }
+
+  Future<String?> _skippedVersion() async =>
+      (await _box()).get(_skipKey) as String?;
+
+  Future<Box> _box() async => Hive.isBoxOpen(_boxName)
+      ? Hive.box(_boxName)
+      : await Hive.openBox(_boxName);
+
+  /// Prefer a universal APK (installs on any ABI), then arm64-v8a, then the
+  /// first .apk asset. Returns (name, url) or null when no APK is attached.
+  (String, String)? _pickApk(List assets) {
+    final apks = <(String, String)>[];
+    for (final a in assets) {
+      if (a is! Map) continue;
+      final name = (a['name'] as String?) ?? '';
+      final url = (a['browser_download_url'] as String?) ?? '';
+      if (name.toLowerCase().endsWith('.apk') && url.isNotEmpty) {
+        apks.add((name, url));
+      }
+    }
+    if (apks.isEmpty) return null;
+    (String, String)? withFrag(String frag) {
+      for (final x in apks) {
+        if (x.$1.toLowerCase().contains(frag)) return x;
+      }
+      return null;
+    }
+
+    return withFrag('universal') ?? withFrag('arm64') ?? apks.first;
+  }
+
+  /// "v1.3.0+4" / "1.3.0-beta" → "1.3.0" (digits-and-dots only).
+  static String _normalize(String raw) {
+    final m = RegExp(r'(\d+(?:\.\d+)*)').firstMatch(raw.trim());
+    return m?.group(1) ?? '';
+  }
+
+  /// True when [a] is a strictly higher dotted-int version than [b].
+  static bool _isNewer(String a, String b) {
+    final pa = a.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final pb = b.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final len = pa.length > pb.length ? pa.length : pb.length;
+    for (var i = 0; i < len; i++) {
+      final x = i < pa.length ? pa[i] : 0;
+      final y = i < pb.length ? pb[i] : 0;
+      if (x != y) return x > y;
+    }
+    return false;
+  }
+}

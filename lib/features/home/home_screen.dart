@@ -14,6 +14,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../update/update_dialog.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
@@ -59,6 +60,10 @@ class _HomeViewState extends State<_HomeView> {
   final Map<String, Future<HeroMeta?>> _metaCache = {};
   bool _heroPrewarmed = false;
 
+  // Auto update-check runs at most once per app process (not on every rebuild
+  // or tab revisit). Static so it survives this widget being recreated.
+  static bool _updateChecked = false;
+
   @override
   void initState() {
     super.initState();
@@ -66,6 +71,14 @@ class _HomeViewState extends State<_HomeView> {
     // (e.g. first run right after onboarding, or a source with no warm yet).
     final cubit = context.read<HomeCubit>();
     if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+    // Silently check GitHub Releases once on launch; the dialog only appears if
+    // a newer, non-skipped version exists. Best-effort — never blocks startup.
+    if (!_updateChecked) {
+      _updateChecked = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) maybeShowUpdateDialog(context);
+      });
+    }
   }
 
   /// Genres + episode count for the hero banner (lazily fetched, cached).

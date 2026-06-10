@@ -19,6 +19,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../update/update_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'developers_screen.dart';
 import 'donate_screen.dart';
@@ -351,6 +352,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.people_outline_rounded,
                         title: 'Developers',
                         onTap: () => _push(const DevelopersScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.system_update_rounded,
+                        title: 'Check for updates',
+                        subtitle: 'Get the latest version from GitHub',
+                        onTap: () {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Checking for updates…'),
+                            ),
+                          );
+                          maybeShowUpdateDialog(context, manual: true);
+                        },
                       ),
                       SettingsTile(
                         icon: Icons.info_outline_rounded,
