@@ -507,6 +507,14 @@ packages:
     description: flutter
     source: sdk
     version: "0.0.0"
+  flutter_volume_controller:
+    dependency: "direct main"
+    description:
+      name: flutter_volume_controller
+      sha256: "78297fd48ce6330d39a11a4c1ae219a3256249f99dec34cfbe9323d2cbb5ebb9"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.1"
   flutter_web_auth_2:
     dependency: transitive
     description:
@@ -904,6 +912,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.0"
+  open_filex:
+    dependency: "direct main"
+    description:
+      name: open_filex
+      sha256: "9976da61b6a72302cf3b1efbce259200cd40232643a467aac7370addf94d6900"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.7.0"
   package_config:
     dependency: transitive
     description:
@@ -913,7 +929,7 @@ packages:
     source: hosted
     version: "2.2.0"
   package_info_plus:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: package_info_plus
       sha256: "468c26b4254ab01979fa5e4a98cb343ea3631b9acee6f21028997419a80e1a20"

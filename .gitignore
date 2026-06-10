@@ -48,3 +48,5 @@ app.*.map.json
 /docs/
 # Built release APK artifacts (any version)
 release-v*/
+# Marketing/banner scratch (mockups, screenshots) — not part of the app
+banner/

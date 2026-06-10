@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:floating/floating.dart';
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -123,6 +124,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _seekLabelTimer;
   int _seekAccum = 0; // accumulated seconds in the current burst
   int _seekSide = 0; // -1 = left/rewind, +1 = right/forward, 0 = hidden
+  Offset? _seekRipplePos; // exact double-tap point for the ink-splash ripple
+  int _seekRippleTick = 0; // bumps each tap → restarts the ripple animation
+
+  // ── Pinch-to-zoom (continuous, CloudStream-style: 1×–4×, pan + snap-back) ──
+  // Driven by a passive Listener watching raw pointers (NOT a scale recognizer),
+  // so the existing 1-finger brightness/volume/scrub gestures stay untouched —
+  // a 2-finger pinch just sets _pinching, which those handlers bail on.
+  double _zoom = 1.0; // current video zoom (1.0 = fit-to-screen)
+  Offset _zoomPan = Offset.zero; // pan offset while zoomed in
+  int _zoomIndex = -1; // episode this zoom belongs to (reset on episode change)
+  bool _pinching = false; // 2 fingers down → suppress the 1-finger swipes
+  final Map<int, Offset> _pointers = {}; // live pointers tracked for the pinch
+  double _pinchBaseDist = 0; // finger spread when the pinch started
+  double _pinchBaseZoom = 1.0;
+  Offset _pinchBaseFocal = Offset.zero;
+  Offset _pinchBasePan = Offset.zero;
 
   // Duration tracked off the stream so the slider has a max even before
   // a position event arrives.
@@ -200,6 +217,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
+    // The volume swipe sets the real system volume; hide the OS volume bar so
+    // only our own HUD shows (CloudStream draws its own too). Restored on exit.
+    if (_gesturesEnabled) {
+      FlutterVolumeController.updateShowSystemUI(false);
+    }
     _setupPip();
     if (widget.episodesResolver != null && widget.episodes.isEmpty) {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
@@ -376,6 +398,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
         (_) {},
       );
+      // Re-enable the OS volume bar for the rest of the app.
+      FlutterVolumeController.updateShowSystemUI(true);
     }
     WakelockPlus.disable();
     if (_ready) _c.close();
@@ -433,8 +457,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final w = MediaQuery.of(context).size.width;
     final x = d.localPosition.dx;
     if (x < w / 3) {
+      _seekRipplePos = d.localPosition; // splash from where the finger landed
+      _seekRippleTick++;
       _accumSeek(-1);
     } else if (x > w * 2 / 3) {
+      _seekRipplePos = d.localPosition;
+      _seekRippleTick++;
       _accumSeek(1);
     } else {
       _c.togglePlay();
@@ -456,14 +484,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         _dragValue = 0.5;
       }
     } else {
-      // In-app mpv volume runs 0–200% (CloudStream-style boost), so the drag
-      // value is normalised over that range: 1.0 = 200%.
-      _dragValue = (sl<PlaybackPrefs>().volumeBoost / 200).clamp(0.0, 1.0);
+      // CloudStream-style: the 0–200% slider maps 0–100% to the REAL system
+      // volume and 100–200% to mpv's software boost. Seed from whichever is
+      // active so the drag continues from the current level (1.0 = 200%).
+      final boost = sl<PlaybackPrefs>().volumeBoost; // 100..200 (100 = no boost)
+      final double combined = boost > 100
+          ? boost / 100.0 // boosted → 1..2
+          : (await FlutterVolumeController.getVolume()) ?? 0.5; // system → 0..1
+      _dragValue = (combined / 2).clamp(0.0, 1.0);
     }
   }
 
   void _onVDragUpdate(DragUpdateDetails d) {
-    if (!_gesturesEnabled) return;
+    if (!_gesturesEnabled || _pinching) return; // ignore once a pinch begins
     final h = MediaQuery.of(context).size.height;
     // Drag up (negative delta) increases the value.
     _dragValue = (_dragValue - d.primaryDelta! / (h * 0.7)).clamp(0.0, 1.0);
@@ -472,8 +505,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           .setApplicationScreenBrightness(_dragValue)
           .catchError((_) {});
     } else {
-      // Drive mpv's own volume 0–200% (independent of system volume) and persist.
-      _c.setVolumeBoost((_dragValue * 200).round());
+      // 0–200% slider: 0–100% drives the REAL system volume; >100% pins the
+      // system at max and adds mpv's software gain (CloudStream's model).
+      final combined = (_dragValue * 2).clamp(0.0, 2.0); // 0..2
+      FlutterVolumeController.setVolume(combined.clamp(0.0, 1.0));
+      final boost = combined <= 1.0 ? 100 : (combined * 100).round();
+      if (boost != sl<PlaybackPrefs>().volumeBoost) _c.setVolumeBoost(boost);
     }
     setState(() {
       _hudVisible = true;
@@ -500,7 +537,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _onHDragUpdate(DragUpdateDetails d) {
-    if (!_hSeeking) return;
+    if (!_hSeeking || _pinching) return;
     final w = MediaQuery.of(context).size.width;
     // Map the full screen width to the whole duration, so a partial swipe can
     // reach anywhere (e.g. 7s → 20min) — like scrubbing the whole bar.
@@ -516,6 +553,73 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _c.seekTo(_hSeekTarget);
     setState(() => _hSeeking = false);
     _bumpControls();
+  }
+
+  // ── Pinch-to-zoom — raw-pointer driven so it never fights the 1-finger
+  // gestures above. Two fingers down → start; their spread sets the zoom and
+  // their midpoint pans; releasing a finger ends it (snapping back to fit when
+  // near 1×). The video is scaled by [_zoom]/[_zoomPan] in build(). ──────────
+  void _onPointerDown(PointerDownEvent e) {
+    _pointers[e.pointer] = e.position;
+    if (_pointers.length == 2 && !_locked) _startPinch();
+  }
+
+  void _onPointerMove(PointerMoveEvent e) {
+    if (!_pointers.containsKey(e.pointer)) return;
+    _pointers[e.pointer] = e.position;
+    if (_pinching && _pointers.length >= 2) _updatePinch();
+  }
+
+  void _onPointerUp(PointerEvent e) {
+    _pointers.remove(e.pointer);
+    if (_pointers.length < 2 && _pinching) _endPinch();
+  }
+
+  void _startPinch() {
+    final p = _pointers.values.toList();
+    _pinchBaseDist = (p[0] - p[1]).distance;
+    _pinchBaseFocal = Offset((p[0].dx + p[1].dx) / 2, (p[0].dy + p[1].dy) / 2);
+    _pinchBaseZoom = _zoom;
+    _pinchBasePan = _zoomPan;
+    setState(() {
+      _pinching = true;
+      _hSeeking = false; // cancel any 1-finger scrub the first finger started
+      _hudVisible = false; // and any brightness/volume HUD
+    });
+  }
+
+  void _updatePinch() {
+    if (_pinchBaseDist <= 0) return;
+    final p = _pointers.values.toList();
+    final dist = (p[0] - p[1]).distance;
+    final focal = Offset((p[0].dx + p[1].dx) / 2, (p[0].dy + p[1].dy) / 2);
+    final z = (_pinchBaseZoom * dist / _pinchBaseDist).clamp(1.0, 4.0);
+    setState(() {
+      _zoom = z;
+      _zoomPan = _clampPan(_pinchBasePan + (focal - _pinchBaseFocal), z);
+    });
+  }
+
+  void _endPinch() {
+    setState(() {
+      _pinching = false;
+      if (_zoom < 1.08) {
+        // pinched back near fit → snap cleanly to 1× and recentre
+        _zoom = 1.0;
+        _zoomPan = Offset.zero;
+      }
+    });
+  }
+
+  /// Keep the panned, zoomed video from sliding past its own edges.
+  Offset _clampPan(Offset pan, double zoom) {
+    final size = MediaQuery.of(context).size;
+    final maxX = (zoom - 1) * size.width / 2;
+    final maxY = (zoom - 1) * size.height / 2;
+    return Offset(
+      pan.dx.clamp(-maxX, maxX).toDouble(),
+      pan.dy.clamp(-maxY, maxY).toDouble(),
+    );
   }
 
   // ── Lock / zoom / up-next ─────────────────────────────────────────────────
@@ -690,6 +794,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final epNum = next?.number?.toInt() ?? (nextIdx + 1);
     final name = next?.title.trim() ?? '';
     final hasName = name.isNotEmpty && name.toLowerCase() != 'episode $epNum';
+    // Thumbnail for the up-next episode (falls back to the show cover).
+    final img = (next?.thumbnail?.trim().isNotEmpty ?? false)
+        ? next!.thumbnail!.trim()
+        : (widget.cover ?? '');
     return Align(
       alignment: const Alignment(0.95, 0.7),
       child: Container(
@@ -704,6 +812,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (img.isNotEmpty) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: AspectRatio(
+                  aspectRatio: 16 / 9,
+                  child: CachedNetworkImage(
+                    imageUrl: img,
+                    httpHeaders: widget.coverHeaders,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, _, _) => Container(color: Colors.white10),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
             Text(
               'Up next in $_upNextLeft',
               style: AppText.caption.copyWith(color: Colors.white70),
@@ -772,6 +895,54 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  // Compact "Next Episode" pill shown bottom-right during the last ~75s, so the
+  // user can advance manually before the auto "Up next" card kicks in. This is a
+  // manual action, so it ignores the autoplayNext pref.
+  Widget _buildOutroNextButton() {
+    final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
+    if (!hasNext) return const SizedBox.shrink();
+    return StreamBuilder<Duration>(
+      stream: _c.player.stream.position,
+      builder: (context, snap) {
+        final pos = snap.data ?? Duration.zero;
+        final dur = _c.player.state.duration;
+        final remaining = dur - pos;
+        final show =
+            dur > Duration.zero && remaining <= const Duration(seconds: 75);
+        if (!show) return const SizedBox.shrink();
+        return Positioned(
+          bottom: 16,
+          right: 16,
+          child: GestureDetector(
+            onTap: _playUpNext,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.hairline, width: 0.5),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.skip_next, color: Colors.white, size: 20),
+                  SizedBox(width: 6),
+                  Text(
+                    'Next Episode',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1069,7 +1240,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             );
           }
-          return Stack(
+          // Reset any pinch-zoom when the episode changes.
+          if (_zoomIndex != state.currentIndex) {
+            _zoomIndex = state.currentIndex;
+            _zoom = 1.0;
+            _zoomPan = Offset.zero;
+          }
+          // Passive Listener tracks raw pointers for pinch-to-zoom so it never
+          // competes with the 1-finger gesture detector inside the Stack.
+          return Listener(
+            onPointerDown: _onPointerDown,
+            onPointerMove: _onPointerMove,
+            onPointerUp: _onPointerUp,
+            onPointerCancel: _onPointerUp,
+            child: Stack(
             fit: StackFit.expand,
             children: [
               // 1. The video. NoVideoControls disables media_kit's built-in
@@ -1079,12 +1263,64 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Center(
                 child: ValueListenableBuilder<int>(
                   valueListenable: _c.subtitleStyleRev,
-                  builder: (context, _, _) => Video(
-                    controller: _c.videoController,
-                    controls: NoVideoControls,
-                    fit: _fits[_fitIndex].$1,
-                    subtitleViewConfiguration: _subtitleConfig(),
+                  builder: (context, _, _) => Transform.translate(
+                    // Pinch-zoom: scale about centre, then pan. Overflow is
+                    // clipped by the Stack so a zoomed frame crops to screen.
+                    offset: _zoomPan,
+                    child: Transform.scale(
+                      scale: _zoom,
+                      child: Video(
+                        controller: _c.videoController,
+                        controls: NoVideoControls,
+                        fit: _fits[_fitIndex].$1,
+                        subtitleViewConfiguration: _subtitleConfig(),
+                      ),
+                    ),
                   ),
+                ),
+              ),
+
+              // 1b. Poster-on-start: cover the black surface with the episode's
+              // poster until the first frame decodes, then fade it out. width
+              // emits non-null/>0 once dimensions are known (≈ first frame), and
+              // resets per new media so the poster re-shows each episode.
+              Positioned.fill(
+                child: StreamBuilder<int?>(
+                  stream: _c.player.stream.width,
+                  initialData: _c.player.state.width,
+                  builder: (context, snap) {
+                    final hasFrame = (snap.data ?? 0) > 0;
+                    final img =
+                        (_c.currentEpisode.thumbnail?.trim().isNotEmpty ?? false)
+                        ? _c.currentEpisode.thumbnail!.trim()
+                        : (widget.cover ?? '');
+                    return IgnorePointer(
+                      child: AnimatedOpacity(
+                        opacity: hasFrame || img.isEmpty ? 0 : 1,
+                        duration: const Duration(milliseconds: 350),
+                        child: img.isEmpty
+                            ? const ColoredBox(color: Colors.black)
+                            : Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CachedNetworkImage(
+                                    imageUrl: img,
+                                    httpHeaders: widget.coverHeaders,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (c, u, e) =>
+                                        const ColoredBox(color: Colors.black),
+                                  ),
+                                  // subtle scrim so it reads as a player background
+                                  const DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      color: Color(0x33000000),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    );
+                  },
                 ),
               ),
 
@@ -1158,6 +1394,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
+              // 3b. Transient status toast (e.g. auto-failover "Switching
+              // server…" when a started source stalls), pinned near the top.
+              ValueListenableBuilder<String?>(
+                valueListenable: _c.toast,
+                builder: (context, msg, _) {
+                  if (msg == null) return const SizedBox.shrink();
+                  return Positioned(
+                    top: 16,
+                    left: 0,
+                    right: 0,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.8),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            msg,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+
+              // 3c. Ink-splash ripple from the exact double-tap point (drawn
+              // under the side badge). The tap-tick key recreates it each tap so
+              // every double-tap re-pulses, even mid-burst.
+              if (_seekSide != 0 && _seekRipplePos != null)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: _SeekRipple(
+                      key: ValueKey(_seekRippleTick),
+                      position: _seekRipplePos!,
+                    ),
+                  ),
+                ),
+
               // 4. Double-tap seek indicator — a ripple + animated chevrons +
               // the accumulated amount (−10s, −20s… / +10s, +20s…), pinned to
               // the tapped side and re-pulsing on each rapid tap (YouTube-style).
@@ -1169,14 +1454,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   accumSeconds: _seekAccum,
                 ),
 
-              // 4b. Brightness / volume HUD (Netflix-style) while swiping —
-              // a clean centered pill that fades out on release (auto-hide).
+              // 4b. Brightness / volume HUD (MX/CloudStream-style) while swiping —
+              // a side-rail bar pinned to the half being swiped; fades out on
+              // release (auto-hide).
               IgnorePointer(
                 child: AnimatedOpacity(
                   opacity: _hudVisible ? 1 : 0,
                   duration: Duration(milliseconds: _hudVisible ? 120 : 260),
                   curve: Curves.easeOut,
-                  child: Center(
+                  child: Align(
+                    alignment: _hudIsBrightness
+                        ? const Alignment(-0.88, 0.0) // left rail = brightness
+                        : const Alignment(0.88, 0.0), // right rail = volume
                     child: _AdjustHud(
                       value: _hudValue,
                       isBrightness: _hudIsBrightness,
@@ -1320,9 +1609,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   },
                 ),
 
+              // 6d. Outro "Next Episode" pill — lets the user jump ahead near
+              // the end of the episode before the auto "Up next" card appears.
+              // Only when controls are hidden — the control bar already has a
+              // Next button, and this pill would overlap the bottom seek bar.
+              if (!_locked && !_upNext && !_controlsVisible)
+                _buildOutroNextButton(),
+
               // 7. Up-next card (auto-advance countdown).
               if (_upNext) _buildUpNextCard(),
             ],
+            ),
           );
         },
       ),
@@ -1331,8 +1628,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Brightness / volume HUD — a compact dark pill with an icon, a vertical fill
-// bar and a percentage, shown centered while the user swipes (Netflix-style).
+// Brightness / volume HUD — a compact dark side-rail bar with a percentage on
+// top, a vertical fill track and an icon at the bottom, pinned to the half being
+// swiped while the user drags (MX Player / CloudStream-style).
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _AdjustHud extends StatelessWidget {
@@ -1361,22 +1659,33 @@ class _AdjustHud extends StatelessWidget {
     // Tint the boost zone (>100%) red as a warning, like CloudStream.
     final boosted = !isBrightness && pct > 100;
     final fillColor = boosted ? Colors.red : AppColors.accent;
+    // The track fill maps the full range onto 0..1 — volume is half-full at 100%.
+    final fill = value.clamp(0.0, 1.0);
+    final tint = boosted ? Colors.red : Colors.white;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.62),
-        borderRadius: BorderRadius.circular(18),
+        color: Colors.black.withValues(alpha: 0.78),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(_icon, color: Colors.white, size: 26),
+            // Percentage on top.
+            Text(
+              '$pct%',
+              style: AppText.caption.copyWith(
+                color: tint,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 12),
-            // Vertical fill bar.
+            // Vertical fill track (bottom-anchored).
             SizedBox(
               width: 6,
-              height: 110,
+              height: 150,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(3),
                 child: Stack(
@@ -1386,7 +1695,8 @@ class _AdjustHud extends StatelessWidget {
                     Align(
                       alignment: Alignment.bottomCenter,
                       child: FractionallySizedBox(
-                        heightFactor: value.clamp(0.0, 1.0),
+                        heightFactor: fill,
+                        widthFactor: 1,
                         child: ColoredBox(color: fillColor),
                       ),
                     ),
@@ -1395,13 +1705,8 @@ class _AdjustHud extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            Text(
-              '$pct%',
-              style: AppText.caption.copyWith(
-                color: boosted ? Colors.red : Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            // Icon at the bottom.
+            Icon(_icon, color: tint, size: 24),
           ],
         ),
       ),
@@ -1510,6 +1815,76 @@ class _SeekIndicatorState extends State<_SeekIndicator>
       ),
     );
   }
+}
+
+/// A circular ink-splash that expands and fades from the exact point the user
+/// double-tapped — YouTube-style feedback for the ±seek. Recreated (via a
+/// ValueKey on the tap counter) on every tap so each one re-pulses.
+class _SeekRipple extends StatefulWidget {
+  const _SeekRipple({super.key, required this.position});
+
+  final Offset position;
+
+  @override
+  State<_SeekRipple> createState() => _SeekRippleState();
+}
+
+class _SeekRippleState extends State<_SeekRipple>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final t = Curves.easeOut.transform(_c.value);
+        return CustomPaint(
+          size: Size.infinite,
+          painter: _SeekRipplePainter(
+            center: widget.position,
+            radius: 40 + 200 * t,
+            alpha: 0.18 * (1 - t),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SeekRipplePainter extends CustomPainter {
+  _SeekRipplePainter({
+    required this.center,
+    required this.radius,
+    required this.alpha,
+  });
+
+  final Offset center;
+  final double radius;
+  final double alpha;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (alpha <= 0) return;
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()..color = Colors.white.withValues(alpha: alpha),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_SeekRipplePainter old) =>
+      old.radius != radius || old.alpha != alpha || old.center != center;
 }
 
 /// Three chevrons that brighten in sequence (pointing back when rewinding,

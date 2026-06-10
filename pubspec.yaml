@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.2.0+3
+version: 1.2.0+4
 
 environment:
   sdk: ^3.11.5
@@ -87,8 +87,12 @@ dependencies:
   wakelock_plus: ^1.5.2
   appwrite: ^25.0.0
   image_picker: ^1.2.2
-  # Swipe-for-brightness gesture in the player (volume uses the media_kit player).
+  # Swipe-for-brightness gesture in the player (left half of the surface).
   screen_brightness: ^2.1.4
+  # CloudStream-style volume swipe: the right-half drag drives the REAL Android
+  # system media volume for 0–100% (then mpv `af=volume` boosts beyond 100%),
+  # exactly like CloudStream's slider. System UI is suppressed (we draw our HUD).
+  flutter_volume_controller: ^2.0.1
   # Offline downloads — true background downloads with a progress notification,
   # pause/resume, and move-to-shared-storage (public Downloads folder).
   background_downloader: ^9.2.0
@@ -98,6 +102,10 @@ dependencies:
   # AniList account linking.
   app_links: ^6.3.2
   floating: ^6.0.0
+  # In-app updates: read the running version + check GitHub Releases, then hand
+  # the downloaded APK to the system installer.
+  package_info_plus: ^9.0.1
+  open_filex: ^4.5.0
 
 dev_dependencies:
   flutter_test:

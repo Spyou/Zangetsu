@@ -176,13 +176,31 @@ class PlayerCubit extends Cubit<PlayerState> {
   String _activeCategory;
 
   final Player player = Player();
-  late final VideoController videoController = VideoController(player);
+  late final VideoController videoController = VideoController(
+    player,
+    configuration: const VideoControllerConfiguration(
+      // Pin hardware decoding (media_kit's default, made explicit) — smoother
+      // high-res playback + less battery/heat. media_kit auto-falls back to
+      // software decode if the device can't hardware-decode a codec.
+      enableHardwareAcceleration: true,
+    ),
+  );
 
   /// Bumped whenever the subtitle style changes (or a source opens). The player
   /// screen listens to rebuild the Video's [SubtitleViewConfiguration] — media_kit
   /// renders text subs via a Flutter overlay, so styling lives there, NOT in
   /// mpv's sub-* properties.
   final ValueNotifier<int> subtitleStyleRev = ValueNotifier<int>(0);
+
+  /// Brief user-facing status (e.g. "Switching server…") the player screen
+  /// shows as a transient toast. Auto-clears after a couple of seconds.
+  final ValueNotifier<String?> toast = ValueNotifier<String?>(null);
+  Timer? _toastTimer;
+  void _toast(String msg) {
+    toast.value = msg;
+    _toastTimer?.cancel();
+    _toastTimer = Timer(const Duration(seconds: 2), () => toast.value = null);
+  }
 
   /// One-shot mpv tuning, started on first access and awaited before every
   /// [_open]. Must complete BEFORE `player.open` or its demuxer options (e.g.
@@ -206,6 +224,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   // reason to cycle sources (which spuriously showed "No source could be
   // played" over working playback and broke the watch-progress scrobble).
   bool _startedThisSource = false;
+  // Stall watchdog: a STARTED source that dies/stalls mid-playback (dead host,
+  // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
+  // once started). When buffering persists with no position progress we fail
+  // over to the next untried mirror at the same position.
+  Timer? _stallTimer;
+  Duration _stallAnchorPos = Duration.zero;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
   // an episode crosses the 92% scrobble threshold).
@@ -457,6 +481,21 @@ class PlayerCubit extends Cubit<PlayerState> {
       }),
     );
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
+    _subs.add(
+      player.stream.buffering.listen((buffering) {
+        if (buffering && _startedThisSource && !_recovering) {
+          // Started source stalled — arm a watchdog. If we're still stuck and the
+          // position hasn't advanced ~18s later, the stream is likely dead → fail
+          // over.
+          _stallAnchorPos = _lastPos;
+          _stallTimer?.cancel();
+          _stallTimer = Timer(const Duration(seconds: 18), _failoverFromStall);
+        } else {
+          _stallTimer?.cancel();
+          _stallTimer = null;
+        }
+      }),
+    );
     openEpisode(index);
   }
 
@@ -1053,6 +1092,31 @@ class PlayerCubit extends Cubit<PlayerState> {
     _recovering = false;
   }
 
+  /// A started source stalled for too long (dead host / pulled segment).
+  /// Switch to the next untried mirror at the same position, transparently.
+  Future<void> _failoverFromStall() async {
+    // Bail if playback recovered (position moved past the stall anchor) or
+    // we're no longer buffering — it was just a slow network dip, not a death.
+    if (!player.state.buffering) return;
+    if (_lastPos > _stallAnchorPos + const Duration(seconds: 1)) return;
+    if (_recovering) return;
+    _recovering = true;
+    final dead = state.active;
+    if (dead != null) _tried.add(dead.url);
+    final remaining = state.sources
+        .where((s) => !_tried.contains(s.url))
+        .toList();
+    final next = pickDefault(remaining, prefer: dead?.kind ?? AudioKind.sub);
+    if (next != null) {
+      _toast('Switching server…');
+      await _open(next, seekTo: _lastPos);
+      _applyDefaultQuality();
+    } else {
+      emit(state.copyWith(error: () => 'All servers stalled — tap retry.'));
+    }
+    _recovering = false;
+  }
+
   /// Re-seek shortly after open if the stream ignored Media.start (position is
   /// still near 0 instead of the resume target). Retries a couple of times to
   /// catch slow-loading sources.
@@ -1319,6 +1383,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (final s in _subs) {
       s.cancel();
     }
+    _stallTimer?.cancel();
+    _toastTimer?.cancel();
+    toast.dispose();
     subtitleStyleRev.dispose();
     await player.dispose();
     return super.close();
