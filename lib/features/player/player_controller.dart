@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -175,6 +178,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   final Player player = Player();
   late final VideoController videoController = VideoController(player);
 
+  /// Bumped whenever the subtitle style changes (or a source opens). The player
+  /// screen listens to rebuild the Video's [SubtitleViewConfiguration] — media_kit
+  /// renders text subs via a Flutter overlay, so styling lives there, NOT in
+  /// mpv's sub-* properties.
+  final ValueNotifier<int> subtitleStyleRev = ValueNotifier<int>(0);
+
   /// One-shot mpv tuning, started on first access and awaited before every
   /// [_open]. Must complete BEFORE `player.open` or its demuxer options (e.g.
   /// the HLS fake-extension relaxation) don't apply to the file being opened.
@@ -331,7 +340,54 @@ class PlayerCubit extends Cubit<PlayerState> {
         await p.setProperty('volume', prefs.volumeBoost.toString());
         await p.setProperty('af', prefs.audioNormalize ? 'dynaudnorm' : '');
       } catch (_) {}
+      // Make the bundled subtitle fonts available to mpv/libass (which can't
+      // read Flutter's asset bundle). Fire-and-forget so it never delays the
+      // first open; the font picker just works once it's done.
+      unawaited(_setupSubtitleFonts(p));
     }
+  }
+
+  // Extract-once guard (static: shared across player instances this session).
+  static bool _subFontsExtracted = false;
+
+  /// Copy the app's bundled .ttf subtitle fonts to a real on-disk folder and
+  /// point mpv/libass at it via `sub-fonts-dir`, so `sub-font` (the Subtitle
+  /// style picker) can actually resolve them. Best-effort, never throws.
+  Future<void> _setupSubtitleFonts(NativePlayer p) async {
+    try {
+      final dir = Directory(
+        '${(await getApplicationSupportDirectory()).path}/sub_fonts',
+      );
+      if (!_subFontsExtracted) {
+        if (!dir.existsSync()) dir.createSync(recursive: true);
+        const fontAssets = <String>[
+          'assets/fonts/Inter.ttf',
+          'assets/fonts/Poppins-Regular.ttf',
+          'assets/fonts/Roboto-Regular.ttf',
+          'assets/fonts/OpenSans-Regular.ttf',
+          'assets/fonts/Lato-Regular.ttf',
+          'assets/fonts/Montserrat-Regular.ttf',
+          'assets/fonts/Nunito-Regular.ttf',
+          'assets/fonts/Rubik-Regular.ttf',
+          'assets/fonts/NotoSans-Regular.ttf',
+          'assets/fonts/SourceSans3-Regular.ttf',
+        ];
+        for (final a in fontAssets) {
+          final out = File('${dir.path}/${a.split('/').last}');
+          if (!out.existsSync()) {
+            try {
+              final data = await rootBundle.load(a);
+              await out.writeAsBytes(data.buffer.asUint8List(), flush: true);
+            } catch (_) {}
+          }
+        }
+        _subFontsExtracted = true;
+      }
+      // 'auto' → on Android (no fontconfig) libass uses the embedded provider,
+      // which scans sub-fonts-dir; the family name in sub-font then matches.
+      await p.setProperty('sub-fonts-dir', dir.path);
+      await p.setProperty('sub-font-provider', 'auto');
+    } catch (_) {}
   }
 
   void init(int index) {
@@ -1115,6 +1171,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     // A thin border keeps text legible without a box; mpv default is ~3.
     await set('sub-border-size', '3');
     await set('sub-pos', prefs.subtitlePosition.toString());
+    // media_kit renders text subtitles via a Flutter overlay (not libass), so
+    // the above mpv props are ignored in practice — the real styling is the
+    // Video's SubtitleViewConfiguration. Bump so the player screen rebuilds it.
+    subtitleStyleRev.value++;
   }
 
   /// Convert a `#RRGGBBAA` (or `#RRGGBB`) hex string into mpv's alpha-first
@@ -1250,6 +1310,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (final s in _subs) {
       s.cancel();
     }
+    subtitleStyleRev.dispose();
     await player.dispose();
     return super.close();
   }

@@ -812,6 +812,50 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Build the Flutter subtitle overlay style from the user's prefs. media_kit
+  /// renders text subtitles via this [SubtitleViewConfiguration] (a Flutter
+  /// overlay), NOT libass — so font/colour/size/background/position all live
+  /// here. Bundled fonts work because Flutter resolves them from pubspec.
+  SubtitleViewConfiguration _subtitleConfig() {
+    final p = sl<PlaybackPrefs>();
+    final fam = p.subtitleFont.isEmpty ? null : p.subtitleFont;
+    // position 0 (top) … 100 (bottom). Higher value → nearer the bottom (less
+    // bottom padding); lower value lifts the text up the frame.
+    final pos = p.subtitlePosition.clamp(0, 100);
+    final bottom = 16.0 + (100 - pos) * 3.0;
+    return SubtitleViewConfiguration(
+      textAlign: TextAlign.center,
+      padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
+      style: TextStyle(
+        height: 1.4,
+        fontSize: 32.0 * p.subtitleScale,
+        fontFamily: fam,
+        fontWeight: FontWeight.w600,
+        color: _parseSubColor(p.subtitleColorHex),
+        backgroundColor: Color.fromRGBO(
+          0,
+          0,
+          0,
+          p.subtitleBgOpacity.clamp(0.0, 1.0),
+        ),
+        // A soft shadow keeps text legible when the background box is off.
+        shadows: const [Shadow(blurRadius: 4, color: Color(0xCC000000))],
+      ),
+    );
+  }
+
+  /// Parse a `#RRGGBB` or `#RRGGBBAA` hex (the prefs format) into a [Color].
+  Color _parseSubColor(String hex) {
+    var h = hex.replaceFirst('#', '').toUpperCase();
+    if (h.length == 6) h = '${h}FF';
+    if (h.length != 8) return const Color(0xFFFFFFFF);
+    final r = int.tryParse(h.substring(0, 2), radix: 16) ?? 255;
+    final g = int.tryParse(h.substring(2, 4), radix: 16) ?? 255;
+    final b = int.tryParse(h.substring(4, 6), radix: 16) ?? 255;
+    final a = int.tryParse(h.substring(6, 8), radix: 16) ?? 255;
+    return Color.fromARGB(a, r, g, b);
+  }
+
   /// Netflix-style combined Audio | Subtitles panel (two columns, live
   /// selection without closing).
   void _openAudioSubsSheet() {
@@ -1033,10 +1077,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // so ONLY our custom Netflix overlay shows — fixes the duplicate
               // spinner / double controls.
               Center(
-                child: Video(
-                  controller: _c.videoController,
-                  controls: NoVideoControls,
-                  fit: _fits[_fitIndex].$1,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _c.subtitleStyleRev,
+                  builder: (context, _, _) => Video(
+                    controller: _c.videoController,
+                    controls: NoVideoControls,
+                    fit: _fits[_fitIndex].$1,
+                    subtitleViewConfiguration: _subtitleConfig(),
+                  ),
                 ),
               ),
 
