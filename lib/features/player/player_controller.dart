@@ -356,6 +356,24 @@ class PlayerCubit extends Cubit<PlayerState> {
         await p.setProperty('demuxer-readahead-secs', '60');
         await p.setProperty('demuxer-max-bytes', '128MiB');
         await p.setProperty('demuxer-max-back-bytes', '48MiB');
+        // ── A/V stays in sync after a mid-stream stall. ───────────────────────
+        // Symptom this fixes: a movie/episode freezes mid-playback (host throttle
+        // or a brief dip — not a visible "buffering"), and on recovery the audio
+        // runs AHEAD of the picture. Cause: Android's DIRECT mediacodec decoder
+        // freezes its last frame on the output surface during the hiccup while
+        // the audio track keeps draining, so audio ends up seconds ahead and
+        // mpv's default A/V sync (~0.1s/frame) can't claw it back. COPY mode
+        // routes frames through mpv's own pipeline, timed against the audio
+        // clock, so it drops/resyncs cleanly after a stall — the robustness
+        // ExoPlayer/CloudStream get from decoder fallback + shared-clock
+        // renderers. Still hardware-decoded; mpv falls back to software per-codec
+        // if a device can't hw-decode it.
+        await p.setProperty('hwdec', 'mediacodec-copy');
+        // On a cache underrun, pause audio+video together and wait until a little
+        // is rebuffered before resuming, so they restart in lock-step instead of
+        // audio-ahead (mirrors ExoPlayer's buffer-for-playback-after-rebuffer).
+        await p.setProperty('cache-pause', 'yes');
+        await p.setProperty('cache-pause-wait', '2');
         // ── In-app volume + boost (CloudStream-style). The gain is a SOFTWARE
         // audio filter (af=volume=N), so a >100% boost is genuinely louder than
         // the source even when the phone's system volume is low. ────────────
@@ -1011,6 +1029,22 @@ class PlayerCubit extends Cubit<PlayerState> {
     // before opening — otherwise the first file opens without it (black screen
     // on AnimeSalt/AnimixStream-style streams).
     await _mpvConfigured;
+    // HLS needs the fake-extension relaxation + per-segment reconnect
+    // (http_persistent=0) for anti-leech CDNs. But forcing http_persistent=0 on
+    // a progressive MP4 makes file-hosts throttle/drop it mid-stream (a fresh
+    // TCP per read) — the "movie freezes in the middle" report. So apply that
+    // string only to HLS; let MP4 use persistent connections (mpv's default).
+    final plat = player.platform;
+    if (plat is NativePlayer) {
+      final isHls = s.container == SourceContainer.hls;
+      await plat.setProperty(
+        'demuxer-lavf-o',
+        isHls
+            ? 'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
+                  'analyzeduration=2000000'
+            : 'extension_picky=0,allowed_extensions=ALL,analyzeduration=2000000',
+      );
+    }
     await player.open(
       Media(
         s.url,
