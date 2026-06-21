@@ -8,6 +8,8 @@ import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../environment.dart';
+import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import 'tracker.dart';
 
@@ -403,6 +405,80 @@ class MalService extends ChangeNotifier implements Tracker {
       );
       await _setScrobbled(a.id, 0);
     } catch (_) {}
+  }
+
+  // ── Tracker reads ───────────────────────────────────────────────────────────
+
+  /// Map a MAL `list_status.status` to our [WatchStatus] (null → skip).
+  WatchStatus? _statusFromMal(String? status) => switch (status) {
+    'watching' => WatchStatus.watching,
+    'plan_to_watch' => WatchStatus.planning,
+    'completed' => WatchStatus.completed,
+    'on_hold' => WatchStatus.paused,
+    'dropped' => WatchStatus.dropped,
+    _ => null,
+  };
+
+  @override
+  Future<List<TrackerListItem>> fetchList() async {
+    if (!isConnected) return const [];
+    final token = await _validToken();
+    if (token == null) return const [];
+    try {
+      final items = <TrackerListItem>[];
+      var url =
+          '$_api/users/@me/animelist'
+          '?fields=list_status,num_episodes,main_picture&limit=1000&nsfw=true';
+      for (var page = 0; page < 5; page++) {
+        final res = await _dio.get<dynamic>(
+          url,
+          options: Options(
+            headers: {'Authorization': 'Bearer $token'},
+            validateStatus: (s) => s != null && s < 500,
+          ),
+        );
+        final body = res.data;
+        if (body is! Map) break;
+        final data = body['data'] as List?;
+        if (data == null) break;
+        for (final e in data) {
+          if (e is! Map) continue;
+          final node = e['node'] as Map?;
+          final ls = e['list_status'] as Map?;
+          if (node == null || ls == null) continue;
+          final id = (node['id'] as num?)?.toInt();
+          if (id == null) continue;
+          final status = _statusFromMal(ls['status'] as String?);
+          if (status == null) continue;
+          final pic = node['main_picture'] as Map?;
+          final cover =
+              (pic?['large'] as String?) ?? (pic?['medium'] as String?);
+          final score = (ls['score'] as num?)?.toDouble();
+          items.add(
+            TrackerListItem(
+              item: MediaItem(
+                id: 'tracker:mal:$id',
+                title: '${node['title'] ?? ''}',
+                cover: cover,
+                type: ProviderType.anime,
+                malId: id,
+                url: '',
+                sourceId: '',
+              ),
+              status: status,
+              progress: (ls['num_episodes_watched'] as num?)?.toInt(),
+              score: (score != null && score > 0) ? score : null,
+            ),
+          );
+        }
+        final next = (body['paging'] as Map?)?['next'] as String?;
+        if (next == null || next.isEmpty) break;
+        url = next;
+      }
+      return items;
+    } catch (_) {
+      return const [];
+    }
   }
 
   @override

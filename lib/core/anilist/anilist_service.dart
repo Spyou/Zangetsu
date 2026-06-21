@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../environment.dart';
+import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../tracker/tracker.dart';
 import '../ui/global_messenger.dart';
@@ -305,6 +307,92 @@ class AniListService extends ChangeNotifier implements Tracker {
     }
     final ok = await _api.saveStatus(mediaId: media.id, status: 'CURRENT');
     debugPrint('[AniList] markWatching (mal=$malId title="$title") -> $ok');
+  }
+
+  // ── Library read-back (for the My List tracker switcher) ────────────────────
+
+  /// Read the connected user's full AniList anime library as metadata stubs +
+  /// status. Best-effort: `[]` when disconnected or on ANY error (never throws).
+  @override
+  Future<List<TrackerListItem>> fetchList() async {
+    final user = _store.viewerName;
+    if (!isConnected || user == null || user.isEmpty) return const [];
+    try {
+      const query =
+          'query(\$u:String){ MediaListCollection(userName:\$u, type:ANIME){ '
+          'lists { status entries { status progress score(format:POINT_10) '
+          'media { idMal title { romaji english } coverImage { large } } } } } }';
+      final res = await _dio.post<dynamic>(
+        'https://graphql.anilist.co',
+        data: {
+          'query': query,
+          'variables': {'u': user},
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer ${_store.token}',
+          },
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final data = res.data;
+      final collection = (data is Map && data['data'] is Map)
+          ? (data['data'] as Map)['MediaListCollection']
+          : null;
+      final lists = (collection is Map) ? collection['lists'] : null;
+      if (lists is! List) return const [];
+
+      final out = <TrackerListItem>[];
+      final seen = <int>{}; // dedupe by malId
+      var idx = 0;
+      for (final list in lists) {
+        final entries = (list is Map) ? list['entries'] : null;
+        if (entries is! List) continue;
+        for (final e in entries) {
+          if (e is! Map) continue;
+          final status = watchStatusFromAniList(e['status'] as String?);
+          if (status == null) continue;
+          final media = e['media'];
+          if (media is! Map) continue;
+          final malId = (media['idMal'] as num?)?.toInt();
+          if (malId != null && !seen.add(malId)) continue; // already have it
+
+          final t = media['title'];
+          final english = (t is Map) ? t['english'] as String? : null;
+          final romaji = (t is Map) ? t['romaji'] as String? : null;
+          final title = (english?.isNotEmpty == true)
+              ? english!
+              : (romaji ?? 'Unknown');
+          final cover = (media['coverImage'] is Map)
+              ? (media['coverImage'] as Map)['large'] as String?
+              : null;
+
+          final rawScore = (e['score'] as num?)?.toDouble();
+          final score = (rawScore == null || rawScore == 0) ? null : rawScore;
+
+          out.add(TrackerListItem(
+            item: MediaItem(
+              id: 'tracker:anilist:${malId ?? idx}',
+              title: title,
+              cover: cover,
+              url: '',
+              type: ProviderType.anime,
+              sourceId: '',
+              malId: malId,
+            ),
+            status: status,
+            progress: (e['progress'] as num?)?.toInt(),
+            score: score,
+          ));
+          idx++;
+        }
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Remove an anime from the user's AniList list (when removed from My List).

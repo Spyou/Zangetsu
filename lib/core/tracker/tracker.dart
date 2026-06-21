@@ -1,6 +1,24 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/media_item.dart';
 import '../models/watch_status.dart';
+
+/// One entry of the user's library read back from a tracker (AniList/MAL/Simkl).
+/// [item] is a METADATA STUB — title/cover/ids only, with `url`/`sourceId` empty
+/// (no provider is attached; a playable source is resolved by title on tap).
+class TrackerListItem {
+  const TrackerListItem({
+    required this.item,
+    required this.status,
+    this.progress,
+    this.score,
+  });
+
+  final MediaItem item;
+  final WatchStatus status; // planning | watching | completed | paused | dropped
+  final int? progress; // episodes watched (optional, for display)
+  final double? score; // user score 0–10 (optional, for display)
+}
 
 /// A list/progress tracker the app can sync to (AniList, MyAnimeList, Simkl).
 /// All write ops are best-effort and self-gating — a disconnected tracker (or
@@ -60,4 +78,9 @@ abstract interface class Tracker implements Listenable {
     bool tmdbIsTv,
     String? imdbId,
   });
+
+  /// Read back the user's full library from this tracker (anime; Simkl may also
+  /// include movies/TV). Best-effort: returns `[]` when disconnected or on any
+  /// error — never throws. Each item is a metadata stub + its library status.
+  Future<List<TrackerListItem>> fetchList();
 }

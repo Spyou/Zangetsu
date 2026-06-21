@@ -7,6 +7,8 @@ import 'package:hive/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../environment.dart';
+import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import 'tracker.dart';
 
@@ -275,6 +277,104 @@ class SimklService extends ChangeNotifier implements Tracker {
     final t = _target(malId, tmdbId, tmdbIsTv, imdbId);
     if (t == null) return;
     await _post('/sync/history/remove', _body(t, {'ids': t.ids}));
+  }
+
+  // ── Library read-back (for the My List tracker switcher) ────────────────────
+
+  /// Expand a Simkl `poster` path (e.g. `12/12abcd0e1f2a3b4c`) into a full CDN
+  /// url. Simkl serves posters from `simkl.in/posters/<path>_<size>.jpg`; `_m`
+  /// is the medium thumbnail. Already-absolute urls pass through unchanged.
+  static String? _posterUrl(Object? poster) {
+    if (poster is! String || poster.isEmpty) return null;
+    if (poster.startsWith('http')) return poster;
+    return 'https://simkl.in/posters/${poster}_m.jpg';
+  }
+
+  /// Map a Simkl list name to our [WatchStatus]. `notinteresting` collapses to
+  /// dropped; unknown values yield null (the entry is skipped).
+  static WatchStatus? _statusFromSimkl(String? status) => switch (status) {
+    'watching' => WatchStatus.watching,
+    'plantowatch' => WatchStatus.planning,
+    'completed' => WatchStatus.completed,
+    'hold' => WatchStatus.paused,
+    'dropped' || 'notinteresting' => WatchStatus.dropped,
+    _ => null,
+  };
+
+  /// Simkl returns several numeric fields as STRINGS (e.g. `ids.mal:"16498"`),
+  /// so a plain `as num?` cast THROWS and would blank the whole list. Parse
+  /// defensively — accept num or numeric string, else null.
+  static int? _asInt(Object? v) =>
+      v is num ? v.toInt() : (v is String ? int.tryParse(v) : null);
+  static double? _asDouble(Object? v) =>
+      v is num ? v.toDouble() : (v is String ? double.tryParse(v) : null);
+
+  /// Read the connected user's full Simkl anime library as metadata stubs +
+  /// status. Best-effort: `[]` when disconnected or on ANY error (never throws).
+  @override
+  Future<List<TrackerListItem>> fetchList() async {
+    if (!isConnected) return const [];
+    try {
+      final res = await _dio.get<dynamic>(
+        '$_api/sync/all-items/anime?extended=full',
+        options: Options(
+          headers: _headers,
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final data = res.data;
+      // `/sync/all-items/anime` nests the list under "anime"; some accounts use
+      // "shows" for anime tracked as shows — accept either.
+      final entries = (data is Map) ? (data['anime'] ?? data['shows']) : null;
+      if (entries is! List) {
+        debugPrint(
+          '[simkl] fetchList: no list — status=${res.statusCode} '
+          'keys=${data is Map ? data.keys.toList() : data.runtimeType}',
+        );
+        return const [];
+      }
+
+      final out = <TrackerListItem>[];
+      var idx = 0;
+      for (final e in entries) {
+        if (e is! Map) continue;
+        final status = _statusFromSimkl(e['status'] as String?);
+        if (status == null) continue;
+        // Anime/show entries nest the media under "show"; fall back to the
+        // entry itself if a variant inlines the fields.
+        final show = (e['show'] is Map) ? e['show'] as Map : e;
+
+        final ids = (show['ids'] is Map) ? show['ids'] as Map : const {};
+        final simklId = _asInt(ids['simkl']);
+        final malId = _asInt(ids['mal']);
+        final title =
+            (show['title'] as String?) ?? (e['title'] as String?) ?? 'Unknown';
+
+        final rawScore = _asDouble(e['user_rating']);
+        final score = (rawScore == null || rawScore <= 0) ? null : rawScore;
+
+        out.add(TrackerListItem(
+          item: MediaItem(
+            id: 'tracker:simkl:${simklId ?? malId ?? idx}',
+            title: title,
+            cover: _posterUrl(show['poster']),
+            url: '',
+            type: ProviderType.anime,
+            sourceId: '',
+            malId: malId,
+          ),
+          status: status,
+          progress: _asInt(e['watched_episodes_count']),
+          score: score,
+        ));
+        idx++;
+      }
+      debugPrint('[simkl] fetchList: ${out.length}/${entries.length} items');
+      return out;
+    } catch (e) {
+      debugPrint('[simkl] fetchList failed: $e');
+      return const [];
+    }
   }
 
   @override
