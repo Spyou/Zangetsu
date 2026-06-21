@@ -88,7 +88,11 @@ globalThis.__fetch = function(src, url, opts) {
     body: opts.body == null ? null : (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)),
     responseType: opts.responseType || 'text',
     timeoutMs: (typeof opts.timeoutMs === 'number' && opts.timeoutMs > 0) ? opts.timeoutMs : 0,
-    followRedirects: opts.followRedirects === false ? false : true
+    followRedirects: opts.followRedirects === false ? false : true,
+    // Opt into the native Cloudflare solver for this request (cf_clearance
+    // cookie + matching UA attached by the Dart fetch handler). Use for
+    // CF-gated sources like AnimePahe: fetch(url, { browser: true }).
+    browser: opts.browser === true || opts.cf === true
   };
   var promise = new Promise(function(resolve, reject) {
     __pendingFetches[id] = { resolve: resolve, reject: reject };

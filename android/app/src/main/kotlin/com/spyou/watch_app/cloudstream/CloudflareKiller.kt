@@ -114,7 +114,7 @@ class CloudflareKiller : Interceptor {
 /** Loads a URL in a hidden WebView and waits for Cloudflare's `cf_clearance`
  * cookie. WebView work runs on the main thread; the (background) caller blocks
  * on a latch with a timeout. */
-private object CfWebViewSolver {
+internal object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
     fun solve(url: String): Result? {
@@ -126,6 +126,11 @@ private object CfWebViewSolver {
         val ref = AtomicReference<Result?>()
         val main = Handler(Looper.getMainLooper())
         val webViewRef = AtomicReference<WebView?>()
+        // The WebView must render full-size for Cloudflare's JS challenge to run,
+        // but we don't want the user staring at the raw challenge/ad page. So we
+        // wrap it in a container and lay a branded "Verifying…" overlay ON TOP —
+        // CF's JS still executes underneath; the user just sees a clean screen.
+        val containerRef = AtomicReference<android.view.View?>()
 
         fun captureIfReady() {
             CookieManager.getInstance().flush()
@@ -174,16 +179,24 @@ private object CfWebViewSolver {
                     try {
                         // Must be full-size + genuinely VISIBLE for Cloudflare's
                         // JS challenge to run (occluded/1px/alpha-0 WebViews don't
-                        // render → no solve). The user sees the challenge briefly
-                        // on the FIRST load of a CF source (~8s), then it's
-                        // removed and the clearance cookie is cached (~30min) so
-                        // subsequent loads are instant — same as CloudStream.
-                        activity.addContentView(
+                        // render → no solve), so the WebView stays full-size, but
+                        // a branded opaque overlay sits on top so the user sees a
+                        // clean "Verifying…" screen instead of the raw CF/ad page.
+                        // Solved once per host, cached (~30min) → next loads skip it.
+                        val mp = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                        val container = android.widget.FrameLayout(context)
+                        container.addView(
                             wv,
-                            android.view.ViewGroup.LayoutParams(
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                            ),
+                            android.widget.FrameLayout.LayoutParams(mp, mp),
+                        )
+                        container.addView(
+                            buildVerifyingOverlay(context),
+                            android.widget.FrameLayout.LayoutParams(mp, mp),
+                        )
+                        containerRef.set(container)
+                        activity.addContentView(
+                            container,
+                            android.view.ViewGroup.LayoutParams(mp, mp),
                         )
                     } catch (_: Throwable) {
                     }
@@ -205,6 +218,11 @@ private object CfWebViewSolver {
         main.post {
             main.removeCallbacks(poll)
             try {
+                // Remove the whole container (WebView + overlay) from the window,
+                // then tear the WebView down.
+                containerRef.get()?.let { c ->
+                    (c.parent as? android.view.ViewGroup)?.removeView(c)
+                }
                 webViewRef.get()?.let { w ->
                     (w.parent as? android.view.ViewGroup)?.removeView(w)
                     w.stopLoading()
@@ -214,5 +232,42 @@ private object CfWebViewSolver {
             }
         }
         return if (solved) ref.get() else null
+    }
+
+    /// An opaque, app-styled "Verifying…" screen shown over the solver WebView
+    /// so the user never sees the raw Cloudflare challenge / parked page.
+    private fun buildVerifyingOverlay(context: android.content.Context): android.view.View {
+        val root = android.widget.FrameLayout(context)
+        root.setBackgroundColor(0xFF0B0B0F.toInt()) // app background
+        root.isClickable = true // swallow taps so they don't reach the WebView
+        val col = android.widget.LinearLayout(context)
+        col.orientation = android.widget.LinearLayout.VERTICAL
+        col.gravity = android.view.Gravity.CENTER
+        val spinner = android.widget.ProgressBar(context)
+        spinner.indeterminateTintList =
+            android.content.res.ColorStateList.valueOf(0xFFFF4D57.toInt()) // accent
+        col.addView(spinner)
+        val label = android.widget.TextView(context)
+        label.text = "Verifying with the source…"
+        label.setTextColor(0xFFFFFFFF.toInt())
+        label.textSize = 15f
+        label.gravity = android.view.Gravity.CENTER
+        val pad = (16 * context.resources.displayMetrics.density).toInt()
+        label.setPadding(pad, pad, pad, 0)
+        col.addView(label)
+        val sub = android.widget.TextView(context)
+        sub.text = "This only takes a moment the first time."
+        sub.setTextColor(0xFFA7A7B2.toInt())
+        sub.textSize = 12f
+        sub.gravity = android.view.Gravity.CENTER
+        sub.setPadding(pad, pad / 2, pad, 0)
+        col.addView(sub)
+        val lp = android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+            android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+        )
+        lp.gravity = android.view.Gravity.CENTER
+        root.addView(col, lp)
+        return root
     }
 }

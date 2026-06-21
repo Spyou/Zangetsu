@@ -145,6 +145,36 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cloudstream")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    // Solve Cloudflare for [url] in the WebView solver and hand back
+                    // the clearance cookie + matching User-Agent, so the JS-provider
+                    // fetch layer (Dart) can attach them to its own requests. Runs
+                    // off the main thread (solve() blocks on a WebView latch).
+                    "solveCloudflare" -> {
+                        val url = call.argument<String>("url")
+                        if (url.isNullOrBlank()) {
+                            result.error("bad_args", "url required", null)
+                            return@setMethodCallHandler
+                        }
+                        csExecutor.execute {
+                            val solved = try {
+                                com.lagradost.cloudstream3.network.CfWebViewSolver.solve(url)
+                            } catch (e: Exception) {
+                                null
+                            }
+                            runOnUiThread {
+                                if (solved != null) {
+                                    result.success(
+                                        mapOf(
+                                            "cookie" to solved.cookie,
+                                            "userAgent" to solved.userAgent,
+                                        ),
+                                    )
+                                } else {
+                                    result.success(null)
+                                }
+                            }
+                        }
+                    }
                     // Add (or refresh) a repo: fetch its catalog only — does NOT
                     // download/install anything. The user installs plugins one by
                     // one via "installPlugin". Returns the repo name + its full

@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_js/flutter_js.dart';
 
 import '../error/exceptions.dart';
@@ -48,6 +48,26 @@ class _JsHost {
   final Dio dio;
   late final JavascriptRuntime _runtime;
   final Map<String, JsProvider> providers = {};
+
+  // Cloudflare bridge: JS providers opt into a CF-cleared request via
+  // fetch(url, { browser: true }). We reuse the native WebView solver (the same
+  // one the CloudStream side uses) over a MethodChannel and cache the solved
+  // clearance cookie + matching User-Agent per host. Android-only; on platforms
+  // without the handler the invoke throws and we fall back to a plain request.
+  static const MethodChannel _cf = MethodChannel('zangetsu/cloudstream');
+  final Map<String, String> _cfCookie = {}; // host -> cf_clearance cookie(s)
+  final Map<String, String> _cfUa = {}; // host -> the solving User-Agent
+  // Negative cache: hosts where a solve just failed (e.g. a dead/parked domain
+  // that never yields a clearance cookie). Without this, every browser:true
+  // request re-runs the ~30s WebView solve and the app hangs for minutes. We
+  // attempt at most once per host per [_cfFailTtlMs], then fall through to a
+  // plain request so the provider fails fast instead of looping the solver.
+  final Map<String, int> _cfFailedAt = {}; // host -> ms of last failed solve
+  static const int _cfFailTtlMs = 120000; // 2 min
+  // In-flight solves keyed by host: concurrent requests (e.g. getHome fetching
+  // several pages at once) share ONE 30s WebView solve instead of each spawning
+  // its own — otherwise a single page load fires N parallel solvers.
+  final Map<String, Future<void>> _cfInflight = {};
   final Map<String, _ProviderHealth> _health = {};
 
   ProviderHealthStatus healthFor(String sourceId) =>
@@ -180,22 +200,30 @@ class _JsHost {
       final body = payload['body'];
       final tMs = (payload['timeoutMs'] as num?)?.toInt() ?? 0;
       final follow = payload['followRedirects'] != false;
+      final wantCf = payload['browser'] == true || payload['cf'] == true;
+      final host = Uri.parse(url).host;
+      final hdr = headers.map((k, v) => MapEntry(k, v.toString()));
+      // Opt-in Cloudflare clearance: solve once per host, then attach cookie+UA.
+      // Skip if a recent solve failed (negative cache) so a dead/parked host
+      // doesn't re-run the 30s solver on every request.
+      if (wantCf && !_cfCookie.containsKey(host) && !_cfRecentlyFailed(host)) {
+        await _solveCf(url, host);
+      }
+      _applyCf(host, hdr);
       // ignore: avoid_print
-      print('[fetch] $method $url');
-      final resp = await dio.requestUri<dynamic>(
-        Uri.parse(url),
-        data: body,
-        options: Options(
-          method: method,
-          headers: headers.map((k, v) => MapEntry(k, v.toString())),
-          responseType: ResponseType.plain,
-          followRedirects: follow,
-          maxRedirects: follow ? 5 : 0,
-          validateStatus: (_) => true,
-          receiveTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
-          sendTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
-        ),
-      );
+      print('[fetch] $method $url${wantCf ? ' (cf)' : ''}');
+      var resp = await _request(url, method, hdr, body, follow, tMs);
+      // Auto-recover from a Cloudflare challenge even without the opt-in flag:
+      // solve once and replay (only if we haven't already attached clearance).
+      if (_looksLikeCfChallenge(resp) &&
+          !_cfCookie.containsKey(host) &&
+          !_cfRecentlyFailed(host)) {
+        await _solveCf(url, host);
+        if (_cfCookie.containsKey(host)) {
+          _applyCf(host, hdr);
+          resp = await _request(url, method, hdr, body, follow, tMs);
+        }
+      }
       // ignore: avoid_print
       print(
         '[fetch] <- ${resp.statusCode} ${(resp.data?.toString().length ?? 0)}B $url',
@@ -221,6 +249,116 @@ class _JsHost {
         );
       }
     }
+  }
+
+  Future<Response<dynamic>> _request(
+    String url,
+    String method,
+    Map<String, String> headers,
+    dynamic body,
+    bool follow,
+    int tMs,
+  ) {
+    return dio.requestUri<dynamic>(
+      Uri.parse(url),
+      data: body,
+      options: Options(
+        method: method,
+        headers: headers,
+        responseType: ResponseType.plain,
+        followRedirects: follow,
+        maxRedirects: follow ? 5 : 0,
+        validateStatus: (_) => true,
+        receiveTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
+        sendTimeout: tMs > 0 ? Duration(milliseconds: tMs) : null,
+      ),
+    );
+  }
+
+  /// Solve Cloudflare for [host] via the native WebView solver and cache the
+  /// clearance cookie + matching UA. Best-effort; silent on failure or on
+  /// platforms without the native handler (the MethodChannel invoke throws).
+  /// Solve CF for [host], deduping concurrent callers onto one in-flight solve.
+  Future<void> _solveCf(String url, String host) {
+    final existing = _cfInflight[host];
+    if (existing != null) return existing; // a solve for this host is running
+    final fut = _solveCfImpl(url, host).whenComplete(() {
+      _cfInflight.remove(host);
+    });
+    _cfInflight[host] = fut;
+    return fut;
+  }
+
+  Future<void> _solveCfImpl(String url, String host) async {
+    try {
+      final res = await _cf.invokeMapMethod<String, dynamic>(
+        'solveCloudflare',
+        {'url': url},
+      );
+      final cookie = res?['cookie'] as String?;
+      final ua = res?['userAgent'] as String?;
+      if (cookie != null && cookie.isNotEmpty) {
+        _cfCookie[host] = cookie;
+        _cfFailedAt.remove(host); // solved → clear any negative-cache mark
+        if (ua != null && ua.isNotEmpty) _cfUa[host] = ua;
+        // ignore: avoid_print
+        print('[cf] solved $host (ua=${(ua ?? '').split(')').first})');
+      } else {
+        // Solver returned no clearance (dead/parked host, or not a real CF
+        // challenge) → mark failed so we don't re-run the 30s solve every call.
+        _cfFailedAt[host] = DateTime.now().millisecondsSinceEpoch;
+      }
+    } catch (_) {
+      // No native solver (iOS / not wired) or the invoke threw → also mark
+      // failed; we fall back to a plain request.
+      _cfFailedAt[host] = DateTime.now().millisecondsSinceEpoch;
+    }
+  }
+
+  /// True if a CF solve for [host] failed within the last [_cfFailTtlMs].
+  bool _cfRecentlyFailed(String host) {
+    final at = _cfFailedAt[host];
+    if (at == null) return false;
+    if (DateTime.now().millisecondsSinceEpoch - at < _cfFailTtlMs) return true;
+    _cfFailedAt.remove(host); // TTL elapsed → allow a fresh attempt
+    return false;
+  }
+
+  /// Merge the cached CF clearance into [hdr]. The cf_clearance cookie is bound
+  /// to the EXACT User-Agent that solved it, so when we have one we must FORCE
+  /// the solving UA — even over a UA the provider set — or Cloudflare 403s the
+  /// mismatch. Without a CF cookie we leave the provider's UA untouched.
+  void _applyCf(String host, Map<String, String> hdr) {
+    final cookie = _cfCookie[host];
+    final ua = _cfUa[host];
+    if (cookie != null) {
+      final existing = hdr['Cookie'] ?? hdr['cookie'];
+      hdr['Cookie'] = (existing == null || existing.isEmpty)
+          ? cookie
+          : '$existing; $cookie';
+      if (ua != null && ua.isNotEmpty) {
+        // Force the solving UA: drop any provider-set variant, then set ours.
+        hdr.remove('user-agent');
+        hdr['User-Agent'] = ua;
+      }
+    } else if (ua != null &&
+        hdr['User-Agent'] == null &&
+        hdr['user-agent'] == null) {
+      hdr['User-Agent'] = ua;
+    }
+  }
+
+  /// True when a response is a Cloudflare interstitial rather than real content.
+  bool _looksLikeCfChallenge(Response<dynamic> resp) {
+    final code = resp.statusCode ?? 0;
+    if (code != 403 && code != 503) return false;
+    final server = (resp.headers.value('server') ?? '').toLowerCase();
+    final bodyText = (resp.data?.toString() ?? '').toLowerCase();
+    return server.contains('cloudflare') ||
+        bodyText.contains('just a moment') ||
+        bodyText.contains('challenge-platform') ||
+        bodyText.contains('cf-chl') ||
+        bodyText.contains('enable javascript and cookies');
   }
 
   void _onCrypto(dynamic raw) {
