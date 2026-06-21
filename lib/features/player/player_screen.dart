@@ -153,6 +153,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
+  // MegaSkip — manual jump-forward button (Aniyomi-style). Read once at open
+  // (the player is recreated per session, like the other prefs above).
+  final bool _megaSkipEnabled = sl<PlaybackPrefs>().megaSkip;
+  final int _megaSkipSeconds = sl<PlaybackPrefs>().megaSkipSeconds;
+  bool _megaFlash = false; // brief "+Ns" flash shown right after a MegaSkip tap
+  Timer? _megaFlashTimer;
   bool _dragIsBrightness = false; // left half = brightness, right half = volume
   double _dragValue = 0; // running 0..1 value during a vertical drag
   // HUD shown while adjusting (Netflix-style brightness/volume indicator).
@@ -388,6 +394,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _seekLabelTimer?.cancel();
     _hudTimer?.cancel();
     _upNextTimer?.cancel();
+    _megaFlashTimer?.cancel();
     _sleepTimer?.cancel();
     _completedSub?.cancel();
     _pipSub?.cancel();
@@ -660,6 +667,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
     }
     return null;
+  }
+
+  /// MegaSkip: jump forward by the configured seconds (clamped to the end) and
+  /// flash a brief "+Ns" indicator (Aniyomi-style). Independent of the accurate
+  /// AniSkip OP/ED skip above.
+  void _megaSkip() {
+    _c.seekBy(Duration(seconds: _megaSkipSeconds));
+    _bumpControls();
+    _megaFlashTimer?.cancel();
+    setState(() => _megaFlash = true);
+    _megaFlashTimer = Timer(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _megaFlash = false);
+    });
   }
 
   void _onEpisodeComplete() {
@@ -1562,6 +1582,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               _bumpControls();
                             }
                           : null,
+                      megaSkipEnabled: _megaSkipEnabled,
+                      megaSkipSeconds: _megaSkipSeconds,
+                      onMegaSkip: _megaSkip,
                     ),
                   ),
                 )
@@ -1593,9 +1616,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 6c. Skip button — accurate AniSkip OP/ED intervals when
-              // available (anime), else the manual "Skip intro" early on.
-              // Independent of the controls (stays visible like Netflix).
+              // 6c. Skip button — accurate AniSkip OP/ED intervals (anime) when
+              // detected. Independent of the controls (stays visible like
+              // Netflix). No blind/hardcoded fallback — the manual jump-forward
+              // is MegaSkip (6c-ii) below.
               if (!_locked && !_upNext)
                 StreamBuilder<Duration>(
                   stream: _c.player.stream.position,
@@ -1607,6 +1631,44 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       child: btn,
                     );
                   },
+                ),
+
+              // 6c-ii. MegaSkip lives in the control bar (above the seek bar)
+              // inside _ControlsOverlay — see its `megaSkip*` params below.
+
+              // 6c-iii. Brief centered "+Ns" flash right after a MegaSkip tap.
+              if (_megaFlash)
+                IgnorePointer(
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.keyboard_double_arrow_right_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '+${_megaSkipSeconds}s',
+                            style: AppText.headline.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
 
               // 6d. Outro "Next Episode" pill — lets the user jump ahead near
@@ -1954,6 +2016,9 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onSleep,
     required this.sleepActive,
     required this.onEpisodes,
+    required this.megaSkipEnabled,
+    required this.megaSkipSeconds,
+    required this.onMegaSkip,
     this.onPip,
   });
 
@@ -1975,6 +2040,9 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onSleep;
   final bool sleepActive;
   final VoidCallback? onEpisodes; // null = single episode (no picker)
+  final bool megaSkipEnabled; // MegaSkip pill above the seek bar
+  final int megaSkipSeconds;
+  final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
 
   @override
@@ -2212,6 +2280,19 @@ class _ControlsOverlay extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // MegaSkip — manual jump-forward pill, right-aligned just
+                  // above the seek bar (Aniyomi-style). Only when enabled.
+                  if (megaSkipEnabled)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8, right: 2),
+                        child: _MegaSkipPill(
+                          seconds: megaSkipSeconds,
+                          onTap: onMegaSkip,
+                        ),
+                      ),
+                    ),
                   // Duration tracker (off-screen listener via StreamBuilder).
                   StreamBuilder<Duration>(
                     stream: c.player.stream.duration,
@@ -2705,6 +2786,54 @@ class _SkipButton extends StatelessWidget {
                 Icons.fast_forward_rounded,
                 color: Colors.white,
                 size: 18,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// MegaSkip — Aniyomi-style manual "jump forward N seconds" pill. A compact,
+// accent-outlined stadium that sits right-aligned just above the seek bar (so
+// it never overlaps the bar or the controls), distinct from the AniSkip pill.
+class _MegaSkipPill extends StatelessWidget {
+  const _MegaSkipPill({required this.seconds, required this.onTap});
+  final int seconds;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black.withValues(alpha: 0.5),
+      shape: StadiumBorder(
+        side: BorderSide(
+          color: AppColors.accent.withValues(alpha: 0.7),
+          width: 1.2,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.keyboard_double_arrow_right_rounded,
+                color: AppColors.accent,
+                size: 17,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '+${seconds}s',
+                style: AppText.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12.5,
+                ),
               ),
             ],
           ),

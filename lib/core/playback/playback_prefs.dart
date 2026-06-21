@@ -123,15 +123,27 @@ class PlaybackPrefs {
   Future<void> setSeekPreviewOnline(bool value) =>
       _box.put('seekPreviewOnline', value);
 
-  /// Whether to show a "Skip intro" button early in each episode.
+  /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
+  /// when real OP/ED timings are detected).
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
   Future<void> setSkipIntro(bool value) => _box.put('skipIntro', value);
 
-  /// Seconds a "Skip intro" tap jumps forward (typical anime OP ≈ 85s).
-  int get skipIntroSeconds =>
-      (_box.get('skipIntroSeconds', defaultValue: 85) as num).toInt();
-  Future<void> setSkipIntroSeconds(int value) =>
-      _box.put('skipIntroSeconds', value);
+  /// MegaSkip — a manual "jump forward N seconds" button shown in the player
+  /// (Aniyomi-style), independent of the accurate AniSkip OP/ED skip above.
+  /// [megaSkip] toggles the button; [megaSkipSeconds] is the jump size, clamped
+  /// 5–180s (default 85 ≈ a typical anime opening).
+  bool get megaSkip => _box.get('megaSkip', defaultValue: true) as bool;
+  Future<void> setMegaSkip(bool value) => _box.put('megaSkip', value);
+
+  static const int megaSkipMin = 5;
+  static const int megaSkipMax = 180;
+  int get megaSkipSeconds {
+    final v = (_box.get('megaSkipSeconds', defaultValue: 85) as num).toInt();
+    return v.clamp(megaSkipMin, megaSkipMax);
+  }
+
+  Future<void> setMegaSkipSeconds(int value) =>
+      _box.put('megaSkipSeconds', value.clamp(megaSkipMin, megaSkipMax));
 
   /// Default player. Empty string = the built-in player; otherwise the package
   /// id of an external player (e.g. 'org.videolan.vlc') to hand streams to.

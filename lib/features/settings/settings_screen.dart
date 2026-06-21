@@ -603,6 +603,82 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     );
   }
 
+  /// MegaSkip jump-size slider (5–180s), shown under the MegaSkip toggle. Holds
+  /// the value locally while dragging (smooth, no per-tick Hive writes) and
+  /// persists on release.
+  Widget _megaSkipDurationRow() {
+    double val = _prefs.megaSkipSeconds.toDouble();
+    return StatefulBuilder(
+      builder: (context, setLocal) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.timer_outlined,
+                  color: AppColors.textSecondary,
+                  size: 22,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    'MegaSkip duration',
+                    style: AppText.headline.copyWith(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w500,
+                      fontSize: 15,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${val.round()}s',
+                  style: AppText.headline.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                Text('${PlaybackPrefs.megaSkipMin}', style: AppText.caption),
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: AppColors.accent,
+                      thumbColor: AppColors.accent,
+                      inactiveTrackColor: AppColors.textSecondary.withValues(
+                        alpha: 0.3,
+                      ),
+                      overlayColor: AppColors.accent.withValues(alpha: 0.2),
+                    ),
+                    child: Slider(
+                      min: PlaybackPrefs.megaSkipMin.toDouble(),
+                      max: PlaybackPrefs.megaSkipMax.toDouble(),
+                      divisions:
+                          PlaybackPrefs.megaSkipMax - PlaybackPrefs.megaSkipMin,
+                      value: val,
+                      label: '${val.round()}s',
+                      onChanged: (v) => setLocal(() => val = v),
+                      onChangeEnd: (v) async {
+                        await _prefs.setMegaSkipSeconds(v.round());
+                        if (mounted) setState(() {});
+                      },
+                    ),
+                  ),
+                ),
+                Text('${PlaybackPrefs.megaSkipMax}', style: AppText.caption),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -700,6 +776,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.keyboard_double_arrow_right_rounded,
+                title: 'MegaSkip button',
+                subtitle: 'A jump-forward button in the player (any video)',
+                value: _prefs.megaSkip,
+                onChanged: (v) async {
+                  await _prefs.setMegaSkip(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              if (_prefs.megaSkip) _megaSkipDurationRow(),
               _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
                 title: 'Keep screen on',
