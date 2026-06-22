@@ -286,7 +286,15 @@ class MainActivity : FlutterActivity() {
                         csReadPool.execute {
                             try {
                                 val res = host.getHome(name ?: "")
-                                runOnUiThread { result.success(res) }
+                                // Serialize on THIS background thread, not the UI
+                                // thread. Handing Flutter a big nested List<Map>
+                                // makes the platform-channel codec encode it on the
+                                // main thread, which skips frames on large feeds
+                                // (e.g. MovieBox). A single JSON string encodes
+                                // cheaply on the main thread; Dart decodes it off
+                                // the UI thread.
+                                val json = org.json.JSONArray(res).toString()
+                                runOnUiThread { result.success(json) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }

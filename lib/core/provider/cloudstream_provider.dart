@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -346,13 +347,25 @@ class CloudStreamProvider implements BaseProvider {
     return _inflightHome ??= _fetchHome().whenComplete(() => _inflightHome = null);
   }
 
+  /// Static so it can run inside a `compute` isolate (off the UI thread).
+  static List<dynamic> _decodeJsonList(String s) =>
+      jsonDecode(s) as List<dynamic>;
+
   Future<List<HomeSection>?> _fetchHome() async {
     if (!Platform.isAndroid) return null;
-    final raw = await _csChannel.invokeMethod<List<dynamic>>(
+    // Native returns the feed as a JSON STRING (serialized on its background
+    // thread). Handing Flutter a nested List<Map> would make the platform
+    // channel encode it on the UI thread — which skips frames on big feeds like
+    // MovieBox. Decode it OFF the UI thread (compute) when it's large.
+    final jsonStr = await _csChannel.invokeMethod<String>(
       'getHome',
       {'name': name},
     );
-    if (raw == null || raw.isEmpty) return null;
+    if (jsonStr == null || jsonStr.isEmpty || jsonStr == '[]') return null;
+    final List<dynamic> raw = jsonStr.length > 20000
+        ? await compute(_decodeJsonList, jsonStr)
+        : _decodeJsonList(jsonStr);
+    if (raw.isEmpty) return null;
     final sections = <HomeSection>[];
     for (final r in raw) {
       final m = _asMap(r);
