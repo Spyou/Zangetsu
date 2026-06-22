@@ -67,6 +67,17 @@ class MainActivity : FlutterActivity() {
         super.onPause()
     }
 
+    // A "new episode" notification tapped while the app is already running:
+    // forward its payload to Dart so it opens that show's Detail.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra("notif_payload")?.let { payload ->
+            notifChannel?.invokeMethod("openShow", payload)
+            intent.removeExtra("notif_payload")
+        }
+    }
+
     // The in-flight external-player launch, completed in onActivityResult so the
     // Dart side learns whether the player actually played anything (for the
     // auto-fallback to the built-in player).
@@ -82,6 +93,10 @@ class MainActivity : FlutterActivity() {
     // auto-enter API) we trigger PiP from onUserLeaveHint (home press).
     private var autoPipEnabled = false
     private val pipAspect = Rational(16, 9)
+
+    // Set in configureFlutterEngine; used by onNewIntent to hand a tapped
+    // "new episode" notification to Dart while the app is already running.
+    private var notifChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -122,6 +137,26 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Notifications channel: deliver the "new episode" notification a CS
+        // worker posted (its launch intent carries notif_payload) to Dart so it
+        // can open that show's Detail. getInitialNotification covers cold/back
+        // launch; onNewIntent (below) covers a tap while the app is running.
+        notifChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "zangetsu/notifications",
+        ).also { ch ->
+            ch.setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getInitialNotification" -> {
+                        val payload = intent?.getStringExtra("notif_payload")
+                        intent?.removeExtra("notif_payload") // consume once
+                        result.success(payload)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // PiP channel: Dart arms/disarms auto-PiP while the player is on screen.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")

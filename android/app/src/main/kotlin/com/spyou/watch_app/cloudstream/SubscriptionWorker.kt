@@ -75,7 +75,11 @@ class SubscriptionWorker(ctx: Context, params: WorkerParameters) :
                 .createNotificationChannel(ch)
         }
         val launch = ctx.packageManager.getLaunchIntentForPackage(ctx.packageName)
-            ?.apply { flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP }
+            ?.apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                // Tapping opens this show's Detail (Dart reads notif_payload).
+                putExtra("notif_payload", "cs:$apiName|$url")
+            }
         val id = (apiName + url).hashCode()
         val pi = PendingIntent.getActivity(
             ctx,

@@ -6,6 +6,11 @@ import 'package:flutter/material.dart';
 final GlobalKey<ScaffoldMessengerState> rootMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
 
+/// App-wide Navigator so non-widget code (e.g. tapping a "new episode"
+/// notification) can push a route. Wired into the root [MaterialApp] via
+/// `navigatorKey`.
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
+
 void showGlobalSnack(String message) {
   rootMessengerKey.currentState
     ?..hideCurrentSnackBar()

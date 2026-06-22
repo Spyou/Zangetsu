@@ -40,6 +40,7 @@ class WatchApp extends StatefulWidget {
 class _WatchAppState extends State<WatchApp> {
   late final Future<void> _boot = _run();
   bool? _onboardedOverride; // set true once onboarding finishes this session
+  bool _handledLaunchTaps = false; // route a notification-tap launch once
 
   /// Init deps, then (for returning users) kick off the Home fetch so its rows
   /// stream in WHILE the splash plays — Home appears already populated. Holds
@@ -116,6 +117,14 @@ class _WatchAppState extends State<WatchApp> {
             : OnboardingScreen(
                 onDone: () => setState(() => _onboardedOverride = true),
               );
+        // Once the real UI (with the global navigator) is up, open the show if
+        // the app was launched by tapping a "new episode" notification.
+        if (!_handledLaunchTaps) {
+          _handledLaunchTaps = true;
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => NotificationService.instance.handleLaunch(),
+          );
+        }
         // Providers wrap the MaterialApp so its Navigator (and every pushed
         // route) is a descendant of them.
         return MultiBlocProvider(
@@ -131,6 +140,7 @@ class _WatchAppState extends State<WatchApp> {
               theme: buildAppTheme(),
               debugShowCheckedModeBanner: false,
               scaffoldMessengerKey: rootMessengerKey,
+              navigatorKey: rootNavigatorKey,
               home: home,
             ),
           ),
