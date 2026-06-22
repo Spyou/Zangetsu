@@ -8,7 +8,11 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'dart:io';
+
 import '../../core/di/injector.dart';
+import '../../core/notify/notification_service.dart';
+import '../../core/notify/subscription_store.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
@@ -281,6 +285,34 @@ class _DetailViewState extends State<_DetailView>
     final u = widget.item.url.trim();
     if (u.startsWith('http://') || u.startsWith('https://')) return u;
     return null;
+  }
+
+  bool get _subscribed =>
+      sl<SubscriptionStore>().contains(widget.item.sourceId, widget.item.url);
+
+  /// Toggle "notify on new episodes" for this show. On subscribe we seed the
+  /// baseline to the current episode count so only FUTURE episodes alert.
+  Future<void> _toggleSubscribe(MediaDetail detail) async {
+    final store = sl<SubscriptionStore>();
+    final item = widget.item;
+    if (_subscribed) {
+      await store.remove(item.sourceId, item.url);
+      _snack('Notifications off for “${item.title}”');
+    } else {
+      await store.add(
+        Subscription(
+          sourceId: item.sourceId,
+          url: item.url,
+          title: item.title.isNotEmpty ? item.title : detail.title,
+          cover: item.cover,
+          coverHeaders: item.coverHeaders,
+          lastCount: detail.episodes.length,
+        ),
+      );
+      await NotificationService.instance.init(); // ask for permission now
+      _snack('You’ll be notified of new episodes of “${item.title}”');
+    }
+    if (mounted) setState(() {});
   }
 
   void _snack(String msg) {
@@ -829,6 +861,18 @@ class _DetailViewState extends State<_DetailView>
                   tooltip: _inMyList ? 'Change status' : 'Add to My List',
                   onTap: () => _openListSheet(detail),
                 ),
+                if (Platform.isAndroid)
+                  _IconAction(
+                    icon: _subscribed
+                        ? Icons.notifications_active_rounded
+                        : Icons.notifications_none_rounded,
+                    active: _subscribed,
+                    label: 'Notify',
+                    tooltip: _subscribed
+                        ? 'Stop new-episode alerts'
+                        : 'Notify on new episodes',
+                    onTap: () => _toggleSubscribe(detail),
+                  ),
                 _IconAction(
                   icon: Icons.ios_share_rounded,
                   label: 'Share',

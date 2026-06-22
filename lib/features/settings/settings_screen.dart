@@ -14,6 +14,7 @@ import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -26,6 +27,7 @@ import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
+import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
 import '../sources/sources_screen.dart';
 
@@ -39,6 +41,20 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
+  // Opt-in in-app DNS-over-HTTPS for CloudStream sources (Android-only). Loaded
+  // from native on open; CsDns.off (default) until then.
+  int _dnsChoice = CsDns.off;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Platform.isAndroid) {
+      CsDns.get().then((c) {
+        if (mounted) setState(() => _dnsChoice = c);
+      });
+    }
+  }
+
   ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
 
   ProviderRegistry get _registry => sl<ProviderRegistry>();
@@ -48,6 +64,64 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
+
+  /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
+  Future<void> _pickDns() async {
+    final picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('DNS', style: AppText.headline),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Encrypted DNS for CloudStream sources — helps bypass ISP '
+                  'blocking. Off = your normal connection.',
+                  style: AppText.caption,
+                ),
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            for (final e in CsDns.labels.entries)
+              ListTile(
+                title: Text(e.value, style: AppText.body),
+                trailing: e.key == _dnsChoice
+                    ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, e.key),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == _dnsChoice) return;
+    await CsDns.set(picked);
+    if (mounted) setState(() => _dnsChoice = picked);
+  }
 
   String _activeLabel(String activeId) {
     if (activeId.startsWith('cs:')) {
@@ -289,6 +363,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           subtitle: 'Install CloudStream sources',
                           onTap: _addCloudStreamRepo,
                         ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.vpn_lock_outlined,
+                          title: 'DNS',
+                          subtitle: _dnsChoice == CsDns.off
+                              ? 'Off · bypass ISP blocks on CS sources'
+                              : CsDns.labelFor(_dnsChoice),
+                          onTap: _pickDns,
+                        ),
                     ],
                   ),
                   SettingsCard(
@@ -305,6 +388,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Watch offline',
                         onTap: () => _push(const DownloadsScreen()),
                       ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.notifications_none_rounded,
+                          title: 'Notifications',
+                          subtitle: 'New-episode alerts for subscribed shows',
+                          onTap: () => _push(const SubscriptionsScreen()),
+                        ),
                     ],
                   ),
                   SettingsCard(

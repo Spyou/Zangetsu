@@ -30,6 +30,8 @@ import '../tracker/tracker_hub.dart';
 import '../appwrite/appwrite_service.dart';
 import '../download/download_manager.dart';
 import '../download/download_service.dart';
+import '../notify/subscription_store.dart';
+import '../notify/subscription_checker.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 
@@ -196,6 +198,16 @@ Future<void> initDependencies() async {
       csManager: csManager,
       activeSource: sl<ActiveSourceCubit>(),
     ),
+  );
+
+  // "New episode" subscriptions (CloudStream-style): the store + the checker
+  // that re-fetches each subscribed show's episodes (works for JS and CS via
+  // SourceRepository.episodes) and notifies on an increase. Triggered on app
+  // launch/resume.
+  await SubscriptionStore.init();
+  sl.registerSingleton<SubscriptionStore>(SubscriptionStore());
+  sl.registerSingleton<SubscriptionChecker>(
+    SubscriptionChecker(sl<SourceRepository>(), sl<SubscriptionStore>()),
   );
 
   // Offline downloads (background_downloader). setup() restores persisted

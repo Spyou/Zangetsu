@@ -4,6 +4,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
+import 'core/notify/notification_service.dart';
+import 'core/notify/subscription_checker.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/state/active_source_cubit.dart';
@@ -57,6 +59,15 @@ class _WatchAppState extends State<WatchApp> {
     } catch (_) {}
     if (isOnboarded()) {
       sl<HomeCubit>().load(); // fire-and-forget warm for the active source
+      // CloudStream-style "new episode" check: once the app is up, re-fetch
+      // each subscribed show's episodes (JS or CS) and notify on any increase.
+      // Fire-and-forget + delayed so it doesn't compete with the splash/home.
+      Future.delayed(const Duration(seconds: 6), () async {
+        try {
+          await NotificationService.instance.init();
+          await sl<SubscriptionChecker>().checkAll();
+        } catch (_) {}
+      });
     }
     final elapsed = DateTime.now().difference(start);
     const minSplash = Duration(milliseconds: 2000);
