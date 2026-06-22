@@ -19,6 +19,9 @@ class SubscriptionChecker {
     _running = true;
     try {
       for (final sub in _store.all()) {
+        // CS sources are handled by the native background worker (it can run
+        // while the app is closed); skip them here to avoid double alerts.
+        if (sub.sourceId.startsWith('cs:')) continue;
         try {
           final eps = await _repo
               .episodes(sub.url, sourceId: sub.sourceId)

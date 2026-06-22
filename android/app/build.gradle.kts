@@ -131,4 +131,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     // Core library desugaring — required by flutter_local_notifications.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    // Background "new episode" checks for CloudStream sources (CloudStream's own
+    // mechanism): a native periodic worker re-runs PluginHost.load() + notifies.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

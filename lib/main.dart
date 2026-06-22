@@ -4,8 +4,10 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
+import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/subscription_checker.dart';
+import 'core/notify/subscription_store.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/state/active_source_cubit.dart';
@@ -65,7 +67,11 @@ class _WatchAppState extends State<WatchApp> {
       Future.delayed(const Duration(seconds: 6), () async {
         try {
           await NotificationService.instance.init();
+          // Mirror CS subs to native + (re)schedule the background worker, then
+          // run the launch sweep: JS sources here, CS via the native worker.
+          await CsNotify.sync(sl<SubscriptionStore>().all());
           await sl<SubscriptionChecker>().checkAll();
+          await CsNotify.checkNow();
         } catch (_) {}
       });
     }

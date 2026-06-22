@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/notify/cs_notify.dart';
 import '../../core/notify/subscription_checker.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/theme/app_colors.dart';
@@ -43,6 +44,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   Future<void> _remove(Subscription s) async {
     await _store.remove(s.sourceId, s.url);
+    await CsNotify.sync(_store.all()); // drop it from the native worker too
     if (mounted) setState(() {});
   }
 
@@ -51,7 +53,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     messenger.showSnackBar(
       const SnackBar(content: Text('Checking for new episodes…')),
     );
-    await sl<SubscriptionChecker>().checkAll();
+    await sl<SubscriptionChecker>().checkAll(); // JS sources
+    await CsNotify.checkNow(); // CS sources (native worker)
     if (mounted) setState(() {});
   }
 

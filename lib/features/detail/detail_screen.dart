@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
 import '../../core/di/injector.dart';
+import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/download/download_manager.dart';
@@ -312,6 +313,8 @@ class _DetailViewState extends State<_DetailView>
       await NotificationService.instance.init(); // ask for permission now
       _snack('You’ll be notified of new episodes of “${item.title}”');
     }
+    // Mirror CS subs to native so the background worker picks up the change.
+    await CsNotify.sync(store.all());
     if (mounted) setState(() {});
   }
 

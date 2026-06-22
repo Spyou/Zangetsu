@@ -8,9 +8,17 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.util.Rational
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
+import com.spyou.watch_app.cloudstream.SubscriptionWorker
 import io.flutter.embedding.android.FlutterActivity
+import java.util.concurrent.TimeUnit
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -243,6 +251,33 @@ class MainActivity : FlutterActivity() {
                             runCatching { host.setDns(choice) }
                             runOnUiThread { result.success(true) }
                         }
+                    }
+                    // Mirror CS subscriptions to native + (re)schedule the periodic
+                    // background "new episode" worker. Merges so the worker's
+                    // advanced episode counts survive a re-sync from Dart.
+                    "syncSubscriptions" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val incoming =
+                            (call.argument<List<Map<String, Any?>>>("subs") ?: emptyList())
+                        csExecutor.execute {
+                            runCatching { mergeSubscriptions(incoming) }
+                            runOnUiThread { result.success(true) }
+                        }
+                    }
+                    // Run the CS subscription check once, now (e.g. "Check now").
+                    "checkSubscriptionsNow" -> {
+                        runCatching {
+                            WorkManager.getInstance(applicationContext).enqueue(
+                                OneTimeWorkRequestBuilder<SubscriptionWorker>()
+                                    .setConstraints(
+                                        Constraints.Builder()
+                                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                                            .build(),
+                                    )
+                                    .build(),
+                            )
+                        }
+                        result.success(true)
                     }
                     "deleteRepo" -> {
                         @Suppress("UNCHECKED_CAST")
@@ -589,5 +624,58 @@ class MainActivity : FlutterActivity() {
         csExecutor.shutdown()
         csReadPool.shutdown()
         super.onDestroy()
+    }
+
+    // ── Background "new episode" subscriptions (CloudStream-style) ─────────────
+
+    /** Merge the CS subscriptions mirrored from Dart into the native store,
+     *  PRESERVING the background worker's advanced episode counts (only brand-new
+     *  subs take the incoming baseline), then (re)schedule the periodic worker. */
+    private fun mergeSubscriptions(incoming: List<Map<String, Any?>>) {
+        val prefs = getSharedPreferences("zangetsu_cs", android.content.Context.MODE_PRIVATE)
+        val existing = runCatching {
+            org.json.JSONArray(prefs.getString("subscriptions", "[]"))
+        }.getOrDefault(org.json.JSONArray())
+        val counts = HashMap<String, Int>()
+        for (i in 0 until existing.length()) {
+            val o = existing.getJSONObject(i)
+            counts["${o.optString("apiName")}|${o.optString("url")}"] = o.optInt("lastCount", 0)
+        }
+        val merged = org.json.JSONArray()
+        for (m in incoming) {
+            val apiName = m["apiName"]?.toString() ?: continue
+            val url = m["url"]?.toString() ?: continue
+            if (apiName.isEmpty() || url.isEmpty()) continue
+            val last = counts["$apiName|$url"] ?: ((m["lastCount"] as? Number)?.toInt() ?: 0)
+            merged.put(
+                org.json.JSONObject()
+                    .put("apiName", apiName)
+                    .put("url", url)
+                    .put("title", m["title"]?.toString() ?: "")
+                    .put("lastCount", last),
+            )
+        }
+        prefs.edit().putString("subscriptions", merged.toString()).apply()
+        scheduleSubscriptionWorker(merged.length() > 0)
+    }
+
+    private fun scheduleSubscriptionWorker(hasSubs: Boolean) {
+        val wm = WorkManager.getInstance(applicationContext)
+        if (!hasSubs) {
+            wm.cancelUniqueWork("zangetsu_sub_check")
+            return
+        }
+        val req = PeriodicWorkRequestBuilder<SubscriptionWorker>(6, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build(),
+            )
+            .build()
+        wm.enqueueUniquePeriodicWork(
+            "zangetsu_sub_check",
+            ExistingPeriodicWorkPolicy.KEEP,
+            req,
+        )
     }
 }
