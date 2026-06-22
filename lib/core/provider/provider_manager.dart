@@ -49,6 +49,15 @@ class _JsHost {
   late final JavascriptRuntime _runtime;
   final Map<String, JsProvider> providers = {};
 
+  // Serialize every provider call onto ONE queue. flutter_js/QuickJS is single-
+  // threaded and non-reentrant; overlapping calls race its async FFI callback
+  // ("Callback invoked after it has been deleted" → native SIGABRT, the frequent
+  // crash). Running calls strictly one-at-a-time removes that race. The runtime's
+  // OWN re-entrant resolves (__resolveFetch/__fireTimer/__resolveCrypto) do NOT
+  // take this lock, so an in-flight call can still be fed while it pumps the JS
+  // event loop — i.e. this can't deadlock.
+  Future<void> _callQueue = Future<void>.value();
+
   // Cloudflare bridge: JS providers opt into a CF-cleared request via
   // fetch(url, { browser: true }). We reuse the native WebView solver (the same
   // one the CloudStream side uses) over a MethodChannel and cache the solved
@@ -114,6 +123,19 @@ class _JsHost {
     }
   }
 
+  // Chains [action] after the current queue tail so calls run strictly one at a
+  // time; a failing call still releases the queue (errors are swallowed on the
+  // chaining future, propagated only to the caller). See [_callQueue].
+  Future<T> _serialized<T>(Future<T> Function() action) {
+    final done = Completer<T>();
+    final prev = _callQueue;
+    _callQueue = done.future.then<void>((_) {}, onError: (_) {});
+    prev.whenComplete(
+      () => action().then(done.complete, onError: done.completeError),
+    );
+    return done.future;
+  }
+
   Future<String> call(
     String sourceId,
     String method,
@@ -121,7 +143,9 @@ class _JsHost {
     Duration timeout = const Duration(seconds: 15),
   }) async {
     try {
-      final v = await _runCall(sourceId, method, args, timeout);
+      final v = await _serialized(
+        () => _runCall(sourceId, method, args, timeout),
+      );
       _health.remove(sourceId);
       return v;
     } catch (e) {
