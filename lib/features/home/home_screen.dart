@@ -95,14 +95,16 @@ class _HomeViewState extends State<_HomeView> {
     },
   );
 
-  /// Fire all hero items' metadata up front so banners are ready (and rotated
-  /// slides are instant) instead of fetching one-at-a-time on display.
+  /// Warm ONLY the first hero's metadata (the slide shown first). The rest load
+  /// lazily, one at a time, as the carousel rotates — each via the hero's own
+  /// `FutureBuilder` on [_heroMeta] (cached). Firing ALL of them up front fired
+  /// one `detail()` per hero AT ONCE; for a heavy CloudStream source (e.g.
+  /// MovieBox) those N concurrent `load()`s saturated the read pool and froze
+  /// the UI thread → ANR. One-at-a-time on rotation is fine even for MovieBox.
   void _prewarmHeroMeta(List<MediaItem> items) {
     if (_heroPrewarmed || items.isEmpty) return;
     _heroPrewarmed = true;
-    for (final it in items) {
-      _heroMeta(it);
-    }
+    _heroMeta(items.first);
   }
 
   void _openDetail(MediaItem item) {
