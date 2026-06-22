@@ -235,6 +235,15 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // In-app DNS-over-HTTPS for CS sources (opt-in; 0 = Off).
+                    "getDns" -> result.success(host.dnsChoice())
+                    "setDns" -> {
+                        val choice = call.argument<Int>("choice") ?: 0
+                        csExecutor.execute {
+                            runCatching { host.setDns(choice) }
+                            runOnUiThread { result.success(true) }
+                        }
+                    }
                     "deleteRepo" -> {
                         @Suppress("UNCHECKED_CAST")
                         val files = (call.argument<List<String>>("files") ?: emptyList())

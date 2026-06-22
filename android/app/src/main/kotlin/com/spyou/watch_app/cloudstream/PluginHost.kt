@@ -62,16 +62,40 @@ class PluginHost(private val context: Context) {
         // CookieManager, and this lets EVERY app.get() (incl. provider requests
         // made without the CloudflareKiller interceptor, e.g. AnimePahe's episode
         // fetch) send it. Additive + best-effort — never throws.
+        applyBaseClient()
+    }
+
+    // The pristine NiceHttp client, captured ONCE before we touch it, so every
+    // re-apply (cookie jar + CF interceptor + DoH) rebuilds from clean instead
+    // of stacking interceptors again when the DNS choice changes.
+    private val pristineClient by lazy { com.lagradost.cloudstream3.app.baseClient }
+
+    private fun csPrefs() =
+        context.getSharedPreferences("zangetsu_cs", Context.MODE_PRIVATE)
+
+    /** Current opt-in DNS-over-HTTPS choice (see [Doh]); [Doh.OFF] by default. */
+    fun dnsChoice(): Int = csPrefs().getInt("dns_choice", Doh.OFF)
+
+    /** (Re)build the shared CS OkHttp client = cookie jar + CF interceptor + the
+     *  selected DoH. Always rebuilds from [pristineClient] so it's idempotent.
+     *  Additive + best-effort — never throws (OFF leaves DNS untouched). */
+    private fun applyBaseClient() {
         runCatching {
             val app = com.lagradost.cloudstream3.app
-            app.baseClient = app.baseClient.newBuilder()
+            val b = pristineClient.newBuilder()
                 .cookieJar(WebkitCookieJar())
                 // cf_clearance is User-Agent-bound; this network interceptor
                 // realigns the UA to the WebView solver's on requests that carry
                 // the clearance cookie (incl. redirected hops).
                 .addNetworkInterceptor(CfClearance.interceptor)
-                .build()
+            app.baseClient = Doh.apply(b, dnsChoice()).build()
         }
+    }
+
+    /** Set the DoH provider (see [Doh]) and re-apply the client immediately. */
+    fun setDns(choice: Int) {
+        csPrefs().edit().putInt("dns_choice", choice).apply()
+        applyBaseClient()
     }
 
     /** PathClassLoader → manifest.json → instantiate → load(). Returns success. */

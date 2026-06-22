@@ -24,6 +24,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Required by flutter_local_notifications (uses java.time APIs).
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -112,6 +114,10 @@ dependencies {
     // okhttp is on the runtime classpath via NiceHttp (CloudStream transitive);
     // compileOnly lets our clean-room CloudflareKiller implement Interceptor.
     compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+    // okhttp-dnsoverhttps powers the opt-in in-app DNS (Doh.kt → DnsOverHttps).
+    // Same okhttp 4.12.0 the CloudStream library already resolves, so this adds
+    // no duplicate; declaring it guarantees the class is present at runtime.
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
     // NiceHttp (the `app` global Requests type) is a runtime-transitive dep of
     // the CloudStream library; compileOnly lets PluginHost set app.baseClient to
     // attach our cookie jar without bundling NiceHttp twice. Same version.
@@ -123,4 +129,6 @@ dependencies {
     // Flutter UI keeps its own theme, so this doesn't affect the main app.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+    // Core library desugaring — required by flutter_local_notifications.
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
