@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/discord/discord_rpc.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -1053,6 +1054,18 @@ class PlayerCubit extends Cubit<PlayerState> {
       ),
     );
     if (g != _gen) return; // superseded mid-open
+    // Discord Rich Presence: announce the episode now playing.
+    final discordTitle = showTitle ?? scrobbleTitle;
+    if (discordTitle != null &&
+        discordTitle.isNotEmpty &&
+        sl.isRegistered<DiscordRpc>()) {
+      sl<DiscordRpc>().setWatching(
+        title: discordTitle,
+        episodeLabel: 'Episode ${currentEpisode.number}',
+        posterUrl: cover,
+        startMs: DateTime.now().millisecondsSinceEpoch,
+      );
+    }
     // Some streams ignore Media.start (the seek-on-open doesn't take), so the
     // user lands back at 0. Verify a moment later and re-seek if needed.
     if (start > Duration.zero) _verifyResume(start, g);
@@ -1414,6 +1427,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   @override
   Future<void> close() async {
     await _persist();
+    // Leaving the player → drop the "Watching" presence back to browsing.
+    if (sl.isRegistered<DiscordRpc>()) {
+      sl<DiscordRpc>().setBrowsing(title: showTitle, posterUrl: cover);
+    }
     for (final s in _subs) {
       s.cancel();
     }

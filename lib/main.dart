@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
+import 'core/discord/discord_rpc.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/subscription_checker.dart';
@@ -37,10 +38,33 @@ class WatchApp extends StatefulWidget {
   State<WatchApp> createState() => _WatchAppState();
 }
 
-class _WatchAppState extends State<WatchApp> {
+class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   late final Future<void> _boot = _run();
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!sl.isRegistered<DiscordRpc>()) return;
+    if (state == AppLifecycleState.resumed) {
+      sl<DiscordRpc>().onForeground();
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      sl<DiscordRpc>().onBackground();
+    }
+  }
 
   /// Init deps, then (for returning users) kick off the Home fetch so its rows
   /// stream in WHILE the splash plays — Home appears already populated. Holds
@@ -73,6 +97,7 @@ class _WatchAppState extends State<WatchApp> {
           await CsNotify.sync(sl<SubscriptionStore>().all());
           await sl<SubscriptionChecker>().checkAll();
           await CsNotify.checkNow();
+          await sl<DiscordRpc>().start(); // connect if enabled + logged in
         } catch (_) {}
       });
     }

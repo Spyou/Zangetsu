@@ -100,6 +100,11 @@ dependencies:
   flutter_background_service: ^5.1.0
   # Local notifications for "new episode" alerts on subscribed shows.
   flutter_local_notifications: ^17.2.4
+  # Discord Rich Presence: Gateway WebSocket + secure token storage + a WebView
+  # for the Discord login (user-token capture).
+  web_socket_channel: ^3.0.1
+  flutter_secure_storage: ^9.2.2
+  webview_flutter: ^4.10.0
   # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
   # AniList account linking.
   app_links: ^6.3.2

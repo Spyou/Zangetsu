@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 
 import '../../core/di/injector.dart';
+import '../../core/discord/discord_rpc.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
@@ -161,7 +162,21 @@ class _DetailViewState extends State<_DetailView>
   }
 
   @override
+  void initState() {
+    super.initState();
+    // Discord Rich Presence: "Looking at <title>" while this detail is open.
+    if (sl.isRegistered<DiscordRpc>()) {
+      sl<DiscordRpc>().setBrowsing(
+        title: widget.item.title,
+        posterUrl: widget.item.cover,
+      );
+    }
+  }
+
+  @override
   void dispose() {
+    // Back to generic "Browsing" when leaving the detail.
+    if (sl.isRegistered<DiscordRpc>()) sl<DiscordRpc>().setBrowsing();
     _scrollController.dispose();
     _tabController.dispose();
     super.dispose();

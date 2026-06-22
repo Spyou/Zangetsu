@@ -15,6 +15,7 @@ import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
+import 'discord_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -416,6 +417,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             : 'AniList, MyAnimeList, Simkl',
                         onTap: () async {
                           await _push(const ConnectionsScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
+                        icon: Icons.gamepad_outlined,
+                        title: 'Discord',
+                        subtitle: 'Rich Presence — show your status',
+                        onTap: () async {
+                          await _push(const DiscordSettingsScreen());
                           if (mounted) setState(() {});
                         },
                       ),

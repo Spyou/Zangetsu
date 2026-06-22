@@ -32,6 +32,7 @@ import '../download/download_manager.dart';
 import '../download/download_service.dart';
 import '../notify/subscription_store.dart';
 import '../notify/subscription_checker.dart';
+import '../discord/discord_rpc.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 
@@ -83,6 +84,10 @@ Future<void> initDependencies() async {
     ),
   );
   sl.registerSingleton<Dio>(dio);
+
+  // Discord Rich Presence (opt-in; off until the user connects + enables it).
+  await DiscordRpc.init();
+  sl.registerSingleton<DiscordRpc>(DiscordRpc(dio));
 
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
