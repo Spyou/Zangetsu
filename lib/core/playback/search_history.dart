@@ -26,7 +26,10 @@ class SearchHistory {
   Future<void> add(String query) async {
     final q = query.trim();
     if (q.isEmpty) return;
-    final list = recent();
+    // recent() can return a `const []` (unmodifiable) when there's no history
+    // yet; .toList() guarantees a growable copy so the mutations below don't
+    // throw "Cannot remove from an unmodifiable list".
+    final list = recent().toList();
     // De-dupe case-insensitively, move the new term to the front.
     list.removeWhere((e) => e.toLowerCase() == q.toLowerCase());
     list.insert(0, q);
