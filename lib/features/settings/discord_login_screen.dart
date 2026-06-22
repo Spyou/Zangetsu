@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
@@ -19,7 +17,6 @@ class DiscordLoginScreen extends StatefulWidget {
 class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
   late final WebViewController _controller;
   bool _grabbed = false;
-  Timer? _poll;
 
   // Pulls the user token out of Discord's webpack store. Runs synchronously and
   // returns the token (or null). Only valid once the app page has loaded. Tries
@@ -76,13 +73,9 @@ class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
             _inject();
             _attemptGrab();
           },
-          onUrlChange: (_) => _attemptGrab(),
         ),
       )
       ..loadRequest(Uri.parse('https://discord.com/login'));
-    // Secondary: poll the webpack grabber (Discord is a SPA, so navigation
-    // callbacks alone are unreliable).
-    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _attemptGrab());
   }
 
   /// Patch XHR/fetch to forward any Authorization header to [_onToken]. Idempotent.
@@ -94,14 +87,13 @@ class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
     final t = raw.trim().replaceAll('"', '');
     if (_grabbed || t.length < 40 || t.startsWith('Bearer')) return;
     _grabbed = true;
-    _poll?.cancel();
     if (mounted) Navigator.of(context).pop(t);
   }
 
   static const String _interceptor = '''
 (function(){
   if(window.__zt)return; window.__zt=true;
-  function send(v){try{if(v&&v.length>40&&v.indexOf('Bearer')!==0)ZToken.postMessage(v);}catch(_){}}
+  function send(v){try{if(!window.__zsent&&v&&v.length>40&&v.indexOf('Bearer')!==0){window.__zsent=true;ZToken.postMessage(v);}}catch(_){}}
   try{
     var s=XMLHttpRequest.prototype.setRequestHeader;
     XMLHttpRequest.prototype.setRequestHeader=function(k,v){
@@ -126,12 +118,6 @@ class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
 })();
 ''';
 
-  @override
-  void dispose() {
-    _poll?.cancel();
-    super.dispose();
-  }
-
   Future<void> _attemptGrab() async {
     if (_grabbed || !mounted) return;
     try {
@@ -139,11 +125,10 @@ class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
       final token = _clean(raw.toString());
       if (token != null && token.length > 30) {
         _grabbed = true;
-        _poll?.cancel();
         if (mounted) Navigator.of(context).pop(token);
       }
     } catch (_) {
-      // webpack not ready / page not logged in yet — keep polling.
+      // webpack not ready yet — the header interceptor is the primary path.
     }
   }
 

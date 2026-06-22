@@ -97,7 +97,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           await CsNotify.sync(sl<SubscriptionStore>().all());
           await sl<SubscriptionChecker>().checkAll();
           await CsNotify.checkNow();
-          await sl<DiscordRpc>().start(); // connect if enabled + logged in
         } catch (_) {}
       });
     }

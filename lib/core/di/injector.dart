@@ -88,6 +88,9 @@ Future<void> initDependencies() async {
   // Discord Rich Presence (opt-in; off until the user connects + enables it).
   await DiscordRpc.init();
   sl.registerSingleton<DiscordRpc>(DiscordRpc(dio));
+  // Restore the saved token + reconnect now (before the UI), so presence resumes
+  // promptly after a restart instead of looking disconnected.
+  await sl<DiscordRpc>().start();
 
   // Metadata-API trailer lookups (AniList for anime, TMDB for movie/TV).
   sl.registerSingleton<TrailerService>(TrailerService(dio));
