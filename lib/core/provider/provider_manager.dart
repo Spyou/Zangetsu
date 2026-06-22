@@ -77,6 +77,13 @@ class _JsHost {
   // several pages at once) share ONE 30s WebView solve instead of each spawning
   // its own — otherwise a single page load fires N parallel solvers.
   final Map<String, Future<void>> _cfInflight = {};
+
+  // While a `search` runs, never pop the blocking CF WebView solver: search is
+  // a passive multi-source sweep, so a background source's challenge must not
+  // hijack the screen. Cached clearance is still applied; an unsolved CF source
+  // just returns nothing for search. The solve happens later, when the user
+  // actually opens/plays from that source.
+  bool _suppressCfSolve = false;
   final Map<String, _ProviderHealth> _health = {};
 
   ProviderHealthStatus healthFor(String sourceId) =>
@@ -167,41 +174,47 @@ class _JsHost {
     List<Object?> args,
     Duration timeout,
   ) async {
-    final argsJson = jsonEncode(args);
-    final expr =
-        '__callProvider(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)})';
-    final asyncResult = await _runtime.evaluateAsync(expr);
-    final resolved = await _runtime
-        .handlePromise(asyncResult)
-        .timeout(
-          timeout,
-          onTimeout: () {
-            throw JsRuntimeException(
-              '$method timed out after ${timeout.inSeconds}s',
-            );
-          },
-        );
-    if (resolved.isError) {
-      var msg = resolved.stringResult;
-      if (msg.startsWith('"') && msg.endsWith('"')) {
+    final wasSuppress = _suppressCfSolve;
+    _suppressCfSolve = method == 'search';
+    try {
+      final argsJson = jsonEncode(args);
+      final expr =
+          '__callProvider(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)})';
+      final asyncResult = await _runtime.evaluateAsync(expr);
+      final resolved = await _runtime
+          .handlePromise(asyncResult)
+          .timeout(
+            timeout,
+            onTimeout: () {
+              throw JsRuntimeException(
+                '$method timed out after ${timeout.inSeconds}s',
+              );
+            },
+          );
+      if (resolved.isError) {
+        var msg = resolved.stringResult;
+        if (msg.startsWith('"') && msg.endsWith('"')) {
+          try {
+            final unq = jsonDecode(msg);
+            if (unq is String) msg = unq;
+          } catch (_) {}
+        }
+        throw JsRuntimeException(msg);
+      }
+      var s = resolved.stringResult;
+      if (s.isEmpty || s == 'null') {
+        throw JsRuntimeException('$sourceId.$method returned null');
+      }
+      if (s.startsWith('"') && s.endsWith('"')) {
         try {
-          final unq = jsonDecode(msg);
-          if (unq is String) msg = unq;
+          final u = jsonDecode(s);
+          if (u is String) s = u;
         } catch (_) {}
       }
-      throw JsRuntimeException(msg);
+      return s;
+    } finally {
+      _suppressCfSolve = wasSuppress;
     }
-    var s = resolved.stringResult;
-    if (s.isEmpty || s == 'null') {
-      throw JsRuntimeException('$sourceId.$method returned null');
-    }
-    if (s.startsWith('"') && s.endsWith('"')) {
-      try {
-        final u = jsonDecode(s);
-        if (u is String) s = u;
-      } catch (_) {}
-    }
-    return s;
   }
 
   Map<String, dynamic> _coerceMap(dynamic raw) {
@@ -230,7 +243,10 @@ class _JsHost {
       // Opt-in Cloudflare clearance: solve once per host, then attach cookie+UA.
       // Skip if a recent solve failed (negative cache) so a dead/parked host
       // doesn't re-run the 30s solver on every request.
-      if (wantCf && !_cfCookie.containsKey(host) && !_cfRecentlyFailed(host)) {
+      if (wantCf &&
+          !_suppressCfSolve &&
+          !_cfCookie.containsKey(host) &&
+          !_cfRecentlyFailed(host)) {
         await _solveCf(url, host);
       }
       _applyCf(host, hdr);
@@ -240,6 +256,7 @@ class _JsHost {
       // Auto-recover from a Cloudflare challenge even without the opt-in flag:
       // solve once and replay (only if we haven't already attached clearance).
       if (_looksLikeCfChallenge(resp) &&
+          !_suppressCfSolve &&
           !_cfCookie.containsKey(host) &&
           !_cfRecentlyFailed(host)) {
         await _solveCf(url, host);
