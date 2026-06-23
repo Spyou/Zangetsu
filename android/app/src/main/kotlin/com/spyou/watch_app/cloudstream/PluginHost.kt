@@ -281,9 +281,19 @@ class PluginHost(private val context: Context) {
         // Cap each search: with many installed sources, search fans out across
         // all of them on a shared pool — a dead/slow source must not hold a
         // worker thread (which would starve the others). Returns empty on timeout.
+        //
+        // Providers target different CloudStream search APIs and only override
+        // ONE of them — calling the wrong overload hits MainAPI's default, which
+        // throws NotImplementedError (that's why MovieBox/VegaMovies/HDHub4U/…
+        // returned nothing). So try each form, newest-tolerant:
+        //  1. legacy search(query): List<SearchResponse>        (older providers)
+        //  2. paginated search(query, page): SearchResponseList (newer providers)
+        //  3. quickSearch(query)                                (search-bar variant)
         val res = runBlocking {
             withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
                 runCatching { api.search(query) }.getOrNull()
+                    ?: runCatching { api.search(query, 1)?.items }.getOrNull()
+                    ?: runCatching { api.quickSearch(query) }.getOrNull()
             }
         } ?: return emptyList()
         return res.map { it.toMap(apiName) }
