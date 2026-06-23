@@ -3,6 +3,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 
+import '../di/injector.dart';
+import '../metadata/title_logo_service.dart';
 import '../models/media_item.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -57,11 +59,13 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   // Cache extracted colours so swiping back doesn't recompute the palette.
   static final Map<String, Color> _paletteCache = {};
   Color? _artColor;
+  String? _logoUrl; // TMDB title logo (null → show the text title)
 
   @override
   void initState() {
     super.initState();
     _loadPalette();
+    _loadLogo();
   }
 
   @override
@@ -69,8 +73,22 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     super.didUpdateWidget(old);
     if (old.item.cover != widget.item.cover) {
       _artColor = null;
+      _logoUrl = null;
       _loadPalette();
+      _loadLogo();
     }
+  }
+
+  /// Best-effort TMDB title-logo lookup; on a hit, swap the text title for the
+  /// logo image. Stays as text until (and unless) a logo resolves.
+  Future<void> _loadLogo() async {
+    if (!sl.isRegistered<TitleLogoService>()) return;
+    try {
+      final url = await sl<TitleLogoService>().logoFor(widget.item);
+      if (mounted && url != null && url.isNotEmpty) {
+        setState(() => _logoUrl = url);
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadPalette() async {
@@ -239,17 +257,19 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                 GestureDetector(
                   behavior: HitTestBehavior.translucent,
                   onTap: widget.onInfo,
-                  child: Text(
-                    widget.item.title,
-                    textAlign: TextAlign.center,
-                    style: AppText.largeTitle.copyWith(
-                      fontSize: 30,
-                      height: 1.02,
-                      letterSpacing: -0.6,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: _logoUrl != null
+                      ? ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 96),
+                          child: CachedNetworkImage(
+                            imageUrl: _logoUrl!,
+                            fit: BoxFit.contain,
+                            memCacheWidth: memW,
+                            fadeInDuration: const Duration(milliseconds: 250),
+                            // If the logo image itself fails, fall back to text.
+                            errorWidget: (_, _, _) => _titleText(),
+                          ),
+                        )
+                      : _titleText(),
                 ),
                 const SizedBox(height: 12),
                 // Metadata line (reserve height so the card never jumps).
@@ -279,6 +299,18 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       ),
     );
   }
+
+  Widget _titleText() => Text(
+    widget.item.title,
+    textAlign: TextAlign.center,
+    style: AppText.largeTitle.copyWith(
+      fontSize: 30,
+      height: 1.02,
+      letterSpacing: -0.6,
+    ),
+    maxLines: 2,
+    overflow: TextOverflow.ellipsis,
+  );
 
   Widget _metaLine() {
     return FutureBuilder<HeroMeta?>(
