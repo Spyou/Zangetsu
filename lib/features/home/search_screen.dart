@@ -567,66 +567,88 @@ class _SearchViewState extends State<_SearchView> {
         final currentOnly = state.currentSourceOnly;
         return BlocBuilder<ActiveSourceCubit, String>(
           builder: (context, activeId) {
-            final label = currentOnly ? _repo.displayName(activeId) : 'All sources';
-            return Align(
-              alignment: Alignment.centerLeft,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: GestureDetector(
-                  onTap: () => context
-                      .read<SearchBloc>()
-                      .add(SearchScopeChanged(!currentOnly)),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(
-                      color: currentOnly
-                          ? AppColors.accentSoft
-                          : AppColors.surface2,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(
-                        color: currentOnly
-                            ? AppColors.accent
-                            : AppColors.hairline,
-                        width: 1,
+            final src = _repo.displayName(activeId);
+            final label = currentOnly ? 'Only $src' : 'All sources';
+            // Spell out what the toggle does so it isn't a mystery chip.
+            final hint = currentOnly
+                ? 'Tap to search all sources instead'
+                : 'Tap to search only $src';
+            return Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => context
+                        .read<SearchBloc>()
+                        .add(SearchScopeChanged(!currentOnly)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          currentOnly
-                              ? Icons.adjust_rounded
-                              : Icons.public_rounded,
-                          size: 15,
+                      decoration: BoxDecoration(
+                        color: currentOnly
+                            ? AppColors.accentSoft
+                            : AppColors.surface2,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
                           color: currentOnly
                               ? AppColors.accent
-                              : AppColors.textSecondary,
+                              : AppColors.hairline,
+                          width: 1,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          label,
-                          style: AppText.caption.copyWith(
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            currentOnly
+                                ? Icons.adjust_rounded
+                                : Icons.public_rounded,
+                            size: 15,
                             color: currentOnly
                                 ? AppColors.accent
                                 : AppColors.textSecondary,
-                            fontWeight: FontWeight.w700,
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.swap_horiz_rounded,
-                          size: 15,
-                          color: currentOnly
-                              ? AppColors.accent
-                              : AppColors.textTertiary,
-                        ),
-                      ],
+                          const SizedBox(width: 6),
+                          Text(
+                            label,
+                            style: AppText.caption.copyWith(
+                              color: currentOnly
+                                  ? AppColors.accent
+                                  : AppColors.textSecondary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.swap_horiz_rounded,
+                            size: 15,
+                            color: currentOnly
+                                ? AppColors.accent
+                                : AppColors.textTertiary,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4, top: 5),
+                    child: Text(
+                      hint,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textTertiary,
+                        fontSize: 11.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             );
           },
