@@ -234,40 +234,23 @@ internal object CfWebViewSolver {
         return if (solved) ref.get() else null
     }
 
-    /// An opaque, app-styled "Verifying…" screen shown over the solver WebView
-    /// so the user never sees the raw Cloudflare challenge / parked page.
+    /// A plain app-styled LOADING screen — just a centered spinner on the app
+    /// background — laid over the solver WebView. The user sees normal loading,
+    /// never the raw Cloudflare challenge underneath and never an alarming
+    /// "Verifying" message that reads like a bug.
     private fun buildVerifyingOverlay(context: android.content.Context): android.view.View {
         val root = android.widget.FrameLayout(context)
         root.setBackgroundColor(0xFF0B0B0F.toInt()) // app background
         root.isClickable = true // swallow taps so they don't reach the WebView
-        val col = android.widget.LinearLayout(context)
-        col.orientation = android.widget.LinearLayout.VERTICAL
-        col.gravity = android.view.Gravity.CENTER
         val spinner = android.widget.ProgressBar(context)
         spinner.indeterminateTintList =
             android.content.res.ColorStateList.valueOf(0xFFFF4D57.toInt()) // accent
-        col.addView(spinner)
-        val label = android.widget.TextView(context)
-        label.text = "Verifying with the source…"
-        label.setTextColor(0xFFFFFFFF.toInt())
-        label.textSize = 15f
-        label.gravity = android.view.Gravity.CENTER
-        val pad = (16 * context.resources.displayMetrics.density).toInt()
-        label.setPadding(pad, pad, pad, 0)
-        col.addView(label)
-        val sub = android.widget.TextView(context)
-        sub.text = "This only takes a moment the first time."
-        sub.setTextColor(0xFFA7A7B2.toInt())
-        sub.textSize = 12f
-        sub.gravity = android.view.Gravity.CENTER
-        sub.setPadding(pad, pad / 2, pad, 0)
-        col.addView(sub)
         val lp = android.widget.FrameLayout.LayoutParams(
             android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
             android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
         )
         lp.gravity = android.view.Gravity.CENTER
-        root.addView(col, lp)
+        root.addView(spinner, lp)
         return root
     }
 }
