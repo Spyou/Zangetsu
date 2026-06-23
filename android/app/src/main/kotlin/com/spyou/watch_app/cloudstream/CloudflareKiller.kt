@@ -32,6 +32,10 @@ class CloudflareKiller : Interceptor {
     val savedCookies: MutableMap<String, Map<String, String>> = mutableMapOf()
 
     private val cookieByHost = ConcurrentHashMap<String, String>()
+    // host -> epoch-ms until which we won't re-attempt a solve. A CF-gated host
+    // we can't clear (e.g. an interactive challenge) would otherwise pop the
+    // solver on EVERY request — this backs it off so it solves at most once.
+    private val failedUntil = ConcurrentHashMap<String, Long>()
     private val locks = ConcurrentHashMap<String, Any>()
 
     @Volatile
@@ -52,8 +56,16 @@ class CloudflareKiller : Interceptor {
         val finalHost = finalUrl.host
         synchronized(locks.getOrPut(finalHost) { Any() }) {
             if (!cookieByHost.containsKey(finalHost)) {
+                // Negative cache: a host whose solve just failed isn't retried
+                // (no solver popup) for ~30 min — just return the challenge.
+                val until = failedUntil[finalHost]
+                if (until != null && System.currentTimeMillis() < until) return response
                 val solved = CfWebViewSolver.solve(finalUrl.toString())
-                    ?: return response // give back the (unconsumed) challenge
+                if (solved == null) {
+                    failedUntil[finalHost] = System.currentTimeMillis() + 30 * 60 * 1000L
+                    return response // give back the (unconsumed) challenge
+                }
+                failedUntil.remove(finalHost) // solved → clear any backoff
                 cookieByHost[finalHost] = solved.cookie
                 userAgent = solved.userAgent
             }
@@ -234,23 +246,56 @@ internal object CfWebViewSolver {
         return if (solved) ref.get() else null
     }
 
-    /// A plain app-styled LOADING screen — just a centered spinner on the app
-    /// background — laid over the solver WebView. The user sees normal loading,
-    /// never the raw Cloudflare challenge underneath and never an alarming
-    /// "Verifying" message that reads like a bug.
+    /// A clean app-bg screen with a small centered CHIP — "Verifying protected
+    /// source…" with a spinner — laid over the solver WebView. The WebView must
+    /// still render full-size behind it to satisfy Cloudflare's JS challenge, so
+    /// we can't show only a chip over the live screen; but the chip tells the
+    /// user exactly what's happening (a protected source being verified) instead
+    /// of a bare spinner that reads like a freeze/bug. The chip only appears if
+    /// the solve is slow — a quick/cached path tears down before it shows.
     private fun buildVerifyingOverlay(context: android.content.Context): android.view.View {
+        val d = context.resources.displayMetrics.density
+        fun dp(v: Int) = (v * d).toInt()
+
         val root = android.widget.FrameLayout(context)
         root.setBackgroundColor(0xFF0B0B0F.toInt()) // app background
         root.isClickable = true // swallow taps so they don't reach the WebView
+
+        val chip = android.widget.LinearLayout(context)
+        chip.orientation = android.widget.LinearLayout.HORIZONTAL
+        chip.gravity = android.view.Gravity.CENTER_VERTICAL
+        chip.setPadding(dp(16), dp(12), dp(20), dp(12))
+        val bg = android.graphics.drawable.GradientDrawable()
+        bg.cornerRadius = dp(26).toFloat()
+        bg.setColor(0xFF17171C.toInt()) // surface
+        bg.setStroke(dp(1), 0x22FFFFFF)
+        chip.background = bg
+
         val spinner = android.widget.ProgressBar(context)
         spinner.indeterminateTintList =
             android.content.res.ColorStateList.valueOf(0xFFFF4D57.toInt()) // accent
+        val slp = android.widget.LinearLayout.LayoutParams(dp(18), dp(18))
+        slp.marginEnd = dp(12)
+        chip.addView(spinner, slp)
+
+        val label = android.widget.TextView(context)
+        label.text = "Verifying protected source…"
+        label.setTextColor(0xFFFFFFFF.toInt())
+        label.textSize = 14f
+        chip.addView(label)
+
+        // Don't flash the chip for a quick solve — keep it a plain app-bg blank
+        // and only reveal the chip if the challenge is still running after a
+        // moment. Most cached/fast paths tear down before this fires.
+        chip.visibility = android.view.View.INVISIBLE
+        chip.postDelayed({ chip.visibility = android.view.View.VISIBLE }, 700)
+
         val lp = android.widget.FrameLayout.LayoutParams(
             android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
             android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
         )
         lp.gravity = android.view.Gravity.CENTER
-        root.addView(spinner, lp)
+        root.addView(chip, lp)
         return root
     }
 }

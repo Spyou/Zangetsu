@@ -72,7 +72,10 @@ class _JsHost {
   // attempt at most once per host per [_cfFailTtlMs], then fall through to a
   // plain request so the provider fails fast instead of looping the solver.
   final Map<String, int> _cfFailedAt = {}; // host -> ms of last failed solve
-  static const int _cfFailTtlMs = 120000; // 2 min
+  // 30 min: a source we can't clear (e.g. an interactive/Turnstile challenge)
+  // must NOT re-pop the solver every couple of minutes — that's the "verifying
+  // again and again" the user sees. One attempt, then leave it alone for a while.
+  static const int _cfFailTtlMs = 1800000; // 30 min
   // In-flight solves keyed by host: concurrent requests (e.g. getHome fetching
   // several pages at once) share ONE 30s WebView solve instead of each spawning
   // its own — otherwise a single page load fires N parallel solvers.
@@ -254,12 +257,14 @@ class _JsHost {
       print('[fetch] $method $url${wantCf ? ' (cf)' : ''}');
       var resp = await _request(url, method, hdr, body, follow, tMs);
       // Auto-recover from a Cloudflare challenge even without the opt-in flag:
-      // solve once and replay (only if we haven't already attached clearance).
-      if (_looksLikeCfChallenge(resp) &&
-          !_suppressCfSolve &&
-          !_cfCookie.containsKey(host) &&
-          !_cfRecentlyFailed(host)) {
-        await _solveCf(url, host);
+      // solve (once) and replay with the clearance. CRUCIALLY, also replay when
+      // the cookie was JUST solved by a concurrent fetch for this host — without
+      // this, that fetch returns the challenge ("couldn't load") and only a
+      // manual retry (which reuses the now-cached cookie) succeeds.
+      if (_looksLikeCfChallenge(resp) && !_suppressCfSolve) {
+        if (!_cfCookie.containsKey(host) && !_cfRecentlyFailed(host)) {
+          await _solveCf(url, host);
+        }
         if (_cfCookie.containsKey(host)) {
           _applyCf(host, hdr);
           resp = await _request(url, method, hdr, body, follow, tMs);
