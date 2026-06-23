@@ -551,9 +551,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 }
 
-/// App version string. Kept here so the About screen and the Settings
-/// list share a single source.
-const String kAppVersion = '1.0.0';
 
 // ---------------------------------------------------------------------------
 // Playback

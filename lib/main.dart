@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
@@ -77,6 +78,10 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Future<void> _run() async {
     final start = DateTime.now();
     await initDependencies();
+    // Show the real build version in Settings/About instead of a stale literal.
+    try {
+      kAppVersion = (await PackageInfo.fromPlatform()).version;
+    } catch (_) {}
     // Restore a persisted Appwrite session (bounded so a slow network can't
     // trap the splash). If signed in, pull the cloud library into the local
     // cache before Home warms so Continue Watching + My List are populated.

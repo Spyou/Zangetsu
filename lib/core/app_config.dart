@@ -3,6 +3,11 @@
 /// rename (`flutter pub run rename` or manual android/ios edits).
 const String kAppName = 'Zangetsu';
 
+/// Running app version shown in Settings/About. Populated from the real build
+/// (PackageInfo) at boot so it never goes stale; this literal is just the
+/// pre-boot fallback.
+String kAppVersion = '1.0.0';
+
 /// Stable application id embedded in default provider-repo manifests and
 /// checked by the repo guard so a manga-only (Sozo) repo can't be added.
 const String kAppId = 'watch_app';
