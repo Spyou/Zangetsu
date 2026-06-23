@@ -127,6 +127,30 @@ class CloudStreamProvider implements BaseProvider {
     }
   }
 
+  /// Status-reporting search for the source-health feature. The plain [search]
+  /// above swallows errors to `[]`, so a caller can't tell a timed-out / broken
+  /// source from an honest empty result. This routes to the native `searchStatus`
+  /// handler, which returns `{items, error?}` — `error` is "timeout" / "missing"
+  /// / a message when the source failed, absent when it responded (even with 0
+  /// hits). The CF solver stays suppressed natively (searchDepth), like search.
+  /// Throws on a hard channel failure so callers record it as an error.
+  Future<({List<MediaItem> items, String? error})> searchWithStatus(
+    String query,
+  ) async {
+    if (!Platform.isAndroid) return (items: const <MediaItem>[], error: null);
+    final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+      'searchStatus',
+      {'name': name, 'query': query},
+    );
+    final m = _asMap(raw);
+    final items = (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
+        const <MediaItem>[];
+    final error = (m['error'] as String?)?.isNotEmpty == true
+        ? m['error'] as String
+        : null;
+    return (items: items, error: error);
+  }
+
   @override
   Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
     if (!Platform.isAndroid) {

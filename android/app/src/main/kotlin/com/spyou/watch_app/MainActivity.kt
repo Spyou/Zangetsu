@@ -391,6 +391,22 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // Status-reporting search for the source-health feature:
+                    // returns {items, error?} so callers can tell an honest empty
+                    // result from a timed-out / broken source (plain `search`
+                    // collapses both to []).
+                    "searchStatus" -> {
+                        val name = call.argument<String>("name")
+                        val query = call.argument<String>("query")
+                        csReadPool.execute {
+                            try {
+                                val res = host.searchWithStatus(name ?: "", query ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     "load" -> {
                         val name = call.argument<String>("name")
                         val url = call.argument<String>("url")

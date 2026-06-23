@@ -22,6 +22,15 @@ object CfClearance {
     @Volatile
     var userAgent: String? = null
 
+    /**
+     * >0 while one or more provider SEARCHES are running. The WebView CF solver
+     * is suppressed during search: it fans out across many sources, and must NOT
+     * pop a "verifying" screen for each CF-gated one — CloudStream doesn't either.
+     * A CF-gated source just returns no search hits until its clearance is solved
+     * on open/play; after that the cached cookie makes its search work silently.
+     */
+    val searchDepth = java.util.concurrent.atomic.AtomicInteger(0)
+
     val interceptor: Interceptor = Interceptor { chain ->
         val req = chain.request()
         val ua = userAgent

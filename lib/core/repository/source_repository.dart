@@ -3,6 +3,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/video_source.dart';
+import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
@@ -125,6 +126,74 @@ class SourceRepository {
     String category = 'sub',
     String? sourceId,
   }) => _providerFor(sourceId).search(query, 1, category: category);
+
+  /// Status-reporting search for the source-health feature (search ordering +
+  /// the "Test sources" screen). Unlike [search] it surfaces whether a source
+  /// FAILED vs simply returned nothing, so the caller can record health
+  /// correctly (empty-without-error is ALIVE, only error/timeout is dead).
+  ///
+  ///  - `outcome` is one of [SourceOutcome] (ok / empty / timeout / blocked /
+  ///    error). It NEVER throws — failures are mapped to an outcome.
+  ///  - For JS providers, [BaseProvider.search] throws on error (caught here);
+  ///    an empty list is reported as [SourceOutcome.empty].
+  ///  - For CloudStream sources it routes to [CloudStreamProvider.searchWithStatus]
+  ///    (native `searchStatus`), which distinguishes timeout/error from empty.
+  ///
+  /// CF suppression is reused automatically: JS search goes through the
+  /// provider-manager `search` path (suppresses the solver) and CS search goes
+  /// through native `searchStatus` (bumps `CfClearance.searchDepth`).
+  Future<({List<MediaItem> items, SourceOutcome outcome})> searchStatus(
+    String query, {
+    String category = 'sub',
+    String? sourceId,
+  }) async {
+    final resolved = sourceId ?? _active.state;
+    try {
+      if (_isCloudStream(resolved)) {
+        final p = _csManager.get(resolved);
+        if (p is! CloudStreamProvider) {
+          return (items: const <MediaItem>[], outcome: SourceOutcome.error);
+        }
+        final r = await p.searchWithStatus(query);
+        if (r.error != null) {
+          return (items: r.items, outcome: _outcomeFromError(r.error!));
+        }
+        return (
+          items: r.items,
+          outcome: r.items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
+        );
+      }
+      final items =
+          await _providerFor(resolved).search(query, 1, category: category);
+      return (
+        items: items,
+        outcome: items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
+      );
+    } catch (e) {
+      return (items: const <MediaItem>[], outcome: _outcomeFromError('$e'));
+    }
+  }
+
+  /// Classifies a failure message into a [SourceOutcome]. Timeouts and CF/WAF
+  /// blocks get their own reason; everything else is a generic error.
+  static SourceOutcome _outcomeFromError(String message) {
+    final m = message.toLowerCase();
+    if (m.contains('timed out') ||
+        m.contains('timeout') ||
+        m.contains('deadline')) {
+      return SourceOutcome.timeout;
+    }
+    if (m.contains('cloudflare') ||
+        m.contains('cf_clearance') ||
+        m.contains('challenge') ||
+        m.contains('403') ||
+        m.contains('forbidden') ||
+        m.contains('blocked') ||
+        m.contains('captcha')) {
+      return SourceOutcome.blocked;
+    }
+    return SourceOutcome.error;
+  }
 
   Future<MediaDetail> detail(
     String url, {

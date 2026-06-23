@@ -289,14 +289,68 @@ class PluginHost(private val context: Context) {
         //  1. legacy search(query): List<SearchResponse>        (older providers)
         //  2. paginated search(query, page): SearchResponseList (newer providers)
         //  3. quickSearch(query)                                (search-bar variant)
-        val res = runBlocking {
-            withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
-                runCatching { api.search(query) }.getOrNull()
-                    ?: runCatching { api.search(query, 1)?.items }.getOrNull()
-                    ?: runCatching { api.quickSearch(query) }.getOrNull()
+        // Mark a search in progress so the CF WebView solver stays SILENT for any
+        // CF-gated source hit during the fan-out (no "verifying" popup in search).
+        CfClearance.searchDepth.incrementAndGet()
+        val res = try {
+            runBlocking {
+                withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                    runCatching { api.search(query) }.getOrNull()
+                        ?: runCatching { api.search(query, 1)?.items }.getOrNull()
+                        ?: runCatching { api.quickSearch(query) }.getOrNull()
+                }
             }
-        } ?: return emptyList()
-        return res.map { it.toMap(apiName) }
+        } finally {
+            CfClearance.searchDepth.decrementAndGet()
+        }
+        return (res ?: emptyList()).map { it.toMap(apiName) }
+    }
+
+    /**
+     * Search for the source-health probe / health-aware search. Unlike [search]
+     * (which swallows everything to a list), this REPORTS the outcome so callers
+     * can tell an honest empty result from a broken source:
+     *
+     *  - `{ items: [...] }`                  — responded (even with 0 hits)
+     *  - `{ items: [], error: "timeout" }`   — exceeded [SEARCH_TIMEOUT_MS]
+     *  - `{ items: [], error: "<msg>" }`     — every search overload threw
+     *
+     * The CF WebView solver is suppressed (via [CfClearance.searchDepth]) exactly
+     * like [search], so a probe never pops a "verifying" overlay.
+     */
+    fun searchWithStatus(apiName: String, query: String): Map<String, Any?> {
+        val api = apiByName(apiName)
+            ?: return mapOf("items" to emptyList<Any?>(), "error" to "missing")
+        CfClearance.searchDepth.incrementAndGet()
+        var lastError: Throwable? = null
+        val res = try {
+            runBlocking {
+                withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
+                    // Try each overload; remember the last failure so an
+                    // all-failed run surfaces the real error, not just empty.
+                    runCatching { api.search(query) }
+                        .onFailure { lastError = it }.getOrNull()
+                        ?: runCatching { api.search(query, 1)?.items }
+                            .onFailure { lastError = it }.getOrNull()
+                        ?: runCatching { api.quickSearch(query) }
+                            .onFailure { lastError = it }.getOrNull()
+                }
+            }
+        } finally {
+            CfClearance.searchDepth.decrementAndGet()
+        }
+        return when {
+            res != null -> mapOf("items" to res.map { it.toMap(apiName) })
+            // withTimeoutOrNull returned null. If an overload actually threw we
+            // surface that; otherwise the cap fired → timeout. (Note: when an
+            // overload throws AND a later one returns empty-list, res is the
+            // empty list and we report success — an honest empty.)
+            lastError != null -> mapOf(
+                "items" to emptyList<Any?>(),
+                "error" to (lastError?.message ?: "error"),
+            )
+            else -> mapOf("items" to emptyList<Any?>(), "error" to "timeout")
+        }
     }
 
     fun load(apiName: String, url: String, category: String = "sub"): Map<String, Any?>? {

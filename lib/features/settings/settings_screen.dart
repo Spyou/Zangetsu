@@ -31,6 +31,7 @@ import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
+import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
@@ -417,6 +418,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Active source',
                         subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSource,
+                      ),
+                      SettingsTile(
+                        icon: Icons.health_and_safety_outlined,
+                        title: 'Source health',
+                        subtitle: 'Test which sources are working',
+                        onTap: () => _push(const SourceHealthScreen()),
                       ),
                       if (Platform.isAndroid)
                         SettingsTile(

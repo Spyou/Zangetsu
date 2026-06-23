@@ -7,6 +7,7 @@ import '../../../core/models/media_item.dart';
 import '../../../core/playback/search_history.dart';
 import '../../../core/playback/search_prefs.dart';
 import '../../../core/playback/search_source_prefs.dart';
+import '../../../core/playback/source_health_store.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
 import '../../../core/state/active_source_cubit.dart';
@@ -73,6 +74,10 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// away from this, we drop back to the suggestion view so typing after a
   /// completed search shows fresh suggestions instead of stale results.
   String _lastRunQuery = '';
+  // Bumped on every _runSearch. A run only emits while it's still the latest —
+  // so toggling scope (or any re-run) with the SAME query can't let the previous
+  // run keep streaming its (e.g. all-sources) results over the new one.
+  int _runGen = 0;
 
   Future<void> _onStarted(
     SearchStarted event,
@@ -243,6 +248,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// results as soon as they arrive (fast sources show first; one slow/broken
   /// source never blocks the rest).
   Future<void> _runSearch(String q, Emitter<SearchState> emit) async {
+    final gen = ++_runGen; // this run is superseded once a newer one starts
     _lastRunQuery = q;
     _history.add(q);
 
@@ -256,7 +262,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // active Home source (read live, so a later source switch is picked up). In
     // all-sources mode it's every loaded source EXCEPT the ones the user
     // switched off for search (search-only — doesn't affect Home use).
-    final List<({String id, String name})> sources;
+    List<({String id, String name})> sources;
     if (state.currentSourceOnly) {
       final activeId = sl<ActiveSourceCubit>().state;
       sources = [(id: activeId, name: _repo.displayName(activeId))];
@@ -271,6 +277,31 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       return;
     }
 
+    // Health-aware ordering + skipping (best-effort; never breaks search). In
+    // all-sources mode: drop sources with a FRESH "dead" mark (they're retried
+    // after the re-check window, never permanently blacklisted) and order the
+    // rest healthiest-first so good sources stream their results soonest. In
+    // current-source-only mode we always query the one chosen source (never skip
+    // it — the user explicitly picked it).
+    final health = sl<SourceHealthStore>();
+    if (!state.currentSourceOnly) {
+      final live =
+          sources.where((s) => !health.isSkippable(s.id)).toList();
+      // If EVERY source is currently skippable, the windows have likely all
+      // lapsed-or-not together; rather than show nothing, retry them all.
+      if (live.isNotEmpty) sources = live;
+      int rank(SourceHealth h) => switch (h) {
+        SourceHealth.ok => 0,
+        SourceHealth.slow => 1,
+        SourceHealth.dead => 2,
+      };
+      sources.sort(
+        (a, b) => rank(health.statusOf(a.id)).compareTo(
+          rank(health.statusOf(b.id)),
+        ),
+      );
+    }
+
     final acc = <SourceResultGroup>[];
     var anyError = false;
     // Monotonic arrival counter: the Nth source to return non-empty results gets
@@ -278,14 +309,29 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     var arrived = 0;
 
     await Future.wait(sources.map((s) async {
+      final sw = Stopwatch()..start();
       try {
-        final r = await _repo.search(q, sourceId: s.id);
-        if (isClosed || state.query.trim() != q) return; // superseded/closed
-        if (r.isNotEmpty) {
+        final res = await _repo.searchStatus(q, sourceId: s.id);
+        sw.stop();
+        if (isClosed || gen != _runGen) return; // superseded/closed
+        // Record health: a response over the slow threshold downgrades an
+        // otherwise-ok outcome to "slow"; error/timeout/blocked mark it dead
+        // (recoverably); empty-without-error stays ok (NOT a strike).
+        var outcome = res.outcome;
+        final responded = outcome == SourceOutcome.ok ||
+            outcome == SourceOutcome.empty;
+        if (responded &&
+            sw.elapsed > SourceHealthStore.slowThreshold) {
+          outcome = SourceOutcome.slow;
+        }
+        // ignore: unawaited_futures
+        health.record(s.id, outcome, responseMs: sw.elapsedMilliseconds);
+        if (!responded && outcome != SourceOutcome.slow) anyError = true;
+        if (res.items.isNotEmpty) {
           acc.add(SourceResultGroup(
             sourceId: s.id,
             sourceName: s.name,
-            items: r,
+            items: res.items,
             arrivalIndex: arrived++,
           ));
           emit(state.copyWith(
@@ -294,11 +340,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           ));
         }
       } catch (_) {
+        // searchStatus is no-throw, but stay defensive — never let one source
+        // break the fan-out.
         anyError = true;
       }
     }));
 
-    if (isClosed || state.query.trim() != q) return;
+    if (isClosed || gen != _runGen) return;
     // Finalize: if nothing came back, surface error-or-empty appropriately.
     if (acc.isEmpty) {
       emit(state.copyWith(

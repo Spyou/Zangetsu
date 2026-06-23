@@ -48,6 +48,12 @@ class CloudflareKiller : Interceptor {
         val response = chain.proceed(applySaved(request, host))
         if (!isCloudflareChallenge(response)) return response
 
+        // During a provider search, NEVER pop the WebView solver (CloudStream
+        // doesn't either): return the challenge unsolved so this source simply
+        // yields no search hits. An already-cached clearance was applied above,
+        // so CF sources solved earlier (on open/play) still search silently.
+        if (com.spyou.watch_app.cloudstream.CfClearance.searchDepth.get() > 0) return response
+
         // The URL that actually produced the challenge — AFTER any redirects
         // (e.g. animepahe.com → animepahe.pw). The clearance cookie belongs to
         // THIS host, and we retry against THIS url so okhttp can't strip the

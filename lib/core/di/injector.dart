@@ -9,6 +9,7 @@ import '../playback/playback_prefs.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
 import '../playback/search_source_prefs.dart';
+import '../playback/source_health_store.dart';
 import '../search/title_suggestion_service.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
@@ -79,6 +80,10 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
   await SearchPrefs.init();
   sl.registerSingleton<SearchPrefs>(SearchPrefs());
+  // Per-source reliability: orders search healthy-first, recoverably skips dead
+  // sources, and backs the "Source health" test screen.
+  await SourceHealthStore.init();
+  sl.registerSingleton<SourceHealthStore>(SourceHealthStore());
 
   final dio = Dio(
     BaseOptions(
