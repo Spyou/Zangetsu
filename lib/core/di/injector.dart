@@ -7,7 +7,9 @@ import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
 import '../playback/search_history.dart';
+import '../playback/search_prefs.dart';
 import '../playback/search_source_prefs.dart';
+import '../search/title_suggestion_service.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../playback/title_prefs.dart';
@@ -21,6 +23,7 @@ import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../metadata/metadata_enrichment.dart';
+import '../metadata/tmdb.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
@@ -73,6 +76,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SearchHistory>(SearchHistory());
   await SearchSourcePrefs.init();
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
+  await SearchPrefs.init();
+  sl.registerSingleton<SearchPrefs>(SearchPrefs());
 
   final dio = Dio(
     BaseOptions(
@@ -83,7 +88,26 @@ Future<void> initDependencies() async {
       headers: {'User-Agent': 'Mozilla/5.0 (WATCH_APP) Chrome/120.0'},
     ),
   );
+  // TMDB v3 auth: attach our api_key to every TMDB request (the old keyless
+  // proxy died with a 1027). Per-IP limits, so one key scales to all users.
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        if (options.uri.host == Tmdb.host) {
+          options.queryParameters = {
+            ...options.queryParameters,
+            'api_key': Tmdb.apiKey,
+          };
+        }
+        handler.next(options);
+      },
+    ),
+  );
   sl.registerSingleton<Dio>(dio);
+
+  // Lightweight title autocomplete for the search field (one fast AniList call
+  // per debounced keystroke — NOT the heavy multi-source provider search).
+  sl.registerSingleton<TitleSuggestionService>(TitleSuggestionService(dio));
 
   // Discord Rich Presence (opt-in; off until the user connects + enables it).
   await DiscordRpc.init();

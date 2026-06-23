@@ -14,12 +14,17 @@ class SeeAllScreen extends StatelessWidget {
     required this.items,
     required this.onTap,
     this.onLongPress,
+    this.tagsFor,
   });
 
   final String title;
   final List<MediaItem> items;
   final void Function(MediaItem) onTap;
   final void Function(MediaItem)? onLongPress;
+
+  /// Optional per-item poster badges (e.g. SUB/DUB/MOVIE). When null no tags are
+  /// drawn — keeps the home "See All" callers unchanged.
+  final List<String> Function(MediaItem)? tagsFor;
 
   @override
   Widget build(BuildContext context) {
@@ -46,6 +51,7 @@ class SeeAllScreen extends StatelessWidget {
             title: item.title,
             imageUrl: item.cover,
             headers: item.coverHeaders,
+            tags: tagsFor?.call(item) ?? const [],
             cellWidth: cellW,
             onTap: () => onTap(item),
             onLongPress: onLongPress == null ? null : () => onLongPress!(item),

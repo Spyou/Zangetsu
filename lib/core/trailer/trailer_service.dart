@@ -18,8 +18,8 @@ class TrailerService {
   final Dio _dio;
 
   static const String _anilistEndpoint = 'https://graphql.anilist.co';
-  // Keyless TMDB proxy (mirrors api.themoviedb.org/3/* server-side, no api_key).
-  static const String _tmdbBase = 'https://jumpfreedom.com/3';
+  // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
+  static const String _tmdbBase = 'https://api.themoviedb.org/3';
 
   static const String _anilistQuery =
       'query(\$search:String){ Media(search:\$search, type:ANIME){ '

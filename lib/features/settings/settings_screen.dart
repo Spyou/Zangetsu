@@ -13,6 +13,7 @@ import '../../core/tracker/tracker.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/search_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import 'discord_settings_screen.dart';
@@ -122,6 +123,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (picked == null || picked == _dnsChoice) return;
     await CsDns.set(picked);
     if (mounted) setState(() => _dnsChoice = picked);
+  }
+
+  /// Bottom sheet to pick the search results layout (grid vs CloudStream-style
+  /// rows). Persisted via [SearchPrefs]; the search screen reads it live.
+  Future<void> _pickSearchLayout() async {
+    final prefs = sl<SearchPrefs>();
+    final picked = await showModalBottomSheet<SearchLayout>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Search layout', style: AppText.headline),
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'How cross-source results are shown. Vertical = a grid per '
+                  'source; Horizontal = a scrolling row per source.',
+                  style: AppText.caption,
+                ),
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            for (final l in SearchLayout.values)
+              ListTile(
+                title: Text(l.label, style: AppText.body),
+                trailing: l == prefs.layout
+                    ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, l),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setLayout(picked);
+    if (mounted) setState(() {});
   }
 
   String _activeLabel(String activeId) {
@@ -388,6 +449,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Downloads',
                         subtitle: 'Watch offline',
                         onTap: () => _push(const DownloadsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.search_rounded,
+                        title: 'Search layout',
+                        subtitle: sl<SearchPrefs>().layout.label,
+                        onTap: _pickSearchLayout,
                       ),
                       if (Platform.isAndroid)
                         SettingsTile(

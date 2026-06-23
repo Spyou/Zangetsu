@@ -17,8 +17,8 @@ class MetadataEnrichment {
   final Dio _dio;
   final AniListApi _anilist;
 
-  // Keyless TMDB proxy (mirrors api.themoviedb.org/3/* server-side).
-  static const String _tmdbBase = 'https://jumpfreedom.com/3';
+  // TMDB v3 — api_key attached by the Dio interceptor (initDependencies).
+  static const String _tmdbBase = 'https://api.themoviedb.org/3';
   static const String _img = 'https://image.tmdb.org/t/p';
 
   Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(

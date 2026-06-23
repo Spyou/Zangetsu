@@ -19,7 +19,25 @@ class RootShell extends StatefulWidget {
 }
 
 class _RootShellState extends State<RootShell> {
+  static const int _searchTab = 1;
+
   int _index = 0;
+
+  /// Bumped each time the Search tab is (re)selected so the search screen can
+  /// auto-focus its field and pop the keyboard, without stealing focus while
+  /// the tab sits idle in the [IndexedStack].
+  final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
+
+  @override
+  void dispose() {
+    _searchFocusSignal.dispose();
+    super.dispose();
+  }
+
+  void _onTabSelected(int i) {
+    setState(() => _index = i);
+    if (i == _searchTab) _searchFocusSignal.value++;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,11 +45,11 @@ class _RootShellState extends State<RootShell> {
       backgroundColor: AppColors.bg,
       body: IndexedStack(
         index: _index,
-        children: const [
-          HomeScreen(),
-          SearchScreen(showBack: false),
-          MyListScreen(),
-          SettingsScreen(),
+        children: [
+          const HomeScreen(),
+          SearchScreen(showBack: false, focusSignal: _searchFocusSignal),
+          const MyListScreen(),
+          const SettingsScreen(),
         ],
       ),
       bottomNavigationBar: NavigationBarTheme(
@@ -58,7 +76,7 @@ class _RootShellState extends State<RootShell> {
         ),
         child: NavigationBar(
           selectedIndex: _index,
-          onDestinationSelected: (i) => setState(() => _index = i),
+          onDestinationSelected: _onTabSelected,
           labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
           destinations: const [
             NavigationDestination(
