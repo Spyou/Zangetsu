@@ -51,6 +51,16 @@ class SearchSuggestionsUpdated extends SearchEvent {
   List<Object?> get props => [suggestions];
 }
 
+/// Flips the search SCOPE between "current source only" and "all sources".
+/// Persists the choice and re-runs the current query so it takes effect now.
+class SearchScopeChanged extends SearchEvent {
+  const SearchScopeChanged(this.currentSourceOnly);
+  final bool currentSourceOnly;
+
+  @override
+  List<Object?> get props => [currentSourceOnly];
+}
+
 /// Switches the active source-filter chip ([kAllSources] or a sourceId).
 class SearchSourceFilterChanged extends SearchEvent {
   const SearchSourceFilterChanged(this.sourceId);

@@ -15,6 +15,7 @@ import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/media_info_sheet.dart';
@@ -349,12 +350,17 @@ class _SearchViewState extends State<_SearchView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _searchBar(),
-            const SizedBox(height: 14),
-            // Active content-type chips appear once cross-source results land.
+            const SizedBox(height: 12),
+            _scopePill(),
+            const SizedBox(height: 10),
+            // Per-source result chips — only meaningful when searching all
+            // sources, so they're hidden in current-source-only mode (one
+            // source can't be filtered down further).
             BlocBuilder<SearchBloc, SearchState>(
               buildWhen: (p, c) =>
                   p.groups != c.groups ||
                   p.sourceFilter != c.sourceFilter ||
+                  p.currentSourceOnly != c.currentSourceOnly ||
                   p.contentFilter != c.contentFilter ||
                   p.genreFilter != c.genreFilter ||
                   p.decadeFilter != c.decadeFilter ||
@@ -363,7 +369,8 @@ class _SearchViewState extends State<_SearchView> {
               builder: (context, state) {
                 final showingSuggestions = state.status != SearchStatus.success &&
                     state.suggestions.isNotEmpty;
-                if (showingSuggestions ||
+                if (state.currentSourceOnly ||
+                    showingSuggestions ||
                     state.status != SearchStatus.success ||
                     state.visibleGroups.length < 2) {
                   return const SizedBox.shrink();
@@ -511,12 +518,16 @@ class _SearchViewState extends State<_SearchView> {
                     buildWhen: (p, c) =>
                         p.contentFilter != c.contentFilter ||
                         p.genreFilter != c.genreFilter ||
-                        p.decadeFilter != c.decadeFilter,
+                        p.decadeFilter != c.decadeFilter ||
+                        p.currentSourceOnly != c.currentSourceOnly,
                     builder: (context, state) => ListenableBuilder(
                       listenable: sl<SearchSourcePrefs>(),
                       builder: (context, _) {
+                        // Source excludes only count as an active filter when
+                        // actually fanning out to all sources.
                         final active = state.hasActiveFilter ||
-                            sl<SearchSourcePrefs>().excluded.isNotEmpty;
+                            (!state.currentSourceOnly &&
+                                sl<SearchSourcePrefs>().excluded.isNotEmpty);
                         return IconButton(
                           icon: Icon(
                             Icons.tune_rounded,
@@ -541,6 +552,86 @@ class _SearchViewState extends State<_SearchView> {
           ),
         ],
       ),
+    );
+  }
+
+  // ── Search scope pill (current source ⇄ all sources) ──────────────────────
+  /// CloudStream-style scope toggle: tap to flip between searching ONLY the
+  /// active Home source and fanning out to every enabled source. Lives just
+  /// under the bar so it reads as a search-wide control, before the per-source
+  /// chips. Follows the active source live via [ActiveSourceCubit].
+  Widget _scopePill() {
+    return BlocBuilder<SearchBloc, SearchState>(
+      buildWhen: (p, c) => p.currentSourceOnly != c.currentSourceOnly,
+      builder: (context, state) {
+        final currentOnly = state.currentSourceOnly;
+        return BlocBuilder<ActiveSourceCubit, String>(
+          builder: (context, activeId) {
+            final label = currentOnly ? _repo.displayName(activeId) : 'All sources';
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: GestureDetector(
+                  onTap: () => context
+                      .read<SearchBloc>()
+                      .add(SearchScopeChanged(!currentOnly)),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: currentOnly
+                          ? AppColors.accentSoft
+                          : AppColors.surface2,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: currentOnly
+                            ? AppColors.accent
+                            : AppColors.hairline,
+                        width: 1,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          currentOnly
+                              ? Icons.adjust_rounded
+                              : Icons.public_rounded,
+                          size: 15,
+                          color: currentOnly
+                              ? AppColors.accent
+                              : AppColors.textSecondary,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          label,
+                          style: AppText.caption.copyWith(
+                            color: currentOnly
+                                ? AppColors.accent
+                                : AppColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.swap_horiz_rounded,
+                          size: 15,
+                          color: currentOnly
+                              ? AppColors.accent
+                              : AppColors.textTertiary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -612,7 +703,9 @@ class _SearchViewState extends State<_SearchView> {
     // narrowed to one, so other sources' skeletons would be noise.
     final prefs = sl<SearchSourcePrefs>();
     final landed = {for (final g in state.groups) g.sourceId};
-    final pending = state.sourceFilter != kAllSources
+    // Current-source-only mode queries a single source, so there are never
+    // other sources still streaming in — no skeleton sections.
+    final pending = (state.currentSourceOnly || state.sourceFilter != kAllSources)
         ? const <({String id, String name})>[]
         : _repo.loadedSources
             .where((s) => prefs.isIncluded(s.id) && !landed.contains(s.id))
@@ -1104,14 +1197,18 @@ class _SearchFilterSheet extends StatelessWidget {
                     buildWhen: (p, c) =>
                         p.contentFilter != c.contentFilter ||
                         p.genreFilter != c.genreFilter ||
-                        p.decadeFilter != c.decadeFilter,
+                        p.decadeFilter != c.decadeFilter ||
+                        p.currentSourceOnly != c.currentSourceOnly,
                     builder: (context, state) {
                       final canReset = state.hasActiveFilter ||
-                          prefs.excluded.isNotEmpty;
+                          (!state.currentSourceOnly &&
+                              prefs.excluded.isNotEmpty);
                       if (!canReset) return const SizedBox.shrink();
                       return TextButton(
                         onPressed: () {
-                          prefs.setManyIncluded(allIds, true);
+                          if (!state.currentSourceOnly) {
+                            prefs.setManyIncluded(allIds, true);
+                          }
                           context.read<SearchBloc>()
                             ..add(const SearchContentFilterChanged(
                                 SearchContentFilter.all))
@@ -1148,31 +1245,35 @@ class _SearchFilterSheet extends StatelessWidget {
                     _contentTypeSelector(context),
                     _genreSelector(context),
                     _decadeSelector(context),
-                    if (sections.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 28),
-                        child: Center(
-                          child: Text('No sources installed',
-                              style: AppText.body),
-                        ),
-                      )
-                    else ...[
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
-                        child: Text(
-                          'SEARCH IN SOURCES',
-                          style: AppText.caption.copyWith(
-                            color: AppColors.textTertiary,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
+                    // The "search in these sources" list only matters when
+                    // searching all sources — in current-source-only mode there
+                    // is just one source, so it's hidden.
+                    if (!context.read<SearchBloc>().state.currentSourceOnly)
+                      if (sections.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 28),
+                          child: Center(
+                            child: Text('No sources installed',
+                                style: AppText.body),
+                          ),
+                        )
+                      else ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 12, 20, 2),
+                          child: Text(
+                            'SEARCH IN SOURCES',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.textTertiary,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 0.5,
+                            ),
                           ),
                         ),
-                      ),
-                      for (final sec in sections) ...[
-                        _categoryHeader(prefs, sec.title, sec.rows),
-                        for (final r in sec.rows) _sourceRow(prefs, r),
+                        for (final sec in sections) ...[
+                          _categoryHeader(prefs, sec.title, sec.rows),
+                          for (final r in sec.rows) _sourceRow(prefs, r),
+                        ],
                       ],
-                    ],
                   ],
                 ),
               ),

@@ -9,6 +9,7 @@ import '../../../core/playback/search_prefs.dart';
 import '../../../core/playback/search_source_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
+import '../../../core/state/active_source_cubit.dart';
 import 'search_event.dart';
 import 'search_state.dart';
 
@@ -27,6 +28,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchQueryChanged>(_onQueryChanged);
     on<SearchSuggestionsUpdated>(_onSuggestionsUpdated);
     on<SearchSortChanged>(_onSortChanged);
+    on<SearchScopeChanged>(_onScopeChanged);
     on<SearchSourceFilterChanged>(_onSourceFilterChanged);
     on<SearchContentFilterChanged>(_onContentFilterChanged);
     on<SearchGenreFilterChanged>(_onGenreFilterChanged);
@@ -56,6 +58,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       sort: sort,
       genreFilter: prefs.genre,
       decadeFilter: prefs.decade,
+      currentSourceOnly: prefs.currentSourceOnly,
     );
   }
 
@@ -138,6 +141,25 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   void _onSortChanged(SearchSortChanged event, Emitter<SearchState> emit) {
     emit(state.copyWith(sort: event.sort));
     _prefs.setSortName(event.sort.name);
+  }
+
+  /// Flips the search scope (current-source-only vs all sources), persists it,
+  /// and re-runs the current query so the new scope takes effect immediately.
+  Future<void> _onScopeChanged(
+    SearchScopeChanged event,
+    Emitter<SearchState> emit,
+  ) async {
+    if (event.currentSourceOnly == state.currentSourceOnly) return;
+    // Reset the per-source chip — it's meaningless in current-source mode and
+    // stale when switching back to all-sources.
+    emit(state.copyWith(
+      currentSourceOnly: event.currentSourceOnly,
+      sourceFilter: kAllSources,
+    ));
+    _prefs.setCurrentSourceOnly(event.currentSourceOnly);
+    if (state.query.trim().isNotEmpty) {
+      await _runSearch(state.query.trim(), emit);
+    }
   }
 
   void _onSourceFilterChanged(
@@ -230,12 +252,20 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       clearError: true,
     ));
 
-    // Search every loaded source EXCEPT the ones the user switched off for
-    // search (search-only — doesn't affect their Home/active-source use).
-    final prefs = sl<SearchSourcePrefs>();
-    final sources = _repo.loadedSources
-        .where((s) => prefs.isIncluded(s.id))
-        .toList();
+    // Choose the sources to query. In current-source-only mode that's JUST the
+    // active Home source (read live, so a later source switch is picked up). In
+    // all-sources mode it's every loaded source EXCEPT the ones the user
+    // switched off for search (search-only — doesn't affect Home use).
+    final List<({String id, String name})> sources;
+    if (state.currentSourceOnly) {
+      final activeId = sl<ActiveSourceCubit>().state;
+      sources = [(id: activeId, name: _repo.displayName(activeId))];
+    } else {
+      final prefs = sl<SearchSourcePrefs>();
+      sources = _repo.loadedSources
+          .where((s) => prefs.isIncluded(s.id))
+          .toList();
+    }
     if (sources.isEmpty) {
       emit(state.copyWith(status: SearchStatus.error));
       return;

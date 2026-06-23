@@ -129,6 +129,10 @@ class SearchState extends Equatable {
   /// Active source-filter chip: [kAllSources] or a specific sourceId.
   final String sourceFilter;
 
+  /// When true the search is scoped to ONLY the active Home source (the heavy
+  /// search never fans out). When false the legacy multi-source search runs.
+  final bool currentSourceOnly;
+
   final SearchSort sort;
 
   /// Active content-type filter (All / Anime / Movies & Series).
@@ -155,6 +159,7 @@ class SearchState extends Equatable {
     this.query = '',
     this.groups = const [],
     this.sourceFilter = kAllSources,
+    this.currentSourceOnly = true,
     this.sort = SearchSort.bestMatch,
     this.contentFilter = SearchContentFilter.all,
     this.genreFilter,
@@ -271,6 +276,7 @@ class SearchState extends Equatable {
     String? query,
     List<SourceResultGroup>? groups,
     String? sourceFilter,
+    bool? currentSourceOnly,
     SearchSort? sort,
     SearchContentFilter? contentFilter,
     String? genreFilter,
@@ -286,6 +292,7 @@ class SearchState extends Equatable {
     query: query ?? this.query,
     groups: groups ?? this.groups,
     sourceFilter: sourceFilter ?? this.sourceFilter,
+    currentSourceOnly: currentSourceOnly ?? this.currentSourceOnly,
     sort: sort ?? this.sort,
     contentFilter: contentFilter ?? this.contentFilter,
     genreFilter: clearGenreFilter ? null : (genreFilter ?? this.genreFilter),
@@ -301,6 +308,7 @@ class SearchState extends Equatable {
         query,
         groups,
         sourceFilter,
+        currentSourceOnly,
         sort,
         contentFilter,
         genreFilter,
