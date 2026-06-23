@@ -21,6 +21,11 @@ import 'features/shell/root_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Cap the in-memory image cache so a heavy source's posters + heroes can't
+  // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
+  // baseline). On-screen images stay full quality; far-off-screen ones reload
+  // from the disk cache.
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
   MediaKit.ensureInitialized();
   // Dependency init happens inside the boot gate so the splash shows
   // immediately instead of a blank screen.

@@ -83,7 +83,13 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     }
     try {
       final pal = await PaletteGenerator.fromImageProvider(
-        CachedNetworkImageProvider(cover, headers: widget.item.coverHeaders),
+        // Decode a SMALL copy for the palette: the dominant colour is identical,
+        // but this avoids a full-resolution decode on the UI isolate every time
+        // the cinematic carousel rotates to a new cover (the 30s-of-lag cause).
+        ResizeImage(
+          CachedNetworkImageProvider(cover, headers: widget.item.coverHeaders),
+          width: 180,
+        ),
         size: const Size(180, 270),
         maximumColorCount: 8,
       );
@@ -164,7 +170,9 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         children: [
           if (provider != null)
             Image(
-              image: provider,
+              // Decode at the screen's actual size (not full source res) — same
+              // visible sharpness, a fraction of the memory + decode cost.
+              image: ResizeImage(provider, width: memW),
               fit: BoxFit.cover,
               // Crop from the top so the poster's own printed title block (and
               // the thin rule above it) is pushed off the bottom and hidden by
