@@ -87,6 +87,10 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
         repoUrl: repo.url,
         displayName: source.name,
         version: source.version,
+        // Always pull fresh JS on install: a leftover 24h Hive cache entry from
+        // a prior install of this sourceId would otherwise be returned stale,
+        // so a reinstall never picks up the provider's current code.
+        force: true,
       );
       _emitNotice(emit, 'Installed ${source.name}');
     } catch (e) {
