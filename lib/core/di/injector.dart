@@ -15,6 +15,7 @@ import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
+import '../provider/cf_clearance_store.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
@@ -84,6 +85,9 @@ Future<void> initDependencies() async {
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();
   sl.registerSingleton<SourceHealthStore>(SourceHealthStore());
+  // Persisted Cloudflare clearances: JS sources reuse a solved cf_clearance
+  // across restarts instead of re-popping the "Verifying…" solver each session.
+  await CfClearanceStore.init();
 
   final dio = Dio(
     BaseOptions(

@@ -182,8 +182,15 @@ internal object CfWebViewSolver {
                 wv.settings.javaScriptEnabled = true
                 wv.settings.domStorageEnabled = true
                 wv.settings.databaseEnabled = true
+                // Make the solver WebView's UA indistinguishable from desktop/mobile
+                // Chrome. Stricter Cloudflare configs (e.g. gdflix) flag the WebView
+                // tells — the "; wv" marker AND the WebView-only "Version/x.y" token,
+                // which real Chrome never sends — and refuse to issue cf_clearance.
+                // The cf_clearance is bound to whatever UA solved it, and we publish
+                // that UA for the replay, so rewriting it here is self-consistent.
                 wv.settings.userAgentString = wv.settings.userAgentString
                     .replace("; wv", "") // drop the WebView marker some CF checks flag
+                    .replace(Regex("Version/\\d+\\.\\d+ "), "") // and the WebView-only token
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
                 wv.webViewClient = object : WebViewClient() {

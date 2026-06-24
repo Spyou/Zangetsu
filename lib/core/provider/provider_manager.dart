@@ -13,6 +13,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
+import 'cf_clearance_store.dart';
 import 'crypto_ops.dart';
 import 'js_bootstrap.dart';
 
@@ -66,6 +67,11 @@ class _JsHost {
   static const MethodChannel _cf = MethodChannel('zangetsu/cloudstream');
   final Map<String, String> _cfCookie = {}; // host -> cf_clearance cookie(s)
   final Map<String, String> _cfUa = {}; // host -> the solving User-Agent
+  // Persists solved clearances across restarts so a JS source cleared once
+  // doesn't re-pop the "Verifying…" solver every fresh session (the CS path gets
+  // this for free via the CookieManager jar; the Dart Dio client does not).
+  final CfClearanceStore _cfStore = CfClearanceStore();
+  bool _cfRestored = false; // hydrate the in-memory maps from disk once, lazily
   // Negative cache: hosts where a solve just failed (e.g. a dead/parked domain
   // that never yields a clearance cookie). Without this, every browser:true
   // request re-runs the ~30s WebView solve and the app hangs for minutes. We
@@ -243,6 +249,7 @@ class _JsHost {
       final wantCf = payload['browser'] == true || payload['cf'] == true;
       final host = Uri.parse(url).host;
       final hdr = headers.map((k, v) => MapEntry(k, v.toString()));
+      _ensureCfRestored(); // reuse a clearance solved in a previous session
       // Opt-in Cloudflare clearance: solve once per host, then attach cookie+UA.
       // Skip if a recent solve failed (negative cache) so a dead/parked host
       // doesn't re-run the 30s solver on every request.
@@ -253,6 +260,10 @@ class _JsHost {
         await _solveCf(url, host);
       }
       _applyCf(host, hdr);
+      // Did the original request carry a clearance? If so and it STILL gets
+      // challenged below, that clearance is stale (e.g. a persisted cookie that
+      // expired) and must be dropped rather than reused.
+      final sentClearance = _cfCookie.containsKey(host);
       // ignore: avoid_print
       print('[fetch] $method $url${wantCf ? ' (cf)' : ''}');
       var resp = await _request(url, method, hdr, body, follow, tMs);
@@ -262,6 +273,13 @@ class _JsHost {
       // this, that fetch returns the challenge ("couldn't load") and only a
       // manual retry (which reuses the now-cached cookie) succeeds.
       if (_looksLikeCfChallenge(resp) && !_suppressCfSolve) {
+        // A challenge despite a clearance WE sent means it's stale → forget it
+        // (memory + disk) so the solve re-runs. A cookie a concurrent fetch just
+        // solved (sentClearance == false) is fresh — keep it and just replay.
+        if (sentClearance && _cfCookie.containsKey(host)) {
+          _cfCookie.remove(host);
+          _cfStore.forget(host);
+        }
         if (!_cfCookie.containsKey(host) && !_cfRecentlyFailed(host)) {
           await _solveCf(url, host);
         }
@@ -347,6 +365,7 @@ class _JsHost {
         _cfCookie[host] = cookie;
         _cfFailedAt.remove(host); // solved → clear any negative-cache mark
         if (ua != null && ua.isNotEmpty) _cfUa[host] = ua;
+        _cfStore.remember(host, cookie, ua); // reuse across restarts
         // ignore: avoid_print
         print('[cf] solved $host (ua=${(ua ?? '').split(')').first})');
       } else {
@@ -359,6 +378,19 @@ class _JsHost {
       // failed; we fall back to a plain request.
       _cfFailedAt[host] = DateTime.now().millisecondsSinceEpoch;
     }
+  }
+
+  /// Hydrate the in-memory CF maps from the persistent store once, on first use.
+  /// Restored clearances are optimistic: a stale one is dropped + re-solved by
+  /// the fetch path, so this only saves a solve when a still-valid one exists.
+  void _ensureCfRestored() {
+    if (_cfRestored) return;
+    _cfRestored = true;
+    _cfStore.restore().forEach((host, e) {
+      _cfCookie.putIfAbsent(host, () => e.cookie);
+      final ua = e.ua;
+      if (ua != null && ua.isNotEmpty) _cfUa.putIfAbsent(host, () => ua);
+    });
   }
 
   /// True if a CF solve for [host] failed within the last [_cfFailTtlMs].
