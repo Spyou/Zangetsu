@@ -1,5 +1,6 @@
 // lib/features/watch_together/ui/room_panel.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../model/room_state.dart';
 import '../watch_together_controller.dart';
 
@@ -34,9 +35,17 @@ class RoomStrip extends StatelessWidget {
             color: controller.synced ? Colors.greenAccent : Colors.amber,
           ),
           const SizedBox(width: 6),
-          Text(
-            '${controller.participants.length} watching · ${room.code}',
-            style: const TextStyle(color: Colors.white, fontSize: 12),
+          GestureDetector(
+            onTap: () {
+              Clipboard.setData(
+                  ClipboardData(text: 'zangetsu://room/${room.code}'));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('Invite copied')));
+            },
+            child: Text(
+              '${controller.participants.length} watching · ${room.code}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
           ),
           const SizedBox(width: 8),
           InkWell(

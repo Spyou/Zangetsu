@@ -57,6 +57,7 @@
                 <data android:scheme="zangetsu" android:host="anilist-auth"/>
                 <data android:scheme="zangetsu" android:host="mal-auth"/>
                 <data android:scheme="zangetsu" android:host="simkl-auth"/>
+                <data android:scheme="zangetsu" android:host="room"/>
             </intent-filter>
         </activity>
         <!-- Hosts a CloudStream plugin's own settings UI (it casts the Context to

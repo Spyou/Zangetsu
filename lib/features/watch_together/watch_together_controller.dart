@@ -65,11 +65,27 @@ class WatchTogetherController extends ChangeNotifier {
     });
   }
 
+  void _subscribeRoom(String code) {
+    _roomSub?.cancel();
+    _roomSub = _svc.watchRoom(code).listen(
+      _onRoom,
+      onError: (_) => _resyncRoom(code),
+      onDone: () => _resyncRoom(code),
+    );
+  }
+
+  Future<void> _resyncRoom(String code) async {
+    if (room == null) return; // already left — don't reconnect
+    final r = await _svc.getRoom(code);
+    if (r != null && room != null) _onRoom(r);
+    if (room != null) _subscribeRoom(code); // re-attach the subscription
+  }
+
   Future<void> _enter(String code) async {
     await _svc.upsertParticipant(code, RoomParticipant(
         userId: _uid, name: _uname, avatar: '', state: 'watching',
         joinedAt: _now, lastSeenAt: _now));
-    _roomSub = _svc.watchRoom(code).listen(_onRoom);
+    _subscribeRoom(code);
     _partSub = _svc.watchParticipants(code).listen((_) => _refreshParticipants(code));
     _presenceBeat = Timer.periodic(const Duration(seconds: 10), (_) {
       _svc.upsertParticipant(code, RoomParticipant(userId: _uid, name: _uname,
