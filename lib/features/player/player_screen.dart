@@ -49,6 +49,8 @@ class PlayerScreen extends StatefulWidget {
     this.startIndex = 0,
     this.episodesResolver,
     this.resumeEpisodeId,
+    this.resumeEpisodeNumber,
+    this.resumePosition = Duration.zero,
     this.history,
     this.showTitle,
     this.cover,
@@ -75,6 +77,16 @@ class PlayerScreen extends StatefulWidget {
   final int startIndex;
   final Future<List<Episode>> Function()? episodesResolver;
   final String? resumeEpisodeId;
+
+  /// Episode number of the entry being resumed, used to re-find the episode
+  /// when [resumeEpisodeId] no longer matches (a provider regenerated the
+  /// opaque episode id between sessions).
+  final double? resumeEpisodeNumber;
+
+  /// Position the Continue Watching entry recorded — a reliable fallback when
+  /// the per-episode ResumeStore key no longer matches. Zero (the default) for
+  /// fresh plays, which fall back to the normal ResumeStore lookup.
+  final Duration resumePosition;
 
   // Optional show-context threaded into history (Continue Watching feed).
   final WatchHistory? history;
@@ -283,7 +295,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (eps.isEmpty) throw StateError('no episodes');
       var idx = widget.startIndex;
       if (widget.resumeEpisodeId != null) {
-        final i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        var i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        if (i < 0 && widget.resumeEpisodeNumber != null) {
+          i = eps.indexWhere((e) => e.number == widget.resumeEpisodeNumber);
+        }
         if (i >= 0) idx = i;
       }
       final ep = eps[idx.clamp(0, eps.length - 1)];
@@ -359,6 +374,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       tmdbIsTv: widget.tmdbIsTv,
       imdbId: widget.imdbId,
       availableCategories: widget.availableCategories,
+      initialResume: widget.resumePosition,
     )..init(startIndex);
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
@@ -379,7 +395,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
       var idx = 0;
       if (widget.resumeEpisodeId != null) {
-        final i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        var i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
+        if (i < 0 && widget.resumeEpisodeNumber != null) {
+          i = eps.indexWhere((e) => e.number == widget.resumeEpisodeNumber);
+        }
         if (i >= 0) idx = i;
       }
       _startSession(eps, idx);

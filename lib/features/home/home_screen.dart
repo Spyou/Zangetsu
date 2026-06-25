@@ -250,6 +250,8 @@ class _HomeViewState extends State<_HomeView> {
             sourceId: e.sourceId,
           ),
           resumeEpisodeId: e.episodeId,
+          resumeEpisodeNumber: e.episodeNumber,
+          resumePosition: e.position,
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
               _repo.sources(u, sourceId: e.sourceId, fast: true),

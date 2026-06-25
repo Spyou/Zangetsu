@@ -125,6 +125,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.tmdbIsTv = false,
     this.imdbId,
     this.availableCategories = const [],
+    this.initialResume = Duration.zero,
   }) : _resolveSources = resolveSources,
        _dio = dio,
        _activeCategory = category ?? 'sub',
@@ -171,6 +172,15 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// AllAnime sub/dub are DIFFERENT streams — switching re-resolves the OTHER
   /// category's URL for the current episode (see [_episodeUrl]).
   final List<String> availableCategories;
+
+  /// Fallback resume position from the launch site — the saved position of the
+  /// Continue Watching entry the user tapped. Applied only on the first open
+  /// and only when the [ResumeStore] lookup MISSES, which happens when a
+  /// provider hands back a different opaque episode `data` id than the one we
+  /// saved (so the per-episode key no longer matches and we'd start from 0
+  /// despite knowing exactly where the user left off). Zeroed after use so
+  /// later source/quality switches keep the live position instead.
+  Duration initialResume;
 
   /// The currently-playing category. Re-resolving sources rewrites the
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
@@ -227,6 +237,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Duration _goodPos = Duration.zero;
   int _goodPosMs = 0;
   int _userSeekMs = 0;
+  int _lastResumeSeekMs = 0; // throttle for the resume re-seek (anti-thrash)
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
@@ -468,6 +479,23 @@ class PlayerCubit extends Cubit<PlayerState> {
             p > _pendingResume + const Duration(seconds: 15)) {
           _pendingResume = Duration.zero;
         }
+        // Force the resume seek to actually STICK. Some remote MP4 hosts briefly
+        // report the resume position (mpv's `start` property) then reset to 0
+        // and play from the beginning — the seek-on-open silently failed, and a
+        // one-shot re-seek can be fooled by that transient reading. So while a
+        // resume is still pending and we're playing well short of it, re-issue
+        // the seek, paced so each range request has time to land (never
+        // thrashing). Cleared automatically once playback gets past the target.
+        if (_pendingResume > Duration.zero &&
+            _lastDur > Duration.zero &&
+            _pendingResume < _lastDur &&
+            p + const Duration(seconds: 15) < _pendingResume) {
+          final nowS = DateTime.now().millisecondsSinceEpoch;
+          if (nowS - _lastResumeSeekMs > 2500) {
+            _lastResumeSeekMs = nowS;
+            player.seek(_pendingResume);
+          }
+        }
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
           if (!_markedWatching) {
@@ -572,20 +600,33 @@ class PlayerCubit extends Cubit<PlayerState> {
   void togglePlay() => player.playOrPause();
   void seekTo(Duration d) {
     _pendingResume = Duration.zero; // user took control → drop the resume floor
-    _userSeekMs = DateTime.now().millisecondsSinceEpoch; // a legit position jump
+    _markUserSeek(d);
     player.seek(d);
   }
 
   /// Seek by [delta] (signed), clamped into 0..duration.
   void seekBy(Duration delta) {
     _pendingResume = Duration.zero; // user took control → drop the resume floor
-    _userSeekMs = DateTime.now().millisecondsSinceEpoch; // a legit position jump
     final target = _lastPos + delta;
     final dur = _lastDur;
     final clamped = target < Duration.zero
         ? Duration.zero
         : (dur > Duration.zero && target > dur ? dur : target);
+    _markUserSeek(clamped);
     player.seek(clamped);
+  }
+
+  /// Record a deliberate user seek to [target]. Besides flagging the jump as
+  /// legitimate, it moves the glitch-guard baseline ([_goodPos]) to the seek
+  /// target — otherwise a large but valid seek (e.g. scrubbing 9 min ahead)
+  /// looks like a garbage forward jump to [_persist] and gets rejected, so the
+  /// new position is never saved and resume snaps back to where you were before
+  /// the seek.
+  void _markUserSeek(Duration target) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _userSeekMs = now;
+    _goodPos = target;
+    _goodPosMs = now;
   }
 
   List<AudioKind> get audioKinds => availableKinds(state.sources);
@@ -1063,8 +1104,16 @@ class PlayerCubit extends Cubit<PlayerState> {
     final autoResume = sl<PlaybackPrefs>().autoResume;
     final mark =
         autoResume ? resume.get(sourceId, _showKey, currentEpisode.id) : null;
-    final resumeAt =
+    var resumeAt =
         (mark != null && !mark.finished) ? mark.position : Duration.zero;
+    // Fallback when the per-episode ResumeStore key didn't match (the provider
+    // regenerated the episode's opaque data id between sessions): resume from
+    // the position the Continue Watching entry itself recorded. First open only
+    // — consume it so a later source/quality switch keeps the live position.
+    if (autoResume && resumeAt <= Duration.zero && initialResume > Duration.zero) {
+      resumeAt = initialResume;
+    }
+    initialResume = Duration.zero;
     // A fresh resume-open (no explicit seekTo) arms the pending-resume target so
     // a re-open that fires before we've reached it can't pull us back.
     if ((seekTo == null || seekTo <= Duration.zero) && resumeAt > Duration.zero) {
