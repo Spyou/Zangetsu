@@ -23,6 +23,7 @@ import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
+import '../watch_together/model/room_state.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
@@ -181,6 +182,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// despite knowing exactly where the user left off). Zeroed after use so
   /// later source/quality switches keep the live position instead.
   Duration initialResume;
+
+  /// Watch Together: `none` for all normal playback (the hooks below are inert).
+  RoomRole roomRole = RoomRole.none;
+
+  /// Host-mode only: notified on local play/pause/seek/episode so the room can
+  /// broadcast. Null (and never set) outside a room — zero effect on normal use.
+  void Function(String event, Duration pos)? onLocalPlayback;
 
   /// The currently-playing category. Re-resolving sources rewrites the
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
@@ -597,11 +605,18 @@ class PlayerCubit extends Cubit<PlayerState> {
     sl<PlaybackPrefs>().setDefaultSpeed(r);
   }
 
-  void togglePlay() => player.playOrPause();
+  void togglePlay() {
+    final willPlay = !player.state.playing;
+    player.playOrPause();
+    if (roomRole == RoomRole.host) {
+      onLocalPlayback?.call(willPlay ? 'play' : 'pause', _lastPos);
+    }
+  }
   void seekTo(Duration d) {
     _pendingResume = Duration.zero; // user took control → drop the resume floor
     _markUserSeek(d);
     player.seek(d);
+    if (roomRole == RoomRole.host) onLocalPlayback?.call('seek', d);
   }
 
   /// Seek by [delta] (signed), clamped into 0..duration.
@@ -824,6 +839,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       }
       await _open(pick, gen: gen);
       _applyDefaultQuality();
+      if (roomRole == RoomRole.host) onLocalPlayback?.call('episode', Duration.zero);
     } catch (e) {
       if (gen != _gen) return;
       emit(
@@ -1101,7 +1117,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
-    final autoResume = sl<PlaybackPrefs>().autoResume;
+    // In a Watch Together room the room position is authoritative, not the
+    // user's personal mark.
+    final autoResume = sl<PlaybackPrefs>().autoResume && roomRole == RoomRole.none;
     final mark =
         autoResume ? resume.get(sourceId, _showKey, currentEpisode.id) : null;
     var resumeAt =
@@ -1604,6 +1622,20 @@ class PlayerCubit extends Cubit<PlayerState> {
       imdbId: imdbId,
       episode: ep.toInt(),
     );
+  }
+
+  /// Client-mode: apply the host's state without re-broadcasting. Seeks only on
+  /// meaningful drift (the controller already gates with needsCorrection).
+  Future<void> applyRemote(
+      {required bool playing, required Duration position, double? rate}) async {
+    if ((_lastPos - position).abs() > const Duration(milliseconds: 2500)) {
+      // Reuse the robust resume machinery so the seek lands on flaky hosts.
+      _pendingResume = position;
+      await player.seek(position);
+    }
+    if (rate != null && rate > 0) player.setRate(rate);
+    if (playing && !player.state.playing) player.play();
+    if (!playing && player.state.playing) player.pause();
   }
 
   @override
