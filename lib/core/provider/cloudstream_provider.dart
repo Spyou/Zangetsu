@@ -680,6 +680,8 @@ class CloudStreamManager extends ChangeNotifier {
     final claimed = <String>{}; // sourceIds already placed in a repo group
 
     for (final repo in _repos) {
+      final repoUrl = (repo['url'] ?? '').toString();
+      final repoTag = _csRepoTag(repoUrl);
       final files = <String>{};
       final rawFiles = repo['files'];
       if (rawFiles is List) {
@@ -689,8 +691,7 @@ class CloudStreamManager extends ChangeNotifier {
       }
       final catalog = _catalogOf(repo);
       // A repo's plugins by internalName (catalog + legacy file ids) — used to
-      // attribute loaded sources even when the installed version differs from
-      // the currently-advertised one.
+      // attribute LEGACY (un-tagged) sources, where we can't tell repos apart.
       final internalNames = <String>{
         for (final p in catalog) p.internalName,
         for (final f in files) f.split('@').first,
@@ -698,7 +699,16 @@ class CloudStreamManager extends ChangeNotifier {
       final sources = <CloudStreamProvider>[];
       for (final p in _providers.values) {
         final sp = p.sourcePlugin;
-        if (sp != null && internalNames.contains(sp.split('@').first)) {
+        if (sp == null || claimed.contains(p.sourceId)) continue;
+        // Tagged file id → belongs to EXACTLY the repo whose url hashes to its
+        // tag, so a same-named plugin from two repos no longer lands in both
+        // groups (which made one toggle look like it moved the other). Legacy
+        // un-tagged ids fall back to internalName matching.
+        final tagged = '@'.allMatches(sp).length >= 2;
+        final matches = tagged
+            ? sp.endsWith('@$repoTag')
+            : internalNames.contains(sp.split('@').first);
+        if (matches) {
           sources.add(p);
           claimed.add(p.sourceId);
         }
@@ -1048,6 +1058,20 @@ class CloudStreamManager extends ChangeNotifier {
   /// no persisted repo claims it — the UI then falls back to the file tag.
   String? _repoLabelFor(String? sourcePlugin) {
     if (sourcePlugin == null || sourcePlugin.isEmpty) return null;
+    // Tagged file id ("name@version@tag"): the owning repo is the ONE whose url
+    // hashes to that tag — not just any repo that lists the name. This is what
+    // makes a phisher install read "Phisher", not whichever repo sorts first.
+    if ('@'.allMatches(sourcePlugin).length >= 2) {
+      final tag = sourcePlugin.substring(sourcePlugin.lastIndexOf('@') + 1);
+      for (final r in _repos) {
+        if (_csRepoTag((r['url'] ?? '').toString()) == tag) {
+          final nm = (r['name'] ?? '').toString();
+          if (nm.isNotEmpty) return nm;
+        }
+      }
+      return null;
+    }
+    // Legacy un-tagged id: best-effort first repo that lists it.
     for (final r in _repos) {
       final files = r['files'];
       if (files is List && files.any((f) => '$f' == sourcePlugin)) {
