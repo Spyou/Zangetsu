@@ -31,6 +31,10 @@ import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
+import '../watch_together/model/room_state.dart';
+import '../watch_together/watch_room_service.dart';
+import '../watch_together/watch_together_controller.dart';
+import '../watch_together/ui/watch_together_sheet.dart';
 import 'player_controller.dart';
 import 'seek_preview.dart';
 
@@ -121,6 +125,7 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   late final PlayerCubit _c;
+  WatchTogetherController? _room;
 
   bool _controlsVisible = true;
   // When controls are visible we hide them on tap-DOWN (instant) instead of
@@ -376,6 +381,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
       availableCategories: widget.availableCategories,
       initialResume: widget.resumePosition,
     )..init(startIndex);
+
+    _room = WatchTogetherController(sl<WatchRoomService>())
+      ..localPosition = (() => _c.player.state.position)
+      ..onApplyRemote = ((playing, pos, rate) =>
+          _c.applyRemote(playing: playing, position: pos, rate: rate))
+      ..onEpisodeChange = ((r) {
+        // TODO(Task 8): resolve room source + open at room position
+      });
+    _wireRoom(_room!);
+
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
     _completedSub = _c.player.stream.completed.listen((done) {
@@ -383,6 +398,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
     });
     if (mounted) setState(() => _ready = true);
     _scheduleHide();
+  }
+
+  void _wireRoom(WatchTogetherController room) {
+    room.addListener(() {
+      _c.roomRole = room.role;
+      if (mounted) setState(() {});
+    });
+    _c.onLocalPlayback = (event, pos) {
+      switch (event) {
+        case 'play':
+          room.broadcastPlay(pos);
+          break;
+        case 'pause':
+          room.broadcastPause(pos);
+          break;
+        case 'seek':
+          room.broadcastSeek(pos);
+          break;
+        case 'episode':
+          final ep = _c.currentEpisode;
+          room.broadcastEpisode(
+              episodeId: ep.id, number: ep.number, episodeUrl: ep.url);
+          break;
+      }
+    };
   }
 
   Future<void> _resolveThenStart() async {
@@ -429,6 +469,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     WakelockPlus.disable();
     if (_ready) _c.close();
+    _room?.dispose();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -1606,6 +1647,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       megaSkipEnabled: _megaSkipEnabled,
                       megaSkipSeconds: _megaSkipSeconds,
                       onMegaSkip: _megaSkip,
+                      onWatchTogether: _room == null
+                          ? null
+                          : () => showWatchTogetherSheet(
+                              context,
+                              controller: _room!,
+                              buildInitialRoom: () => RoomState(
+                          code: '',
+                          hostId: '',
+                          hostName: '',
+                          hostAvatar: '',
+                          sourceId: _c.sourceId,
+                          sourceLabel: widget.showTitle ?? '',
+                          showUrl: widget.showUrl ?? '',
+                          showTitle: widget.showTitle ?? '',
+                          cover: widget.cover ?? '',
+                          episodeId: _c.currentEpisode.id,
+                          episodeNumber: _c.currentEpisode.number,
+                          episodeUrl: _c.currentEpisode.url,
+                          category: widget.category ?? 'sub',
+                          malId: widget.malId,
+                          tmdbId: widget.tmdbId,
+                          positionMs:
+                              _c.player.state.position.inMilliseconds,
+                          playing: _c.player.state.playing,
+                          rate: 1.0,
+                          updatedAt: 0,
+                          status: 'active',
+                        ),
+                      ),
                     ),
                   ),
                 )
@@ -2041,6 +2111,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.megaSkipSeconds,
     required this.onMegaSkip,
     this.onPip,
+    this.onWatchTogether,
   });
 
   final PlayerCubit controller;
@@ -2065,6 +2136,7 @@ class _ControlsOverlay extends StatelessWidget {
   final int megaSkipSeconds;
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
+  final VoidCallback? onWatchTogether; // Watch Together entry point
 
   @override
   Widget build(BuildContext context) {
@@ -2212,6 +2284,11 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                     onPressed: onLock,
                   ),
+                  if (onWatchTogether != null)
+                    IconButton(
+                      icon: const Icon(Icons.group, color: Colors.white),
+                      onPressed: onWatchTogether,
+                    ),
                 ],
               ),
             ),
