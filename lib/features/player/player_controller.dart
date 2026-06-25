@@ -214,6 +214,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   final List<StreamSubscription> _subs = [];
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
+  // The resume position we still need to reach. Set when a resume mark is
+  // applied on open and cleared once playback actually reaches it. While set, a
+  // re-open (e.g. the default-quality switch that fires right after resume, when
+  // _lastPos has only crept to ~1s) must keep targeting it instead of dropping
+  // back to the couple of seconds buffered so far — otherwise resume is lost.
+  Duration _pendingResume = Duration.zero;
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
@@ -448,6 +454,12 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.position.listen((p) {
         _lastPos = p;
+        // Resume target reached → stop forcing it on re-opens (so a later manual
+        // seek or quality switch behaves normally).
+        if (_pendingResume > Duration.zero &&
+            p + const Duration(seconds: 3) >= _pendingResume) {
+          _pendingResume = Duration.zero;
+        }
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
           if (!_markedWatching) {
@@ -705,6 +717,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> openEpisode(int index) async {
     final gen = ++_gen;
     await _persist();
+    _pendingResume = Duration.zero; // new episode arms its own resume in _open
     _tried.clear();
     _recovering = false;
     _skips = const []; // clear previous episode's skip markers
@@ -1021,11 +1034,17 @@ class PlayerCubit extends Cubit<PlayerState> {
         autoResume ? resume.get(sourceId, _showKey, currentEpisode.id) : null;
     final resumeAt =
         (mark != null && !mark.finished) ? mark.position : Duration.zero;
+    // A fresh resume-open (no explicit seekTo) arms the pending-resume target so
+    // a re-open that fires before we've reached it can't pull us back.
+    if ((seekTo == null || seekTo <= Duration.zero) && resumeAt > Duration.zero) {
+      _pendingResume = resumeAt;
+    }
     // A source/quality switch passes seekTo: _lastPos to keep the position. But
-    // right after a resume-open _lastPos is still 0 (no position event yet), so
-    // an early default-quality switch would re-open at 0 and wipe the resume.
-    // Fall back to the resume mark whenever the seek target is non-positive.
-    final start = (seekTo != null && seekTo > Duration.zero) ? seekTo : resumeAt;
+    // right after a resume-open _lastPos is still ~0, so an early default-quality
+    // switch would re-open near 0 and wipe the resume. Keep targeting the pending
+    // resume until we've actually reached it; otherwise honor seekTo / the mark.
+    final base = (seekTo != null && seekTo > Duration.zero) ? seekTo : resumeAt;
+    final start = _pendingResume > base ? _pendingResume : base;
     // Ensure mpv tuning (incl. the HLS fake-extension relaxation) is applied
     // before opening — otherwise the first file opens without it (black screen
     // on AnimeSalt/AnimixStream-style streams).
