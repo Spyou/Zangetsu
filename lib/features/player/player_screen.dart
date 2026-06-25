@@ -34,6 +34,7 @@ import '../detail/cubit/detail_cubit.dart'
 import '../watch_together/model/room_state.dart';
 import '../watch_together/watch_room_service.dart';
 import '../watch_together/watch_together_controller.dart';
+import '../watch_together/ui/room_panel.dart';
 import '../watch_together/ui/watch_together_sheet.dart';
 import 'player_controller.dart';
 import 'seek_preview.dart';
@@ -387,7 +388,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ..onApplyRemote = ((playing, pos, rate) =>
           _c.applyRemote(playing: playing, position: pos, rate: rate))
       ..onEpisodeChange = ((r) {
-        // TODO(Task 8): resolve room source + open at room position
+        // Follow the host to their episode within the show we already loaded.
+        // Position is then re-synced by the controller's applyRemote tick, so
+        // we only need to switch episodes here. Cross-show following is out of
+        // scope for v1 — if no episode matches the room state, do nothing.
+        var i = _c.episodes.indexWhere((e) => e.id == r.episodeId);
+        if (i < 0 && r.episodeNumber != null) {
+          i = _c.episodes.indexWhere((e) => e.number == r.episodeNumber);
+        }
+        if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i);
       });
     _wireRoom(_room!);
 
@@ -1771,6 +1780,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               // 7. Up-next card (auto-advance countdown).
               if (_upNext) _buildUpNextCard(),
+
+              // 8. Room presence strip — shown whenever a Watch Together room
+              // is active, independent of controls visibility (always readable).
+              // Positioned top-right within the safe area, next to the title bar.
+              if (_room?.room != null)
+                Positioned(
+                  top: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 10, right: 12),
+                      child: RoomStrip(controller: _room!),
+                    ),
+                  ),
+                ),
             ],
             ),
           );
