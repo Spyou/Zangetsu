@@ -1324,7 +1324,12 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
     final installedCount = isOther
         ? group.sources.length
         : catalog
-              .where((p) => manager.isPluginInstalled(p.internalName, cs3Url: p.url))
+              .where(
+                (p) => manager.isPluginInstalled(
+                  p.internalName,
+                  repoUrl: group.url,
+                ),
+              )
               .length;
     final title = group.name.isNotEmpty ? group.name : 'CloudStream';
     final owner = group.owner.isNotEmpty
@@ -1471,9 +1476,10 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                           ),
                           _CsPluginRow(
                             plugin: plugin,
+                            repoUrl: group.url,
                             installed: manager.isPluginInstalled(
                               plugin.internalName,
-                              cs3Url: plugin.url,
+                              repoUrl: group.url,
                             ),
                           ),
                         ],
@@ -1490,10 +1496,19 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
 /// button. Install downloads + loads the `.cs3`; Installed taps to uninstall
 /// (with a confirm). A spinner shows while the install/uninstall runs.
 class _CsPluginRow extends StatefulWidget {
-  const _CsPluginRow({required this.plugin, required this.installed});
+  const _CsPluginRow({
+    required this.plugin,
+    required this.installed,
+    this.repoUrl = '',
+  });
 
   final CsPluginMeta plugin;
   final bool installed;
+
+  /// The repository this catalog row belongs to — threaded into install /
+  /// uninstall so the cache file is tagged per repo (same plugin, two repos →
+  /// two independent installs).
+  final String repoUrl;
 
   @override
   State<_CsPluginRow> createState() => _CsPluginRowState();
@@ -1514,7 +1529,8 @@ class _CsPluginRowState extends State<_CsPluginRow> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      await sl<CloudStreamManager>().installPlugin(widget.plugin);
+      await sl<CloudStreamManager>()
+          .installPlugin(widget.plugin, repoUrl: widget.repoUrl);
       messenger
         ..clearSnackBars()
         ..showSnackBar(
@@ -1561,7 +1577,8 @@ class _CsPluginRowState extends State<_CsPluginRow> {
     if (ok != true) return;
     setState(() => _busy = true);
     try {
-      await sl<CloudStreamManager>().uninstallPlugin(widget.plugin);
+      await sl<CloudStreamManager>()
+          .uninstallPlugin(widget.plugin, repoUrl: widget.repoUrl);
       messenger
         ..clearSnackBars()
         ..showSnackBar(

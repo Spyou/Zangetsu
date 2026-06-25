@@ -92,17 +92,16 @@ class RepoManager(private val context: Context) {
 
     /** Download (or reuse) a plugin's `.cs3` into the cache and return the file. */
     fun download(plugin: CsPlugin): File =
-        download(plugin.url, plugin.internalName, plugin.version)
+        download(plugin.url, plugin.internalName, plugin.version, plugin.repoUrl)
 
     /**
      * Download (or reuse) a single `.cs3` by its raw fields — used to install one
      * plugin on demand (the catalog lives in Dart, so installs pass the fields).
+     * The cache file is tagged with [repoUrl] (the repository the user added) so
+     * the SAME plugin installed from two repos lands in two distinct files.
      */
-    fun download(cs3Url: String, internalName: String, version: Int): File {
-        // Tag the cache file by its repo so two repos that ship a plugin with the
-        // SAME internalName don't share one `.cs3` (which made installing one
-        // "install" the other and uninstalling one delete both).
-        val f = File(cs3Dir, "$internalName@$version@${repoTag(cs3Url)}.cs3")
+    fun download(cs3Url: String, internalName: String, version: Int, repoUrl: String): File {
+        val f = File(cs3Dir, "$internalName@$version@${repoTag(repoUrl)}.cs3")
         if (f.exists() && f.length() > 0) return f
         val conn = URL(cs3Url).openConnection()
         conn.connectTimeout = 15000
@@ -118,12 +117,12 @@ class RepoManager(private val context: Context) {
     companion object {
         const val UA = "Mozilla/5.0 (Android) Zangetsu"
 
-        /** A short, stable per-repo tag derived from the plugin's `.cs3`
-         *  directory (everything before the file name — same for every plugin in
-         *  a repo and across its version bumps, distinct between repos). Two
-         *  repos shipping the same internalName therefore cache to different
-         *  files and install/uninstall independently. */
-        fun repoTag(cs3Url: String): String =
-            Integer.toHexString(cs3Url.substringBeforeLast('/').lowercase().hashCode())
+        /** A short, stable per-repo tag derived from the REPOSITORY URL the user
+         *  added (NOT the .cs3 file url) — exactly like CloudStream keys its
+         *  plugin folders on the repo url. Two repos shipping the same plugin
+         *  (even the same .cs3 file) therefore cache to different files and
+         *  install/uninstall independently. */
+        fun repoTag(repoUrl: String): String =
+            Integer.toHexString(repoUrl.lowercase().hashCode())
     }
 }

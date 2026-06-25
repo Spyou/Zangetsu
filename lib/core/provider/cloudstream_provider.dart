@@ -60,16 +60,17 @@ ProviderType? _typeFromCsType(String? csType) {
       : ProviderType.movie;
 }
 
-/// Per-repo cache-file tag — MUST match the native `RepoManager.repoTag`
-/// (Java `String.hashCode` of the `.cs3` directory, then `Integer.toHexString`),
-/// so the file ids the Dart side derives for grouping/delete line up with the
-/// ones the native host actually wrote.
-String _csRepoTag(String cs3Url) {
-  final slash = cs3Url.lastIndexOf('/');
-  final dir = (slash >= 0 ? cs3Url.substring(0, slash) : cs3Url).toLowerCase();
+/// Per-repo cache-file tag — derived from the REPOSITORY URL the user added
+/// (NOT the .cs3 file URL), exactly like CloudStream keys its plugin folders on
+/// the repo url. This is what lets two repos that serve the SAME plugin file
+/// (same internalName, even the same .cs3 URL) install independently: different
+/// repo url → different tag → different cache file. MUST match the native
+/// `RepoManager.repoTag` (Java `String.hashCode` then `Integer.toHexString`).
+String _csRepoTag(String repoUrl) {
+  final s = repoUrl.toLowerCase();
   var h = 0;
-  for (var i = 0; i < dir.length; i++) {
-    h = (31 * h + dir.codeUnitAt(i)) & 0xFFFFFFFF; // 32-bit wrap, like Java int
+  for (var i = 0; i < s.length; i++) {
+    h = (31 * h + s.codeUnitAt(i)) & 0xFFFFFFFF; // 32-bit wrap, like Java int
   }
   return h.toRadixString(16); // unsigned hex, lowercase — like Integer.toHexString
 }
@@ -740,14 +741,14 @@ class CloudStreamManager extends ChangeNotifier {
     ];
   }
 
-  /// Whether [internalName] from the repo serving [cs3Url] is installed. With
-  /// [cs3Url] the check is REPO-SCOPED — this repo's tagged `.cs3` file or a
+  /// Whether [internalName] from the repo at [repoUrl] is installed. With
+  /// [repoUrl] the check is REPO-SCOPED — this repo's tagged `.cs3` file or a
   /// legacy un-tagged one — so a same-named plugin in ANOTHER repo stays its own
   /// separately (un)installable entry (that's what lets you install the second
-  /// copy). Without [cs3Url] it's the legacy name-only check.
-  bool isPluginInstalled(String internalName, {String? cs3Url}) {
+  /// copy). Without [repoUrl] it's the legacy name-only check.
+  bool isPluginInstalled(String internalName, {String? repoUrl}) {
     final tag =
-        (cs3Url != null && cs3Url.isNotEmpty) ? _csRepoTag(cs3Url) : null;
+        (repoUrl != null && repoUrl.isNotEmpty) ? _csRepoTag(repoUrl) : null;
     return _providers.values.any((p) {
       final sp = p.sourcePlugin;
       if (sp == null || sp.split('@').first != internalName) return false;
@@ -757,15 +758,18 @@ class CloudStreamManager extends ChangeNotifier {
     });
   }
 
-  /// Installs one plugin from a repo's catalog (download + load). Rebuilds the
-  /// provider set from the host. No-op on non-Android.
-  Future<void> installPlugin(CsPluginMeta plugin) async {
+  /// Installs one plugin from a repo's catalog (download + load). [repoUrl] is
+  /// the repository the user added — the cache file is tagged with it so the
+  /// SAME plugin installed from two repos lands in two files. Rebuilds. No-op
+  /// off Android.
+  Future<void> installPlugin(CsPluginMeta plugin, {String repoUrl = ''}) async {
     if (!Platform.isAndroid) return;
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>('installPlugin', {
         'url': plugin.url,
         'internalName': plugin.internalName,
         'version': plugin.version,
+        'repoUrl': repoUrl,
       });
       _rebuildFrom(raw);
       notifyListeners();
@@ -775,14 +779,18 @@ class CloudStreamManager extends ChangeNotifier {
     }
   }
 
-  /// Uninstalls one plugin and its sources — repo-scoped via the plugin's `.cs3`
-  /// url, so a same-named plugin from another repo is left intact. Rebuilds.
-  Future<void> uninstallPlugin(CsPluginMeta plugin) async {
+  /// Uninstalls one plugin and its sources — repo-scoped via [repoUrl], so a
+  /// same-named plugin from another repo is left intact. Rebuilds.
+  Future<void> uninstallPlugin(CsPluginMeta plugin, {String repoUrl = ''}) async {
     if (!Platform.isAndroid) return;
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>(
         'uninstallPlugin',
-        {'internalName': plugin.internalName, 'url': plugin.url},
+        {
+          'internalName': plugin.internalName,
+          'url': plugin.url,
+          'repoUrl': repoUrl,
+        },
       );
       _rebuildFrom(raw);
       notifyListeners();
@@ -885,10 +893,11 @@ class CloudStreamManager extends ChangeNotifier {
         files.add('$f');
       }
     }
+    final repoTag = _csRepoTag(repoUrl); // tag derived from THIS repo's url
     for (final p in catalog) {
       final base = '${p['internalName']}@${p['version']}';
       files.add(base); // legacy un-tagged id (installs from before per-repo tagging)
-      files.add('$base@${_csRepoTag((p['url'] ?? '').toString())}'); // current tagged id
+      files.add('$base@$repoTag'); // current tagged id (this repo's copy)
     }
     // If the native response carried explicit file ids (legacy), keep them too.
     final rawFiles = m['files'];

@@ -244,9 +244,15 @@ class MainActivity : FlutterActivity() {
                         val cs3Url = call.argument<String>("url")
                         val internalName = call.argument<String>("internalName")
                         val version = call.argument<Int>("version") ?: 1
+                        val repoUrl = call.argument<String>("repoUrl") ?: ""
                         csExecutor.execute {
                             try {
-                                val file = repo.download(cs3Url ?: "", internalName ?: "", version)
+                                val file = repo.download(
+                                    cs3Url ?: "",
+                                    internalName ?: "",
+                                    version,
+                                    repoUrl,
+                                )
                                 host.loadPlugin(file)
                                 runOnUiThread { result.success(host.installedApis()) }
                             } catch (e: Exception) {
@@ -254,20 +260,17 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
-                    // Uninstall ONE plugin by internalName (every cached version +
-                    // its registered sources). Returns the updated source list.
+                    // Uninstall ONE plugin, repo-scoped by repoUrl (so two repos'
+                    // same-named plugins uninstall independently). Falls back to
+                    // the legacy by-internalName delete when no repoUrl is known.
                     "uninstallPlugin" -> {
                         val internalName = call.argument<String>("internalName") ?: ""
-                        val url = call.argument<String>("url") ?: ""
+                        val repoUrl = call.argument<String>("repoUrl") ?: ""
                         csExecutor.execute {
                             try {
-                                // Repo-scoped when we know the plugin's .cs3 url
-                                // (so two repos' same-named plugins uninstall
-                                // independently); fall back to the legacy
-                                // by-internalName delete otherwise.
-                                if (url.isNotEmpty()) {
+                                if (repoUrl.isNotEmpty()) {
                                     host.deleteByRepoPlugin(
-                                        com.spyou.watch_app.cloudstream.RepoManager.repoTag(url),
+                                        com.spyou.watch_app.cloudstream.RepoManager.repoTag(repoUrl),
                                         internalName,
                                     )
                                 } else {
@@ -349,9 +352,12 @@ class MainActivity : FlutterActivity() {
                             try {
                                 val (repoName, plugins) = repo.loadRepo(url ?: "")
                                 val installed = host.installedFileIds() // "name@ver[@tag]"
+                                // Tag is per-REPO (the repo url the user added), so
+                                // updating one repo never touches another repo's
+                                // same-named plugin.
+                                val tag = com.spyou.watch_app.cloudstream.RepoManager
+                                    .repoTag(url ?: "")
                                 for (plugin in plugins) {
-                                    val tag = com.spyou.watch_app.cloudstream.RepoManager
-                                        .repoTag(plugin.url)
                                     // Only update THIS repo's copy: its tagged file
                                     // or a legacy un-tagged one (1 '@').
                                     val mine = installed.any {
