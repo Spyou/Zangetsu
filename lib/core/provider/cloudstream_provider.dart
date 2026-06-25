@@ -72,9 +72,10 @@ class CloudStreamProvider implements BaseProvider {
     required this.lang,
     required this.types,
     this.sourcePlugin,
+    this.disambiguate = false,
   });
 
-  /// The bare CloudStream source name (no `cs:` prefix). Passed to the channel.
+  /// The bare CloudStream source name (no `cs:` prefix).
   final String name;
   final String lang;
   final List<String> types;
@@ -84,11 +85,29 @@ class CloudStreamProvider implements BaseProvider {
   /// loaded by an older build that didn't stamp it.
   final String? sourcePlugin;
 
-  @override
-  String get sourceId => 'cs:$name';
+  /// True when ANOTHER installed source shares this [name] (e.g. two "MovieBox"
+  /// forks from different repos). Such a source identifies itself by its unique
+  /// `.cs3` file id instead of its name, so the two don't collapse into one
+  /// entry (install/uninstall/enable one without touching the other).
+  final bool disambiguate;
+
+  /// The key the native host resolves a call against. We prefer the unique
+  /// `.cs3` file id so same-named sources address their OWN plugin; the host
+  /// also accepts the bare name (legacy fallback), so older sources still work.
+  String get hostKey => (sourcePlugin != null && sourcePlugin!.isNotEmpty)
+      ? sourcePlugin!
+      : name;
 
   @override
-  String get displayName => name;
+  String get sourceId =>
+      (disambiguate && sourcePlugin != null && sourcePlugin!.isNotEmpty)
+          ? 'cs:${sourcePlugin!}'
+          : 'cs:$name';
+
+  @override
+  String get displayName => disambiguate
+      ? '$name (${sourcePlugin!.split('@').first})'
+      : name;
 
   /// Whether ANY of this source's advertised types is anime; drives the
   /// provider-level [ProviderType] and the default for items without a type.
@@ -117,7 +136,7 @@ class CloudStreamProvider implements BaseProvider {
     if (!Platform.isAndroid) return const [];
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>('search', {
-        'name': name,
+        'name': hostKey,
         'query': query,
       });
       return (raw ?? const []).map(_mediaItemFromMap).toList();
@@ -140,7 +159,7 @@ class CloudStreamProvider implements BaseProvider {
     if (!Platform.isAndroid) return (items: const <MediaItem>[], error: null);
     final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
       'searchStatus',
-      {'name': name, 'query': query},
+      {'name': hostKey, 'query': query},
     );
     final m = _asMap(raw);
     final items = (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
@@ -163,7 +182,7 @@ class CloudStreamProvider implements BaseProvider {
       );
     }
     final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>('load', {
-      'name': name,
+      'name': hostKey,
       'url': url,
       // Anime sources key episodes by Sub/Dub; the native side returns the
       // requested category's list (the Sub/Dub toggle re-fetches with 'dub').
@@ -296,7 +315,7 @@ class CloudStreamProvider implements BaseProvider {
     if (!Platform.isAndroid) return const [];
     final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
       'loadLinks',
-      {'name': name, 'data': episodeUrl, 'fast': fast},
+      {'name': hostKey, 'data': episodeUrl, 'fast': fast},
     );
     final m = _asMap(raw);
 
@@ -383,7 +402,7 @@ class CloudStreamProvider implements BaseProvider {
     // MovieBox. Decode it OFF the UI thread (compute) when it's large.
     final jsonStr = await _csChannel.invokeMethod<String>(
       'getHome',
-      {'name': name},
+      {'name': hostKey},
     );
     if (jsonStr == null || jsonStr.isEmpty || jsonStr == '[]') return null;
     final List<dynamic> raw = jsonStr.length > 20000
@@ -942,9 +961,19 @@ class CloudStreamManager extends ChangeNotifier {
 
   void _rebuildFrom(List<dynamic>? raw) {
     _providers.clear();
-    for (final entry in raw ?? const []) {
-      if (entry is! Map) continue;
-      final m = Map<String, dynamic>.from(entry);
+    final entries = <Map<String, dynamic>>[
+      for (final e in raw ?? const [])
+        if (e is Map) Map<String, dynamic>.from(e),
+    ];
+    // Count display-name occurrences first, so ONLY genuine collisions get the
+    // file-id identity. Unique-named sources keep their `cs:<name>` id (and their
+    // persisted enable/health/history state) completely untouched.
+    final nameCounts = <String, int>{};
+    for (final m in entries) {
+      final n = (m['name'] ?? '').toString();
+      if (n.isNotEmpty) nameCounts[n] = (nameCounts[n] ?? 0) + 1;
+    }
+    for (final m in entries) {
       final name = (m['name'] ?? '').toString();
       if (name.isEmpty) continue;
       final types = <String>[];
@@ -954,11 +983,17 @@ class CloudStreamManager extends ChangeNotifier {
           types.add('$t');
         }
       }
+      final sourcePlugin = (m['sourcePlugin'] as String?);
       final provider = CloudStreamProvider(
         name: name,
         lang: (m['lang'] ?? '').toString(),
         types: types,
-        sourcePlugin: (m['sourcePlugin'] as String?),
+        sourcePlugin: sourcePlugin,
+        // Disambiguate only when another installed source shares this name AND
+        // we have a unique file id to identify it by.
+        disambiguate: (nameCounts[name] ?? 0) > 1 &&
+            sourcePlugin != null &&
+            sourcePlugin.isNotEmpty,
       );
       _providers[provider.sourceId] = provider;
     }

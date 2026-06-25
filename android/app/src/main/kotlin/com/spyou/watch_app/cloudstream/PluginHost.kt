@@ -156,8 +156,14 @@ class PluginHost(private val context: Context) {
 
     fun loadAll(files: List<File>): Int = files.count { loadPlugin(it) }
 
-    private fun apiByName(name: String): MainAPI? =
-        APIHolder.allProviders.firstOrNull { it.name == name }
+    // Resolve a source by EITHER its unique `.cs3` file id (`sourcePlugin`, e.g.
+    // "MovieBoxProvider@5") OR its display name. Preferring the file id lets two
+    // installed plugins that share a display name (e.g. two "MovieBox" forks from
+    // different repos) be addressed individually; the name match is the legacy
+    // fallback so existing callers that pass a bare name behave exactly as before.
+    private fun apiByName(key: String): MainAPI? =
+        APIHolder.allProviders.firstOrNull { it.sourcePlugin == key }
+            ?: APIHolder.allProviders.firstOrNull { it.name == key }
 
     /** The plugin that registered the source [apiName], if it's one we track. */
     private fun pluginFor(apiName: String): Plugin? {
