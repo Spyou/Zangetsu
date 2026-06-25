@@ -502,11 +502,14 @@ class PlayerCubit extends Cubit<PlayerState> {
         // clamped to 0 — the "always resumes from 0" bug. So apply the pending
         // resume HERE, the moment seeking is possible. (This is how CloudStream
         // does it — re-seek to the saved position on STATE_READY.)
-        if (_pendingResume > Duration.zero &&
-            d > Duration.zero &&
-            _pendingResume < d &&
-            _lastPos < _pendingResume) {
-          player.seek(_pendingResume);
+        if (_pendingResume > Duration.zero && d > Duration.zero) {
+          if (_pendingResume >= d) {
+            // Mark is at/after the end (e.g. a corrupted/too-large value) —
+            // can't resume there; drop it so playback + saving proceed normally.
+            _pendingResume = Duration.zero;
+          } else if (_lastPos < _pendingResume) {
+            player.seek(_pendingResume);
+          }
         }
         // Fetch accurate OP/ED skip times once the episode length is known.
         if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
@@ -1083,13 +1086,33 @@ class PlayerCubit extends Cubit<PlayerState> {
                   'analyzeduration=2000000'
             : 'extension_picky=0,allowed_extensions=ALL,analyzeduration=2000000',
       );
+      // Progressive MP4 file hosts often drop the connection right after a
+      // range-request seek (resume / scrub), which stalls playback at the seek
+      // point. Let libavformat reconnect and continue — what ExoPlayer (and so
+      // CloudStream) does natively. HLS reconnects per-segment already.
+      if (!isHls) {
+        await plat.setProperty(
+          'stream-lavf-o',
+          'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,'
+              'reconnect_delay_max=30',
+        );
+      }
+      // Set mpv's `start` BEFORE loadfile so it opens AT the resume position (a
+      // range request to that offset), the way CloudStream sets the start
+      // position at prepare time. media_kit's own Media.start is applied late —
+      // in its playlist-pos callback, AFTER the file already began decoding at
+      // 0 — so slow remote MP4s (file hosts) ignore it and land back at 0. We
+      // set it ourselves before open, and to '0' otherwise (the property is
+      // sticky across files, so it must be reset every open).
+      await plat.setProperty(
+        'start',
+        start > Duration.zero
+            ? (start.inMilliseconds / 1000).toStringAsFixed(3)
+            : '0',
+      );
     }
     await player.open(
-      Media(
-        s.url,
-        httpHeaders: s.headers,
-        start: start > Duration.zero ? start : null,
-      ),
+      Media(s.url, httpHeaders: s.headers),
     );
     if (g != _gen) return; // superseded mid-open
     // Discord Rich Presence: announce the episode now playing.
@@ -1393,6 +1416,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _persist() async {
     // Nothing watched yet — don't overwrite a real mark with position 0.
     if (_lastPos <= Duration.zero) return;
+    // Ignore a clearly bogus position (mpv occasionally emits a spurious huge
+    // value mid-seek) — saving it corrupts the resume mark and can make a title
+    // un-resumable (it then tries to seek past the end forever).
+    if (_lastDur > Duration.zero &&
+        _lastPos > _lastDur + const Duration(seconds: 5)) {
+      return;
+    }
     // While we're still trying to seek back to a resume point, don't let the low
     // positions we play through in the meantime clobber the saved mark.
     if (_pendingResume > Duration.zero &&
