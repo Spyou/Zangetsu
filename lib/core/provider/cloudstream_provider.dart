@@ -622,6 +622,17 @@ class CloudStreamManager extends ChangeNotifier {
   /// Provider for a `cs:<name>` source id, or null when not installed.
   BaseProvider? get(String sourceId) => _providers[sourceId];
 
+  /// The origin repo's display name for an installed CS source, or null when it
+  /// isn't attributable to a persisted repo (e.g. the synthetic "Other" group).
+  /// Used to show "which repo" a source came from (detail screen, etc.).
+  String? repoNameForSourceId(String sourceId) {
+    for (final g in repoGroups) {
+      if (g.name.isEmpty) continue;
+      if (g.sources.any((s) => s.sourceId == sourceId)) return g.name;
+    }
+    return null;
+  }
+
   /// Whether a source is enabled (not toggled off by the user).
   bool isEnabled(String sourceId) => !_disabled.contains(sourceId);
 

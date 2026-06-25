@@ -53,6 +53,46 @@ String _friendlySourceId(String sourceId) {
   return s;
 }
 
+/// "Source · Repo" label for the detail screen, so the user can see which repo
+/// a source came from. Falls back to just the name when no repo is resolvable.
+String _sourceLabel(String sourceId) {
+  final js = sl<ProviderRegistry>().entryFor(sourceId);
+  if (js != null) {
+    final name = js.displayName.isNotEmpty ? js.displayName : js.name;
+    final repo = _repoLabelFromUrl(js.originRepoUrl);
+    return repo != null ? '$name · $repo' : name;
+  }
+  final cs = sl<CloudStreamManager>().get(sourceId);
+  if (cs is CloudStreamProvider) {
+    // A disambiguated source's displayName already carries its repo tag, so
+    // don't append the repo twice.
+    final repo = cs.disambiguate
+        ? null
+        : sl<CloudStreamManager>().repoNameForSourceId(sourceId);
+    return repo != null ? '${cs.displayName} · $repo' : cs.displayName;
+  }
+  return cs?.displayName ?? _friendlySourceId(sourceId);
+}
+
+/// Short repo label from a manifest URL (GitHub repo name, else owner, else
+/// host). Null for bundled/blank URLs. Mirrors the source switcher's logic.
+String? _repoLabelFromUrl(String? repoUrl) {
+  if (repoUrl == null || repoUrl.isEmpty || repoUrl.startsWith('bundled://')) {
+    return null;
+  }
+  try {
+    final u = Uri.parse(repoUrl);
+    final segs = u.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (u.host.contains('github')) {
+      if (segs.length >= 2) return segs[1];
+      if (segs.isNotEmpty) return segs.first;
+    }
+    return u.host.isEmpty ? null : u.host;
+  } catch (_) {
+    return null;
+  }
+}
+
 class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item});
   final MediaItem item;
@@ -726,13 +766,11 @@ class _DetailViewState extends State<_DetailView>
         ? detail.genres.take(4).join(', ')
         : null;
 
-    // Friendly provider name. JS providers live in the registry; CloudStream
-    // sources live in the CS manager — without the CS lookup this fell back to
-    // the raw sourceId ("cs:Provider@31@tag"), leaking the file-id suffix.
-    final sourceName =
-        sl<ProviderRegistry>().entryFor(item.sourceId)?.displayName ??
-        sl<CloudStreamManager>().get(item.sourceId)?.displayName ??
-        _friendlySourceId(item.sourceId);
+    // Friendly provider name + its origin repo, so the user can tell which repo
+    // a source came from. JS providers live in the registry; CloudStream sources
+    // live in the CS manager — without the CS lookup this fell back to the raw
+    // sourceId ("cs:Provider@31@tag"), leaking the file-id suffix.
+    final sourceName = _sourceLabel(item.sourceId);
 
     return NestedScrollView(
       controller: _scrollController,
