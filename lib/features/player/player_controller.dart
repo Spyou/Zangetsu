@@ -220,6 +220,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   // _lastPos has only crept to ~1s) must keep targeting it instead of dropping
   // back to the couple of seconds buffered so far — otherwise resume is lost.
   Duration _pendingResume = Duration.zero;
+  // Glitch guard: the last ACCEPTED position + its wall-clock, so we can reject
+  // a spurious forward jump (some remote MP4s emit a garbage position mid-seek;
+  // saving it corrupts the mark and makes the title un-resumable). Plus the time
+  // of the last USER seek, which is a legitimate jump we must not reject.
+  Duration _goodPos = Duration.zero;
+  int _goodPosMs = 0;
+  int _userSeekMs = 0;
   int _lastHistoryMs = 0; // throttle: last wall-clock ms we wrote progress
   int _gen = 0; // bumped per open; async continuations bail if superseded
   final Set<String> _tried = {}; // source URLs already attempted this episode
@@ -504,8 +511,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         // does it — re-seek to the saved position on STATE_READY.)
         if (_pendingResume > Duration.zero && d > Duration.zero) {
           if (_pendingResume >= d) {
-            // Mark is at/after the end (e.g. a corrupted/too-large value) —
-            // can't resume there; drop it so playback + saving proceed normally.
+            // Mark is at/after the end (corrupted/too-large) — can't resume
+            // there; drop it so playback + saving proceed normally.
             _pendingResume = Duration.zero;
           } else if (_lastPos < _pendingResume) {
             player.seek(_pendingResume);
@@ -565,12 +572,14 @@ class PlayerCubit extends Cubit<PlayerState> {
   void togglePlay() => player.playOrPause();
   void seekTo(Duration d) {
     _pendingResume = Duration.zero; // user took control → drop the resume floor
+    _userSeekMs = DateTime.now().millisecondsSinceEpoch; // a legit position jump
     player.seek(d);
   }
 
   /// Seek by [delta] (signed), clamped into 0..duration.
   void seekBy(Duration delta) {
     _pendingResume = Duration.zero; // user took control → drop the resume floor
+    _userSeekMs = DateTime.now().millisecondsSinceEpoch; // a legit position jump
     final target = _lastPos + delta;
     final dur = _lastDur;
     final clamped = target < Duration.zero
@@ -1129,7 +1138,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     // Some streams ignore Media.start (the seek-on-open doesn't take), so the
     // user lands back at 0. Verify a moment later and re-seek if needed.
-    if (start > Duration.zero) _verifyResume(start, g);
+    if (start > Duration.zero) {
+      _verifyResume(start, g);
+      _resumeWatchdog(g);
+    }
     // Apply the preferred speed ONCE, now that a media is actually loaded
     // (setting it before any open doesn't stick). Mid-session overlay changes
     // are never clobbered afterwards.
@@ -1228,6 +1240,32 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Re-seek shortly after open if the stream ignored Media.start (position is
   /// still near 0 instead of the resume target). Retries a couple of times to
   /// catch slow-loading sources.
+  /// Heal a corrupted/unreachable resume mark: if a resume-open never produces
+  /// real playback (position stuck near 0 well after open — e.g. the mark points
+  /// past a stalling deep-seek), abandon the resume, restart from 0, and reset
+  /// the bad mark so the title plays instead of freezing forever.
+  Future<void> _resumeWatchdog(int g) async {
+    await Future.delayed(const Duration(seconds: 15));
+    if (g != _gen) return;
+    final before = _lastPos;
+    await Future.delayed(const Duration(seconds: 4));
+    if (g != _gen) return;
+    // Position hasn't advanced in 4s → playback is frozen (the resume seek
+    // stalled on a deep / corrupted-mark target the host can't serve). Abandon
+    // the resume, restart from 0, and reset the bad mark so the title plays.
+    if ((_lastPos - before).abs() < const Duration(milliseconds: 600)) {
+      _pendingResume = Duration.zero;
+      await player.seek(Duration.zero);
+      await resume.save(
+        sourceId,
+        _showKey,
+        currentEpisode.id,
+        Duration.zero,
+        _lastDur,
+      );
+    }
+  }
+
   Future<void> _verifyResume(Duration target, int g) async {
     // A seek issued while the stream is still buffering at position 0 is
     // silently dropped, so a fixed 3-try window often expires before slow
@@ -1429,6 +1467,18 @@ class PlayerCubit extends Cubit<PlayerState> {
         _lastPos + const Duration(seconds: 3) < _pendingResume) {
       return;
     }
+    // Glitch guard: during playback the position can't legitimately advance much
+    // faster than wall-clock. A big forward jump that ISN'T a user seek is a
+    // garbage value (broken-metadata remote MP4s emit these) — saving it would
+    // corrupt the mark and stall every future resume. Reject it.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (_goodPosMs > 0 && nowMs - _userSeekMs > 3000) {
+      final elapsed = Duration(milliseconds: nowMs - _goodPosMs);
+      final jump = _lastPos - _goodPos;
+      if (jump > elapsed * 4 + const Duration(seconds: 10)) return; // implausible
+    }
+    _goodPos = _lastPos;
+    _goodPosMs = nowMs;
     // Save resume even when the duration is unknown (downloaded HLS files):
     // ResumeMark.finished is false at duration 0, so resume still seeks back.
     await resume.save(sourceId, _showKey, currentEpisode.id, _lastPos, _lastDur);
