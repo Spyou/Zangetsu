@@ -1183,7 +1183,7 @@ class _SearchFilterSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final buckets = categorizedSources();
     final prefs = sl<SearchSourcePrefs>();
-    final sections = <({String title, List<({String id, String label})> rows})>[
+    final sections = <({String title, List<({String id, String label, String? repo})> rows})>[
       if (buckets.anime.isNotEmpty) (title: 'Anime', rows: buckets.anime),
       if (buckets.movies.isNotEmpty)
         (title: 'Movies & Series', rows: buckets.movies),
@@ -1470,7 +1470,7 @@ class _SearchFilterSheet extends StatelessWidget {
   Widget _categoryHeader(
     SearchSourcePrefs prefs,
     String title,
-    List<({String id, String label})> rows,
+    List<({String id, String label, String? repo})> rows,
   ) {
     final ids = rows.map((r) => r.id).toList();
     final onCount = ids.where(prefs.isIncluded).length;
@@ -1505,7 +1505,7 @@ class _SearchFilterSheet extends StatelessWidget {
     );
   }
 
-  Widget _sourceRow(SearchSourcePrefs prefs, ({String id, String label}) r) {
+  Widget _sourceRow(SearchSourcePrefs prefs, ({String id, String label, String? repo}) r) {
     final on = prefs.isIncluded(r.id);
     return InkWell(
       onTap: () => prefs.setIncluded(r.id, !on),

@@ -11,27 +11,53 @@ import '../theme/app_text.dart';
 /// Installed-and-enabled sources bucketed by category, each as an `(id, label)`
 /// row. Reused by the source switcher and the search source picker.
 typedef SourceBuckets = ({
-  List<({String id, String label})> anime,
-  List<({String id, String label})> movies,
-  List<({String id, String label})> nsfw,
+  List<({String id, String label, String? repo})> anime,
+  List<({String id, String label, String? repo})> movies,
+  List<({String id, String label, String? repo})> nsfw,
 });
+
+/// Short repo identifier from a manifest URL (the GitHub repo name, else the
+/// owner, else the host) — shown after a source so you can tell which repo it
+/// came from. Null for bundled/blank URLs → nothing is shown.
+String? _repoLabelFromUrl(String? repoUrl) {
+  if (repoUrl == null || repoUrl.isEmpty || repoUrl.startsWith('bundled://')) {
+    return null;
+  }
+  try {
+    final u = Uri.parse(repoUrl);
+    final segs = u.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (u.host.contains('github')) {
+      if (segs.length >= 2) return segs[1]; // owner / REPO
+      if (segs.isNotEmpty) return segs.first;
+    }
+    return u.host.isEmpty ? null : u.host;
+  } catch (_) {
+    return null;
+  }
+}
 
 /// Buckets installed + enabled providers (JS + CloudStream) by manifest type.
 /// NSFW sources are kept separate and only surfaced when the Privacy toggle is
-/// on. CS rows are prefixed "CS · " and interleaved alphabetically.
+/// on. CS rows are prefixed "CS · " and interleaved alphabetically. Each row's
+/// label carries a small trailing " · repo" tag so the origin repo is visible.
 SourceBuckets categorizedSources() {
   final reg = sl<ProviderRegistry>();
   final nsfwEnabled = sl<PlaybackPrefs>().nsfwSources;
   final nsfwIds = reg.nsfwSourceIds();
-  ({String id, String label}) row(e) =>
-      (id: e.name, label: e.displayName.isNotEmpty ? e.displayName : e.name);
+  ({String id, String label, String? repo}) row(e) {
+    final base = (e.displayName as String).isNotEmpty
+        ? e.displayName as String
+        : e.name as String;
+    final repo = _repoLabelFromUrl(e.originRepoUrl as String?);
+    return (id: e.name as String, label: base, repo: repo);
+  }
   int byLabel(a, b) =>
       row(a).label.toLowerCase().compareTo(row(b).label.toLowerCase());
 
   final enabled = reg.getAll().where((e) => e.enabled).toList();
-  final anime = <({String id, String label})>[];
-  final movies = <({String id, String label})>[];
-  final nsfw = <({String id, String label})>[];
+  final anime = <({String id, String label, String? repo})>[];
+  final movies = <({String id, String label, String? repo})>[];
+  final nsfw = <({String id, String label, String? repo})>[];
   for (final e in (enabled..sort(byLabel))) {
     if (nsfwIds.contains(e.name)) {
       if (nsfwEnabled) nsfw.add(row(e));
@@ -47,10 +73,27 @@ SourceBuckets categorizedSources() {
   // Loaded CloudStream plugins. No NSFW flag, so they only ever land in the
   // anime or movies buckets. Sort each combined bucket by label so CS rows
   // interleave alphabetically with the JS rows rather than trailing them.
-  int byRowLabel(({String id, String label}) a, ({String id, String label}) b) =>
+  int byRowLabel(({String id, String label, String? repo}) a, ({String id, String label, String? repo}) b) =>
       a.label.toLowerCase().compareTo(b.label.toLowerCase());
-  for (final p in sl<CloudStreamManager>().enabled) {
-    final csRow = (id: p.sourceId, label: 'CS · ${p.displayName}');
+  final mgr = sl<CloudStreamManager>();
+  // Map each CS source to its origin repo's name, for the repo tag.
+  // Best-effort: a repo tag must NEVER stop the picker from opening.
+  final csRepoById = <String, String>{};
+  try {
+    for (final g in mgr.repoGroups) {
+      if (g.name.isEmpty) continue;
+      for (final s in g.sources) {
+        csRepoById[s.sourceId] = g.name;
+      }
+    }
+  } catch (_) {/* tags are cosmetic */}
+  for (final p in mgr.enabled) {
+    final repo = csRepoById[p.sourceId];
+    final csRow = (
+      id: p.sourceId,
+      label: 'CS · ${p.displayName}',
+      repo: repo,
+    );
     if (p.providerType == ProviderType.anime) {
       anime.add(csRow);
     } else {
@@ -133,15 +176,16 @@ class SourceSwitcher extends StatelessWidget {
       onChanged(id);
     }
 
-    Widget rowFor(BuildContext ctx, ({String id, String label}) src) =>
+    Widget rowFor(BuildContext ctx, ({String id, String label, String? repo}) src) =>
         _SourceRow(
           label: src.label,
+          repo: src.repo,
           isActive: src.id == currentId,
           onTap: () => choose(ctx, src.id),
         );
 
     // A scrollable flat list for a single tab.
-    Widget flat(BuildContext ctx, List<({String id, String label})> rows) {
+    Widget flat(BuildContext ctx, List<({String id, String label, String? repo})> rows) {
       if (rows.isEmpty) {
         return Center(
           child: Padding(
@@ -263,14 +307,19 @@ class _SourceRow extends StatelessWidget {
     required this.label,
     required this.isActive,
     required this.onTap,
+    this.repo,
   });
 
   final String label;
+
+  /// Origin repo, shown small + dim under the name. Null/empty → not shown.
+  final String? repo;
   final bool isActive;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
+    final hasRepo = repo != null && repo!.isNotEmpty;
     return InkWell(
       onTap: onTap,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
@@ -279,7 +328,27 @@ class _SourceRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(
           children: [
-            Expanded(child: Text(label, style: AppText.headline)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(label, style: AppText.headline),
+                  if (hasRepo)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        repo!,
+                        style: AppText.body.copyWith(
+                          fontSize: 11.5,
+                          height: 1.0,
+                          color: AppColors.textTertiary,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
             if (isActive)
               const Icon(Icons.check, color: AppColors.accent, size: 20),
           ],
