@@ -53,6 +53,16 @@ class WatchTogetherController extends ChangeNotifier {
     return true;
   }
 
+  void _startHostBeat() {
+    _hostBeat ??= Timer.periodic(const Duration(seconds: 4), (_) {
+      final r = room;
+      final pos = localPosition?.call();
+      if (r != null && r.playing && pos != null) {
+        _writeHost(positionMs: pos.inMilliseconds);
+      }
+    });
+  }
+
   Future<void> _enter(String code) async {
     await _svc.upsertParticipant(code, RoomParticipant(
         userId: _uid, name: _uname, avatar: '', state: 'watching',
@@ -65,14 +75,7 @@ class WatchTogetherController extends ChangeNotifier {
           lastSeenAt: _now));
       _maybePromoteSelf(); // crash-failover check
     });
-    if (isHost) {
-      _hostBeat = Timer.periodic(const Duration(seconds: 4), (_) {
-        final r = room; final pos = localPosition?.call();
-        if (r != null && r.playing && pos != null) {
-          _writeHost(positionMs: pos.inMilliseconds);
-        }
-      });
-    }
+    if (isHost) _startHostBeat();
     await _refreshParticipants(code);
     notifyListeners();
   }
@@ -88,12 +91,7 @@ class WatchTogetherController extends ChangeNotifier {
     // Host handoff: this client just became the named host.
     if (!wasHost && r.hostId == _uid) {
       role = RoomRole.host;
-      _hostBeat ??= Timer.periodic(const Duration(seconds: 4), (_) {
-        final cur = room; final pos = localPosition?.call();
-        if (cur != null && cur.playing && pos != null) {
-          _writeHost(positionMs: pos.inMilliseconds);
-        }
-      });
+      _startHostBeat();
     }
     if (r.episodeId != _lastEpisodeId) {
       _lastEpisodeId = r.episodeId;
@@ -141,8 +139,9 @@ class WatchTogetherController extends ChangeNotifier {
     if (!hostStale) return;
     final successor = electSuccessor(participants, leavingHostId: r.hostId, nowMs: _now);
     if (successor == _uid) {
-      _writeHost(extra: {'hostId': _uid, 'hostName': _uname});
       role = RoomRole.host;
+      _startHostBeat();
+      _writeHost(extra: {'hostId': _uid, 'hostName': _uname});
       notifyListeners();
     }
   }
@@ -163,6 +162,7 @@ class WatchTogetherController extends ChangeNotifier {
 
   void _teardown() {
     _roomSub?.cancel(); _partSub?.cancel();
+    _roomSub = _partSub = null;
     _hostBeat?.cancel(); _presenceBeat?.cancel();
     _hostBeat = _presenceBeat = null;
     room = null; role = RoomRole.none; participants = const [];
