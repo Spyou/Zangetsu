@@ -454,10 +454,11 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.position.listen((p) {
         _lastPos = p;
-        // Resume target reached → stop forcing it on re-opens (so a later manual
-        // seek or quality switch behaves normally).
+        // Keep the resume target as a FLOOR for re-opens until we're safely past
+        // it (NOT the instant it's touched — a re-open firing right then would
+        // otherwise lose the floor and snap back to ~0). 15s past = stable.
         if (_pendingResume > Duration.zero &&
-            p + const Duration(seconds: 3) >= _pendingResume) {
+            p > _pendingResume + const Duration(seconds: 15)) {
           _pendingResume = Duration.zero;
         }
         if (p > Duration.zero) {
@@ -495,6 +496,18 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.duration.listen((d) {
         _lastDur = d;
+        // The duration arriving is mpv's "ready" signal (its STATE_READY): only
+        // now is the stream reliably seekable. A remote MP4 reports duration
+        // only after its moov atom loads, and any seek issued before that is
+        // clamped to 0 — the "always resumes from 0" bug. So apply the pending
+        // resume HERE, the moment seeking is possible. (This is how CloudStream
+        // does it — re-seek to the saved position on STATE_READY.)
+        if (_pendingResume > Duration.zero &&
+            d > Duration.zero &&
+            _pendingResume < d &&
+            _lastPos < _pendingResume) {
+          player.seek(_pendingResume);
+        }
         // Fetch accurate OP/ED skip times once the episode length is known.
         if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
           _skipsForIndex = state.currentIndex;
@@ -547,10 +560,14 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void togglePlay() => player.playOrPause();
-  void seekTo(Duration d) => player.seek(d);
+  void seekTo(Duration d) {
+    _pendingResume = Duration.zero; // user took control → drop the resume floor
+    player.seek(d);
+  }
 
   /// Seek by [delta] (signed), clamped into 0..duration.
   void seekBy(Duration delta) {
+    _pendingResume = Duration.zero; // user took control → drop the resume floor
     final target = _lastPos + delta;
     final dur = _lastDur;
     final clamped = target < Duration.zero
@@ -717,7 +734,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> openEpisode(int index) async {
     final gen = ++_gen;
     await _persist();
-    _pendingResume = Duration.zero; // new episode arms its own resume in _open
+    // Only drop the pending resume when actually switching episodes — a
+    // same-episode re-open (recovery/failover) must keep targeting it.
+    if (index != state.currentIndex) _pendingResume = Duration.zero;
     _tried.clear();
     _recovering = false;
     _skips = const []; // clear previous episode's skip markers
@@ -1187,12 +1206,21 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// still near 0 instead of the resume target). Retries a couple of times to
   /// catch slow-loading sources.
   Future<void> _verifyResume(Duration target, int g) async {
-    for (var attempt = 0; attempt < 3; attempt++) {
-      await Future.delayed(const Duration(milliseconds: 1200));
+    // A seek issued while the stream is still buffering at position 0 is
+    // silently dropped, so a fixed 3-try window often expires before slow
+    // sources (remote MP4s) start producing frames — and the user lands at 0.
+    // Poll for up to ~12s and only seek ONCE the player is actually playing
+    // (a real position or a known duration), retrying until it sticks.
+    for (var attempt = 0; attempt < 20; attempt++) {
+      await Future.delayed(const Duration(milliseconds: 750));
       if (g != _gen) return; // a newer open superseded this
       final pos = player.state.position;
-      if ((pos - target).abs() <= const Duration(seconds: 8)) return; // ok
-      await player.seek(target);
+      if ((pos - target).abs() <= const Duration(seconds: 8)) return; // reached
+      // Seeking needs a KNOWN duration: remote MP4s (file hosts) report
+      // duration only after mpv reads the moov atom, and a seek issued before
+      // then is clamped to 0 — the "always starts from 0" bug. Wait for it.
+      final dur = player.state.duration;
+      if (dur > Duration.zero && target < dur) await player.seek(target);
     }
   }
 
@@ -1365,6 +1393,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _persist() async {
     // Nothing watched yet — don't overwrite a real mark with position 0.
     if (_lastPos <= Duration.zero) return;
+    // While we're still trying to seek back to a resume point, don't let the low
+    // positions we play through in the meantime clobber the saved mark.
+    if (_pendingResume > Duration.zero &&
+        _lastPos + const Duration(seconds: 3) < _pendingResume) {
+      return;
+    }
     // Save resume even when the duration is unknown (downloaded HLS files):
     // ResumeMark.finished is false at duration 0, so resume still seeks back.
     await resume.save(sourceId, _showKey, currentEpisode.id, _lastPos, _lastDur);
