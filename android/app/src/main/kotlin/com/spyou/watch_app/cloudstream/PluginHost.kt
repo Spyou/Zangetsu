@@ -179,6 +179,70 @@ class PluginHost(private val context: Context) {
     fun settingsInvokerFor(apiName: String): ((android.content.Context) -> Unit)? =
         pluginFor(apiName)?.openSettings
 
+    /**
+     * Open [apiName]'s own settings UI against [activity].
+     *
+     * Some plugins (e.g. StremioX) capture `context as? AppCompatActivity` at
+     * LOAD time and reuse it in openSettings. Real CloudStream loads plugins
+     * from its AppCompatActivity, but we load them with the application context
+     * (our host is a FlutterActivity), so that captured activity is null and the
+     * sheet never shows. To fix it we re-instantiate the plugin with [activity]
+     * as its load context — so its openSettings captures a real activity — then
+     * immediately undo the duplicate MainAPI registration that re-loading causes
+     * (we only want the freshly-bound openSettings). Falls back to the already
+     * loaded plugin's opener for plugins that bind the activity at call time.
+     *
+     * @return true if an openSettings was invoked.
+     */
+    fun openSettings(apiName: String, activity: Context): Boolean {
+        val fileId = apiByName(apiName)?.sourcePlugin ?: return false
+        val path = synchronized(loaded) {
+            loaded.firstOrNull { File(it).nameWithoutExtension == fileId }
+        }
+        if (path != null) {
+            val opener = runCatching { freshOpener(File(path), fileId, activity) }
+                .getOrNull()
+            if (opener != null) {
+                return runCatching { opener(activity); true }.getOrDefault(false)
+            }
+        }
+        // Fallback: the already-loaded instance (works when it binds at call time).
+        val opener = pluginsByFile[fileId]?.openSettings ?: return false
+        return runCatching { opener(activity); true }.getOrDefault(false)
+    }
+
+    /** Re-instantiate the plugin in [file] with [activity] as its load context and
+     *  return its freshly-bound openSettings, undoing the duplicate registration. */
+    private fun freshOpener(
+        file: File,
+        fileId: String,
+        activity: Context,
+    ): ((Context) -> Unit)? {
+        val loader = PathClassLoader(file.absolutePath, context.classLoader)
+        val manifest = JSONObject(
+            loader.getResourceAsStream("manifest.json")?.bufferedReader()
+                ?.use { it.readText() } ?: return null,
+        )
+        val className = manifest.optString("pluginClassName")
+        if (className.isEmpty()) return null
+        val instance = loader.loadClass(className)
+            .getDeclaredConstructor().newInstance() as? Plugin ?: return null
+        instance.filename = fileId
+        if (manifest.optBoolean("requiresResources")) {
+            instance.resources = buildPluginResources(file)
+        }
+        val providers = APIHolder.allProviders
+        val before = synchronized(providers) { providers.toList() }
+        instance.load(activity) // binds openSettings against the real activity
+        synchronized(providers) {
+            providers.filter { it !in before }.forEach { dup ->
+                providers.remove(dup)
+                runCatching { APIHolder.removePluginMapping(dup) }
+            }
+        }
+        return instance.openSettings
+    }
+
     /** Every currently-registered source. `sourcePlugin` = the .cs3 file id that
      * registered it, used by Dart to group sources under their repo. */
     fun installedApis(): List<Map<String, Any?>> =

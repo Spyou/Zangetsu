@@ -22,8 +22,7 @@ class CloudStreamSettingsActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val apiName = intent.getStringExtra(EXTRA_API_NAME)
-        val opener = apiName?.let { PluginHost.INSTANCE?.settingsInvokerFor(it) }
-        if (opener == null) {
+        if (apiName == null) {
             finish()
             return
         }
@@ -41,11 +40,16 @@ class CloudStreamSettingsActivity : AppCompatActivity() {
                 },
                 false,
             )
-            try {
-                opener(this)
-            } catch (t: Throwable) {
-                finish()
-            }
+            // openSettings binds the plugin against THIS activity (an
+            // AppCompatActivity), so plugins that capture the activity at load
+            // time (e.g. StremioX) can actually show their sheet.
+            val shown = PluginHost.INSTANCE?.openSettings(apiName, this) ?: false
+            // Nothing got shown (no settings / failed) → don't leave a blank
+            // transparent activity hanging; but give a sheet shown via an async
+            // fragment transaction a moment to attach before deciding.
+            window.decorView.postDelayed({
+                if (supportFragmentManager.fragments.isEmpty()) finish()
+            }, if (shown) 400 else 0)
         }
     }
 
