@@ -31,6 +31,7 @@ import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
+import '../auth/auth_cubit.dart';
 import '../watch_together/model/room_state.dart';
 import '../watch_together/watch_room_service.dart';
 import '../watch_together/watch_together_controller.dart';
@@ -1661,9 +1662,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onChat: (_room?.room != null)
                           ? () => setState(() => _chatOpen = !_chatOpen)
                           : null,
-                      onWatchTogether: _room == null
-                          ? null
-                          : () => showWatchTogetherSheet(
+                      onWatchTogether: _room != null && _room!.room == null
+                          ? () {
+                              if (sl<AuthCubit>().state.user == null) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Sign in to watch together')));
+                                return;
+                              }
+                              showWatchTogetherSheet(
                               context,
                               controller: _room!,
                               buildInitialRoom: () => RoomState(
@@ -1689,7 +1695,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           updatedAt: 0,
                           status: 'active',
                         ),
-                      ),
+                      );
+                            }
+                          : null,
                     ),
                   ),
                 )

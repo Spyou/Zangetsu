@@ -48,6 +48,21 @@ void main() {
     expect(electSuccessor(list, leavingHostId: 'host', nowMs: 999999), isNull);
   });
 
+  test('electSuccessor tiebreak: same joinedAt, lower userId wins', () {
+    final list = [
+      _p('host', joinedAt: 0, lastSeenAt: 1000),
+      _p('z-user', joinedAt: 50, lastSeenAt: 1000),
+      _p('a-user', joinedAt: 50, lastSeenAt: 1000), // same joinedAt, lower userId wins
+    ];
+    expect(electSuccessor(list, leavingHostId: 'host', nowMs: 1000), 'a-user');
+  });
+
+  test('needsCorrection at exact threshold returns false (strict >)', () {
+    const local = Duration(milliseconds: 10000);
+    const expected = Duration(milliseconds: 12500); // diff = exactly 2500ms
+    expect(needsCorrection(local, expected), isFalse);
+  });
+
   test('generateRoomCode is 6 chars from the safe alphabet, deterministic per seed', () {
     final c = generateRoomCode(123456);
     expect(c.length, 6);

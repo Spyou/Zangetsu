@@ -27,6 +27,7 @@ class WatchTogetherController extends ChangeNotifier {
   StreamSubscription<RoomMessage>? _msgSub;
   Timer? _hostBeat, _presenceBeat;
   String? _lastEpisodeId;
+  int? _joinedAt;
 
   String get _uid => sl<AuthCubit>().state.user?.$id ?? '';
   String get _uname => sl<AuthCubit>().state.user?.name ?? 'Guest';
@@ -34,6 +35,7 @@ class WatchTogetherController extends ChangeNotifier {
   int get _now => DateTime.now().millisecondsSinceEpoch;
 
   Future<void> host(RoomState initial) async {
+    if (room != null) return;
     final created = await _svc.createRoom(initial.copyWith(
         hostId: _uid, hostName: _uname, updatedAt: _now, status: 'active'));
     room = created;
@@ -43,6 +45,7 @@ class WatchTogetherController extends ChangeNotifier {
   }
 
   Future<bool> join(String code) async {
+    if (room != null) return false;
     final r = await _svc.getRoom(code);
     if (r == null || r.status == 'ended') return false;
     room = r;
@@ -91,14 +94,15 @@ class WatchTogetherController extends ChangeNotifier {
   }
 
   Future<void> _enter(String code) async {
+    _joinedAt ??= _now;
     await _svc.upsertParticipant(code, RoomParticipant(
         userId: _uid, name: _uname, avatar: '', state: 'watching',
-        joinedAt: _now, lastSeenAt: _now));
+        joinedAt: _joinedAt ?? _now, lastSeenAt: _now));
     _subscribeRoom(code);
     _partSub = _svc.watchParticipants(code).listen((_) => _refreshParticipants(code));
     _presenceBeat = Timer.periodic(const Duration(seconds: 10), (_) {
       _svc.upsertParticipant(code, RoomParticipant(userId: _uid, name: _uname,
-          avatar: '', state: 'watching', joinedAt: room?.updatedAt ?? _now,
+          avatar: '', state: 'watching', joinedAt: _joinedAt ?? _now,
           lastSeenAt: _now));
       _maybePromoteSelf(); // crash-failover check
     });
@@ -124,6 +128,12 @@ class WatchTogetherController extends ChangeNotifier {
     if (!wasHost && r.hostId == _uid) {
       role = RoomRole.host;
       _startHostBeat();
+    }
+    // Demotion: this client lost a host-election race — stop acting as host.
+    if (wasHost && r.hostId != _uid) {
+      role = RoomRole.client;
+      _hostBeat?.cancel();
+      _hostBeat = null;
     }
     if (r.episodeId != _lastEpisodeId) {
       _lastEpisodeId = r.episodeId;
@@ -208,6 +218,7 @@ class WatchTogetherController extends ChangeNotifier {
     _hostBeat?.cancel(); _presenceBeat?.cancel();
     _hostBeat = _presenceBeat = null;
     room = null; role = RoomRole.none; participants = const []; messages = const [];
+    _joinedAt = null;
     notifyListeners();
   }
 
