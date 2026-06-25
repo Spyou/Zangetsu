@@ -14,6 +14,7 @@ class WatchTogetherController extends ChangeNotifier {
   RoomState? room;
   RoomRole role = RoomRole.none;
   List<RoomParticipant> participants = const [];
+  List<RoomMessage> messages = const [];
   bool synced = true;
 
   // Provided by the player integration (Task 6).
@@ -23,6 +24,7 @@ class WatchTogetherController extends ChangeNotifier {
 
   StreamSubscription<RoomState>? _roomSub;
   StreamSubscription<void>? _partSub;
+  StreamSubscription<RoomMessage>? _msgSub;
   Timer? _hostBeat, _presenceBeat;
   String? _lastEpisodeId;
 
@@ -77,6 +79,11 @@ class WatchTogetherController extends ChangeNotifier {
     });
     if (isHost) _startHostBeat();
     await _refreshParticipants(code);
+    messages = await _svc.recentMessages(code);
+    _msgSub = _svc.watchMessages(code).listen((m) {
+      messages = [...messages, m];
+      notifyListeners();
+    });
     notifyListeners();
   }
 
@@ -146,6 +153,16 @@ class WatchTogetherController extends ChangeNotifier {
     }
   }
 
+  Future<void> sendChat(String text) async {
+    final code = room?.code;
+    final t = text.trim();
+    if (code == null || t.isEmpty) return;
+    await _svc.sendMessage(code, RoomMessage(
+        userId: _uid, name: _uname, avatar: '',
+        text: t.length > 500 ? t.substring(0, 500) : t,
+        createdAt: _now));
+  }
+
   Future<void> leave() async {
     final code = room?.code;
     if (code != null && isHost) {
@@ -161,11 +178,11 @@ class WatchTogetherController extends ChangeNotifier {
   }
 
   void _teardown() {
-    _roomSub?.cancel(); _partSub?.cancel();
-    _roomSub = _partSub = null;
+    _roomSub?.cancel(); _partSub?.cancel(); _msgSub?.cancel();
+    _roomSub = _partSub = _msgSub = null;
     _hostBeat?.cancel(); _presenceBeat?.cancel();
     _hostBeat = _presenceBeat = null;
-    room = null; role = RoomRole.none; participants = const [];
+    room = null; role = RoomRole.none; participants = const []; messages = const [];
     notifyListeners();
   }
 

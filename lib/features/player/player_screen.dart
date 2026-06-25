@@ -208,6 +208,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _sleepActive = false; // a timer or end-of-episode stop is armed
   bool _sleepEndOfEpisode = false;
 
+  bool _chatOpen = false; // in-room chat panel visible
+
   bool _ready = false; // the player session (cubit) is built
 
   // Picture-in-Picture (Android only; iOS has no PiP path with media_kit).
@@ -1656,6 +1658,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       megaSkipEnabled: _megaSkipEnabled,
                       megaSkipSeconds: _megaSkipSeconds,
                       onMegaSkip: _megaSkip,
+                      onChat: (_room?.room != null)
+                          ? () => setState(() => _chatOpen = !_chatOpen)
+                          : null,
                       onWatchTogether: _room == null
                           ? null
                           : () => showWatchTogetherSheet(
@@ -1794,6 +1799,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       padding: const EdgeInsets.only(top: 10, right: 12),
                       child: RoomStrip(controller: _room!),
                     ),
+                  ),
+                ),
+
+              // 9. In-room chat panel — slides in from the right when _chatOpen.
+              // Gated on an active room; collapsed when leaving.
+              if (_room?.room != null && _chatOpen)
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  right: 0,
+                  child: SafeArea(
+                    left: false,
+                    right: false,
+                    child: RoomChatPanel(controller: _room!),
                   ),
                 ),
             ],
@@ -2137,6 +2156,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onMegaSkip,
     this.onPip,
     this.onWatchTogether,
+    this.onChat,
   });
 
   final PlayerCubit controller;
@@ -2162,6 +2182,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
   final VoidCallback? onWatchTogether; // Watch Together entry point
+  final VoidCallback? onChat; // in-room chat toggle (null = no active room)
 
   @override
   Widget build(BuildContext context) {
@@ -2313,6 +2334,14 @@ class _ControlsOverlay extends StatelessWidget {
                     IconButton(
                       icon: const Icon(Icons.group, color: Colors.white),
                       onPressed: onWatchTogether,
+                    ),
+                  if (onChat != null)
+                    IconButton(
+                      icon: const Icon(
+                        Icons.chat_bubble_outline_rounded,
+                        color: Colors.white,
+                      ),
+                      onPressed: onChat,
                     ),
                 ],
               ),
