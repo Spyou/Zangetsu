@@ -12,12 +12,14 @@ class AppwriteService {
     account = Account(client);
     databases = Databases(client);
     storage = Storage(client);
+    realtime = Realtime(client);
   }
 
   late final Client client;
   late final Account account;
   late final Databases databases;
   late final Storage storage;
+  late final Realtime realtime;
 
   /// Public view URL for a file in the avatars bucket (read = Any), so it can
   /// be shown with a plain image widget.

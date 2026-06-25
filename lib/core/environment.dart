@@ -10,6 +10,9 @@ class Environment {
   static const String databaseId = 'main';
   static const String mylistCollectionId = 'mylist';
   static const String historyCollectionId = 'history';
+  static const String watchRoomsCollectionId = 'watch_rooms';
+  static const String roomParticipantsCollectionId = 'room_participants';
+  static const String roomMessagesCollectionId = 'room_messages';
   static const String avatarsBucketId = 'avatars';
 
   // ── Tracker OAuth ──────────────────────────────────────────────────────────
