@@ -1323,7 +1323,9 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
     final catalog = isOther ? _otherCatalog : group.catalog;
     final installedCount = isOther
         ? group.sources.length
-        : catalog.where((p) => manager.isPluginInstalled(p.internalName)).length;
+        : catalog
+              .where((p) => manager.isPluginInstalled(p.internalName, cs3Url: p.url))
+              .length;
     final title = group.name.isNotEmpty ? group.name : 'CloudStream';
     final owner = group.owner.isNotEmpty
         ? group.owner
@@ -1471,6 +1473,7 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                             plugin: plugin,
                             installed: manager.isPluginInstalled(
                               plugin.internalName,
+                              cs3Url: plugin.url,
                             ),
                           ),
                         ],

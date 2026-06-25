@@ -740,11 +740,22 @@ class CloudStreamManager extends ChangeNotifier {
     ];
   }
 
-  /// Whether a plugin (by internalName) currently has a loaded source.
-  bool isPluginInstalled(String internalName) => _providers.values.any((p) {
-    final sp = p.sourcePlugin;
-    return sp != null && sp.split('@').first == internalName;
-  });
+  /// Whether [internalName] from the repo serving [cs3Url] is installed. With
+  /// [cs3Url] the check is REPO-SCOPED — this repo's tagged `.cs3` file or a
+  /// legacy un-tagged one — so a same-named plugin in ANOTHER repo stays its own
+  /// separately (un)installable entry (that's what lets you install the second
+  /// copy). Without [cs3Url] it's the legacy name-only check.
+  bool isPluginInstalled(String internalName, {String? cs3Url}) {
+    final tag =
+        (cs3Url != null && cs3Url.isNotEmpty) ? _csRepoTag(cs3Url) : null;
+    return _providers.values.any((p) {
+      final sp = p.sourcePlugin;
+      if (sp == null || sp.split('@').first != internalName) return false;
+      if (tag == null) return true; // legacy: any same-name install counts
+      // this repo's tagged id, or a legacy un-tagged "name@version" (one '@')
+      return sp.endsWith('@$tag') || '@'.allMatches(sp).length == 1;
+    });
+  }
 
   /// Installs one plugin from a repo's catalog (download + load). Rebuilds the
   /// provider set from the host. No-op on non-Android.
