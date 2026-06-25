@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 import 'package:appwrite/appwrite.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../core/appwrite/appwrite_service.dart';
 import '../../core/environment.dart';
@@ -54,8 +55,9 @@ class WatchRoomService {
         documentId: code,
       );
       return RoomState.fromMap(doc.data);
-    } on AppwriteException {
-      return null;
+    } on AppwriteException catch (e) {
+      if (e.code == 404) return null;
+      rethrow;
     }
   }
 
@@ -103,7 +105,9 @@ class WatchRoomService {
           documentId: _pid(code, p.userId),
           data: data,
         );
-      } catch (_) {/* best-effort */}
+      } catch (e) {
+        debugPrint('upsertParticipant create failed: $e');
+      }
     }
   }
 
@@ -140,7 +144,10 @@ class WatchRoomService {
     final sub = _aw.realtime
         .subscribe([_colChannel(Environment.roomParticipantsCollectionId)]);
     return sub.stream
-        .where((e) => '${e.payload['roomId']}' == code)
+        // Delete events arrive with an empty payload, so we can't match roomId on
+        // them — forward those too (a delete from another room just triggers a
+        // harmless redundant re-list, which the caller filters by roomId).
+        .where((e) => e.payload.isEmpty || '${e.payload['roomId']}' == code)
         .map((_) {});
   }
 
