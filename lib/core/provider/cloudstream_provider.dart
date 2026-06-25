@@ -125,9 +125,27 @@ class CloudStreamProvider implements BaseProvider {
           : 'cs:$name';
 
   @override
-  String get displayName => disambiguate
-      ? '$name (${repoLabel ?? sourcePlugin!.split('@').last})'
-      : name;
+  String get displayName {
+    final base = _prettyName(name);
+    return disambiguate
+        ? '$base (${repoLabel ?? sourcePlugin!.split('@').last})'
+        : base;
+  }
+
+  /// A readable label for [n]. Some plugins (e.g. StremioX) register an added
+  /// addon as a source named with whatever went in its "name" field — and users
+  /// often paste the addon's full URL there, which makes a giant unusable label
+  /// in the picker. Show just the host for a URL-like name. Identity ([sourceId])
+  /// still uses the raw [name], so this is display-only.
+  static String _prettyName(String n) {
+    if (n.startsWith('http://') || n.startsWith('https://')) {
+      try {
+        final host = Uri.parse(n).host;
+        if (host.isNotEmpty) return host;
+      } catch (_) {}
+    }
+    return n;
+  }
 
   /// Whether ANY of this source's advertised types is anime; drives the
   /// provider-level [ProviderType] and the default for items without a type.
