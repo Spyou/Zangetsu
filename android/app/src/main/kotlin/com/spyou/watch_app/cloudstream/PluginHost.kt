@@ -250,6 +250,38 @@ class PluginHost(private val context: Context) {
         return removed
     }
 
+    /** Unregister + delete ONE plugin's cached `.cs3`(s) for a SPECIFIC repo:
+     *  its `<internalName>@<version>@<tag>` files, plus any legacy un-tagged
+     *  `<internalName>@<version>` file (so a pre-namespacing shared cache is
+     *  cleaned up on uninstall). Repo-scoped — removing one repo's "MovieBox"
+     *  leaves a different repo's "MovieBox" (a different tag) untouched. */
+    fun deleteByRepoPlugin(tag: String, internalName: String): Int {
+        fun matches(fileId: String): Boolean {
+            if (fileId.substringBefore('@') != internalName) return false
+            // 1 '@' = legacy "name@version"; tagged is "name@version@tag".
+            return fileId.count { it == '@' } == 1 || fileId.endsWith("@$tag")
+        }
+        var removed = 0
+        val providers = APIHolder.allProviders
+        synchronized(providers) {
+            val gone = providers.filter { it.sourcePlugin != null && matches(it.sourcePlugin!!) }
+            for (api in gone) {
+                providers.remove(api)
+                try { APIHolder.removePluginMapping(api) } catch (_: Exception) {}
+                removed++
+            }
+        }
+        val paths = loaded.filter { p -> matches(File(p).nameWithoutExtension) }
+        for (p in paths) {
+            try { File(p).delete() } catch (_: Exception) {}
+            loaded.remove(p)
+        }
+        synchronized(pluginsByFile) {
+            pluginsByFile.keys.filter { matches(it) }.toList().forEach { pluginsByFile.remove(it) }
+        }
+        return removed
+    }
+
     /** The source's home rows (its `mainPage` categories), capped for latency. */
     fun getHome(apiName: String): List<Map<String, Any?>> {
         val api = apiByName(apiName) ?: return emptyList()

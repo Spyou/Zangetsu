@@ -99,7 +99,10 @@ class RepoManager(private val context: Context) {
      * plugin on demand (the catalog lives in Dart, so installs pass the fields).
      */
     fun download(cs3Url: String, internalName: String, version: Int): File {
-        val f = File(cs3Dir, "$internalName@$version.cs3")
+        // Tag the cache file by its repo so two repos that ship a plugin with the
+        // SAME internalName don't share one `.cs3` (which made installing one
+        // "install" the other and uninstalling one delete both).
+        val f = File(cs3Dir, "$internalName@$version@${repoTag(cs3Url)}.cs3")
         if (f.exists() && f.length() > 0) return f
         val conn = URL(cs3Url).openConnection()
         conn.connectTimeout = 15000
@@ -114,5 +117,13 @@ class RepoManager(private val context: Context) {
 
     companion object {
         const val UA = "Mozilla/5.0 (Android) Zangetsu"
+
+        /** A short, stable per-repo tag derived from the plugin's `.cs3`
+         *  directory (everything before the file name — same for every plugin in
+         *  a repo and across its version bumps, distinct between repos). Two
+         *  repos shipping the same internalName therefore cache to different
+         *  files and install/uninstall independently. */
+        fun repoTag(cs3Url: String): String =
+            Integer.toHexString(cs3Url.substringBeforeLast('/').lowercase().hashCode())
     }
 }

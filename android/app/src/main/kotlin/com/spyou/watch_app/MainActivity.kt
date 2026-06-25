@@ -257,10 +257,22 @@ class MainActivity : FlutterActivity() {
                     // Uninstall ONE plugin by internalName (every cached version +
                     // its registered sources). Returns the updated source list.
                     "uninstallPlugin" -> {
-                        val internalName = call.argument<String>("internalName")
+                        val internalName = call.argument<String>("internalName") ?: ""
+                        val url = call.argument<String>("url") ?: ""
                         csExecutor.execute {
                             try {
-                                host.deleteByInternalNames(setOf(internalName ?: ""))
+                                // Repo-scoped when we know the plugin's .cs3 url
+                                // (so two repos' same-named plugins uninstall
+                                // independently); fall back to the legacy
+                                // by-internalName delete otherwise.
+                                if (url.isNotEmpty()) {
+                                    host.deleteByRepoPlugin(
+                                        com.spyou.watch_app.cloudstream.RepoManager.repoTag(url),
+                                        internalName,
+                                    )
+                                } else {
+                                    host.deleteByInternalNames(setOf(internalName))
+                                }
                                 runOnUiThread { result.success(host.installedApis()) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
@@ -336,15 +348,21 @@ class MainActivity : FlutterActivity() {
                         csExecutor.execute {
                             try {
                                 val (repoName, plugins) = repo.loadRepo(url ?: "")
-                                val installed = host.installedFileIds() // "name@ver"
-                                val installedNames =
-                                    installed.map { it.substringBefore('@') }.toSet()
+                                val installed = host.installedFileIds() // "name@ver[@tag]"
                                 for (plugin in plugins) {
-                                    if (plugin.internalName !in installedNames) continue
-                                    val newId = "${plugin.internalName}@${plugin.version}"
+                                    val tag = com.spyou.watch_app.cloudstream.RepoManager
+                                        .repoTag(plugin.url)
+                                    // Only update THIS repo's copy: its tagged file
+                                    // or a legacy un-tagged one (1 '@').
+                                    val mine = installed.any {
+                                        it.substringBefore('@') == plugin.internalName &&
+                                            (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
+                                    }
+                                    if (!mine) continue
+                                    val newId = "${plugin.internalName}@${plugin.version}@$tag"
                                     if (installed.contains(newId)) continue // already current
                                     try {
-                                        host.deleteByInternalNames(setOf(plugin.internalName))
+                                        host.deleteByRepoPlugin(tag, plugin.internalName)
                                         host.loadPlugin(repo.download(plugin))
                                     } catch (_: Exception) { /* skip a bad plugin */ }
                                 }

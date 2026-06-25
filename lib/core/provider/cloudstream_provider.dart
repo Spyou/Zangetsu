@@ -60,6 +60,20 @@ ProviderType? _typeFromCsType(String? csType) {
       : ProviderType.movie;
 }
 
+/// Per-repo cache-file tag — MUST match the native `RepoManager.repoTag`
+/// (Java `String.hashCode` of the `.cs3` directory, then `Integer.toHexString`),
+/// so the file ids the Dart side derives for grouping/delete line up with the
+/// ones the native host actually wrote.
+String _csRepoTag(String cs3Url) {
+  final slash = cs3Url.lastIndexOf('/');
+  final dir = (slash >= 0 ? cs3Url.substring(0, slash) : cs3Url).toLowerCase();
+  var h = 0;
+  for (var i = 0; i < dir.length; i++) {
+    h = (31 * h + dir.codeUnitAt(i)) & 0xFFFFFFFF; // 32-bit wrap, like Java int
+  }
+  return h.toRadixString(16); // unsigned hex, lowercase — like Integer.toHexString
+}
+
 /// A single installed CloudStream source, adapted to the app's [BaseProvider]
 /// contract so it routes through [SourceRepository] exactly like a JS provider.
 ///
@@ -73,6 +87,7 @@ class CloudStreamProvider implements BaseProvider {
     required this.types,
     this.sourcePlugin,
     this.disambiguate = false,
+    this.repoLabel,
   });
 
   /// The bare CloudStream source name (no `cs:` prefix).
@@ -91,6 +106,10 @@ class CloudStreamProvider implements BaseProvider {
   /// entry (install/uninstall/enable one without touching the other).
   final bool disambiguate;
 
+  /// A short repo label shown after the name to tell same-named sources apart
+  /// (e.g. "MovieBox (cncverse)"). Null → fall back to the file tag.
+  final String? repoLabel;
+
   /// The key the native host resolves a call against. We prefer the unique
   /// `.cs3` file id so same-named sources address their OWN plugin; the host
   /// also accepts the bare name (legacy fallback), so older sources still work.
@@ -106,7 +125,7 @@ class CloudStreamProvider implements BaseProvider {
 
   @override
   String get displayName => disambiguate
-      ? '$name (${sourcePlugin!.split('@').first})'
+      ? '$name (${repoLabel ?? sourcePlugin!.split('@').last})'
       : name;
 
   /// Whether ANY of this source's advertised types is anime; drives the
@@ -745,13 +764,14 @@ class CloudStreamManager extends ChangeNotifier {
     }
   }
 
-  /// Uninstalls one plugin (by internalName) and its sources. Rebuilds.
-  Future<void> uninstallPlugin(String internalName) async {
+  /// Uninstalls one plugin and its sources — repo-scoped via the plugin's `.cs3`
+  /// url, so a same-named plugin from another repo is left intact. Rebuilds.
+  Future<void> uninstallPlugin(CsPluginMeta plugin) async {
     if (!Platform.isAndroid) return;
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>(
         'uninstallPlugin',
-        {'internalName': internalName},
+        {'internalName': plugin.internalName, 'url': plugin.url},
       );
       _rebuildFrom(raw);
       notifyListeners();
@@ -855,7 +875,9 @@ class CloudStreamManager extends ChangeNotifier {
       }
     }
     for (final p in catalog) {
-      files.add('${p['internalName']}@${p['version']}');
+      final base = '${p['internalName']}@${p['version']}';
+      files.add(base); // legacy un-tagged id (installs from before per-repo tagging)
+      files.add('$base@${_csRepoTag((p['url'] ?? '').toString())}'); // current tagged id
     }
     // If the native response carried explicit file ids (legacy), keep them too.
     final rawFiles = m['files'];
@@ -984,18 +1006,35 @@ class CloudStreamManager extends ChangeNotifier {
         }
       }
       final sourcePlugin = (m['sourcePlugin'] as String?);
+      // Disambiguate only when another installed source shares this name AND we
+      // have a unique file id to identify it by.
+      final dup = (nameCounts[name] ?? 0) > 1 &&
+          sourcePlugin != null &&
+          sourcePlugin.isNotEmpty;
       final provider = CloudStreamProvider(
         name: name,
         lang: (m['lang'] ?? '').toString(),
         types: types,
         sourcePlugin: sourcePlugin,
-        // Disambiguate only when another installed source shares this name AND
-        // we have a unique file id to identify it by.
-        disambiguate: (nameCounts[name] ?? 0) > 1 &&
-            sourcePlugin != null &&
-            sourcePlugin.isNotEmpty,
+        disambiguate: dup,
+        repoLabel: dup ? _repoLabelFor(sourcePlugin) : null,
       );
       _providers[provider.sourceId] = provider;
     }
+  }
+
+  /// A short label for the repo owning [sourcePlugin] (matched via the persisted
+  /// repo records' file ids), shown to tell same-named sources apart. Null when
+  /// no persisted repo claims it — the UI then falls back to the file tag.
+  String? _repoLabelFor(String? sourcePlugin) {
+    if (sourcePlugin == null || sourcePlugin.isEmpty) return null;
+    for (final r in _repos) {
+      final files = r['files'];
+      if (files is List && files.any((f) => '$f' == sourcePlugin)) {
+        final nm = (r['name'] ?? '').toString();
+        if (nm.isNotEmpty) return nm;
+      }
+    }
+    return null;
   }
 }

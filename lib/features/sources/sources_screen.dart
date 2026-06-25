@@ -1558,7 +1558,7 @@ class _CsPluginRowState extends State<_CsPluginRow> {
     if (ok != true) return;
     setState(() => _busy = true);
     try {
-      await sl<CloudStreamManager>().uninstallPlugin(widget.plugin.internalName);
+      await sl<CloudStreamManager>().uninstallPlugin(widget.plugin);
       messenger
         ..clearSnackBars()
         ..showSnackBar(
