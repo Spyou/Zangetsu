@@ -31,6 +31,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
@@ -41,6 +42,16 @@ import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
+
+/// Last-resort friendly name for a [sourceId] that's neither a loaded JS nor CS
+/// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
+/// `@version@tag` file-id suffix so the detail screen never shows "cs:X@31".
+String _friendlySourceId(String sourceId) {
+  var s = sourceId.startsWith('cs:') ? sourceId.substring(3) : sourceId;
+  final at = s.indexOf('@');
+  if (at > 0) s = s.substring(0, at);
+  return s;
+}
 
 class DetailScreen extends StatelessWidget {
   const DetailScreen({super.key, required this.item});
@@ -715,10 +726,13 @@ class _DetailViewState extends State<_DetailView>
         ? detail.genres.take(4).join(', ')
         : null;
 
-    // Friendly provider name.
+    // Friendly provider name. JS providers live in the registry; CloudStream
+    // sources live in the CS manager — without the CS lookup this fell back to
+    // the raw sourceId ("cs:Provider@31@tag"), leaking the file-id suffix.
     final sourceName =
         sl<ProviderRegistry>().entryFor(item.sourceId)?.displayName ??
-        item.sourceId;
+        sl<CloudStreamManager>().get(item.sourceId)?.displayName ??
+        _friendlySourceId(item.sourceId);
 
     return NestedScrollView(
       controller: _scrollController,
