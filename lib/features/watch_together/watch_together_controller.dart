@@ -75,10 +75,19 @@ class WatchTogetherController extends ChangeNotifier {
   }
 
   Future<void> _resyncRoom(String code) async {
-    if (room == null) return; // already left — don't reconnect
-    final r = await _svc.getRoom(code);
-    if (r != null && room != null) _onRoom(r);
-    if (room != null) _subscribeRoom(code); // re-attach the subscription
+    if (room == null) return;                          // left — don't reconnect
+    await Future.delayed(const Duration(seconds: 2));  // backoff — never a tight loop
+    if (room == null) return;                          // left during the backoff
+    try {
+      final r = await _svc.getRoom(code);
+      if (r == null || room == null) return;           // room deleted (404) or left — stop
+      _onRoom(r);
+      _subscribeRoom(code);                            // re-attach; further drops re-enter here (2s-paced)
+    } catch (_) {
+      // Transient error (e.g. network) — re-attach; if it errors again the
+      // onError handler re-enters _resyncRoom, which re-applies the 2s backoff.
+      if (room != null) _subscribeRoom(code);
+    }
   }
 
   Future<void> _enter(String code) async {
