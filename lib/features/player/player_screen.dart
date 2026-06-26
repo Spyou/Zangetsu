@@ -217,6 +217,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _chatOpen = false; // in-room chat panel visible
 
   bool _ready = false; // the player session (cubit) is built
+  // Set when a Watch Together join can't resolve the room's source on this
+  // device — show a clear message instead of silently bouncing to a portrait
+  // home screen.
+  String? _loadError;
 
   // Picture-in-Picture (Android only; iOS has no PiP path with media_kit).
   // `floating` powers the manual button + the status poll; auto-PiP-on-leave is
@@ -448,7 +452,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final eps = await widget.episodesResolver!();
       if (!mounted) return;
       if (eps.isEmpty) {
-        Navigator.of(context).maybePop();
+        _failJoinOrPop();
         return;
       }
       var idx = 0;
@@ -461,7 +465,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
       }
       _startSession(eps, idx);
     } catch (_) {
-      if (mounted) Navigator.of(context).maybePop();
+      if (mounted) _failJoinOrPop();
+    }
+  }
+
+  /// When a Watch Together join can't resolve the room's source on this device
+  /// (e.g. it's a CloudStream plugin the joiner hasn't installed), show a clear
+  /// message rather than silently bouncing back. A normal launch keeps the pop.
+  void _failJoinOrPop() {
+    if (widget.joinRoomCode != null) {
+      setState(() => _loadError =
+          "Couldn't open this room's video source on your device.\n\n"
+          "The host is watching on a source you don't have installed. Add it "
+          'from Settings → Add CloudStream repository, or ask the host to use a '
+          'built-in source.');
+    } else {
+      Navigator.of(context).maybePop();
     }
   }
 
@@ -1280,6 +1299,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // A Watch Together join that couldn't resolve the room's source — explain
+    // it clearly instead of a blank/bouncing screen.
+    if (_loadError != null) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.cloud_off, color: Colors.white54, size: 44),
+                  const SizedBox(height: 14),
+                  Text(
+                    _loadError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white70, height: 1.4),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    child: const Text('Back'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     // Still resolving the episode list (instant-nav path) — show the branded
     // loader instead of touching the not-yet-created cubit.
     if (!_ready) {
