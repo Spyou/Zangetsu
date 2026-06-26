@@ -19,6 +19,7 @@ import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
+import 'features/watch_together/ui/party_bar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -176,6 +177,22 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               scaffoldMessengerKey: rootMessengerKey,
               navigatorKey: rootNavigatorKey,
               home: home,
+              builder: (context, child) => Stack(
+                children: [
+                  ?child,
+                  const Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: SafeArea(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: PartyBar(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
