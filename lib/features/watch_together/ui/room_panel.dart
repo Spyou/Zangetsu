@@ -4,9 +4,195 @@ import 'package:flutter/services.dart';
 import '../model/room_state.dart';
 import '../watch_together_controller.dart';
 
+/// Opens a bottom sheet listing room participants. The host sees a "Give
+/// control" action per other participant; viewers see a read-only list.
+/// Rebuilds reactively via [AnimatedBuilder] on [controller].
+void showRoomParticipantsSheet(
+    BuildContext context, WatchTogetherController controller) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _RoomParticipantsSheet(controller: controller),
+  );
+}
+
+class _RoomParticipantsSheet extends StatelessWidget {
+  const _RoomParticipantsSheet({required this.controller});
+
+  final WatchTogetherController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        final participants = controller.participants;
+        final canControl = controller.canControl;
+        return Container(
+          decoration: const BoxDecoration(
+            color: Color(0xE6121212),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: SafeArea(
+            top: false,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Handle bar.
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 6),
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                // Header.
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.group, color: Colors.white70, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Participants (${participants.length})',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(color: Colors.white12, height: 1),
+                // Participant rows.
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.45,
+                  ),
+                  child: participants.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No participants yet',
+                            style: TextStyle(color: Colors.white54),
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: participants.length,
+                          itemBuilder: (context, i) {
+                            final p = participants[i];
+                            final isThisHost =
+                                controller.room?.hostId == p.userId;
+                            return ListTile(
+                              leading: CircleAvatar(
+                                radius: 16,
+                                backgroundColor: Colors.white12,
+                                child: Text(
+                                  (p.name.isEmpty ? '?' : p.name[0])
+                                      .toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                              title: Text(
+                                p.name.isEmpty ? 'Guest' : p.name,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              subtitle: Row(
+                                children: [
+                                  if (isThisHost)
+                                    const _Chip(
+                                        label: 'HOST', color: Colors.amber),
+                                  if (p.wantsControl && !isThisHost) ...[
+                                    if (isThisHost) const SizedBox(width: 4),
+                                    const _Chip(
+                                        label: 'Wants control',
+                                        color: Colors.blueAccent),
+                                  ],
+                                ],
+                              ),
+                              trailing: (canControl && !isThisHost)
+                                  ? TextButton(
+                                      onPressed: () async {
+                                        Navigator.of(context).pop();
+                                        await controller.grantControl(p.userId);
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(SnackBar(
+                                            content: Text(
+                                                'Control given to ${p.name.isEmpty ? "Guest" : p.name}'),
+                                          ));
+                                        }
+                                      },
+                                      child: const Text(
+                                        'Give control',
+                                        style: TextStyle(
+                                          color: Colors.greenAccent,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    )
+                                  : null,
+                            );
+                          },
+                        ),
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 4, top: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
 /// A compact presence strip shown in the player top-bar when a Watch Together
 /// room is active. Displays the sync state (icon), participant count + room
-/// code, and a "Leave" tap target.
+/// code, and a "Leave" tap target. Tapping the participant count opens the
+/// participants management sheet.
 ///
 /// Rebuild is driven by the existing _room listener in player_screen.dart (the
 /// listener calls setState, which rebuilds the overlay that mounts this widget),
@@ -36,16 +222,21 @@ class RoomStrip extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           GestureDetector(
+            onTap: () => showRoomParticipantsSheet(context, controller),
+            child: Text(
+              '${controller.participants.length} watching · ${room.code}',
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ),
+          const SizedBox(width: 4),
+          GestureDetector(
             onTap: () {
               Clipboard.setData(
                   ClipboardData(text: 'zangetsu://room/${room.code}'));
               ScaffoldMessenger.of(context)
                   .showSnackBar(const SnackBar(content: Text('Invite copied')));
             },
-            child: Text(
-              '${controller.participants.length} watching · ${room.code}',
-              style: const TextStyle(color: Colors.white, fontSize: 12),
-            ),
+            child: const Icon(Icons.copy, size: 12, color: Colors.white54),
           ),
           const SizedBox(width: 8),
           InkWell(

@@ -1810,6 +1810,36 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
+              // 8b. Viewer control hint — shown when in a room as a non-host.
+              // A small pill near the top-left (below the title bar) that tells
+              // the viewer the host controls playback and offers a one-tap
+              // "Request control" button. Non-intrusive: never auto-hides and
+              // does not cover the seek bar or transport buttons.
+              if (_room?.room != null &&
+                  _c.roomRole == RoomRole.client)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 56, left: 12),
+                      child: _ViewerControlHint(
+                        onRequest: () async {
+                          final messenger = ScaffoldMessenger.of(context);
+                          await _room!.requestControl();
+                          if (mounted) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                  content: Text('Requested control')),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+
               // 9. In-room chat panel — slides in from the right when _chatOpen.
               // Gated on an active room; collapsed when leaving.
               if (_room?.room != null && _chatOpen)
@@ -4211,6 +4241,62 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
       ),
     ),
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Viewer control hint — shown top-left while in a Watch Together room as a
+// non-host viewer. Tells the user the host controls playback and offers a
+// one-tap "Request control" button. Non-intrusive pill style.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ViewerControlHint extends StatelessWidget {
+  const _ViewerControlHint({required this.onRequest});
+
+  final VoidCallback onRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: Colors.white.withValues(alpha: 0.14), width: 0.5),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock_rounded, size: 12, color: Colors.white54),
+          const SizedBox(width: 5),
+          const Text(
+            'Host controls playback',
+            style: TextStyle(color: Colors.white70, fontSize: 11),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: onRequest,
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.blueAccent.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Request control',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Small grouped-section label inside a sheet (e.g. "Version" / "Audio track").

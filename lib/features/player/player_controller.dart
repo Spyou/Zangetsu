@@ -605,7 +605,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     sl<PlaybackPrefs>().setDefaultSpeed(r);
   }
 
+  /// True when the local user is a viewer in a Watch Together room (not the
+  /// host). When this is the case, local transport actions are suppressed so
+  /// the viewer cannot desync from the host's authoritative playback state.
+  bool get _isRoomViewer => roomRole == RoomRole.client;
+
   void togglePlay() {
+    if (_isRoomViewer) return;
     final willPlay = !player.state.playing;
     player.playOrPause();
     if (roomRole == RoomRole.host) {
@@ -613,6 +619,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
   void seekTo(Duration d) {
+    if (_isRoomViewer) return;
     _pendingResume = Duration.zero; // user took control → drop the resume floor
     _markUserSeek(d);
     player.seek(d);
@@ -621,6 +628,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Seek by [delta] (signed), clamped into 0..duration.
   void seekBy(Duration delta) {
+    if (_isRoomViewer) return;
     _pendingResume = Duration.zero; // user took control → drop the resume floor
     final target = _lastPos + delta;
     final dur = _lastDur;
@@ -800,6 +808,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Resolves sources for [index] and starts the best one.
   Future<void> openEpisode(int index) async {
+    if (_isRoomViewer) return;
     final gen = ++_gen;
     await _persist();
     // Only drop the pending resume when actually switching episodes — a
