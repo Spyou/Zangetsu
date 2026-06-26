@@ -61,6 +61,7 @@ class WatchTogetherController extends ChangeNotifier {
   }
 
   void _startHostBeat() {
+    _wantsControl = false;
     _hostBeat ??= Timer.periodic(const Duration(seconds: 4), (_) {
       final r = room;
       final pos = localPosition?.call();
