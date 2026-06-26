@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/di/injector.dart';
+import '../../../core/playback/resume_store.dart';
+import '../../../core/playback/watch_history.dart';
+import '../../../core/repository/source_repository.dart';
+import '../../player/player_screen.dart';
 import '../model/room_state.dart';
+import '../watch_room_service.dart';
 import '../watch_together_controller.dart';
 
 Future<void> showWatchTogetherSheet(
@@ -40,16 +46,44 @@ Future<void> showWatchTogetherSheet(
               label: const Text('Join with a code'),
               onPressed: () async {
                 final code = await _askCode(ctx);
-                if (code == null) return;
-                final ok = await controller.join(code.toUpperCase());
+                if (code == null || code.isEmpty) return;
+                final upper = code.toUpperCase();
+                final room =
+                    await sl<WatchRoomService>().getRoom(upper);
                 if (!ctx.mounted) return;
-                if (ok) {
-                  Navigator.pop(ctx);
-                } else {
+                if (room == null || room.status == 'ended') {
                   ScaffoldMessenger.of(ctx).showSnackBar(
                     const SnackBar(content: Text('Room not found')),
                   );
+                  return;
                 }
+                final nav = Navigator.of(ctx, rootNavigator: true);
+                nav.pop(); // close the sheet
+                final repo = sl<SourceRepository>();
+                nav.push(MaterialPageRoute(
+                  builder: (_) => PlayerScreen(
+                    sourceId: room.sourceId,
+                    episodesResolver: () => repo.episodes(
+                      room.showUrl,
+                      category: room.category,
+                      sourceId: room.sourceId,
+                    ),
+                    resumeEpisodeId: room.episodeId,
+                    resumeEpisodeNumber: room.episodeNumber,
+                    resumePosition:
+                        Duration(milliseconds: room.positionMs),
+                    resume: sl<ResumeStore>(),
+                    resolveSources: (u) =>
+                        repo.sources(u, sourceId: room.sourceId, fast: true),
+                    history: sl<WatchHistory>(),
+                    showTitle: room.showTitle,
+                    cover: room.cover,
+                    showUrl: room.showUrl,
+                    category: room.category,
+                    malId: room.malId,
+                    joinRoomCode: upper,
+                  ),
+                ));
               },
             ),
           ],

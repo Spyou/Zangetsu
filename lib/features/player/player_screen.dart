@@ -69,6 +69,7 @@ class PlayerScreen extends StatefulWidget {
     this.tmdbIsTv = false,
     this.imdbId,
     this.availableCategories = const [],
+    this.joinRoomCode,
   });
 
   final String sourceId;
@@ -120,6 +121,10 @@ class PlayerScreen extends StatefulWidget {
   /// the Version (Sub/Dub) section. Switching re-resolves the current episode
   /// in the chosen language (see [PlayerCubit.switchCategory]).
   final List<String> availableCategories;
+
+  /// When non-null the player auto-joins this Watch Together room code after
+  /// the session is wired. Used by the Join-from-anywhere flow in the sheet.
+  final String? joinRoomCode;
 
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
@@ -402,6 +407,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i, fromRoom: true);
       });
     _wireRoom(_room!);
+    if (widget.joinRoomCode != null) _room!.join(widget.joinRoomCode!);
 
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
