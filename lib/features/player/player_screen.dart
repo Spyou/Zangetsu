@@ -34,7 +34,6 @@ import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
 import '../auth/auth_cubit.dart';
 import '../watch_together/model/room_state.dart';
-import '../watch_together/watch_room_service.dart';
 import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
 import '../watch_together/ui/watch_together_sheet.dart';
@@ -133,7 +132,10 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> {
   late final PlayerCubit _c;
-  WatchTogetherController? _room;
+  final WatchTogetherController _room = sl<WatchTogetherController>();
+
+  // Stored so we can remove it in dispose() — the singleton outlives this screen.
+  late final VoidCallback _roomListener;
 
   bool _controlsVisible = true;
   // When controls are visible we hide them on tap-DOWN (instant) instead of
@@ -396,11 +398,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       initialResume: widget.resumePosition,
     )..init(startIndex);
 
-    _room = WatchTogetherController(sl<WatchRoomService>())
-      ..localPosition = (() => _c.player.state.position)
-      ..onApplyRemote = ((playing, pos, rate) =>
-          _c.applyRemote(playing: playing, position: pos, rate: rate))
-      ..onEpisodeChange = ((r) {
+    _room.attachPlayer(
+      localPosition: () => _c.player.state.position,
+      onApplyRemote: (playing, pos, rate) =>
+          _c.applyRemote(playing: playing, position: pos, rate: rate),
+      onEpisodeChange: (r) {
         // Follow the host to their episode within the show we already loaded.
         // Position is then re-synced by the controller's applyRemote tick, so
         // we only need to switch episodes here. Cross-show following is out of
@@ -410,9 +412,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           i = _c.episodes.indexWhere((e) => e.number == r.episodeNumber);
         }
         if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i, fromRoom: true);
-      });
-    _wireRoom(_room!);
-    if (widget.joinRoomCode != null) _room!.join(widget.joinRoomCode!);
+      },
+    );
+    _wireRoom(_room);
+    if (widget.joinRoomCode != null) _room.join(widget.joinRoomCode!);
 
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
@@ -424,10 +427,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _wireRoom(WatchTogetherController room) {
-    room.addListener(() {
+    _roomListener = () {
       _c.roomRole = room.role;
       if (mounted) setState(() {});
-    });
+    };
+    room.addListener(_roomListener);
     _c.onLocalPlayback = (event, pos) {
       switch (event) {
         case 'play':
@@ -516,11 +520,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     WakelockPlus.disable();
     if (_ready) _c.close();
-    // Leave the Watch Together room (removes participant, hands off host) before
-    // tearing down the controller. Fire-and-forget: the async network calls run
-    // independently while _teardown clears local state synchronously.
-    _room?.leave().ignore();
-    _room?.dispose();
+    // Detach from the app-level party controller (nulls out player hooks and,
+    // if this client is host, marks the room lobby). Does NOT leave the party —
+    // closing the player keeps the party alive in the background.
+    _room.removeListener(_roomListener);
+    _room.detachPlayer();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
@@ -1729,10 +1733,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       megaSkipEnabled: _megaSkipEnabled,
                       megaSkipSeconds: _megaSkipSeconds,
                       onMegaSkip: _megaSkip,
-                      onChat: (_room?.room != null)
+                      onChat: (_room.room != null)
                           ? () => setState(() => _chatOpen = !_chatOpen)
                           : null,
-                      onWatchTogether: _room != null && _room!.room == null
+                      onWatchTogether: _room.room == null
                           ? () {
                               if (sl<AuthCubit>().state.user == null) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1741,7 +1745,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               }
                               showWatchTogetherSheet(
                               context,
-                              controller: _room!,
+                              controller: _room,
                               buildInitialRoom: () => RoomState(
                           code: '',
                           hostId: '',
@@ -1867,7 +1871,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // 8. Room presence strip — shown whenever a Watch Together room
               // is active, independent of controls visibility (always readable).
               // Positioned top-right within the safe area, next to the title bar.
-              if (_room?.room != null)
+              if (_room.room != null)
                 Positioned(
                   top: 0,
                   right: 0,
@@ -1875,14 +1879,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     bottom: false,
                     child: Padding(
                       padding: const EdgeInsets.only(top: 10, right: 12),
-                      child: RoomStrip(controller: _room!),
+                      child: RoomStrip(controller: _room),
                     ),
                   ),
                 ),
 
               // 9. In-room chat panel — slides in from the right when _chatOpen.
               // Gated on an active room; collapsed when leaving.
-              if (_room?.room != null && _chatOpen)
+              if (_room.room != null && _chatOpen)
                 Positioned(
                   top: 0,
                   bottom: 0,
@@ -1890,7 +1894,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: SafeArea(
                     left: false,
                     right: false,
-                    child: RoomChatPanel(controller: _room!),
+                    child: RoomChatPanel(controller: _room),
                   ),
                 ),
             ],
