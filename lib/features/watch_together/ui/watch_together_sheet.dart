@@ -46,44 +46,10 @@ Future<void> showWatchTogetherSheet(
               label: const Text('Join with a code'),
               onPressed: () async {
                 final code = await _askCode(ctx);
-                if (code == null || code.isEmpty) return;
-                final upper = code.toUpperCase();
-                final room =
-                    await sl<WatchRoomService>().getRoom(upper);
-                if (!ctx.mounted) return;
-                if (room == null || room.status == 'ended') {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(content: Text('Room not found')),
-                  );
-                  return;
-                }
-                final nav = Navigator.of(ctx, rootNavigator: true);
-                nav.pop(); // close the sheet
-                final repo = sl<SourceRepository>();
-                nav.push(MaterialPageRoute(
-                  builder: (_) => PlayerScreen(
-                    sourceId: room.sourceId,
-                    episodesResolver: () => repo.episodes(
-                      room.showUrl,
-                      category: room.category,
-                      sourceId: room.sourceId,
-                    ),
-                    resumeEpisodeId: room.episodeId,
-                    resumeEpisodeNumber: room.episodeNumber,
-                    resumePosition:
-                        Duration(milliseconds: room.positionMs),
-                    resume: sl<ResumeStore>(),
-                    resolveSources: (u) =>
-                        repo.sources(u, sourceId: room.sourceId, fast: true),
-                    history: sl<WatchHistory>(),
-                    showTitle: room.showTitle,
-                    cover: room.cover,
-                    showUrl: room.showUrl,
-                    category: room.category,
-                    malId: room.malId,
-                    joinRoomCode: upper,
-                  ),
-                ));
+                if (code == null || code.trim().isEmpty || !ctx.mounted) return;
+                final rootContext = Navigator.of(ctx, rootNavigator: true).context;
+                Navigator.pop(ctx); // close the sheet
+                await joinWatchPartyByCode(rootContext, code);
               },
             ),
           ],
@@ -91,6 +57,54 @@ Future<void> showWatchTogetherSheet(
       ),
     ),
   );
+}
+
+/// Prompt for a room code and join it — used by the in-player sheet and the
+/// dedicated "Join a watch party" entry (Settings).
+Future<void> promptJoinWatchParty(BuildContext context) async {
+  final code = await _askCode(context);
+  if (code == null || code.trim().isEmpty || !context.mounted) return;
+  await joinWatchPartyByCode(context, code);
+}
+
+/// Fetch the room for [code] and launch a player for its show, auto-joining.
+/// Shows "Room not found" if it's missing/ended. The player handles a missing
+/// local source with a clear message (see PlayerScreen).
+Future<void> joinWatchPartyByCode(BuildContext context, String code) async {
+  final upper = code.trim().toUpperCase();
+  if (upper.isEmpty) return;
+  final room = await sl<WatchRoomService>().getRoom(upper);
+  if (!context.mounted) return;
+  if (room == null || room.status == 'ended') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Room not found')),
+    );
+    return;
+  }
+  final repo = sl<SourceRepository>();
+  Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(
+    builder: (_) => PlayerScreen(
+      sourceId: room.sourceId,
+      episodesResolver: () => repo.episodes(
+        room.showUrl,
+        category: room.category,
+        sourceId: room.sourceId,
+      ),
+      resumeEpisodeId: room.episodeId,
+      resumeEpisodeNumber: room.episodeNumber,
+      resumePosition: Duration(milliseconds: room.positionMs),
+      resume: sl<ResumeStore>(),
+      resolveSources: (u) =>
+          repo.sources(u, sourceId: room.sourceId, fast: true),
+      history: sl<WatchHistory>(),
+      showTitle: room.showTitle,
+      cover: room.cover,
+      showUrl: room.showUrl,
+      category: room.category,
+      malId: room.malId,
+      joinRoomCode: upper,
+    ),
+  ));
 }
 
 Future<String?> _askCode(BuildContext context) {

@@ -27,6 +27,7 @@ import '../../core/ui/settings_widgets.dart';
 import 'developers_screen.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
+import '../watch_together/ui/watch_together_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
@@ -402,6 +403,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.only(top: 4, bottom: 24),
                 children: [
                   _accountCard(context),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.groups_2_outlined,
+                        title: 'Join a watch party',
+                        subtitle: 'Enter a code to watch in sync with friends',
+                        onTap: () {
+                          if (sl<AuthCubit>().state.user == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Sign in to watch together'),
+                              ),
+                            );
+                            return;
+                          }
+                          promptJoinWatchParty(context);
+                        },
+                      ),
+                    ],
+                  ),
                   SettingsCard(
                     children: [
                       SettingsTile(
