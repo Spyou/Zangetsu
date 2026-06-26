@@ -1,0 +1,284 @@
+// lib/features/watch_together/ui/watch_party_lobby_screen.dart
+import 'package:flutter/material.dart';
+
+import '../../../core/di/injector.dart';
+import '../../../core/playback/resume_store.dart';
+import '../../../core/playback/watch_history.dart';
+import '../../../core/repository/source_repository.dart';
+import '../../auth/auth_cubit.dart';
+import '../../player/player_screen.dart';
+import '../model/room_state.dart';
+import '../watch_together_controller.dart';
+import 'host_choosing_screen.dart';
+
+/// Create/Join entry screen for Watch Party.
+///
+/// - Create a party: login-gated; hosts a content-less lobby room then pops
+///   (the party bar appears and the user browses normally as host).
+/// - Join with a code: login-gated; joins via [WatchTogetherController.join]
+///   and routes to the content player (mode `playing`) or
+///   [HostChoosingScreen] (mode `lobby`).
+class WatchPartyLobbyScreen extends StatelessWidget {
+  const WatchPartyLobbyScreen({super.key});
+
+  // ── helpers ──────────────────────────────────────────────────────────────
+
+  bool _isLoggedIn() => sl<AuthCubit>().state.user != null;
+
+  void _showNotLoggedIn(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Sign in to use Watch Party')),
+    );
+  }
+
+  // ── Create ────────────────────────────────────────────────────────────────
+
+  Future<void> _onCreate(BuildContext context) async {
+    if (!_isLoggedIn()) {
+      _showNotLoggedIn(context);
+      return;
+    }
+
+    final controller = sl<WatchTogetherController>();
+    if (controller.room != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You're already in a party")),
+      );
+      return;
+    }
+
+    await controller.host(const RoomState(
+      code: '',
+      hostId: '',
+      hostName: '',
+      hostAvatar: '',
+      sourceId: '',
+      sourceLabel: '',
+      showUrl: '',
+      showTitle: '',
+      cover: '',
+      episodeId: '',
+      episodeNumber: null,
+      episodeUrl: '',
+      category: 'sub',
+      malId: null,
+      tmdbId: null,
+      positionMs: 0,
+      playing: false,
+      rate: 1.0,
+      updatedAt: 0,
+      status: 'active',
+      mode: 'lobby',
+    ));
+
+    if (context.mounted) Navigator.of(context).pop();
+  }
+
+  // ── Join ──────────────────────────────────────────────────────────────────
+
+  Future<void> _onJoin(BuildContext context) async {
+    if (!_isLoggedIn()) {
+      _showNotLoggedIn(context);
+      return;
+    }
+
+    final code = await _askCode(context);
+    if (code == null || code.trim().isEmpty) return;
+    if (!context.mounted) return;
+
+    final controller = sl<WatchTogetherController>();
+    final ok = await controller.join(code.trim().toUpperCase());
+    if (!context.mounted) return;
+
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Room not found')),
+      );
+      return;
+    }
+
+    await routeAfterJoin(context, controller);
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0E0E0E),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0E0E0E),
+        foregroundColor: Colors.white,
+        elevation: 0,
+        title: const Text(
+          'Watch Party',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+            fontSize: 18,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Icon.
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.07),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.live_tv_outlined,
+                    size: 40,
+                    color: Colors.white54,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                const Text(
+                  'Watch together',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                const Text(
+                  'Create a party and invite friends, or join an existing one with a code.',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 14,
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+
+                // Create button.
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.group_add),
+                    label: const Text('Create a party'),
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => _onCreate(context),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Join button.
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.login),
+                    label: const Text('Join with a code'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.25),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => _onJoin(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-join routing
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// After a successful [WatchTogetherController.join], push the appropriate
+/// screen:
+/// - mode `playing` + non-empty sourceId → content [PlayerScreen] (no
+///   joinRoomCode — we already joined via the lobby).
+/// - otherwise → [HostChoosingScreen] (host is still browsing).
+Future<void> routeAfterJoin(
+  BuildContext context,
+  WatchTogetherController controller,
+) async {
+  final room = controller.room;
+  if (room == null) return;
+
+  final nav = Navigator.of(context, rootNavigator: true);
+
+  if (room.mode == 'playing' && room.sourceId.isNotEmpty) {
+    final repo = sl<SourceRepository>();
+    nav.push(MaterialPageRoute(
+      builder: (_) => PlayerScreen(
+        sourceId: room.sourceId,
+        episodesResolver: () => repo.episodes(
+          room.showUrl,
+          category: room.category,
+          sourceId: room.sourceId,
+        ),
+        resumeEpisodeId: room.episodeId,
+        resumeEpisodeNumber: room.episodeNumber,
+        resumePosition: Duration(milliseconds: room.positionMs),
+        resume: sl<ResumeStore>(),
+        resolveSources: (u) =>
+            repo.sources(u, sourceId: room.sourceId, fast: true),
+        history: sl<WatchHistory>(),
+        showTitle: room.showTitle,
+        cover: room.cover,
+        showUrl: room.showUrl,
+        category: room.category,
+        malId: room.malId,
+        // joinRoomCode intentionally omitted — join already happened.
+      ),
+    ));
+  } else {
+    nav.push(MaterialPageRoute(
+      builder: (_) => const HostChoosingScreen(),
+    ));
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Private helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+Future<String?> _askCode(BuildContext context) {
+  final ctrl = TextEditingController();
+  return showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Enter room code'),
+      content: TextField(
+        controller: ctrl,
+        autofocus: true,
+        textCapitalization: TextCapitalization.characters,
+        decoration: const InputDecoration(hintText: 'e.g. ABC234'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+          child: const Text('Join'),
+        ),
+      ],
+    ),
+  );
+}
