@@ -53,6 +53,13 @@ class PartyBar extends StatelessWidget {
                   ),
                   const SizedBox(width: 4),
                   _BarButton(
+                    icon: Icons.chat_bubble_outline,
+                    label: 'Chat',
+                    onTap: () => showRoomChatSheet(
+                        context, sl<WatchTogetherController>()),
+                  ),
+                  const SizedBox(width: 4),
+                  _BarButton(
                     icon: Icons.exit_to_app,
                     label: 'Leave',
                     onTap: () => sl<WatchTogetherController>().leave(),

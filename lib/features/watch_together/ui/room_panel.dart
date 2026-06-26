@@ -320,6 +320,176 @@ class RoomStrip extends StatelessWidget {
   }
 }
 
+/// Opens a full-width keyboard-aware bottom sheet for Watch Together chat.
+void showRoomChatSheet(
+    BuildContext context, WatchTogetherController controller) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _RoomChatSheet(controller: controller),
+  );
+}
+
+class _RoomChatSheet extends StatefulWidget {
+  const _RoomChatSheet({required this.controller});
+
+  final WatchTogetherController controller;
+
+  @override
+  State<_RoomChatSheet> createState() => _RoomChatSheetState();
+}
+
+class _RoomChatSheetState extends State<_RoomChatSheet> {
+  final _textCtrl = TextEditingController();
+  final _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _textCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _send() {
+    final text = _textCtrl.text.trim();
+    if (text.isEmpty) return;
+    widget.controller.sendChat(text);
+    _textCtrl.clear();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          _scrollCtrl.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Color(0xE6121212),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle.
+              Padding(
+                padding: const EdgeInsets.only(top: 10, bottom: 6),
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              // Header.
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.chat_bubble_outline,
+                        color: Colors.white70, size: 18),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Room Chat',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(color: Colors.white12, height: 1),
+              // Message list.
+              AnimatedBuilder(
+                animation: widget.controller,
+                builder: (context, _) {
+                  final messages = widget.controller.messages;
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.5,
+                    ),
+                    child: messages.isEmpty
+                        ? const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: Text(
+                              'No messages yet',
+                              style: TextStyle(color: Colors.white54),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: _scrollCtrl,
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            itemCount: messages.length,
+                            itemBuilder: (context, i) =>
+                                _ChatBubble(message: messages[i]),
+                          ),
+                  );
+                },
+              ),
+              const Divider(color: Colors.white12, height: 1),
+              // Input row.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _textCtrl,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: 'Message…',
+                          hintStyle: const TextStyle(
+                              color: Colors.white38, fontSize: 14),
+                          filled: true,
+                          fillColor: Colors.white.withValues(alpha: 0.08),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onSubmitted: (_) => _send(),
+                        textInputAction: TextInputAction.send,
+                        maxLines: 1,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.send_rounded,
+                          color: Colors.white70, size: 22),
+                      onPressed: _send,
+                      splashRadius: 20,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A compact side-panel chat widget for Watch Together.
 ///
 /// Displays the room message history as a scrolling list and provides a
@@ -327,9 +497,14 @@ class RoomStrip extends StatelessWidget {
 /// whenever the [WatchTogetherController] notifies. Wrap in a [StatefulWidget]
 /// so the [TextEditingController] is properly disposed.
 class RoomChatPanel extends StatefulWidget {
-  const RoomChatPanel({super.key, required this.controller});
+  const RoomChatPanel({
+    super.key,
+    required this.controller,
+    this.onClose,
+  });
 
   final WatchTogetherController controller;
+  final VoidCallback? onClose;
 
   @override
   State<RoomChatPanel> createState() => _RoomChatPanelState();
@@ -382,7 +557,6 @@ class _RoomChatPanelState extends State<RoomChatPanel> {
               // Header.
               Container(
                 height: 44,
-                alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 decoration: BoxDecoration(
                   border: Border(
@@ -390,13 +564,27 @@ class _RoomChatPanelState extends State<RoomChatPanel> {
                         BorderSide(color: Colors.white.withValues(alpha: 0.1)),
                   ),
                 ),
-                child: const Text(
-                  'Room Chat',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Room Chat',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close,
+                          color: Colors.white70, size: 20),
+                      onPressed: () => widget.onClose?.call(),
+                      splashRadius: 18,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
               ),
 

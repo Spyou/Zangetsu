@@ -1857,7 +1857,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: SafeArea(
                     left: false,
                     right: false,
-                    child: RoomChatPanel(controller: _room),
+                    child: RoomChatPanel(
+                      controller: _room,
+                      onClose: () => setState(() => _chatOpen = false),
+                    ),
                   ),
                 ),
             ],
