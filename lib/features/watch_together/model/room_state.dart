@@ -11,10 +11,12 @@ class RoomState extends Equatable {
     required this.category, required this.malId, required this.tmdbId,
     required this.positionMs, required this.playing, required this.rate,
     required this.updatedAt, required this.status,
+    this.mode = 'lobby',
   });
 
   final String code, hostId, hostName, hostAvatar, sourceId, sourceLabel;
   final String showUrl, showTitle, cover, episodeId, episodeUrl, category, status;
+  final String mode;
   final double? episodeNumber;
   final int? malId, tmdbId;
   final int positionMs, updatedAt;
@@ -28,7 +30,7 @@ class RoomState extends Equatable {
         'episodeId': episodeId, 'episodeNumber': episodeNumber, 'episodeUrl': episodeUrl,
         'category': category, 'malId': malId, 'tmdbId': tmdbId,
         'positionMs': positionMs, 'playing': playing, 'rate': rate,
-        'updatedAt': updatedAt, 'status': status,
+        'updatedAt': updatedAt, 'status': status, 'mode': mode,
       };
 
   static RoomState fromMap(Map m) => RoomState(
@@ -45,12 +47,13 @@ class RoomState extends Equatable {
         playing: m['playing'] == true, rate: (m['rate'] as num?)?.toDouble() ?? 1.0,
         updatedAt: (m['updatedAt'] as num?)?.toInt() ?? 0,
         status: '${m['status'] ?? 'active'}',
+        mode: '${m['mode'] ?? 'lobby'}',
       );
 
   RoomState copyWith({
     int? positionMs, bool? playing, double? rate, int? updatedAt, String? status,
     String? hostId, String? hostName, String? hostAvatar, String? episodeId,
-    double? episodeNumber, String? episodeUrl,
+    double? episodeNumber, String? episodeUrl, String? mode,
   }) =>
       RoomState(
         code: code, hostId: hostId ?? this.hostId, hostName: hostName ?? this.hostName,
@@ -62,12 +65,13 @@ class RoomState extends Equatable {
         malId: malId, tmdbId: tmdbId, positionMs: positionMs ?? this.positionMs,
         playing: playing ?? this.playing, rate: rate ?? this.rate,
         updatedAt: updatedAt ?? this.updatedAt, status: status ?? this.status,
+        mode: mode ?? this.mode,
       );
 
   @override
   List<Object?> get props => [code, hostId, hostName, hostAvatar, sourceId,
         sourceLabel, showUrl, showTitle, cover, episodeId, episodeNumber,
-        episodeUrl, category, malId, tmdbId, positionMs, playing, rate, updatedAt, status];
+        episodeUrl, category, malId, tmdbId, positionMs, playing, rate, updatedAt, status, mode];
 }
 
 class RoomParticipant extends Equatable {

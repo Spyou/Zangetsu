@@ -26,4 +26,11 @@ void main() {
     const m = RoomMessage(userId: 'u1', name: 'Kr', avatar: '', text: 'hi', createdAt: 5);
     expect(RoomMessage.fromMap(m.toMap()), equals(m));
   });
+
+  test('RoomState.mode round-trips and defaults to lobby', () {
+    final base = RoomState.fromMap({'code': 'X'}); // missing mode
+    expect(base.mode, 'lobby');
+    final playing = base.copyWith(mode: 'playing');
+    expect(RoomState.fromMap(playing.toMap()).mode, 'playing');
+  });
 }
