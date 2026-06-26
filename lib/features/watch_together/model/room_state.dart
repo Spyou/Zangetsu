@@ -73,21 +73,26 @@ class RoomState extends Equatable {
 class RoomParticipant extends Equatable {
   const RoomParticipant({required this.userId, required this.name,
     required this.avatar, required this.state, required this.joinedAt,
-    required this.lastSeenAt});
+    required this.lastSeenAt, this.wantsControl = false});
   final String userId, name, avatar, state;
   final int joinedAt, lastSeenAt;
+  final bool wantsControl;
   Map<String, dynamic> toMap() => {'userId': userId, 'name': name,
-        'avatar': avatar, 'state': state, 'joinedAt': joinedAt, 'lastSeenAt': lastSeenAt};
+        'avatar': avatar, 'state': state, 'joinedAt': joinedAt,
+        'lastSeenAt': lastSeenAt, 'wantsControl': wantsControl};
   static RoomParticipant fromMap(Map m) => RoomParticipant(
         userId: '${m['userId'] ?? ''}', name: '${m['name'] ?? ''}',
         avatar: '${m['avatar'] ?? ''}', state: '${m['state'] ?? 'watching'}',
         joinedAt: (m['joinedAt'] as num?)?.toInt() ?? 0,
-        lastSeenAt: (m['lastSeenAt'] as num?)?.toInt() ?? 0);
-  RoomParticipant copyWith({String? state, int? lastSeenAt}) => RoomParticipant(
+        lastSeenAt: (m['lastSeenAt'] as num?)?.toInt() ?? 0,
+        wantsControl: m['wantsControl'] == true);
+  RoomParticipant copyWith({String? state, int? lastSeenAt, bool? wantsControl}) =>
+      RoomParticipant(
         userId: userId, name: name, avatar: avatar, state: state ?? this.state,
-        joinedAt: joinedAt, lastSeenAt: lastSeenAt ?? this.lastSeenAt);
+        joinedAt: joinedAt, lastSeenAt: lastSeenAt ?? this.lastSeenAt,
+        wantsControl: wantsControl ?? this.wantsControl);
   @override
-  List<Object?> get props => [userId, name, avatar, state, joinedAt, lastSeenAt];
+  List<Object?> get props => [userId, name, avatar, state, joinedAt, lastSeenAt, wantsControl];
 }
 
 class RoomMessage extends Equatable {

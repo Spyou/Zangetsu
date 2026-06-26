@@ -28,10 +28,12 @@ class WatchTogetherController extends ChangeNotifier {
   Timer? _hostBeat, _presenceBeat;
   String? _lastEpisodeId;
   int? _joinedAt;
+  bool _wantsControl = false;
 
   String get _uid => sl<AuthCubit>().state.user?.$id ?? '';
   String get _uname => sl<AuthCubit>().state.user?.name ?? 'Guest';
   bool get isHost => role == RoomRole.host;
+  bool get canControl => isHost;
   int get _now => DateTime.now().millisecondsSinceEpoch;
 
   Future<void> host(RoomState initial) async {
@@ -97,13 +99,14 @@ class WatchTogetherController extends ChangeNotifier {
     _joinedAt ??= _now;
     await _svc.upsertParticipant(code, RoomParticipant(
         userId: _uid, name: _uname, avatar: '', state: 'watching',
-        joinedAt: _joinedAt ?? _now, lastSeenAt: _now));
+        joinedAt: _joinedAt ?? _now, lastSeenAt: _now,
+        wantsControl: _wantsControl));
     _subscribeRoom(code);
     _partSub = _svc.watchParticipants(code).listen((_) => _refreshParticipants(code));
     _presenceBeat = Timer.periodic(const Duration(seconds: 10), (_) {
       _svc.upsertParticipant(code, RoomParticipant(userId: _uid, name: _uname,
           avatar: '', state: 'watching', joinedAt: _joinedAt ?? _now,
-          lastSeenAt: _now));
+          lastSeenAt: _now, wantsControl: _wantsControl));
       _maybePromoteSelf(); // crash-failover check
     });
     if (isHost) _startHostBeat();
@@ -188,6 +191,39 @@ class WatchTogetherController extends ChangeNotifier {
     }
   }
 
+  // ---- control handoff ----
+  Future<void> requestControl() async {
+    if (isHost) return;
+    final code = room?.code; if (code == null) return;
+    _wantsControl = true;
+    notifyListeners();
+    await _svc.upsertParticipant(code, RoomParticipant(
+        userId: _uid, name: _uname, avatar: '', state: 'watching',
+        joinedAt: _joinedAt ?? _now, lastSeenAt: _now, wantsControl: true));
+  }
+
+  Future<void> transferHost(String uid) async {
+    if (!isHost || uid.isEmpty || uid == _uid) return;
+    final name = participants.firstWhere(
+        (p) => p.userId == uid,
+        orElse: () => const RoomParticipant(
+            userId: '', name: '', avatar: '', state: '', joinedAt: 0, lastSeenAt: 0))
+        .name;
+    _writeHost(extra: {'hostId': uid, 'hostName': name});
+  }
+
+  Future<void> grantControl(String uid) async {
+    await transferHost(uid);
+    final code = room?.code; if (code == null) return;
+    final existing = participants.firstWhere(
+        (p) => p.userId == uid,
+        orElse: () => const RoomParticipant(
+            userId: '', name: '', avatar: '', state: 'watching', joinedAt: 0, lastSeenAt: 0));
+    if (existing.userId.isEmpty) return;
+    await _svc.upsertParticipant(code, existing.copyWith(
+        wantsControl: false, lastSeenAt: _now));
+  }
+
   Future<void> sendChat(String text) async {
     final code = room?.code;
     final t = text.trim();
@@ -218,7 +254,7 @@ class WatchTogetherController extends ChangeNotifier {
     _hostBeat?.cancel(); _presenceBeat?.cancel();
     _hostBeat = _presenceBeat = null;
     room = null; role = RoomRole.none; participants = const []; messages = const [];
-    _joinedAt = null;
+    _joinedAt = null; _wantsControl = false;
     notifyListeners();
   }
 
