@@ -94,7 +94,6 @@ class WatchTogetherController extends ChangeNotifier {
     // Apply the current state right away.
     onEpisodeChange?.call(r);
     _applyRoom(r);
-    if (!isHost) _followHost(r);
     return true;
   }
 
@@ -290,9 +289,9 @@ class WatchTogetherController extends ChangeNotifier {
         ? '${r.sourceId}|${r.showUrl}'
         : null;
     if (target == _viewerStageKey) return;
-    _viewerStageKey = target;
     final nav = rootNavigatorKey.currentState;
     if (nav == null) return;
+    _viewerStageKey = target;
     if (target != null) {
       final route = buildPartyPlayerRoute(r);
       if (_viewerPlayerUp) {
@@ -307,6 +306,16 @@ class WatchTogetherController extends ChangeNotifier {
     }
   }
 
+  /// Re-run the viewer follow for the CURRENT room once (used right after the
+  /// lobby pushes the HostChoosingScreen base, so the player lands ON TOP of it
+  /// when the host is already playing). Resetting the stage key first defeats
+  /// the dedup so the initial follow is not swallowed.
+  void refollow() {
+    _viewerStageKey = null;
+    final r = room;
+    if (r != null && !isHost) _followHost(r);
+  }
+
   Future<void> leave() async {
     final code = room?.code;
     if (code != null && isHost) {
@@ -318,6 +327,11 @@ class WatchTogetherController extends ChangeNotifier {
       }
     }
     if (code != null) await _svc.removeParticipant(code, _uid);
+    if (_viewerPlayerUp) {
+      rootNavigatorKey.currentState?.pop();
+      _viewerPlayerUp = false;
+      _viewerStageKey = null;
+    }
     _teardown();
   }
 

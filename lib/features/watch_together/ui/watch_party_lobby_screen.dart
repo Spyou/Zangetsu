@@ -222,6 +222,7 @@ Future<void> routeAfterJoin(
   nav.push(MaterialPageRoute(
     builder: (_) => const HostChoosingScreen(),
   ));
+  controller.refollow();
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -18,26 +18,30 @@ import '../model/room_state.dart';
 MaterialPageRoute<dynamic> buildPartyPlayerRoute(RoomState room) {
   final repo = sl<SourceRepository>();
   return MaterialPageRoute(
-    builder: (_) => PlayerScreen(
-      sourceId: room.sourceId,
-      episodesResolver: () => repo.episodes(
-        room.showUrl,
-        category: room.category,
+    builder: (_) => PopScope(
+      canPop: false,                          // viewer can't Back out of the synced player…
+      onPopInvokedWithResult: (didPop, _) {}, // …they leave via the party bar's Leave
+      child: PlayerScreen(
         sourceId: room.sourceId,
+        episodesResolver: () => repo.episodes(
+          room.showUrl,
+          category: room.category,
+          sourceId: room.sourceId,
+        ),
+        resumeEpisodeId: room.episodeId,
+        resumeEpisodeNumber: room.episodeNumber,
+        resumePosition: Duration(milliseconds: room.positionMs),
+        resume: sl<ResumeStore>(),
+        resolveSources: (u) =>
+            repo.sources(u, sourceId: room.sourceId, fast: true),
+        history: sl<WatchHistory>(),
+        showTitle: room.showTitle,
+        cover: room.cover,
+        showUrl: room.showUrl,
+        category: room.category,
+        malId: room.malId,
+        // joinRoomCode intentionally omitted — join already happened.
       ),
-      resumeEpisodeId: room.episodeId,
-      resumeEpisodeNumber: room.episodeNumber,
-      resumePosition: Duration(milliseconds: room.positionMs),
-      resume: sl<ResumeStore>(),
-      resolveSources: (u) =>
-          repo.sources(u, sourceId: room.sourceId, fast: true),
-      history: sl<WatchHistory>(),
-      showTitle: room.showTitle,
-      cover: room.cover,
-      showUrl: room.showUrl,
-      category: room.category,
-      malId: room.malId,
-      // joinRoomCode intentionally omitted — join already happened.
     ),
   );
 }
