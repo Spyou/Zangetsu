@@ -27,7 +27,7 @@ import '../../core/ui/settings_widgets.dart';
 import 'developers_screen.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
-import '../watch_together/ui/watch_together_sheet.dart';
+import '../watch_together/ui/watch_party_lobby_screen.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
@@ -407,8 +407,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       SettingsTile(
                         icon: Icons.groups_2_outlined,
-                        title: 'Join a watch party',
-                        subtitle: 'Enter a code to watch in sync with friends',
+                        title: 'Watch Party',
+                        subtitle: 'Create or join a watch party with friends',
                         onTap: () {
                           if (sl<AuthCubit>().state.user == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -418,7 +418,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             );
                             return;
                           }
-                          promptJoinWatchParty(context);
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const WatchPartyLobbyScreen(),
+                            ),
+                          );
                         },
                       ),
                     ],
