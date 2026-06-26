@@ -29,6 +29,7 @@ class WatchTogetherController extends ChangeNotifier {
   String? _lastEpisodeId;
   int? _joinedAt;
   bool _wantsControl = false;
+  bool _disposed = false;
 
   String get _uid => sl<AuthCubit>().state.user?.$id ?? '';
   String get _uname => sl<AuthCubit>().state.user?.name ?? 'Guest';
@@ -256,9 +257,9 @@ class WatchTogetherController extends ChangeNotifier {
     _hostBeat = _presenceBeat = null;
     room = null; role = RoomRole.none; participants = const []; messages = const [];
     _joinedAt = null; _wantsControl = false;
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   @override
-  void dispose() { _teardown(); super.dispose(); }
+  void dispose() { _disposed = true; _teardown(); super.dispose(); }
 }

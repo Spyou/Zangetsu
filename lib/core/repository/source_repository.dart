@@ -61,6 +61,17 @@ class SourceRepository {
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
 
+  /// Returns true when [sourceId] resolves to an installed/enabled provider on
+  /// this device. Read-only — does not affect resolution or health.
+  /// CS ids use identity-compatible lookup ([resolveCompatible]); JS ids use
+  /// the manager registry.
+  bool hasSource(String sourceId) {
+    if (_isCloudStream(sourceId)) {
+      return _csManager.resolveCompatible(sourceId) != null;
+    }
+    return _manager.get(sourceId) != null;
+  }
+
   /// Resolves the provider for a per-call [id], falling back to the active
   /// source when [id] is null. Lets cross-source items (Continue Watching,
   /// My List, etc.) route to their OWN provider instead of the active one.

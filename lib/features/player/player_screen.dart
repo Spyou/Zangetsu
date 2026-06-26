@@ -15,6 +15,7 @@ import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/repository/source_repository.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -472,13 +473,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// When a Watch Together join can't resolve the room's source on this device
   /// (e.g. it's a CloudStream plugin the joiner hasn't installed), show a clear
   /// message rather than silently bouncing back. A normal launch keeps the pop.
+  ///
+  /// Two distinct cases:
+  ///  - Source NOT installed → guide the user to install it.
+  ///  - Source IS installed but episode resolution returned empty/failed →
+  ///    transient failure message (provider-side issue, not a missing source).
   void _failJoinOrPop() {
     if (widget.joinRoomCode != null) {
-      setState(() => _loadError =
-          "Couldn't open this room's video source on your device.\n\n"
-          "The host is watching on a source you don't have installed. Add it "
-          'from Settings → Add CloudStream repository, or ask the host to use a '
-          'built-in source.');
+      final sourceInstalled = sl<SourceRepository>().hasSource(widget.sourceId);
+      setState(() => _loadError = sourceInstalled
+          ? "Couldn't load this show right now.\n\n"
+                "The source is available on your device, but the episode list "
+                'came back empty. Tap Back and try again.'
+          : "Couldn't open this room's video source on your device.\n\n"
+                "The host is watching on a source you don't have installed. Add it "
+                'from Settings → Add CloudStream repository, or ask the host to use a '
+                'built-in source.');
     } else {
       Navigator.of(context).maybePop();
     }
@@ -506,6 +516,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
     WakelockPlus.disable();
     if (_ready) _c.close();
+    // Leave the Watch Together room (removes participant, hands off host) before
+    // tearing down the controller. Fire-and-forget: the async network calls run
+    // independently while _teardown clears local state synchronously.
+    _room?.leave().ignore();
     _room?.dispose();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
