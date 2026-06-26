@@ -136,6 +136,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // Stored so we can remove it in dispose() — the singleton outlives this screen.
   late final VoidCallback _roomListener;
+  bool _attached = false; // true only after _wireRoom() runs
 
   bool _controlsVisible = true;
   // When controls are visible we hide them on tap-DOWN (instant) instead of
@@ -432,6 +433,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) setState(() {});
     };
     room.addListener(_roomListener);
+    _attached = true;
     _c.onLocalPlayback = (event, pos) {
       switch (event) {
         case 'play':
@@ -523,8 +525,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Detach from the app-level party controller (nulls out player hooks and,
     // if this client is host, marks the room lobby). Does NOT leave the party —
     // closing the player keeps the party alive in the background.
-    _room.removeListener(_roomListener);
-    _room.detachPlayer();
+    if (_attached) {
+      _room.removeListener(_roomListener);
+      _room.detachPlayer();
+    }
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
