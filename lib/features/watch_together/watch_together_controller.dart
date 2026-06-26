@@ -1,6 +1,6 @@
 // lib/features/watch_together/watch_together_controller.dart
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import '../auth/auth_cubit.dart';
 import '../../core/di/injector.dart';
 import 'model/room_state.dart';
@@ -21,6 +21,34 @@ class WatchTogetherController extends ChangeNotifier {
   void Function(bool playing, Duration pos, double rate)? onApplyRemote;
   Duration Function()? localPosition;
   void Function(RoomState room)? onEpisodeChange; // client must (re)load episode
+
+  /// Navigator key for M3 navigation from outside the widget tree.
+  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+  /// Current room mode: 'lobby' when no player is attached, 'playing' when one is.
+  String get mode => room?.mode ?? 'lobby';
+
+  /// Bind the controller to the currently-active player. Replaces any prior
+  /// binding (only one player is attached at a time). Host marks the room
+  /// playing; the existing broadcast/heartbeat path takes over from there.
+  void attachPlayer({
+    required Duration Function() localPosition,
+    required void Function(bool playing, Duration pos, double rate) onApplyRemote,
+    required void Function(RoomState room) onEpisodeChange,
+  }) {
+    this.localPosition = localPosition;
+    this.onApplyRemote = onApplyRemote;
+    this.onEpisodeChange = onEpisodeChange;
+    if (isHost) _writeHost(extra: {'mode': 'playing'});
+  }
+
+  /// Unbind on player close. Host returns the room to the lobby (idle) state.
+  void detachPlayer() {
+    localPosition = null;
+    onApplyRemote = null;
+    onEpisodeChange = null;
+    if (isHost && room != null) _writeHost(extra: {'mode': 'lobby'});
+  }
 
   StreamSubscription<RoomState>? _roomSub;
   StreamSubscription<void>? _partSub;
