@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
 import 'package:open_filex/open_filex.dart';
@@ -14,6 +15,7 @@ class UpdateInfo {
     required this.notes,
     required this.apkUrl,
     required this.assetName,
+    required this.apkSize,
   });
 
   /// Normalised version, e.g. "1.3.0".
@@ -27,6 +29,10 @@ class UpdateInfo {
 
   /// File name of the chosen asset (shown while downloading).
   final String assetName;
+
+  /// Expected byte size of the asset (from the GitHub API), used to verify the
+  /// download completed intact. 0 when unknown.
+  final int apkSize;
 }
 
 /// In-app updater: checks the public GitHub Releases of the app repo, compares
@@ -67,7 +73,7 @@ class UpdateService {
 
       if (respectSkip && await _skippedVersion() == latest) return null;
 
-      final apk = _pickApk((data['assets'] as List?) ?? const []);
+      final apk = _pickApk((data['assets'] as List?) ?? const [], await _deviceAbis());
       if (apk == null) return null;
 
       return UpdateInfo(
@@ -75,6 +81,7 @@ class UpdateService {
         notes: ((data['body'] as String?) ?? '').trim(),
         apkUrl: apk.$2,
         assetName: apk.$1,
+        apkSize: apk.$3,
       );
     } catch (_) {
       return null;
@@ -94,6 +101,7 @@ class UpdateService {
   /// failure so the dialog can surface an error.
   Future<File> downloadApk(
     String url, {
+    int expectedSize = 0,
     void Function(double progress)? onProgress,
   }) async {
     final dir = await getTemporaryDirectory();
@@ -107,6 +115,18 @@ class UpdateService {
         if (total > 0) onProgress?.call(received / total);
       },
     );
+    // Integrity guard: a truncated/corrupt download would otherwise be handed to
+    // the installer and rejected as "package appears to be invalid". Fail loudly
+    // instead so the user just retries the download.
+    if (expectedSize > 0) {
+      final actual = await file.length();
+      if (actual != expectedSize) {
+        await file.delete();
+        throw Exception(
+          'Download incomplete ($actual/$expectedSize bytes) — please retry.',
+        );
+      }
+    }
     return file;
   }
 
@@ -137,27 +157,48 @@ class UpdateService {
       ? Hive.box(_boxName)
       : await Hive.openBox(_boxName);
 
-  /// Prefer a universal APK (installs on any ABI), then arm64-v8a, then the
-  /// first .apk asset. Returns (name, url) or null when no APK is attached.
-  (String, String)? _pickApk(List assets) {
-    final apks = <(String, String)>[];
+  /// This device's supported ABIs, best-first (e.g. ["arm64-v8a","armeabi-v7a"]).
+  /// Empty on non-Android or any error — callers fall back to the universal APK.
+  Future<List<String>> _deviceAbis() async {
+    try {
+      if (!Platform.isAndroid) return const [];
+      final info = await DeviceInfoPlugin().androidInfo;
+      return info.supportedAbis;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Pick the asset to download. Prefer the per-ABI APK matching THIS device
+  /// (in the device's own ABI-preference order) — it's ~40% smaller than the
+  /// fat universal, so the download is faster and far less likely to truncate,
+  /// and the smaller package installs more reliably (a partial/oversized APK is
+  /// what surfaces as "package appears to be invalid"). Fall back to the
+  /// universal APK, then any .apk. Returns (name, url, size) or null.
+  (String, String, int)? _pickApk(List assets, List<String> abis) {
+    final apks = <(String, String, int)>[];
     for (final a in assets) {
       if (a is! Map) continue;
       final name = (a['name'] as String?) ?? '';
       final url = (a['browser_download_url'] as String?) ?? '';
+      final size = (a['size'] as num?)?.toInt() ?? 0;
       if (name.toLowerCase().endsWith('.apk') && url.isNotEmpty) {
-        apks.add((name, url));
+        apks.add((name, url, size));
       }
     }
     if (apks.isEmpty) return null;
-    (String, String)? withFrag(String frag) {
+    (String, String, int)? withFrag(String frag) {
       for (final x in apks) {
-        if (x.$1.toLowerCase().contains(frag)) return x;
+        if (x.$1.toLowerCase().contains(frag.toLowerCase())) return x;
       }
       return null;
     }
 
-    return withFrag('universal') ?? withFrag('arm64') ?? apks.first;
+    for (final abi in abis) {
+      final match = withFrag(abi);
+      if (match != null) return match;
+    }
+    return withFrag('universal') ?? apks.first;
   }
 
   /// "v1.3.0+4" / "1.3.0-beta" → "1.3.0" (digits-and-dots only).

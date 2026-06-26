@@ -113,6 +113,9 @@ dependencies:
   # the downloaded APK to the system installer.
   package_info_plus: ^9.0.1
   open_filex: ^4.5.0
+  # Read the device's supported ABIs so the updater downloads the matching
+  # per-ABI APK (smaller/faster than the fat universal) instead of guessing.
+  device_info_plus: ^12.4.0
 
 dev_dependencies:
   flutter_test:

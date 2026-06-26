@@ -60,6 +60,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
     try {
       final file = await widget.service.downloadApk(
         widget.info.apkUrl,
+        expectedSize: widget.info.apkSize,
         onProgress: (p) {
           if (mounted) setState(() => _progress = p);
         },
@@ -126,13 +127,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
                 child: SingleChildScrollView(
-                  child: Text(
-                    notes,
-                    style: AppText.body.copyWith(
-                      color: AppColors.textSecondary,
-                      height: 1.4,
-                    ),
-                  ),
+                  child: _ReleaseNotes(notes),
                 ),
               ),
               const SizedBox(height: 14),
@@ -210,4 +205,147 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       ),
     );
   }
+}
+
+/// Renders GitHub release notes (markdown) as clean styled text — no markdown
+/// package needed. Handles the common changelog subset: `#`/`##`/`###` headers,
+/// `-`/`*`/`+` bullets, `**bold**`/`__bold__`, `*italic*`/`_italic_`,
+/// `` `code` ``, `[text](url)` links (shown as their text), `---` rules, and
+/// blank-line spacing. Soft-wrapped lines inside a paragraph/bullet are merged
+/// first, so an inline span (e.g. `**bold**`) that wraps across a source newline
+/// still renders. Anything it doesn't recognise falls through as plain text.
+class _ReleaseNotes extends StatelessWidget {
+  const _ReleaseNotes(this.source);
+
+  final String source;
+
+  @override
+  Widget build(BuildContext context) {
+    final base = AppText.body.copyWith(
+      color: AppColors.textSecondary,
+      height: 1.4,
+    );
+    final widgets = <Widget>[];
+    for (final b in _blocks(source)) {
+      switch (b.type) {
+        case 'blank':
+          widgets.add(const SizedBox(height: 8));
+        case 'hr':
+          widgets.add(Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Divider(
+              color: AppColors.textTertiary.withValues(alpha: 0.3),
+              height: 1,
+            ),
+          ));
+        case 'header':
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(top: 4, bottom: 2),
+            child: Text.rich(_inline(
+              b.text,
+              base.copyWith(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: b.level <= 1 ? 16 : (b.level == 2 ? 15 : 14),
+              ),
+            )),
+          ));
+        case 'bullet':
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('•  ', style: base),
+                Expanded(child: Text.rich(_inline(b.text, base))),
+              ],
+            ),
+          ));
+        default:
+          widgets.add(Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: Text.rich(_inline(b.text, base)),
+          ));
+      }
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: widgets,
+    );
+  }
+
+  /// Group the markdown into logical blocks, merging soft-wrapped continuation
+  /// lines into the preceding paragraph/bullet so inline spans that wrap across
+  /// source newlines aren't split (which would leak literal `**` markers).
+  List<_Blk> _blocks(String src) {
+    final out = <_Blk>[];
+    for (final raw in src.replaceAll('\r\n', '\n').split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) {
+        out.add(_Blk('blank'));
+      } else if (RegExp(r'^([-*_])\1{2,}$').hasMatch(line)) {
+        out.add(_Blk('hr'));
+      } else if (RegExp(r'^(#{1,6})\s+(.*)$').firstMatch(line) case final h?) {
+        out.add(_Blk('header', h.group(2)!, h.group(1)!.length));
+      } else if (RegExp(r'^[-*+]\s+(.*)$').firstMatch(line) case final b?) {
+        out.add(_Blk('bullet', b.group(1)!));
+      } else if (out.isNotEmpty &&
+          (out.last.type == 'bullet' || out.last.type == 'p')) {
+        out.last.text = '${out.last.text} $line'; // soft-wrap continuation
+      } else {
+        out.add(_Blk('p', line));
+      }
+    }
+    return out;
+  }
+
+  /// Inline markdown → styled spans: `**bold**`/`__bold__`, `*italic*`/`_italic_`,
+  /// `` `code` ``, and `[text](url)` links collapsed to their text.
+  TextSpan _inline(String text, TextStyle style) {
+    final delinked = text.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\(([^)]+)\)'),
+      (m) => m.group(1) ?? '',
+    );
+    final spans = <TextSpan>[];
+    final pattern = RegExp(r'(\*\*|__)(.+?)\1|(\*|_)(.+?)\3|`([^`]+)`');
+    var i = 0;
+    for (final m in pattern.allMatches(delinked)) {
+      if (m.start > i) {
+        spans.add(TextSpan(text: delinked.substring(i, m.start), style: style));
+      }
+      if (m.group(2) != null) {
+        spans.add(TextSpan(
+          text: m.group(2),
+          style: style.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w700,
+          ),
+        ));
+      } else if (m.group(4) != null) {
+        spans.add(TextSpan(
+          text: m.group(4),
+          style: style.copyWith(fontStyle: FontStyle.italic),
+        ));
+      } else if (m.group(5) != null) {
+        spans.add(TextSpan(
+          text: m.group(5),
+          style: style.copyWith(fontFamily: 'monospace', color: Colors.white),
+        ));
+      }
+      i = m.end;
+    }
+    if (i < delinked.length) {
+      spans.add(TextSpan(text: delinked.substring(i), style: style));
+    }
+    return TextSpan(children: spans, style: style);
+  }
+}
+
+/// One logical markdown block: type ∈ {blank, hr, header, bullet, p}.
+class _Blk {
+  _Blk(this.type, [this.text = '', this.level = 0]);
+  final String type;
+  String text;
+  final int level;
 }
