@@ -2,11 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/di/injector.dart';
-import '../../../core/playback/resume_store.dart';
-import '../../../core/playback/watch_history.dart';
-import '../../../core/repository/source_repository.dart';
 import '../../auth/auth_cubit.dart';
-import '../../player/player_screen.dart';
 import '../model/room_state.dart';
 import '../watch_together_controller.dart';
 import 'host_choosing_screen.dart';
@@ -212,50 +208,20 @@ class WatchPartyLobbyScreen extends StatelessWidget {
 // Post-join routing
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// After a successful [WatchTogetherController.join], push the appropriate
-/// screen:
-/// - mode `playing` + non-empty sourceId → content [PlayerScreen] (no
-///   joinRoomCode — we already joined via the lobby).
-/// - otherwise → [HostChoosingScreen] (host is still browsing).
+/// After a successful [WatchTogetherController.join], push [HostChoosingScreen]
+/// as the party base.  If the host is already playing, the controller's viewer
+/// follow-driver ([WatchTogetherController._followHost]) pushes the content
+/// player on top immediately (it fires once at the end of [join]).
 Future<void> routeAfterJoin(
   BuildContext context,
   WatchTogetherController controller,
 ) async {
-  final room = controller.room;
-  if (room == null) return;
+  if (controller.room == null) return;
 
   final nav = Navigator.of(context, rootNavigator: true);
-
-  if (room.mode == 'playing' && room.sourceId.isNotEmpty) {
-    final repo = sl<SourceRepository>();
-    nav.push(MaterialPageRoute(
-      builder: (_) => PlayerScreen(
-        sourceId: room.sourceId,
-        episodesResolver: () => repo.episodes(
-          room.showUrl,
-          category: room.category,
-          sourceId: room.sourceId,
-        ),
-        resumeEpisodeId: room.episodeId,
-        resumeEpisodeNumber: room.episodeNumber,
-        resumePosition: Duration(milliseconds: room.positionMs),
-        resume: sl<ResumeStore>(),
-        resolveSources: (u) =>
-            repo.sources(u, sourceId: room.sourceId, fast: true),
-        history: sl<WatchHistory>(),
-        showTitle: room.showTitle,
-        cover: room.cover,
-        showUrl: room.showUrl,
-        category: room.category,
-        malId: room.malId,
-        // joinRoomCode intentionally omitted — join already happened.
-      ),
-    ));
-  } else {
-    nav.push(MaterialPageRoute(
-      builder: (_) => const HostChoosingScreen(),
-    ));
-  }
+  nav.push(MaterialPageRoute(
+    builder: (_) => const HostChoosingScreen(),
+  ));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

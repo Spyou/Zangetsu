@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../auth/auth_cubit.dart';
 import '../../core/di/injector.dart';
+import '../../core/ui/global_messenger.dart';
 import 'model/room_state.dart';
 import 'sync_math.dart';
+import 'ui/party_player_route.dart';
 import 'watch_room_service.dart';
 
 class WatchTogetherController extends ChangeNotifier {
@@ -61,6 +63,10 @@ class WatchTogetherController extends ChangeNotifier {
   bool _wantsControl = false;
   bool _disposed = false;
 
+  // Viewer follow-navigation state (unused for the host).
+  String? _viewerStageKey;
+  bool _viewerPlayerUp = false;
+
   String get _uid => sl<AuthCubit>().state.user?.$id ?? '';
   String get _uname => sl<AuthCubit>().state.user?.name ?? 'Guest';
   bool get isHost => role == RoomRole.host;
@@ -88,6 +94,7 @@ class WatchTogetherController extends ChangeNotifier {
     // Apply the current state right away.
     onEpisodeChange?.call(r);
     _applyRoom(r);
+    if (!isHost) _followHost(r);
     return true;
   }
 
@@ -174,7 +181,10 @@ class WatchTogetherController extends ChangeNotifier {
       _lastEpisodeId = r.episodeId;
       if (!isHost) onEpisodeChange?.call(r);
     }
-    if (!isHost) _applyRoom(r);
+    if (!isHost) {
+      _applyRoom(r);
+      _followHost(r);
+    }
     notifyListeners();
   }
 
@@ -266,6 +276,37 @@ class WatchTogetherController extends ChangeNotifier {
         createdAt: _now));
   }
 
+  // ---- viewer follow-navigation ----
+
+  /// Drives the viewer's navigator to follow the host's current stage:
+  /// - host playing a show  → push (or replace) the content player
+  /// - host goes idle       → pop back to the HostChoosingScreen base
+  ///
+  /// Keyed on the SHOW (sourceId|showUrl), not the episode, so that episode
+  /// switches within the same loaded show are handled in-place by [onEpisodeChange]
+  /// and do NOT cause an extra push here.
+  void _followHost(RoomState r) {
+    final target = (r.mode == 'playing' && r.sourceId.isNotEmpty)
+        ? '${r.sourceId}|${r.showUrl}'
+        : null;
+    if (target == _viewerStageKey) return;
+    _viewerStageKey = target;
+    final nav = rootNavigatorKey.currentState;
+    if (nav == null) return;
+    if (target != null) {
+      final route = buildPartyPlayerRoute(r);
+      if (_viewerPlayerUp) {
+        nav.pushReplacement(route);
+      } else {
+        nav.push(route);
+        _viewerPlayerUp = true;
+      }
+    } else if (_viewerPlayerUp) {
+      nav.pop(); // back to the HostChoosingScreen base
+      _viewerPlayerUp = false;
+    }
+  }
+
   Future<void> leave() async {
     final code = room?.code;
     if (code != null && isHost) {
@@ -287,6 +328,7 @@ class WatchTogetherController extends ChangeNotifier {
     _hostBeat = _presenceBeat = null;
     room = null; role = RoomRole.none; participants = const []; messages = const [];
     _joinedAt = null; _wantsControl = false;
+    _viewerStageKey = null; _viewerPlayerUp = false;
     if (!_disposed) notifyListeners();
   }
 
