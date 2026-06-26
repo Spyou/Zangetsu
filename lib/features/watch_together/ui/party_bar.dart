@@ -30,7 +30,7 @@ class PartyBar extends StatelessWidget {
         return Material(
           color: Colors.black87,
           child: InkWell(
-            onTap: () => showRoomParticipantsSheet(context, sl<WatchTogetherController>()),
+            onTap: () => _openSheet(showRoomParticipantsSheet),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
@@ -55,8 +55,7 @@ class PartyBar extends StatelessWidget {
                   _BarButton(
                     icon: Icons.chat_bubble_outline,
                     label: 'Chat',
-                    onTap: () => showRoomChatSheet(
-                        context, sl<WatchTogetherController>()),
+                    onTap: () => _openSheet(showRoomChatSheet),
                   ),
                   const SizedBox(width: 4),
                   _BarButton(
@@ -72,6 +71,14 @@ class PartyBar extends StatelessWidget {
         );
       },
     );
+  }
+
+  // The party bar lives in MaterialApp.builder, OUTSIDE the route Navigator, so
+  // its own BuildContext has no Navigator ancestor and can't host a modal sheet.
+  // Open sheets through the root navigator's overlay context instead.
+  void _openSheet(void Function(BuildContext, WatchTogetherController) open) {
+    final ctx = rootNavigatorKey.currentState?.overlay?.context;
+    if (ctx != null) open(ctx, sl<WatchTogetherController>());
   }
 
   Future<void> _copyInvite(String code) async {

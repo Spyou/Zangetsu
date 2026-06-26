@@ -28,7 +28,6 @@ import '../../core/ui/source_switcher.dart';
 import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
-import '../watch_together/ui/watch_party_lobby_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'see_all_screen.dart';
 
@@ -312,26 +311,6 @@ class _HomeViewState extends State<_HomeView> {
                 onChanged: (newId) =>
                     context.read<ActiveSourceCubit>().setSource(newId),
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.groups_2_outlined),
-              tooltip: 'Watch Party',
-              onPressed: () {
-                if (sl<AuthCubit>().state.user != null) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const WatchPartyLobbyScreen(),
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Sign in to watch together'),
-                    ),
-                  );
-                }
-              },
             ),
           ],
         ),
