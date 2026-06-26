@@ -42,6 +42,7 @@ import '../discord/discord_rpc.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
+import '../../features/watch_together/watch_together_controller.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -67,6 +68,9 @@ Future<void> initDependencies() async {
     WatchHistory(sl<AppwriteService>(), currentUserId),
   );
   sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<AppwriteService>()));
+  sl.registerSingleton<WatchTogetherController>(
+    WatchTogetherController(sl<WatchRoomService>()),
+  );
   await MyListStore.init();
   sl.registerSingleton<MyListStore>(
     MyListStore(sl<AppwriteService>(), currentUserId),
