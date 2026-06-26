@@ -17,11 +17,20 @@ class WatchRoomService {
 
   // ── Channel helpers ────────────────────────────────────────────────────────
 
-  String _docChannel(String col, String id) =>
-      'databases.${Environment.databaseId}.collections.$col.documents.$id';
+  // Appwrite 1.7+ (TablesDB) fires realtime on `tablesdb.<db>.tables.<t>.rows.<r>`;
+  // older servers use `databases.<db>.collections.<c>.documents.<d>`. We subscribe
+  // to BOTH so realtime works regardless of server version (CRUD still uses the
+  // legacy Databases API, which the server keeps compatible). Without the
+  // tablesdb channel, a 1.9 server delivers no events and nothing syncs.
+  List<String> _docChannels(String col, String id) => [
+        'tablesdb.${Environment.databaseId}.tables.$col.rows.$id',
+        'databases.${Environment.databaseId}.collections.$col.documents.$id',
+      ];
 
-  String _colChannel(String col) =>
-      'databases.${Environment.databaseId}.collections.$col.documents';
+  List<String> _colChannels(String col) => [
+        'tablesdb.${Environment.databaseId}.tables.$col.rows',
+        'databases.${Environment.databaseId}.collections.$col.documents',
+      ];
 
   // ── Room CRUD ──────────────────────────────────────────────────────────────
 
@@ -77,7 +86,7 @@ class WatchRoomService {
   /// Emits a new [RoomState] whenever the Appwrite document for [code] changes.
   Stream<RoomState> watchRoom(String code) {
     final sub = _aw.realtime.subscribe(
-        [_docChannel(Environment.watchRoomsCollectionId, code)]);
+        _docChannels(Environment.watchRoomsCollectionId, code));
     return sub.stream
         .where((e) => e.payload.isNotEmpty)
         .map((e) => RoomState.fromMap(e.payload));
@@ -142,7 +151,7 @@ class WatchRoomService {
   /// Caller should re-call [listParticipants] on each tick.
   Stream<void> watchParticipants(String code) {
     final sub = _aw.realtime
-        .subscribe([_colChannel(Environment.roomParticipantsCollectionId)]);
+        .subscribe(_colChannels(Environment.roomParticipantsCollectionId));
     return sub.stream
         // Delete events arrive with an empty payload, so we can't match roomId on
         // them — forward those too (a delete from another room just triggers a
@@ -189,7 +198,7 @@ class WatchRoomService {
   /// Emits each new [RoomMessage] broadcast to room [code] in real time.
   Stream<RoomMessage> watchMessages(String code) {
     final sub = _aw.realtime
-        .subscribe([_colChannel(Environment.roomMessagesCollectionId)]);
+        .subscribe(_colChannels(Environment.roomMessagesCollectionId));
     return sub.stream
         .where((e) =>
             '${e.payload['roomId']}' == code && e.payload['text'] != null)
