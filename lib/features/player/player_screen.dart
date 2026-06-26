@@ -32,11 +32,8 @@ import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
-import '../auth/auth_cubit.dart';
-import '../watch_together/model/room_state.dart';
 import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
-import '../watch_together/ui/watch_together_sheet.dart';
 import 'player_controller.dart';
 import 'seek_preview.dart';
 
@@ -1740,42 +1737,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onChat: (_room.room != null)
                           ? () => setState(() => _chatOpen = !_chatOpen)
                           : null,
-                      onWatchTogether: _room.room == null
-                          ? () {
-                              if (sl<AuthCubit>().state.user == null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Sign in to watch together')));
-                                return;
-                              }
-                              showWatchTogetherSheet(
-                              context,
-                              controller: _room,
-                              buildInitialRoom: () => RoomState(
-                          code: '',
-                          hostId: '',
-                          hostName: '',
-                          hostAvatar: '',
-                          sourceId: _c.sourceId,
-                          sourceLabel: widget.showTitle ?? '',
-                          showUrl: widget.showUrl ?? '',
-                          showTitle: widget.showTitle ?? '',
-                          cover: widget.cover ?? '',
-                          episodeId: _c.currentEpisode.id,
-                          episodeNumber: _c.currentEpisode.number,
-                          episodeUrl: _c.currentEpisode.url,
-                          category: widget.category ?? 'sub',
-                          malId: widget.malId,
-                          tmdbId: widget.tmdbId,
-                          positionMs:
-                              _c.player.state.position.inMilliseconds,
-                          playing: _c.player.state.playing,
-                          rate: 1.0,
-                          updatedAt: 0,
-                          status: 'active',
-                        ),
-                      );
-                            }
-                          : null,
                     ),
                   ),
                 )
@@ -1872,23 +1833,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // 7. Up-next card (auto-advance countdown).
               if (_upNext) _buildUpNextCard(),
 
-              // 8. Room presence strip — shown whenever a Watch Together room
-              // is active, independent of controls visibility (always readable).
-              // Positioned top-right within the safe area, next to the title bar.
-              if (_room.room != null)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: SafeArea(
-                    bottom: false,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 10, right: 12),
-                      child: RoomStrip(controller: _room),
-                    ),
-                  ),
-                ),
-
-              // 9. In-room chat panel — slides in from the right when _chatOpen.
+              // 8. In-room chat panel — slides in from the right when _chatOpen.
               // Gated on an active room; collapsed when leaving.
               if (_room.room != null && _chatOpen)
                 Positioned(
@@ -2241,7 +2186,6 @@ class _ControlsOverlay extends StatelessWidget {
     required this.megaSkipSeconds,
     required this.onMegaSkip,
     this.onPip,
-    this.onWatchTogether,
     this.onChat,
   });
 
@@ -2267,7 +2211,6 @@ class _ControlsOverlay extends StatelessWidget {
   final int megaSkipSeconds;
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
-  final VoidCallback? onWatchTogether; // Watch Together entry point
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
 
   @override
@@ -2416,11 +2359,6 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                     onPressed: onLock,
                   ),
-                  if (onWatchTogether != null)
-                    IconButton(
-                      icon: const Icon(Icons.group, color: Colors.white),
-                      onPressed: onWatchTogether,
-                    ),
                   if (onChat != null)
                     IconButton(
                       icon: const Icon(

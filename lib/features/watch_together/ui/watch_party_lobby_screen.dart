@@ -47,31 +47,36 @@ class WatchPartyLobbyScreen extends StatelessWidget {
       return;
     }
 
-    await controller.host(const RoomState(
-      code: '',
-      hostId: '',
-      hostName: '',
-      hostAvatar: '',
-      sourceId: '',
-      sourceLabel: '',
-      showUrl: '',
-      showTitle: '',
-      cover: '',
-      episodeId: '',
-      episodeNumber: null,
-      episodeUrl: '',
-      category: 'sub',
-      malId: null,
-      tmdbId: null,
-      positionMs: 0,
-      playing: false,
-      rate: 1.0,
-      updatedAt: 0,
-      status: 'active',
-      mode: 'lobby',
-    ));
-
-    if (context.mounted) Navigator.of(context).pop();
+    final nav = Navigator.of(context);
+    try {
+      await controller.host(const RoomState(
+        code: '',
+        hostId: '',
+        hostName: '',
+        hostAvatar: '',
+        sourceId: '',
+        sourceLabel: '',
+        showUrl: '',
+        showTitle: '',
+        cover: '',
+        episodeId: '',
+        episodeNumber: null,
+        episodeUrl: '',
+        category: 'sub',
+        malId: null,
+        tmdbId: null,
+        positionMs: 0,
+        playing: false,
+        rate: 1.0,
+        updatedAt: 0,
+        status: 'active',
+        mode: 'lobby',
+      ));
+    } catch (_) {
+      // host() may throw inside _enter after the room is already created;
+      // the pop below still runs because room != null.
+    }
+    if (controller.room != null && nav.mounted) nav.pop();
   }
 
   // ── Join ──────────────────────────────────────────────────────────────────

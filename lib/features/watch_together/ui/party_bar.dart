@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/ui/global_messenger.dart';
 import '../watch_together_controller.dart';
+import 'room_panel.dart';
 
 /// App-wide party bar that overlays the top of every screen when a Watch Party
 /// is active. Returns [SizedBox.shrink] when no party is running so it has
@@ -29,7 +30,7 @@ class PartyBar extends StatelessWidget {
         return Material(
           color: Colors.black87,
           child: InkWell(
-            onTap: () => _copyInvite(code),
+            onTap: () => showRoomParticipantsSheet(context, sl<WatchTogetherController>()),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
