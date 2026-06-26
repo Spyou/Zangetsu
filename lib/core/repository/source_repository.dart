@@ -67,8 +67,12 @@ class SourceRepository {
   /// CloudStream ids (`cs:<name>`) route to the native plugin host.
   BaseProvider _providerFor(String? id) {
     final resolved = id ?? _active.state;
+    // CloudStream ids carry a `@version@repoTag` suffix that differs between
+    // installs, so resolve by provider IDENTITY (exact id first) — otherwise a
+    // Watch Together room created on one device can't open on another that has
+    // the same provider from a different repo/version.
     final p = _isCloudStream(resolved)
-        ? _csManager.get(resolved)
+        ? _csManager.resolveCompatible(resolved)
         : _manager.get(resolved);
     if (p == null) {
       throw StateError('Provider not loaded: $resolved');

@@ -622,6 +622,41 @@ class CloudStreamManager extends ChangeNotifier {
   /// Provider for a `cs:<name>` source id, or null when not installed.
   BaseProvider? get(String sourceId) => _providers[sourceId];
 
+  /// Resolve a provider for [sourceId], falling back to the provider's
+  /// repo/version-agnostic IDENTITY (its internalName / name, ignoring the
+  /// `@version@repoTag` suffix) when the exact tagged id isn't installed. Lets a
+  /// Watch Together room created on one install resolve on another that has the
+  /// SAME provider from a different repo or version. Exact match runs first, so
+  /// normal playback is unaffected — the name fallback only triggers when the
+  /// exact id is missing.
+  BaseProvider? resolveCompatible(String sourceId) {
+    final exact = _providers[sourceId];
+    if (exact != null) return exact;
+    final wanted = _identity(sourceId);
+    if (wanted.isEmpty) return null;
+    CloudStreamProvider? fallback;
+    for (final p in _providers.values) {
+      final ids = <String>{
+        _identity(p.sourceId),
+        if (p.sourcePlugin != null && p.sourcePlugin!.isNotEmpty)
+          p.sourcePlugin!.split('@').first.toLowerCase(),
+        p.name.toLowerCase(),
+      };
+      if (!ids.contains(wanted)) continue;
+      if (isEnabled(p.sourceId)) return p; // prefer an enabled match
+      fallback ??= p;
+    }
+    return fallback;
+  }
+
+  /// Repo/version-agnostic identity token of a `cs:` source id — the
+  /// internalName (first `@`-segment of the plugin id) or the bare name.
+  static String _identity(String sourceId) {
+    final body = sourceId.startsWith('cs:') ? sourceId.substring(3) : sourceId;
+    final at = body.indexOf('@');
+    return (at >= 0 ? body.substring(0, at) : body).toLowerCase();
+  }
+
   /// The origin repo's display name for an installed CS source, or null when it
   /// isn't attributable to a persisted repo (e.g. the synthetic "Other" group).
   /// Used to show "which repo" a source came from (detail screen, etc.).
