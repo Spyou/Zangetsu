@@ -411,6 +411,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
         }
         if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i, fromRoom: true);
       },
+      content: {
+        'sourceId': _c.sourceId,
+        'sourceLabel': widget.showTitle ?? '',
+        'showUrl': widget.showUrl ?? '',
+        'showTitle': widget.showTitle ?? '',
+        'cover': widget.cover ?? '',
+        'episodeId': _c.currentEpisode.id,
+        'episodeNumber': _c.currentEpisode.number,
+        'episodeUrl': _c.currentEpisode.url,
+        'category': widget.category ?? 'sub',
+        'malId': widget.malId,
+        'tmdbId': widget.tmdbId,
+        'positionMs': _c.player.state.position.inMilliseconds,
+      },
     );
     _wireRoom(_room);
     if (widget.joinRoomCode != null) _room.join(widget.joinRoomCode!);

@@ -30,16 +30,18 @@ class WatchTogetherController extends ChangeNotifier {
 
   /// Bind the controller to the currently-active player. Replaces any prior
   /// binding (only one player is attached at a time). Host marks the room
-  /// playing; the existing broadcast/heartbeat path takes over from there.
+  /// playing and broadcasts the full content descriptor so viewers know what
+  /// to launch; the existing broadcast/heartbeat path takes over from there.
   void attachPlayer({
     required Duration Function() localPosition,
     required void Function(bool playing, Duration pos, double rate) onApplyRemote,
     required void Function(RoomState room) onEpisodeChange,
+    Map<String, dynamic>? content,
   }) {
     this.localPosition = localPosition;
     this.onApplyRemote = onApplyRemote;
     this.onEpisodeChange = onEpisodeChange;
-    if (isHost) _writeHost(extra: {'mode': 'playing'});
+    if (isHost) _writeHost(extra: {'mode': 'playing', ...?content});
   }
 
   /// Unbind on player close. Host returns the room to the lobby (idle) state.
