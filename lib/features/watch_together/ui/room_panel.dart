@@ -70,6 +70,19 @@ class _RoomParticipantsSheet extends StatelessWidget {
                   ),
                 ),
                 const Divider(color: Colors.white12, height: 1),
+                // Viewer banner — shown when the local user is not the host.
+                if (controller.room != null && !canControl)
+                  _ViewerControlBanner(
+                    onRequest: () async {
+                      await controller.requestControl();
+                      if (context.mounted) {
+                        Navigator.of(context).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Requested control')),
+                        );
+                      }
+                    },
+                  ),
                 // Participant rows.
                 ConstrainedBox(
                   constraints: BoxConstraints(
@@ -155,6 +168,62 @@ class _RoomParticipantsSheet extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Viewer control banner — shown at the top of the participants sheet when the
+// local user is a non-host viewer. Explains the host controls playback and
+// provides a one-tap "Request control" button.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ViewerControlBanner extends StatelessWidget {
+  const _ViewerControlBanner({required this.onRequest});
+
+  final VoidCallback onRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: Colors.white.withValues(alpha: 0.1), width: 0.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.lock_rounded, size: 14, color: Colors.white54),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Text(
+              'Host controls playback',
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ),
+          TextButton(
+            onPressed: onRequest,
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.blueAccent.withValues(alpha: 0.85),
+              foregroundColor: Colors.white,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text(
+              'Request control',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
