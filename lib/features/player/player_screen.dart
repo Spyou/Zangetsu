@@ -399,7 +399,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (i < 0 && r.episodeNumber != null) {
           i = _c.episodes.indexWhere((e) => e.number == r.episodeNumber);
         }
-        if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i);
+        if (i >= 0 && i != _c.state.currentIndex) _c.openEpisode(i, fromRoom: true);
       });
     _wireRoom(_room!);
 

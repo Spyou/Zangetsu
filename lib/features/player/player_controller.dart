@@ -637,6 +637,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         : (dur > Duration.zero && target > dur ? dur : target);
     _markUserSeek(clamped);
     player.seek(clamped);
+    if (roomRole == RoomRole.host) onLocalPlayback?.call('seek', clamped);
   }
 
   /// Record a deliberate user seek to [target]. Besides flagging the jump as
@@ -807,8 +808,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   // setSubtitleFromFile. Full subtitle styling + delay/sync are handled above.
 
   /// Resolves sources for [index] and starts the best one.
-  Future<void> openEpisode(int index) async {
-    if (_isRoomViewer) return;
+  /// [fromRoom] bypasses the viewer lock so the room can move viewers to the
+  /// host's episode; all other callers leave it false so viewer taps stay blocked.
+  Future<void> openEpisode(int index, {bool fromRoom = false}) async {
+    if (_isRoomViewer && !fromRoom) return;
     final gen = ++_gen;
     await _persist();
     // Only drop the pending resume when actually switching episodes — a

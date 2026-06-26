@@ -117,7 +117,6 @@ class _RoomParticipantsSheet extends StatelessWidget {
                                     const _Chip(
                                         label: 'HOST', color: Colors.amber),
                                   if (p.wantsControl && !isThisHost) ...[
-                                    if (isThisHost) const SizedBox(width: 4),
                                     const _Chip(
                                         label: 'Wants control',
                                         color: Colors.blueAccent),
