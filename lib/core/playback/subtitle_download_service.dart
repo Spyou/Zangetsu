@@ -3,21 +3,17 @@ import 'package:dio/dio.dart';
 import '../di/injector.dart';
 import '../metadata/tmdb.dart';
 
-/// Keyless subtitle lookup via the Stremio OpenSubtitles v3 addon
-/// (https://opensubtitles-v3.strem.io). No API key required — the addon is
-/// publicly available and rate-limits by IP.
+/// Online subtitle lookup for the auto-download feature, in two tiers:
 ///
-/// Usage:
-/// ```dart
-/// final subs = await SubtitleDownloadService().find(
-///   imdbId: 'tt0111161',
-///   iso2: 'eng',
-/// );
-/// ```
+///  1. **Stremio OpenSubtitles v3 addon** (https://opensubtitles-v3.strem.io) —
+///     keyless, great for English/European languages. Tried first.
+///  2. **SubDL** (https://api.subdl.com) — used as a fallback for languages the
+///     Stremio addon omits (Hindi, Tamil, Telugu, Bengali, Urdu, Malayalam…).
+///     Needs a free API key baked into [subDlApiKey]; when that's empty the
+///     SubDL tier is skipped entirely and only the keyless Stremio tier runs.
 ///
-/// The returned records carry the direct SRT/VTT [url] and the ISO-639-2
-/// [lang] code (e.g. `'eng'`). May be empty when nothing matches or on any
-/// network/parse error.
+/// Returns records with a direct SRT/VTT [url] and the source [lang] string.
+/// Never throws — returns `[]` on no-match or any network/parse error.
 class SubtitleDownloadService {
   SubtitleDownloadService({Dio? dio})
     : _dio =
@@ -33,19 +29,22 @@ class SubtitleDownloadService {
 
   static const String _stremioBase = 'https://opensubtitles-v3.strem.io';
 
-  /// Finds subtitles for a title in [iso2] (ISO-639-2, e.g. `'eng'`).
+  // ── SubDL ──────────────────────────────────────────────────────────────────
+  // Free API key from subdl.com (one key, used by every install — SubDL's free
+  // tier has no download cap and ~2000 searches/day, so it scales like the TMDB
+  // key). Leave empty to disable the SubDL tier (Stremio-only). PASTE KEY HERE:
+  static const String subDlApiKey = '';
+  static const String _subDlApi = 'https://api.subdl.com/api/v1';
+  static const String _subDlCdn = 'https://dl.subdl.com';
+
+  /// Finds subtitles for a title in the given language.
   ///
-  /// Resolution order for the IMDb id:
-  ///   1. Use [imdbId] directly when non-null/non-empty.
-  ///   2. Otherwise call TMDB external_ids for [tmdbId] to get the IMDb id.
-  ///   3. When both are absent but [title] is non-empty, search TMDB by title
-  ///      to obtain a tmdbId, then continue with step 2.
-  ///   4. If no IMDb id can be resolved → return `[]`.
+  /// [iso2] is the ISO-639-2 code (e.g. `'hin'`) used by the Stremio tier;
+  /// [iso1] is the ISO-639-1 code (e.g. `'hi'`) used (uppercased) by SubDL.
   ///
-  /// For series pass `isTv = true` with [season] and [episode]; the addon
-  /// builds the `series/<imdb>:<s>:<e>` resource path automatically.
-  ///
-  /// Never throws — returns `[]` on any error.
+  /// Resolution order for the id: [imdbId] → TMDB external_ids for [tmdbId] →
+  /// TMDB title search for [title]. For series pass `isTv = true` with [season]
+  /// and [episode]. Never throws — returns `[]` on any error.
   Future<List<({String lang, String url})>> find({
     String? imdbId,
     int? tmdbId,
@@ -55,32 +54,56 @@ class SubtitleDownloadService {
     String? title,
     int? year,
     required String iso2,
+    String iso1 = '',
   }) async {
-    try {
-      // 1. Resolve the IMDb id.
-      final resolvedImdb = await _resolveImdbId(
-        imdbId: imdbId,
+    final resolvedImdb = await _resolveImdbId(
+      imdbId: imdbId,
+      tmdbId: tmdbId,
+      isTv: isTv,
+      title: title,
+      year: year,
+    );
+
+    // 1. Keyless Stremio tier (needs an IMDb id).
+    if (resolvedImdb != null && resolvedImdb.isNotEmpty) {
+      final stremio = await _findStremio(resolvedImdb, isTv, season, episode, iso2);
+      if (stremio.isNotEmpty) return stremio;
+    }
+
+    // 2. SubDL fallback (covers languages Stremio omits). Only when keyed.
+    if (subDlApiKey.isNotEmpty && iso1.trim().isNotEmpty) {
+      return _findSubDl(
+        imdbId: resolvedImdb,
         tmdbId: tmdbId,
         isTv: isTv,
+        season: season,
+        episode: episode,
         title: title,
-        year: year,
+        iso1Upper: iso1.trim().toUpperCase(),
       );
-      if (resolvedImdb == null || resolvedImdb.isEmpty) return const [];
+    }
+    return const [];
+  }
 
-      // 2. Build the Stremio addon URL.
+  /// Stremio OpenSubtitles v3 addon lookup. Filters by ISO-639-2 [iso2].
+  Future<List<({String lang, String url})>> _findStremio(
+    String imdb,
+    bool isTv,
+    int? season,
+    int? episode,
+    String iso2,
+  ) async {
+    try {
       final String resourcePath;
       if (isTv && season != null && episode != null) {
         resourcePath =
-            '$_stremioBase/subtitles/series/$resolvedImdb:$season:$episode.json';
+            '$_stremioBase/subtitles/series/$imdb:$season:$episode.json';
       } else {
-        resourcePath = '$_stremioBase/subtitles/movie/$resolvedImdb.json';
+        resourcePath = '$_stremioBase/subtitles/movie/$imdb.json';
       }
-
-      // 3. Fetch and parse subtitles.
       final res = await _dio.get<Map<String, dynamic>>(resourcePath);
       final subtitlesList = res.data?['subtitles'];
       if (subtitlesList is! List) return const [];
-
       final filter = iso2.trim().toLowerCase();
       final out = <({String lang, String url})>[];
       for (final item in subtitlesList) {
@@ -88,8 +111,84 @@ class SubtitleDownloadService {
         final lang = (item['lang'] as String?)?.trim() ?? '';
         final url = (item['url'] as String?)?.trim() ?? '';
         if (url.isEmpty) continue;
-        if (lang.toLowerCase() == filter) {
-          out.add((lang: lang, url: url));
+        if (lang.toLowerCase() == filter) out.add((lang: lang, url: url));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// SubDL lookup, filtered to [iso1Upper] (uppercase ISO-639-1, e.g. `'HI'`).
+  /// Uses `unpack=1` so the response carries direct `.srt` file URLs (no ZIP
+  /// extraction needed). Identifier preference: imdb_id → tmdb_id → film_name.
+  Future<List<({String lang, String url})>> _findSubDl({
+    String? imdbId,
+    int? tmdbId,
+    bool isTv = false,
+    int? season,
+    int? episode,
+    String? title,
+    required String iso1Upper,
+  }) async {
+    if (subDlApiKey.isEmpty) return const [];
+    try {
+      final params = <String, dynamic>{
+        'api_key': subDlApiKey,
+        'languages': iso1Upper,
+        'type': isTv ? 'tv' : 'movie',
+        'unpack': 1,
+        'subs_per_page': 30,
+      };
+      final imdb = imdbId?.trim() ?? '';
+      if (imdb.isNotEmpty) {
+        params['imdb_id'] = imdb;
+      } else if (tmdbId != null) {
+        params['tmdb_id'] = tmdbId;
+      } else if ((title?.trim() ?? '').isNotEmpty) {
+        params['film_name'] = title!.trim();
+      } else {
+        return const [];
+      }
+      if (isTv && season != null) params['season_number'] = season;
+      if (isTv && episode != null) params['episode_number'] = episode;
+
+      final res = await _dio.get<Map<String, dynamic>>(
+        '$_subDlApi/subtitles',
+        queryParameters: params,
+      );
+      final subs = res.data?['subtitles'];
+      if (subs is! List) return const [];
+
+      final out = <({String lang, String url})>[];
+      for (final item in subs) {
+        if (item is! Map) continue;
+        final lang =
+            (item['language'] as String?)?.trim() ??
+            (item['lang'] as String?)?.trim() ??
+            iso1Upper;
+        final unpack = item['unpack_files'];
+        if (unpack is List) {
+          for (final f in unpack) {
+            if (f is! Map) continue;
+            final url = _subDlUrl((f['url'] as String?)?.trim() ?? '');
+            final fmt = (f['format'] as String?)?.toLowerCase() ?? '';
+            if (url.isNotEmpty &&
+                (fmt == 'srt' ||
+                    fmt == 'vtt' ||
+                    url.toLowerCase().endsWith('.srt') ||
+                    url.toLowerCase().endsWith('.vtt'))) {
+              out.add((lang: lang, url: url));
+            }
+          }
+        } else {
+          // No unpack list — only use the item URL if it's a direct sub file
+          // (we don't unzip .zip archives here).
+          final url = _subDlUrl((item['url'] as String?)?.trim() ?? '');
+          if (url.toLowerCase().endsWith('.srt') ||
+              url.toLowerCase().endsWith('.vtt')) {
+            out.add((lang: lang, url: url));
+          }
         }
       }
       return out;
@@ -98,11 +197,17 @@ class SubtitleDownloadService {
     }
   }
 
-  /// Resolves the IMDb id from [imdbId] (preferred) or via a TMDB
-  /// external_ids lookup for [tmdbId]. When both are absent but [title] is
-  /// non-empty, searches TMDB by title to obtain a tmdbId first, then
-  /// continues with the external_ids lookup. Returns `null` when no usable
-  /// id can be resolved.
+  /// Absolute SubDL download URL ([u] may be relative to the SubDL CDN).
+  String _subDlUrl(String u) {
+    if (u.isEmpty) return '';
+    if (u.startsWith('http')) return u;
+    return '$_subDlCdn${u.startsWith('/') ? '' : '/'}$u';
+  }
+
+  /// Resolves the IMDb id from [imdbId] (preferred) or via a TMDB external_ids
+  /// lookup for [tmdbId]. When both are absent but [title] is non-empty,
+  /// searches TMDB by title to obtain a tmdbId first, then continues with the
+  /// external_ids lookup. Returns `null` when no usable id can be resolved.
   Future<String?> _resolveImdbId({
     String? imdbId,
     int? tmdbId,

@@ -884,6 +884,7 @@ class PlayerCubit extends Cubit<PlayerState> {
             episode: tmdbIsTv ? epNum : null,
             title: title,
             iso2: lang.iso2,
+            iso1: lang.iso1,
           );
           // Discard if the user moved to a different episode or a track was
           // already matched by the time the response arrived.
