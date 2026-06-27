@@ -18,6 +18,7 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/skip_service.dart';
+import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
@@ -774,7 +775,46 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (url == null) return;
     final pref = sl<TitlePrefsStore>().subtitle(sourceId, url);
     if (pref == null) {
-      _subApplied = true; // nothing remembered
+      // No per-title remembered subtitle. Try the global preferred language as
+      // a third tier — soft-subs first, then embedded tracks. This branch is
+      // entered only when pref == null (no per-title memory), so the per-title
+      // memory always wins over the global preference.
+      // When preferredSubtitleLanguage is '' (the default) the inner block is
+      // never entered and _subApplied is set exactly as before, keeping the
+      // default code path byte-for-byte identical.
+      final prefLangCode = sl<PlaybackPrefs>().preferredSubtitleLanguage;
+      if (prefLangCode.isNotEmpty) {
+        final prefLang = languageByPref(prefLangCode);
+        if (prefLang != null) {
+          for (final s in softSubs) {
+            if (matchesSourceLang(s.lang, prefLang)) {
+              player.setSubtitleTrack(
+                SubtitleTrack.uri(
+                  s.url,
+                  title: s.label ?? s.lang,
+                  language: s.lang,
+                ),
+              );
+              _subApplied = true;
+              return;
+            }
+          }
+          for (final t in mediaSubtitleTracks) {
+            final tLang = t.language ?? '';
+            final tTitle = t.title ?? '';
+            if (matchesSourceLang(tLang, prefLang) ||
+                matchesSourceLang(tTitle, prefLang)) {
+              player.setSubtitleTrack(t);
+              _subApplied = true;
+              return;
+            }
+          }
+          // No matching track yet — embedded tracks may still be loading.
+          // Leave _subApplied = false so the retry-on-tracks loop fires again.
+          return;
+        }
+      }
+      _subApplied = true; // nothing remembered and no preferred language
       return;
     }
     if (pref.toLowerCase() == 'off') {
@@ -1233,10 +1273,36 @@ class PlayerCubit extends Cubit<PlayerState> {
       player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
     if (s.subtitles.isNotEmpty) {
-      final sub = s.subtitles.firstWhere(
-        (x) => x.isDefault,
-        orElse: () => s.subtitles.first,
-      );
+      // If the user has a global preferred subtitle language AND there is no
+      // per-title remembered subtitle for this episode, try to auto-select the
+      // first soft-sub whose lang matches the preferred language. If no soft-sub
+      // matches, fall through to the existing isDefault/first logic unchanged.
+      // When preferredSubtitleLanguage is '' (the default) this branch is never
+      // taken and behaviour is byte-for-byte identical to before.
+      Subtitle? prefSub;
+      final prefLangCode = sl<PlaybackPrefs>().preferredSubtitleLanguage;
+      if (prefLangCode.isNotEmpty) {
+        final epUrl = showUrl;
+        final remembered = (epUrl != null && epUrl.isNotEmpty)
+            ? sl<TitlePrefsStore>().subtitle(sourceId, epUrl)
+            : null;
+        if (remembered == null) {
+          final prefLang = languageByPref(prefLangCode);
+          if (prefLang != null) {
+            for (final x in s.subtitles) {
+              if (matchesSourceLang(x.lang, prefLang)) {
+                prefSub = x;
+                break;
+              }
+            }
+          }
+        }
+      }
+      final sub = prefSub ??
+          s.subtitles.firstWhere(
+            (x) => x.isDefault,
+            orElse: () => s.subtitles.first,
+          );
       await player.setSubtitleTrack(
         SubtitleTrack.uri(
           sub.url,
