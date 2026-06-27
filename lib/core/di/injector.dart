@@ -51,6 +51,9 @@ final GetIt sl = GetIt.instance;
 /// repo-installed providers), and the bundled extractors.
 Future<void> initDependencies() async {
   await Hive.initFlutter();
+  // Cache of the signed-in user so the logged-in UI appears INSTANTLY on boot
+  // (AuthCubit reads it before the network session check). See AuthCubit.restore.
+  await Hive.openBox(AuthCubit.cacheBoxName);
   await ProviderDownloader.init();
 
   // Appwrite first (no network on construct) so the library stores can use it

@@ -14,14 +14,23 @@ import 'host_choosing_screen.dart';
 /// - Join with a code: login-gated; joins via [WatchTogetherController.join]
 ///   and routes to the content player (mode `playing`) or
 ///   [HostChoosingScreen] (mode `lobby`).
-class WatchPartyLobbyScreen extends StatelessWidget {
+class WatchPartyLobbyScreen extends StatefulWidget {
   const WatchPartyLobbyScreen({super.key});
+
+  @override
+  State<WatchPartyLobbyScreen> createState() => _WatchPartyLobbyScreenState();
+}
+
+class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
+  // True while a create/join request is in flight — drives the button spinner
+  // ("Creating…") and blocks double-taps so the user knows it's working.
+  bool _busy = false;
 
   // ── helpers ──────────────────────────────────────────────────────────────
 
   bool _isLoggedIn() => sl<AuthCubit>().state.user != null;
 
-  void _showNotLoggedIn(BuildContext context) {
+  void _showNotLoggedIn() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Sign in to use Watch Party')),
     );
@@ -29,21 +38,24 @@ class WatchPartyLobbyScreen extends StatelessWidget {
 
   // ── Create ────────────────────────────────────────────────────────────────
 
-  Future<void> _onCreate(BuildContext context) async {
+  Future<void> _onCreate() async {
+    if (_busy) return;
     if (!_isLoggedIn()) {
-      _showNotLoggedIn(context);
+      _showNotLoggedIn();
       return;
     }
 
     final controller = sl<WatchTogetherController>();
+    final messenger = ScaffoldMessenger.of(context);
     if (controller.room != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text("You're already in a party")),
       );
       return;
     }
 
     final nav = Navigator.of(context);
+    setState(() => _busy = true);
     try {
       await controller.host(const RoomState(
         code: '',
@@ -68,37 +80,51 @@ class WatchPartyLobbyScreen extends StatelessWidget {
         status: 'active',
         mode: 'lobby',
       ));
-    } catch (_) {
-      // host() may throw inside _enter after the room is already created;
-      // the pop below still runs because room != null.
+    } catch (e) {
+      // host() can throw inside _enter() AFTER the room was created — in that
+      // case room != null and we still proceed to pop below. Only surface an
+      // error (and stop) when the room was genuinely never created.
+      debugPrint('[watch-party] create failed: $e');
+      if (controller.room == null) {
+        if (mounted) setState(() => _busy = false);
+        messenger.showSnackBar(
+          SnackBar(content: Text("Couldn't create party: $e")),
+        );
+        return;
+      }
     }
+    if (mounted) setState(() => _busy = false);
     if (controller.room != null && nav.mounted) nav.pop();
   }
 
   // ── Join ──────────────────────────────────────────────────────────────────
 
-  Future<void> _onJoin(BuildContext context) async {
+  Future<void> _onJoin() async {
+    if (_busy) return;
     if (!_isLoggedIn()) {
-      _showNotLoggedIn(context);
+      _showNotLoggedIn();
       return;
     }
 
     final code = await _askCode(context);
     if (code == null || code.trim().isEmpty) return;
-    if (!context.mounted) return;
+    if (!mounted) return;
 
     final controller = sl<WatchTogetherController>();
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
     final ok = await controller.join(code.trim().toUpperCase());
-    if (!context.mounted) return;
+    if (!mounted) return;
+    setState(() => _busy = false);
 
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(content: Text('Room not found')),
       );
       return;
     }
 
-    await routeAfterJoin(context, controller);
+    if (mounted) await routeAfterJoin(context, controller);
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -165,16 +191,27 @@ class WatchPartyLobbyScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 40),
 
-                // Create button.
+                // Create button — shows a spinner + "Creating…" while the room
+                // is being created (Appwrite round-trip), so the tap has visible
+                // feedback instead of feeling unresponsive.
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.group_add),
-                    label: const Text('Create a party'),
+                    icon: _busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.group_add),
+                    label: Text(_busy ? 'Creating…' : 'Create a party'),
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: () => _onCreate(context),
+                    onPressed: _busy ? null : _onCreate,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -192,7 +229,7 @@ class WatchPartyLobbyScreen extends StatelessWidget {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
-                    onPressed: () => _onJoin(context),
+                    onPressed: _busy ? null : _onJoin,
                   ),
                 ),
               ],

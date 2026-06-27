@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'model/room_state.dart';
 
 const _alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -27,11 +29,17 @@ String? electSuccessor(List<RoomParticipant> participants,
 }
 
 String generateRoomCode(int seed) {
-  var x = seed & 0x7fffffff;
+  // Use dart:math Random for a well-distributed code over the FULL 32^6 (~1B)
+  // space. The old hand-rolled LCG took the LOW 5 bits (`x % 32`), which for an
+  // LCG mod 2^31 cycle with period 32 — so the whole 6-char code was determined
+  // by `seed % 32`, i.e. only 32 distinct codes ever existed. Once ~32 rooms
+  // had been created, every new code collided (409 document_already_exists) and
+  // room creation failed permanently. Random(seed) is uniform AND deterministic
+  // per seed (so getRoom/retry behaviour and tests still hold).
+  final rng = Random(seed);
   final b = StringBuffer();
   for (var i = 0; i < 6; i++) {
-    x = (x * 1103515245 + 12345) & 0x7fffffff; // LCG — deterministic per seed
-    b.write(_alphabet[x % _alphabet.length]);
+    b.write(_alphabet[rng.nextInt(_alphabet.length)]);
   }
   return b.toString();
 }

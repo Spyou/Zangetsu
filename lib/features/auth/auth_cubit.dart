@@ -1,7 +1,11 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:appwrite/appwrite.dart';
 import 'package:appwrite/models.dart' as models;
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 
 import '../../core/appwrite/appwrite_service.dart';
 
@@ -52,22 +56,88 @@ class AuthCubit extends Cubit<AuthState> {
 
   final AppwriteService _aw;
 
+  /// Hive box that caches the signed-in user (opened in [initDependencies]).
+  static const String cacheBoxName = 'auth_cache';
+  static const String _userKey = 'user';
+
+  Box? get _cache =>
+      Hive.isBoxOpen(cacheBoxName) ? Hive.box(cacheBoxName) : null;
+
+  /// The last-known user from the local cache, or null. Never throws.
+  models.User? _readCachedUser() {
+    try {
+      final raw = _cache?.get(_userKey);
+      if (raw is String && raw.isNotEmpty) {
+        return models.User.fromMap(jsonDecode(raw) as Map<String, dynamic>);
+      }
+    } catch (_) {/* malformed cache → treat as none */}
+    return null;
+  }
+
+  void _writeCachedUser(models.User u) {
+    try {
+      _cache?.put(_userKey, jsonEncode(u.toMap()));
+    } catch (_) {/* best-effort */}
+  }
+
+  void _clearCachedUser() {
+    try {
+      _cache?.delete(_userKey);
+    } catch (_) {}
+  }
+
   String? _avatarFromUser(models.User u) {
     final id = u.prefs.data['avatarId'];
     return (id is String && id.isNotEmpty) ? _aw.avatarUrl(id) : null;
   }
 
   /// Restore a persisted session on boot. Silent — no busy/error UI.
+  ///
+  /// Optimistic: if a cached user exists we emit it IMMEDIATELY (so the
+  /// logged-in UI shows on boot with no network wait — no "Sign in" flash) and
+  /// validate against Appwrite in the background. Only when there is no cache
+  /// (first run / signed out) do we await the network check.
   Future<void> restore() async {
+    final cached = _readCachedUser();
+    if (cached != null) {
+      emit(state.copyWith(
+        status: AuthStatus.authenticated,
+        user: () => cached,
+        avatarUrl: () => _avatarFromUser(cached),
+      ));
+      unawaited(_validate(hadCache: true)); // refresh, don't block boot
+      return;
+    }
+    await _validate(hadCache: false);
+  }
+
+  /// Confirm the session with Appwrite and refresh the cached user. A 401 means
+  /// the session is genuinely gone → sign out + clear cache. Any other failure
+  /// (offline/timeout/server) keeps a cached session so a network blip doesn't
+  /// bounce the user to "Sign in".
+  Future<void> _validate({required bool hadCache}) async {
     try {
       final u = await _aw.account.get();
+      _writeCachedUser(u);
       emit(state.copyWith(
         status: AuthStatus.authenticated,
         user: () => u,
         avatarUrl: () => _avatarFromUser(u),
       ));
+    } on AppwriteException catch (e) {
+      if (e.code == 401) {
+        _clearCachedUser();
+        emit(state.copyWith(
+            status: AuthStatus.unauthenticated, user: () => null));
+      } else if (!hadCache) {
+        emit(state.copyWith(
+            status: AuthStatus.unauthenticated, user: () => null));
+      }
     } catch (_) {
-      emit(state.copyWith(status: AuthStatus.unauthenticated, user: () => null));
+      if (!hadCache) {
+        emit(state.copyWith(
+            status: AuthStatus.unauthenticated, user: () => null));
+      }
     }
   }
 
@@ -95,6 +165,7 @@ class AuthCubit extends Cubit<AuthState> {
     emit(state.copyWith(busy: true, error: () => null));
     try {
       final u = await action();
+      _writeCachedUser(u);
       emit(state.copyWith(
         status: AuthStatus.authenticated,
         user: () => u,
@@ -115,12 +186,14 @@ class AuthCubit extends Cubit<AuthState> {
     try {
       await _aw.account.deleteSession(sessionId: 'current');
     } catch (_) {/* ignore — clear locally regardless */}
+    _clearCachedUser();
     emit(const AuthState(status: AuthStatus.unauthenticated));
   }
 
   Future<bool> updateName(String name) async {
     try {
       final u = await _aw.account.updateName(name: name);
+      _writeCachedUser(u);
       emit(state.copyWith(user: () => u));
       return true;
     } catch (_) {
@@ -141,6 +214,7 @@ class AuthCubit extends Cubit<AuthState> {
       prefs['avatarId'] = file.$id;
       await _aw.account.updatePrefs(prefs: prefs);
       final u = await _aw.account.get();
+      _writeCachedUser(u);
       emit(state.copyWith(
         user: () => u,
         avatarUrl: () => _avatarFromUser(u),

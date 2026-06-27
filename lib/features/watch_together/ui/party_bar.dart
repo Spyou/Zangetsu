@@ -37,27 +37,32 @@ class PartyBar extends StatelessWidget {
                 children: [
                   const Icon(Icons.people, color: Colors.white70, size: 16),
                   const SizedBox(width: 6),
-                  Text(
-                    '$roleLabel · $code · $count watching · $modeLabel',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                  // Flexible so the status text ELLIPSIZES instead of pushing the
+                  // action buttons off the right edge in portrait (which hid the
+                  // Leave button). The buttons keep a fixed, always-visible slot.
+                  Expanded(
+                    child: Text(
+                      '$roleLabel · $code · $count watching · $modeLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 6),
                   _BarButton(
                     icon: Icons.link,
                     label: 'Invite',
                     onTap: () => _copyInvite(code),
                   ),
-                  const SizedBox(width: 4),
                   _BarButton(
                     icon: Icons.chat_bubble_outline,
                     label: 'Chat',
                     onTap: () => _openSheet(showRoomChatSheet),
                   ),
-                  const SizedBox(width: 4),
                   _BarButton(
                     icon: Icons.exit_to_app,
                     label: 'Leave',
