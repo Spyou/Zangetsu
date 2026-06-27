@@ -23,6 +23,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -1245,6 +1246,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           top: false,
           child: _OnlineSubtitleSheet(
             initialQuery: initialQuery,
+            initialLanguage:
+                sl<PlaybackPrefs>().preferredSubtitleLanguage,
+            imdbId: widget.imdbId,
+            tmdbId: widget.tmdbId,
             onApply: (path) async {
               await _c.setSubtitleFromFile(path);
               _bumpControls();
@@ -3545,9 +3550,20 @@ class _OnlineSubtitleSheet extends StatefulWidget {
   const _OnlineSubtitleSheet({
     required this.initialQuery,
     required this.onApply,
+    this.initialLanguage = '',
+    this.imdbId,
+    this.tmdbId,
   });
   final String initialQuery;
   final Future<void> Function(String localPath) onApply;
+
+  /// ISO-639-1 code pre-selected in the language picker ('' = any language).
+  final String initialLanguage;
+
+  /// When non-null, passed to [SubtitleSearchService.search] for higher
+  /// accuracy (OpenSubtitles can search by IMDb/TMDB id in addition to title).
+  final String? imdbId;
+  final int? tmdbId;
 
   @override
   State<_OnlineSubtitleSheet> createState() => _OnlineSubtitleSheetState();
@@ -3558,6 +3574,9 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
   late final TextEditingController _query = TextEditingController(
     text: widget.initialQuery,
   );
+
+  /// ISO-639-1 code for the selected search language, or '' = any language.
+  late String _selectedLang = widget.initialLanguage;
 
   bool _searching = false;
   bool _downloading = false;
@@ -3588,7 +3607,12 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
       _results = const [];
     });
     try {
-      final results = await _service.search(q);
+      final results = await _service.search(
+        q,
+        language: _selectedLang.isEmpty ? '' : _selectedLang,
+        imdbId: widget.imdbId,
+        tmdbId: widget.tmdbId,
+      );
       if (!mounted) return;
       setState(() {
         _results = results;
@@ -3648,6 +3672,54 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
             child: Text('Search subtitles online', style: AppText.headline),
+          ),
+          // Language picker — defaults to the user's preferred subtitle
+          // language (when set in Settings) and lets the user change it
+          // per-search without leaving the sheet.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+            child: Row(
+              children: [
+                Text(
+                  'Language:',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _selectedLang.isEmpty ? '' : _selectedLang,
+                  dropdownColor: AppColors.surface2,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                  underline: const SizedBox.shrink(),
+                  items: [
+                    DropdownMenuItem(
+                      value: '',
+                      child: Text(
+                        'Any',
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    for (final lang in kSubtitleLanguages)
+                      DropdownMenuItem(
+                        value: lang.iso1,
+                        child: Text(
+                          lang.name,
+                          style: AppText.body.copyWith(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                  ],
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _selectedLang = v);
+                  },
+                ),
+              ],
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),

@@ -23,6 +23,7 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/playback/subtitle_download_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
 
@@ -764,6 +765,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   bool _subApplied = false; // remembered-subtitle restored for this episode
+  bool _autoSubDlTried = false; // keyless auto-download fired at most once/episode
 
   /// Restore the title's remembered subtitle once per episode. 'off' turns subs
   /// off; otherwise match a soft-sub or embedded track by language/label.
@@ -811,6 +813,18 @@ class PlayerCubit extends Cubit<PlayerState> {
           }
           // No matching track yet — embedded tracks may still be loading.
           // Leave _subApplied = false so the retry-on-tracks loop fires again.
+          //
+          // Fire the keyless auto-download exactly once. The guard is set
+          // before the async work so subsequent track-stream retries of this
+          // method don't spawn a second download. The completion callback
+          // re-checks _subApplied in case an embedded track arrived and was
+          // selected while the download was in flight.
+          if (!_autoSubDlTried &&
+              sl<PlaybackPrefs>().autoDownloadSubtitles &&
+              (imdbId?.isNotEmpty == true || tmdbId != null)) {
+            _autoSubDlTried = true;
+            _fetchAndApplySubtitle(prefLang);
+          }
           return;
         }
       }
@@ -843,6 +857,44 @@ class PlayerCubit extends Cubit<PlayerState> {
     // No match yet — embedded tracks may still be loading; retry later.
   }
 
+  /// Keyless auto-download fallback. Calls [SubtitleDownloadService.find] with
+  /// the title's imdb/tmdb id and the user's preferred language. On success,
+  /// loads the first result directly from its remote URL via
+  /// [SubtitleTrack.uri] — no temp-file step needed. Fully fire-and-forget:
+  /// any error is silently swallowed so playback is never disrupted.
+  void _fetchAndApplySubtitle(Language lang) {
+    final epNum = currentEpisode.number?.toInt();
+    // Capture gen so stale completions after an episode change are discarded.
+    final capturedGen = _gen;
+    unawaited(
+      Future(() async {
+        try {
+          final subs = await SubtitleDownloadService().find(
+            imdbId: imdbId,
+            tmdbId: tmdbId,
+            isTv: tmdbIsTv,
+            season: tmdbIsTv ? null : null, // no season field on Episode model
+            episode: tmdbIsTv ? epNum : null,
+            iso2: lang.iso2,
+          );
+          // Discard if the user moved to a different episode or a track was
+          // already matched by the time the response arrived.
+          if (capturedGen != _gen || _subApplied || subs.isEmpty) return;
+          await player.setSubtitleTrack(
+            SubtitleTrack.uri(
+              subs.first.url,
+              title: lang.name,
+              language: lang.iso2,
+            ),
+          );
+          _subApplied = true;
+        } catch (_) {
+          // Silently ignored — playback continues without subtitles.
+        }
+      }),
+    );
+  }
+
   // Online subtitle search/download is wired in the player UI via
   // SubtitleSearchService (OpenSubtitles); results apply through
   // setSubtitleFromFile. Full subtitle styling + delay/sync are handled above.
@@ -863,6 +915,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _skipsForIndex = -1; // refetched when the new duration arrives
     _prefetchedNextForIndex = -1; // re-arm next-episode prefetch for the new ep
     _subApplied = false; // restore the remembered subtitle for the new episode
+    _autoSubDlTried = false; // re-arm keyless auto-download for the new episode
     _audioApplied = false; // restore the remembered audio track too
     emit(
       state.copyWith(

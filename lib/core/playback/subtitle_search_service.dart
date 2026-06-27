@@ -88,11 +88,14 @@ class SubtitleSearchService {
   };
 
   /// Searches OpenSubtitles for [query]. [language] is a 2-letter code (default
-  /// `en`); pass an empty string for all languages. Returns the top results
-  /// (already deduped by file id).
+  /// `en`); pass an empty string for all languages. Optional [imdbId] and
+  /// [tmdbId] improve accuracy when available (the API accepts them alongside
+  /// the title query). Returns the top results (already deduped by file id).
   Future<List<SubtitleSearchResult>> search(
     String query, {
     String language = 'en',
+    String? imdbId,
+    int? tmdbId,
   }) async {
     final q = query.trim();
     if (q.isEmpty) return const [];
@@ -103,6 +106,9 @@ class SubtitleSearchService {
         queryParameters: {
           'query': q,
           if (language.trim().isNotEmpty) 'languages': language.trim(),
+          if (imdbId != null && imdbId.trim().isNotEmpty) 'imdb_id': imdbId.trim(),
+          // ignore: use_null_aware_elements
+          if (tmdbId != null) 'tmdb_id': tmdbId,
         },
         options: Options(headers: headers),
       );
