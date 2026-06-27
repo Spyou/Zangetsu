@@ -30,10 +30,13 @@ class SubtitleDownloadService {
   static const String _stremioBase = 'https://opensubtitles-v3.strem.io';
 
   // ── SubDL ──────────────────────────────────────────────────────────────────
-  // Free API key from subdl.com (one key, used by every install — SubDL's free
-  // tier has no download cap and ~2000 searches/day, so it scales like the TMDB
-  // key). Leave empty to disable the SubDL tier (Stremio-only). PASTE KEY HERE:
-  static const String subDlApiKey = '';
+  // Free API key from subdl.com. Injected at build time (NOT committed — the
+  // repo is public) via `--dart-define-from-file=secrets.json` (gitignored) or
+  // `--dart-define=SUBDL_API_KEY=...`. Empty when unset → SubDL tier disabled
+  // (keyless Stremio only). SubDL's free tier has no download cap (~2000
+  // searches/day shared across installs).
+  static const String subDlApiKey =
+      String.fromEnvironment('SUBDL_API_KEY', defaultValue: '');
   static const String _subDlApi = 'https://api.subdl.com/api/v1';
   static const String _subDlCdn = 'https://dl.subdl.com';
 

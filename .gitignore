@@ -50,3 +50,4 @@ app.*.map.json
 release-v*/
 # Marketing/banner scratch (mockups, screenshots) — not part of the app
 banner/
+secrets.json
