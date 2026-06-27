@@ -90,4 +90,32 @@ class NotificationService {
       payload: payload,
     );
   }
+
+  /// Stable id for the "source updates available" notification, so a later check
+  /// REPLACES the previous one instead of stacking.
+  static const int _sourceUpdatesNotifId = 90001;
+
+  /// Notify that [count] installed sources have updates available. A no-op when
+  /// [count] is 0. No payload — tapping just opens the app (the badges/Update
+  /// buttons live on the Sources screen).
+  Future<void> showSourceUpdates({required int count}) async {
+    if (!Platform.isAndroid || count <= 0) return;
+    if (!_inited) await init();
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'source_updates',
+        'Source updates',
+        channelDescription:
+            'Alerts when installed sources have updates available',
+        importance: Importance.defaultImportance,
+        priority: Priority.defaultPriority,
+      ),
+    );
+    await _plugin.show(
+      _sourceUpdatesNotifId,
+      'Source updates available',
+      count == 1 ? '1 source has an update' : '$count sources have updates',
+      details,
+    );
+  }
 }

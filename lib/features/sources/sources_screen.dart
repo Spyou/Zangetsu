@@ -1237,18 +1237,52 @@ Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async
     ..showSnackBar(const SnackBar(content: Text('Removed')));
 }
 
-/// Re-checks a CloudStream repo for updates (re-download newer `.cs3`s) via
-/// [CloudStreamManager.updateRepo], with progress + result snackbars.
+/// READ-ONLY check of a CloudStream repo for plugin updates via
+/// [CloudStreamManager.checkRepoUpdates] (no download). Reports how many updates
+/// are available; the accent badge + per-plugin "Update" buttons then appear.
 Future<void> _checkCsUpdates(BuildContext context, CsRepoGroup group) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger
     ..clearSnackBars()
     ..showSnackBar(const SnackBar(content: Text('Checking for updates…')));
   try {
+    final updates = await sl<CloudStreamManager>().checkRepoUpdates(group.url);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            updates.isEmpty
+                ? 'Up to date'
+                : '${updates.length} update(s) available',
+          ),
+        ),
+      );
+  } catch (e) {
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text('Check failed: $e')));
+  }
+}
+
+/// Applies all available updates for a repo (re-download newer `.cs3`s) via
+/// [CloudStreamManager.updateRepo], with progress + an honest result count.
+Future<void> _applyCsRepoUpdates(BuildContext context, CsRepoGroup group) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(const SnackBar(content: Text('Updating…')));
+  try {
     final count = await sl<CloudStreamManager>().updateRepo(group.url);
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Updated — $count source(s)')));
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            count == 0 ? 'Already up to date' : 'Updated $count source(s)',
+          ),
+        ),
+      );
   } catch (e) {
     messenger
       ..hideCurrentSnackBar()
@@ -1320,6 +1354,7 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
   Widget build(BuildContext context) {
     final manager = sl<CloudStreamManager>();
     final isOther = group.url.isEmpty;
+    final updates = isOther ? const <CsUpdate>[] : manager.updatesFor(group.url);
     final catalog = isOther ? _otherCatalog : group.catalog;
     final installedCount = isOther
         ? group.sources.length
@@ -1397,6 +1432,33 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                     ),
                   ),
                 ),
+                // "N updates" pill when this repo has installed plugins with a
+                // newer version available (tap → apply all).
+                if (updates.isNotEmpty)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _applyCsRepoUpdates(context, group),
+                    child: Container(
+                      margin: const EdgeInsets.only(right: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        updates.length == 1
+                            ? '1 update'
+                            : '${updates.length} updates',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
                 // The synthetic "Other" group has an empty url and isn't a real
                 // repo, so it gets no actions menu.
                 if (group.url.isNotEmpty)
@@ -1407,12 +1469,13 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                     ),
                     color: AppColors.surface2,
                     onSelected: (v) {
-                      if (v == 'update') _checkCsUpdates(context, group);
+                      if (v == 'check') _checkCsUpdates(context, group);
+                      if (v == 'update') _applyCsRepoUpdates(context, group);
                       if (v == 'remove') _confirmDeleteCsRepo(context, group);
                     },
                     itemBuilder: (_) => [
                       PopupMenuItem(
-                        value: 'update',
+                        value: 'check',
                         child: Text(
                           'Check for updates',
                           style: AppText.body.copyWith(
@@ -1420,6 +1483,16 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                           ),
                         ),
                       ),
+                      if (updates.isNotEmpty)
+                        PopupMenuItem(
+                          value: 'update',
+                          child: Text(
+                            'Update all (${updates.length})',
+                            style: AppText.body.copyWith(
+                              color: AppColors.accent,
+                            ),
+                          ),
+                        ),
                       PopupMenuItem(
                         value: 'remove',
                         child: Text(
@@ -1481,6 +1554,12 @@ class _CsRepoSectionState extends State<_CsRepoSection> {
                               plugin.internalName,
                               repoUrl: group.url,
                             ),
+                            update: isOther
+                                ? null
+                                : manager.updateFor(
+                                    plugin.internalName,
+                                    group.url,
+                                  ),
                           ),
                         ],
                     ],
@@ -1500,6 +1579,7 @@ class _CsPluginRow extends StatefulWidget {
     required this.plugin,
     required this.installed,
     this.repoUrl = '',
+    this.update,
   });
 
   final CsPluginMeta plugin;
@@ -1509,6 +1589,10 @@ class _CsPluginRow extends StatefulWidget {
   /// uninstall so the cache file is tagged per repo (same plugin, two repos →
   /// two independent installs).
   final String repoUrl;
+
+  /// A newer version available for this (installed) plugin, or null. When set,
+  /// the row shows an "Update" button instead of "Installed".
+  final CsUpdate? update;
 
   @override
   State<_CsPluginRow> createState() => _CsPluginRowState();
@@ -1540,6 +1624,28 @@ class _CsPluginRowState extends State<_CsPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _update() async {
+    final update = widget.update;
+    if (update == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await sl<CloudStreamManager>()
+          .updatePlugin(update, repoUrl: widget.repoUrl);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+          SnackBar(content: Text('Updated ${widget.plugin.name}')),
+        );
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1630,6 +1736,20 @@ class _CsPluginRowState extends State<_CsPluginRow> {
                   ),
                 ),
               ),
+            )
+          else if (installed && widget.update != null)
+            FilledButton(
+              onPressed: _update,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                minimumSize: const Size(96, 36),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: Text('Update → v${widget.update!.onlineVersion}'),
             )
           else if (installed)
             OutlinedButton(

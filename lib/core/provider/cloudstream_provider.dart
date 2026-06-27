@@ -555,6 +555,37 @@ class CsPluginMeta {
   };
 }
 
+/// An available update for an installed CloudStream plugin: the repo-scoped
+/// plugin identity plus its installed vs online version. Produced by the
+/// READ-ONLY [CloudStreamManager.checkRepoUpdates] native check (no download).
+class CsUpdate {
+  const CsUpdate({
+    required this.internalName,
+    required this.name,
+    required this.url,
+    required this.installedVersion,
+    required this.onlineVersion,
+  });
+
+  final String internalName;
+  final String name;
+  final String url; // the NEW .cs3 download URL
+  final int installedVersion;
+  final int onlineVersion;
+
+  factory CsUpdate.fromMap(Map<dynamic, dynamic> m) => CsUpdate(
+    internalName: (m['internalName'] ?? '').toString(),
+    name: (m['name'] ?? m['internalName'] ?? '').toString(),
+    url: (m['url'] ?? '').toString(),
+    installedVersion: (m['installedVersion'] is num)
+        ? (m['installedVersion'] as num).toInt()
+        : 0,
+    onlineVersion: (m['onlineVersion'] is num)
+        ? (m['onlineVersion'] as num).toInt()
+        : 0,
+  );
+}
+
 /// A persisted CloudStream repo, its installable catalog, and the loaded sources
 /// that belong to it. Built by [CloudStreamManager.repoGroups] for the grouped
 /// Providers/CloudStream UI.
@@ -590,6 +621,7 @@ class CloudStreamManager extends ChangeNotifier {
   static const String boxName = 'cs_repos';
   static const String _reposKey = 'repos';
   static const String _disabledKey = 'disabled';
+  static const String _notifyUpdatesKey = 'notifyUpdates';
 
   /// Opens the persisted-repo box. Safe on every platform (only the channel
   /// calls are Android-gated). Must be called before constructing the manager.
@@ -609,7 +641,48 @@ class CloudStreamManager extends ChangeNotifier {
   /// sourceIds the user has toggled off. Persisted under [_disabledKey].
   final Set<String> _disabled = {};
 
+  /// Repo url → its currently-known available plugin updates (from the last
+  /// [checkRepoUpdates] / [checkAllUpdates]). Drives the "update available"
+  /// badges and counts; cleared per-repo after a successful update. In-memory
+  /// only — re-derived by the next check.
+  final Map<String, List<CsUpdate>> _updates = {};
+
+  /// When [checkAllUpdates] last ran, to debounce repeat checks (launch +
+  /// manual taps) within [_updatesTtl].
+  DateTime? _lastUpdateCheck;
+  static const Duration _updatesTtl = Duration(minutes: 30);
+
   Box? get _box => Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
+
+  /// Total installed plugins (across all repos) with an available update.
+  int get updateCount =>
+      _updates.values.fold(0, (sum, list) => sum + list.length);
+
+  /// Whether any installed plugin has an available update.
+  bool get hasUpdates => updateCount > 0;
+
+  /// The known available updates for a repo (empty when none / unchecked).
+  List<CsUpdate> updatesFor(String repoUrl) =>
+      List.unmodifiable(_updates[repoUrl] ?? const []);
+
+  /// The available update for a specific installed plugin, or null.
+  CsUpdate? updateFor(String internalName, String repoUrl) {
+    for (final u in _updates[repoUrl] ?? const <CsUpdate>[]) {
+      if (u.internalName == internalName) return u;
+    }
+    return null;
+  }
+
+  /// Whether to post a system notification when installed sources have updates
+  /// (the launch check). Default true. Persisted in [boxName].
+  bool get notifyUpdates =>
+      _box?.get(_notifyUpdatesKey, defaultValue: true) as bool? ?? true;
+
+  /// Toggle the launch "source updates available" notification (persisted).
+  Future<void> setNotifyUpdates(bool value) async {
+    await _box?.put(_notifyUpdatesKey, value);
+    notifyListeners();
+  }
 
   /// All installed CloudStream providers (enabled + disabled — for the
   /// Providers management UI).
@@ -714,11 +787,12 @@ class CloudStreamManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Check a repo for updates: re-fetch its manifest, drop every cached version
-  /// of its plugins, and re-download + load the current versions. Updates the
-  /// persisted record + rebuilds. Returns the source count. No-op on non-Android.
+  /// Update a repo: re-fetch its manifest and re-download + load ONLY the
+  /// installed plugins whose version changed (already-current ones are skipped
+  /// natively). Updates the persisted record + rebuilds. Returns the number of
+  /// plugins ACTUALLY updated (0 = already up to date). No-op on non-Android.
   Future<int> updateRepo(String url) async {
-    if (!Platform.isAndroid) return _providers.length;
+    if (!Platform.isAndroid) return 0;
     try {
       final repo = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
         'updateRepo',
@@ -729,10 +803,87 @@ class CloudStreamManager extends ChangeNotifier {
       // re-loaded); rebuild from it.
       final sources = (repo?['sources'] as List?);
       _rebuildFrom(sources);
+      // This repo's plugins are now current — drop its pending updates.
+      _updates.remove(url);
       notifyListeners();
-      return _providers.length;
+      return (repo?['updated'] as num?)?.toInt() ?? 0;
     } catch (e) {
       debugPrint('[cloudstream] updateRepo failed: $e');
+      rethrow;
+    }
+  }
+
+  /// READ-ONLY: re-fetch [url]'s catalog natively and record which installed
+  /// plugins have a newer version online — WITHOUT downloading anything (no disk
+  /// or plugin-state mutation). Updates [_updates] for this repo + notifies.
+  /// Returns the outdated list (empty off Android or on any error — never throws).
+  Future<List<CsUpdate>> checkRepoUpdates(String url) async {
+    if (!Platform.isAndroid || url.isEmpty) return const [];
+    try {
+      final res = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+        'checkRepoUpdates',
+        {'url': url},
+      );
+      final raw = res?['outdated'];
+      final list = <CsUpdate>[
+        if (raw is List)
+          for (final m in raw)
+            if (m is Map) CsUpdate.fromMap(m),
+      ];
+      if (list.isEmpty) {
+        _updates.remove(url);
+      } else {
+        _updates[url] = list;
+      }
+      notifyListeners();
+      return list;
+    } catch (e) {
+      debugPrint('[cloudstream] checkRepoUpdates failed: $e');
+      return const [];
+    }
+  }
+
+  /// Checks EVERY added repo for plugin updates (read-only). Debounced to once
+  /// per [_updatesTtl] unless [force]. Returns the total number of updates found.
+  /// Best-effort — a repo that fails to check is skipped. No-op off Android.
+  Future<int> checkAllUpdates({bool force = false}) async {
+    if (!Platform.isAndroid) return 0;
+    final last = _lastUpdateCheck;
+    if (!force && last != null && DateTime.now().difference(last) < _updatesTtl) {
+      return updateCount;
+    }
+    _lastUpdateCheck = DateTime.now();
+    final urls = <String>[
+      for (final r in _repos)
+        if ((r['url'] ?? '').toString().isNotEmpty) (r['url']).toString(),
+    ];
+    for (final url in urls) {
+      await checkRepoUpdates(url);
+    }
+    return updateCount;
+  }
+
+  /// Update ONE installed plugin to its available newer version (download + load
+  /// the new `.cs3`, repo-scoped via [repoUrl]). On success the plugin is dropped
+  /// from [_updates]. Rebuilds + notifies. No-op off Android; rethrows on failure.
+  Future<void> updatePlugin(CsUpdate update, {required String repoUrl}) async {
+    if (!Platform.isAndroid) return;
+    try {
+      final raw = await _csChannel.invokeMethod<List<dynamic>>('updatePlugin', {
+        'url': update.url,
+        'internalName': update.internalName,
+        'version': update.onlineVersion,
+        'repoUrl': repoUrl,
+      });
+      _rebuildFrom(raw);
+      final list = _updates[repoUrl];
+      if (list != null) {
+        list.removeWhere((u) => u.internalName == update.internalName);
+        if (list.isEmpty) _updates.remove(repoUrl);
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[cloudstream] updatePlugin failed: $e');
       rethrow;
     }
   }

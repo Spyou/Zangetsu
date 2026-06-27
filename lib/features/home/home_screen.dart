@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/notify/notification_service.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -79,6 +83,27 @@ class _HomeViewState extends State<_HomeView> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) maybeShowUpdateDialog(context);
       });
+      _checkSourceUpdates();
+    }
+  }
+
+  /// Best-effort, non-blocking check for CloudStream source updates on launch.
+  /// READ-ONLY (re-fetches catalogs, downloads nothing); posts a notification
+  /// when updates exist and the user left that toggle on. Deferred a few seconds
+  /// so it never competes with first content load, and fully guarded so it can
+  /// NEVER affect startup or playback.
+  Future<void> _checkSourceUpdates() async {
+    if (!Platform.isAndroid) return;
+    await Future<void>.delayed(const Duration(seconds: 4));
+    if (!mounted) return;
+    try {
+      final manager = sl<CloudStreamManager>();
+      final count = await manager.checkAllUpdates();
+      if (count > 0 && manager.notifyUpdates) {
+        await NotificationService.instance.showSourceUpdates(count: count);
+      }
+    } catch (_) {
+      /* never affects startup */
     }
   }
 

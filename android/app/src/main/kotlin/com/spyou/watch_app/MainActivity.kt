@@ -357,6 +357,7 @@ class MainActivity : FlutterActivity() {
                                 // same-named plugin.
                                 val tag = com.spyou.watch_app.cloudstream.RepoManager
                                     .repoTag(url ?: "")
+                                var updated = 0 // plugins actually re-downloaded
                                 for (plugin in plugins) {
                                     // Only update THIS repo's copy: its tagged file
                                     // or a legacy un-tagged one (1 '@').
@@ -370,6 +371,7 @@ class MainActivity : FlutterActivity() {
                                     try {
                                         host.deleteByRepoPlugin(tag, plugin.internalName)
                                         host.loadPlugin(repo.download(plugin))
+                                        updated++
                                     } catch (_: Exception) { /* skip a bad plugin */ }
                                 }
                                 val info = mapOf(
@@ -377,8 +379,74 @@ class MainActivity : FlutterActivity() {
                                     "url" to (url ?: ""),
                                     "plugins" to plugins.map { it.toMap() },
                                     "sources" to host.installedApis(),
+                                    "updated" to updated,
                                 )
                                 runOnUiThread { result.success(info) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    // READ-ONLY update check: re-fetch a repo's catalog and report
+                    // which currently-installed plugins have a newer version online,
+                    // WITHOUT downloading anything. Never mutates plugins/disk/state,
+                    // so it can't affect playback or installed sources. Returns
+                    // { url, outdated:[{internalName,name,url,installedVersion,onlineVersion}] }.
+                    "checkRepoUpdates" -> {
+                        val url = call.argument<String>("url")
+                        csReadPool.execute {
+                            try {
+                                val (_, plugins) = repo.loadRepo(url ?: "")
+                                val installed = host.installedFileIds() // "name@ver[@tag]"
+                                val tag = com.spyou.watch_app.cloudstream.RepoManager
+                                    .repoTag(url ?: "")
+                                val outdated = mutableListOf<Map<String, Any?>>()
+                                for (plugin in plugins) {
+                                    // THIS repo's installed copy (tagged or legacy).
+                                    val mineId = installed.firstOrNull {
+                                        it.substringBefore('@') == plugin.internalName &&
+                                            (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
+                                    } ?: continue
+                                    val installedVersion =
+                                        mineId.split('@').getOrNull(1)?.toIntOrNull() ?: continue
+                                    if (plugin.version > installedVersion) {
+                                        outdated.add(
+                                            mapOf(
+                                                "internalName" to plugin.internalName,
+                                                "name" to plugin.name,
+                                                "url" to plugin.url,
+                                                "installedVersion" to installedVersion,
+                                                "onlineVersion" to plugin.version,
+                                            ),
+                                        )
+                                    }
+                                }
+                                val info = mapOf("url" to (url ?: ""), "outdated" to outdated)
+                                runOnUiThread { result.success(info) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
+                    // Update ONE installed plugin to a specific version: drop its old
+                    // cached `.cs3` (repo-scoped) and download + load the new one.
+                    // Mirrors updateRepo's inner loop for a single plugin. Returns the
+                    // refreshed source list.
+                    "updatePlugin" -> {
+                        val cs3Url = call.argument<String>("url") ?: ""
+                        val internalName = call.argument<String>("internalName") ?: ""
+                        val version = call.argument<Int>("version") ?: 1
+                        val repoUrl = call.argument<String>("repoUrl") ?: ""
+                        csExecutor.execute {
+                            try {
+                                val tag = com.spyou.watch_app.cloudstream.RepoManager
+                                    .repoTag(repoUrl)
+                                host.deleteByRepoPlugin(tag, internalName)
+                                host.loadPlugin(
+                                    repo.download(cs3Url, internalName, version, repoUrl),
+                                )
+                                val apis = host.installedApis()
+                                runOnUiThread { result.success(apis) }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }

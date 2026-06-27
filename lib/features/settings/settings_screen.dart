@@ -496,6 +496,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           subtitle: 'New-episode alerts for subscribed shows',
                           onTap: () => _push(const SubscriptionsScreen()),
                         ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.update_rounded,
+                          title: 'Source updates',
+                          subtitle: 'Notify when installed sources have updates',
+                          trailing: Switch.adaptive(
+                            value: sl<CloudStreamManager>().notifyUpdates,
+                            activeThumbColor: AppColors.accent,
+                            onChanged: (v) async {
+                              await sl<CloudStreamManager>()
+                                  .setNotifyUpdates(v);
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ),
                     ],
                   ),
                   SettingsCard(
