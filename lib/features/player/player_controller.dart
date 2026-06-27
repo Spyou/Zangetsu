@@ -819,11 +819,14 @@ class PlayerCubit extends Cubit<PlayerState> {
           // method don't spawn a second download. The completion callback
           // re-checks _subApplied in case an embedded track arrived and was
           // selected while the download was in flight.
+          final titleForSub = showTitle ?? scrobbleTitle;
           if (!_autoSubDlTried &&
               sl<PlaybackPrefs>().autoDownloadSubtitles &&
-              (imdbId?.isNotEmpty == true || tmdbId != null)) {
+              (imdbId?.isNotEmpty == true ||
+                  tmdbId != null ||
+                  (titleForSub?.isNotEmpty == true))) {
             _autoSubDlTried = true;
-            _fetchAndApplySubtitle(prefLang);
+            _fetchAndApplySubtitle(prefLang, title: titleForSub);
           }
           return;
         }
@@ -858,11 +861,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   /// Keyless auto-download fallback. Calls [SubtitleDownloadService.find] with
-  /// the title's imdb/tmdb id and the user's preferred language. On success,
-  /// loads the first result directly from its remote URL via
-  /// [SubtitleTrack.uri] — no temp-file step needed. Fully fire-and-forget:
-  /// any error is silently swallowed so playback is never disrupted.
-  void _fetchAndApplySubtitle(Language lang) {
+  /// the title's imdb/tmdb id (or show title for id-less content) and the
+  /// user's preferred language. On success, loads the first result directly
+  /// from its remote URL via [SubtitleTrack.uri] — no temp-file step needed.
+  /// Fully fire-and-forget: any error is silently swallowed so playback is
+  /// never disrupted.
+  void _fetchAndApplySubtitle(Language lang, {String? title}) {
     final epNum = currentEpisode.number?.toInt();
     // Capture gen so stale completions after an episode change are discarded.
     final capturedGen = _gen;
@@ -878,6 +882,7 @@ class PlayerCubit extends Cubit<PlayerState> {
             // a mismatch just yields no result (never a wrong-episode sub).
             season: tmdbIsTv ? 1 : null,
             episode: tmdbIsTv ? epNum : null,
+            title: title,
             iso2: lang.iso2,
           );
           // Discard if the user moved to a different episode or a track was

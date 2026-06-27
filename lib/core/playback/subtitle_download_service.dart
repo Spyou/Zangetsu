@@ -38,7 +38,9 @@ class SubtitleDownloadService {
   /// Resolution order for the IMDb id:
   ///   1. Use [imdbId] directly when non-null/non-empty.
   ///   2. Otherwise call TMDB external_ids for [tmdbId] to get the IMDb id.
-  ///   3. If no IMDb id can be resolved → return `[]`.
+  ///   3. When both are absent but [title] is non-empty, search TMDB by title
+  ///      to obtain a tmdbId, then continue with step 2.
+  ///   4. If no IMDb id can be resolved → return `[]`.
   ///
   /// For series pass `isTv = true` with [season] and [episode]; the addon
   /// builds the `series/<imdb>:<s>:<e>` resource path automatically.
@@ -50,6 +52,8 @@ class SubtitleDownloadService {
     bool isTv = false,
     int? season,
     int? episode,
+    String? title,
+    int? year,
     required String iso2,
   }) async {
     try {
@@ -58,6 +62,8 @@ class SubtitleDownloadService {
         imdbId: imdbId,
         tmdbId: tmdbId,
         isTv: isTv,
+        title: title,
+        year: year,
       );
       if (resolvedImdb == null || resolvedImdb.isEmpty) return const [];
 
@@ -93,27 +99,63 @@ class SubtitleDownloadService {
   }
 
   /// Resolves the IMDb id from [imdbId] (preferred) or via a TMDB
-  /// external_ids lookup for [tmdbId]. Returns `null` when neither source
-  /// yields a usable id.
+  /// external_ids lookup for [tmdbId]. When both are absent but [title] is
+  /// non-empty, searches TMDB by title to obtain a tmdbId first, then
+  /// continues with the external_ids lookup. Returns `null` when no usable
+  /// id can be resolved.
   Future<String?> _resolveImdbId({
     String? imdbId,
     int? tmdbId,
     bool isTv = false,
+    String? title,
+    int? year,
   }) async {
     final trimmed = imdbId?.trim() ?? '';
     if (trimmed.isNotEmpty) return trimmed;
-    if (tmdbId == null) return null;
+
+    // When no tmdbId is provided but we have a title, search TMDB to get one.
+    int? resolvedTmdbId = tmdbId;
+    if (resolvedTmdbId == null) {
+      final t = title?.trim() ?? '';
+      if (t.isEmpty) return null;
+      resolvedTmdbId = await _searchTmdbId(t, isTv: isTv, year: year);
+      if (resolvedTmdbId == null) return null;
+    }
 
     try {
       // Reuse the shared Dio instance whose interceptor injects the TMDB
       // api_key query parameter for all requests to api.themoviedb.org.
       final tmdbDio = sl<Dio>();
       final path = isTv
-          ? '${Tmdb.base}/tv/$tmdbId/external_ids'
-          : '${Tmdb.base}/movie/$tmdbId/external_ids';
+          ? '${Tmdb.base}/tv/$resolvedTmdbId/external_ids'
+          : '${Tmdb.base}/movie/$resolvedTmdbId/external_ids';
       final res = await tmdbDio.get<Map<String, dynamic>>(path);
       final id = res.data?['imdb_id'] as String?;
       return (id?.trim().isNotEmpty ?? false) ? id!.trim() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Searches TMDB for [title] and returns the first result's id, or null.
+  /// Only called when no imdbId/tmdbId is available — never on the fast path.
+  Future<int?> _searchTmdbId(String title, {bool isTv = false, int? year}) async {
+    try {
+      final tmdbDio = sl<Dio>();
+      final kind = isTv ? 'tv' : 'movie';
+      final params = <String, dynamic>{'query': title};
+      if (year != null) {
+        params[isTv ? 'first_air_date_year' : 'year'] = year;
+      }
+      final res = await tmdbDio.get<Map<String, dynamic>>(
+        '${Tmdb.base}/search/$kind',
+        queryParameters: params,
+      );
+      final results = res.data?['results'];
+      if (results is! List || results.isEmpty) return null;
+      final first = results.first;
+      if (first is! Map) return null;
+      return (first['id'] as num?)?.toInt();
     } catch (_) {
       return null;
     }
