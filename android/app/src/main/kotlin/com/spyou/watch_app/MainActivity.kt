@@ -517,6 +517,11 @@ class MainActivity : FlutterActivity() {
         "is.xyz.mpv" to "mpv",
         "com.brouken.player" to "Just Player",
         "dev.anilbeesetti.nextplayer" to "Next Player",
+        // SPlayer ships under two package ids (Play Store "All Video Player" and
+        // the alt-store "Fast Video Player"); list both so whichever the user has
+        // installed is detected. installedPlayers() filters to the present one.
+        "com.young.simple.player" to "SPlayer",
+        "com.ttee.leeplayer" to "SPlayer",
     )
 
     private fun installedPlayers(): List<Map<String, String>> {
