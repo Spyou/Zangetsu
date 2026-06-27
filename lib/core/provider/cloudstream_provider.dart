@@ -622,6 +622,11 @@ class CloudStreamManager extends ChangeNotifier {
   /// Provider for a `cs:<name>` source id, or null when not installed.
   BaseProvider? get(String sourceId) => _providers[sourceId];
 
+  /// Whether a repo with this exact [url] has already been added (used to show
+  /// an "Added" state for recommended repos instead of a duplicate "Add").
+  bool hasRepo(String url) =>
+      _repos.any((r) => (r['url'] ?? '').toString() == url);
+
   /// Resolve a provider for [sourceId], falling back to the provider's
   /// repo/version-agnostic IDENTITY (its internalName / name, ignoring the
   /// `@version@repoTag` suffix) when the exact tagged id isn't installed. Lets a

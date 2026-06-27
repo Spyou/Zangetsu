@@ -1754,6 +1754,21 @@ class _CsSourceRow extends StatelessWidget {
 /// disposes it in [dispose] — the controller must outlive the dialog's exit
 /// animation, so it cannot be created/disposed around an `await showDialog`.
 /// Returns the trimmed URL via `Navigator.pop`, or null on cancel.
+/// One-tap CloudStream repos surfaced in the "Add CS repo" dialog. Each is added
+/// through the same [CloudStreamManager.addRepo] path as a manually pasted URL.
+const List<({String name, String desc, String url})> _kRecommendedCsRepos = [
+  (
+    name: 'Phisher',
+    desc: 'Large multi-source pack — anime, movies & series',
+    url: 'https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json',
+  ),
+  (
+    name: 'CNC (All Languages)',
+    desc: 'Multi-language movies, series & live TV',
+    url: 'https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/refs/heads/builds/CNC.json',
+  ),
+];
+
 class _CsAddRepoDialog extends StatefulWidget {
   const _CsAddRepoDialog();
 
@@ -1772,34 +1787,100 @@ class _CsAddRepoDialogState extends State<_CsAddRepoDialog> {
 
   void _submit() => Navigator.pop(context, _urlCtrl.text.trim());
 
+  /// A recommended repo row: name + blurb, with a one-tap "Add" that closes the
+  /// dialog with the repo URL (same code path as a pasted one), or an "Added"
+  /// marker when it's already in the user's list.
+  Widget _recommendedTile(
+    BuildContext context,
+    ({String name, String desc, String url}) repo,
+  ) {
+    final added = sl<CloudStreamManager>().hasRepo(repo.url);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  repo.name,
+                  style: AppText.body.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(repo.desc, style: AppText.caption),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (added)
+            Text(
+              'Added',
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            )
+          else
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, repo.url),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(
+                  color: AppColors.accent.withValues(alpha: 0.6),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Add'),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
       title: Text('Add CS repo', style: AppText.headline),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _urlCtrl,
-            autofocus: true,
-            keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(
-              labelText: 'Repo URL',
-              hintText: 'https://.../repo.json',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _urlCtrl,
+              autofocus: false,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Repo URL',
+                hintText: 'https://.../repo.json',
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            "Paste a CloudStream repository URL — the app loads every "
-            'source it lists.',
-            style: AppText.caption,
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              "Paste a CloudStream repository URL — the app loads every "
+              'source it lists.',
+              style: AppText.caption,
+            ),
+            const SizedBox(height: 18),
+            Text(
+              'RECOMMENDED',
+              style: AppText.caption.copyWith(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.6,
+              ),
+            ),
+            const SizedBox(height: 4),
+            for (final r in _kRecommendedCsRepos) _recommendedTile(context, r),
+          ],
+        ),
       ),
       actions: [
         TextButton(
