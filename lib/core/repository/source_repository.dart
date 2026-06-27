@@ -33,6 +33,17 @@ class SourceRepository {
   _prefetch = {};
   static const Duration _prefetchTtl = Duration(minutes: 2);
 
+  /// Resolved-source cache: `sourceId|episodeUrl` → the fast-resolved sources +
+  /// when they were resolved. Unlike [_prefetch] (consumed once), this PERSISTS,
+  /// so re-opening a recently-played episode (Continue Watching, back-out then
+  /// resume, a quality switch) replays instantly instead of re-scraping. Short
+  /// TTL because stream URLs are signed/expiring — this mirrors CloudStream's
+  /// 20-minute link cache. ONLY the fast (playback) path uses it; downloads
+  /// (fast=false) always resolve fresh. Cleared by [invalidateSources] when
+  /// every mirror stalls (the cached links are likely dead).
+  final Map<String, ({DateTime at, List<VideoSource> sources})> _resolved = {};
+  static const Duration _resolvedTtl = Duration(minutes: 20);
+
   String _prefetchKey(String url, String? sourceId) =>
       '${sourceId ?? _active.state}|$url';
 
@@ -231,16 +242,43 @@ class SourceRepository {
     bool fast = false,
   }) async {
     if (fast) {
-      final entry = _prefetch.remove(_prefetchKey(episodeUrl, sourceId));
+      final key = _prefetchKey(episodeUrl, sourceId);
+      // 1. One-shot prefetch started on the detail screen.
+      final entry = _prefetch.remove(key);
       if (entry != null &&
           DateTime.now().difference(entry.at) < _prefetchTtl) {
         final cached = await entry.future;
         // Fall through to a fresh resolve only if the prefetch came back empty
         // (or had failed → []), so this is never worse than no prefetch.
-        if (cached.isNotEmpty) return cached;
+        if (cached.isNotEmpty) {
+          _resolved[key] = (at: DateTime.now(), sources: cached);
+          return cached;
+        }
       }
+      // 2. Persistent TTL cache → instant re-open of a recent episode.
+      final hit = _resolved[key];
+      if (hit != null &&
+          hit.sources.isNotEmpty &&
+          DateTime.now().difference(hit.at) < _resolvedTtl) {
+        return hit.sources;
+      }
+      // 3. Fresh resolve → cache it for the next re-open.
+      final fresh = await _providerFor(
+        sourceId,
+      ).getVideoSources(episodeUrl, fast: true);
+      if (fresh.isNotEmpty) {
+        _resolved[key] = (at: DateTime.now(), sources: fresh);
+      }
+      return fresh;
     }
     return _providerFor(sourceId).getVideoSources(episodeUrl, fast: fast);
+  }
+
+  /// Drop the cached fast-resolution for an episode so the next [sources] call
+  /// re-scrapes fresh links. Called when every mirror stalls — the cached links
+  /// have likely expired. No-op when the episode isn't cached (e.g. downloads).
+  void invalidateSources(String episodeUrl, {String? sourceId}) {
+    _resolved.remove(_prefetchKey(episodeUrl, sourceId));
   }
 
   /// Fire-and-forget background resolution for [episodeUrl] (the episode the

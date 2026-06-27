@@ -1439,6 +1439,13 @@ class PlayerCubit extends Cubit<PlayerState> {
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality();
     } else {
+      // Every mirror stalled — the cached resolution is likely dead/expired, so
+      // drop it so the user's "retry" re-scrapes fresh links instead of replaying
+      // the same stalled cache.
+      sl<SourceRepository>().invalidateSources(
+        _episodeUrl(currentEpisode),
+        sourceId: sourceId,
+      );
       emit(state.copyWith(error: () => 'All servers stalled — tap retry.'));
     }
     _recovering = false;
