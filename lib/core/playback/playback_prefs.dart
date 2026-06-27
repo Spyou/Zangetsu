@@ -220,4 +220,21 @@ class PlaybackPrefs {
       );
   Future<void> setSubtitlePosition(int value) =>
       _box.put('subtitlePosition', value.clamp(0, 100));
+
+  /// Preferred subtitle language as an ISO-639-1 two-letter code (e.g. 'en').
+  /// Empty string means no preference (off). Written by the Settings language
+  /// picker; read by the player to auto-select a matching subtitle track.
+  String get preferredSubtitleLanguage =>
+      _box.get('preferredSubtitleLang', defaultValue: '') as String;
+  Future<void> setPreferredSubtitleLanguage(String value) =>
+      _box.put('preferredSubtitleLang', value);
+
+  /// Whether to automatically download subtitles from OpenSubtitles when the
+  /// loaded source carries no subtitle in the preferred language. Defaults to
+  /// true — the player will attempt a silent download before falling back to
+  /// no subtitles. Requires [subtitleApiKey] to be set.
+  bool get autoDownloadSubtitles =>
+      _box.get('autoDownloadSubtitles', defaultValue: true) as bool;
+  Future<void> setAutoDownloadSubtitles(bool value) =>
+      _box.put('autoDownloadSubtitles', value);
 }

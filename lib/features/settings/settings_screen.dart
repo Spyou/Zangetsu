@@ -14,6 +14,7 @@ import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/search_prefs.dart';
+import '../../core/playback/subtitle_language.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import 'discord_settings_screen.dart';
@@ -1095,11 +1096,110 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     : 'Key saved — online search enabled',
                 onTap: _editSubtitleApiKey,
               ),
+              SettingsTile(
+                icon: Icons.language_outlined,
+                title: 'Subtitle language',
+                subtitle: () {
+                  final pref = _prefs.preferredSubtitleLanguage;
+                  if (pref.isEmpty) return 'None';
+                  return languageByPref(pref)?.name ?? pref.toUpperCase();
+                }(),
+                onTap: _pickSubtitleLanguage,
+              ),
+              _toggleRow(
+                icon: Icons.download_outlined,
+                title: 'Auto-download subtitles',
+                subtitle:
+                    'When the source has no subtitle in your language',
+                value: _prefs.autoDownloadSubtitles,
+                onChanged: (v) async {
+                  await _prefs.setAutoDownloadSubtitles(v);
+                  if (mounted) setState(() {});
+                },
+              ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  /// Bottom sheet to pick the preferred subtitle language. The user can choose
+  /// "None" (clears the preference) or any language from [kSubtitleLanguages].
+  Future<void> _pickSubtitleLanguage() async {
+    final current = _prefs.preferredSubtitleLanguage;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.6,
+      ),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Subtitle language', style: AppText.headline),
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  ListTile(
+                    onTap: () => Navigator.pop(ctx, ''),
+                    title: Text(
+                      'None',
+                      style: AppText.body.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    trailing: current.isEmpty
+                        ? const Icon(Icons.check, color: AppColors.accent)
+                        : null,
+                  ),
+                  for (final lang in kSubtitleLanguages)
+                    ListTile(
+                      onTap: () => Navigator.pop(ctx, lang.iso1),
+                      title: Text(
+                        lang.name,
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      trailing: current == lang.iso1
+                          ? const Icon(Icons.check, color: AppColors.accent)
+                          : null,
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return; // dismissed
+    await _prefs.setPreferredSubtitleLanguage(picked);
+    if (mounted) setState(() {});
   }
 
   /// Prompts for the OpenSubtitles API key and saves it to [PlaybackPrefs].
