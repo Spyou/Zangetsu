@@ -73,12 +73,22 @@ Language? languageByPref(String pref) {
 /// Returns true if the provider-supplied free-form [sourceLang] string
 /// corresponds to [lang].
 ///
-/// Matches when [sourceLang] (lowercased) contains the iso1 code, the iso2
-/// code, or equals the full English name — tolerating providers that emit
-/// "English", "arabic", "eng", "en", etc.
+/// Tolerates providers that emit "English", "English (SDH)", "eng", "en", etc.
+/// Codes are matched as WHOLE TOKENS, never substrings, so a 2/3-letter code
+/// can't accidentally match inside an unrelated name (e.g. "en"/"eng" must not
+/// match "Bengali").
 bool matchesSourceLang(String sourceLang, Language lang) {
-  final s = sourceLang.toLowerCase();
-  return s.contains(lang.iso1) ||
-      s.contains(lang.iso2) ||
-      s == lang.name.toLowerCase();
+  final s = sourceLang.toLowerCase().trim();
+  if (s.isEmpty) return false;
+  final name = lang.name.toLowerCase();
+  // Whole-string or decorated-name match ("english", "english (sdh)").
+  if (s == lang.iso1 || s == lang.iso2 || s == name || s.contains(name)) {
+    return true;
+  }
+  // Token match: a code/name recognised only as a standalone word.
+  for (final token in s.split(RegExp(r'[^a-z]+'))) {
+    if (token.isEmpty) continue;
+    if (token == lang.iso1 || token == lang.iso2 || token == name) return true;
+  }
+  return false;
 }
