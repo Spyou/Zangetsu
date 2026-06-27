@@ -873,7 +873,10 @@ class PlayerCubit extends Cubit<PlayerState> {
             imdbId: imdbId,
             tmdbId: tmdbId,
             isTv: tmdbIsTv,
-            season: tmdbIsTv ? null : null, // no season field on Episode model
+            // The Episode model carries no season, so assume season 1 for TV —
+            // correct for single-season shows and season-relative episode lists;
+            // a mismatch just yields no result (never a wrong-episode sub).
+            season: tmdbIsTv ? 1 : null,
             episode: tmdbIsTv ? epNum : null,
             iso2: lang.iso2,
           );

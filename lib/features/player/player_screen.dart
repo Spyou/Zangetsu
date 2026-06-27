@@ -1246,8 +1246,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
           top: false,
           child: _OnlineSubtitleSheet(
             initialQuery: initialQuery,
+            // Default the manual search to the preferred language, falling back
+            // to English (the prior default) when no preference is set.
             initialLanguage:
-                sl<PlaybackPrefs>().preferredSubtitleLanguage,
+                sl<PlaybackPrefs>().preferredSubtitleLanguage.isEmpty
+                ? 'en'
+                : sl<PlaybackPrefs>().preferredSubtitleLanguage,
             imdbId: widget.imdbId,
             tmdbId: widget.tmdbId,
             onApply: (path) async {
