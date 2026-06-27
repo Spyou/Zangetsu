@@ -1,4 +1,8 @@
+import 'dart:io';
+
+import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../di/injector.dart';
 import '../metadata/tmdb.dart';
@@ -163,48 +167,65 @@ class SubtitleDownloadService {
       final subs = res.data?['subtitles'];
       if (subs is! List) return const [];
 
-      final out = <({String lang, String url})>[];
+      // SubDL serves each subtitle as a ZIP (the `url` field). Download +
+      // extract the first candidate whose archive yields a usable subtitle
+      // file, write it to a temp file, and return that local path (mpv loads
+      // .srt/.ssa/.ass/.vtt). `url` already carries the api_key.
       for (final item in subs) {
         if (item is! Map) continue;
         final lang =
             (item['language'] as String?)?.trim() ??
             (item['lang'] as String?)?.trim() ??
             iso1Upper;
-        final unpack = item['unpack_files'];
-        if (unpack is List) {
-          for (final f in unpack) {
-            if (f is! Map) continue;
-            final url = _subDlUrl((f['url'] as String?)?.trim() ?? '');
-            final fmt = (f['format'] as String?)?.toLowerCase() ?? '';
-            if (url.isNotEmpty &&
-                (fmt == 'srt' ||
-                    fmt == 'vtt' ||
-                    url.toLowerCase().endsWith('.srt') ||
-                    url.toLowerCase().endsWith('.vtt'))) {
-              out.add((lang: lang, url: url));
-            }
-          }
-        } else {
-          // No unpack list — only use the item URL if it's a direct sub file
-          // (we don't unzip .zip archives here).
-          final url = _subDlUrl((item['url'] as String?)?.trim() ?? '');
-          if (url.toLowerCase().endsWith('.srt') ||
-              url.toLowerCase().endsWith('.vtt')) {
-            out.add((lang: lang, url: url));
-          }
-        }
+        final rel = (item['url'] as String?)?.trim() ?? '';
+        if (rel.isEmpty) continue;
+        final path = await _downloadAndExtractSub(_subDlUrl(rel));
+        if (path != null) return [(lang: lang, url: path)];
       }
-      return out;
+      return const [];
     } catch (_) {
       return const [];
     }
   }
 
-  /// Absolute SubDL download URL ([u] may be relative to the SubDL CDN).
-  String _subDlUrl(String u) {
-    if (u.isEmpty) return '';
-    if (u.startsWith('http')) return u;
-    return '$_subDlCdn${u.startsWith('/') ? '' : '/'}$u';
+  /// Absolute SubDL download URL ([u] is relative to the SubDL CDN).
+  String _subDlUrl(String u) =>
+      u.startsWith('http') ? u : '$_subDlCdn${u.startsWith('/') ? '' : '/'}$u';
+
+  /// Downloads a SubDL subtitle ZIP and extracts the first subtitle file to a
+  /// temp file, returning its path (or null on any failure).
+  Future<String?> _downloadAndExtractSub(String zipUrl) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        zipUrl,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final bytes = res.data;
+      if (bytes == null || bytes.isEmpty) return null;
+      final archive = ZipDecoder().decodeBytes(bytes);
+      for (final file in archive) {
+        if (!file.isFile) continue;
+        final name = file.name.toLowerCase();
+        final dot = name.lastIndexOf('.');
+        final ext = dot >= 0 ? name.substring(dot) : '';
+        if (ext == '.srt' ||
+            ext == '.ssa' ||
+            ext == '.ass' ||
+            ext == '.vtt' ||
+            ext == '.sub') {
+          final segs = Uri.tryParse(zipUrl)?.pathSegments ?? const <String>[];
+          final token = (segs.isNotEmpty ? segs.last : 'sub')
+              .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '');
+          final dir = await getTemporaryDirectory();
+          final out = File('${dir.path}/zangetsu-subdl-$token$ext');
+          await out.writeAsBytes(file.content as List<int>);
+          return out.path;
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Resolves the IMDb id from [imdbId] (preferred) or via a TMDB external_ids

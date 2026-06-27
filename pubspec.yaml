@@ -49,6 +49,8 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
+  # Extract the .srt/.ssa from SubDL's zipped subtitle downloads.
+  archive: ^4.0.9
 
   # JS engine (QuickJS bridge)
   flutter_js: ^0.8.0
