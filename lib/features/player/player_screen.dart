@@ -1339,6 +1339,40 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Build ───────────────────────────────────────────────────────────────
 
+  // Loading backdrop: the episode poster (dimmed under a scrim) behind the
+  // branded spinner, so tapping Play opens straight into a "player that's
+  // loading" instead of a black screen while the source resolves + buffers —
+  // the CloudStream-style instant-player feel. Purely visual; no logic change.
+  Widget _loadingBackdropBody(String label, {String? thumb}) {
+    final img = (thumb?.trim().isNotEmpty ?? false)
+        ? thumb!.trim()
+        : (widget.cover ?? '').trim();
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (img.isNotEmpty)
+          CachedNetworkImage(
+            imageUrl: img,
+            httpHeaders: widget.coverHeaders,
+            fit: BoxFit.cover,
+            errorWidget: (c, u, e) => const ColoredBox(color: Colors.black),
+            placeholder: (c, u) => const ColoredBox(color: Colors.black),
+          ),
+        // Scrim (top→bottom) so the spinner + label stay legible over art.
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0x99000000), Color(0xCC000000)],
+            ),
+          ),
+        ),
+        Center(child: BrandLoader(label: label)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // A Watch Together join that couldn't resolve the room's source — explain
@@ -1375,9 +1409,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Still resolving the episode list (instant-nav path) — show the branded
     // loader instead of touching the not-yet-created cubit.
     if (!_ready) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: Colors.black,
-        body: Center(child: BrandLoader(label: 'Loading…')),
+        body: _loadingBackdropBody('Loading…'),
       );
     }
     return Scaffold(
@@ -1397,8 +1431,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
             );
           }
           if (state.loadingSources) {
-            return const Center(
-              child: BrandLoader(label: 'Finding the best source…'),
+            return _loadingBackdropBody(
+              'Finding the best source…',
+              thumb: _c.currentEpisode.thumbnail,
             );
           }
           if (state.error != null) {
