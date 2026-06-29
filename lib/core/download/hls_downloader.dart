@@ -7,8 +7,10 @@ import 'package:pointycastle/export.dart';
 import '../playback/hls.dart';
 
 /// Downloads an HLS (m3u8) stream to a single local file by fetching every
-/// segment, decrypting AES-128 if needed, and concatenating the raw transport
-/// stream into one .mp4 (libmpv/media_kit plays a concatenated TS fine).
+/// segment, decrypting AES-128 if needed, and concatenating into one .mp4.
+/// Handles both flavors: plain TS segments (concatenated directly) and fMP4
+/// (`#EXT-X-MAP` init segment written first, then the `.m4s` fragments) — libmpv
+/// plays either a concatenated TS or a concatenated fragmented-MP4 fine.
 ///
 /// Runs in the Dart isolate (foreground while the app is open) — there's no
 /// background_downloader equivalent for segmented HLS. Progress is reported via
@@ -90,6 +92,22 @@ class HlsDownloader {
       }
     }
 
+    // fMP4: write the init segment FIRST so the file has its ftyp+moov header
+    // before the moof+mdat fragments — otherwise the result is unplayable. TS
+    // playlists have no `#EXT-X-MAP`, so initUrl is null and this is skipped
+    // (TS downloads are unchanged). The init segment is never encrypted.
+    if (pl.initUrl != null) {
+      final init = await _fetchBytes(pl.initUrl!, headers);
+      if (init == null) {
+        await sink.close();
+        try {
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+        return false;
+      }
+      sink.add(init);
+    }
+
     await Future.wait(List.generate(_concurrency, (_) => worker()));
     await sink.flush();
     await sink.close();
@@ -158,6 +176,11 @@ class HlsDownloader {
           final iv = RegExp(r'IV=([0-9A-Fa-fxX]+)').firstMatch(line)?.group(1);
           if (iv != null) pl.explicitIv = hlsParseHexIv(iv);
         }
+      } else if (line.startsWith('#EXT-X-MAP:')) {
+        // fMP4 init segment — must be written before any fragment. (We don't
+        // handle BYTERANGE inits, rare; the common case is a full init file.)
+        final uri = RegExp(r'URI="([^"]+)"').firstMatch(line)?.group(1);
+        if (uri != null) pl.initUrl = _resolveRef(uri, mediaUrl);
       } else if (line.startsWith('#EXTINF:')) {
         for (var j = i + 1; j < lines.length; j++) {
           final c = lines[j].trim();
@@ -216,6 +239,10 @@ class _MediaPlaylist {
   String? keyUrl;
   Uint8List? explicitIv;
   int mediaSequence = 0;
+
+  /// fMP4 initialization segment (`#EXT-X-MAP:URI="…"`) — the ftyp+moov header
+  /// the `.m4s` fragments lack. Null for plain TS playlists.
+  String? initUrl;
 }
 
 // ── Crypto helpers (top-level so they're unit-testable) ──────────────────────
