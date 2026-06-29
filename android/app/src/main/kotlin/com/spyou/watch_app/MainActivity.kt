@@ -403,12 +403,18 @@ class MainActivity : FlutterActivity() {
                                 val outdated = mutableListOf<Map<String, Any?>>()
                                 for (plugin in plugins) {
                                     // THIS repo's installed copy (tagged or legacy).
-                                    val mineId = installed.firstOrNull {
-                                        it.substringBefore('@') == plugin.internalName &&
-                                            (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
-                                    } ?: continue
-                                    val installedVersion =
-                                        mineId.split('@').getOrNull(1)?.toIntOrNull() ?: continue
+                                    // Use the HIGHEST installed version: an older `.cs3`
+                                    // left on disk (stale/mismatched tag from a past
+                                    // update) must NOT make a current plugin look
+                                    // outdated. With firstOrNull the leftover old file
+                                    // could win → a false, sticky "update available".
+                                    val installedVersion = installed
+                                        .filter {
+                                            it.substringBefore('@') == plugin.internalName &&
+                                                (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
+                                        }
+                                        .mapNotNull { it.split('@').getOrNull(1)?.toIntOrNull() }
+                                        .maxOrNull() ?: continue
                                     if (plugin.version > installedVersion) {
                                         outdated.add(
                                             mapOf(

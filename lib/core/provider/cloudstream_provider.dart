@@ -1233,10 +1233,46 @@ class CloudStreamManager extends ChangeNotifier {
 
   void _rebuildFrom(List<dynamic>? raw) {
     _providers.clear();
-    final entries = <Map<String, dynamic>>[
+    final all = <Map<String, dynamic>>[
       for (final e in raw ?? const [])
         if (e is Map) Map<String, dynamic>.from(e),
     ];
+    // Collapse stale duplicates: the same plugin (same internalName + same repo
+    // tag) left on disk at multiple versions — e.g. an update whose old `.cs3`
+    // wasn't cleaned up — would otherwise load twice and show as identical twins
+    // in the picker. Keep only the HIGHEST version per (internalName, tag).
+    // Entries without a file id (unique `cs:<name>` sources) pass through
+    // untouched; a different repo (different tag) keeps its own copy, so
+    // genuinely-distinct same-named sources from different repos still both show.
+    final byIdentity = <String, Map<String, dynamic>>{};
+    final entries = <Map<String, dynamic>>[];
+    for (final m in all) {
+      final sp = (m['sourcePlugin'] as String?) ?? '';
+      if (sp.isEmpty) {
+        entries.add(m);
+        continue;
+      }
+      final parts = sp.split('@');
+      final internal = parts.isNotEmpty ? parts[0] : sp;
+      final ver = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+      final tag = parts.length > 2 ? parts.sublist(2).join('@') : '';
+      // Group by the RESOLVED repo (what the user sees as the label), so two
+      // copies that both read e.g. "(Phisher Repo)" collapse even when a past
+      // update left them under slightly different file tags. Falls back to the
+      // raw tag when no persisted repo claims the file — a genuinely different
+      // repo resolves to a different label and is kept separately.
+      final repo = _repoLabelFor(sp) ?? tag;
+      final key = '$internal|$repo';
+      final existing = byIdentity[key];
+      if (existing == null) {
+        byIdentity[key] = m;
+      } else {
+        final eParts = ((existing['sourcePlugin'] as String?) ?? '').split('@');
+        final eVer = eParts.length > 1 ? (int.tryParse(eParts[1]) ?? 0) : 0;
+        if (ver > eVer) byIdentity[key] = m; // keep the newer of the two
+      }
+    }
+    entries.addAll(byIdentity.values);
     // Count display-name occurrences first, so ONLY genuine collisions get the
     // file-id identity. Unique-named sources keep their `cs:<name>` id (and their
     // persisted enable/health/history state) completely untouched.
