@@ -640,6 +640,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             key: const ValueKey('tv-detail-episodes'),
                             eps: eps,
                             seasonEps: seasonEps,
+                            hasMultipleSeasons: hasMultipleSeasons,
+                            seasonSet: seasonSet,
+                            currentSeason: currentSeason,
+                            onSelectSeason:
+                                context.read<DetailCubit>().selectSeason,
                             sourceId: item.sourceId,
                             showId: item.id,
                             showUrl: item.url,
@@ -649,7 +654,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             resumeIndex: _resumeIndex,
                             onOpen: (i) =>
                                 _openPlayer(eps, i, detail, category),
-                            onDownload: (ep) {},
+                            onDownload: (ep) =>
+                                _pickSourceAndDownload(ep, detail, category),
                           ),
                           // ── Cast ─────────────────────────────────────────
                           _CastTab(
@@ -664,6 +670,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                           _RelationsTab(
                             relations: state.relations,
                             onOpen: _openRelation,
+                            tvFocus: true,
                           ),
                           // ── Details ────────────────────────────────────
                           _DetailsTab(
@@ -702,6 +709,10 @@ class _TvEpisodeList extends StatelessWidget {
     super.key,
     required this.eps,
     required this.seasonEps,
+    required this.hasMultipleSeasons,
+    required this.seasonSet,
+    required this.currentSeason,
+    required this.onSelectSeason,
     required this.sourceId,
     required this.showId,
     required this.showUrl,
@@ -715,6 +726,10 @@ class _TvEpisodeList extends StatelessWidget {
 
   final List<Episode> eps;
   final List<Episode> seasonEps;
+  final bool hasMultipleSeasons;
+  final Set<int> seasonSet;
+  final int currentSeason;
+  final ValueChanged<int> onSelectSeason;
   final String sourceId;
   final String showId;
   final String showUrl;
@@ -734,7 +749,7 @@ class _TvEpisodeList extends StatelessWidget {
       );
     }
     final store = sl<ResumeStore>();
-    return ListView.builder(
+    final listView = ListView.builder(
       padding: const EdgeInsets.only(bottom: 32),
       itemCount: seasonEps.length,
       itemBuilder: (context, i) {
@@ -752,6 +767,10 @@ class _TvEpisodeList extends StatelessWidget {
                   .clamp(0.0, 1.0)
             : 0.0;
         final epNum = ep.number?.toInt() ?? (i + 1);
+        // Show clean title (strip "S1 E3 -" prefix) for multi-season titles,
+        // matching the phone's _EpisodesTab behaviour.
+        final displayTitle =
+            hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
 
         // Wrap the existing _EpisodeRow in TvFocusable so D-pad up/down +
         // OK-select navigates + triggers playback. The inner InkWell (touch)
@@ -763,7 +782,7 @@ class _TvEpisodeList extends StatelessWidget {
             child: _EpisodeRow(
               ep: ep,
               epNum: epNum,
-              displayTitle: ep.title,
+              displayTitle: displayTitle,
               coverUrl: coverUrl,
               coverHeaders: coverHeaders,
               isWatched: watched,
@@ -778,6 +797,73 @@ class _TvEpisodeList extends StatelessWidget {
           ),
         );
       },
+    );
+
+    if (!hasMultipleSeasons) return listView;
+
+    // Multi-season: show a D-pad-navigable season chip row above the list.
+    return Column(
+      children: [
+        _TvSeasonChips(
+          seasons: seasonSet.toList()..sort(),
+          currentSeason: currentSeason,
+          onSelect: onSelectSeason,
+        ),
+        Expanded(child: listView),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TV season chip row — a horizontal scrollable row of [TvFocusable] season
+// pills.  Shown above the episode list when a title has multiple seasons.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TvSeasonChips extends StatelessWidget {
+  const _TvSeasonChips({
+    required this.seasons,
+    required this.currentSeason,
+    required this.onSelect,
+  });
+
+  final List<int> seasons;
+  final int currentSeason;
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        itemCount: seasons.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) {
+          final s = seasons[i];
+          final selected = s == currentSeason;
+          return TvFocusable(
+            key: ValueKey('tv-season-$s'),
+            onTap: () => onSelect(s),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.accent : AppColors.surface2,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Season $s',
+                style: AppText.caption.copyWith(
+                  color: selected ? Colors.white : AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

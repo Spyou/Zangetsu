@@ -172,6 +172,38 @@ const _testDetail = MediaDetail(
   ],
 );
 
+// Multi-season: episode titles carry "S<n> E<n>" prefix so [seasonsOf] returns
+// {1, 2} and the TV season chip row is rendered.
+const _testDetailMultiSeason = MediaDetail(
+  id: 'ms-show',
+  title: 'Multi Season Anime',
+  url: 'http://test/ms',
+  type: ProviderType.anime,
+  sourceId: 'test',
+  episodes: [
+    Episode(id: 's1e1', title: 'S1 E1 - Pilot', url: '/s1e1', number: 1),
+    Episode(id: 's1e2', title: 'S1 E2 - Second', url: '/s1e2', number: 2),
+    Episode(id: 's2e1', title: 'S2 E1 - Season Two', url: '/s2e1', number: 1),
+  ],
+);
+
+// Detail that includes source-supplied relations so [_enrich]'s fallback path
+// emits them into state without needing AniList / TMDB.
+const _testDetailWithRelations = MediaDetail(
+  id: 'rel-show',
+  title: 'Relations Anime',
+  url: 'http://test/rel',
+  type: ProviderType.anime,
+  sourceId: 'test',
+  episodes: [
+    Episode(id: 'e1', title: 'Episode 1', url: '/e1', number: 1),
+  ],
+  relations: [
+    MediaRelation(title: 'Sequel Anime', relation: 'Sequel'),
+    MediaRelation(title: 'Prequel Anime', relation: 'Prequel'),
+  ],
+);
+
 // ── Test ──────────────────────────────────────────────────────────────────────
 
 void main() {
@@ -283,6 +315,132 @@ void main() {
         scopeNodes.map((n) => n.debugLabel).toSet(),
         containsAll(['tv-detail-left', 'tv-detail-right']),
       );
+    },
+  );
+
+  // ── GAP 3: season chips ───────────────────────────────────────────────────
+
+  testWidgets(
+    'DetailScreenTv shows TvFocusable season chips for multi-season titles',
+    (tester) async {
+      final seasonCubit = DetailCubit(
+        repo: _StubSourceRepository(_testDetailMultiSeason),
+        url: _testDetailMultiSeason.url,
+        sourceId: _testDetailMultiSeason.sourceId,
+        prefs: _FakeTitlePrefs(),
+      );
+      await seasonCubit.load();
+      addTearDown(seasonCubit.close);
+
+      final multiItem = const MediaItem(
+        id: 'ms-show',
+        title: 'Multi Season Anime',
+        url: 'http://test/ms',
+        type: ProviderType.anime,
+        sourceId: 'test',
+      );
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: seasonCubit,
+          child: MaterialApp(
+            home: DetailScreenTv(item: multiItem),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Season 1 and Season 2 chips must be present and be TvFocusables.
+      expect(find.byKey(const ValueKey('tv-season-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-season-2')), findsOneWidget);
+
+      final chip1 = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-season-1')),
+      );
+      expect(chip1, isA<TvFocusable>());
+
+      final chip2 = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-season-2')),
+      );
+      expect(chip2, isA<TvFocusable>());
+
+      // Season 1 episodes are shown by default (3 total but only 2 in S1).
+      expect(find.byKey(const ValueKey('tv-ep-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-1')), findsOneWidget);
+    },
+  );
+
+  // ── GAP 1: Relations tab TvFocusable ──────────────────────────────────────
+
+  testWidgets(
+    'DetailScreenTv wraps each relation card in TvFocusable (tvFocus: true)',
+    (tester) async {
+      final relCubit = DetailCubit(
+        repo: _StubSourceRepository(_testDetailWithRelations),
+        url: _testDetailWithRelations.url,
+        sourceId: _testDetailWithRelations.sourceId,
+        prefs: _FakeTitlePrefs(),
+      );
+      await relCubit.load();
+      addTearDown(relCubit.close);
+
+      // Verify the cubit state has relations populated via _enrich's fallback.
+      expect(
+        relCubit.state.relations.length,
+        2,
+        reason: '_enrich should emit source-supplied relations for anime '
+            'without malId/tmdbId',
+      );
+
+      final relItem = const MediaItem(
+        id: 'rel-show',
+        title: 'Relations Anime',
+        url: 'http://test/rel',
+        type: ProviderType.anime,
+        sourceId: 'test',
+      );
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: relCubit,
+          child: MaterialApp(
+            home: DetailScreenTv(item: relItem),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // TvFocusable uses Focus + key events, NOT a GestureDetector, so
+      // tester.tap() does not trigger its onTap.  Access onTap directly —
+      // equivalent to pressing D-pad OK on the TV remote.
+      expect(
+        find.byKey(const ValueKey('tv-detail-tab-2')),
+        findsOneWidget,
+        reason: 'Relations tab key must be in the tree',
+      );
+      final relTab = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-detail-tab-2')),
+      );
+      relTab.onTap(); // programmatically invoke — same as D-pad OK press
+      await tester.pump();
+
+      // Relations tab is now visible; GridView builds its items.
+      // "No related titles" must NOT appear — that would mean relations are empty.
+      expect(find.text('No related titles'), findsNothing);
+
+      // Both relation cards must now be keyed TvFocusables.
+      expect(find.byKey(const ValueKey('tv-rel-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-rel-1')), findsOneWidget);
+
+      final rel0 = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-rel-0')),
+      );
+      expect(rel0, isA<TvFocusable>());
+
+      final rel1 = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-rel-1')),
+      );
+      expect(rel1, isA<TvFocusable>());
     },
   );
 }

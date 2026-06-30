@@ -3403,9 +3403,18 @@ class _AvatarFallback extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RelationsTab extends StatelessWidget {
-  const _RelationsTab({required this.relations, required this.onOpen});
+  const _RelationsTab({
+    required this.relations,
+    required this.onOpen,
+    this.tvFocus = false,
+  });
   final List<MediaRelation> relations;
   final void Function(MediaRelation) onOpen;
+
+  /// When true, each card is wrapped in [TvFocusable] so D-pad can navigate
+  /// and select relation cards on TV.  Defaults to false — no phone caller
+  /// passes this flag, so the phone render is byte-identical to the original.
+  final bool tvFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -3423,49 +3432,59 @@ class _RelationsTab extends StatelessWidget {
       itemCount: relations.length,
       itemBuilder: (_, i) {
         final r = relations[i];
+        final visual = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: AspectRatio(
+                aspectRatio: 2 / 3,
+                child: (r.cover != null && r.cover!.isNotEmpty)
+                    ? CachedNetworkImage(
+                        imageUrl: r.cover!,
+                        fit: BoxFit.cover,
+                        placeholder: (_, _) =>
+                            Container(color: AppColors.surface2),
+                        errorWidget: (_, _, _) =>
+                            Container(color: AppColors.surface2),
+                      )
+                    : Container(color: AppColors.surface2),
+              ),
+            ),
+            const SizedBox(height: 6),
+            if (r.relation != null && r.relation!.isNotEmpty)
+              Text(
+                r.relation!.toUpperCase(),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(
+                  color: AppColors.accent,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+            Text(
+              r.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: AppColors.textPrimary),
+            ),
+          ],
+        );
+        // TV path: D-pad-navigable TvFocusable wrapper.
+        if (tvFocus) {
+          return TvFocusable(
+            key: ValueKey('tv-rel-$i'),
+            onTap: () => onOpen(r),
+            child: visual,
+          );
+        }
+        // Phone path: original GestureDetector — byte-identical to the old code.
         return GestureDetector(
           onTap: () => onOpen(r),
           behavior: HitTestBehavior.opaque,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: AspectRatio(
-                  aspectRatio: 2 / 3,
-                  child: (r.cover != null && r.cover!.isNotEmpty)
-                      ? CachedNetworkImage(
-                          imageUrl: r.cover!,
-                          fit: BoxFit.cover,
-                          placeholder: (_, _) =>
-                              Container(color: AppColors.surface2),
-                          errorWidget: (_, _, _) =>
-                              Container(color: AppColors.surface2),
-                        )
-                      : Container(color: AppColors.surface2),
-                ),
-              ),
-              const SizedBox(height: 6),
-              if (r.relation != null && r.relation!.isNotEmpty)
-                Text(
-                  r.relation!.toUpperCase(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.caption.copyWith(
-                    color: AppColors.accent,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.4,
-                  ),
-                ),
-              Text(
-                r.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.caption.copyWith(color: AppColors.textPrimary),
-              ),
-            ],
-          ),
+          child: visual,
         );
       },
     );
