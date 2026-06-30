@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -23,6 +24,7 @@ import '../detail/detail_screen.dart';
 import '../settings/tracker_settings_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
+import 'my_list_screen_tv.dart';
 
 /// My List — one unified, status-organised library (the app's saved titles plus
 /// AniList-imported rows), filterable by status and by type.
@@ -65,6 +67,7 @@ class _MyListViewState extends State<_MyListView> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const MyListScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
