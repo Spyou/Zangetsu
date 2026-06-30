@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
+import 'see_all_screen_tv.dart';
 
 /// Full-grid view of a single home row ("See All"). Reuses the home's tap /
 /// long-press handlers so an item opens the same Detail / info card.
@@ -28,6 +31,15 @@ class SeeAllScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) {
+      return SeeAllScreenTv(
+        title: title,
+        items: items,
+        onTap: onTap,
+        onLongPress: onLongPress,
+        tagsFor: tagsFor,
+      );
+    }
     final cellW = (MediaQuery.of(context).size.width - 32 - 24) / 3;
     return Scaffold(
       backgroundColor: AppColors.bg,
