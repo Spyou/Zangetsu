@@ -2,6 +2,7 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
@@ -186,7 +187,22 @@ void main() {
   late ActiveSourceCubit activeSource;
   late AuthCubit authCubit;
 
+  setUpAll(() {
+    // Ensure the test binding is initialised so we can mock platform channels
+    // before AppwriteService starts its async Appwrite Client init (which
+    // calls getApplicationDocumentsDirectory via path_provider).
+    TestWidgetsFlutterBinding.ensureInitialized();
+  });
+
   setUp(() async {
+    // Mock path_provider so AppwriteService's async ClientIO init does not
+    // throw MissingPluginException across test boundaries.
+    TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (call) async => '/tmp',
+    );
+
     // Reset GetIt in case a previous test left registrations.
     await sl.reset();
 
@@ -212,6 +228,12 @@ void main() {
   });
 
   tearDown(() async {
+    // Clear the path_provider mock so it doesn't bleed into other test files.
+    TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      null,
+    );
     await sl.reset();
     authCubit.close();
     activeSource.close();
@@ -232,6 +254,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RootShellTv shows the ZANGETSU wordmark image at the top of the rail',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // The rail's wordmark is keyed 'tv-rail-wordmark' — exactly one in the
+      // nav rail (other shell pages may also show the wordmark at a different
+      // size; the key identifies the rail's copy specifically).
+      expect(find.byKey(const ValueKey('tv-rail-wordmark')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RootShellTv shows a source indicator in the rail',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // The source indicator is keyed 'tv-source-indicator' — exactly one
+      // in the rail. The swap_horiz icon is only on this row.
+      expect(
+        find.byKey(const ValueKey('tv-source-indicator')),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Icons.swap_horiz), findsOneWidget);
     },
   );
 

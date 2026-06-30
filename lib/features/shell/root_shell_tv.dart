@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/di/injector.dart';
+import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_registry.dart';
+import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../downloads/downloads_screen.dart';
+import '../home/cubit/home_cubit.dart';
 import 'root_shell.dart';
+import 'tv_source_picker.dart';
 
 /// TV-only navigation shell: a left rail + an [IndexedStack] of pages.
 ///
@@ -146,6 +154,27 @@ class _RootShellTvState extends State<RootShellTv> {
     super.dispose();
   }
 
+  /// Mirrors [SourceSwitcher._label] — returns the display name for a source id
+  /// without instantiating the phone's touch widget. Used by the TV rail's
+  /// source indicator so it stays in sync with the phone's label logic.
+  String _sourceLabel(String id) {
+    if (id.startsWith('cs:')) {
+      try {
+        final cs = sl<CloudStreamManager>().get(id);
+        final name = cs?.displayName;
+        if (name != null && name.isNotEmpty) return 'CS · $name';
+      } catch (_) {}
+      return id;
+    }
+    try {
+      final entry = sl<ProviderRegistry>().entryFor(id);
+      if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
+      return entry?.name ?? id;
+    } catch (_) {
+      return id;
+    }
+  }
+
   void _onItemSelected(int i) {
     setState(() => _index = i);
     if (i == _searchRailItem) _searchFocusSignal.value++;
@@ -164,10 +193,22 @@ class _RootShellTvState extends State<RootShellTv> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: Row(
-        children: [
+    // Reload Home content when the active source changes — mirrors the phone's
+    // BlocListener<ActiveSourceCubit> in home_screen.dart (~line 397) which
+    // calls HomeCubit.load(reset: true).
+    //
+    // TV-only: the phone path uses HomeScreen (not HomeScreenTv) which already
+    // has its own listener. RootShellTv is only rendered when AppMode.isTv is
+    // true, so this listener fires exclusively on TV — no double-load risk.
+    return BlocListener<ActiveSourceCubit, String>(
+      listenWhen: (prev, curr) => prev != curr,
+      listener: (context, _) {
+        sl<HomeCubit>().load(reset: true);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Row(
+          children: [
           // ── Left nav rail ──────────────────────────────────────────────────
           // [_railScope] captures this entire zone so that:
           //   • arrowRight → _onRailKey hands focus to [_contentScope]
@@ -184,6 +225,71 @@ class _RootShellTvState extends State<RootShellTv> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 24),
+                    // ── Brand wordmark ─────────────────────────────────────
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                      child: Image.asset(
+                        key: const ValueKey('tv-rail-wordmark'),
+                        'assets/icon/wordmark.png',
+                        fit: BoxFit.contain,
+                        height: 28,
+                      ),
+                    ),
+                    // ── Source indicator ───────────────────────────────────
+                    // Shows the current source; OK opens the TV source picker.
+                    // BlocBuilder keeps the label in sync with ActiveSourceCubit.
+                    BlocBuilder<ActiveSourceCubit, String>(
+                      builder: (context, sourceId) {
+                        return TvFocusable(
+                          key: const ValueKey('tv-source-indicator'),
+                          onTap: () {
+                            showDialog<void>(
+                              context: context,
+                              barrierColor: Colors.black54,
+                              builder: (_) =>
+                                  BlocProvider<ActiveSourceCubit>.value(
+                                value: context.read<ActiveSourceCubit>(),
+                                child: TvSourcePicker(currentId: sourceId),
+                              ),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.swap_horiz,
+                                  color: AppColors.textTertiary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    _sourceLabel(sourceId),
+                                    style: AppText.body.copyWith(
+                                      color: AppColors.textSecondary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.keyboard_arrow_right,
+                                  size: 16,
+                                  color: AppColors.textTertiary,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    // ── Separator ──────────────────────────────────────────
+                    const Divider(height: 1, color: AppColors.hairline),
+                    const SizedBox(height: 8),
                     ..._kRailItems.asMap().entries.map((entry) {
                       final i = entry.key;
                       final item = entry.value;
@@ -245,6 +351,7 @@ class _RootShellTvState extends State<RootShellTv> {
           ),
         ],
       ),
-    );
+    ), // Scaffold
+    ); // BlocListener
   }
 }
