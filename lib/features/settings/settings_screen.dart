@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
+import '../../core/app_mode.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
@@ -36,6 +37,7 @@ import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
+import 'settings_screen_tv.dart';
 
 /// Top-level Settings screen — a grouped list of cards mirroring the
 /// iOS Settings look in our dark/coral language.
@@ -383,6 +385,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const SettingsScreenTv();
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
     final activeId = context.watch<ActiveSourceCubit>().state;
     final connectedCount = <Tracker>[
