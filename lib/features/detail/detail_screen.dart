@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -8,8 +9,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'dart:io';
-
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/notify/cs_notify.dart';
@@ -37,11 +37,14 @@ import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
+
+part 'detail_screen_tv.dart';
 
 /// Last-resort friendly name for a [sourceId] that's neither a loaded JS nor CS
 /// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
@@ -651,6 +654,7 @@ class _DetailViewState extends State<_DetailView>
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return DetailScreenTv(item: widget.item);
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: BlocBuilder<DetailCubit, DetailState>(
