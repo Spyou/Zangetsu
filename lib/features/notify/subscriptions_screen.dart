@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -11,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
+import 'subscriptions_screen_tv.dart';
 
 /// Manage "new episode" subscriptions (the shows the bell on Detail subscribed
 /// to). Lists them with poster + source, tap to open, and a button to turn each
@@ -63,6 +65,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const SubscriptionsScreenTv();
     final subs = _store.all();
     return Scaffold(
       backgroundColor: AppColors.bg,
