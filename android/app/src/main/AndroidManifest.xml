@@ -12,10 +12,14 @@
     <!-- Foreground service so HLS downloads continue in the background. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
+    <!-- Android TV leanback: required=false so the app still installs on phones. -->
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <application
         android:label="Zangetsu"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:banner="@drawable/tv_banner"
         android:enableOnBackInvokedCallback="true">
         <!-- flutter_background_service declares this service but without a
              foregroundServiceType, which Android 14+ requires for dataSync.
@@ -47,6 +51,10 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
             <!-- Tracker OAuth redirects (AniList / MyAnimeList / Simkl) sent back
                  to zangetsu://<host> and captured by app_links. -->
