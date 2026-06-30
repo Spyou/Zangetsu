@@ -31,6 +31,7 @@ import '../auth/auth_cubit.dart';
 import '../watch_together/ui/watch_party_lobby_screen.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
+import '../onboarding/how_it_works.dart';
 import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
 import '../sources/source_health_screen.dart';
@@ -471,6 +472,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   SettingsCard(
                     children: [
+                      SettingsTile(
+                        icon: Icons.help_outline_rounded,
+                        title: 'How it works',
+                        subtitle: 'New here? A quick guide',
+                        onTap: () => _push(const HowItWorksScreen()),
+                      ),
                       SettingsTile(
                         icon: Icons.play_circle_outline,
                         title: 'Playback',

@@ -9,6 +9,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../home/cubit/home_cubit.dart';
+import 'how_it_works.dart';
 
 /// First-run flag, stored in the shared 'app_prefs' Hive box (opened during
 /// [initDependencies]). True once the user has completed onboarding.
@@ -164,6 +165,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   bool _busy = false;
   String? _error;
   String _status = '';
+  // After sources install, show a short "how it works" guide before entering
+  // the app (new users). Skippers / failures never reach this.
+  bool _showTips = false;
 
   Future<void> _setup() async {
     setState(() {
@@ -202,7 +206,14 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       sl<ActiveSourceCubit>().setSource(repo.sources.first.id);
       sl<HomeCubit>().load();
       await _markOnboarded();
-      if (mounted) widget.onDone();
+      // Sources are installed; show the quick "how it works" guide, then the
+      // "Start watching" button calls onDone() to enter the app.
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _showTips = true;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -233,8 +244,53 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     ),
   );
 
+  /// Post-setup "how it works" guide. Shown once after sources install; the
+  /// button enters the app. The guide is also reachable later via
+  /// Settings → How it works.
+  Widget _buildTips() => Scaffold(
+    backgroundColor: AppColors.bg,
+    body: SafeArea(
+      child: Column(
+        children: [
+          const SizedBox(height: 18),
+          const _Logo(),
+          const SizedBox(height: 12),
+          Text(
+            "You're all set!",
+            style: AppText.title,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          const Expanded(child: HowItWorksView()),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+            child: SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: widget.onDone,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.accent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: Text(
+                  'Start watching',
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
+    if (_showTips) return _buildTips();
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
