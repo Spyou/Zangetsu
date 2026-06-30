@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
@@ -14,6 +15,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import 'downloads_screen_tv.dart';
 
 /// Offline library — downloads grouped by show, with per-episode progress and
 /// actions (play / pause / resume / cancel / delete).
@@ -22,6 +24,7 @@ class DownloadsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const DownloadsScreenTv();
     final manager = sl<DownloadManager>();
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -108,15 +111,66 @@ class _ShowGroup extends StatelessWidget {
             ],
           ),
         ),
-        for (final r in records) _DownloadTile(record: r, manager: manager),
+        for (final r in records) DownloadTile(record: r, manager: manager),
         const SizedBox(height: 6),
       ],
     );
   }
 }
 
-class _DownloadTile extends StatelessWidget {
-  const _DownloadTile({required this.record, required this.manager});
+/// Launches playback of a completed [DownloadRecord] via [PlayerScreen].
+/// Called by both [DownloadTile] (phone touch path) and [DownloadsScreenTv]
+/// (TV D-pad OK path) so the play logic lives in one place.
+Future<void> launchDownloadedEpisode(
+  BuildContext context,
+  DownloadRecord record,
+) async {
+  final path = record.filePath;
+  if (path == null) return;
+  final ep = Episode(
+    id: record.episodeId,
+    title: record.episodeTitle,
+    number: record.episodeNumber,
+    url: record.episodeUrl,
+  );
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => PlayerScreen(
+        sourceId: record.sourceId,
+        episodes: [ep],
+        startIndex: 0,
+        resume: sl<ResumeStore>(),
+        resolveSources: (_) async => [
+          VideoSource(
+            url: path,
+            container: SourceContainer.mp4,
+            // Soft subs saved next to the video (e.g. HiAnime) → load from disk.
+            subtitles: [
+              for (final s in record.subtitles)
+                Subtitle(
+                  url: s.path,
+                  lang: s.lang,
+                  label: s.label,
+                  isDefault: s.isDefault,
+                ),
+            ],
+          ),
+        ],
+        history: sl<WatchHistory>(),
+        showTitle: record.showTitle,
+        cover: record.cover,
+        coverHeaders: record.coverHeaders,
+        showUrl: record.showUrl,
+        category: record.category,
+        malId: record.malId,
+        scrobbleTitle: record.malId != null ? record.showTitle : null,
+      ),
+    ),
+  );
+}
+
+class DownloadTile extends StatelessWidget {
+  const DownloadTile({super.key, required this.record, required this.manager});
   final DownloadRecord record;
   final DownloadManager manager;
 
@@ -141,50 +195,8 @@ class _DownloadTile extends StatelessWidget {
     DownloadStatus.canceled => 'Canceled',
   };
 
-  Future<void> _play(BuildContext context) async {
-    final path = record.filePath;
-    if (path == null) return;
-    final ep = Episode(
-      id: record.episodeId,
-      title: record.episodeTitle,
-      number: record.episodeNumber,
-      url: record.episodeUrl,
-    );
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlayerScreen(
-          sourceId: record.sourceId,
-          episodes: [ep],
-          startIndex: 0,
-          resume: sl<ResumeStore>(),
-          resolveSources: (_) async => [
-            VideoSource(
-              url: path,
-              container: SourceContainer.mp4,
-              // Soft subs saved next to the video (e.g. HiAnime) → load from disk.
-              subtitles: [
-                for (final s in record.subtitles)
-                  Subtitle(
-                    url: s.path,
-                    lang: s.lang,
-                    label: s.label,
-                    isDefault: s.isDefault,
-                  ),
-              ],
-            ),
-          ],
-          history: sl<WatchHistory>(),
-          showTitle: record.showTitle,
-          cover: record.cover,
-          coverHeaders: record.coverHeaders,
-          showUrl: record.showUrl,
-          category: record.category,
-          malId: record.malId,
-          scrobbleTitle: record.malId != null ? record.showTitle : null,
-        ),
-      ),
-    );
-  }
+  Future<void> _play(BuildContext context) =>
+      launchDownloadedEpisode(context, record);
 
   @override
   Widget build(BuildContext context) {
