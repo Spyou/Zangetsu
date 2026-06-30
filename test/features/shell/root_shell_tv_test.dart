@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
+import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/models/home_section.dart';
@@ -194,6 +195,7 @@ void main() {
     activeSource = ActiveSourceCubit(); // nullable box → no Hive
     authCubit = AuthCubit(AppwriteService()); // cache box is nullable → no Hive
 
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<SourceRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
@@ -230,6 +232,43 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'RootShellTv has exactly two Focus zones (rail scope + content scope)',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The two explicit FocusScopeNodes are attached to Focus widgets whose
+      // debug labels start with 'tv-'.  Verify both are in the focus tree by
+      // checking that the tree contains at least those two labelled scope nodes.
+      final scopeNodes = <FocusScopeNode>[];
+      void visitScope(FocusNode node) {
+        if (node is FocusScopeNode &&
+            (node.debugLabel ?? '').startsWith('tv-')) {
+          scopeNodes.add(node);
+        }
+        for (final child in node.children) {
+          visitScope(child);
+        }
+      }
+
+      visitScope(tester.binding.focusManager.rootScope);
+      // Expect exactly the rail scope and the content scope.
+      expect(
+        scopeNodes.map((n) => n.debugLabel).toSet(),
+        containsAll(['tv-rail-scope', 'tv-content-scope']),
+      );
     },
   );
 }

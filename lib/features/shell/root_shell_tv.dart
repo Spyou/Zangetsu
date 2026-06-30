@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -72,9 +73,52 @@ class _RootShellTvState extends State<RootShellTv> {
   /// _searchFocusSignal pattern.
   final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
 
+  // ── D-pad bridge: rail ↔ content ─────────────────────────────────────────
+  //
+  // Two FocusScopeNodes partition the screen into two focus zones.
+  //
+  // D-pad RIGHT from anywhere inside the rail zone: captured by
+  // [_onRailKey] → calls [_contentScope.requestFocus()], which
+  // focuses the most-recently-focused content descendant or, on first entry,
+  // the first descendant that carries autofocus (the hero Play button).
+  //
+  // D-pad LEFT from anywhere inside the content zone: captured by
+  // [_onContentKey] → calls [_railScope.requestFocus()], which restores
+  // focus to the last-focused rail item (or the first autofocus item on
+  // first entry — the Home rail entry).
+  //
+  // This bypasses Flutter's geometry-based directional traversal, which
+  // fails here because rail items (top-left) and the content's first
+  // focusable (centre / hero area) do not share an obvious neighbour
+  // relationship.
+  final FocusScopeNode _railScope =
+      FocusScopeNode(debugLabel: 'tv-rail-scope');
+  final FocusScopeNode _contentScope =
+      FocusScopeNode(debugLabel: 'tv-content-scope');
+
+  KeyEventResult _onRailKey(FocusNode _, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.arrowRight) {
+      _contentScope.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  KeyEventResult _onContentKey(FocusNode _, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      _railScope.requestFocus();
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   void dispose() {
     _searchFocusSignal.dispose();
+    _railScope.dispose();
+    _contentScope.dispose();
     super.dispose();
   }
 
@@ -101,63 +145,78 @@ class _RootShellTvState extends State<RootShellTv> {
       body: Row(
         children: [
           // ── Left nav rail ──────────────────────────────────────────────────
-          Container(
-            width: 200,
-            color: AppColors.surface,
-            child: SafeArea(
-              right: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 24),
-                  ..._kRailItems.asMap().entries.map((entry) {
-                    final i = entry.key;
-                    final item = entry.value;
-                    final selected = _index == i;
-                    return TvFocusable(
-                      autofocus: i == 0,
-                      onTap: () => _onItemSelected(i),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              selected ? item.selectedIcon : item.icon,
-                              color: selected
-                                  ? AppColors.accent
-                                  : AppColors.textTertiary,
-                              size: 24,
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              item.label,
-                              style: TextStyle(
+          // [_railScope] captures this entire zone so that:
+          //   • arrowRight → _onRailKey hands focus to [_contentScope]
+          //   • returning LEFT from content restores the last-focused rail item
+          Focus(
+            focusNode: _railScope,
+            onKeyEvent: _onRailKey,
+            child: Container(
+              width: 200,
+              color: AppColors.surface,
+              child: SafeArea(
+                right: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 24),
+                    ..._kRailItems.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final item = entry.value;
+                      final selected = _index == i;
+                      return TvFocusable(
+                        autofocus: i == 0,
+                        onTap: () => _onItemSelected(i),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected ? item.selectedIcon : item.icon,
                                 color: selected
                                     ? AppColors.accent
                                     : AppColors.textTertiary,
-                                fontSize: 15,
-                                fontWeight: selected
-                                    ? FontWeight.w700
-                                    : FontWeight.w500,
+                                size: 24,
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 12),
+                              Text(
+                                item.label,
+                                style: TextStyle(
+                                  color: selected
+                                      ? AppColors.accent
+                                      : AppColors.textTertiary,
+                                  fontSize: 15,
+                                  fontWeight: selected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  }),
-                ],
+                      );
+                    }),
+                  ],
+                ),
               ),
             ),
           ),
           // ── Page area ──────────────────────────────────────────────────────
+          // [_contentScope] captures this zone so that:
+          //   • arrowLeft → _onContentKey hands focus back to [_railScope]
+          //   • entering RIGHT from the rail focuses the most-recently-focused
+          //     content child (or the first autofocus descendant on first entry)
           Expanded(
-            child: IndexedStack(
-              index: _index,
-              children: _pages,
+            child: Focus(
+              focusNode: _contentScope,
+              onKeyEvent: _onContentKey,
+              child: IndexedStack(
+                index: _index,
+                children: _pages,
+              ),
             ),
           ),
         ],
