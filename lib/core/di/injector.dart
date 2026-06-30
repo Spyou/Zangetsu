@@ -1,5 +1,5 @@
 import 'package:dio/dio.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -33,6 +33,7 @@ import '../anilist/anilist_store.dart';
 import '../tracker/mal_service.dart';
 import '../tracker/simkl_service.dart';
 import '../tracker/tracker_hub.dart';
+import '../app_mode.dart';
 import '../appwrite/appwrite_service.dart';
 import '../download/download_manager.dart';
 import '../download/download_service.dart';
@@ -49,7 +50,19 @@ final GetIt sl = GetIt.instance;
 /// One-time app bootstrap: Hive boxes, Dio, the shared provider runtime,
 /// the provider registry (built-in providers seeded from assets + any
 /// repo-installed providers), and the bundled extractors.
+const _deviceChannel = MethodChannel('com.spyou.watch_app/device');
+
 Future<void> initDependencies() async {
+  // Detect device class first so every subsequent registration can gate on it.
+  // Wrapped in try/catch: no native handler (tests, iOS, web) → phone behavior.
+  bool isTv = false;
+  try {
+    isTv = (await _deviceChannel.invokeMethod<bool>('isTv')) ?? false;
+  } catch (_) {
+    isTv = false;
+  }
+  sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
+
   await Hive.initFlutter();
   // Cache of the signed-in user so the logged-in UI appears INSTANTLY on boot
   // (AuthCubit reads it before the network session check). See AuthCubit.restore.

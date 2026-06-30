@@ -563,6 +563,23 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Device-class detection: lets Dart know if the app is running on an
+        // Android TV / Leanback device. Returns false on phones/tablets so every
+        // TV layout branch is a no-op on the phone build.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.spyou.watch_app/device")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isTv" -> {
+                        val uiModeManager = getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
+                        val isTv = uiModeManager.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
+                            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+                            packageManager.hasSystemFeature("android.software.leanback_only")
+                        result.success(isTv)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     // Android 8.0–11 have no auto-enter API, so enter PiP here when the user
