@@ -35,7 +35,9 @@ import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
 import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
+import '../../core/app_mode.dart';
 import 'player_controller.dart';
+import 'player_tv_controls.dart';
 import 'seek_preview.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
@@ -217,6 +219,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _sleepEndOfEpisode = false;
 
   bool _chatOpen = false; // in-room chat panel visible
+
+  // TV bar visibility — only used when [AppMode.isTv] is true.
+  // Stored here so [PopScope] can gate it at the Scaffold level.
+  bool _tvBarVisible = true;
 
   bool _ready = false; // the player session (cubit) is built
   // Set when a Watch Together join can't resolve the room's source on this
@@ -1414,7 +1420,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         body: _loadingBackdropBody('Loading…'),
       );
     }
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: Colors.black,
       body: BlocBuilder<PlayerCubit, PlayerState>(
         bloc: _c,
@@ -1551,54 +1557,76 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
 
-              // 2. Gesture surface: tap toggles, double-tap seeks, long-press 2x,
-              // vertical = brightness/volume, horizontal = scrub. All disabled
-              // while locked (only the tap-to-reveal-unlock stays).
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  // Hide instantly on tap-down (no double-tap wait). Showing
-                  // still goes through onTap so the first tap of a double-tap
-                  // seek doesn't flash the controls.
-                  onTapDown: (_locked || !_controlsVisible)
-                      ? null
-                      : (_) {
-                          _hideTimer?.cancel();
-                          setState(() => _controlsVisible = false);
-                          _hideOnTapDownMs =
-                              DateTime.now().millisecondsSinceEpoch;
-                        },
-                  onTap: () {
-                    // Swallow the toggle if we just hid on tap-down.
-                    if (DateTime.now().millisecondsSinceEpoch -
-                            _hideOnTapDownMs <
-                        600) {
-                      return;
-                    }
-                    _toggleControls();
-                  },
-                  onDoubleTapDown: _locked ? null : _onDoubleTapDown,
-                  onDoubleTap: _locked ? null : () {},
-                  onLongPressStart: (_locked || !_holdSpeedEnabled)
-                      ? null
-                      : (_) {
-                          _c.setRate(2.0);
-                          setState(() => _holding = true);
-                        },
-                  onLongPressEnd: (_locked || !_holdSpeedEnabled)
-                      ? null
-                      : (_) {
-                          _c.setRate(1.0);
-                          setState(() => _holding = false);
-                        },
-                  onVerticalDragStart: _locked ? null : _onVDragStart,
-                  onVerticalDragUpdate: _locked ? null : _onVDragUpdate,
-                  onVerticalDragEnd: _locked ? null : _onVDragEnd,
-                  onHorizontalDragStart: _locked ? null : _onHDragStart,
-                  onHorizontalDragUpdate: _locked ? null : _onHDragUpdate,
-                  onHorizontalDragEnd: _locked ? null : _onHDragEnd,
+              // 2. Input layer — D-pad on TV; touch gestures on phone.
+              // On TV: PlayerTvControls owns the Focus/key-handler + bottom bar.
+              // On phone: existing gesture surface (unchanged).
+              if (sl<AppMode>().isTv)
+                Positioned.fill(
+                  child: PlayerTvControls(
+                    onTogglePlay: _c.togglePlay,
+                    onSeekBy: _c.seekBy,
+                    onSpeed: _openSpeedSheet,
+                    onAudioSubs: _openAudioSubsSheet,
+                    onQuality: _openQualitySheet,
+                    onSources: _openSourceSheet,
+                    onFit: _cycleFit,
+                    onNext: state.currentIndex + 1 < _c.episodes.length
+                        ? () => _c.playNext()
+                        : null,
+                    onBack: () => Navigator.of(context).maybePop(),
+                    barVisible: _tvBarVisible,
+                    onBarChange: (v) => setState(() => _tvBarVisible = v),
+                  ),
+                )
+              else
+                // Phone: tap toggles, double-tap seeks, long-press 2×,
+                // vertical = brightness/volume, horizontal = scrub.
+                // All disabled while locked (only tap-to-reveal-unlock stays).
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    // Hide instantly on tap-down (no double-tap wait). Showing
+                    // still goes through onTap so the first tap of a double-tap
+                    // seek doesn't flash the controls.
+                    onTapDown: (_locked || !_controlsVisible)
+                        ? null
+                        : (_) {
+                            _hideTimer?.cancel();
+                            setState(() => _controlsVisible = false);
+                            _hideOnTapDownMs =
+                                DateTime.now().millisecondsSinceEpoch;
+                          },
+                    onTap: () {
+                      // Swallow the toggle if we just hid on tap-down.
+                      if (DateTime.now().millisecondsSinceEpoch -
+                              _hideOnTapDownMs <
+                          600) {
+                        return;
+                      }
+                      _toggleControls();
+                    },
+                    onDoubleTapDown: _locked ? null : _onDoubleTapDown,
+                    onDoubleTap: _locked ? null : () {},
+                    onLongPressStart: (_locked || !_holdSpeedEnabled)
+                        ? null
+                        : (_) {
+                            _c.setRate(2.0);
+                            setState(() => _holding = true);
+                          },
+                    onLongPressEnd: (_locked || !_holdSpeedEnabled)
+                        ? null
+                        : (_) {
+                            _c.setRate(1.0);
+                            setState(() => _holding = false);
+                          },
+                    onVerticalDragStart: _locked ? null : _onVDragStart,
+                    onVerticalDragUpdate: _locked ? null : _onVDragUpdate,
+                    onVerticalDragEnd: _locked ? null : _onVDragEnd,
+                    onHorizontalDragStart: _locked ? null : _onHDragStart,
+                    onHorizontalDragUpdate: _locked ? null : _onHDragUpdate,
+                    onHorizontalDragEnd: _locked ? null : _onHDragEnd,
+                  ),
                 ),
-              ),
 
               // 3. Buffering spinner when controls are hidden.
               StreamBuilder<bool>(
@@ -1751,8 +1779,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 6. Controls overlay — or, when locked, just an unlock button.
-              if (!_locked)
+              // 6. Controls overlay (phone only — TV uses PlayerTvControls above).
+              if (!sl<AppMode>().isTv && !_locked)
                 AnimatedOpacity(
                   opacity: _controlsVisible ? 1 : 0,
                   duration: const Duration(milliseconds: 220),
@@ -1798,7 +1826,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 )
-              else
+              else if (!sl<AppMode>().isTv) // phone locked: show unlock button
                 AnimatedOpacity(
                   opacity: _controlsVisible ? 1 : 0,
                   duration: const Duration(milliseconds: 200),
@@ -1913,6 +1941,18 @@ class _PlayerScreenState extends State<PlayerScreen> {
         },
       ),
     );
+    // On TV: wrap with a PopScope so the first Back press hides the bar
+    // (and only the second press pops the route). On phone this is unchanged.
+    if (sl<AppMode>().isTv) {
+      return PopScope(
+        canPop: !_tvBarVisible,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && _tvBarVisible) setState(() => _tvBarVisible = false);
+        },
+        child: scaffold,
+      );
+    }
+    return scaffold;
   }
 }
 
