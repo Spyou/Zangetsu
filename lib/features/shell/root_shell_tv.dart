@@ -77,20 +77,23 @@ class _RootShellTvState extends State<RootShellTv> {
   //
   // Two FocusScopeNodes partition the screen into two focus zones.
   //
-  // D-pad RIGHT from anywhere inside the rail zone: captured by
-  // [_onRailKey] → calls [_contentScope.requestFocus()], which
-  // focuses the most-recently-focused content descendant or, on first entry,
-  // the first descendant that carries autofocus (the hero Play button).
+  // D-pad RIGHT from anywhere inside the rail zone: captured by [_onRailKey].
+  // Re-focuses the scope's last-focused child (so the user returns where they
+  // left off), or — on first entry — the first traversable descendant leaf
+  // inside [_contentScope] (the hero Play button).  Focusing the bare scope
+  // node was insufficient: it left no visible element highlighted.
   //
   // D-pad LEFT from anywhere inside the content zone: captured by
-  // [_onContentKey] → calls [_railScope.requestFocus()], which restores
-  // focus to the last-focused rail item (or the first autofocus item on
-  // first entry — the Home rail entry).
+  // [_onContentKey] with an edge-gate.  It first attempts an intra-content
+  // leftward traversal via [FocusManager.instance.primaryFocus.focusInDirection].
+  // Only when that returns false (the focused node is already at the left edge)
+  // does it fall back to [_railScope.requestFocus()].  Without the gate, every
+  // left press in a poster row ejected the user to the rail.
   //
-  // This bypasses Flutter's geometry-based directional traversal, which
-  // fails here because rail items (top-left) and the content's first
-  // focusable (centre / hero area) do not share an obvious neighbour
-  // relationship.
+  // This bypasses Flutter's geometry-based directional traversal for the
+  // rail→content and content→rail crossings, where rail items (top-left) and
+  // content focusables (centre / hero area) share no obvious neighbour
+  // relationship, while leaving intra-zone left/right traversal to Flutter.
   final FocusScopeNode _railScope =
       FocusScopeNode(debugLabel: 'tv-rail-scope');
   final FocusScopeNode _contentScope =
@@ -99,7 +102,20 @@ class _RootShellTvState extends State<RootShellTv> {
   KeyEventResult _onRailKey(FocusNode _, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      _contentScope.requestFocus();
+      // Prefer the scope's last-focused child so the user returns to where they
+      // left off.  On first entry, focusedChild is null — walk
+      // traversalDescendants to find the first focusable leaf, ensuring focus
+      // always lands on a real widget (never the bare scope node, which leaves
+      // nothing visually highlighted on the screen).
+      final lastFocused = _contentScope.focusedChild;
+      if (lastFocused != null) {
+        lastFocused.requestFocus();
+      } else {
+        final first = _contentScope.traversalDescendants
+            .where((n) => n.canRequestFocus)
+            .firstOrNull;
+        first?.requestFocus();
+      }
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -108,7 +124,15 @@ class _RootShellTvState extends State<RootShellTv> {
   KeyEventResult _onContentKey(FocusNode _, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      _railScope.requestFocus();
+      // Edge-gate: attempt intra-content leftward traversal first.
+      // Only eject to the rail when the primary focus is at the left edge
+      // (i.e. geometry-based traversal finds no left neighbour).  Without this
+      // guard the old code ejected to the rail from ANY left press, so moving
+      // between posters in a row or between hero buttons was impossible.
+      final moved = FocusManager.instance.primaryFocus
+              ?.focusInDirection(TraversalDirection.left) ??
+          false;
+      if (!moved) _railScope.requestFocus();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
