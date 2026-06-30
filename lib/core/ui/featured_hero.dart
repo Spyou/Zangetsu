@@ -33,6 +33,7 @@ class FeaturedHero extends StatefulWidget {
     this.metaFuture,
     this.parallax = 0,
     this.kenBurns = false,
+    this.wrapButton,
   });
 
   final MediaItem item;
@@ -50,6 +51,17 @@ class FeaturedHero extends StatefulWidget {
 
   /// Slowly zoom the card artwork (Ken-Burns) — used in the cinematic mode.
   final bool kenBurns;
+
+  /// Optional button decorator for TV D-pad focus.  When supplied, each hero
+  /// action button (Play, My List, Info) is passed through this builder so TV
+  /// callers can inject [TvFocusable] focus around the buttons without altering
+  /// phone behaviour in any way.
+  ///
+  /// [autofocus] is true only for the primary Play button.
+  ///
+  /// Defaults to null — the phone render is byte-identical when null.
+  final Widget Function(Widget child, VoidCallback onTap, {bool autofocus})?
+      wrapButton;
 
   @override
   State<FeaturedHero> createState() => _FeaturedHeroState();
@@ -277,19 +289,29 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                 const SizedBox(height: 18),
                 // Single action row — Play + inline My List (info is on the
                 // title tap / long-press), so the overlay stays compact.
+                // Each button is passed through [_wrap] so TV callers can
+                // inject TvFocusable focus without changing phone behaviour.
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    _playButton(),
+                    _wrap(_playButton(), widget.onPlay, autofocus: true),
                     const SizedBox(width: 10),
-                    _circleBtn(
-                      widget.inList ? Icons.check_rounded : Icons.add_rounded,
+                    _wrap(
+                      _circleBtn(
+                        widget.inList
+                            ? Icons.check_rounded
+                            : Icons.add_rounded,
+                        widget.onToggleList,
+                        active: widget.inList,
+                      ),
                       widget.onToggleList,
-                      active: widget.inList,
                     ),
                     const SizedBox(width: 10),
-                    _circleBtn(Icons.info_outline_rounded, widget.onInfo),
+                    _wrap(
+                      _circleBtn(Icons.info_outline_rounded, widget.onInfo),
+                      widget.onInfo,
+                    ),
                   ],
                 ),
               ],
@@ -311,6 +333,13 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     maxLines: 2,
     overflow: TextOverflow.ellipsis,
   );
+
+  /// If a [widget.wrapButton] decorator was provided (TV), wraps [w] with it;
+  /// otherwise returns [w] unchanged — phone behaviour is exact.
+  Widget _wrap(Widget w, VoidCallback cb, {bool autofocus = false}) {
+    final decorator = widget.wrapButton;
+    return decorator != null ? decorator(w, cb, autofocus: autofocus) : w;
+  }
 
   Widget _metaLine() {
     return FutureBuilder<HeroMeta?>(

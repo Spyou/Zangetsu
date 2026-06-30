@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -6,6 +5,7 @@ import '../../core/di/injector.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
@@ -13,15 +13,19 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/ui/featured_carousel.dart';
+import '../../core/ui/featured_hero.dart';
+import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
 
-/// TV Home: a full-screen vertically-scrolling layout with a focusable hero
-/// banner (first item of the first section) followed by horizontal poster
-/// rails (one per section). Every interactive element is wrapped in
-/// [TvFocusable] for D-pad + OK navigation. Touch is not used on TV.
+/// TV Home: a full-screen vertically-scrolling layout with the phone's real
+/// [FeaturedHero] banner followed by horizontal poster rails (one per section).
+/// The hero's action buttons are wrapped in [TvFocusable] for D-pad + OK
+/// navigation; the phone render of [FeaturedHero] is byte-identical (the
+/// [FeaturedHero.wrapButton] param defaults to null on phone).
 class HomeScreenTv extends StatefulWidget {
   const HomeScreenTv({super.key});
 
@@ -30,12 +34,18 @@ class HomeScreenTv extends StatefulWidget {
 }
 
 class _HomeScreenTvState extends State<HomeScreenTv> {
-  /// Open the Detail screen — mirrors the phone's _HomeViewState._openDetail.
+  /// Per-item hero metadata cache (genres + episode count). Mirrors the phone's
+  /// _metaCache; futures are stored so carousel rotation never re-fetches.
+  final Map<String, Future<HeroMeta?>> _metaCache = {};
+
+  // ── Navigation helpers ────────────────────────────────────────────────────
+
+  /// Open the Detail screen — mirrors phone's _HomeViewState._openDetail.
   void _openDetail(MediaItem item) {
     Navigator.push(context, DetailScreen.route(item));
   }
 
-  /// Begin playback from scratch — mirrors the phone's _HomeViewState._playFeatured.
+  /// Begin playback from scratch — mirrors phone's _HomeViewState._playFeatured.
   Future<void> _play(MediaItem item) async {
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
@@ -67,30 +77,97 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     if (mounted) setState(() {});
   }
 
+  // ── Hero helpers ──────────────────────────────────────────────────────────
+
+  /// True if [m] is in the user's My List. Returns false when the store is
+  /// unavailable (e.g. test environments where sl is not configured).
+  bool _inList(MediaItem m) {
+    try {
+      return sl<MyListStore>().contains(m);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Genres + episode count for the hero banner, lazily fetched and cached.
+  /// Mirrors the phone's _HomeViewState._heroMeta.  Swallows any error
+  /// (missing sl registration in tests, network failure) and returns null so
+  /// the hero meta line gracefully stays empty.
+  Future<HeroMeta?> _heroMeta(MediaItem m) => _metaCache.putIfAbsent(
+    '${m.sourceId}:${m.id}',
+    () async {
+      try {
+        final d = await sl<SourceRepository>().detail(
+          m.url,
+          sourceId: m.sourceId,
+        );
+        return HeroMeta(
+          genres: d.genres,
+          episodeCount: d.episodes.length,
+          year: d.year,
+        );
+      } catch (_) {
+        return null;
+      }
+    },
+  );
+
+  /// Button decorator injected into [FeaturedHero.wrapButton]: wraps each hero
+  /// action button with [TvFocusable] so it is D-pad focusable and OK-selectable.
+  /// [autofocus] is true only for the primary Play button.
+  Widget _tvWrapButton(
+    Widget child,
+    VoidCallback onTap, {
+    bool autofocus = false,
+  }) {
+    return TvFocusable(
+      autofocus: autofocus,
+      onTap: onTap,
+      child: child,
+    );
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<HomeCubit>().state;
     final sections = state.sections ?? const <HomeSection>[];
 
-    // First section's first item drives the hero banner.
-    final heroItem =
-        sections.isNotEmpty && sections.first.items.isNotEmpty
-            ? sections.first.items.first
-            : null;
+    // Use the same heroItems getter the phone uses (first section's items).
+    final heroItems = state.heroItems;
+    final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: CustomScrollView(
         slivers: [
           // ── Hero banner ──────────────────────────────────────────────────
+          // Uses the REAL phone FeaturedHero so the TV banner is visually
+          // identical to the phone.  The wrapButton hook injects TvFocusable
+          // around Play / My List / Info without touching the widget's own code.
           if (heroItem != null)
             SliverToBoxAdapter(
-              child: _TvHero(
-                item: heroItem,
-                onPlay: () => _play(heroItem),
-                onInfo: () => _openDetail(heroItem),
-                // Hero Play is the very first focusable on the page.
-                playAutofocus: true,
+              child: SizedBox(
+                height: kHeroHeight,
+                child: FeaturedHero(
+                  item: heroItem,
+                  inList: _inList(heroItem),
+                  onPlay: () => _play(heroItem),
+                  onInfo: () => _openDetail(heroItem),
+                  onToggleList: () => showListStatusSheet(
+                    context,
+                    item: heroItem,
+                    onChanged: () {
+                      if (mounted) setState(() {});
+                    },
+                  ),
+                  metaFuture: _heroMeta(heroItem),
+                  // Inject TvFocusable around each button so Play / My List /
+                  // Info are all reachable via D-pad.  Play gets autofocus so
+                  // it is selected when the screen first appears.
+                  wrapButton: _tvWrapButton,
+                ),
               ),
             ),
 
@@ -100,156 +177,13 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               child: _TvRail(
                 section: sections[i],
                 onTap: _openDetail,
-                // Autofocus the first card only when there is no hero.
+                // Autofocus the first card in the first rail only when there
+                // is no hero (e.g. source still loading).
                 firstAutofocus: heroItem == null && i == 0,
               ),
             ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Hero ──────────────────────────────────────────────────────────────────────
-
-/// Full-width hero banner: poster/backdrop image, dark gradient overlay, title,
-/// and D-pad-focusable Play + More Info action buttons.
-class _TvHero extends StatelessWidget {
-  const _TvHero({
-    required this.item,
-    required this.onPlay,
-    required this.onInfo,
-    this.playAutofocus = false,
-  });
-
-  final MediaItem item;
-  final VoidCallback onPlay;
-  final VoidCallback onInfo;
-  final bool playAutofocus;
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 16 / 9,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Backdrop image (may be a portrait poster — cover + clip).
-          if (item.cover != null)
-            CachedNetworkImage(
-              imageUrl: item.cover!,
-              httpHeaders: item.coverHeaders,
-              fit: BoxFit.cover,
-              fadeInDuration: const Duration(milliseconds: 200),
-              placeholder: (_, _) => const ColoredBox(color: AppColors.surface),
-              errorWidget: (_, _, _) =>
-                  const ColoredBox(color: AppColors.surface),
-            )
-          else
-            const ColoredBox(color: AppColors.surface),
-
-          // Side vignette (left) for text readability over the image.
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.centerRight,
-                end: Alignment.centerLeft,
-                colors: [Color(0x000B0B0F), Color(0xCC0B0B0F)],
-              ),
-            ),
-          ),
-          // Bottom scrim.
-          const DecoratedBox(
-            decoration: BoxDecoration(gradient: AppColors.scrim),
-          ),
-
-          // Title + action buttons, anchored to the bottom-left.
-          Positioned(
-            left: 48,
-            right: 48,
-            bottom: 40,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 36,
-                    fontWeight: FontWeight.w800,
-                    height: 1.15,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    TvFocusable(
-                      autofocus: playAutofocus,
-                      onTap: onPlay,
-                      child: const _HeroButton(
-                        icon: Icons.play_arrow_rounded,
-                        label: 'Play',
-                        primary: true,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    TvFocusable(
-                      onTap: onInfo,
-                      child: const _HeroButton(
-                        icon: Icons.info_outline_rounded,
-                        label: 'More Info',
-                        primary: false,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroButton extends StatelessWidget {
-  const _HeroButton({
-    required this.icon,
-    required this.label,
-    required this.primary,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool primary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-      decoration: BoxDecoration(
-        color: primary ? Colors.white : Colors.white.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 22, color: primary ? Colors.black : Colors.white),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: TextStyle(
-              color: primary ? Colors.black : Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
