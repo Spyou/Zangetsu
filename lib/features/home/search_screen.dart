@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -26,6 +27,7 @@ import '../../core/ui/states.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
+import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
 import '../search/bloc/search_bloc.dart';
 import '../search/bloc/search_event.dart';
@@ -65,11 +67,16 @@ class SearchScreen extends StatelessWidget {
         if (q != null && q.isNotEmpty) bloc.add(SearchRunRequested(q));
         return bloc;
       },
-      child: _SearchView(
-        initialQuery: initialQuery,
-        showBack: showBack,
-        focusSignal: focusSignal,
-      ),
+      // On Android TV, hand off to the D-pad-optimised layout. The BlocProvider
+      // above is still the provider for both paths — SearchScreenTv reads the
+      // same SearchBloc from context, so no duplication of bloc creation.
+      child: sl<AppMode>().isTv
+          ? SearchScreenTv(initialQuery: initialQuery)
+          : _SearchView(
+              initialQuery: initialQuery,
+              showBack: showBack,
+              focusSignal: focusSignal,
+            ),
     );
   }
 }
