@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_colors.dart';
 import 'tv_keys.dart';
 
 /// Wraps any tappable so it is D-pad focusable on TV: scales + outlines while
@@ -54,10 +55,27 @@ class _TvFocusableState extends State<TvFocusable> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border.all(
-              color: _focused ? Colors.white : Colors.transparent,
+              color: _focused ? AppColors.accent : Colors.transparent,
               width: 2.5,
             ),
             borderRadius: BorderRadius.circular(10),
+            // Dark drop-shadow + faint accent glow make the accent border
+            // pop on ANY background — white Play button or dark poster card.
+            // The shadow is TV-safe: subtle on dark surfaces, lifts on light.
+            boxShadow: _focused
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                    BoxShadow(
+                      color: AppColors.accent.withValues(alpha: 0.25),
+                      blurRadius: 12,
+                      spreadRadius: 0,
+                    ),
+                  ]
+                : null,
           ),
           child: widget.child,
         ),
