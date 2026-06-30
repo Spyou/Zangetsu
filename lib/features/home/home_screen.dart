@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/provider/cloudstream_provider.dart';
@@ -33,6 +34,7 @@ import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
+import 'home_screen_tv.dart';
 import 'see_all_screen.dart';
 
 /// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
@@ -385,6 +387,7 @@ class _HomeViewState extends State<_HomeView> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const HomeScreenTv();
     // Continue Watching is a logged-in feature; hide the row when signed out.
     final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
     final history = loggedIn
