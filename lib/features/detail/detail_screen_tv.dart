@@ -446,11 +446,16 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── LEFT pane: poster + title + meta + action buttons ─────────
+      // Stack overlays a D-pad-focusable TvBackButton at the top-left so the
+      // user can go back with OK in addition to the remote Back key.  autofocus
+      // is intentionally false so the Play button keeps its initial autofocus.
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── LEFT pane: poster + title + meta + action buttons ─────────
             Focus(
               focusNode: _leftScope,
               onKeyEvent: _onLeftKey,
@@ -691,7 +696,14 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
             ),
           ],
         ),
-      ),
+          ), // SafeArea
+          const Positioned(
+            top: 8,
+            left: 8,
+            child: SafeArea(child: TvBackButton()),
+          ),
+        ], // Stack children
+      ), // Stack (body)
     );
   }
 }

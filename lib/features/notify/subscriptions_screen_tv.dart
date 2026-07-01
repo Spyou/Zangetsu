@@ -7,6 +7,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
@@ -54,17 +55,19 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
     final subs = _store.all();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Title header ────────────────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-              child: Text('Notifications', style: AppText.largeTitle),
-            ),
-            // ── Subscription list ───────────────────────────────────────────
-            Expanded(
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Title header ──────────────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
+                  child: Text('Notifications', style: AppText.largeTitle),
+                ),
+                // ── Subscription list ─────────────────────────────────────────
+                Expanded(
               child: subs.isEmpty
                   ? const EmptyState(
                       icon: Icons.notifications_none_rounded,
@@ -118,10 +121,13 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
                         );
                       },
                     ),
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ), // SafeArea
+          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
+        ], // Stack children
+      ), // Stack (body)
     );
   }
 }

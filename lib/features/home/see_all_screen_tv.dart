@@ -4,6 +4,7 @@ import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/ui/poster_card.dart';
 
 /// TV variant of [SeeAllScreen]: a full-screen D-pad-navigable poster grid.
@@ -42,36 +43,46 @@ class SeeAllScreenTv extends StatelessWidget {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
+        // Suppress the touch-only auto back arrow; TvBackButton in the body
+        // Stack provides a D-pad-focusable alternative.
+        automaticallyImplyLeading: false,
         title: Text(title, style: AppText.headline),
       ),
-      body: GridView.builder(
-        padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
-        cacheExtent: 800,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: _crossAxisCount,
-          childAspectRatio: 0.62,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 20,
-        ),
-        itemCount: items.length,
-        itemBuilder: (context, i) {
-          final item = items[i];
-          return TvFocusable(
-            autofocus: i == 0,
-            onTap: () => onTap(item),
-            child: PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: tagsFor?.call(item) ?? const [],
-              cellWidth: _cardWidth,
-              // Touch gestures are disabled on TV; [TvFocusable] handles
-              // OK-key selection.
-              onTap: null,
-              onLongPress: null,
+      body: Stack(
+        children: [
+          GridView.builder(
+            padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
+            cacheExtent: 800,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: _crossAxisCount,
+              childAspectRatio: 0.62,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 20,
             ),
-          );
-        },
+            itemCount: items.length,
+            itemBuilder: (context, i) {
+              final item = items[i];
+              return TvFocusable(
+                autofocus: i == 0,
+                onTap: () => onTap(item),
+                child: PosterCard(
+                  title: item.title,
+                  imageUrl: item.cover,
+                  headers: item.coverHeaders,
+                  tags: tagsFor?.call(item) ?? const [],
+                  cellWidth: _cardWidth,
+                  // Touch gestures are disabled on TV; [TvFocusable] handles
+                  // OK-key selection.
+                  onTap: null,
+                  onLongPress: null,
+                ),
+              );
+            },
+          ),
+          // D-pad-focusable back button at top-left — reachable via D-pad up/left
+          // from the first poster without stealing the initial autofocus.
+          const Positioned(top: 8, left: 8, child: TvBackButton()),
+        ],
       ),
     );
   }

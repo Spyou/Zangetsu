@@ -37,6 +37,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/states.dart';

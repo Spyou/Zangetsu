@@ -89,7 +89,10 @@ void main() {
       // No rows — empty state message visible.
       expect(find.text('No notifications yet.', findRichText: true),
           findsNothing);
-      expect(find.byType(TvFocusable), findsNothing);
+      // TvBackButton is always present (adds exactly one TvFocusable), even
+      // when the subscription list is empty, so the empty state has no rows
+      // but does have the back-navigation button.
+      expect(find.byType(TvFocusable), findsOneWidget);
       // The EmptyState icon is present.
       expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
     },

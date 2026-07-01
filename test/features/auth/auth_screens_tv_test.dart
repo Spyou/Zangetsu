@@ -141,7 +141,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('Not signed in'), findsOneWidget);
-      expect(find.byType(TvFocusable), findsNothing);
+      // TvBackButton is always present (adds exactly one TvFocusable) even in
+      // the unauthenticated branch — the user still needs a way back.
+      expect(find.byType(TvFocusable), findsOneWidget);
     },
   );
 

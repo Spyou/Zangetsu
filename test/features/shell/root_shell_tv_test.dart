@@ -337,4 +337,57 @@ void main() {
     },
   );
 
+  // ── Back-to-exit tests ─────────────────────────────────────────────────────
+
+  testWidgets(
+    'RootShellTv has a PopScope(canPop: false) wrapping the shell',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // PopScope with canPop: false must be present so Back is never handled
+      // by the default Navigator but always by our custom handler.
+      final popScopes = tester.widgetList<PopScope>(find.byType(PopScope));
+      expect(
+        popScopes.any((ps) => ps.canPop == false),
+        isTrue,
+        reason: 'Expected a PopScope(canPop: false) in the RootShellTv tree',
+      );
+    },
+  );
+
+  testWidgets(
+    'RootShellTv: first Back on the Home tab shows the exit snackbar',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // RootShellTv starts on the Home tab (index 0).  The first Back should
+      // NOT exit the app — it should show a snackbar instead.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      // Snackbar must appear.
+      expect(find.text('Press back again to exit'), findsOneWidget);
+
+      // RootShellTv must still be in the widget tree (no pop occurred).
+      expect(find.byType(RootShellTv), findsOneWidget);
+    },
+  );
+
 }

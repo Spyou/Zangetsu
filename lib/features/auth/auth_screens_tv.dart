@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'auth_cubit.dart';
 
@@ -62,16 +63,18 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Center(
-          child: SizedBox(
-            width: 480,
-            child: ListView(
-              shrinkWrap: true,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-              children: [
-                Text('Welcome back', style: AppText.largeTitle),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Center(
+              child: SizedBox(
+                width: 480,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
+                  children: [
+                    Text('Welcome back', style: AppText.largeTitle),
                 const SizedBox(height: 8),
                 Text(
                   'Sign in to sync your list across devices.',
@@ -185,10 +188,13 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                   ),
                 ),
               ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
+          ), // SafeArea
+          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
+        ], // Stack children
+      ), // Stack (body)
     );
   }
 }
@@ -260,16 +266,18 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: Center(
-          child: SizedBox(
-            width: 480,
-            child: ListView(
-              shrinkWrap: true,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
-              children: [
-                Text('Create account', style: AppText.largeTitle),
+      body: Stack(
+        children: [
+          SafeArea(
+            child: Center(
+              child: SizedBox(
+                width: 480,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
+                  children: [
+                    Text('Create account', style: AppText.largeTitle),
                 const SizedBox(height: 8),
                 Text(
                   'Save your list and continue watching anywhere.',
@@ -389,10 +397,13 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                   ),
                 ),
               ],
+                ),
+              ),
             ),
-          ),
-        ),
-      ),
+          ), // SafeArea
+          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
+        ], // Stack children
+      ), // Stack (body)
     );
   }
 }
@@ -411,12 +422,14 @@ class ProfileScreenTv extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      body: SafeArea(
-        child: BlocBuilder<AuthCubit, AuthState>(
-          builder: (context, state) {
-            if (!state.isLoggedIn) {
-              return const Center(child: Text('Not signed in'));
-            }
+      body: Stack(
+        children: [
+          SafeArea(
+            child: BlocBuilder<AuthCubit, AuthState>(
+              builder: (context, state) {
+                if (!state.isLoggedIn) {
+                  return const Center(child: Text('Not signed in'));
+                }
             return Center(
               child: SizedBox(
                 width: 520,
@@ -495,9 +508,12 @@ class ProfileScreenTv extends StatelessWidget {
                 ),
               ),
             );
-          },
-        ),
-      ),
+              },
+            ),
+          ), // SafeArea
+          const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
+        ], // Stack children
+      ), // Stack (body)
     );
   }
 }

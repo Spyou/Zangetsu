@@ -76,6 +76,10 @@ class _RootShellTvState extends State<RootShellTv> {
 
   int _index = 0;
 
+  /// Tracks the timestamp of the most-recent Back press on the Home tab, used
+  /// to gate the double-back-to-exit behaviour.
+  DateTime? _lastBackPress;
+
   /// Bumped each time the Search rail item is selected so the embedded
   /// search screen can auto-focus its field — mirrors the phone shell's
   /// _searchFocusSignal pattern.
@@ -180,6 +184,40 @@ class _RootShellTvState extends State<RootShellTv> {
     if (i == _searchRailItem) _searchFocusSignal.value++;
   }
 
+  /// Called by [PopScope] whenever a back navigation is attempted.
+  ///
+  /// Behaviour:
+  /// - If the selected tab is not Home → switch to the Home tab (no exit).
+  /// - If the selected tab IS Home and this is the first Back (or >2 seconds
+  ///   since the last one) → show a "Press back again to exit" snackbar.
+  /// - If the selected tab IS Home and a second Back arrives within 2 seconds
+  ///   → call [SystemNavigator.pop] to exit to the launcher.
+  void _handlePopInvoked(bool didPop, dynamic result) {
+    if (didPop) return;
+    if (_index != 0) {
+      // Not on Home tab → go back to Home without exiting.
+      setState(() => _index = 0);
+      return;
+    }
+    // On the Home tab: double-back-to-exit gate.
+    final now = DateTime.now();
+    if (_lastBackPress != null &&
+        now.difference(_lastBackPress!).inSeconds < 2) {
+      // Second Back within 2 s → exit.
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackPress = now;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        const SnackBar(
+          content: Text('Press back again to exit'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+  }
+
   /// TV pages: the four from [buildShellPages] with [DownloadsScreen] inserted
   /// between My List (index 2) and Settings (index 3).
   List<Widget> get _pages {
@@ -200,7 +238,16 @@ class _RootShellTvState extends State<RootShellTv> {
     // TV-only: the phone path uses HomeScreen (not HomeScreenTv) which already
     // has its own listener. RootShellTv is only rendered when AppMode.isTv is
     // true, so this listener fires exclusively on TV — no double-load risk.
-    return BlocListener<ActiveSourceCubit, String>(
+    //
+    // PopScope intercepts Back so we can implement:
+    //   - Non-home tab → navigate to Home tab (no exit).
+    //   - Home tab, first Back → show "Press back again to exit" snackbar.
+    //   - Home tab, second Back within 2 s → SystemNavigator.pop (exit to launcher).
+    // canPop is always false; we control all exits via _handlePopInvoked.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: _handlePopInvoked,
+      child: BlocListener<ActiveSourceCubit, String>(
       listenWhen: (prev, curr) => prev != curr,
       listener: (context, _) {
         sl<HomeCubit>().load(reset: true);
@@ -352,6 +399,7 @@ class _RootShellTvState extends State<RootShellTv> {
         ],
       ),
     ), // Scaffold
-    ); // BlocListener
+    ), // BlocListener
+    ); // PopScope
   }
 }

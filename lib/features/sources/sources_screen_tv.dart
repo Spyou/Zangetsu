@@ -11,6 +11,7 @@ import '../../core/provider/provider_repo_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import 'bloc/sources_bloc.dart';
@@ -123,18 +124,20 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
       },
       child: Scaffold(
         backgroundColor: AppColors.bg,
-        body: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Page title (wider TV margins) ──────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                child: Text('Providers', style: AppText.largeTitle),
-              ),
-              // ── Scrollable sections ────────────────────────────────────
-              Expanded(
-                child: ListView(
+        body: Stack(
+          children: [
+            SafeArea(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Page title (wider TV margins) ──────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
+                    child: Text('Providers', style: AppText.largeTitle),
+                  ),
+                  // ── Scrollable sections ────────────────────────────────────
+                  Expanded(
+                    child: ListView(
                   padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
                   children: [
                     // ── Installed ────────────────────────────────────────
@@ -275,8 +278,12 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                 ),
               ),
             ],
-          ),
-        ),
+              ), // Column
+            ), // SafeArea
+            // D-pad-focusable back button at top-left.
+            const Positioned(top: 8, left: 8, child: SafeArea(child: TvBackButton())),
+          ], // Stack children
+        ), // Stack (body)
       ),
     );
   }
