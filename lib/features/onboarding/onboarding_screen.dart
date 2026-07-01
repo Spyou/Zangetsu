@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/app_config.dart';
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
@@ -10,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../home/cubit/home_cubit.dart';
 import 'how_it_works.dart';
+import 'onboarding_screen_tv.dart';
 
 /// First-run flag, stored in the shared 'app_prefs' Hive box (opened during
 /// [initDependencies]). True once the user has completed onboarding.
@@ -290,6 +292,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return OnboardingScreenTv(onDone: widget.onDone);
     if (_showTips) return _buildTips();
     return Scaffold(
       backgroundColor: AppColors.bg,
