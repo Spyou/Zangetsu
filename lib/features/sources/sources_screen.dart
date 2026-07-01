@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
@@ -14,6 +15,7 @@ import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
+import 'sources_screen_tv.dart';
 
 /// Sources management — two tabs:
 ///   * Installed — every installed provider, grouped Built-in first then
@@ -30,6 +32,9 @@ class SourcesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // TV mode: delegate to the D-pad layout. Phone build is byte-identical
+    // below this branch.
+    if (sl<AppMode>().isTv) return const SourcesScreenTv();
     return BlocProvider(
       create: (_) => SourcesBloc(
         registry: sl<ProviderRegistry>(),
