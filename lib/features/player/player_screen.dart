@@ -1584,6 +1584,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ? () => _c.playNext()
                         : null,
                     onBack: () => Navigator.of(context).maybePop(),
+                    playingStream: _c.player.stream.playing,
+                    initialPlaying: _c.player.state.playing,
                     barVisible: _tvBarVisible,
                     onBarChange: (v) => setState(() => _tvBarVisible = v),
                   ),

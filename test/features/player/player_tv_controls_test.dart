@@ -26,6 +26,11 @@ Future<void> _pumpControls(
   required ValueNotifier<bool> barNotifier,
   required ValueNotifier<bool> backNotifier,
 }) async {
+  // Player controls always render on a wide TV screen — size the test surface
+  // accordingly so the bottom control row isn't cramped into an overflow.
+  tester.view.physicalSize = const Size(1280, 720);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
   await tester.pumpWidget(
     MaterialApp(
       home: Scaffold(
@@ -42,6 +47,8 @@ Future<void> _pumpControls(
             onFit: () {},
             onBack: () => backNotifier.value = true,
             onNext: null,
+            playingStream: const Stream<bool>.empty(),
+            initialPlaying: false,
             barVisible: visible,
             onBarChange: (v) => barNotifier.value = v,
           ),
@@ -209,6 +216,8 @@ void main() {
         backNotifier: backNotifier,
       );
 
+      // Play/pause button (the primary control) — shows 'Play' when paused.
+      expect(find.text('Play'), findsOneWidget);
       expect(find.text('Speed'), findsOneWidget);
       expect(find.text('Audio & subs'), findsOneWidget);
       expect(find.text('Quality'), findsOneWidget);
@@ -231,6 +240,9 @@ void main() {
 
     testWidgets('onNext button appears when onNext is provided', (tester) async {
       barNotifier.value = true;
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -247,6 +259,8 @@ void main() {
                 onFit: () {},
                 onBack: () {},
                 onNext: () {}, // provided
+                playingStream: const Stream<bool>.empty(),
+                initialPlaying: false,
                 barVisible: visible,
                 onBarChange: (v) => barNotifier.value = v,
               ),

@@ -32,6 +32,8 @@ class PlayerTvControls extends StatefulWidget {
     required this.onFit,
     required this.onBack,
     this.onNext,
+    required this.playingStream,
+    required this.initialPlaying,
     required this.barVisible,
     required this.onBarChange,
   });
@@ -56,6 +58,13 @@ class PlayerTvControls extends StatefulWidget {
 
   /// Advances to the next episode. Null when there is none.
   final VoidCallback? onNext;
+
+  /// Live play/pause state stream — drives the play/pause button's icon so it
+  /// always reflects the actual player state.
+  final Stream<bool> playingStream;
+
+  /// Play/pause state shown before the first [playingStream] event arrives.
+  final bool initialPlaying;
 
   /// Whether the bottom control bar is currently shown.
   /// Controlled by the parent so [PopScope.canPop] can be wired correctly.
@@ -179,6 +188,28 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
     return KeyEventResult.ignored;
   }
 
+  /// One bottom-bar control: a focusable icon + label column. Shared by the
+  /// play/pause button and the sheet-opener buttons.
+  Widget _barButton(IconData icon, String label, VoidCallback onTap) {
+    return TvFocusable(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 26),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: AppText.caption.copyWith(color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
@@ -228,36 +259,31 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                             children: [
+                              // Play / pause — the primary control, always
+                              // first. Live icon via the player's playing
+                              // stream so it reflects the real state.
+                              StreamBuilder<bool>(
+                                stream: widget.playingStream,
+                                initialData: widget.initialPlaying,
+                                builder: (context, snap) {
+                                  final playing = snap.data ?? false;
+                                  return _barButton(
+                                    playing
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    playing ? 'Pause' : 'Play',
+                                    () {
+                                      widget.onTogglePlay();
+                                      _scheduleHide();
+                                    },
+                                  );
+                                },
+                              ),
                               for (final (icon, label, cb) in buttons)
-                                TvFocusable(
-                                  onTap: () {
-                                    cb();
-                                    _scheduleHide(); // reset idle timer on any action
-                                  },
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          icon,
-                                          color: Colors.white,
-                                          size: 26,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          label,
-                                          style: AppText.caption.copyWith(
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
+                                _barButton(icon, label, () {
+                                  cb();
+                                  _scheduleHide(); // reset idle timer on action
+                                }),
                             ],
                           ),
                         ),

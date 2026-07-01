@@ -54,9 +54,14 @@ class _TvFocusableState extends State<TvFocusable> {
         duration: const Duration(milliseconds: 120),
         child: DecoratedBox(
           decoration: BoxDecoration(
+            // Faint accent fill on focus — makes the highlight read clearly even
+            // over video or busy artwork, not just from the border alone.
+            color: _focused
+                ? AppColors.accent.withValues(alpha: 0.16)
+                : null,
             border: Border.all(
               color: _focused ? AppColors.accent : Colors.transparent,
-              width: 2.5,
+              width: 3,
             ),
             borderRadius: BorderRadius.circular(10),
             // Dark drop-shadow + faint accent glow make the accent border

@@ -120,7 +120,7 @@ class _RootShellTvState extends State<RootShellTv> {
       // always lands on a real widget (never the bare scope node, which leaves
       // nothing visually highlighted on the screen).
       final lastFocused = _contentScope.focusedChild;
-      if (lastFocused != null) {
+      if (lastFocused != null && lastFocused.canRequestFocus) {
         lastFocused.requestFocus();
       } else {
         final first = _contentScope.traversalDescendants
@@ -231,6 +231,7 @@ class _RootShellTvState extends State<RootShellTv> {
 
   @override
   Widget build(BuildContext context) {
+    final pages = _pages;
     // Reload Home content when the active source changes — mirrors the phone's
     // BlocListener<ActiveSourceCubit> in home_screen.dart (~line 397) which
     // calls HomeCubit.load(reset: true).
@@ -390,9 +391,18 @@ class _RootShellTvState extends State<RootShellTv> {
             child: Focus(
               focusNode: _contentScope,
               onKeyEvent: _onContentKey,
+              // IndexedStack keeps ALL pages in the tree (offstage), so their
+              // focusables would otherwise remain in _contentScope's traversal
+              // set — making the rail→content bridge land on an offstage Home
+              // element instead of the visible page (e.g. Settings couldn't be
+              // entered). ExcludeFocus removes the non-visible pages from focus
+              // traversal so the bridge always focuses the CURRENT page.
               child: IndexedStack(
                 index: _index,
-                children: _pages,
+                children: [
+                  for (var i = 0; i < pages.length; i++)
+                    ExcludeFocus(excluding: i != _index, child: pages[i]),
+                ],
               ),
             ),
           ),
