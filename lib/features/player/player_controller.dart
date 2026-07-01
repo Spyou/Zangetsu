@@ -10,6 +10,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -199,11 +200,19 @@ class PlayerCubit extends Cubit<PlayerState> {
   final Player player = Player();
   late final VideoController videoController = VideoController(
     player,
-    configuration: const VideoControllerConfiguration(
+    configuration: VideoControllerConfiguration(
       // Pin hardware decoding (media_kit's default, made explicit) — smoother
       // high-res playback + less battery/heat. media_kit auto-falls back to
       // software decode if the device can't hardware-decode a codec.
       enableHardwareAcceleration: true,
+      // TV-ONLY: cap the video OUTPUT to 720p. On old TVs the frame is still
+      // hardware-decoded, but the weak GPU chokes compositing a full 1080p/4K
+      // texture every frame → visible playback lag. Capping the render size is
+      // media_kit's documented performance lever ("substantial performance
+      // improvements if a small width & height is specified"). Phones are
+      // untouched — null keeps full-resolution output as before.
+      width: sl<AppMode>().isTv ? 1280 : null,
+      height: sl<AppMode>().isTv ? 720 : null,
     ),
   );
 
