@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
 import 'auth_cubit.dart';
+import 'auth_screens_tv.dart';
 
 /// Returns true if logged in. Otherwise shows a "Sign in to {action}" snackbar
 /// with a Sign-in action and returns false — the gate for My List / history.
@@ -111,6 +114,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const LoginScreenTv();
     return _AuthScaffold(
       title: 'Welcome back',
       subtitle: 'Sign in to sync your list across devices.',
@@ -199,6 +203,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const SignupScreenTv();
     return _AuthScaffold(
       title: 'Create account',
       subtitle: 'Save your list and continue watching anywhere.',
@@ -253,6 +258,7 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const ProfileScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(title: Text('Profile', style: AppText.title)),
