@@ -547,7 +547,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _room.removeListener(_roomListener);
       _room.detachPlayer();
     }
-    SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
+    // On TV the app is always landscape — restoring portrait here (correct for
+    // phones) would squish the 10-foot layout into a narrow strip after exiting
+    // the player. So on TV we restore landscape; phones keep portrait as before.
+    SystemChrome.setPreferredOrientations(
+      sl<AppMode>().isTv
+          ? const [
+              DeviceOrientation.landscapeLeft,
+              DeviceOrientation.landscapeRight,
+            ]
+          : const [DeviceOrientation.portraitUp],
+    );
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
