@@ -134,4 +134,12 @@ dependencies {
     // Background "new episode" checks for CloudStream sources (CloudStream's own
     // mechanism): a native periodic worker re-runs PluginHost.load() + notifies.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // Torrent streaming engine (native libtorrent). Per-ABI native libs; the
+    // in-app updater ships the matching per-ABI APK, so no fat-APK bloat.
+    implementation("org.libtorrent4j:libtorrent4j:2.1.0-31")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:2.1.0-31")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-31")
+    // Tiny local HTTP server that streams the downloading file to the player.
+    implementation("org.nanohttpd:nanohttpd:2.3.1")
 }
