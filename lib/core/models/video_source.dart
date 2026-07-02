@@ -10,6 +10,8 @@ enum SourceContainer {
   hls,
   @JsonValue('mp4')
   mp4,
+  @JsonValue('torrent')
+  torrent,
   @JsonValue('unknown')
   unknown,
 }

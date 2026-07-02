@@ -66,6 +66,7 @@ Map<String, dynamic> _$VideoSourceToJson(VideoSource instance) =>
 const _$SourceContainerEnumMap = {
   SourceContainer.hls: 'hls',
   SourceContainer.mp4: 'mp4',
+  SourceContainer.torrent: 'torrent',
   SourceContainer.unknown: 'unknown',
 };
 
