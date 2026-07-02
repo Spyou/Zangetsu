@@ -12,7 +12,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
-import '../ui/global_messenger.dart';
 import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
@@ -337,27 +336,44 @@ class DownloadManager extends ChangeNotifier {
       await _startHlsDownload(rec, source);
       return;
     }
-    final task = DownloadTask(
-      taskId: rec.id,
-      url: source.url,
-      filename: '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
-          '_${_safe(rec.quality)}${_ext(source.url)}',
-      headers: source.headers ?? const {},
-      directory: '$_sharedDir/${_safe(rec.showTitle)}',
-      baseDirectory: BaseDirectory.applicationDocuments,
-      updates: Updates.statusAndProgress,
-      // Flaky file hosts (4khdhub's HubCloud/gamerxyt CDN) drop the connection
-      // mid-transfer. The streaming path survives this via mpv's auto-reconnect;
-      // the download path had retries:0, so a single drop failed the task and
-      // we cycled to the next mirror from 0 (the "restart at 3%" loop). With
-      // retries + allowPause, background_downloader RESUMES from the partial
-      // (the host supports range — mpv can seek it) on each drop instead of
-      // restarting. waitingToRetry / negative retry-progress are already handled
-      // in _onUpdate, so this only adds resilience.
-      retries: 5,
-      allowPause: true,
-      displayName: '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}',
-    );
+    final filename =
+        '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
+        '_${_safe(rec.quality)}${_ext(source.url)}';
+    final displayName =
+        '${rec.showTitle} · E${rec.episodeNumber?.toInt() ?? ''}';
+    final headers = source.headers ?? const <String, String>{};
+    // Flaky file hosts (4khdhub's HubCloud/gamerxyt CDN) drop the connection
+    // mid-transfer. retries + allowPause let background_downloader RESUME from
+    // the partial (the host supports range — mpv can seek it) on each drop
+    // instead of restarting from 0. waitingToRetry / negative retry-progress
+    // are already handled in _onUpdate, so this only adds resilience.
+    final customUri = _downloadPrefs.locationUri;
+    final DownloadTask task = customUri != null
+        // Custom folder: stream straight into the user's picked SAF directory
+        // (the file ends up as a content:// URI — see _finish). No post-move.
+        ? UriDownloadTask(
+            taskId: rec.id,
+            url: source.url,
+            filename: filename,
+            headers: headers,
+            directoryUri: Uri.parse(customUri),
+            updates: Updates.statusAndProgress,
+            retries: 5,
+            allowPause: true,
+            displayName: displayName,
+          )
+        : DownloadTask(
+            taskId: rec.id,
+            url: source.url,
+            filename: filename,
+            headers: headers,
+            directory: '$_sharedDir/${_safe(rec.showTitle)}',
+            baseDirectory: BaseDirectory.applicationDocuments,
+            updates: Updates.statusAndProgress,
+            retries: 5,
+            allowPause: true,
+            displayName: displayName,
+          );
     _tasks[rec.id] = task;
     final ok = await _dl.enqueue(task);
     if (!ok) {
@@ -595,47 +611,51 @@ class DownloadManager extends ChangeNotifier {
     DownloadTask task,
     String? mimeType,
   ) async {
-    // Content guard: if the server handed back a web/landing page instead of a
-    // video (the 4khdhub HubCloud/gamerxyt case), don't keep it.
-    final mt = (mimeType ?? '').toLowerCase();
-    final looksHtml = mt.contains('html') || mt.startsWith('text/');
-    int size = 0;
-    try {
-      final f = File(await task.filePath());
-      if (await f.exists()) size = await f.length();
-      if (looksHtml || (size > 0 && size < 524288)) {
-        // <512KB or HTML → not a real video file; bin it and try the next
-        // mirror before giving up.
-        if (await f.exists()) await f.delete();
+    String? path;
+
+    if (task is UriDownloadTask) {
+      // Custom-folder download: the file streamed straight into the user's
+      // picked SAF folder, so it's already published as a content:// URI.
+      // (The size/HTML content-guard below stats a file:// path, which a
+      // content:// file doesn't have — so it's skipped for this path; it still
+      // fully applies to the default Downloads/Zangetsu downloads.)
+      path = task.fileUri?.toString();
+      if (path == null) {
         if (await _tryNext(rec)) return;
         _put(
           rec.copyWith(
             status: DownloadStatus.failed,
-            error: () => 'That server returned a web page, not a video — '
-                'try a different server',
+            error: () => "Couldn't save to the chosen folder",
           ),
         );
+        notifyListeners();
         return;
       }
-    } catch (_) {}
-
-    String? path;
-    // If the user picked a custom folder, publish the finished file there via
-    // SAF. Any failure falls through to the default Downloads/Zangetsu path so
-    // the download still succeeds.
-    final customUri = _downloadPrefs.locationUri;
-    if (customUri != null) {
+    } else {
+      // Content guard: if the server handed back a web/landing page instead of
+      // a video (the 4khdhub HubCloud/gamerxyt case), don't keep it.
+      final mt = (mimeType ?? '').toLowerCase();
+      final looksHtml = mt.contains('html') || mt.startsWith('text/');
+      int size = 0;
       try {
-        final localPath = await task.filePath();
-        final moved =
-            await _dl.uri.moveFile(Uri.file(localPath), Uri.parse(customUri));
-        path = moved?.toString();
+        final f = File(await task.filePath());
+        if (await f.exists()) size = await f.length();
+        if (looksHtml || (size > 0 && size < 524288)) {
+          // <512KB or HTML → not a real video file; bin it and try the next
+          // mirror before giving up.
+          if (await f.exists()) await f.delete();
+          if (await _tryNext(rec)) return;
+          _put(
+            rec.copyWith(
+              status: DownloadStatus.failed,
+              error: () => 'That server returned a web page, not a video — '
+                  'try a different server',
+            ),
+          );
+          return;
+        }
       } catch (_) {}
-      if (path == null) {
-        showGlobalSnack("Saved to Downloads — the chosen folder wasn't available");
-      }
-    }
-    if (path == null) {
+
       try {
         path = await _dl.moveToSharedStorage(
           task,
@@ -646,6 +666,7 @@ class DownloadManager extends ChangeNotifier {
       // Fall back to the app-documents path if the move failed.
       path ??= await task.filePath();
     }
+
     _candidates.remove(rec.id); // success — no more fallbacks needed
     _put(
       rec.copyWith(
