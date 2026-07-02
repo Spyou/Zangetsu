@@ -33,4 +33,25 @@ void main() {
     expect(find.text('Choose folder…'), findsOneWidget);
     expect(find.text('Downloads › Zangetsu'), findsOneWidget);
   });
+
+  group('folderLabelFromUri', () {
+    Uri tree(String docId) => Uri.parse(
+        'content://com.android.externalstorage.documents/tree/$docId');
+
+    test('internal storage folder', () {
+      expect(folderLabelFromUri(tree('primary%3AMovies')),
+          'Internal storage › Movies');
+    });
+    test('nested internal folder', () {
+      expect(folderLabelFromUri(tree('primary%3AMovies%2FAnime')),
+          'Internal storage › Movies › Anime');
+    });
+    test('SD card folder', () {
+      expect(folderLabelFromUri(tree('1A2B-3C4D%3ADownloads')),
+          'SD card › Downloads');
+    });
+    test('falls back to Folder when unparseable', () {
+      expect(folderLabelFromUri(Uri.parse('content://x/tree/')), 'Folder');
+    });
+  });
 }

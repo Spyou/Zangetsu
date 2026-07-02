@@ -7,6 +7,26 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
 
+/// A clear, human folder name derived from a SAF directory tree URI — the
+/// SAME uri downloads are written into — so the label can never misname the
+/// real target. E.g.
+///   …/tree/primary%3AMovies          → "Internal storage › Movies"
+///   …/tree/primary%3AMovies%2FAnime  → "Internal storage › Movies › Anime"
+///   …/tree/1A2B-3C4D%3ADownloads     → "SD card › Downloads"
+String folderLabelFromUri(Uri treeUri) {
+  final segs = treeUri.pathSegments;
+  final docId = segs.isEmpty ? '' : Uri.decodeComponent(segs.last);
+  final colon = docId.indexOf(':');
+  final volume = colon < 0 ? '' : docId.substring(0, colon);
+  final path = colon < 0 ? docId : docId.substring(colon + 1);
+  final root = volume.isEmpty
+      ? null
+      : (volume == 'primary' ? 'Internal storage' : 'SD card');
+  final parts = path.split('/').where((p) => p.isNotEmpty).toList();
+  if (root == null && parts.isEmpty) return 'Folder';
+  return [?root, ...parts].join(' › ');
+}
+
 /// Lets the user pick a custom SAF directory for MP4 downloads, or reset
 /// back to the default Downloads › Zangetsu location.
 class DownloadLocationScreen extends StatefulWidget {
@@ -66,15 +86,9 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                     persistedUriPermission: true,
                   );
                   if (uri == null) return; // canceled
-                  final decoded = Uri.decodeComponent(
-                    uri.pathSegments.isNotEmpty
-                        ? uri.pathSegments.last
-                        : 'Folder',
-                  );
-                  final label = decoded.split('/').last.split(':').last;
                   await sl<DownloadPrefs>().setLocation(
                     uri.toString(),
-                    label.isEmpty ? 'Folder' : label,
+                    folderLabelFromUri(uri),
                   );
                   if (mounted) setState(() {});
                 },
