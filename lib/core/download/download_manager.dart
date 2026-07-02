@@ -523,6 +523,14 @@ class DownloadManager extends ChangeNotifier {
         if (await f.exists()) await f.delete();
       } catch (_) {}
     }
+    // A file published into a user-picked SAF folder is a content:// URI, not
+    // a task file — remove it through UriUtils (best-effort).
+    final fp = rec.filePath;
+    if (fp != null && isUriPath(fp)) {
+      try {
+        await _dl.uri.deleteFile(Uri.parse(fp));
+      } catch (_) {}
+    }
     _records.remove(rec.id);
     await _box.delete(rec.id);
     notifyListeners();
