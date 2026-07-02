@@ -183,7 +183,7 @@ class MainActivity : FlutterActivity() {
 
         // Torrent channel: native libtorrent4j streaming engine (Phase 1).
         // Inert until Dart calls startStream — only wires the channels here.
-        TorrentEngine(flutterEngine.dartExecutor.binaryMessenger)
+        TorrentEngine(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
         // CloudStream channel: install repos and drive `.cs3` plugins' search /
         // load / loadLinks. All handlers run on [csExecutor] (network + plugin
