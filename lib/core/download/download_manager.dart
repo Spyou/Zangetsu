@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
+import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
 
@@ -22,9 +23,12 @@ import 'download_service.dart';
 /// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
 /// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo);
+  DownloadManager(this._repo, [DownloadPrefs? downloadPrefs])
+      : _downloadPrefs = downloadPrefs ?? DownloadPrefs();
 
   final SourceRepository _repo;
+  // ignore: unused_field — consumed in Task 3 (MP4 publish branch)
+  final DownloadPrefs _downloadPrefs;
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';

@@ -41,6 +41,7 @@ import '../backup/sources_backup.dart';
 import '../backup/library_backup.dart';
 import '../backup/settings_backup.dart';
 import '../download/download_manager.dart';
+import '../download/download_prefs.dart';
 import '../download/download_service.dart';
 import '../notify/subscription_store.dart';
 import '../notify/subscription_checker.dart';
@@ -102,6 +103,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await PlaybackPrefs.init();
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+  await DownloadPrefs.init();
+  sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await SearchHistory.init();
   sl.registerSingleton<SearchHistory>(SearchHistory());
   await SearchSourcePrefs.init();
@@ -301,7 +304,7 @@ Future<void> initDependencies() async {
   await DownloadManager.init();
   await DownloadService.initialize(); // configure the foreground-service host
   sl.registerSingleton<DownloadManager>(
-    DownloadManager(sl<SourceRepository>())..setup(),
+    DownloadManager(sl<SourceRepository>(), sl<DownloadPrefs>())..setup(),
   );
 
   // Home data cubit as a singleton so the splash can warm it (preload the
