@@ -625,10 +625,22 @@ class _TvAddRepoDialog extends StatefulWidget {
 
 class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
   final _controller = TextEditingController();
+  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
+  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -639,7 +651,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
       title: Text('Add CloudStream repository', style: AppText.headline),
       content: TextField(
         controller: _controller,
-        autofocus: true,
+        focusNode: _focusNode,
         keyboardType: TextInputType.url,
         cursorColor: AppColors.accent,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
@@ -650,20 +662,28 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
         onSubmitted: (v) => Navigator.pop(context, v.trim()),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: AppText.body.copyWith(color: AppColors.textSecondary),
+        TvFocusable(
+          scale: 1.0,
+          onTap: () => Navigator.pop(context),
+          child: TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
           ),
         ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
+        TvFocusable(
+          scale: 1.0,
+          onTap: () => Navigator.pop(context, _controller.text.trim()),
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(context, _controller.text.trim()),
+            child: const Text('Add'),
           ),
-          onPressed: () => Navigator.pop(context, _controller.text.trim()),
-          child: const Text('Add'),
         ),
       ],
     );

@@ -1102,11 +1102,15 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
                           ),
                         )
                       else
-                        for (final source in repo.sources.where(
-                          (s) =>
-                              !s.nsfw ||
-                              sl<PlaybackPrefs>().nsfwSources,
-                        )) ...[
+                        // Index-tracked loop so the first row gets autofocus,
+                        // routing the D-pad there after the repo is added.
+                        for (final (idx, source) in repo.sources
+                            .where(
+                              (s) =>
+                                  !s.nsfw ||
+                                  sl<PlaybackPrefs>().nsfwSources,
+                            )
+                            .indexed) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
@@ -1123,6 +1127,7 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
                               ProviderRegistry.providerKey(
                                   repo.url, source.id),
                             ),
+                            autofocus: idx == 0,
                           ),
                         ],
                     ],
@@ -1136,18 +1141,22 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
 
 /// One repo source row. The action button (Install / Update / Uninstall) is
 /// a single [TvFocusable] — D-pad OK fires the same bloc event as the phone.
+/// [autofocus] should be true only for the first row in a newly expanded list
+/// so the remote lands on an actionable Install button without manual nav.
 class _TvRepoSourceRow extends StatelessWidget {
   const _TvRepoSourceRow({
     required this.repo,
     required this.source,
     required this.installed,
     required this.hasUpdate,
+    this.autofocus = false,
   });
 
   final ProviderRepo repo;
   final RepoSource source;
   final bool installed;
   final bool hasUpdate;
+  final bool autofocus;
 
   String get _key => ProviderRegistry.providerKey(repo.url, source.id);
 
@@ -1200,6 +1209,7 @@ class _TvRepoSourceRow extends StatelessWidget {
           const SizedBox(width: 8),
           if (installed && hasUpdate)
             TvFocusable(
+              autofocus: autofocus,
               onTap: () =>
                   context.read<SourcesBloc>().add(SourceUpdated(_key)),
               child: Container(
@@ -1228,6 +1238,7 @@ class _TvRepoSourceRow extends StatelessWidget {
             )
           else if (installed)
             TvFocusable(
+              autofocus: autofocus,
               onTap: () => _uninstall(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(
@@ -1248,6 +1259,7 @@ class _TvRepoSourceRow extends StatelessWidget {
             )
           else
             TvFocusable(
+              autofocus: autofocus,
               onTap: () => context.read<SourcesBloc>().add(
                 SourceInstalled(repo: repo, source: source),
               ),
@@ -1584,7 +1596,9 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
                           ),
                         )
                       else
-                        for (final plugin in catalog) ...[
+                        // Index-tracked loop so the first plugin row gets
+                        // autofocus, routing D-pad there after repo is added.
+                        for (final (idx, plugin) in catalog.indexed) ...[
                           const Divider(
                             height: 0.5,
                             thickness: 0.5,
@@ -1601,6 +1615,7 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
                                 ? null
                                 : manager.updateFor(
                                     plugin.internalName, group.url),
+                            autofocus: idx == 0,
                           ),
                         ],
                     ],
@@ -1614,18 +1629,22 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
 
 /// One CS plugin row with a single [TvFocusable] Install / Installed / Update
 /// action button — mirrors the phone's [_CsPluginRow].
+/// [autofocus] should be true only for the first row so D-pad focus lands on
+/// the Install button immediately after a repo is added and expanded.
 class _TvCsPluginRow extends StatefulWidget {
   const _TvCsPluginRow({
     required this.plugin,
     required this.installed,
     this.repoUrl = '',
     this.update,
+    this.autofocus = false,
   });
 
   final CsPluginMeta plugin;
   final bool installed;
   final String repoUrl;
   final CsUpdate? update;
+  final bool autofocus;
 
   @override
   State<_TvCsPluginRow> createState() => _TvCsPluginRowState();
@@ -1753,6 +1772,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
             )
           else if (installed && widget.update != null)
             TvFocusable(
+              autofocus: widget.autofocus,
               onTap: _update,
               child: Container(
                 padding:
@@ -1772,6 +1792,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
             )
           else if (installed)
             TvFocusable(
+              autofocus: widget.autofocus,
               onTap: _uninstall,
               child: Container(
                 padding:
@@ -1791,6 +1812,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
             )
           else
             TvFocusable(
+              autofocus: widget.autofocus,
               onTap: _install,
               child: Container(
                 padding:
@@ -1942,13 +1964,25 @@ class _TvAddRepoDialog extends StatefulWidget {
 class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
   final _urlCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
+  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
+  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
+  final _urlFocus = FocusNode();
   bool _loading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _urlFocus.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
     _nameCtrl.dispose();
+    _urlFocus.dispose();
     super.dispose();
   }
 
@@ -2000,7 +2034,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
           TextField(
             controller: _urlCtrl,
             enabled: !_loading,
-            autofocus: true,
+            focusNode: _urlFocus,
             keyboardType: TextInputType.url,
             cursorColor: AppColors.accent,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
@@ -2075,10 +2109,22 @@ class _TvCsAddRepoDialog extends StatefulWidget {
 
 class _TvCsAddRepoDialogState extends State<_TvCsAddRepoDialog> {
   final _urlCtrl = TextEditingController();
+  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
+  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
+  final _urlFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _urlFocus.requestFocus();
+    });
+  }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
+    _urlFocus.dispose();
     super.dispose();
   }
 
@@ -2095,7 +2141,7 @@ class _TvCsAddRepoDialogState extends State<_TvCsAddRepoDialog> {
         children: [
           TextField(
             controller: _urlCtrl,
-            autofocus: true,
+            focusNode: _urlFocus,
             keyboardType: TextInputType.url,
             cursorColor: AppColors.accent,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
