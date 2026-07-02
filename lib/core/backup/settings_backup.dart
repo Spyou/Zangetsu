@@ -21,12 +21,11 @@ class SettingsBackup {
   Map<String, dynamic> build() {
     final out = <String, dynamic>{};
     for (final name in boxNames) {
-      if (Hive.isBoxOpen(name)) {
-        final box = Hive.box(name);
-        out[name] = Map<String, dynamic>.from(
-          box.toMap().map((k, v) => MapEntry(k.toString(), v)),
-        );
-      }
+      final box = _boxFor(name);
+      if (box == null) continue;
+      out[name] = Map<String, dynamic>.from(
+        (box.toMap() as Map).map((k, v) => MapEntry(k.toString(), v)),
+      );
     }
     return out;
   }
@@ -36,11 +35,30 @@ class SettingsBackup {
   /// Never calls `clear()` — only `putAll`.
   Future<void> merge(Map<String, dynamic> data) async {
     for (final entry in data.entries) {
-      final name = entry.key;
       final kv = entry.value;
-      if (kv is Map && Hive.isBoxOpen(name)) {
-        await Hive.box(name).putAll(Map<String, dynamic>.from(kv));
+      if (kv is! Map) continue;
+      final box = _boxFor(entry.key);
+      if (box == null) continue;
+      // Per-key put (not putAll): a Box<Map> rejects a Map<String,dynamic> whose
+      // static value type isn't Map, whereas put() checks each value at runtime.
+      for (final e in kv.entries) {
+        await box.put(e.key, e.value);
       }
     }
+  }
+
+  /// The already-open box for [name] regardless of the type it was opened with:
+  /// some prefs boxes are `Box<Map>` (e.g. `title_prefs`), others are
+  /// `Box<dynamic>`, and a mismatched `Hive.box<E>(name)` throws. Null when the
+  /// box isn't open (or is an unexpected type).
+  dynamic _boxFor(String name) {
+    if (!Hive.isBoxOpen(name)) return null;
+    try {
+      return Hive.box<Map>(name);
+    } catch (_) {/* not a Box<Map> */}
+    try {
+      return Hive.box(name);
+    } catch (_) {/* not a Box<dynamic> either */}
+    return null;
   }
 }
