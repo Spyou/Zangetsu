@@ -6,6 +6,13 @@ class Environment {
   static const String appwriteProjectName = 'Zangetsu';
   static const String appwritePublicEndpoint = 'https://sgp.cloud.appwrite.io/v1';
 
+  /// Where Appwrite sends the password-recovery link. Appwrite appends
+  /// `?userId=…&secret=…&expire=…`; the page there lets the user set a new
+  /// password (see `web_reset/index.html`). This URL's domain MUST be
+  /// registered as a Web platform in the Appwrite console or `createRecovery`
+  /// is rejected. Update it to wherever you host the reset page.
+  static const String passwordResetUrl = 'https://zangetsu.dpdns.org/';
+
   // Provisioned backend ids (see docs / setup).
   static const String databaseId = 'main';
   static const String mylistCollectionId = 'mylist';

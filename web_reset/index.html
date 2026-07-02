@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zangetsu — Reset Password</title>
+  <style>
+    :root {
+      --bg: #0b0b0f; --surface: #16161d; --accent: #ff3b5c;
+      --text: #f2f2f5; --muted: #9a9aa5; --field: #0e0e13; --border: #2a2a33;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center;
+      justify-content: center; background: var(--bg); color: var(--text);
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 400px; background: var(--surface);
+      border-radius: 20px; padding: 34px 28px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    }
+    .brand { font-size: 30px; font-weight: 800; letter-spacing: 3px; text-align: center; }
+    .brand span { color: var(--accent); }
+    .sub { text-align: center; color: var(--muted); font-size: 14px; margin: 6px 0 26px; }
+    label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+    input {
+      width: 100%; padding: 13px 14px; border-radius: 12px;
+      border: 1px solid var(--border); background: var(--field);
+      color: var(--text); font-size: 15px; outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+    button {
+      width: 100%; margin-top: 24px; padding: 14px; border: none;
+      border-radius: 12px; background: var(--accent); color: #fff;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    .msg { margin-top: 16px; font-size: 14px; text-align: center; min-height: 20px; line-height: 1.4; }
+    .msg.err { color: #ff6b6b; }
+    .msg.ok { color: #4ec07a; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">ZANGE<span>&dagger;</span>SU</div>
+    <div class="sub">Set a new password</div>
+    <form id="form">
+      <label for="pw">New password</label>
+      <input id="pw" type="password" autocomplete="new-password"
+             placeholder="At least 8 characters" required minlength="8" />
+      <label for="pw2">Confirm password</label>
+      <input id="pw2" type="password" autocomplete="new-password"
+             placeholder="Re-enter password" required minlength="8" />
+      <button id="btn" type="submit">Reset password</button>
+      <div class="msg" id="msg"></div>
+    </form>
+  </div>
+
+  <script>
+    // Public Appwrite config (safe to ship — same values the app uses).
+    var ENDPOINT = "https://sgp.cloud.appwrite.io/v1";
+    var PROJECT = "6a1ed44f0029b50bccde";
+
+    var params = new URLSearchParams(location.search);
+    var userId = params.get("userId");
+    var secret = params.get("secret");
+
+    var form = document.getElementById("form");
+    var msg = document.getElementById("msg");
+    var btn = document.getElementById("btn");
+
+    if (!userId || !secret) {
+      form.style.display = "none";
+      msg.className = "msg err";
+      msg.textContent =
+        "Invalid or expired reset link. Request a new one from the app.";
+    }
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var pw = document.getElementById("pw").value;
+      var pw2 = document.getElementById("pw2").value;
+      msg.className = "msg";
+      if (pw.length < 8) {
+        msg.className = "msg err";
+        msg.textContent = "Password must be at least 8 characters.";
+        return;
+      }
+      if (pw !== pw2) {
+        msg.className = "msg err";
+        msg.textContent = "Passwords do not match.";
+        return;
+      }
+      btn.disabled = true;
+      msg.textContent = "Updating…";
+
+      // Appwrite "Update recovery" — PUT /account/recovery with the project header.
+      fetch(ENDPOINT + "/account/recovery", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Appwrite-Project": PROJECT,
+        },
+        body: JSON.stringify({ userId: userId, secret: secret, password: pw }),
+      })
+        .then(function (res) {
+          if (res.ok) {
+            var inputs = form.querySelectorAll("input, button");
+            for (var i = 0; i < inputs.length; i++) inputs[i].disabled = true;
+            msg.className = "msg ok";
+            msg.textContent =
+              "✓ Password updated. Open the Zangetsu app and sign in.";
+          } else {
+            return res.json().then(function (err) {
+              msg.className = "msg err";
+              msg.textContent =
+                (err && err.message) ||
+                "Reset failed — the link may have expired.";
+              btn.disabled = false;
+            });
+          }
+        })
+        .catch(function () {
+          msg.className = "msg err";
+          msg.textContent = "Network error. Please try again.";
+          btn.disabled = false;
+        });
+    });
+  </script>
+</body>
+</html>

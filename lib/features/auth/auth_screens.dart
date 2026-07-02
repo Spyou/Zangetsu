@@ -112,6 +112,57 @@ class _LoginScreenState extends State<LoginScreen> {
     if (ok && context.mounted) Navigator.of(context).pop();
   }
 
+  /// "Forgot password?" — ask for the account email and send an Appwrite
+  /// recovery link (completed on the hosted reset page). Works while signed out.
+  Future<void> _forgotPassword(BuildContext context) async {
+    final controller = TextEditingController(text: _email.text.trim());
+    final email = await showDialog<String>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: const Text('Reset password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              "Enter your account email and we'll send a link to set a new "
+              'password.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                hintText: 'you@example.com',
+              ),
+              onSubmitted: (v) => Navigator.of(dctx).pop(v.trim()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dctx).pop(controller.text.trim()),
+            child: const Text('Send link'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (email == null || email.isEmpty || !context.mounted) return;
+    final err = await context.read<AuthCubit>().sendRecovery(email);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(err ?? 'Reset link sent — check your email (and spam).'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const LoginScreenTv();
@@ -122,7 +173,14 @@ class _LoginScreenState extends State<LoginScreen> {
         _Field(controller: _email, hint: 'Email', icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
         const SizedBox(height: 12),
         _Field(controller: _password, hint: 'Password', icon: Icons.lock_outline, obscure: true),
-        const SizedBox(height: 20),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () => _forgotPassword(context),
+            child: const Text('Forgot password?'),
+          ),
+        ),
+        const SizedBox(height: 8),
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) => _SubmitBlock(
             label: 'Log in',

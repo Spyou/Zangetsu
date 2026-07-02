@@ -8,6 +8,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/appwrite/appwrite_service.dart';
+import '../../core/environment.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
@@ -158,6 +159,25 @@ class AuthCubit extends Cubit<AuthState> {
         await _aw.account.createEmailPasswordSession(email: email, password: password);
         return _aw.account.get();
       });
+
+  /// Send a password-recovery email. Appwrite mails a link to
+  /// [Environment.passwordResetUrl] with `?userId=…&secret=…` appended, where
+  /// the user sets a new password (the hosted reset page calls
+  /// `account.updateRecovery`). Does NOT touch auth state — it works while
+  /// signed out. Returns null on success, or an error message to show.
+  Future<String?> sendRecovery(String email) async {
+    try {
+      await _aw.account.createRecovery(
+        email: email,
+        url: Environment.passwordResetUrl,
+      );
+      return null;
+    } on AppwriteException catch (e) {
+      return e.message ?? 'Could not send the reset email';
+    } catch (_) {
+      return 'Could not send the reset email';
+    }
+  }
 
   /// Shared login/signup runner: sets busy, runs [action] to a fresh User,
   /// emits authenticated on success. Returns true on success.
