@@ -129,7 +129,6 @@ void main() {
       'Active source',
       'Source health',
       'Playback',
-      'Downloads',
       'Storage',
       'Search layout',
       'How it works',
