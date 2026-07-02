@@ -16,6 +16,7 @@ import '../../core/discord/discord_rpc.dart';
 import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
+import '../../core/share/share_link.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
@@ -327,12 +328,12 @@ class _DetailViewState extends State<_DetailView>
   }
 
   void _share(MediaDetail detail, String sourceName) {
-    final text = sourceName.isNotEmpty
-        ? '${detail.title} — on $sourceName'
-        : detail.title;
-    // Native OS share sheet (WhatsApp / Telegram / Copy / …). Fire-and-forget;
-    // the sheet handles the rest. Replaces the old copy-to-clipboard behaviour.
-    SharePlus.instance.share(ShareParams(text: text));
+    // Native OS share sheet with a Zangetsu deep link: on tap it opens the app
+    // straight to this title (on its source) if installed, else the Zangetsu
+    // site to download. The link carries the item, so sourceName is unused now.
+    SharePlus.instance.share(
+      ShareParams(text: ShareLink.shareText(widget.item)),
+    );
   }
 
   /// Globe — open the source's web page in the system browser. Falls back to

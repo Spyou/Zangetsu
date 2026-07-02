@@ -13,6 +13,19 @@ class Environment {
   /// is rejected. Update it to wherever you host the reset page.
   static const String passwordResetUrl = 'https://spyou.github.io/Zangetsu-Site/';
 
+  /// Base of the Zangetsu website (landing + reset + the share "open" page).
+  static const String siteBaseUrl = 'https://spyou.github.io/Zangetsu-Site';
+
+  /// Share links point here. The page opens the app if installed (via the
+  /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
+  /// must be an Appwrite Web platform (already added for the reset page).
+  static const String siteOpenUrl = '$siteBaseUrl/open/';
+
+  /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
+  /// it (see [OpenLinkService] + the Android manifest intent-filter).
+  static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
+  static const String openLinkHost = 'open';
+
   // Provisioned backend ids (see docs / setup).
   static const String databaseId = 'main';
   static const String mylistCollectionId = 'mylist';

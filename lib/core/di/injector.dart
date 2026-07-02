@@ -19,6 +19,7 @@ import '../provider/cf_clearance_store.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_downloader.dart';
 import '../provider/provider_manager.dart';
+import '../share/open_link_service.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
@@ -180,6 +181,11 @@ Future<void> initDependencies() async {
   sl.registerSingleton<TrackerHub>(
     TrackerHub([sl<AniListService>(), sl<MalService>(), sl<SimklService>()]),
   );
+
+  // Share deep links (zangetsu://open?…): opens a shared title's Detail, or
+  // reports an uninstalled source. Eager so its AppLinks listener is live from
+  // boot; navigation is deferred until the root Navigator exists.
+  sl.registerSingleton<OpenLinkService>(OpenLinkService());
 
   // AuthCubit is global so any widget can gate on login. AppwriteService is
   // already registered above (the library stores depend on it).
