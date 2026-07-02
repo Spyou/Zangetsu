@@ -36,6 +36,10 @@ import '../tracker/simkl_service.dart';
 import '../tracker/tracker_hub.dart';
 import '../app_mode.dart';
 import '../appwrite/appwrite_service.dart';
+import '../backup/backup_service.dart';
+import '../backup/sources_backup.dart';
+import '../backup/library_backup.dart';
+import '../backup/settings_backup.dart';
 import '../download/download_manager.dart';
 import '../download/download_service.dart';
 import '../notify/subscription_store.dart';
@@ -221,6 +225,12 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ProviderReposRegistry>(repos);
   sl.registerSingleton<ProviderSettingsRepository>(settings);
   sl.registerSingleton<ProviderRegistry>(registry);
+  sl.registerSingleton<BackupService>(BackupService(
+    SourcesBackup(sl<ProviderReposRegistry>(), sl<ProviderRegistry>(),
+        sl.isRegistered<CloudStreamManager>() ? sl<CloudStreamManager>() : null),
+    LibraryBackup(),
+    SettingsBackup(),
+  ));
 
   // Load bundled extractor BEFORE the providers so getVideoSources can resolve.
   // Extractors are NOT providers — they stay loaded directly on the manager.
