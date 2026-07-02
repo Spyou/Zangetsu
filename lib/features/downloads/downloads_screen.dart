@@ -18,9 +18,32 @@ import '../player/player_screen.dart';
 import 'downloads_screen_tv.dart';
 
 /// Offline library — downloads grouped by show, with per-episode progress and
-/// actions (play / pause / resume / cancel / delete).
-class DownloadsScreen extends StatelessWidget {
+/// actions (play / pause / resume / cancel / delete). Shows collapse by default
+/// into a scannable list; a search box filters by show or episode title, and a
+/// summary strip shows the total downloaded count + storage used.
+class DownloadsScreen extends StatefulWidget {
   const DownloadsScreen({super.key});
+
+  @override
+  State<DownloadsScreen> createState() => _DownloadsScreenState();
+}
+
+class _DownloadsScreenState extends State<DownloadsScreen> {
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
+  /// Show ids the user has expanded. Empty = all collapsed (the default).
+  final Set<String> _expanded = <String>{};
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toggle(String showId) => setState(() {
+    if (!_expanded.remove(showId)) _expanded.add(showId);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -39,79 +62,254 @@ class DownloadsScreen extends StatelessWidget {
               message: 'Episodes you download appear here',
             );
           }
-          final showIds = groups.keys.toList();
-          return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 32),
-            itemCount: showIds.length,
-            itemBuilder: (context, i) {
-              final recs = groups[showIds[i]]!
-                ..sort(
-                  (a, b) => (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0),
-                );
-              return _ShowGroup(records: recs, manager: manager);
-            },
+          return Column(
+            children: [
+              _searchField(),
+              Expanded(child: _list(groups, manager)),
+            ],
           );
         },
       ),
     );
   }
+
+  Widget _searchField() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+      child: TextField(
+        controller: _searchCtrl,
+        onChanged: (v) => setState(() => _query = v),
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: 'Search downloads',
+          hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+          prefixIcon: const Icon(
+            Icons.search_rounded,
+            color: AppColors.textTertiary,
+          ),
+          suffixIcon: _query.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() => _query = '');
+                  },
+                ),
+          filled: true,
+          fillColor: AppColors.surface,
+          contentPadding: const EdgeInsets.symmetric(vertical: 12),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _list(
+    Map<String, List<DownloadRecord>> groups,
+    DownloadManager manager,
+  ) {
+    final q = _query.trim().toLowerCase();
+    final all = manager.all;
+    final done = all.where((r) => r.status == DownloadStatus.done).toList();
+    final totalBytes = done.fold<int>(0, (s, r) => s + r.bytesTotal);
+
+    final showIds = groups.keys.toList();
+    final rows = <Widget>[];
+    for (final id in showIds) {
+      final recs = [...groups[id]!]
+        ..sort((a, b) => (a.episodeNumber ?? 0).compareTo(b.episodeNumber ?? 0));
+      final head = recs.first;
+
+      List<DownloadRecord> episodes = recs;
+      var forceExpand = false;
+      if (q.isNotEmpty) {
+        final showMatch = head.showTitle.toLowerCase().contains(q);
+        if (!showMatch) {
+          episodes = recs
+              .where((r) => _episodeSearchText(r).contains(q))
+              .toList();
+          if (episodes.isEmpty) continue; // this show has no match — hide it
+        }
+        forceExpand = true; // reveal matches while searching
+      }
+
+      rows.add(
+        _ShowGroup(
+          records: recs,
+          episodes: episodes,
+          manager: manager,
+          expanded: forceExpand || _expanded.contains(id),
+          onToggle: () => _toggle(id),
+        ),
+      );
+    }
+
+    if (rows.isEmpty) {
+      return const EmptyState(
+        icon: Icons.search_off_rounded,
+        message: 'No downloads match your search',
+      );
+    }
+
+    final anyExpanded = showIds.any(_expanded.contains);
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 32),
+      children: [
+        _summaryStrip(
+          count: done.length,
+          bytes: totalBytes,
+          anyExpanded: anyExpanded,
+          onToggleAll: () => setState(() {
+            if (anyExpanded) {
+              _expanded.clear();
+            } else {
+              _expanded.addAll(showIds);
+            }
+          }),
+        ),
+        ...rows,
+      ],
+    );
+  }
+
+  Widget _summaryStrip({
+    required int count,
+    required int bytes,
+    required bool anyExpanded,
+    required VoidCallback onToggleAll,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 8, 2),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.folder_outlined,
+            size: 15,
+            color: AppColors.textTertiary,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$count downloaded · ${_fmtSize(bytes)}',
+            style: AppText.caption,
+          ),
+          const Spacer(),
+          TextButton(
+            onPressed: onToggleAll,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.accent,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              minimumSize: const Size(0, 0),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              anyExpanded ? 'Collapse all' : 'Expand all',
+              style: AppText.caption.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Lowercased text a download is matched against when searching.
+String _episodeSearchText(DownloadRecord r) {
+  final n = r.episodeNumber?.toInt();
+  return 'e${n ?? ''} ${r.episodeTitle}'.toLowerCase();
 }
 
 class _ShowGroup extends StatelessWidget {
-  const _ShowGroup({required this.records, required this.manager});
+  const _ShowGroup({
+    required this.records,
+    required this.episodes,
+    required this.manager,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  /// The full group — drives the "done of total" count and the group size.
   final List<DownloadRecord> records;
+
+  /// The episodes to render when expanded (a filtered subset while searching).
+  final List<DownloadRecord> episodes;
+
   final DownloadManager manager;
+  final bool expanded;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final head = records.first;
-    final done = records.where((r) => r.status == DownloadStatus.done).length;
+    final doneRecs =
+        records.where((r) => r.status == DownloadStatus.done).toList();
+    final groupBytes = doneRecs.fold<int>(0, (s, r) => s + r.bytesTotal);
+    final sizeSuffix = groupBytes > 0 ? ' · ${_fmtSize(groupBytes)}' : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  width: 44,
-                  height: 62,
-                  child: (head.cover != null && head.cover!.isNotEmpty)
-                      ? CachedNetworkImage(
-                          imageUrl: head.cover!,
-                          httpHeaders: head.coverHeaders,
-                          fit: BoxFit.cover,
-                          errorWidget: (c, u, e) =>
-                              const ColoredBox(color: AppColors.surface2),
-                        )
-                      : const ColoredBox(color: AppColors.surface2),
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: SizedBox(
+                    width: 44,
+                    height: 62,
+                    child: (head.cover != null && head.cover!.isNotEmpty)
+                        ? CachedNetworkImage(
+                            imageUrl: head.cover!,
+                            httpHeaders: head.coverHeaders,
+                            fit: BoxFit.cover,
+                            errorWidget: (c, u, e) =>
+                                const ColoredBox(color: AppColors.surface2),
+                          )
+                        : const ColoredBox(color: AppColors.surface2),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      head.showTitle,
-                      style: AppText.headline,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$done of ${records.length} downloaded',
-                      style: AppText.caption,
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        head.showTitle,
+                        style: AppText.headline,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${doneRecs.length} of ${records.length}$sizeSuffix',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                AnimatedRotation(
+                  turns: expanded ? 0.25 : 0.0,
+                  duration: const Duration(milliseconds: 180),
+                  child: const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        for (final r in records) DownloadTile(record: r, manager: manager),
+        if (expanded)
+          for (final r in episodes) DownloadTile(record: r, manager: manager),
         const SizedBox(height: 6),
       ],
     );
