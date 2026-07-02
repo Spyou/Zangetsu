@@ -324,7 +324,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Account row — signed-in profile (pfp + name → Profile) or a Sign-in tile.
+  /// Account header — signed-in hero profile (pfp + name → Profile) or a
+  /// Sign-in tile. The hero floats card-less on the background: a 64px avatar
+  /// in a crimson accent ring with a soft glow, big display name, email below.
   Widget _accountCard(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
@@ -332,42 +334,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          return SettingsCard(
-            children: [
-              ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                leading: CircleAvatar(
-                  radius: 22,
-                  backgroundColor: AppColors.surface2,
-                  backgroundImage: auth.avatarUrl != null
-                      ? NetworkImage(auth.avatarUrl!)
-                      : null,
-                  child: auth.avatarUrl == null
-                      ? Text(initial, style: AppText.headline)
-                      : null,
-                ),
-                title: Text(
-                  auth.displayName,
-                  style: AppText.headline.copyWith(fontSize: 15),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: Text(
-                  auth.user?.email ?? '',
-                  style: AppText.caption,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textTertiary,
-                ),
-                onTap: () => _push(const ProfileScreen()),
+          return InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _push(const ProfileScreen()),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+              child: Row(
+                children: [
+                  // Avatar in an accent ring with a soft crimson glow.
+                  Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.accent, width: 2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accent.withValues(alpha: 0.25),
+                          blurRadius: 18,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 30,
+                      backgroundColor: AppColors.surface2,
+                      backgroundImage: auth.avatarUrl != null
+                          ? NetworkImage(auth.avatarUrl!)
+                          : null,
+                      child: auth.avatarUrl == null
+                          ? Text(
+                              initial,
+                              style: AppText.headline.copyWith(fontSize: 24),
+                            )
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.displayName,
+                          style: AppText.title.copyWith(fontSize: 20),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.user?.email ?? '',
+                          style: AppText.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                  ),
+                ],
               ),
-            ],
+            ),
           );
         }
         return SettingsCard(
