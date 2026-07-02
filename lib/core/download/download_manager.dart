@@ -12,6 +12,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
+import '../ui/global_messenger.dart';
 import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
@@ -27,7 +28,6 @@ class DownloadManager extends ChangeNotifier {
       : _downloadPrefs = downloadPrefs ?? DownloadPrefs();
 
   final SourceRepository _repo;
-  // ignore: unused_field — consumed in Task 3 (MP4 publish branch)
   final DownloadPrefs _downloadPrefs;
 
   static const String boxName = 'downloads';
@@ -620,15 +620,32 @@ class DownloadManager extends ChangeNotifier {
     } catch (_) {}
 
     String? path;
-    try {
-      path = await _dl.moveToSharedStorage(
-        task,
-        SharedStorage.downloads,
-        directory: '$_sharedDir/${_safe(rec.showTitle)}',
-      );
-    } catch (_) {}
-    // Fall back to the app-documents path if the move failed.
-    path ??= await task.filePath();
+    // If the user picked a custom folder, publish the finished file there via
+    // SAF. Any failure falls through to the default Downloads/Zangetsu path so
+    // the download still succeeds.
+    final customUri = _downloadPrefs.locationUri;
+    if (customUri != null) {
+      try {
+        final localPath = await task.filePath();
+        final moved =
+            await _dl.uri.moveFile(Uri.file(localPath), Uri.parse(customUri));
+        path = moved?.toString();
+      } catch (_) {}
+      if (path == null) {
+        showGlobalSnack("Saved to Downloads — the chosen folder wasn't available");
+      }
+    }
+    if (path == null) {
+      try {
+        path = await _dl.moveToSharedStorage(
+          task,
+          SharedStorage.downloads,
+          directory: '$_sharedDir/${_safe(rec.showTitle)}',
+        );
+      } catch (_) {}
+      // Fall back to the app-documents path if the move failed.
+      path ??= await task.filePath();
+    }
     _candidates.remove(rec.id); // success — no more fallbacks needed
     _put(
       rec.copyWith(
