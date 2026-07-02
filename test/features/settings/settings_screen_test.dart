@@ -11,6 +11,7 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
@@ -76,6 +77,7 @@ void main() {
     _hiveDir = await Directory.systemTemp.createTemp();
     Hive.init(_hiveDir.path);
     await Hive.openBox(DownloadPrefs.boxName);
+    await Hive.openBox(TorrentPrefs.boxName);
     final sl = GetIt.instance;
     sl
       ..registerSingleton<AppMode>(AppMode(isTv: false))
@@ -84,7 +86,8 @@ void main() {
       ..registerSingleton<AniListService>(_StubAniList())
       ..registerSingleton<MalService>(_StubMal())
       ..registerSingleton<SimklService>(_StubSimkl())
-      ..registerSingleton<DownloadPrefs>(DownloadPrefs());
+      ..registerSingleton<DownloadPrefs>(DownloadPrefs())
+      ..registerSingleton<TorrentPrefs>(TorrentPrefs());
     activeCubit = ActiveSourceCubit();
   });
 
@@ -142,6 +145,7 @@ void main() {
       'Playback',
       'Storage',
       'Download location',
+      'Torrents',
       'Search layout',
       'How it works',
       'Privacy',

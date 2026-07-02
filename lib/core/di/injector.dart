@@ -43,6 +43,7 @@ import '../backup/settings_backup.dart';
 import '../download/download_manager.dart';
 import '../download/download_prefs.dart';
 import '../download/download_service.dart';
+import '../torrent/torrent_prefs.dart';
 import '../notify/subscription_store.dart';
 import '../notify/subscription_checker.dart';
 import '../discord/discord_rpc.dart';
@@ -105,6 +106,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
+  await TorrentPrefs.init();
+  sl.registerSingleton<TorrentPrefs>(TorrentPrefs());
   await SearchHistory.init();
   sl.registerSingleton<SearchHistory>(SearchHistory());
   await SearchSourcePrefs.init();

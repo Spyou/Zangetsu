@@ -20,6 +20,7 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import 'discord_settings_screen.dart';
 import 'download_location_screen.dart';
+import 'torrent_settings_screen.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
@@ -553,6 +554,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           await _push(const DownloadLocationScreen());
                           if (mounted) setState(() {});
                         },
+                      ),
+                      SettingsTile(
+                        icon: Icons.downloading_outlined,
+                        title: 'Torrents',
+                        subtitle: 'Streaming & data settings',
+                        onTap: () => _push(const TorrentSettingsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.search_rounded,
