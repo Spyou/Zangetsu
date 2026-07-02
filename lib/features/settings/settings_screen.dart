@@ -409,6 +409,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 padding: const EdgeInsets.only(top: 4, bottom: 24),
                 children: [
                   _accountCard(context),
+                  const SettingsSectionLabel('Account & sync'),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -437,110 +438,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Save your sources, list & settings',
                         onTap: () => _push(const BackupScreen()),
                       ),
-                    ],
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.dns_rounded,
-                        title: 'Providers',
-                        subtitle: '$enabledCount enabled',
-                        onTap: () async {
-                          await _push(const SourcesScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.swap_horiz_rounded,
-                        title: 'Active source',
-                        subtitle: _activeLabel(activeId),
-                        onTap: _pickActiveSource,
-                      ),
-                      SettingsTile(
-                        icon: Icons.health_and_safety_outlined,
-                        title: 'Source health',
-                        subtitle: 'Test which sources are working',
-                        onTap: () => _push(const SourceHealthScreen()),
-                      ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.extension_outlined,
-                          title: 'Add CloudStream repository',
-                          subtitle: 'Install CloudStream sources',
-                          onTap: _addCloudStreamRepo,
-                        ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.vpn_lock_outlined,
-                          title: 'DNS',
-                          subtitle: _dnsChoice == CsDns.off
-                              ? 'Off · bypass ISP blocks on CS sources'
-                              : CsDns.labelFor(_dnsChoice),
-                          onTap: _pickDns,
-                        ),
-                    ],
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.help_outline_rounded,
-                        title: 'How it works',
-                        subtitle: 'New here? A quick guide',
-                        onTap: () => _push(const HowItWorksScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.play_circle_outline,
-                        title: 'Playback',
-                        subtitle: 'Quality, autoplay, speed',
-                        onTap: () => _push(const PlaybackSettingsScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.download_outlined,
-                        title: 'Downloads',
-                        subtitle: 'Watch offline',
-                        onTap: () => _push(const DownloadsScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.search_rounded,
-                        title: 'Search layout',
-                        subtitle: sl<SearchPrefs>().layout.label,
-                        onTap: _pickSearchLayout,
-                      ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.notifications_none_rounded,
-                          title: 'Notifications',
-                          subtitle: 'New-episode alerts for subscribed shows',
-                          onTap: () => _push(const SubscriptionsScreen()),
-                        ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.update_rounded,
-                          title: 'Source updates',
-                          subtitle: 'Notify when installed sources have updates',
-                          trailing: Switch.adaptive(
-                            value: sl<CloudStreamManager>().notifyUpdates,
-                            activeThumbColor: AppColors.accent,
-                            onChanged: (v) async {
-                              await sl<CloudStreamManager>()
-                                  .setNotifyUpdates(v);
-                              if (mounted) setState(() {});
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.sd_storage_outlined,
-                        title: 'Storage',
-                        onTap: () => _push(const StorageSettingsScreen()),
-                      ),
-                    ],
-                  ),
-                  SettingsCard(
-                    children: [
                       SettingsTile(
                         icon: Icons.sync_alt_rounded,
                         title: 'Connections',
@@ -561,6 +458,115 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           if (mounted) setState(() {});
                         },
                       ),
+                    ],
+                  ),
+                  const SettingsSectionLabel('Sources'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.dns_rounded,
+                        title: 'Providers',
+                        subtitle: '$enabledCount enabled',
+                        onTap: () async {
+                          await _push(const SourcesScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
+                        icon: Icons.swap_horiz_rounded,
+                        title: 'Active source',
+                        subtitle: _activeLabel(activeId),
+                        onTap: _pickActiveSource,
+                      ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.extension_outlined,
+                          title: 'Add CloudStream repository',
+                          subtitle: 'Install CloudStream sources',
+                          onTap: _addCloudStreamRepo,
+                        ),
+                      SettingsTile(
+                        icon: Icons.health_and_safety_outlined,
+                        title: 'Source health',
+                        subtitle: 'Test which sources are working',
+                        onTap: () => _push(const SourceHealthScreen()),
+                      ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.vpn_lock_outlined,
+                          title: 'DNS',
+                          subtitle: _dnsChoice == CsDns.off
+                              ? 'Off · bypass ISP blocks on CS sources'
+                              : CsDns.labelFor(_dnsChoice),
+                          onTap: _pickDns,
+                        ),
+                    ],
+                  ),
+                  const SettingsSectionLabel('Playback & downloads'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.play_circle_outline,
+                        title: 'Playback',
+                        subtitle: 'Quality, autoplay, speed',
+                        onTap: () => _push(const PlaybackSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.download_outlined,
+                        title: 'Downloads',
+                        subtitle: 'Watch offline',
+                        onTap: () => _push(const DownloadsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.sd_storage_outlined,
+                        title: 'Storage',
+                        subtitle: 'Manage space used by the app',
+                        onTap: () => _push(const StorageSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.search_rounded,
+                        title: 'Search layout',
+                        subtitle: sl<SearchPrefs>().layout.label,
+                        onTap: _pickSearchLayout,
+                      ),
+                    ],
+                  ),
+                  if (Platform.isAndroid) ...[
+                    const SettingsSectionLabel('Notifications'),
+                    SettingsCard(
+                      children: [
+                        SettingsTile(
+                          icon: Icons.notifications_none_rounded,
+                          title: 'Notifications',
+                          subtitle: 'New-episode alerts for subscribed shows',
+                          onTap: () => _push(const SubscriptionsScreen()),
+                        ),
+                        SettingsTile(
+                          icon: Icons.update_rounded,
+                          title: 'Source updates',
+                          subtitle: 'Notify when installed sources have updates',
+                          trailing: Switch.adaptive(
+                            value: sl<CloudStreamManager>().notifyUpdates,
+                            activeThumbColor: AppColors.accent,
+                            onChanged: (v) async {
+                              await sl<CloudStreamManager>()
+                                  .setNotifyUpdates(v);
+                              if (mounted) setState(() {});
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  const SettingsSectionLabel('More'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.help_outline_rounded,
+                        title: 'How it works',
+                        subtitle: 'New here? A quick guide',
+                        onTap: () => _push(const HowItWorksScreen()),
+                      ),
                       SettingsTile(
                         icon: Icons.shield_outlined,
                         title: 'Privacy',
@@ -569,21 +575,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           await _push(const PrivacySettingsScreen());
                           if (mounted) setState(() {});
                         },
-                      ),
-                    ],
-                  ),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.coffee_rounded,
-                        title: 'Support the app',
-                        subtitle: 'Buy me a coffee',
-                        onTap: () => _push(const DonateScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.people_outline_rounded,
-                        title: 'Developers',
-                        onTap: () => _push(const DevelopersScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.system_update_rounded,
@@ -597,6 +588,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           );
                           maybeShowUpdateDialog(context, manual: true);
                         },
+                      ),
+                      SettingsTile(
+                        icon: Icons.coffee_rounded,
+                        title: 'Support the app',
+                        subtitle: 'Buy me a coffee',
+                        onTap: () => _push(const DonateScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.people_outline_rounded,
+                        title: 'Developers',
+                        subtitle: 'Meet the people behind Zangetsu',
+                        onTap: () => _push(const DevelopersScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.info_outline_rounded,
