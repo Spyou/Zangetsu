@@ -28,7 +28,7 @@ void main() {
     expect(r.id, 'abc');
     expect(r.localUrl, 'http://127.0.0.1:9/stream');
     expect(calls.single.method, 'startStream');
-    expect(calls.single.arguments, {'uri': 'magnet:x'});
+    expect(calls.single.arguments, {'uri': 'magnet:x', 'allowMobileData': false});
   });
 
   test('stop invokes stopStream with the id', () async {

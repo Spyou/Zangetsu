@@ -43,11 +43,15 @@ class TorrentService {
       EventChannel('com.spyou.watch_app/torrent/events');
 
   /// Starts streaming a magnet/.torrent; returns the torrent id + a local URL
-  /// the player can open. Throws on Wi-Fi block / no-metadata / engine error.
-  Future<({String id, String localUrl})> startStream(String uri) async {
+  /// the player can open. Throws on Wi-Fi block (a `wifi_only` PlatformException
+  /// when metered + [allowMobileData] is false), no-metadata, or engine error.
+  Future<({String id, String localUrl})> startStream(
+    String uri, {
+    bool allowMobileData = false,
+  }) async {
     final res = await _method.invokeMapMethod<String, dynamic>(
       'startStream',
-      {'uri': uri},
+      {'uri': uri, 'allowMobileData': allowMobileData},
     );
     return (
       id: (res?['id'] ?? '') as String,

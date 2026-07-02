@@ -19,6 +19,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/torrent/torrent_util.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
@@ -332,6 +333,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) throw StateError('no source');
+      // A torrent can't be handed to an external player as a magnet — stream it
+      // through our engine via the in-app player instead.
+      if (isTorrentUrl(src.url)) {
+        _initInApp();
+        if (mounted) setState(() {});
+        return;
+      }
       // External players give no progress callback and the in-app scrobbler
       // never runs for them — so scrobble the episode at hand-off (the only
       // reliable signal). Anime-gated + de-duped inside the service.
@@ -1449,6 +1457,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           if (state.loadingSources) {
             return _loadingBackdropBody(
               'Finding the best source…',
+              thumb: _c.currentEpisode.thumbnail,
+            );
+          }
+          // Torrent source buffering: "Finding peers…" / "Buffering N%".
+          if (state.torrentPhase != null) {
+            return _loadingBackdropBody(
+              state.torrentPhase!,
               thumb: _c.currentEpisode.thumbnail,
             );
           }

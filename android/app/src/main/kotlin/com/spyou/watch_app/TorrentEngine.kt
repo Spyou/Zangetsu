@@ -56,10 +56,11 @@ class TorrentEngine(
                 "ping" -> result.success("ok")
                 "startStream" -> {
                     val uri = call.argument<String>("uri")
+                    val allowMobileData = call.argument<Boolean>("allowMobileData") ?: false
                     if (uri.isNullOrBlank()) {
                         result.error("bad_args", "uri required", null)
                     } else {
-                        startStream(uri, result)
+                        startStream(uri, allowMobileData, result)
                     }
                 }
                 "stopStream" -> {
@@ -101,7 +102,22 @@ class TorrentEngine(
         ),
     )
 
-    private fun startStream(uri: String, result: MethodChannel.Result) {
+    private fun startStream(
+        uri: String,
+        allowMobileData: Boolean,
+        result: MethodChannel.Result,
+    ) {
+        // Wi-Fi gate: refuse on a metered network unless the user opted in.
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+            as? android.net.ConnectivityManager
+        if (cm != null && cm.isActiveNetworkMetered && !allowMobileData) {
+            result.error(
+                "wifi_only",
+                "Torrents are set to Wi-Fi only",
+                null,
+            )
+            return
+        }
         // Everything network/IO happens off the platform thread.
         Thread {
             try {
