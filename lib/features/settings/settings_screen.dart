@@ -29,6 +29,7 @@ import '../../core/ui/settings_widgets.dart';
 import 'developers_screen.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
+import '../backup/backup_screen.dart';
 import '../watch_together/ui/watch_party_lobby_screen.dart';
 import '../auth/auth_screens.dart';
 import '../downloads/downloads_screen.dart';
@@ -429,6 +430,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             ),
                           );
                         },
+                      ),
+                      SettingsTile(
+                        icon: Icons.cloud_sync_outlined,
+                        title: 'Backup & Restore',
+                        subtitle: 'Save your sources, list & settings',
+                        onTap: () => _push(const BackupScreen()),
                       ),
                     ],
                   ),
