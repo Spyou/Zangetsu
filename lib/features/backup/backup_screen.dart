@@ -127,7 +127,7 @@ class _BackupScreenState extends State<BackupScreen> {
     );
   }
 
-  Widget _bundleRow(BackupBundle bundle, String label) {
+  Widget _bundleRow(BackupBundle bundle, String label, String subtitle) {
     return CheckboxListTile(
       value: _selected.contains(bundle),
       onChanged: _busy
@@ -143,6 +143,7 @@ class _BackupScreenState extends State<BackupScreen> {
         label,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
       ),
+      subtitle: Text(subtitle, style: AppText.caption),
       activeColor: AppColors.accent,
       controlAffinity: ListTileControlAffinity.leading,
     );
@@ -172,41 +173,57 @@ class _BackupScreenState extends State<BackupScreen> {
           ListView(
             padding: const EdgeInsets.only(top: 8, bottom: 28),
             children: [
-              const SettingsSectionLabel('Bundles'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                child: Text(
+                  'Save your sources, list and settings — to a file on your '
+                  'device or to your Zangetsu account. Restoring only adds '
+                  'things back; it never deletes what you already have.',
+                  style: AppText.caption,
+                ),
+              ),
+              const SettingsSectionLabel('Include in the backup'),
               SettingsCard(
                 children: [
-                  _bundleRow(BackupBundle.sources, 'Sources & repos'),
-                  _bundleRow(BackupBundle.library, 'Library'),
-                  _bundleRow(BackupBundle.settings, 'App settings'),
+                  _bundleRow(BackupBundle.sources, 'Sources & repos',
+                      'Installed sources and their repo links'),
+                  _bundleRow(BackupBundle.library, 'Library',
+                      'My List and Continue Watching'),
+                  _bundleRow(BackupBundle.settings, 'App settings',
+                      'Player, subtitles, quality and preferences'),
                 ],
               ),
-              const SettingsSectionLabel('Back up'),
+              const SettingsSectionLabel('Create a backup'),
               SettingsCard(
                 children: [
+                  SettingsTile(
+                    icon: Icons.save_alt_outlined,
+                    title: 'Save to a file',
+                    subtitle: 'Export a backup file to keep or share',
+                    onTap: _busy ? null : _saveToFile,
+                  ),
                   SettingsTile(
                     icon: Icons.cloud_upload_outlined,
                     title: 'Back up to cloud',
+                    subtitle: 'Save a copy to your account · needs sign-in',
                     onTap: _busy ? null : _backupToCloud,
-                  ),
-                  SettingsTile(
-                    icon: Icons.save_alt_outlined,
-                    title: 'Save to file',
-                    onTap: _busy ? null : _saveToFile,
                   ),
                 ],
               ),
-              const SettingsSectionLabel('Restore'),
+              const SettingsSectionLabel('Restore a backup'),
               SettingsCard(
                 children: [
                   SettingsTile(
-                    icon: Icons.cloud_download_outlined,
-                    title: 'Restore from cloud',
-                    onTap: _busy ? null : _restoreFromCloud,
+                    icon: Icons.folder_open_outlined,
+                    title: 'Restore from a file',
+                    subtitle: 'Pick a backup file you saved earlier',
+                    onTap: _busy ? null : _restoreFromFile,
                   ),
                   SettingsTile(
-                    icon: Icons.folder_open_outlined,
-                    title: 'Restore from file',
-                    onTap: _busy ? null : _restoreFromFile,
+                    icon: Icons.cloud_download_outlined,
+                    title: 'Restore from cloud',
+                    subtitle: 'Bring back your latest cloud backup',
+                    onTap: _busy ? null : _restoreFromCloud,
                   ),
                 ],
               ),

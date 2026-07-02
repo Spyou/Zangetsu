@@ -68,6 +68,10 @@ void main() {
     'BackupScreen renders three bundle checkboxes and four action buttons',
     (tester) async {
       _mockPathProvider(tester);
+      // Tall surface so the lazy ListView builds every tile (the screen is
+      // longer than the default 800px test viewport).
+      await tester.binding.setSurfaceSize(const Size(1000, 2200));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final auth = AuthCubit(sl<AppwriteService>());
       addTearDown(auth.close);
@@ -89,9 +93,9 @@ void main() {
 
       // Four action buttons (SettingsTile labels).
       expect(find.text('Back up to cloud'), findsOneWidget);
-      expect(find.text('Save to file'), findsOneWidget);
+      expect(find.text('Save to a file'), findsOneWidget);
       expect(find.text('Restore from cloud'), findsOneWidget);
-      expect(find.text('Restore from file'), findsOneWidget);
+      expect(find.text('Restore from a file'), findsOneWidget);
     },
   );
 }
