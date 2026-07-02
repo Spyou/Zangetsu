@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_record.dart';
@@ -225,6 +226,7 @@ void main() {
     await sl.reset();
 
     // Register minimal stubs for every sl<> call that fires during render.
+    sl.registerSingleton<AppMode>(const AppMode(isTv: true));
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<ListStatusStore>(_FakeListStatusStore());
     sl.registerSingleton<ResumeStore>(_FakeResumeStore());

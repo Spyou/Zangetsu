@@ -2699,6 +2699,25 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       if (s.quality != null && s.quality!.trim().isNotEmpty) s.quality!.trim(),
       hls ? 'HLS' : 'Direct',
     ].join(' · ');
+    void onTap() =>
+        Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s]));
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(
+        autofocus: i == 0,
+        onTap: onTap,
+        child: ListTile(
+          contentPadding: const EdgeInsets.only(right: 8),
+          leading: const Icon(Icons.download_rounded, color: AppColors.accent),
+          title: Text(
+            label,
+            style: AppText.body.copyWith(color: AppColors.textPrimary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Text(sub, style: AppText.caption),
+        ),
+      );
+    }
     return ListTile(
       contentPadding: const EdgeInsets.only(right: 8),
       leading: const Icon(Icons.download_rounded, color: AppColors.accent),
@@ -2709,8 +2728,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(sub, style: AppText.caption),
-      onTap: () =>
-          Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s])),
+      onTap: onTap,
     );
   }
 }
@@ -2976,13 +2994,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
             // ── Download button ────────────────────────────────────────────
             const SizedBox(height: 16),
-            Material(
-              color: count == 0 ? AppColors.surface2 : AppColors.accent,
-              borderRadius: BorderRadius.circular(10),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
+            if (sl<AppMode>().isTv)
+              TvFocusable(
+                autofocus: true,
                 onTap: count == 0
-                    ? null
+                    ? () {}
                     : () => Navigator.pop(
                         context,
                         (
@@ -2991,22 +3007,60 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                           episodes: _selectedEpisodes,
                         ),
                       ),
-                child: SizedBox(
-                  height: 50,
-                  width: double.infinity,
-                  child: Center(
-                    child: Text(
-                      count == 0
-                          ? 'Select episodes'
-                          : 'Download $count episode${count == 1 ? '' : 's'}',
-                      style: AppText.button.copyWith(
-                        color: count == 0 ? AppColors.textTertiary : Colors.white,
+                child: Material(
+                  color: count == 0 ? AppColors.surface2 : AppColors.accent,
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    height: 50,
+                    width: double.infinity,
+                    child: Center(
+                      child: Text(
+                        count == 0
+                            ? 'Select episodes'
+                            : 'Download $count episode${count == 1 ? '' : 's'}',
+                        style: AppText.button.copyWith(
+                          color:
+                              count == 0 ? AppColors.textTertiary : Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Material(
+                color: count == 0 ? AppColors.surface2 : AppColors.accent,
+                borderRadius: BorderRadius.circular(10),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: count == 0
+                      ? null
+                      : () => Navigator.pop(
+                          context,
+                          (
+                            quality: _quality,
+                            category: _category,
+                            episodes: _selectedEpisodes,
+                          ),
+                        ),
+                  child: SizedBox(
+                    height: 50,
+                    width: double.infinity,
+                    child: Center(
+                      child: Text(
+                        count == 0
+                            ? 'Select episodes'
+                            : 'Download $count episode${count == 1 ? '' : 's'}',
+                        style: AppText.button.copyWith(
+                          color:
+                              count == 0 ? AppColors.textTertiary : Colors.white,
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -3015,22 +3069,34 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
   Widget _categoryChip(String c) {
     final selected = c == _category;
+    final label = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+      child: Text(
+        c == 'dub' ? 'Dub' : 'Sub',
+        style: AppText.body.copyWith(
+          color: selected ? Colors.white : AppColors.textSecondary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(
+        onTap: () => _setCategory(c),
+        child: Material(
+          color: selected ? AppColors.accent : AppColors.surface2,
+          borderRadius: BorderRadius.circular(8),
+          clipBehavior: Clip.antiAlias,
+          child: label,
+        ),
+      );
+    }
     return Material(
       color: selected ? AppColors.accent : AppColors.surface2,
       borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: () => _setCategory(c),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
-          child: Text(
-            c == 'dub' ? 'Dub' : 'Sub',
-            style: AppText.body.copyWith(
-              color: selected ? Colors.white : AppColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+        child: label,
       ),
     );
   }
@@ -3077,90 +3143,103 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     final sel = i == _selectedSourceIdx;
     final label = _sourceName(s, i);
     final hasQuality = s.quality != null && s.quality!.trim().isNotEmpty;
-    return GestureDetector(
-      onTap: () => setState(() {
-        _selectedSourceIdx = i;
-        _quality = hasQuality ? s.quality!.trim() : 'best';
-      }),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: sel ? AppColors.accentSoft : AppColors.surface2,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: sel ? AppColors.accent : AppColors.hairline,
-            width: sel ? 1 : 0.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              sel ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: sel ? AppColors.accent : AppColors.textTertiary,
-              size: 18,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                label,
-                style: AppText.caption.copyWith(color: AppColors.textPrimary),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (hasQuality) ...[
-              const SizedBox(width: 8),
-              Text(
-                s.quality!.trim(),
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
-              ),
-            ],
-          ],
+    void onTap() => setState(() {
+      _selectedSourceIdx = i;
+      _quality = hasQuality ? s.quality!.trim() : 'best';
+    });
+    final visual = Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: sel ? AppColors.accentSoft : AppColors.surface2,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: sel ? AppColors.accent : AppColors.hairline,
+          width: sel ? 1 : 0.5,
         ),
       ),
+      child: Row(
+        children: [
+          Icon(
+            sel ? Icons.radio_button_checked : Icons.radio_button_off,
+            color: sel ? AppColors.accent : AppColors.textTertiary,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: AppText.caption.copyWith(color: AppColors.textPrimary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (hasQuality) ...[
+            const SizedBox(width: 8),
+            Text(
+              s.quality!.trim(),
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            ),
+          ],
+        ],
+      ),
     );
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(onTap: onTap, child: visual);
+    }
+    return GestureDetector(onTap: onTap, child: visual);
   }
 
   /// Season dropdown pill — opens the shared dark season picker sheet.
   Widget _seasonDropdown() {
+    Future<void> openPicker() async {
+      final picked = await showModalBottomSheet<int>(
+        context: context,
+        backgroundColor: AppColors.surface,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (_) => _SeasonSheet(seasons: _seasons, currentSeason: _season),
+      );
+      if (picked != null && picked != _season) {
+        setState(() => _season = picked);
+        _resolveSources(); // sources differ per season
+      }
+    }
+
+    final visual = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text('Season $_season', style: AppText.headline),
+          ),
+          const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            color: AppColors.textPrimary,
+            size: 22,
+          ),
+        ],
+      ),
+    );
+
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(
+        onTap: openPicker,
+        child: Material(
+          color: AppColors.surface2,
+          borderRadius: BorderRadius.circular(10),
+          clipBehavior: Clip.antiAlias,
+          child: visual,
+        ),
+      );
+    }
     return Material(
       color: AppColors.surface2,
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () async {
-          final picked = await showModalBottomSheet<int>(
-            context: context,
-            backgroundColor: AppColors.surface,
-            isScrollControlled: true,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            builder: (_) =>
-                _SeasonSheet(seasons: _seasons, currentSeason: _season),
-          );
-          if (picked != null && picked != _season) {
-            setState(() => _season = picked);
-            _resolveSources(); // sources differ per season
-          }
-        },
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text('Season $_season', style: AppText.headline),
-              ),
-              const Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: AppColors.textPrimary,
-                size: 22,
-              ),
-            ],
-          ),
-        ),
-      ),
+      child: InkWell(onTap: openPicker, child: visual),
     );
   }
 
@@ -3174,15 +3253,14 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     final epNum = _epNum(e, i);
     final title = e.title.trim();
     final hasTitle = title.isNotEmpty && title != 'Episode $epNum';
-    return GestureDetector(
-      onTap: () => setState(() {
-        if (sel) {
-          _selectedIds.remove(e.id);
-        } else {
-          _selectedIds.add(e.id);
-        }
-      }),
-      child: SizedBox(
+    void onTap() => setState(() {
+      if (sel) {
+        _selectedIds.remove(e.id);
+      } else {
+        _selectedIds.add(e.id);
+      }
+    });
+    final card = SizedBox(
         width: 132,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3256,11 +3334,29 @@ class _DownloadSheetState extends State<_DownloadSheet> {
               ),
           ],
         ),
-      ),
-    );
+      );
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(onTap: onTap, child: card);
+    }
+    return GestureDetector(onTap: onTap, child: card);
   }
 
   Widget _textBtn(String label, VoidCallback onTap) {
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          child: Text(
+            label,
+            style: AppText.caption.copyWith(
+              color: AppColors.accent,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      );
+    }
     return TextButton(
       onPressed: onTap,
       style: TextButton.styleFrom(
