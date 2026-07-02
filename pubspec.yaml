@@ -67,7 +67,8 @@ dependencies:
   media_kit_libs_video: ^1.0.5
 
   # "Load subtitle from file" in the player (document picker on iOS/Android).
-  file_picker: ^8.1.2
+  # Also used for backup import (file_picker >= 8.1.7 required for Uri return on Android 13+).
+  file_picker: ^8.1.7
 
   # Image caching
   cached_network_image: ^3.4.1

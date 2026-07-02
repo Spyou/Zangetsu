@@ -34,6 +34,7 @@ class Environment {
   static const String roomParticipantsCollectionId = 'room_participants';
   static const String roomMessagesCollectionId = 'room_messages';
   static const String avatarsBucketId = 'avatars';
+  static const String backupsCollectionId = 'backups';
 
   // ── Tracker OAuth ──────────────────────────────────────────────────────────
   // All redirects share the zangetsu:// scheme; each has its own host with a
