@@ -11,9 +11,10 @@ import 'package:watch_app/core/backup/backup_cloud.dart';
 /// Fake Databases that stubs only the three calls BackupCloud makes.
 /// All other Databases methods are forwarded to noSuchMethod.
 class _FakeDatabases implements Databases {
-  _FakeDatabases({this.updateShouldThrow = false});
+  _FakeDatabases({this.updateShouldThrow = false, this.createShouldThrow = false});
 
   final bool updateShouldThrow;
+  final bool createShouldThrow;
   bool createCalled = false;
 
   models.Document _stubDoc() => models.Document.fromMap({
@@ -61,6 +62,7 @@ class _FakeDatabases implements Databases {
     String? transactionId,
   }) async {
     createCalled = true;
+    if (createShouldThrow) throw AppwriteException('collection not found', 404);
     return _stubDoc();
   }
 
@@ -152,6 +154,18 @@ void main() {
       await cloud.upload('u1', {'app': 'zangetsu'});
 
       expect(db.createCalled, isTrue);
+    });
+
+    // Regression: an explicit backup must NOT silently succeed when the write
+    // fails (e.g. the backups collection isn't set up) — the error propagates.
+    test('propagates the error when createDocument also fails', () async {
+      final db = _FakeDatabases(updateShouldThrow: true, createShouldThrow: true);
+      final cloud = BackupCloud(_FakeAppwriteService(db));
+
+      await expectLater(
+        cloud.upload('u1', {'app': 'zangetsu'}),
+        throwsA(isA<AppwriteException>()),
+      );
     });
   });
 }

@@ -38,6 +38,16 @@ class _BackupScreenState extends State<BackupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Backed up to cloud')),
       );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Cloud backup failed. Check you're online — if it keeps failing, "
+            'the cloud backup store may not be set up yet.',
+          ),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }

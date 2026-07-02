@@ -23,8 +23,10 @@ class BackupCloud {
   /// Upload (upsert) [payload] to the Appwrite backups collection.
   ///
   /// Tries to update the existing document first; if that fails (first write /
-  /// 404) it creates a new one with owner-only permissions. Best-effort — inner
-  /// create errors are silently swallowed.
+  /// 404) it creates a new one with owner-only permissions. A create failure is
+  /// **not** swallowed — this is an explicit, user-initiated backup, so the
+  /// caller must be able to report when it didn't save (e.g. the backups
+  /// collection isn't set up yet, or the device is offline). Throws on failure.
   Future<void> upload(String userId, Map<String, dynamic> payload) async {
     final id = docId(userId);
     final data = {
@@ -40,19 +42,19 @@ class BackupCloud {
         data: data,
       );
     } catch (_) {
-      try {
-        await _aw.databases.createDocument(
-          databaseId: Environment.databaseId,
-          collectionId: Environment.backupsCollectionId,
-          documentId: id,
-          data: data,
-          permissions: [
-            Permission.read(Role.user(userId)),
-            Permission.update(Role.user(userId)),
-            Permission.delete(Role.user(userId)),
-          ],
-        );
-      } catch (_) {/* best-effort */}
+      // No document yet (first backup) or the update failed → create it. Let a
+      // create failure propagate so the UI reports the backup didn't save.
+      await _aw.databases.createDocument(
+        databaseId: Environment.databaseId,
+        collectionId: Environment.backupsCollectionId,
+        documentId: id,
+        data: data,
+        permissions: [
+          Permission.read(Role.user(userId)),
+          Permission.update(Role.user(userId)),
+          Permission.delete(Role.user(userId)),
+        ],
+      );
     }
   }
 
