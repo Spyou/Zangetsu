@@ -334,67 +334,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          return InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () => _push(const ProfileScreen()),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
-              child: Row(
-                children: [
-                  // Avatar in an accent ring with a soft crimson glow.
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.accent, width: 2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.accent.withValues(alpha: 0.25),
-                          blurRadius: 18,
-                          spreadRadius: 1,
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: 30,
-                      backgroundColor: AppColors.surface2,
-                      backgroundImage: auth.avatarUrl != null
-                          ? NetworkImage(auth.avatarUrl!)
-                          : null,
-                      child: auth.avatarUrl == null
-                          ? Text(
-                              initial,
-                              style: AppText.headline.copyWith(fontSize: 24),
-                            )
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          auth.displayName,
-                          style: AppText.title.copyWith(fontSize: 20),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          auth.user?.email ?? '',
-                          style: AppText.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary,
-                  ),
+          // Profile card — same card language as the sections below (radius,
+          // margins), lifted by a whisper of crimson in the gradient. Calm:
+          // plain avatar with a thin hairline border, bold name, caption email.
+          return Container(
+            margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.accent.withValues(alpha: 0.14),
+                  AppColors.surface,
+                  AppColors.surface,
                 ],
+              ),
+            ),
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                onTap: () => _push(const ProfileScreen()),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  child: Row(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.15),
+                          ),
+                        ),
+                        child: CircleAvatar(
+                          radius: 28,
+                          backgroundColor: AppColors.surface2,
+                          backgroundImage: auth.avatarUrl != null
+                              ? NetworkImage(auth.avatarUrl!)
+                              : null,
+                          child: auth.avatarUrl == null
+                              ? Text(
+                                  initial,
+                                  style:
+                                      AppText.headline.copyWith(fontSize: 22),
+                                )
+                              : null,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              auth.displayName,
+                              style: AppText.headline.copyWith(fontSize: 18),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'View profile',
+                              style: AppText.caption
+                                  .copyWith(color: AppColors.accent),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           );
