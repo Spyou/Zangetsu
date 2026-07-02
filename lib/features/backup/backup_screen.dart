@@ -54,7 +54,20 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _saveToFile() async {
-    await BackupFile().export(_service.build(_selected));
+    setState(() => _busy = true);
+    try {
+      final path = await BackupFile().export(_service.build(_selected));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(path == null
+              ? "Couldn't save the backup file — storage permission may be needed."
+              : 'Saved to Downloads › Zangetsu'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _restoreFromCloud() async {
@@ -209,7 +222,7 @@ class _BackupScreenState extends State<BackupScreen> {
                   SettingsTile(
                     icon: Icons.save_alt_outlined,
                     title: 'Save to a file',
-                    subtitle: 'Export a backup file to keep or share',
+                    subtitle: 'Save a backup file to your Downloads folder',
                     onTap: _busy ? null : _saveToFile,
                   ),
                   SettingsTile(

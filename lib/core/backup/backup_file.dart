@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 // ── Pure helpers (tested) ─────────────────────────────────────────────────────
 
@@ -35,19 +35,20 @@ Map<String, dynamic> parseBackupJson(String raw) {
 // ── Transport class ───────────────────────────────────────────────────────────
 
 class BackupFile {
-  /// Encodes [payload] as JSON, writes it to a temp file, and opens the OS
-  /// share sheet so the user can save it to Downloads, Drive, etc.
-  Future<void> export(Map<String, dynamic> payload) async {
+  /// Encodes [payload] as JSON and saves it into the public
+  /// **Downloads/Zangetsu** folder so the user can find it in their file
+  /// manager. Returns the saved public path, or `null` if the move to shared
+  /// storage failed.
+  Future<String?> export(Map<String, dynamic> payload) async {
     final name    = backupFileName(DateTime.now());
     final tmpDir  = await getTemporaryDirectory();
     final file    = File('${tmpDir.path}/$name');
     await file.writeAsString(jsonEncode(payload));
 
-    await SharePlus.instance.share(
-      ShareParams(
-        files: [XFile(file.path)],
-        fileNameOverrides: [name],
-      ),
+    return FileDownloader().moveFileToSharedStorage(
+      file.path,
+      SharedStorage.downloads,
+      directory: 'Zangetsu',
     );
   }
 
