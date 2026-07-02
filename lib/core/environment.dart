@@ -11,7 +11,7 @@ class Environment {
   /// password (see `web_reset/index.html`). This URL's domain MUST be
   /// registered as a Web platform in the Appwrite console or `createRecovery`
   /// is rejected. Update it to wherever you host the reset page.
-  static const String passwordResetUrl = 'https://zangetsu.dpdns.org/';
+  static const String passwordResetUrl = 'https://spyou.github.io/Zangetsu-Site/';
 
   // Provisioned backend ids (see docs / setup).
   static const String databaseId = 'main';
