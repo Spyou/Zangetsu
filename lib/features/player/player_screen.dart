@@ -1588,6 +1588,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     initialPlaying: _c.player.state.playing,
                     barVisible: _tvBarVisible,
                     onBarChange: (v) => setState(() => _tvBarVisible = v),
+                    positionStream: _c.player.stream.position,
+                    durationStream: _c.player.stream.duration,
+                    initialPosition: _c.player.state.position,
+                    initialDuration: _c.player.state.duration,
+                    skipInfoFor: (pos) {
+                      for (final iv in _c.currentSkips) {
+                        if (pos >= iv.start &&
+                            pos < iv.end - const Duration(seconds: 1)) {
+                          return (
+                            label: iv.type == 'ed'
+                                ? 'Skip ending'
+                                : 'Skip opening',
+                            onSkip: () => _c.seekTo(iv.end),
+                          );
+                        }
+                      }
+                      return null;
+                    },
                   ),
                 )
               else
@@ -1870,7 +1888,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // detected. Independent of the controls (stays visible like
               // Netflix). No blind/hardcoded fallback — the manual jump-forward
               // is MegaSkip (6c-ii) below.
-              if (!_locked && !_upNext)
+              if (!_locked && !_upNext && !sl<AppMode>().isTv)
                 StreamBuilder<Duration>(
                   stream: _c.player.stream.position,
                   builder: (context, snap) {

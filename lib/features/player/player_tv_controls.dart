@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
@@ -36,6 +37,11 @@ class PlayerTvControls extends StatefulWidget {
     required this.initialPlaying,
     required this.barVisible,
     required this.onBarChange,
+    required this.positionStream,
+    required this.durationStream,
+    required this.initialPosition,
+    required this.initialDuration,
+    required this.skipInfoFor,
   });
 
   /// Calls [PlayerCubit.togglePlay].
@@ -73,12 +79,36 @@ class PlayerTvControls extends StatefulWidget {
   /// Notifies the parent of bar visibility changes (show / hide).
   final void Function(bool) onBarChange;
 
+  /// Live playback position stream — drives the seek bar.
+  final Stream<Duration> positionStream;
+
+  /// Live playback duration stream — drives the seek bar total.
+  final Stream<Duration> durationStream;
+
+  /// Playback position shown before the first [positionStream] event arrives.
+  final Duration initialPosition;
+
+  /// Playback duration shown before the first [durationStream] event arrives.
+  final Duration initialDuration;
+
+  /// Returns skip-button metadata for the given position, or null when no
+  /// AniSkip interval is active. Mirrors [_PlayerScreenState._skipButtonFor].
+  final ({String label, VoidCallback onSkip})? Function(Duration pos) skipInfoFor;
+
   @override
   State<PlayerTvControls> createState() => _PlayerTvControlsState();
 }
 
 /// How long the bar stays visible after the last D-pad interaction.
 const Duration _kHideDelay = Duration(seconds: 5);
+
+/// Formats a [Duration] as `mm:ss` (or `h:mm:ss` when ≥ 1 hour).
+String _fmtDur(Duration d) {
+  final h = d.inHours;
+  final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+  final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return h > 0 ? '$h:$m:$s' : '$m:$s';
+}
 
 class _PlayerTvControlsState extends State<PlayerTvControls> {
   Timer? _hideTimer;
@@ -256,34 +286,95 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Play / pause — the primary control, always
-                              // first. Live icon via the player's playing
-                              // stream so it reflects the real state.
-                              StreamBuilder<bool>(
-                                stream: widget.playingStream,
-                                initialData: widget.initialPlaying,
-                                builder: (context, snap) {
-                                  final playing = snap.data ?? false;
-                                  return _barButton(
-                                    playing
-                                        ? Icons.pause_rounded
-                                        : Icons.play_arrow_rounded,
-                                    playing ? 'Pause' : 'Play',
-                                    () {
-                                      widget.onTogglePlay();
-                                      _scheduleHide();
+                              // ── Seek bar (position / progress / duration) ──
+                              StreamBuilder<Duration>(
+                                stream: widget.durationStream,
+                                initialData: widget.initialDuration,
+                                builder: (context, durSnap) {
+                                  final dur = durSnap.data ?? Duration.zero;
+                                  return StreamBuilder<Duration>(
+                                    stream: widget.positionStream,
+                                    initialData: widget.initialPosition,
+                                    builder: (context, posSnap) {
+                                      final pos = posSnap.data ?? Duration.zero;
+                                      final progress = dur.inMilliseconds > 0
+                                          ? (pos.inMilliseconds /
+                                                  dur.inMilliseconds)
+                                              .clamp(0.0, 1.0)
+                                          : 0.0;
+                                      return Row(
+                                        children: [
+                                          Text(
+                                            _fmtDur(pos),
+                                            style: AppText.caption.copyWith(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(2),
+                                              child: LinearProgressIndicator(
+                                                value: progress,
+                                                backgroundColor: Colors.white24,
+                                                valueColor:
+                                                    const AlwaysStoppedAnimation(
+                                                  AppColors.accent,
+                                                ),
+                                                minHeight: 4,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            _fmtDur(dur),
+                                            style: AppText.caption.copyWith(
+                                              color: Colors.white70,
+                                            ),
+                                          ),
+                                        ],
+                                      );
                                     },
                                   );
                                 },
                               ),
-                              for (final (icon, label, cb) in buttons)
-                                _barButton(icon, label, () {
-                                  cb();
-                                  _scheduleHide(); // reset idle timer on action
-                                }),
+                              const SizedBox(height: 12),
+                              // ── Button row ──────────────────────────────────
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                children: [
+                                  // Play / pause — the primary control, always
+                                  // first. Live icon via the player's playing
+                                  // stream so it reflects the real state.
+                                  StreamBuilder<bool>(
+                                    stream: widget.playingStream,
+                                    initialData: widget.initialPlaying,
+                                    builder: (context, snap) {
+                                      final playing = snap.data ?? false;
+                                      return _barButton(
+                                        playing
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        playing ? 'Pause' : 'Play',
+                                        () {
+                                          widget.onTogglePlay();
+                                          _scheduleHide();
+                                        },
+                                      );
+                                    },
+                                  ),
+                                  for (final (icon, label, cb) in buttons)
+                                    _barButton(icon, label, () {
+                                      cb();
+                                      _scheduleHide(); // reset idle timer on action
+                                    }),
+                                ],
+                              ),
                             ],
                           ),
                         ),
@@ -292,6 +383,54 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                   ),
                 ),
               ),
+            ),
+
+            // ── Focusable skip button (outside the bar; auto-focuses when
+            //    an AniSkip interval is active — Netflix-style press OK to skip) ──
+            StreamBuilder<Duration>(
+              stream: widget.positionStream,
+              initialData: widget.initialPosition,
+              builder: (context, posSnap) {
+                final pos = posSnap.data ?? Duration.zero;
+                final info = widget.skipInfoFor(pos);
+                if (info == null) return const SizedBox.shrink();
+                return Align(
+                  alignment: const Alignment(0.94, 0.66),
+                  child: TvFocusable(
+                    key: ValueKey(info.label),
+                    autofocus: true,
+                    onTap: info.onSkip,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.fast_forward_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            info.label,
+                            style: AppText.caption.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ],
         ),

@@ -25,6 +25,8 @@ Future<void> _pumpControls(
   bool barVisible = false,
   required ValueNotifier<bool> barNotifier,
   required ValueNotifier<bool> backNotifier,
+  Duration initialPosition = Duration.zero,
+  Duration initialDuration = Duration.zero,
 }) async {
   // Player controls always render on a wide TV screen — size the test surface
   // accordingly so the bottom control row isn't cramped into an overflow.
@@ -51,6 +53,11 @@ Future<void> _pumpControls(
             initialPlaying: false,
             barVisible: visible,
             onBarChange: (v) => barNotifier.value = v,
+            positionStream: const Stream<Duration>.empty(),
+            durationStream: const Stream<Duration>.empty(),
+            initialPosition: initialPosition,
+            initialDuration: initialDuration,
+            skipInfoFor: (_) => null,
           ),
         ),
       ),
@@ -263,6 +270,11 @@ void main() {
                 initialPlaying: false,
                 barVisible: visible,
                 onBarChange: (v) => barNotifier.value = v,
+                positionStream: const Stream<Duration>.empty(),
+                durationStream: const Stream<Duration>.empty(),
+                initialPosition: Duration.zero,
+                initialDuration: Duration.zero,
+                skipInfoFor: (_) => null,
               ),
             ),
           ),
@@ -271,6 +283,27 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Next'), findsOneWidget);
+    });
+
+    testWidgets('seek bar shows formatted position and duration when bar is visible',
+        (tester) async {
+      const testPosition = Duration(minutes: 5, seconds: 30);
+      const testDuration = Duration(minutes: 45);
+
+      barNotifier.value = true;
+      await _pumpControls(
+        tester,
+        controller: controller,
+        barVisible: true,
+        barNotifier: barNotifier,
+        backNotifier: backNotifier,
+        initialPosition: testPosition,
+        initialDuration: testDuration,
+      );
+
+      // Position 5 m 30 s → '05:30', duration 45 m → '45:00'
+      expect(find.text('05:30'), findsOneWidget);
+      expect(find.text('45:00'), findsOneWidget);
     });
   });
 }
