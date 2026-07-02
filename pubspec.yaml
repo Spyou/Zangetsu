@@ -81,6 +81,10 @@ dependencies:
   # Open a source's web page in the system browser (Globe action on Detail).
   url_launcher: ^6.3.1
 
+  # Native OS share sheet for the Detail "Share" action.
+  # Pinned to 12.x — 13.x pulls win32 ^6 which conflicts with device_info_plus.
+  share_plus: ^12.0.2
+
   # Direct YouTube stream extraction (pure-Dart, no API key / native deps).
   # TrailerService resolves a YouTube id from metadata APIs (AniList / TMDB),
   # then youtube_explode_dart resolves it to a direct muxed (video+audio) URL

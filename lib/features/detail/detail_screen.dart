@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_mode.dart';
@@ -329,8 +330,9 @@ class _DetailViewState extends State<_DetailView>
     final text = sourceName.isNotEmpty
         ? '${detail.title} — on $sourceName'
         : detail.title;
-    Clipboard.setData(ClipboardData(text: text));
-    _snack('Copied to clipboard');
+    // Native OS share sheet (WhatsApp / Telegram / Copy / …). Fire-and-forget;
+    // the sheet handles the rest. Replaces the old copy-to-clipboard behaviour.
+    SharePlus.instance.share(ShareParams(text: text));
   }
 
   /// Globe — open the source's web page in the system browser. Falls back to
