@@ -10,6 +10,7 @@ import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
+import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
@@ -181,6 +182,15 @@ class _FakeSimklService extends ChangeNotifier implements SimklService {
   String? get viewerAvatar => null;
 }
 
+/// Fake DownloadPrefs — always null (default location), no Hive box.
+class _FakeDownloadPrefs extends DownloadPrefs {
+  @override
+  String? get locationUri => null;
+
+  @override
+  String? get locationLabel => null;
+}
+
 // ── Test ───────────────────────────────────────────────────────────────────
 
 void main() {
@@ -225,6 +235,7 @@ void main() {
     sl.registerSingleton<MalService>(_FakeMalService());
     sl.registerSingleton<SimklService>(_FakeSimklService());
     sl.registerSingleton<TitleSuggestionService>(TitleSuggestionService(dio));
+    sl.registerSingleton<DownloadPrefs>(_FakeDownloadPrefs());
   });
 
   tearDown(() async {

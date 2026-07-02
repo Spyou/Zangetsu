@@ -19,6 +19,8 @@ import '../../core/playback/subtitle_language.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import 'discord_settings_screen.dart';
+import 'download_location_screen.dart';
+import '../../core/download/download_prefs.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -541,6 +543,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Storage',
                         subtitle: 'Manage space used by the app',
                         onTap: () => _push(const StorageSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.folder_outlined,
+                        title: 'Download location',
+                        subtitle: sl<DownloadPrefs>().locationLabel ??
+                            'Downloads › Zangetsu',
+                        onTap: () async {
+                          await _push(const DownloadLocationScreen());
+                          if (mounted) setState(() {});
+                        },
                       ),
                       SettingsTile(
                         icon: Icons.search_rounded,

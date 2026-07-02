@@ -1,11 +1,15 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
+import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
@@ -66,8 +70,12 @@ void _mockPathProvider(WidgetTester tester) {
 
 void main() {
   late ActiveSourceCubit activeCubit;
+  late Directory _hiveDir;
 
-  setUp(() {
+  setUp(() async {
+    _hiveDir = await Directory.systemTemp.createTemp();
+    Hive.init(_hiveDir.path);
+    await Hive.openBox(DownloadPrefs.boxName);
     final sl = GetIt.instance;
     sl
       ..registerSingleton<AppMode>(AppMode(isTv: false))
@@ -75,13 +83,16 @@ void main() {
       ..registerSingleton<ProviderRegistry>(_StubProviderRegistry())
       ..registerSingleton<AniListService>(_StubAniList())
       ..registerSingleton<MalService>(_StubMal())
-      ..registerSingleton<SimklService>(_StubSimkl());
+      ..registerSingleton<SimklService>(_StubSimkl())
+      ..registerSingleton<DownloadPrefs>(DownloadPrefs());
     activeCubit = ActiveSourceCubit();
   });
 
   tearDown(() async {
     await activeCubit.close();
     await GetIt.instance.reset();
+    await Hive.deleteFromDisk();
+    if (_hiveDir.existsSync()) await _hiveDir.delete(recursive: true);
   });
 
   testWidgets('Settings renders labeled sections with every tile grouped',
@@ -130,6 +141,7 @@ void main() {
       'Source health',
       'Playback',
       'Storage',
+      'Download location',
       'Search layout',
       'How it works',
       'Privacy',
