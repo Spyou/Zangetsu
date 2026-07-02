@@ -13,20 +13,21 @@ void main() {
     cover: 'https://img.example/x.jpg',
   );
 
-  test('forItem builds an /open/ link that parse() round-trips', () {
+  test('forItem builds a short /open/ link that parse() round-trips', () {
     final webUrl = ShareLink.forItem(item);
     expect(webUrl, contains('/open/'));
+    // Short link: no base64 blob, just the four query params.
+    expect(webUrl, isNot(contains('d=')));
 
-    final d = Uri.parse(webUrl).queryParameters['d'];
-    expect(d, isNotNull);
-
-    // The site forwards `d` into a zangetsu://open link — parse that back.
-    final parsed = ShareLink.parse(Uri.parse('zangetsu://open?d=$d&t=x'));
+    // The site forwards the same query params into a zangetsu://open link.
+    final web = Uri.parse(webUrl);
+    final deepLink =
+        Uri.parse('zangetsu://open').replace(queryParameters: web.queryParameters);
+    final parsed = ShareLink.parse(deepLink);
     expect(parsed, isNotNull);
     expect(parsed!.url, item.url);
     expect(parsed.sourceId, item.sourceId);
     expect(parsed.title, item.title);
-    expect(parsed.id, item.id);
     expect(parsed.type, item.type);
   });
 
@@ -36,6 +37,6 @@ void main() {
       ShareLink.parse(Uri.parse('https://spyou.github.io/Zangetsu-Site/')),
       isNull,
     );
-    expect(ShareLink.parse(Uri.parse('zangetsu://open')), isNull); // no payload
+    expect(ShareLink.parse(Uri.parse('zangetsu://open')), isNull); // no source/url
   });
 }
