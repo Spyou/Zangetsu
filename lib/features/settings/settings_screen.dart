@@ -334,53 +334,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          // Profile card — same card language as the sections below (radius,
-          // margins), lifted by a whisper of crimson in the gradient. Calm:
-          // plain avatar with a thin hairline border, bold name, caption email.
+          // Profile card — plain surface card matching the sections below.
+          // Just a comfortable avatar, bold name, and email. Nothing fancy.
           return Container(
             margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
             clipBehavior: Clip.antiAlias,
             decoration: BoxDecoration(
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(14),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.accent.withValues(alpha: 0.14),
-                  AppColors.surface,
-                  AppColors.surface,
-                ],
-              ),
             ),
             child: Material(
               type: MaterialType.transparency,
               child: InkWell(
                 onTap: () => _push(const ProfileScreen()),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.15),
-                          ),
-                        ),
-                        child: CircleAvatar(
-                          radius: 28,
-                          backgroundColor: AppColors.surface2,
-                          backgroundImage: auth.avatarUrl != null
-                              ? NetworkImage(auth.avatarUrl!)
-                              : null,
-                          child: auth.avatarUrl == null
-                              ? Text(
-                                  initial,
-                                  style:
-                                      AppText.headline.copyWith(fontSize: 22),
-                                )
-                              : null,
-                        ),
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: AppColors.surface2,
+                        backgroundImage: auth.avatarUrl != null
+                            ? NetworkImage(auth.avatarUrl!)
+                            : null,
+                        child: auth.avatarUrl == null
+                            ? Text(
+                                initial,
+                                style: AppText.headline.copyWith(fontSize: 20),
+                              )
+                            : null,
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -389,15 +371,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           children: [
                             Text(
                               auth.displayName,
-                              style: AppText.headline.copyWith(fontSize: 18),
+                              style: AppText.headline.copyWith(fontSize: 17),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 3),
+                            const SizedBox(height: 2),
                             Text(
-                              'View profile',
-                              style: AppText.caption
-                                  .copyWith(color: AppColors.accent),
+                              auth.user?.email ?? '',
+                              style: AppText.caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
