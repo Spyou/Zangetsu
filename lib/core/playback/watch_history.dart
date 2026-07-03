@@ -62,9 +62,17 @@ class WatchHistory {
   static const String boxName = 'watch_history';
   static const int _cloudThrottleMs = 15000;
 
+  /// Shared box holding the last successful cloud-pull timestamp (see
+  /// [MyListStore.syncMetaBox]) so app-launch pulls can be throttled.
+  static const String syncMetaBox = 'library_sync_meta';
+  static const String _syncMetaKey = 'history_lastPullMs';
+
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
       await Hive.openBox<Map>(boxName);
+    }
+    if (!Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.openBox(syncMetaBox);
     }
   }
 
@@ -206,6 +214,7 @@ class WatchHistory {
           'updatedAt': m['updatedAt'],
         });
       }
+      _markPulled();
     } catch (_) {/* keep local */}
   }
 
@@ -226,5 +235,35 @@ class WatchHistory {
     } catch (_) {/* best-effort */}
   }
 
-  Future<void> clearLocal() async => _box.clear();
+  /// Pull from cloud only when the last successful pull is older than [maxAge]
+  /// — see [MyListStore.pullFromCloudIfStale]. Keeps app launches from
+  /// re-downloading Continue Watching that's already cached locally.
+  Future<void> pullFromCloudIfStale({
+    Duration maxAge = const Duration(hours: 12),
+  }) async {
+    if (_currentUserId() == null) return;
+    int? last;
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      last = Hive.box(syncMetaBox).get(_syncMetaKey) as int?;
+    }
+    if (last != null) {
+      final age = DateTime.now().millisecondsSinceEpoch - last;
+      if (age >= 0 && age < maxAge.inMilliseconds) return; // still fresh
+    }
+    await pullFromCloud();
+  }
+
+  void _markPulled() {
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      Hive.box(syncMetaBox)
+          .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+    }
+  }
+
+  Future<void> clearLocal() async {
+    await _box.clear();
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+    }
+  }
 }

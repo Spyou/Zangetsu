@@ -89,9 +89,13 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     try {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
+        // Launch path: only re-pull when the local cache is stale (>12h). The
+        // library is already cached locally and our own writes push to cloud
+        // live, so re-downloading it on every cold start just burns bandwidth.
+        // Login (below) and pull-to-refresh still force a full pull.
         await Future.wait([
-          sl<MyListStore>().pullFromCloud(),
-          sl<WatchHistory>().pullFromCloud(),
+          sl<MyListStore>().pullFromCloudIfStale(),
+          sl<WatchHistory>().pullFromCloudIfStale(),
         ]).timeout(const Duration(seconds: 6));
       }
     } catch (_) {}

@@ -30,9 +30,19 @@ class MyListStore {
 
   static const String boxName = 'my_list';
 
+  /// Shared box holding the last successful cloud-pull timestamp per store, so
+  /// app-launch pulls can be throttled — the full list is already in the local
+  /// cache and our own writes push to cloud immediately. Kept OUT of [boxName]
+  /// so it never appears in [all]'s value iteration.
+  static const String syncMetaBox = 'library_sync_meta';
+  static const String _syncMetaKey = 'mylist_lastPullMs';
+
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
       await Hive.openBox<Map>(boxName);
+    }
+    if (!Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.openBox(syncMetaBox);
     }
   }
 
@@ -140,12 +150,43 @@ class MyListStore {
         await _box.put('${item.sourceId}::${item.id}', item.toJson());
       }
       revision.value++;
+      _markPulled();
     } catch (_) {/* keep whatever is local */}
+  }
+
+  /// Pull from cloud only when the last successful pull is older than [maxAge].
+  /// Used on app launch (restoring a session) so the whole list isn't
+  /// re-downloaded on every cold start — it's already in the local Hive cache,
+  /// and our own writes push to cloud immediately. Login + pull-to-refresh call
+  /// [pullFromCloud] directly to force a fresh sync.
+  Future<void> pullFromCloudIfStale({
+    Duration maxAge = const Duration(hours: 12),
+  }) async {
+    if (_currentUserId() == null) return;
+    int? last;
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      last = Hive.box(syncMetaBox).get(_syncMetaKey) as int?;
+    }
+    if (last != null) {
+      final age = DateTime.now().millisecondsSinceEpoch - last;
+      if (age >= 0 && age < maxAge.inMilliseconds) return; // still fresh
+    }
+    await pullFromCloud();
+  }
+
+  void _markPulled() {
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      Hive.box(syncMetaBox)
+          .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+    }
   }
 
   /// Wipe the local cache (on logout).
   Future<void> clearLocal() async {
     await _box.clear();
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+    }
     revision.value++;
   }
 }
