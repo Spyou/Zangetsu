@@ -1,8 +1,10 @@
 package com.spyou.watch_app
 
 import android.content.Context
+import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import androidx.core.content.ContextCompat
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
@@ -116,8 +118,25 @@ class TorrentDownloadEngine(
         startDownload(id, uri)
     }
 
+    private fun ensureService() {
+        try {
+            ContextCompat.startForegroundService(
+                context, Intent(context, TorrentDownloadService::class.java),
+            )
+        } catch (_: Throwable) {}
+    }
+
+    private fun maybeStopService() {
+        if (handles.isEmpty() && pending.isEmpty()) {
+            try {
+                context.stopService(Intent(context, TorrentDownloadService::class.java))
+            } catch (_: Throwable) {}
+        }
+    }
+
     private fun startDownload(id: String, uri: String) {
         emit(id, "downloading")
+        ensureService()
         Thread {
             try {
                 val s = ensureSession()
@@ -252,7 +271,11 @@ class TorrentDownloadEngine(
         if (handles.size >= MAX_ACTIVE) return
         val next = synchronized(pending) {
             if (pending.isEmpty()) null else pending.removeAt(0)
-        } ?: return
+        }
+        if (next == null) {
+            maybeStopService() // nothing left to run → release the process
+            return
+        }
         startDownload(next.id, next.uri)
     }
 

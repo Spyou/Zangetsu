@@ -30,6 +30,11 @@
             android:exported="true"
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
+        <!-- Keeps the process alive for native torrent downloads (phase 2). -->
+        <service
+            android:name=".TorrentDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
