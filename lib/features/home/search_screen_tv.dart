@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/models/media_item.dart';
@@ -42,7 +43,20 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   static const double _cardWidth = 130.0;
 
   late final TextEditingController _controller;
-  final _fieldFocus = FocusNode();
+  // DOWN from the field must LEAVE it (which closes the TV keyboard) and drop
+  // onto the first suggestion/result. Without this the keyboard trapped focus
+  // and the recommendations below were unreachable (tester report).
+  late final FocusNode _fieldFocus = FocusNode(onKeyEvent: _onFieldKey);
+
+  KeyEventResult _onFieldKey(FocusNode node, KeyEvent event) {
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.arrowDown) {
+      if (node.focusInDirection(TraversalDirection.down)) {
+        return KeyEventResult.handled;
+      }
+    }
+    return KeyEventResult.ignored;
+  }
 
   @override
   void initState() {
@@ -264,16 +278,20 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
       itemCount: suggestions.length,
       itemBuilder: (context, i) {
         final s = suggestions[i];
-        return TvFocusable(
-          onTap: () {
-            _controller.value = TextEditingValue(
-              text: s,
-              selection: TextSelection.collapsed(offset: s.length),
-            );
-            context.read<SearchBloc>().add(SearchRunRequested(s));
-          },
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(48, 0, 48, 0),
+        // The 48px gap lives OUTSIDE TvFocusable and scale is 1.0 — a full-width
+        // row otherwise makes the focus ring overflow off the right edge and
+        // overlap the field above (tester report).
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
+          child: TvFocusable(
+            scale: 1.0,
+            onTap: () {
+              _controller.value = TextEditingValue(
+                text: s,
+                selection: TextSelection.collapsed(offset: s.length),
+              );
+              context.read<SearchBloc>().add(SearchRunRequested(s));
+            },
             child: Container(
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
