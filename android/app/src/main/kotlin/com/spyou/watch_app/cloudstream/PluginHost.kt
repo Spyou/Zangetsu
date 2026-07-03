@@ -50,6 +50,15 @@ class PluginHost(private val context: Context) {
     private val pluginsByFile =
         Collections.synchronizedMap(HashMap<String, Plugin>())
 
+    // File ids whose plugin registered its MainAPI but threw during load() while
+    // binding a settings UI against our (Application) context — e.g. plugins that
+    // hard-cast the load context to an Activity (MovieBox). Their `openSettings`
+    // is null right now, but re-loading against a real activity (freshOpener)
+    // yields it, so we still advertise settings for them (show the gear) and bind
+    // the sheet on demand when the user taps it.
+    private val settingsDeferred =
+        Collections.synchronizedSet(HashSet<String>())
+
     init {
         INSTANCE = this
         // Plugins reach for the global app context via CloudStreamApp; set it
@@ -126,11 +135,41 @@ class PluginHost(private val context: Context) {
             if (instance is Plugin && manifest.optBoolean("requiresResources")) {
                 instance.resources = buildPluginResources(file)
             }
-            if (instance is Plugin) instance.load(context) else instance.load()
+            // Run the plugin's own load(). Some plugins (e.g. MovieBox) hard-cast
+            // the load context to an Activity to wire up their settings UI. We load
+            // with the Application context (there's no activity at startup), so that
+            // cast throws — but only AFTER the plugin has already registered its
+            // MainAPI(s). Treat that as a SOFT success: the source itself works, and
+            // its settings bind later against a real activity (see [openSettings] /
+            // [freshOpener]). A throw BEFORE any API registers is still a hard fail
+            // (e.g. TorraStream, which throws on class resolution before load).
+            val fileId = file.nameWithoutExtension
+            val loadError = runCatching {
+                if (instance is Plugin) instance.load(context) else instance.load()
+            }.exceptionOrNull()
+            val registered = APIHolder.allProviders.any { it.sourcePlugin == fileId }
+            if (loadError != null && !registered) throw loadError
             loaded.add(file.absolutePath)
             // Remember Plugin instances so we can surface/invoke their own
             // settings UI (openSettings, set during load()) later.
-            if (instance is Plugin) pluginsByFile[file.nameWithoutExtension] = instance
+            if (instance is Plugin) {
+                pluginsByFile[fileId] = instance
+                // Threw while binding settings against the non-activity context →
+                // remember it so the gear still shows; tapping it re-binds against a
+                // real activity via freshOpener.
+                if (loadError != null &&
+                    loadError.message?.contains("Activity") == true
+                ) {
+                    settingsDeferred.add(fileId)
+                }
+            }
+            if (loadError != null) {
+                Log.w(
+                    TAG,
+                    "loadPlugin: $fileId registered but load() threw " +
+                        "(${loadError.message}); settings deferred to activity bind",
+                )
+            }
             true
         } catch (t: Throwable) {
             Log.w(TAG, "loadPlugin failed for ${file.name}: ${t.message}")
@@ -171,8 +210,15 @@ class PluginHost(private val context: Context) {
         return pluginsByFile[fileId]
     }
 
-    /** True when [apiName]'s plugin exposes its own settings UI (openSettings). */
-    fun hasSettings(apiName: String): Boolean = pluginFor(apiName)?.openSettings != null
+    /** True when [apiName]'s plugin exposes its own settings UI — either its
+     *  `openSettings` is already bound, or the plugin registered but deferred its
+     *  settings binding to an activity (see [loadPlugin] / [settingsDeferred]).
+     *  Gated by a live registration, so a deleted source never advertises a gear. */
+    fun hasSettings(apiName: String): Boolean {
+        val fileId = apiByName(apiName)?.sourcePlugin ?: return false
+        if (pluginsByFile[fileId]?.openSettings != null) return true
+        return settingsDeferred.contains(fileId)
+    }
 
     /** The plugin's settings opener for [apiName] — call with an AppCompatActivity
      * (plugins cast the Context to one). Null when the source has no settings. */
