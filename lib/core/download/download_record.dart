@@ -75,6 +75,7 @@ class DownloadRecord {
     this.error,
     this.subtitles = const [],
     this.malId,
+    this.isTorrent = false,
     required this.createdAt,
   });
 
@@ -98,6 +99,7 @@ class DownloadRecord {
   final String? error;
   final List<OfflineSubtitle> subtitles; // soft-sub files saved for offline use
   final int? malId; // anime MAL id → AniList auto-scrobble on offline playback
+  final bool isTorrent; // downloaded via the torrent engine (not background_downloader)
   final int createdAt;
 
   bool get isActive =>
@@ -113,6 +115,7 @@ class DownloadRecord {
     String? Function()? filePath,
     String? Function()? error,
     List<OfflineSubtitle>? subtitles,
+    bool? isTorrent,
   }) => DownloadRecord(
     id: id,
     sourceId: sourceId,
@@ -134,6 +137,7 @@ class DownloadRecord {
     error: error != null ? error() : this.error,
     subtitles: subtitles ?? this.subtitles,
     malId: malId,
+    isTorrent: isTorrent ?? this.isTorrent,
     createdAt: createdAt,
   );
 
@@ -158,6 +162,7 @@ class DownloadRecord {
     'error': error,
     'subtitles': subtitles.map((s) => s.toMap()).toList(),
     'malId': malId,
+    'isTorrent': isTorrent,
     'createdAt': createdAt,
   };
 
@@ -190,6 +195,7 @@ class DownloadRecord {
           .where((s) => s.path.isNotEmpty)
           .toList(),
       malId: (m['malId'] as num?)?.toInt(),
+      isTorrent: (m['isTorrent'] as bool?) ?? false,
       createdAt: (m['createdAt'] as num?)?.toInt() ?? 0,
     );
   }
