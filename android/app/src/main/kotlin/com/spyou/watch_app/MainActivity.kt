@@ -257,8 +257,20 @@ class MainActivity : FlutterActivity() {
                                     version,
                                     repoUrl,
                                 )
-                                host.loadPlugin(file)
-                                runOnUiThread { result.success(host.installedApis()) }
+                                // Surface a genuine load failure instead of a
+                                // false "installed": some sources need a newer
+                                // CloudStream API than this build provides.
+                                if (host.loadPlugin(file)) {
+                                    runOnUiThread { result.success(host.installedApis()) }
+                                } else {
+                                    runOnUiThread {
+                                        result.error(
+                                            "cs_load_failed",
+                                            "Couldn't load this source — it may need a newer app version.",
+                                            null,
+                                        )
+                                    }
+                                }
                             } catch (e: Exception) {
                                 runOnUiThread { result.error("cs_error", e.message, null) }
                             }
