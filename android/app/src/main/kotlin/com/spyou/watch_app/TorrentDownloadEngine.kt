@@ -15,6 +15,7 @@ import org.libtorrent4j.TorrentInfo
 import java.io.File
 import java.net.URL
 import java.util.Collections
+import org.json.JSONObject
 
 /**
  * Native torrent DOWNLOAD engine (offline save — Phase 2). Completely separate
@@ -61,7 +62,7 @@ class TorrentDownloadEngine(
                     } else if (isMetered() && !allowMobile) {
                         result.error("wifi_only", "Torrents are set to Wi-Fi only", null)
                     } else {
-                        enqueue(id, uri, tree)
+                        enqueue(id, uri, tree, allowMobile)
                         result.success(null)
                     }
                 }
@@ -75,6 +76,8 @@ class TorrentDownloadEngine(
             override fun onListen(args: Any?, sink: EventChannel.EventSink?) { eventSink = sink }
             override fun onCancel(args: Any?) { eventSink = null }
         })
+        // Resume any downloads that were mid-flight when the app was last killed.
+        resumePersisted()
     }
 
     private fun isMetered(): Boolean {
@@ -108,8 +111,9 @@ class TorrentDownloadEngine(
     }
 
     @Synchronized
-    private fun enqueue(id: String, uri: String, treeUri: String?) {
+    private fun enqueue(id: String, uri: String, treeUri: String?, allowMobile: Boolean) {
         saveTree[id] = treeUri
+        persist(id, uri, treeUri, allowMobile)
         if (handles.size >= MAX_ACTIVE) {
             pending.add(Pending(id, uri, treeUri))
             emit(id, "queued")
@@ -243,6 +247,7 @@ class TorrentDownloadEngine(
             emit(id, "failed", error = t.message) // temp kept for a retry
         } finally {
             handles.remove(id)
+            unpersist(id)
             startNext()
         }
     }
@@ -298,6 +303,7 @@ class TorrentDownloadEngine(
     private fun cleanup(id: String) {
         done.remove(id)
         saveTree.remove(id)
+        unpersist(id)
         try { File(context.filesDir, "torrent_downloads/$id").deleteRecursively() } catch (_: Throwable) {}
     }
 
@@ -312,6 +318,56 @@ class TorrentDownloadEngine(
             return
         }
         startDownload(next.id, next.uri)
+    }
+
+    // ── fast-resume across app restart ──────────────────────────────────────
+    // Persist each active download's magnet + folder; on launch re-add them so
+    // libtorrent rechecks the partial temp files and resumes from where it left
+    // off. Removed on any terminal state (done/failed/canceled).
+
+    private fun prefs() =
+        context.getSharedPreferences("torrent_dl", Context.MODE_PRIVATE)
+
+    private fun persist(id: String, uri: String, treeUri: String?, allowMobile: Boolean) {
+        try {
+            val obj = JSONObject()
+                .put("uri", uri)
+                .put("tree", treeUri ?: JSONObject.NULL)
+                .put("mobile", allowMobile)
+            val p = prefs()
+            val ids = HashSet(p.getStringSet("ids", emptySet()) ?: emptySet())
+            ids.add(id)
+            p.edit().putString("dl_$id", obj.toString()).putStringSet("ids", ids).apply()
+        } catch (_: Throwable) {}
+    }
+
+    private fun unpersist(id: String) {
+        try {
+            val p = prefs()
+            val ids = HashSet(p.getStringSet("ids", emptySet()) ?: emptySet())
+            ids.remove(id)
+            p.edit().remove("dl_$id").putStringSet("ids", ids).apply()
+        } catch (_: Throwable) {}
+    }
+
+    private fun resumePersisted() {
+        Thread {
+            try {
+                val p = prefs()
+                val ids = (p.getStringSet("ids", emptySet()) ?: emptySet()).toList()
+                for (id in ids) {
+                    val raw = p.getString("dl_$id", null)
+                    if (raw == null) { unpersist(id); continue }
+                    val obj = JSONObject(raw)
+                    val uri = obj.optString("uri")
+                    val tree = if (obj.isNull("tree")) null else obj.optString("tree")
+                    val mobile = obj.optBoolean("mobile", false)
+                    if (uri.isBlank()) { unpersist(id); continue }
+                    if (isMetered() && !mobile) continue // wait for Wi-Fi; stay queued
+                    enqueue(id, uri, tree, mobile)
+                }
+            } catch (_: Throwable) {}
+        }.also { it.isDaemon = true }.start()
     }
 
     companion object {
