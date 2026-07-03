@@ -378,9 +378,11 @@ class CloudStreamProvider implements BaseProvider {
         final sm = _asMap(s);
         final streamUrl = (sm['url'] ?? '').toString();
         if (streamUrl.isEmpty) continue;
-        // Torrents / magnet links aren't playable in the app's player.
+        // Torrents / magnet links now stream via the native engine (Phase 1),
+        // so keep them — tagged as torrent so the player routes them there.
         final lower = streamUrl.toLowerCase();
-        if (lower.startsWith('magnet:') || lower.endsWith('.torrent')) continue;
+        final isTorrent =
+            lower.startsWith('magnet:') || lower.endsWith('.torrent');
 
         final quality = (sm['quality'] as num?)?.toInt() ?? 0;
         final isM3u8 = sm['isM3u8'] == true;
@@ -397,8 +399,11 @@ class CloudStreamProvider implements BaseProvider {
             url: streamUrl,
             quality: quality > 0 ? '${quality}p' : 'auto',
             label: (sm['name'] as String?),
-            container: isM3u8 ? SourceContainer.hls : SourceContainer.mp4,
-            headers: headers.isEmpty ? null : headers,
+            container: isTorrent
+                ? SourceContainer.torrent
+                : (isM3u8 ? SourceContainer.hls : SourceContainer.mp4),
+            // A magnet needs no HTTP headers.
+            headers: (isTorrent || headers.isEmpty) ? null : headers,
             subtitles: subtitles,
           ),
         );
