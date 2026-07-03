@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -12,6 +13,8 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
+import '../torrent/torrent_download_service.dart';
+import '../torrent/torrent_prefs.dart';
 import 'download_prefs.dart';
 import 'download_record.dart';
 import 'download_service.dart';
@@ -23,11 +26,18 @@ import 'download_service.dart';
 /// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
 /// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo, [DownloadPrefs? downloadPrefs])
-      : _downloadPrefs = downloadPrefs ?? DownloadPrefs();
+  DownloadManager(this._repo,
+      [DownloadPrefs? downloadPrefs, TorrentDownloadService? torrentSvc])
+      : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
+        _torrentSvc = torrentSvc ?? TorrentDownloadService();
 
   final SourceRepository _repo;
   final DownloadPrefs _downloadPrefs;
+  final TorrentDownloadService _torrentSvc;
+
+  /// Latest torrent-download progress per id (peers/speed for the UI), kept
+  /// out of [DownloadRecord] so it isn't persisted every tick.
+  final Map<String, TorrentDownloadProgress> torrentProgress = {};
 
   static const String boxName = 'downloads';
   static const String _sharedDir = 'Zangetsu';
@@ -72,6 +82,7 @@ class DownloadManager extends ChangeNotifier {
     );
     _sub = _dl.updates.listen(_onUpdate);
     _listenBackgroundService();
+    _listenTorrentDownloads();
     _reconcileServiceResults(); // apply HLS downloads finished while killed
   }
 
@@ -112,6 +123,38 @@ class DownloadManager extends ChangeNotifier {
         status: DownloadStatus.failed,
         error: () => d?['error'] as String? ?? 'Download failed',
       ));
+      notifyListeners();
+    });
+  }
+
+  /// Apply progress events from the native torrent download engine onto records
+  /// (peers/speed are cached in [torrentProgress] for the UI).
+  void _listenTorrentDownloads() {
+    _torrentSvc.events().listen((p) {
+      final rec = _records[p.id];
+      if (rec == null || rec.status == DownloadStatus.canceled) return;
+      torrentProgress[p.id] = p;
+      switch (p.status) {
+        case 'done':
+          _candidates.remove(p.id);
+          _put(rec.copyWith(
+            status: DownloadStatus.done,
+            progress: 1,
+            filePath: () => p.filePath,
+          ));
+        case 'failed':
+          _put(rec.copyWith(
+            status: DownloadStatus.failed,
+            error: () => p.error ?? 'Torrent download failed',
+          ));
+        case 'paused':
+          _put(rec.copyWith(status: DownloadStatus.paused));
+        default: // queued | downloading | copying — keep it "downloading"
+          _put(rec.copyWith(
+            status: DownloadStatus.downloading,
+            progress: p.progress,
+          ));
+      }
       notifyListeners();
     });
   }
@@ -336,6 +379,10 @@ class DownloadManager extends ChangeNotifier {
       await _startHlsDownload(rec, source);
       return;
     }
+    if (isTorrentSource(source)) {
+      await _startTorrentDownload(rec, source);
+      return;
+    }
     final filename =
         '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
         '_${_safe(rec.quality)}${_ext(source.url)}';
@@ -492,11 +539,27 @@ class DownloadManager extends ChangeNotifier {
   // ── Controls ───────────────────────────────────────────────────────────────
 
   Future<void> pause(DownloadRecord rec) async {
+    if (rec.isTorrent) {
+      try {
+        await _torrentSvc.pause(rec.id);
+      } catch (_) {}
+      _put(rec.copyWith(status: DownloadStatus.paused));
+      notifyListeners();
+      return;
+    }
     final t = _tasks[rec.id];
     if (t != null) await _dl.pause(t);
   }
 
   Future<void> resume(DownloadRecord rec) async {
+    if (rec.isTorrent) {
+      try {
+        await _torrentSvc.resume(rec.id);
+      } catch (_) {}
+      _put(rec.copyWith(status: DownloadStatus.downloading));
+      notifyListeners();
+      return;
+    }
     final t = _tasks[rec.id];
     if (t != null) {
       await _dl.resume(t);
@@ -513,6 +576,14 @@ class DownloadManager extends ChangeNotifier {
     // tile stuck "loading" despite saying canceled).
     _put(rec.copyWith(status: DownloadStatus.canceled, progress: 0));
     notifyListeners();
+    if (rec.isTorrent) {
+      try {
+        await _torrentSvc.cancel(rec.id);
+      } catch (_) {}
+      torrentProgress.remove(rec.id);
+      _tasks.remove(rec.id);
+      return;
+    }
     try {
       await _dl.cancelTaskWithId(rec.id); // direct-file task (if any)
     } catch (_) {}
@@ -527,6 +598,12 @@ class DownloadManager extends ChangeNotifier {
   /// Cancel (if active) and forget the record + delete the saved file.
   Future<void> delete(DownloadRecord rec) async {
     _candidates.remove(rec.id);
+    if (rec.isTorrent) {
+      try {
+        await _torrentSvc.cancel(rec.id);
+      } catch (_) {}
+      torrentProgress.remove(rec.id);
+    }
     try {
       await _dl.cancelTaskWithId(rec.id);
     } catch (_) {}
@@ -722,6 +799,35 @@ class DownloadManager extends ChangeNotifier {
   static bool _isHls(VideoSource s) {
     if (s.container == SourceContainer.hls) return true;
     return (Uri.tryParse(s.url)?.path ?? s.url).toLowerCase().endsWith('.m3u8');
+  }
+
+  /// Torrent (magnet/.torrent) sources route through the native torrent
+  /// download engine — a distinct branch that never touches the HTTP/HLS paths.
+  @visibleForTesting
+  static bool isTorrentSource(VideoSource s) =>
+      s.container == SourceContainer.torrent;
+
+  Future<void> _startTorrentDownload(
+      DownloadRecord rec, VideoSource source) async {
+    _put(rec.copyWith(isTorrent: true, status: DownloadStatus.downloading));
+    notifyListeners();
+    try {
+      await _torrentSvc.enqueue(
+        rec.id,
+        source.url,
+        saveTreeUri: _downloadPrefs.locationUri,
+        allowMobileData: TorrentPrefs().allowMobileData,
+      );
+    } catch (e) {
+      final wifi = e is PlatformException && e.code == 'wifi_only';
+      _put(rec.copyWith(
+        status: DownloadStatus.failed,
+        error: () => wifi
+            ? 'Torrents are set to Wi-Fi only (Settings › Torrents).'
+            : 'Torrent download failed to start.',
+      ));
+      notifyListeners();
+    }
   }
 
   static int _height(VideoSource s) {
