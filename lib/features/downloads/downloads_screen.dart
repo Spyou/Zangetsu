@@ -10,6 +10,7 @@ import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -379,19 +380,43 @@ class DownloadTile extends StatelessWidget {
     return (t.isEmpty || t == base) ? base : '$base · $t';
   }
 
-  String get _subtitle => switch (record.status) {
-    DownloadStatus.done =>
-      record.bytesTotal > 0 ? _fmtSize(record.bytesTotal) : 'Downloaded',
-    DownloadStatus.downloading =>
-      '${(record.progress * 100).round()}%'
-          '${record.bytesTotal > 0 ? ' of ${_fmtSize(record.bytesTotal)}' : ''}',
-    DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
-    DownloadStatus.queued => 'Queued',
-    DownloadStatus.resolving => 'Preparing…',
-    DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
-    DownloadStatus.failed => record.error ?? 'Failed',
-    DownloadStatus.canceled => 'Canceled',
-  };
+  String get _subtitle {
+    // A finished torrent is streamed into the user's folder — surface that phase.
+    if (record.isTorrent &&
+        manager.torrentProgress[record.id]?.status == 'copying') {
+      return 'Saving to your folder…';
+    }
+    return switch (record.status) {
+      DownloadStatus.done =>
+        record.bytesTotal > 0 ? _fmtSize(record.bytesTotal) : 'Downloaded',
+      DownloadStatus.downloading =>
+        '${(record.progress * 100).round()}%'
+            '${record.bytesTotal > 0 ? ' of ${_fmtSize(record.bytesTotal)}' : ''}'
+            '$_torrentSuffix',
+      DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
+      DownloadStatus.queued => 'Queued',
+      DownloadStatus.resolving => 'Preparing…',
+      DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
+      DownloadStatus.failed => record.error ?? 'Failed',
+      DownloadStatus.canceled => 'Canceled',
+    };
+  }
+
+  /// " · N peers · X MB/s" for an active torrent download (empty otherwise).
+  String get _torrentSuffix {
+    if (!record.isTorrent) return '';
+    final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
+    if (p == null) return '';
+    final parts = <String>[];
+    if (p.peers > 0) parts.add('${p.peers} peers');
+    if (p.downSpeedBps > 0) {
+      final mb = p.downSpeedBps / (1024 * 1024);
+      parts.add(mb >= 1
+          ? '${mb.toStringAsFixed(1)} MB/s'
+          : '${(p.downSpeedBps / 1024).round()} KB/s');
+    }
+    return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
+  }
 
   Future<void> _play(BuildContext context) =>
       launchDownloadedEpisode(context, record);
