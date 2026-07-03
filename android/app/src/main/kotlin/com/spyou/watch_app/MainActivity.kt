@@ -185,6 +185,10 @@ class MainActivity : FlutterActivity() {
         // Inert until Dart calls startStream — only wires the channels here.
         TorrentEngine(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
 
+        // Torrent DOWNLOAD engine (Phase 2) — separate persistent session +
+        // channels; inert until Dart calls enqueue.
+        TorrentDownloadEngine(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+
         // CloudStream channel: install repos and drive `.cs3` plugins' search /
         // load / loadLinks. All handlers run on [csExecutor] (network + plugin
         // work is blocking) and post back via runOnUiThread; any failure is
