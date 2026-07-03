@@ -1,0 +1,12 @@
+{
+  "_comment": "Developer announcements shown in the app. Add an object to the list to broadcast a message. Rules: give every entry a NEW unique id (reusing an id won't re-show); title is required; body/action/date optional; use \\n for line breaks in body; action.url must be http/https; type is info | warning | update; minVersion/maxVersion (optional) target app versions, e.g. \"maxVersion\":\"1.5.9\" to nudge only older builds to update. The app only READS this file.",
+  "announcements": [
+    {
+      "id": "cloud-sync-paused-2026-07",
+      "title": "🚨 Heads up — cloud sync paused",
+      "body": "Cloud sync for My List, Continue Watching, Watch Together, and Cloud Backup is temporarily paused. The app uses a free cloud service to sync across devices — and we hit the monthly limit. 😅\n\nThe good news:\n✅ The app works fine — nothing is lost.\n✅ Everything is saved locally on your device.\n✅ Only cross-device syncing / cloud features are paused.\n\n📅 Auto-recovers on July 18, when the limit resets.\n🔧 An upcoming update fixes this permanently — your items will sync back automatically. No need to re-add anything!\n\n🐛 The local My List issue is fixed today — releasing soon! 🎉\n\nThanks for your patience! 🍿🔥",
+      "type": "warning",
+      "date": "2026-07-03"
+    }
+  ]
+}
