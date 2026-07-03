@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
@@ -97,6 +99,10 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           sl<MyListStore>().pullFromCloudIfStale(),
           sl<WatchHistory>().pullFromCloudIfStale(),
         ]).timeout(const Duration(seconds: 6));
+        // Self-heal: push up any local My List adds that never reached the cloud
+        // (e.g. a past write outage). No-op when nothing is pending, so it makes
+        // zero writes in normal use. Fire-and-forget so it never delays launch.
+        unawaited(sl<MyListStore>().retryPending());
       }
     } catch (_) {}
     if (isOnboarded()) {
@@ -127,6 +133,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (state.status == AuthStatus.authenticated) {
       await sl<MyListStore>().pullFromCloud();
       await sl<WatchHistory>().pullFromCloud();
+      unawaited(sl<MyListStore>().retryPending()); // flush any un-synced adds
       sl<HomeCubit>().load(); // surface pulled Continue Watching
     } else if (state.status == AuthStatus.unauthenticated) {
       await sl<MyListStore>().clearLocal();

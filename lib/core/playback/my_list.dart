@@ -92,23 +92,8 @@ class MyListStore {
           databaseId: Environment.databaseId,
           collectionId: Environment.mylistCollectionId,
           documentId: docId,
-          data: {
-            'userId': uid,
-            'itemId': m.id,
-            'sourceId': m.sourceId,
-            'title': m.title,
-            'cover': m.cover,
-            'coverHeaders':
-                m.coverHeaders == null ? null : jsonEncode(m.coverHeaders),
-            'url': m.url,
-            'type': m.type.name,
-            'addedAt': DateTime.now().millisecondsSinceEpoch,
-          },
-          permissions: [
-            Permission.read(Role.user(uid)),
-            Permission.update(Role.user(uid)),
-            Permission.delete(Role.user(uid)),
-          ],
+          data: _cloudData(uid, m),
+          permissions: _docPermissions(uid),
         );
       } else {
         await _aw!.databases.deleteDocument(
@@ -117,9 +102,86 @@ class MyListStore {
           documentId: docId,
         );
       }
+      _clearPending(k); // synced — nothing to retry
     } catch (_) {
-      // Best-effort: the local box is already updated; cloud will reconcile on
-      // the next pull.
+      // Cloud write failed (offline, or the Appwrite writes quota is exhausted).
+      // The local box already reflects the change; remember an un-synced ADD so
+      // [retryPending] pushes it up once writes are available again. A removed
+      // item no longer needs syncing.
+      if (adding) _markPending(k);
+    }
+  }
+
+  Map<String, dynamic> _cloudData(String uid, MediaItem m) => {
+    'userId': uid,
+    'itemId': m.id,
+    'sourceId': m.sourceId,
+    'title': m.title,
+    'cover': m.cover,
+    'coverHeaders': m.coverHeaders == null ? null : jsonEncode(m.coverHeaders),
+    'url': m.url,
+    'type': m.type.name,
+    'addedAt': DateTime.now().millisecondsSinceEpoch,
+  };
+
+  List<String> _docPermissions(String uid) => [
+    Permission.read(Role.user(uid)),
+    Permission.update(Role.user(uid)),
+    Permission.delete(Role.user(uid)),
+  ];
+
+  // ── pending-sync retry queue ───────────────────────────────────────────────
+  // Keys of local adds whose cloud write failed (offline / quota). Persisted in
+  // [syncMetaBox] so they survive restarts and self-heal via [retryPending].
+  static const String _pendingKey = 'mylist_pending';
+
+  Set<String> _pendingKeys() {
+    if (!Hive.isBoxOpen(syncMetaBox)) return <String>{};
+    final raw = Hive.box(syncMetaBox).get(_pendingKey);
+    return raw is List ? raw.map((e) => '$e').toSet() : <String>{};
+  }
+
+  void _markPending(String k) {
+    if (!Hive.isBoxOpen(syncMetaBox)) return;
+    final s = _pendingKeys()..add(k);
+    Hive.box(syncMetaBox).put(_pendingKey, s.toList());
+  }
+
+  void _clearPending(String k) {
+    if (!Hive.isBoxOpen(syncMetaBox)) return;
+    final s = _pendingKeys();
+    if (s.remove(k)) Hive.box(syncMetaBox).put(_pendingKey, s.toList());
+  }
+
+  /// Push up any local adds that never reached the cloud (a past write outage),
+  /// so they self-heal once writes are available. Only touches items that
+  /// actually failed — items that synced normally are never in the queue, so in
+  /// steady state this makes ZERO writes.
+  Future<void> retryPending() async {
+    final uid = _currentUserId();
+    if (uid == null) return;
+    final pending = _pendingKeys();
+    if (pending.isEmpty) return;
+    for (final k in pending) {
+      final raw = _box.get(k);
+      if (raw == null) {
+        _clearPending(k); // removed locally since — nothing to sync
+        continue;
+      }
+      final m = MediaItem.fromJson(Map<String, dynamic>.from(raw));
+      try {
+        await _aw!.databases.createDocument(
+          databaseId: Environment.databaseId,
+          collectionId: Environment.mylistCollectionId,
+          documentId: _docId(uid, k),
+          data: _cloudData(uid, m),
+          permissions: _docPermissions(uid),
+        );
+        _clearPending(k);
+      } on AppwriteException catch (e) {
+        if (e.code == 409) _clearPending(k); // already in cloud → done
+        // else (quota/offline): keep pending, retry next launch
+      } catch (_) {/* keep pending */}
     }
   }
 
@@ -134,7 +196,15 @@ class MyListStore {
         collectionId: Environment.mylistCollectionId,
         queries: [Query.equal('userId', uid), Query.limit(500)],
       );
+      // Preserve local adds still awaiting a cloud write, so replacing the box
+      // with the cloud list can't wipe an item that failed to sync.
+      final pending = _pendingKeys();
+      final preserved = <String, Map>{
+        for (final k in pending)
+          if (_box.get(k) != null) k: Map.from(_box.get(k)!),
+      };
       await _box.clear();
+      final cloudKeys = <String>{};
       for (final d in res.documents) {
         final m = d.data;
         final headers = m['coverHeaders'];
@@ -147,7 +217,18 @@ class MyListStore {
           'type': m['type'],
           'sourceId': m['sourceId'],
         });
-        await _box.put('${item.sourceId}::${item.id}', item.toJson());
+        final key = '${item.sourceId}::${item.id}';
+        await _box.put(key, item.toJson());
+        cloudKeys.add(key);
+      }
+      // A pending item that DID reach the cloud is no longer pending; the rest
+      // are re-added locally so they survive the pull and stay queued.
+      for (final k in pending) {
+        if (cloudKeys.contains(k)) {
+          _clearPending(k);
+        } else if (preserved.containsKey(k)) {
+          await _box.put(k, preserved[k]!);
+        }
       }
       revision.value++;
       _markPulled();
@@ -186,6 +267,7 @@ class MyListStore {
     await _box.clear();
     if (Hive.isBoxOpen(syncMetaBox)) {
       await Hive.box(syncMetaBox).delete(_syncMetaKey);
+      await Hive.box(syncMetaBox).delete(_pendingKey);
     }
     revision.value++;
   }
