@@ -19,6 +19,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../announce/announcement_sheet.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
@@ -82,8 +83,12 @@ class _HomeViewState extends State<_HomeView> {
     // a newer, non-skipped version exists. Best-effort — never blocks startup.
     if (!_updateChecked) {
       _updateChecked = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) maybeShowUpdateDialog(context);
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        await maybeShowUpdateDialog(context);
+        // After any update prompt, surface a new developer announcement (if any)
+        // — sequenced so the two never fight over the modal stack.
+        if (mounted) await maybeShowAnnouncement(context);
       });
       _checkSourceUpdates();
     }

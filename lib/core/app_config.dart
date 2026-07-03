@@ -20,6 +20,12 @@ const String kZangetsuRepoUrl =
 /// Manifest schema version this app speaks. Repos below this are rejected.
 const int kManifestSchemaVersion = 2;
 
+/// Developer announcements feed (a plain JSON file in the public app repo).
+/// The app READS this on launch to show in-app announcements — never writes.
+/// Edit + push that file to broadcast a message to every user.
+const String kAnnouncementsUrl =
+    'https://raw.githubusercontent.com/Spyou/Zangetsu/main/announcements.json';
+
 /// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,
 /// or paste a literal default below. When empty, movie/TV trailers are

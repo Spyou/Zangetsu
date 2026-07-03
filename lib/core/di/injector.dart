@@ -3,6 +3,8 @@ import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../announce/announcement.dart';
+import '../announce/announcement_service.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
@@ -304,6 +306,14 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SubscriptionStore>(SubscriptionStore());
   sl.registerSingleton<SubscriptionChecker>(
     SubscriptionChecker(sl<SourceRepository>(), sl<SubscriptionStore>()),
+  );
+
+  // Developer announcements: read a public JSON feed on launch and surface new
+  // messages as a bottom sheet + a Notifications-screen history entry.
+  await AnnouncementStore.init();
+  sl.registerSingleton<AnnouncementStore>(AnnouncementStore());
+  sl.registerSingleton<AnnouncementService>(
+    AnnouncementService(sl<Dio>(), sl<AnnouncementStore>()),
   );
 
   // Offline downloads (background_downloader). setup() restores persisted
