@@ -225,13 +225,48 @@ class TorrentDownloadEngine(
             val saveDir = File(context.filesDir, "torrent_downloads/$id")
             val file = File(saveDir, files.filePath(idx))
             h.pause() // stop seeding once the file is complete
-            emit(id, "done", progress = 1.0, filePath = file.absolutePath)
+
+            // Copy into the user's chosen SAF folder (libtorrent can't write to
+            // a content:// tree directly); leave the temp in app storage if the
+            // user has no custom folder set.
+            val treeUri = saveTree[id]
+            val finalPath = if (treeUri != null) {
+                val uri = copyToTree(file, treeUri, file.name)
+                try { saveDir.deleteRecursively() } catch (_: Throwable) {}
+                uri
+            } else {
+                file.absolutePath
+            }
+            saveTree.remove(id)
+            emit(id, "done", progress = 1.0, filePath = finalPath)
         } catch (t: Throwable) {
-            emit(id, "failed", error = t.message)
+            emit(id, "failed", error = t.message) // temp kept for a retry
         } finally {
             handles.remove(id)
             startNext()
         }
+    }
+
+    /** Stream [src] into the SAF tree [treeUri] as [name]; returns the child
+     *  content:// URI. Uses DocumentsContract only (no extra dependency). */
+    private fun copyToTree(src: File, treeUri: String, name: String): String {
+        val tree = android.net.Uri.parse(treeUri)
+        val dirDocId = android.provider.DocumentsContract.getTreeDocumentId(tree)
+        val dirUri = android.provider.DocumentsContract
+            .buildDocumentUriUsingTree(tree, dirDocId)
+        val mime = when {
+            name.endsWith(".mkv", true) -> "video/x-matroska"
+            name.endsWith(".webm", true) -> "video/webm"
+            name.endsWith(".avi", true) -> "video/x-msvideo"
+            else -> "video/mp4"
+        }
+        val childUri = android.provider.DocumentsContract.createDocument(
+            context.contentResolver, dirUri, mime, name,
+        ) ?: throw IllegalStateException("could not create file in folder")
+        context.contentResolver.openOutputStream(childUri)?.use { out ->
+            src.inputStream().use { it.copyTo(out, 1 shl 16) }
+        } ?: throw IllegalStateException("could not open output")
+        return childUri.toString()
     }
 
     private fun pause(id: String) {
