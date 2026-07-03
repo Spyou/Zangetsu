@@ -186,10 +186,24 @@ class TorrentEngine(
                 val lastPiece = ((fileOffset + fileSize - 1) / pieceLen).toInt()
 
                 emitState(id, "buffering")
-                // Prioritise the head so playback can start quickly.
+                // Prioritise the HEAD so playback starts quickly, AND the TAIL:
+                // MKV (SubsPlease) keeps its seek index (Cues/SeekHead) — and MP4
+                // its moov atom — near the END of the file, which the player reads
+                // right after opening. Without the tail, seeking never works and the
+                // player stalls waiting for an index that only arrives after a full
+                // sequential download. Piece deadlines fetch these from peers ASAP,
+                // ahead of the in-order body.
                 val headPieces = minOf(8, lastPiece - firstPiece + 1)
                 for (p in firstPiece until firstPiece + headPieces) {
                     h.piecePriority(p, Priority.TOP_PRIORITY)
+                    h.setPieceDeadline(p, 2000 + (p - firstPiece) * 400)
+                }
+                val tailPieces = minOf(4, lastPiece - firstPiece + 1)
+                for (p in (lastPiece - tailPieces + 1)..lastPiece) {
+                    if (p >= firstPiece) {
+                        h.piecePriority(p, Priority.TOP_PRIORITY)
+                        h.setPieceDeadline(p, 3000)
+                    }
                 }
                 // Progress poller.
                 poller = Thread {
@@ -291,25 +305,42 @@ class TorrentEngine(
             return res
         }
 
+        private val lastPieceIdx = ((fileOffset + fileSize - 1) / pieceLen).toInt()
+
         /** Blocks per-piece until the bytes it covers are downloaded. */
         private inner class PieceInputStream(start: Long, private val end: Long) : InputStream() {
             private var pos = start
+
+            // mpv abandons a range connection when the user seeks; NanoHTTPD then
+            // closes this stream. Without noticing, the serving thread would stay
+            // blocked in [ensure] until its target piece lands — piling up threads
+            // on rapid fast-forward. This flag lets an abandoned read bail at once.
+            @Volatile
+            private var closed = false
             private val raf = RandomAccessFile(file, "r").also { it.seek(start) }
 
             private fun ensure(bytePosInFile: Long) {
                 val piece = ((fileOffset + bytePosInFile) / pieceLen).toInt()
                 if (h.havePiece(piece)) return
-                h.piecePriority(piece, Priority.TOP_PRIORITY)
-                // Read-ahead a couple of pieces.
-                h.piecePriority(piece + 1, Priority.TOP_PRIORITY)
-                while (!stopped && !h.havePiece(piece)) {
+                // Deadline-request the target piece + a small read-ahead window so a
+                // SEEK fetches those pieces from peers immediately, OVERRIDING the
+                // in-order sequential download. Without deadlines a forward seek has
+                // to wait for every intervening piece first (the "finding peers on
+                // fast-forward" the user saw).
+                val window = 6
+                for (p in piece..minOf(piece + window, lastPieceIdx)) {
+                    h.piecePriority(p, Priority.TOP_PRIORITY)
+                    h.setPieceDeadline(p, 500 + (p - piece) * 350)
+                }
+                while (!stopped && !closed && !h.havePiece(piece)) {
                     Thread.sleep(120)
                 }
             }
 
             override fun read(): Int {
-                if (pos > end) return -1
+                if (pos > end || closed) return -1
                 ensure(pos)
+                if (closed) return -1
                 raf.seek(pos)
                 val b = raf.read()
                 if (b >= 0) pos++
@@ -317,8 +348,9 @@ class TorrentEngine(
             }
 
             override fun read(b: ByteArray, off: Int, len: Int): Int {
-                if (pos > end) return -1
+                if (pos > end || closed) return -1
                 ensure(pos)
+                if (closed) return -1
                 // Read only within the current piece to keep piece-blocking tight.
                 val pieceEnd = ((fileOffset + pos) / pieceLen + 1) * pieceLen - fileOffset
                 val maxHere = minOf(len.toLong(), pieceEnd - pos, end - pos + 1).toInt()
@@ -329,6 +361,7 @@ class TorrentEngine(
             }
 
             override fun close() {
+                closed = true
                 try { raf.close() } catch (_: Throwable) {}
             }
         }

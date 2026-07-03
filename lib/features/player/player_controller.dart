@@ -596,7 +596,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
     _subs.add(
       player.stream.buffering.listen((buffering) {
-        if (buffering && _startedThisSource && !_recovering) {
+        // A torrent local stream buffers while pieces download — that's normal,
+        // not a dead source. Arming the stall watchdog would restart the torrent
+        // from scratch and churn native memory (force close). Skip it for torrents.
+        if (buffering && _startedThisSource && !_recovering && _activeTorrentId == null) {
           // Started source stalled — arm a watchdog. If we're still stuck and the
           // position hasn't advanced ~18s later, the stream is likely dead → fail
           // over.
@@ -1488,6 +1491,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// preserving the live position and the audio kind.
   Future<void> _onPlaybackError(String e) async {
     debugPrint('[player] error: $e');
+    // A torrent local stream buffers/blips while pieces download — that's normal,
+    // not a dead source. Never fail over: it would restart the torrent from
+    // scratch (re-fetch metadata, wipe the cache) and churn native SessionManagers
+    // until the app force-closes. mpv recovers on its own once the pieces land.
+    if (_activeTorrentId != null) return;
     final lower = e.toLowerCase();
     // libmpv emits many non-fatal warnings (e.g. the iOS Simulator has no
     // audio device). Only treat clear "this stream is unplayable" errors as a
