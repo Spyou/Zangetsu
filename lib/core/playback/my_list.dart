@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 
 import '../appwrite/appwrite_service.dart';
 import '../environment.dart';
+import '../logging/app_logger.dart';
 import '../models/media_item.dart';
 
 /// My List, backed by Hive for instant local reads and synced to Appwrite when
@@ -103,11 +104,13 @@ class MyListStore {
         );
       }
       _clearPending(k); // synced — nothing to retry
-    } catch (_) {
+    } catch (e) {
       // Cloud write failed (offline, or the Appwrite writes quota is exhausted).
       // The local box already reflects the change; remember an un-synced ADD so
       // [retryPending] pushes it up once writes are available again. A removed
       // item no longer needs syncing.
+      AppLogger.instance.log('mylist cloud ${adding ? "add" : "remove"} failed: $e',
+          level: 'E');
       if (adding) _markPending(k);
     }
   }

@@ -103,7 +103,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     await initDependencies();
     // Show the real build version in Settings/About instead of a stale literal.
     try {
-      kAppVersion = (await PackageInfo.fromPlatform()).version;
+      final info = await PackageInfo.fromPlatform();
+      kAppVersion = info.version;
+      AppLogger.instance.log(
+        '===== session started · v${info.version} (build ${info.buildNumber}) =====',
+      );
     } catch (_) {}
     // Restore a persisted Appwrite session (bounded so a slow network can't
     // trap the splash). If signed in, pull the cloud library into the local

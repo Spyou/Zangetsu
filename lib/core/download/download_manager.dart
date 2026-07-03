@@ -10,6 +10,7 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../logging/app_logger.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
 import '../repository/source_repository.dart';
@@ -348,6 +349,8 @@ class DownloadManager extends ChangeNotifier {
       _candidates[rec.id] = ranked;
       await _enqueueTaskFor(rec, ranked.first);
     } catch (e) {
+      AppLogger.instance
+          .log('download resolve failed (${rec.showTitle}): $e', level: 'E');
       _put(
         rec.copyWith(status: DownloadStatus.failed, error: () => 'Resolve failed'),
       );
@@ -820,6 +823,8 @@ class DownloadManager extends ChangeNotifier {
       );
     } catch (e) {
       final wifi = e is PlatformException && e.code == 'wifi_only';
+      AppLogger.instance
+          .log('torrent download start failed (${rec.showTitle}): $e', level: 'E');
       _put(rec.copyWith(
         status: DownloadStatus.failed,
         error: () => wifi
