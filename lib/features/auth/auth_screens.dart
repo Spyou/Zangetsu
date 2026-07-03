@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
@@ -233,9 +234,11 @@ class _SignupScreenState extends State<SignupScreen> {
   Future<void> _pickAvatar() async {
     final x = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 88,
+      // Avatars render at ~40–96px, so 256px is still 2–3× the display size —
+      // keeps the Appwrite bucket tiny (~15–30 KB/pic) with no visible quality loss.
+      maxWidth: 256,
+      maxHeight: 256,
+      imageQuality: 80,
     );
     if (x != null && mounted) setState(() => _avatarPath = x.path);
   }
@@ -305,9 +308,11 @@ class ProfileScreen extends StatelessWidget {
   Future<void> _pickAvatar(BuildContext context) async {
     final x = await ImagePicker().pickImage(
       source: ImageSource.gallery,
-      maxWidth: 512,
-      maxHeight: 512,
-      imageQuality: 88,
+      // Avatars render at ~40–96px, so 256px is still 2–3× the display size —
+      // keeps the Appwrite bucket tiny (~15–30 KB/pic) with no visible quality loss.
+      maxWidth: 256,
+      maxHeight: 256,
+      imageQuality: 80,
     );
     if (x != null && context.mounted) {
       await context.read<AuthCubit>().updateAvatar(x.path);
@@ -338,7 +343,7 @@ class ProfileScreen extends StatelessWidget {
                         radius: 48,
                         backgroundColor: AppColors.surface2,
                         backgroundImage: state.avatarUrl != null
-                            ? NetworkImage(state.avatarUrl!)
+                            ? CachedNetworkImageProvider(state.avatarUrl!)
                             : null,
                         child: state.avatarUrl == null
                             ? Text(

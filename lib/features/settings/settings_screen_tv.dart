@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -186,7 +187,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     radius: 22,
                     backgroundColor: AppColors.surface2,
                     backgroundImage: auth.avatarUrl != null
-                        ? NetworkImage(auth.avatarUrl!)
+                        ? CachedNetworkImageProvider(auth.avatarUrl!)
                         : null,
                     child: auth.avatarUrl == null
                         ? Text(initial, style: AppText.headline)

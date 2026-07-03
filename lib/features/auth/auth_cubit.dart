@@ -225,6 +225,10 @@ class AuthCubit extends Cubit<AuthState> {
   Future<bool> updateAvatar(String path) async {
     emit(state.copyWith(busy: true, error: () => null));
     try {
+      // Remember the current avatar so we can delete it once the new one is
+      // safely uploaded — otherwise every change orphans a file in the bucket
+      // forever, which is what actually fills the storage quota.
+      final oldAvatarId = state.user?.prefs.data['avatarId'] as String?;
       final file = await _aw.storage.createFile(
         bucketId: 'avatars',
         fileId: ID.unique(),
@@ -240,6 +244,15 @@ class AuthCubit extends Cubit<AuthState> {
         avatarUrl: () => _avatarFromUser(u),
         busy: false,
       ));
+      // Best-effort cleanup of the previous picture (never blocks success).
+      if (oldAvatarId != null &&
+          oldAvatarId.isNotEmpty &&
+          oldAvatarId != file.$id) {
+        try {
+          await _aw.storage
+              .deleteFile(bucketId: 'avatars', fileId: oldAvatarId);
+        } catch (_) {/* already gone / offline — harmless */}
+      }
       return true;
     } catch (_) {
       emit(state.copyWith(busy: false, error: () => "Couldn't update photo"));

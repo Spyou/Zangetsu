@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -444,7 +445,7 @@ class ProfileScreenTv extends StatelessWidget {
                         radius: 56,
                         backgroundColor: AppColors.surface2,
                         backgroundImage: state.avatarUrl != null
-                            ? NetworkImage(state.avatarUrl!)
+                            ? CachedNetworkImageProvider(state.avatarUrl!)
                             : null,
                         child: state.avatarUrl == null
                             ? Text(
