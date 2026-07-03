@@ -2475,14 +2475,18 @@ class _EpisodeRow extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Per-episode download icon, reflecting download state.
-                _EpisodeDownloadIcon(
-                  sourceId: sourceId,
-                  showId: showId,
-                  episodeId: ep.id,
-                  onTap: onDownload,
-                ),
+                // Per-episode download icon (phone only). On TV it's redundant
+                // clutter next to the main Download button + hard to focus, so
+                // it's hidden — the TV path downloads via the Download action.
+                if (!sl<AppMode>().isTv) ...[
+                  const SizedBox(width: 8),
+                  _EpisodeDownloadIcon(
+                    sourceId: sourceId,
+                    showId: showId,
+                    episodeId: ep.id,
+                    onTap: onDownload,
+                  ),
+                ],
               ],
             ),
           ],
@@ -3150,6 +3154,54 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       _selectedSourceIdx = i;
       _quality = hasQuality ? s.quality!.trim() : 'best';
     });
+    final content = Row(
+      children: [
+        Icon(
+          sel ? Icons.radio_button_checked : Icons.radio_button_off,
+          color: sel ? AppColors.accent : AppColors.textTertiary,
+          size: 18,
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            style: AppText.caption.copyWith(color: AppColors.textPrimary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (hasQuality) ...[
+          const SizedBox(width: 8),
+          Text(
+            s.quality!.trim(),
+            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+          ),
+        ],
+      ],
+    );
+    if (sl<AppMode>().isTv) {
+      // Match the Sub/Dub chip: a clean Material with NO own border, and the
+      // 8px gap OUTSIDE TvFocusable so its focus ring hugs the row (was offset
+      // by an inner margin + fought the row's own border — the "misaligned,
+      // day-and-night" highlight testers reported). Selection = accent fill +
+      // checked radio; focus = TvFocusable's ring.
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: TvFocusable(
+          onTap: onTap,
+          child: Material(
+            color: sel ? AppColors.accentSoft : AppColors.surface2,
+            borderRadius: BorderRadius.circular(10),
+            clipBehavior: Clip.antiAlias,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: content,
+            ),
+          ),
+        ),
+      );
+    }
     final visual = Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3161,35 +3213,8 @@ class _DownloadSheetState extends State<_DownloadSheet> {
           width: sel ? 1 : 0.5,
         ),
       ),
-      child: Row(
-        children: [
-          Icon(
-            sel ? Icons.radio_button_checked : Icons.radio_button_off,
-            color: sel ? AppColors.accent : AppColors.textTertiary,
-            size: 18,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              label,
-              style: AppText.caption.copyWith(color: AppColors.textPrimary),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (hasQuality) ...[
-            const SizedBox(width: 8),
-            Text(
-              s.quality!.trim(),
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            ),
-          ],
-        ],
-      ),
+      child: content,
     );
-    if (sl<AppMode>().isTv) {
-      return TvFocusable(onTap: onTap, child: visual);
-    }
     return GestureDetector(onTap: onTap, child: visual);
   }
 
