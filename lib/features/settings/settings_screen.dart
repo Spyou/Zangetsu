@@ -4,11 +4,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
@@ -78,6 +80,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
 
   /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
+  Future<void> _shareLogs() async {
+    final file = await AppLogger.instance.exportFile();
+    if (!mounted) return;
+    if (file == null) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(content: Text('Could not export logs')));
+      return;
+    }
+    await SharePlus.instance.share(
+      ShareParams(files: [XFile(file.path)], subject: 'Zangetsu logs'),
+    );
+  }
+
   Future<void> _pickDns() async {
     final picked = await showModalBottomSheet<int>(
       context: context,
@@ -519,6 +535,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Source health',
                         subtitle: 'Test which sources are working',
                         onTap: () => _push(const SourceHealthScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.bug_report_outlined,
+                        title: 'Share logs',
+                        subtitle: 'Send a diagnostic log to help fix an issue',
+                        onTap: _shareLogs,
                       ),
                       if (Platform.isAndroid)
                         SettingsTile(

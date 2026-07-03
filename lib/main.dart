@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
+import 'core/logging/app_logger.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/subscription_checker.dart';
@@ -24,16 +25,35 @@ import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  // Cap the in-memory image cache so a heavy source's posters + heroes can't
-  // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
-  // baseline). On-screen images stay full quality; far-off-screen ones reload
-  // from the disk cache.
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
-  MediaKit.ensureInitialized();
-  // Dependency init happens inside the boot gate so the splash shows
-  // immediately instead of a blank screen.
-  runApp(const WatchApp());
+  // Run inside a guarded zone so uncaught async errors land in the shareable
+  // in-app log (binding + runApp must share this zone — hence both inside).
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await AppLogger.instance.init();
+    // Mirror debugPrint into the log (still prints to the console too).
+    final origDebugPrint = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) {
+      if (message != null) AppLogger.instance.log(message);
+      origDebugPrint(message, wrapWidth: wrapWidth);
+    };
+    // Flutter framework errors → log + normal presentation.
+    final origOnError = FlutterError.onError;
+    FlutterError.onError = (details) {
+      AppLogger.instance.logError(details.exception, details.stack);
+      origOnError?.call(details);
+    };
+    // Cap the in-memory image cache so a heavy source's posters + heroes can't
+    // pile up and OOM-crash (default is 100 MB; libmpv adds a big native
+    // baseline). On-screen images stay full quality; far-off-screen ones reload
+    // from the disk cache.
+    PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
+    MediaKit.ensureInitialized();
+    // Dependency init happens inside the boot gate so the splash shows
+    // immediately instead of a blank screen.
+    runApp(const WatchApp());
+  }, (error, stack) {
+    AppLogger.instance.logError(error, stack);
+  });
 }
 
 /// Boots the app: runs [initDependencies] behind a splash, then builds the
