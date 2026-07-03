@@ -129,6 +129,12 @@ dependencies {
     // Flutter UI keeps its own theme, so this doesn't affect the main app.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+    // RecyclerView 1.3.2 (transitive default is 1.1.0, which lacks
+    // ViewHolder.getBindingAdapterPosition() — added in 1.2.0). Newer CS plugin
+    // settings UIs (e.g. StremioAddon's addon-list) call it and would otherwise
+    // crash with NoSuchMethodError. Only the CS settings screens use RecyclerView
+    // natively (the Flutter UI doesn't), so this is backward-compatible + isolated.
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
     // Core library desugaring — required by flutter_local_notifications.
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     // Background "new episode" checks for CloudStream sources (CloudStream's own
