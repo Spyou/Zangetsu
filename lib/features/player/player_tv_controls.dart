@@ -167,10 +167,14 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
     final k = event.logicalKey;
 
     // ── OK / Select ──
-    // Play/pause when focus is outside the bar (bar buttons handle OK themselves).
+    // Play/pause when focus is outside the bar (bar buttons handle OK themselves),
+    // then reveal the bar AND move focus into it so a control is always
+    // highlighted — testers couldn't tell the bar was navigable because OK/seek
+    // showed it without any focus ring (only Down used to focus it).
     if (okKeys.contains(k)) {
       if (!_barScope.hasFocus) widget.onTogglePlay();
       _showBar();
+      if (!_barScope.hasFocus) _barScope.requestFocus();
       return KeyEventResult.handled;
     }
 

@@ -3188,6 +3188,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: TvFocusable(
+          scale: 1.0, // full-width row — scaling overflows the sheet edges
           onTap: onTap,
           child: Material(
             color: sel ? AppColors.accentSoft : AppColors.surface2,
