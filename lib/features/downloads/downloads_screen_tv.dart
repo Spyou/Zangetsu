@@ -158,7 +158,7 @@ class _TvShowGroup extends StatelessWidget {
         ),
         // ── Episode tiles ───────────────────────────────────────────────────
         for (var j = 0; j < records.length; j++)
-          TvFocusable(
+          TvFocusable(scale: 1.0, 
             // First tile of the first group is the initial D-pad target.
             autofocus: autofocusFirst && j == 0,
             // Completed downloads play via the same launchDownloadedEpisode

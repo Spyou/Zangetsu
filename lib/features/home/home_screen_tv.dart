@@ -230,7 +230,12 @@ class _TvRail extends StatelessWidget {
           const SizedBox(height: 12),
           // Card row
           SizedBox(
-            height: _cardHeight,
+            // Extra vertical headroom so a focused card's 1.08 scale-up has room
+            // to grow instead of being clipped by the row: without it the taller
+            // focused card overflowed and the ListView cropped its title/poster
+            // (tester report). The card itself stays [_cardHeight] and is centred
+            // in the taller row, so unfocused cards look unchanged.
+            height: _cardHeight + 24,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 40),
@@ -239,20 +244,23 @@ class _TvRail extends StatelessWidget {
                 final item = items[index];
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),
-                  child: SizedBox(
-                    width: _cardWidth,
-                    child: TvFocusable(
-                      autofocus: firstAutofocus && index == 0,
-                      onTap: () => onTap(item),
-                      child: PosterCard(
-                        title: item.title,
-                        imageUrl: item.cover,
-                        headers: item.coverHeaders,
-                        cellWidth: _cardWidth,
-                        // Touch gestures are disabled on TV; TvFocusable
-                        // handles OK-key selection.
-                        onTap: null,
-                        onLongPress: null,
+                  child: Center(
+                    child: SizedBox(
+                      width: _cardWidth,
+                      height: _cardHeight,
+                      child: TvFocusable(
+                        autofocus: firstAutofocus && index == 0,
+                        onTap: () => onTap(item),
+                        child: PosterCard(
+                          title: item.title,
+                          imageUrl: item.cover,
+                          headers: item.coverHeaders,
+                          cellWidth: _cardWidth,
+                          // Touch gestures are disabled on TV; TvFocusable
+                          // handles OK-key selection.
+                          onTap: null,
+                          onLongPress: null,
+                        ),
                       ),
                     ),
                   ),

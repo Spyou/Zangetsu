@@ -85,7 +85,7 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
                         // Reuse the existing row widget verbatim, wrapped in
                         // TvFocusable so D-pad up/down navigates and OK opens
                         // the same Detail screen as the phone tap.
-                        return TvFocusable(
+                        return TvFocusable(scale: 1.0, 
                           autofocus: i == 0,
                           onTap: () => _openDetail(s),
                           child: ListTile(

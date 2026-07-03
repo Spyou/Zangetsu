@@ -22,6 +22,7 @@ import '../notify/subscriptions_screen.dart';
 import '../onboarding/how_it_works.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
+import '../sources/tv_recommended_cs_repos.dart';
 import '../update/update_dialog.dart';
 import '../watch_together/ui/watch_party_lobby_screen.dart';
 import 'developers_screen.dart';
@@ -177,7 +178,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
               : '?';
           return SettingsCard(
             children: [
-              TvFocusable(
+              TvFocusable(scale: 1.0, 
                 autofocus: true,
                 onTap: () => _push(const ProfileScreen()),
                 child: ListTile(
@@ -216,7 +217,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
         // Guest state
         return SettingsCard(
           children: [
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: true,
               onTap: () => _push(const LoginScreen()),
               child: const SettingsTile(
@@ -260,7 +261,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Watch Party ─────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () {
                           if (sl<AuthCubit>().state.user == null) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -289,7 +290,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Sources ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () async {
                           await _push(const SourcesScreen());
                           if (mounted) setState(() {});
@@ -301,7 +302,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: _pickActiveSourceTv,
                         child: SettingsTile(
                           icon: Icons.swap_horiz_rounded,
@@ -310,7 +311,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const SourceHealthScreen()),
                         child: const SettingsTile(
                           icon: Icons.health_and_safety_outlined,
@@ -320,7 +321,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         ),
                       ),
                       if (Platform.isAndroid) ...[
-                        TvFocusable(
+                        TvFocusable(scale: 1.0, 
                           onTap: _addCloudStreamRepo,
                           child: const SettingsTile(
                             icon: Icons.extension_outlined,
@@ -329,7 +330,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                             trailing: _kChevron,
                           ),
                         ),
-                        TvFocusable(
+                        TvFocusable(scale: 1.0, 
                           onTap: _pickDnsTv,
                           child: SettingsTile(
                             icon: Icons.vpn_lock_outlined,
@@ -347,7 +348,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── App ─────────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const HowItWorksScreen()),
                         child: const SettingsTile(
                           icon: Icons.help_outline_rounded,
@@ -356,7 +357,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const PlaybackSettingsScreen()),
                         child: const SettingsTile(
                           icon: Icons.play_circle_outline,
@@ -365,7 +366,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const DownloadsScreen()),
                         child: const SettingsTile(
                           icon: Icons.download_outlined,
@@ -374,7 +375,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: _pickSearchLayoutTv,
                         child: SettingsTile(
                           icon: Icons.search_rounded,
@@ -384,7 +385,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         ),
                       ),
                       if (Platform.isAndroid) ...[
-                        TvFocusable(
+                        TvFocusable(scale: 1.0, 
                           onTap: () => _push(const SubscriptionsScreen()),
                           child: const SettingsTile(
                             icon: Icons.notifications_none_rounded,
@@ -394,7 +395,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           ),
                         ),
                         // Toggle: OK flips the setting; Switch shows current state.
-                        TvFocusable(
+                        TvFocusable(scale: 1.0, 
                           onTap: () async {
                             final cm = sl<CloudStreamManager>();
                             await cm.setNotifyUpdates(!cm.notifyUpdates);
@@ -423,7 +424,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Storage ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const StorageSettingsScreen()),
                         child: const SettingsTile(
                           icon: Icons.sd_storage_outlined,
@@ -439,7 +440,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // services. Static subtitle matches the phone's fallback state.
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () async {
                           await _push(const ConnectionsScreen());
                           if (mounted) setState(() {});
@@ -451,7 +452,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () async {
                           await _push(const DiscordSettingsScreen());
                           if (mounted) setState(() {});
@@ -463,7 +464,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () async {
                           await _push(const PrivacySettingsScreen());
                           if (mounted) setState(() {});
@@ -481,7 +482,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Support ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const DonateScreen()),
                         child: const SettingsTile(
                           icon: Icons.coffee_rounded,
@@ -490,7 +491,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const DevelopersScreen()),
                         child: const SettingsTile(
                           icon: Icons.people_outline_rounded,
@@ -498,7 +499,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -514,7 +515,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(
+                      TvFocusable(scale: 1.0, 
                         onTap: () => _push(const AboutSettingsScreen()),
                         child: SettingsTile(
                           icon: Icons.info_outline_rounded,
@@ -582,7 +583,7 @@ class _TvOptionPicker<T> extends StatelessWidget {
             const Divider(height: 1, color: AppColors.hairline),
             // ── Option rows
             for (int i = 0; i < options.length; i++)
-              TvFocusable(
+              TvFocusable(scale: 1.0, 
                 // Autofocus on the current value so D-pad lands there on open.
                 autofocus: options[i].$1 == current,
                 onTap: () => Navigator.of(context).pop(options[i].$1),
@@ -626,17 +627,10 @@ class _TvAddRepoDialog extends StatefulWidget {
 
 class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
   final _controller = TextEditingController();
-  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
-  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
+  // Not auto-focused: the dialog opens with the first RECOMMENDED repo focused
+  // so a recommendation is one OK-press away and stays visible (auto-raising the
+  // leanback IME would cover it). Focus the field + OK to type a custom URL.
   final _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _focusNode.requestFocus();
-    });
-  }
 
   @override
   void dispose() {
@@ -650,21 +644,32 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
     return AlertDialog(
       backgroundColor: AppColors.surface,
       title: Text('Add CloudStream repository', style: AppText.headline),
-      content: TextField(
-        controller: _controller,
-        focusNode: _focusNode,
-        keyboardType: TextInputType.url,
-        cursorColor: AppColors.accent,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
-        decoration: const InputDecoration(
-          labelText: 'Repository URL',
-          hintText: 'https://.../repo.json',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Repository URL',
+                hintText: 'https://.../repo.json',
+              ),
+              onSubmitted: (v) => Navigator.pop(context, v.trim()),
+            ),
+            // Same recommended repos as the phone dialog, D-pad-focusable.
+            TvRecommendedCsRepos(
+              onPick: (url) => Navigator.pop(context, url),
+            ),
+          ],
         ),
-        onSubmitted: (v) => Navigator.pop(context, v.trim()),
       ),
       actions: [
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: () => Navigator.pop(context),
           child: TextButton(
             onPressed: () => Navigator.pop(context),
@@ -674,8 +679,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
             ),
           ),
         ),
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: () => Navigator.pop(context, _controller.text.trim()),
           child: FilledButton(
             style: FilledButton.styleFrom(

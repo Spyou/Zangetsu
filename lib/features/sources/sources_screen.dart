@@ -1881,7 +1881,7 @@ class _CsSourceRow extends StatelessWidget {
 /// Returns the trimmed URL via `Navigator.pop`, or null on cancel.
 /// One-tap CloudStream repos surfaced in the "Add CS repo" dialog. Each is added
 /// through the same [CloudStreamManager.addRepo] path as a manually pasted URL.
-const List<({String name, String desc, String url})> _kRecommendedCsRepos = [
+const List<({String name, String desc, String url})> kRecommendedCsRepos = [
   (
     name: 'Phisher',
     desc: 'Large multi-source pack — anime, movies & series',
@@ -2003,7 +2003,7 @@ class _CsAddRepoDialogState extends State<_CsAddRepoDialog> {
               ),
             ),
             const SizedBox(height: 4),
-            for (final r in _kRecommendedCsRepos) _recommendedTile(context, r),
+            for (final r in kRecommendedCsRepos) _recommendedTile(context, r),
           ],
         ),
       ),

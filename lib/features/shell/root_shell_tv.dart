@@ -397,12 +397,22 @@ class _RootShellTvState extends State<RootShellTv> {
               // element instead of the visible page (e.g. Settings couldn't be
               // entered). ExcludeFocus removes the non-visible pages from focus
               // traversal so the bridge always focuses the CURRENT page.
-              child: IndexedStack(
-                index: _index,
-                children: [
-                  for (var i = 0; i < pages.length; i++)
-                    ExcludeFocus(excluding: i != _index, child: pages[i]),
-                ],
+              //
+              // TV overscan-safe inset: many TVs physically crop ~3–5% of the
+              // frame edges, which was clipping page titles at the top and the
+              // right-most tiles/posters (tester report). A modest inset on the
+              // content zone keeps text and icons inside the safe area. Left is
+              // omitted — the nav rail already sits against that edge and reads
+              // fine. Pages keep their own SafeArea/padding on top of this.
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(0, 24, 24, 16),
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    for (var i = 0; i < pages.length; i++)
+                      ExcludeFocus(excluding: i != _index, child: pages[i]),
+                  ],
+                ),
               ),
             ),
           ),

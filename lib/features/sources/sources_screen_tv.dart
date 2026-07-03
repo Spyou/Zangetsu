@@ -18,6 +18,7 @@ import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
+import 'tv_recommended_cs_repos.dart';
 
 /// TV Providers screen. A single scrollable list with three collapsible
 /// sections (Installed / Repos / CloudStream). Every interactive element —
@@ -182,7 +183,7 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                       child: _reposExpanded
                           ? Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: TvFocusable(
+                              child: TvFocusable(scale: 1.0, 
                                 onTap: _showAddRepoDialog,
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(
@@ -240,7 +241,7 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                         child: _csExpanded
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 8),
-                                child: TvFocusable(
+                                child: TvFocusable(scale: 1.0, 
                                   onTap: _showAddCsRepoDialog,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
@@ -308,7 +309,7 @@ class _TvSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TvFocusable(
+    return TvFocusable(scale: 1.0, 
       autofocus: autofocus,
       onTap: onTap,
       child: Padding(
@@ -481,7 +482,7 @@ class _TvCsInstalledGroupState extends State<_TvCsInstalledGroup> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Group header — OK toggles expand.
-        TvFocusable(
+        TvFocusable(scale: 1.0, 
           onTap: () => setState(() => _expanded = !_expanded),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
@@ -581,8 +582,7 @@ class _TvCsSourceRow extends StatelessWidget {
         children: [
           // Row body — OK sets this as the active source.
           Expanded(
-            child: TvFocusable(
-              scale: 1.02,
+            child: TvFocusable(scale: 1.0, 
               onTap: () {
                 context.read<ActiveSourceCubit>().setSource(source.sourceId);
                 ScaffoldMessenger.of(context)
@@ -617,8 +617,7 @@ class _TvCsSourceRow extends StatelessWidget {
             ),
           ),
           // Enable/disable toggle — OK flips the state.
-          TvFocusable(
-            scale: 1.0,
+          TvFocusable(scale: 1.0, 
             onTap: () => manager.setEnabled(source.sourceId, !enabled),
             child: Switch.adaptive(
               value: enabled,
@@ -627,8 +626,7 @@ class _TvCsSourceRow extends StatelessWidget {
             ),
           ),
           // Settings gear.
-          TvFocusable(
-            scale: 1.0,
+          TvFocusable(scale: 1.0, 
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SourceSettingsScreen(
@@ -676,7 +674,7 @@ class _TvInstalledGroupState extends State<_TvInstalledGroup> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Group header — OK toggles expand.
-        TvFocusable(
+        TvFocusable(scale: 1.0, 
           onTap: () => setState(() => _expanded = !_expanded),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
@@ -788,7 +786,8 @@ class _TvInstalledRow extends StatelessWidget {
         ? 'repo • v${entry.version} → v$newVersion'
         : '${bundled ? 'built-in' : 'repo'} • v${entry.version}';
 
-    return Padding(
+    return _RowFocusHalo(
+      child: Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
       child: Row(
         children: [
@@ -815,8 +814,7 @@ class _TvInstalledRow extends StatelessWidget {
           ),
           // Update button — present only when a newer version is available.
           if (hasUpdate)
-            TvFocusable(
-              scale: 1.0,
+            TvFocusable(scale: 1.0, 
               onTap: () =>
                   context.read<SourcesBloc>().add(SourceUpdated(_key)),
               child: Tooltip(
@@ -832,8 +830,7 @@ class _TvInstalledRow extends StatelessWidget {
               ),
             ),
           // Enable / disable switch — OK flips the toggle.
-          TvFocusable(
-            scale: 1.0,
+          TvFocusable(scale: 1.0, 
             onTap: () => context.read<SourcesBloc>().add(
               SourceEnabledToggled(_key, enabled: !entry.enabled),
             ),
@@ -846,8 +843,7 @@ class _TvInstalledRow extends StatelessWidget {
             ),
           ),
           // Settings gear — OK pushes SourceSettingsScreen.
-          TvFocusable(
-            scale: 1.0,
+          TvFocusable(scale: 1.0, 
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SourceSettingsScreen(
@@ -868,8 +864,7 @@ class _TvInstalledRow extends StatelessWidget {
           ),
           // Remove button — non-bundled sources only, OK shows confirm.
           if (!bundled)
-            TvFocusable(
-              scale: 1.0,
+            TvFocusable(scale: 1.0, 
               onTap: () => _confirmRemove(context),
               child: const Padding(
                 padding: EdgeInsets.all(8),
@@ -881,6 +876,53 @@ class _TvInstalledRow extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    ));
+  }
+}
+
+/// Row-level focus halo for [_TvInstalledRow]. The source name sits on the far
+/// left while its controls (enable switch / gear / remove) are individually
+/// focusable on the right — so the small per-control highlight alone made it
+/// hard to tell WHICH source you were on, or that a row was selectable at all.
+/// This wraps the whole row and tints + outlines it whenever any control inside
+/// holds focus, so the source you're acting on is obvious, on top of the
+/// per-control highlight that shows the action. The border is always 2px (just
+/// transparent when idle) so focus causes no layout shift.
+class _RowFocusHalo extends StatefulWidget {
+  const _RowFocusHalo({required this.child});
+  final Widget child;
+
+  @override
+  State<_RowFocusHalo> createState() => _RowFocusHaloState();
+}
+
+class _RowFocusHaloState extends State<_RowFocusHalo> {
+  bool _hasFocus = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      // Not a focus stop itself — it only observes whether a descendant control
+      // (each its own TvFocusable) currently holds focus.
+      canRequestFocus: false,
+      skipTraversal: true,
+      onFocusChange: (f) {
+        if (f != _hasFocus) setState(() => _hasFocus = f);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        decoration: BoxDecoration(
+          color: _hasFocus ? AppColors.accent.withValues(alpha: 0.10) : null,
+          border: Border.all(
+            color: _hasFocus
+                ? AppColors.accent.withValues(alpha: 0.55)
+                : Colors.transparent,
+            width: 2,
+          ),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: widget.child,
       ),
     );
   }
@@ -987,8 +1029,7 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
               runSpacing: 8,
               children: [
                 // Expand/collapse toggle.
-                TvFocusable(
-                  scale: 1.02,
+                TvFocusable(scale: 1.0, 
                   onTap: () => setState(() => _expanded = !_expanded),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1030,8 +1071,7 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
                   ),
                 ),
                 // "Refresh" action.
-                TvFocusable(
-                  scale: 1.0,
+                TvFocusable(scale: 1.0, 
                   onTap: () => context
                       .read<SourcesBloc>()
                       .add(RepoRefreshed(repo.url)),
@@ -1048,8 +1088,7 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
                 ),
                 // "Update all" action — only when updates exist.
                 if (updateCount > 0)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvFocusable(scale: 1.0, 
                     onTap: () => context
                         .read<SourcesBloc>()
                         .add(RepoUpdated(repo.url)),
@@ -1066,8 +1105,7 @@ class _TvRepoGroupState extends State<_TvRepoGroup> {
                     ),
                   ),
                 // "Remove" action.
-                TvFocusable(
-                  scale: 1.0,
+                TvFocusable(scale: 1.0, 
                   onTap: () => _removeRepo(context),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
@@ -1208,7 +1246,7 @@ class _TvRepoSourceRow extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           if (installed && hasUpdate)
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: autofocus,
               onTap: () =>
                   context.read<SourcesBloc>().add(SourceUpdated(_key)),
@@ -1237,7 +1275,7 @@ class _TvRepoSourceRow extends StatelessWidget {
               ),
             )
           else if (installed)
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: autofocus,
               onTap: () => _uninstall(context),
               child: Container(
@@ -1258,7 +1296,7 @@ class _TvRepoSourceRow extends StatelessWidget {
               ),
             )
           else
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: autofocus,
               onTap: () => context.read<SourcesBloc>().add(
                 SourceInstalled(repo: repo, source: source),
@@ -1475,8 +1513,7 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
               runSpacing: 8,
               children: [
                 // Expand/collapse toggle.
-                TvFocusable(
-                  scale: 1.02,
+                TvFocusable(scale: 1.0, 
                   onTap: () => setState(() => _expanded = !_expanded),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1511,8 +1548,7 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
                 ),
                 // Update pill — apply all updates for this repo.
                 if (updates.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvFocusable(scale: 1.0, 
                     onTap: _applyUpdates,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -1534,8 +1570,7 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
                   ),
                 // "Check updates" — real repos only (no synthetic Other group).
                 if (group.url.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvFocusable(scale: 1.0, 
                     onTap: _checkUpdates,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -1547,8 +1582,7 @@ class _TvCsRepoSectionState extends State<_TvCsRepoSection> {
                   ),
                 // "Remove repo" — real repos only.
                 if (group.url.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvFocusable(scale: 1.0, 
                     onTap: _removeRepo,
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -1771,7 +1805,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
               ),
             )
           else if (installed && widget.update != null)
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: widget.autofocus,
               onTap: _update,
               child: Container(
@@ -1791,7 +1825,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
               ),
             )
           else if (installed)
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: widget.autofocus,
               onTap: _uninstall,
               child: Container(
@@ -1811,7 +1845,7 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
               ),
             )
           else
-            TvFocusable(
+            TvFocusable(scale: 1.0, 
               autofocus: widget.autofocus,
               onTap: _install,
               child: Container(
@@ -1911,7 +1945,7 @@ Future<bool> _tvConfirm(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   // Cancel — autofocused so D-pad lands here first.
-                  TvFocusable(
+                  TvFocusable(scale: 1.0, 
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
                     child: Padding(
@@ -1926,7 +1960,7 @@ Future<bool> _tvConfirm(
                   ),
                   const SizedBox(width: 4),
                   // Confirm action.
-                  TvFocusable(
+                  TvFocusable(scale: 1.0, 
                     onTap: () => Navigator.pop(ctx, true),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -2059,8 +2093,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
         ],
       ),
       actions: [
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: _loading ? () {} : () => Navigator.of(context).pop(),
           child: TextButton(
             onPressed: _loading ? null : () => Navigator.of(context).pop(),
@@ -2070,8 +2103,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
             ),
           ),
         ),
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: _loading ? () {} : _submit,
           child: FilledButton(
             style: FilledButton.styleFrom(
@@ -2109,17 +2141,10 @@ class _TvCsAddRepoDialog extends StatefulWidget {
 
 class _TvCsAddRepoDialogState extends State<_TvCsAddRepoDialog> {
   final _urlCtrl = TextEditingController();
-  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
-  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
+  // Not auto-focused: the dialog opens with the first RECOMMENDED repo focused
+  // so a recommendation is one OK-press away and stays visible (auto-raising the
+  // leanback IME would cover it). Focus the field + OK to type a custom URL.
   final _urlFocus = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _urlFocus.requestFocus();
-    });
-  }
 
   @override
   void dispose() {
@@ -2135,32 +2160,37 @@ class _TvCsAddRepoDialogState extends State<_TvCsAddRepoDialog> {
     return AlertDialog(
       backgroundColor: AppColors.surface,
       title: Text('Add CS repo', style: AppText.headline),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _urlCtrl,
-            focusNode: _urlFocus,
-            keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(
-              labelText: 'Repo URL',
-              hintText: 'https://.../repo.json',
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _urlCtrl,
+              focusNode: _urlFocus,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Repo URL',
+                hintText: 'https://.../repo.json',
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Paste a CloudStream repository URL.',
-            style: AppText.caption,
-          ),
-        ],
+            const SizedBox(height: 10),
+            Text(
+              'Paste a CloudStream repository URL.',
+              style: AppText.caption,
+            ),
+            // Same recommended repos as the phone dialog, D-pad-focusable.
+            TvRecommendedCsRepos(
+              onPick: (url) => Navigator.pop(context, url),
+            ),
+          ],
+        ),
       ),
       actions: [
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: () => Navigator.of(context).pop(),
           child: TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -2170,8 +2200,7 @@ class _TvCsAddRepoDialogState extends State<_TvCsAddRepoDialog> {
             ),
           ),
         ),
-        TvFocusable(
-          scale: 1.0,
+        TvFocusable(scale: 1.0, 
           onTap: _submit,
           child: FilledButton(
             style: FilledButton.styleFrom(
