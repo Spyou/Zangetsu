@@ -938,7 +938,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> openEpisode(int index, {bool fromRoom = false}) async {
     if (_isRoomViewer && !fromRoom) return;
     final gen = ++_gen;
-    await _persist();
+    await _persist(flush: true);
     // Only drop the pending resume when actually switching episodes — a
     // same-episode re-open (recovery/failover) must keep targeting it.
     if (index != state.currentIndex) _pendingResume = Duration.zero;
@@ -1779,7 +1779,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     await _applyAudioFilters();
   }
 
-  Future<void> _persist() async {
+  Future<void> _persist({bool flush = false}) async {
     // Nothing watched yet — don't overwrite a real mark with position 0.
     if (_lastPos <= Duration.zero) return;
     // Ignore a clearly bogus position (mpv occasionally emits a spurious huge
@@ -1830,6 +1830,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           updatedAt: DateTime.now().millisecondsSinceEpoch,
           malId: malId,
         ),
+        flush: flush,
       );
     }
     _maybeScrobble();
@@ -1901,7 +1902,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   @override
   Future<void> close() async {
-    await _persist();
+    await _persist(flush: true);
     // Leaving the player → drop the "Watching" presence back to browsing.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(title: showTitle, posterUrl: cover);

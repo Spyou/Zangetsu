@@ -60,7 +60,13 @@ class WatchHistory {
   final String? Function() _currentUserId;
 
   static const String boxName = 'watch_history';
-  static const int _cloudThrottleMs = 15000;
+  // Cloud progress-sync throttle. The player calls [save] every ~1s during
+  // playback, but each of those was a cloud write every 15s per show — ~96
+  // writes for one 24-min episode, which blows through the Appwrite free-tier
+  // database-writes quota fast. Local saves stay instant (resume is unaffected);
+  // the CLOUD push is throttled to 2 min, and forced on pause/stop/episode
+  // change/close (see [save]'s `flush`) so the resume point stays accurate.
+  static const int _cloudThrottleMs = 120000;
 
   /// Shared box holding the last successful cloud-pull timestamp (see
   /// [MyListStore.syncMetaBox]) so app-launch pulls can be throttled.
@@ -82,7 +88,11 @@ class WatchHistory {
   String _docId(String uid, String key) =>
       sha256.convert(utf8.encode('$uid::$key')).toString().substring(0, 32);
 
-  Future<void> save(HistoryEntry e) async {
+  /// Persist progress. The local write is ALWAYS immediate (instant resume);
+  /// the cloud push is throttled unless [flush] is true, which forces it on the
+  /// moments that matter for an accurate cross-device resume — pause, stop,
+  /// episode change, and player close.
+  Future<void> save(HistoryEntry e, {bool flush = false}) async {
     final key = _key(e.sourceId, e.showId);
     await _box.put(key, {
       'sourceId': e.sourceId,
@@ -100,17 +110,22 @@ class WatchHistory {
       'updatedAt': e.updatedAt,
       'malId': e.malId,
     });
-    _pushToCloud(key, e);
+    if (flush) {
+      await _pushToCloud(key, e, force: true);
+    } else {
+      _pushToCloud(key, e);
+    }
   }
 
   /// Throttled, best-effort cloud upsert (update-then-create on the
-  /// deterministic per-show doc id).
-  Future<void> _pushToCloud(String key, HistoryEntry e) async {
+  /// deterministic per-show doc id). [force] bypasses the throttle for the
+  /// flush moments (see [save]).
+  Future<void> _pushToCloud(String key, HistoryEntry e, {bool force = false}) async {
     final uid = _currentUserId();
     if (uid == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
     final last = _lastCloudPush[key] ?? 0;
-    if (now - last < _cloudThrottleMs) return;
+    if (!force && now - last < _cloudThrottleMs) return;
     _lastCloudPush[key] = now;
     final docId = _docId(uid, key);
     final data = {
