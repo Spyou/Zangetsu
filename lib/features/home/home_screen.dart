@@ -416,9 +416,12 @@ class _HomeViewState extends State<_HomeView> {
               final sections = state.sections ?? const <HomeSection>[];
               // The first section feeds the hero carousel; the rest render as
               // browse rows (so the spotlight isn't duplicated right below it).
+              // A source with only ONE section (e.g. SubsPlease's single "Latest"
+              // feed) would otherwise show a hero and NO rows — keep that one
+              // section as a row too so there's something to browse.
               final rowSections = sections.length > 1
                   ? sections.sublist(1)
-                  : const <HomeSection>[];
+                  : sections;
               final showSkeletons = state.loading && sections.isEmpty;
               // The load finished but the source returned no rows — almost
               // always a dead/blocked site (or a search-only source). Show a
