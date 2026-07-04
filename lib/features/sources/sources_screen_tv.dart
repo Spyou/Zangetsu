@@ -581,18 +581,55 @@ class _TvAniyomiInstalledGroupList extends StatelessWidget {
   }
 }
 
-class _TvAniSourceRow extends StatelessWidget {
+class _TvAniSourceRow extends StatefulWidget {
   const _TvAniSourceRow({required this.source, required this.activeId});
 
   final BaseProvider source;
   final String activeId;
 
   @override
+  State<_TvAniSourceRow> createState() => _TvAniSourceRowState();
+}
+
+class _TvAniSourceRowState extends State<_TvAniSourceRow> {
+  bool _hasSettings = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSettings();
+  }
+
+  @override
+  void didUpdateWidget(_TvAniSourceRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The element may be recycled for a different source when the list is
+    // filtered/reordered (e.g. the NSFW toggle) — re-query so the gear
+    // reflects the source now shown rather than a stale cached result.
+    if (oldWidget.source.sourceId != widget.source.sourceId) {
+      _hasSettings = false;
+      _checkSettings();
+    }
+  }
+
+  Future<void> _checkSettings() async {
+    final src = widget.source;
+    if (src is! AniyomiProvider) return;
+    final has = await AniyomiExtensionService().hasSourceSettings(src.info.id);
+    if (mounted) setState(() => _hasSettings = has);
+  }
+
+  Future<void> _openSettings() async {
+    final src = widget.source;
+    if (src is! AniyomiProvider) return;
+    await AniyomiExtensionService().openSourceSettings(src.info.id);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final active = source.sourceId == activeId;
-    final lang = source is AniyomiProvider
-        ? (source as AniyomiProvider).info.lang
-        : '';
+    final source = widget.source;
+    final active = source.sourceId == widget.activeId;
+    final lang = source is AniyomiProvider ? source.info.lang : '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: TvFocusable(
@@ -636,6 +673,16 @@ class _TvAniSourceRow extends StatelessWidget {
                   ],
                 ),
               ),
+              if (_hasSettings)
+                TvFocusable(
+                  scale: 1.0,
+                  onTap: _openSettings,
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: Icon(Icons.tune_rounded,
+                        size: 20, color: AppColors.textSecondary),
+                  ),
+                ),
             ],
           ),
         ),

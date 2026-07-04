@@ -163,6 +163,15 @@ class PlaybackPrefs {
   bool get nsfwSources => _box.get('nsfwSources', defaultValue: false) as bool;
   Future<void> setNsfwSources(bool value) => _box.put('nsfwSources', value);
 
+  /// Whether Aniyomi sources flagged as NSFW (18+) are shown in the source
+  /// list and switcher. Off by default; turning it on requires confirmation.
+  /// When off, NSFW-flagged Aniyomi providers are hidden at display time;
+  /// they remain registered in AniyomiManager and are never unloaded.
+  bool get showNsfwAniyomi =>
+      _box.get('showNsfwAniyomi', defaultValue: false) as bool;
+  Future<void> setShowNsfwAniyomi(bool value) =>
+      _box.put('showNsfwAniyomi', value);
+
   // ── Subtitle styling (applied via mpv) ─────────────────────────────────────
   /// Subtitle size multiplier: 0.8 (small) / 1.0 / 1.3 (large).
   double get subtitleScale =>

@@ -1,8 +1,10 @@
+import '../aniyomi/aniyomi_provider.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/video_source.dart';
+import '../playback/playback_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
 import '../provider/cloudstream_provider.dart';
@@ -18,15 +20,18 @@ class SourceRepository {
     required CloudStreamManager csManager,
     required AniyomiManager aniManager,
     required ActiveSourceCubit activeSource,
+    required PlaybackPrefs prefs,
   }) : _manager = manager,
        _csManager = csManager,
        _aniManager = aniManager,
-       _active = activeSource;
+       _active = activeSource,
+       _prefs = prefs;
 
   final ProviderManager _manager;
   final CloudStreamManager _csManager;
   final AniyomiManager _aniManager;
   final ActiveSourceCubit _active;
+  final PlaybackPrefs _prefs;
 
   /// Prefetch cache: `sourceId|episodeUrl` → an in-flight/complete fast
   /// resolution started on the detail screen, so "tap Play" reuses work already
@@ -63,13 +68,20 @@ class SourceRepository {
   /// All currently-loaded sources (id + display name), for cross-source search
   /// and source labelling. JS providers first (registry order), then any
   /// installed CloudStream sources, then Aniyomi sources.
+  ///
+  /// NSFW Aniyomi sources are excluded when [PlaybackPrefs.showNsfwAniyomi]
+  /// is false so toggling the pref is immediately reflected here.
   List<({String id, String name})> get loadedSources => [
     ..._manager.all.map((p) => (id: p.sourceId, name: p.displayName)),
     // Only ENABLED CloudStream sources — a disabled source shouldn't be
     // searched (and skipping them trims the search fan-out).
     ..._csManager.enabled.map((p) => (id: p.sourceId, name: p.displayName)),
-    // Aniyomi sources — all registered providers.
-    ..._aniManager.all.map((p) => (id: p.sourceId, name: p.displayName)),
+    // Aniyomi sources — NSFW entries filtered when the pref is off.
+    ..._aniManager.all
+        .where(
+          (p) => aniyomiNsfwVisible(p, showNsfwAniyomi: _prefs.showNsfwAniyomi),
+        )
+        .map((p) => (id: p.sourceId, name: p.displayName)),
   ];
 
   /// Human-friendly name for a source id (falls back to the id itself).

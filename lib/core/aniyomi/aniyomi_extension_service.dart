@@ -57,6 +57,33 @@ class AniyomiExtensionService {
     }
   }
 
+  /// Returns true when the native source with [sourceId] implements
+  /// ConfigurableAnimeSource and has settings to show.
+  ///
+  /// Returns false on any channel error (source not found, not configurable).
+  Future<bool> hasSourceSettings(int sourceId) async {
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'hasSourceSettings',
+        {'sourceId': sourceId},
+      );
+      return result ?? false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  /// Launches the native AniyomiSettingsActivity for the source with [sourceId].
+  ///
+  /// No-op (returns without error) when the source has no settings.
+  Future<void> openSourceSettings(int sourceId) async {
+    try {
+      await _channel.invokeMethod<void>('openSourceSettings', {'sourceId': sourceId});
+    } on PlatformException catch (e) {
+      debugPrint('[aniyomi] openSourceSettings($sourceId) failed: $e');
+    }
+  }
+
   /// Downloads the extension APK from [entry.apkUrl], installs it, then
   /// builds an [AniyomiProvider] for every new source in the package.
   ///

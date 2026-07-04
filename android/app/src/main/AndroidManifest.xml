@@ -83,6 +83,13 @@
             android:exported="false"
             android:theme="@style/Theme.CloudStreamSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
+        <!-- Hosts an Aniyomi extension's ConfigurableAnimeSource settings UI via a
+             PreferenceFragmentCompat. Launched by AniyomiBridge.openSourceSettings. -->
+        <activity
+            android:name=".aniyomi.AniyomiSettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AniyomiSettings"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

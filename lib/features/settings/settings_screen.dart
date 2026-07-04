@@ -19,8 +19,10 @@ import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
+import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
+import '../../core/provider/provider_manager.dart';
 import 'discord_settings_screen.dart';
 import 'download_location_screen.dart';
 import 'torrent_settings_screen.dart';
@@ -1574,6 +1576,7 @@ class PrivacySettingsScreen extends StatefulWidget {
 
 class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool get _nsfw => sl<PlaybackPrefs>().nsfwSources;
+  bool get _nsfwAni => sl<PlaybackPrefs>().showNsfwAniyomi;
 
   Future<void> _onNsfwChanged(bool value) async {
     final prefs = sl<PlaybackPrefs>();
@@ -1609,6 +1612,40 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _onNsfwAniChanged(bool value) async {
+    final prefs = sl<PlaybackPrefs>();
+    if (value) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Show NSFW Aniyomi sources?', style: AppText.title),
+          content: Text(
+            'This shows Aniyomi extensions flagged as 18+ in the source list '
+            'and switcher. Only turn this on if you want adult content.',
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Enable'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      await prefs.setShowNsfwAniyomi(true);
+    } else {
+      await prefs.setShowNsfwAniyomi(false);
+      _demoteNsfwAniActiveSource();
+    }
+    if (mounted) setState(() {});
+  }
+
   /// When NSFW is turned off and the active source is now hidden, switch to the
   /// first non-NSFW enabled source so Home stops showing it.
   void _demoteNsfwActiveSource() {
@@ -1618,6 +1655,33 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
     if (!blocked.contains(active.state)) return;
     for (final e in registry.getAll()) {
       if (e.enabled && !blocked.contains(e.name)) {
+        active.setSource(e.name);
+        return;
+      }
+    }
+  }
+
+  /// When the Aniyomi NSFW toggle is turned off and the active source is an
+  /// NSFW Aniyomi provider, switch to the first non-NSFW enabled source.
+  void _demoteNsfwAniActiveSource() {
+    final active = sl<ActiveSourceCubit>();
+    if (!active.state.startsWith('ani:')) return;
+    final aniManager = sl<AniyomiManager>();
+    final currentProvider = aniManager.get(active.state);
+    if (currentProvider is! AniyomiProvider || !currentProvider.info.nsfw) {
+      return;
+    }
+    // Try another non-NSFW Aniyomi source first.
+    for (final p in aniManager.all) {
+      if (p is AniyomiProvider && !p.info.nsfw) {
+        active.setSource(p.sourceId);
+        return;
+      }
+    }
+    // Fall back to first enabled JS source.
+    final registry = sl<ProviderRegistry>();
+    for (final e in registry.getAll()) {
+      if (e.enabled) {
         active.setSource(e.name);
         return;
       }
@@ -1645,6 +1709,16 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                   value: _nsfw,
                   activeThumbColor: AppColors.accent,
                   onChanged: _onNsfwChanged,
+                ),
+              ),
+              SettingsTile(
+                icon: Icons.extension_outlined,
+                title: 'Show NSFW sources',
+                subtitle: 'Adult Aniyomi extensions',
+                trailing: Switch.adaptive(
+                  value: _nsfwAni,
+                  activeThumbColor: AppColors.accent,
+                  onChanged: _onNsfwAniChanged,
                 ),
               ),
             ],

@@ -18,6 +18,19 @@ import 'aniyomi_mapping.dart';
 /// Shared channel — matches the name registered in [AniyomiBridge.attach].
 const MethodChannel _aniChannel = MethodChannel('zangetsu/aniyomi');
 
+/// Returns true when [provider] should be visible in source lists.
+///
+/// NSFW-flagged [AniyomiProvider]s are hidden when [showNsfwAniyomi] is
+/// false. Non-Aniyomi providers are always visible (never filtered).
+bool aniyomiNsfwVisible(
+  BaseProvider provider, {
+  required bool showNsfwAniyomi,
+}) {
+  if (provider is! AniyomiProvider) return true;
+  if (!provider.info.nsfw) return true;
+  return showNsfwAniyomi;
+}
+
 /// A single Aniyomi anime source wrapped as a [BaseProvider].
 ///
 /// Constructed from an [AniyomiSourceInfo] returned by

@@ -305,9 +305,18 @@ Future<void> initDependencies() async {
       aniyomiManager.registerAll(providers);
       // Honor the user's saved active source when it's an Aniyomi source that
       // wasn't loaded yet at boot (ActiveSourceCubit fell back to a JS source).
+      // A saved NSFW Aniyomi source is treated as absent when the pref is off
+      // so it falls back gracefully rather than staying as the active source.
       if (sl.isRegistered<ActiveSourceCubit>()) {
-        final changed = sl<ActiveSourceCubit>()
-            .reapplySaved((id) => aniyomiManager.get(id) != null);
+        final showNsfw = sl.isRegistered<PlaybackPrefs>()
+            ? sl<PlaybackPrefs>().showNsfwAniyomi
+            : false;
+        final changed = sl<ActiveSourceCubit>().reapplySaved((id) {
+          final p = aniyomiManager.get(id);
+          if (p == null) return false;
+          if (p is AniyomiProvider && p.info.nsfw && !showNsfw) return false;
+          return true;
+        });
         if (changed && sl.isRegistered<HomeCubit>()) {
           sl<HomeCubit>().load(); // reload Home for the restored source
         }
@@ -340,6 +349,7 @@ Future<void> initDependencies() async {
       csManager: csManager,
       aniManager: aniyomiManager,
       activeSource: sl<ActiveSourceCubit>(),
+      prefs: sl<PlaybackPrefs>(),
     ),
   );
 

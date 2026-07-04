@@ -25,4 +25,9 @@
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowAnimationStyle">@null</item>
     </style>
+    <!-- Standard Material DayNight theme for AniyomiSettingsActivity: hosts a
+         PreferenceFragmentCompat for an Aniyomi source's own settings. -->
+    <style name="Theme.AniyomiSettings" parent="Theme.MaterialComponents.DayNight">
+        <item name="android:windowActionBar">true</item>
+    </style>
 </resources>

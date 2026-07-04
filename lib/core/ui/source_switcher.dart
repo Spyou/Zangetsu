@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../aniyomi/aniyomi_provider.dart';
 import '../di/injector.dart';
 import '../models/provider_info.dart';
 import '../playback/playback_prefs.dart';
@@ -102,7 +103,10 @@ SourceBuckets categorizedSources() {
     }
   }
   // Aniyomi providers — always anime; keyed by their `ani:` sourceId.
+  // NSFW-flagged sources are hidden when the pref is off.
+  final showNsfwAni = sl<PlaybackPrefs>().showNsfwAniyomi;
   for (final p in sl<AniyomiManager>().all) {
+    if (!aniyomiNsfwVisible(p, showNsfwAniyomi: showNsfwAni)) continue;
     anime.add((id: p.sourceId, label: 'Ani · ${p.displayName}', repo: 'Aniyomi'));
   }
 

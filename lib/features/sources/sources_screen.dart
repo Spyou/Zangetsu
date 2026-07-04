@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
+import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/app_mode.dart';
 import '../../core/provider/base_provider.dart';
@@ -1221,17 +1222,53 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
 
 /// Single Aniyomi source row in the Installed tab. Tapping makes it the active
 /// source. No enable/disable switch — Aniyomi sources are always active.
-class _AniSourceRow extends StatelessWidget {
+class _AniSourceRow extends StatefulWidget {
   const _AniSourceRow({required this.source, required this.activeId});
 
   final BaseProvider source;
   final String activeId;
 
-  /// Shows a confirm dialog then uninstalls the source: removes it from the
-  /// Hive installed box, deletes the APK file, and removes it from the
-  /// in-memory [AniyomiManager].
+  @override
+  State<_AniSourceRow> createState() => _AniSourceRowState();
+}
+
+class _AniSourceRowState extends State<_AniSourceRow> {
+  bool _hasSettings = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSettings();
+  }
+
+  @override
+  void didUpdateWidget(_AniSourceRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The element may be recycled for a different source when the list is
+    // filtered/reordered (e.g. the NSFW toggle) — re-query so the gear
+    // reflects the source now shown rather than a stale cached result.
+    if (oldWidget.source.sourceId != widget.source.sourceId) {
+      _hasSettings = false;
+      _checkSettings();
+    }
+  }
+
+  Future<void> _checkSettings() async {
+    final src = widget.source;
+    if (src is! AniyomiProvider) return;
+    final has = await AniyomiExtensionService().hasSourceSettings(src.info.id);
+    if (mounted) setState(() => _hasSettings = has);
+  }
+
+  Future<void> _openSettings() async {
+    final src = widget.source;
+    if (src is! AniyomiProvider) return;
+    await AniyomiExtensionService().openSourceSettings(src.info.id);
+  }
+
+  /// Shows a confirm dialog then uninstalls the source.
   Future<void> _confirmUninstall(BuildContext context) async {
-    final name = source.displayName;
+    final name = widget.source.displayName;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1262,10 +1299,9 @@ class _AniSourceRow extends StatelessWidget {
     if (ok != true) return;
 
     final aniProvider =
-        source is AniyomiProvider ? source as AniyomiProvider : null;
+        widget.source is AniyomiProvider ? widget.source as AniyomiProvider : null;
     final pkg = aniProvider?.info.pkg;
 
-    // (a) Remove from the Hive installed box and (b) delete the APK file.
     const boxName = 'aniyomi_installed';
     if (pkg != null && Hive.isBoxOpen(boxName)) {
       final box = Hive.box<dynamic>(boxName);
@@ -1279,17 +1315,16 @@ class _AniSourceRow extends StatelessWidget {
       await box.delete(pkg);
     }
 
-    // (c) Remove from the in-memory AniyomiManager.
     if (pkg != null) {
       sl<AniyomiManager>().removeWhere(
         (p) => p is AniyomiProvider && p.info.pkg == pkg,
       );
     } else {
-      sl<AniyomiManager>().removeWhere((p) => p.sourceId == source.sourceId);
+      sl<AniyomiManager>().removeWhere(
+        (p) => p.sourceId == widget.source.sourceId,
+      );
     }
 
-    // (d) Notify the user. Active source id is left as-is — SourceRepository
-    // tolerates a missing source without crashing.
     if (context.mounted) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
@@ -1299,10 +1334,9 @@ class _AniSourceRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final active = source.sourceId == activeId;
-    final lang = source is AniyomiProvider
-        ? (source as AniyomiProvider).info.lang
-        : '';
+    final source = widget.source;
+    final active = source.sourceId == widget.activeId;
+    final lang = source is AniyomiProvider ? source.info.lang : '';
     final nameColor = active ? AppColors.accent : AppColors.textPrimary;
     return InkWell(
       onTap: () {
@@ -1339,6 +1373,13 @@ class _AniSourceRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (_hasSettings)
+              IconButton(
+                tooltip: 'Source settings',
+                icon: const Icon(Icons.tune_rounded, size: 20),
+                color: AppColors.textSecondary,
+                onPressed: _openSettings,
+              ),
             IconButton(
               tooltip: 'Uninstall',
               icon: const Icon(Icons.delete_outline_rounded, size: 20),

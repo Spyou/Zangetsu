@@ -17,7 +17,9 @@
 package com.spyou.watch_app.aniyomi
 
 import android.content.Context
+import android.content.Intent
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
+import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnimeImpl
 import eu.kanade.tachiyomi.animesource.model.SEpisodeImpl
@@ -315,6 +317,35 @@ class AniyomiBridge(
                             },
                         )
                     }
+                }
+
+                "hasSourceSettings" -> {
+                    val sourceId = (call.argument<Number>("sourceId") ?: run {
+                        result.error("BAD_ARGS", "sourceId required", null)
+                        return@setMethodCallHandler
+                    }).toLong()
+                    result.success(AniyomiSourceManager.get(sourceId) is ConfigurableAnimeSource)
+                }
+
+                "openSourceSettings" -> {
+                    val sourceId = (call.argument<Number>("sourceId") ?: run {
+                        result.error("BAD_ARGS", "sourceId required", null)
+                        return@setMethodCallHandler
+                    }).toLong()
+                    val src = AniyomiSourceManager.get(sourceId)
+                    if (src == null) {
+                        result.error("NO_SOURCE", "Source $sourceId not found", null)
+                        return@setMethodCallHandler
+                    }
+                    if (src !is ConfigurableAnimeSource) {
+                        result.error("NO_SETTINGS", "Source $sourceId is not configurable", null)
+                        return@setMethodCallHandler
+                    }
+                    val intent = Intent(context, AniyomiSettingsActivity::class.java)
+                        .putExtra(AniyomiSettingsActivity.EXTRA_SOURCE_ID, sourceId)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                    result.success(true)
                 }
 
                 else -> result.notImplemented()
