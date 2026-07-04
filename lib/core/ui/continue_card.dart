@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../aniyomi/aniyomi_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -76,6 +77,18 @@ class _ContinueCardState extends State<ContinueCard> {
                     children: [
                       if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
                         const ColoredBox(color: AppColors.surface2)
+                      else if (widget.headers?['x-ani-src'] != null)
+                        // Cloudflare-walled Aniyomi cover — load via the source's
+                        // native client instead of CachedNetworkImage.
+                        Image(
+                          image: AniyomiImage(
+                            int.parse(widget.headers!['x-ani-src']!),
+                            widget.imageUrl!,
+                          ),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, err, st) =>
+                              const ColoredBox(color: AppColors.surface2),
+                        )
                       else
                         CachedNetworkImage(
                           imageUrl: widget.imageUrl!,

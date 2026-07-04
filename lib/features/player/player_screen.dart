@@ -1347,7 +1347,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 // when the source has no name of its own.
                 label: s.label?.isNotEmpty == true
                     ? _sourceLabelWithQuality(s.label!, s.quality)
-                    : '${k.name.toUpperCase()} • '
+                    // Only prefix the audio kind when it's a real sub/dub — an
+                    // `unknown` kind (e.g. Aniyomi sources) would otherwise read
+                    // as a stray "UNKNOWN •".
+                    : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
                           '${s.quality?.isNotEmpty == true ? s.quality : s.container.name}',
                 active: s == _c.state.active,
                 onTap: () {

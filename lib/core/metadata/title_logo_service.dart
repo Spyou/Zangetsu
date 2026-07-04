@@ -26,8 +26,23 @@ class TitleLogoService {
   Box<String> get _box => _boxRef ??= Hive.box<String>(_boxName);
 
   /// Open the persisted cache. Call once in initDependencies before use.
+  ///
+  /// Resilient: a half-written frame (e.g. the app was killed mid-cache) can make
+  /// the box fail — or hang — to open, which would trap the whole app on the
+  /// splash. The logo cache is disposable, so on any failure/timeout we wipe it
+  /// from disk and reopen fresh instead of blocking boot.
   static Future<void> init() async {
-    await Hive.openBox<String>(_boxName);
+    try {
+      await Hive.openBox<String>(_boxName)
+          .timeout(const Duration(seconds: 6));
+    } catch (_) {
+      try {
+        await Hive.deleteBoxFromDisk(_boxName);
+      } catch (_) {}
+      try {
+        await Hive.openBox<String>(_boxName);
+      } catch (_) {}
+    }
   }
 
   /// Warm logos for the hero carousel up front — SEQUENTIALLY (one TMDB lookup

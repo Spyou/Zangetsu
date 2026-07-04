@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../aniyomi/aniyomi_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -61,6 +62,23 @@ class _PosterCardState extends State<PosterCard> {
                     children: [
                       if (widget.imageUrl == null)
                         const ColoredBox(color: AppColors.surface2)
+                      else if (widget.headers?['x-ani-src'] != null)
+                        // Aniyomi path: fetch bytes through the source's own
+                        // OkHttpClient (carries CF session cookies) instead of
+                        // going through CachedNetworkImage which can't pass CF.
+                        Image(
+                          image: AniyomiImage(
+                            int.parse(widget.headers!['x-ani-src']!),
+                            widget.imageUrl!,
+                          ),
+                          fit: BoxFit.cover,
+                          loadingBuilder: (_, child, progress) =>
+                              progress == null
+                                  ? child
+                                  : const ColoredBox(color: AppColors.surface2),
+                          errorBuilder: (context, error, stackTrace) =>
+                              const ColoredBox(color: AppColors.surface2),
+                        )
                       else
                         CachedNetworkImage(
                           imageUrl: widget.imageUrl!,

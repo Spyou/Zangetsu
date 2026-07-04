@@ -4,6 +4,10 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    // Aniyomi runtime models (Video/Hoster/Track) use kotlinx @Serializable.
+    // Version scoped here (not in root settings) so it can't clash with the
+    // serialization plugin version a Flutter plugin module pins for itself.
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -32,6 +36,10 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
+        // The vendored Aniyomi network layer (OkHttpExtensions.parseAs) uses Kotlin
+        // context parameters, a preview feature in Kotlin 2.2.x. Enabling the syntax
+        // is additive — existing sources don't use it, so nothing else is affected.
+        freeCompilerArgs = freeCompilerArgs + listOf("-Xcontext-parameters")
     }
 
     defaultConfig {
@@ -96,6 +104,12 @@ android {
             isShrinkResources = false
         }
     }
+
+    testOptions {
+        // Pull Android resources (manifests, res/) into the JVM unit-test
+        // classpath so Robolectric can shadow Activity / Application / etc.
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 flutter {
@@ -148,4 +162,30 @@ dependencies {
     implementation("org.libtorrent4j:libtorrent4j-android-arm:2.1.0-31")
     // Tiny local HTTP server that streams the downloading file to the player.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // ── Aniyomi anime-extension runtime (feature/aniyomi) ─────────────────────────
+    // Vendored eu.kanade.tachiyomi.animesource + network compile/run against these.
+    // Apache-2.0 — see docs/licenses/aniyomi-extensions-lib-NOTICE.md. okhttp/okio,
+    // jsoup, androidx.preference, kotlinx-coroutines and kotlinx-serialization-json
+    // are already on the classpath via CloudStream/plugins, so only these are new:
+    implementation("io.reactivex:rxjava:1.3.8")             // rx.Observable — RxJava-1 legacy fallback API
+    implementation("uy.kohesive.injekt:injekt-core:1.16.1") // uy.kohesive.injekt DI (Maven Central; same as upstream)
+    // parseAs()/decodeFromJsonResponse() decode JSON straight off the OkHttp
+    // BufferedSource — this is the only kotlinx-serialization piece not already present.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
+    // androidx.preference backs ConfigurableAnimeSource.setupPreferenceScreen (the
+    // PreferenceScreen typealias). Present transitively at runtime; declared here so
+    // it's also on the compile classpath. Same version already resolved.
+    implementation("androidx.preference:preference-ktx:1.2.1")
+
+    // ── Unit-test harness for AniyomiInjektModulesTest ────────────────────────────
+    // Robolectric provides a fake Android environment on the JVM so
+    // ApplicationProvider.getApplicationContext() resolves without a device.
+    // Pinned to SDK 34 via @Config on the test class (Robolectric 4.12.2's max).
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test:core:1.5.0")
+    testImplementation("androidx.test:core-ktx:1.5.0")
+    // injekt-core is already on the implementation classpath and therefore
+    // visible to testImplementation transitively — no extra declaration needed.
 }

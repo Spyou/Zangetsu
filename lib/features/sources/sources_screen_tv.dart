@@ -2,10 +2,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 
+import '../../core/aniyomi/aniyomi_extension_service.dart';
+import '../../core/aniyomi/aniyomi_provider.dart';
+import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/di/injector.dart';
+import '../../core/provider/base_provider.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -14,10 +20,13 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
+import 'aniyomi_recommended_repos.dart';
+import 'aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
+import 'tv_recommended_aniyomi_repos.dart';
 import 'tv_recommended_cs_repos.dart';
 
 /// TV Providers screen. A single scrollable list with three collapsible
@@ -72,6 +81,46 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
   bool _installedExpanded = true;
   bool _reposExpanded = true;
   bool _csExpanded = true;
+  bool _aniyomiExpanded = true;
+
+  // ── Aniyomi repo state ────────────────────────────────────────────────────
+  List<String> _aniyomiRepoUrls = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAniyomiRepos();
+  }
+
+  Future<void> _loadAniyomiRepos() async {
+    if (Platform.isAndroid) {
+      if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
+        await Hive.openBox<String>(kAniyomiReposBoxName);
+      }
+      final box = Hive.box<String>(kAniyomiReposBoxName);
+      if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
+    }
+  }
+
+  Future<void> _addAniyomiRepo(String url) async {
+    if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
+      await Hive.openBox<String>(kAniyomiReposBoxName);
+    }
+    final box = Hive.box<String>(kAniyomiReposBoxName);
+    if (box.values.contains(url)) return;
+    await box.add(url);
+    if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
+  }
+
+  Future<void> _showAddAniyomiRepoDialog() async {
+    final url = await showDialog<String>(
+      context: context,
+      builder: (_) => const _TvAniyomiAddRepoDialog(),
+    );
+    if (url == null || url.isEmpty) return;
+    if (!mounted) return;
+    await _addAniyomiRepo(url);
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -218,7 +267,7 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                     ),
                     const SizedBox(height: 16),
 
-                    // ── CloudStream (Android only) ─────────────────────────
+                    // ── CloudStream + Aniyomi (Android only) ──────────────
                     if (Platform.isAndroid) ...[
                       _TvSectionHeader(
                         title: 'CloudStream',
@@ -241,7 +290,7 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                         child: _csExpanded
                             ? Padding(
                                 padding: const EdgeInsets.only(top: 8),
-                                child: TvFocusable(scale: 1.0, 
+                                child: TvFocusable(scale: 1.0,
                                   onTap: _showAddCsRepoDialog,
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
@@ -263,6 +312,68 @@ class _TvSourcesViewState extends State<_TvSourcesView> {
                                         const SizedBox(width: 8),
                                         Text(
                                           'Add CS repo',
+                                          style: AppText.headline.copyWith(
+                                            color: AppColors.accent,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // ── Aniyomi ─────────────────────────────────────────
+                      _TvSectionHeader(
+                        title: 'Aniyomi',
+                        expanded: _aniyomiExpanded,
+                        onTap: () =>
+                            setState(() => _aniyomiExpanded = !_aniyomiExpanded),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topCenter,
+                        child: _aniyomiExpanded
+                            ? _TvAniyomiContent(
+                                repoUrls: _aniyomiRepoUrls,
+                                onUrlsChanged: (urls) =>
+                                    setState(() => _aniyomiRepoUrls = urls),
+                              )
+                            : const SizedBox(width: double.infinity),
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                        alignment: Alignment.topCenter,
+                        child: _aniyomiExpanded
+                            ? Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: TvFocusable(
+                                  scale: 1.0,
+                                  onTap: _showAddAniyomiRepoDialog,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.add,
+                                          color: AppColors.accent,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Add Aniyomi repo',
                                           style: AppText.headline.copyWith(
                                             color: AppColors.accent,
                                           ),
@@ -355,11 +466,12 @@ class _TvInstalledContent extends StatelessWidget {
       builder: (context, state) {
         final entries = state.installed;
 
-        // CloudStream installed group at the top (Android only, mirrors phone
-        // _InstalledTab which renders _CloudStreamGroup as item 0).
+        // Aniyomi + CloudStream installed groups at the top (Android only,
+        // mirrors phone _InstalledTab which renders those groups as items 0+1).
         if (Platform.isAndroid) {
           final hasCs = sl<CloudStreamManager>().all.isNotEmpty;
-          if (entries.isEmpty && !hasCs) {
+          final hasAni = sl<AniyomiManager>().all.isNotEmpty;
+          if (entries.isEmpty && !hasCs && !hasAni) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 16),
               child: EmptyState(
@@ -407,6 +519,8 @@ class _TvInstalledContent extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Aniyomi installed sources (Android only).
+            if (Platform.isAndroid) const _TvAniyomiInstalledGroupList(),
             // CloudStream installed groups (Android only, mirrors phone).
             if (Platform.isAndroid) const _TvCsInstalledGroupList(),
 
@@ -427,6 +541,105 @@ class _TvInstalledContent extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Mirrors the phone's _AniyomiInstalledGroup: lists every installed Aniyomi
+/// source in a single D-pad-navigable group. Android-only.
+class _TvAniyomiInstalledGroupList extends StatelessWidget {
+  const _TvAniyomiInstalledGroupList();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: sl<AniyomiManager>(),
+      builder: (context, _) {
+        final sources = sl<AniyomiManager>().all;
+        if (sources.isEmpty) return const SizedBox.shrink();
+        return BlocBuilder<ActiveSourceCubit, String>(
+          builder: (context, activeId) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+                child: Text(
+                  'ANIYOMI',
+                  style: AppText.overline.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
+              ),
+              for (final source in sources)
+                _TvAniSourceRow(source: source, activeId: activeId),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TvAniSourceRow extends StatelessWidget {
+  const _TvAniSourceRow({required this.source, required this.activeId});
+
+  final BaseProvider source;
+  final String activeId;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = source.sourceId == activeId;
+    final lang = source is AniyomiProvider
+        ? (source as AniyomiProvider).info.lang
+        : '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: TvFocusable(
+        scale: 1.0,
+        onTap: () {
+          context.read<ActiveSourceCubit>().setSource(source.sourceId);
+          ScaffoldMessenger.of(context)
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                  content: Text('Active source: ${source.displayName}')),
+            );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      source.displayName,
+                      style: AppText.headline.copyWith(
+                        color:
+                            active ? AppColors.accent : AppColors.textPrimary,
+                        fontWeight: active ? FontWeight.w600 : null,
+                      ),
+                    ),
+                    if (lang.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        'aniyomi • $lang',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1871,6 +2084,370 @@ class _TvCsPluginRowState extends State<_TvCsPluginRow> {
 }
 
 // ---------------------------------------------------------------------------
+// Aniyomi section content for the TV screen
+// ---------------------------------------------------------------------------
+
+/// The body of the Aniyomi section on the TV Providers screen. Lists every
+/// tracked repo (from Hive `'aniyomi_repos'`) with collapsible extension rows
+/// matching what the phone [AniyomiRepoTab] shows.  Repos are fetched lazily;
+/// an "Add Aniyomi repo" button is rendered separately by the parent scroll
+/// list.
+class _TvAniyomiContent extends StatelessWidget {
+  const _TvAniyomiContent({
+    required this.repoUrls,
+    required this.onUrlsChanged,
+  });
+
+  final List<String> repoUrls;
+  final ValueChanged<List<String>> onUrlsChanged;
+
+  Future<void> _removeRepo(BuildContext context, String url) async {
+    final ok = await _tvConfirm(
+      context,
+      title: 'Remove repo?',
+      body:
+          'Already-installed extensions stay installed. You can re-add the repo later.',
+      confirmLabel: 'Remove',
+    );
+    if (!ok) return;
+    if (!Hive.isBoxOpen(kAniyomiReposBoxName)) return;
+    final box = Hive.box<String>(kAniyomiReposBoxName);
+    final key = box.toMap().entries
+        .where((e) => e.value == url)
+        .map((e) => e.key)
+        .firstOrNull;
+    if (key != null) {
+      await box.delete(key);
+      onUrlsChanged(box.values.toList());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (repoUrls.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: EmptyState(
+          icon: Icons.extension_outlined,
+          message:
+              'No Aniyomi repos added yet.\nPress "Add Aniyomi repo" to add one.',
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final url in repoUrls)
+          _TvAniyomiRepoSection(
+            url: url,
+            onRemove: () => _removeRepo(context, url),
+          ),
+      ],
+    );
+  }
+}
+
+class _TvAniyomiRepoSection extends StatefulWidget {
+  const _TvAniyomiRepoSection({required this.url, required this.onRemove});
+
+  final String url;
+  final VoidCallback onRemove;
+
+  @override
+  State<_TvAniyomiRepoSection> createState() => _TvAniyomiRepoSectionState();
+}
+
+class _TvAniyomiRepoSectionState extends State<_TvAniyomiRepoSection> {
+  List<AniyomiRepoEntry>? _entries;
+  bool _fetching = true;
+  String? _fetchError;
+  bool _expanded = true;
+  final Set<String> _installedPkgs = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInstalled();
+    _fetch();
+  }
+
+  void _loadInstalled() {
+    try {
+      if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
+        _installedPkgs.addAll(
+            Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
+                .keys
+                .cast<String>());
+      }
+    } catch (_) {}
+  }
+
+  bool _isInstalled(String pkg) {
+    if (_installedPkgs.contains(pkg)) return true;
+    try {
+      if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
+        return Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
+            .containsKey(pkg);
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final entries = await AniyomiRepo.fetchIndex(widget.url);
+      if (mounted) {
+        setState(() {
+          _entries = entries;
+          _fetching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _fetchError = e.toString();
+          _fetching = false;
+        });
+      }
+    }
+  }
+
+  String get _repoDisplayName {
+    final uri = Uri.tryParse(widget.url);
+    if (uri == null) return widget.url;
+    final segs = uri.pathSegments;
+    if (segs.length >= 2) return '${segs[0]}/${segs[1]}';
+    return uri.host;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = _entries ?? [];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TvFocusable(
+            scale: 1.0,
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : -0.25,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(
+                      Icons.expand_more,
+                      color: AppColors.textSecondary,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _repoDisplayName,
+                      style: AppText.headline,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    _fetching
+                        ? 'Loading…'
+                        : _fetchError != null
+                        ? 'Error'
+                        : '${entries.length} ext.',
+                    style: AppText.caption,
+                  ),
+                  const SizedBox(width: 12),
+                  TvFocusable(
+                    scale: 1.0,
+                    onTap: widget.onRemove,
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded && !_fetching && entries.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Column(
+                children: [
+                  for (final entry in entries)
+                    _TvAniyomiExtensionRow(
+                      entry: entry,
+                      installed: _isInstalled(entry.pkg),
+                      onInstalled: () =>
+                          setState(() => _installedPkgs.add(entry.pkg)),
+                      onUninstalled: () =>
+                          setState(() => _installedPkgs.remove(entry.pkg)),
+                    ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TvAniyomiExtensionRow extends StatefulWidget {
+  const _TvAniyomiExtensionRow({
+    required this.entry,
+    required this.installed,
+    required this.onInstalled,
+    required this.onUninstalled,
+  });
+
+  final AniyomiRepoEntry entry;
+  final bool installed;
+  final VoidCallback onInstalled;
+  final VoidCallback onUninstalled;
+
+  @override
+  State<_TvAniyomiExtensionRow> createState() =>
+      _TvAniyomiExtensionRowState();
+}
+
+class _TvAniyomiExtensionRowState extends State<_TvAniyomiExtensionRow> {
+  bool _busy = false;
+
+  Future<void> _install() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final mgr = sl<AniyomiManager>();
+      await AniyomiExtensionService().installFromRepo(widget.entry, manager: mgr);
+      widget.onInstalled();
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+            SnackBar(content: Text('Installed ${widget.entry.name}')));
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _uninstall() async {
+    final ok = await _tvConfirm(
+      context,
+      title: 'Uninstall ${widget.entry.name}?',
+      body: 'This removes the extension from installed sources.',
+      confirmLabel: 'Uninstall',
+    );
+    if (!ok) return;
+    if (!mounted) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      if (Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
+        await Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
+            .delete(widget.entry.pkg);
+      }
+      sl<AniyomiManager>().removeWhere(
+        (p) => p is AniyomiProvider && p.info.pkg == widget.entry.pkg,
+      );
+      widget.onUninstalled();
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(
+            SnackBar(content: Text('Uninstalled ${widget.entry.name}')));
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = widget.entry;
+    final installed = widget.installed;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: TvFocusable(
+        scale: 1.0,
+        onTap: installed ? _uninstall : _install,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            entry.name,
+                            style: AppText.headline.copyWith(fontSize: 15),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (entry.nsfw) ...[
+                          const SizedBox(width: 8),
+                          const _NsfwBadge(),
+                        ],
+                      ],
+                    ),
+                    if (entry.lang.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(entry.lang, style: AppText.caption),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (_busy)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.accent,
+                  ),
+                )
+              else
+                Text(
+                  installed ? 'Installed' : 'Install',
+                  style: AppText.caption.copyWith(
+                    color:
+                        installed ? AppColors.textSecondary : AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Small shared widget: NSFW badge (mirrors phone's _NsfwBadge)
 // ---------------------------------------------------------------------------
 
@@ -2121,6 +2698,95 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
                     ),
                   )
                 : const Text('Add'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Add-Aniyomi-repo dialog (TV variant of phone's AniyomiAddRepoDialog)
+// ---------------------------------------------------------------------------
+
+class _TvAniyomiAddRepoDialog extends StatefulWidget {
+  const _TvAniyomiAddRepoDialog();
+
+  @override
+  State<_TvAniyomiAddRepoDialog> createState() =>
+      _TvAniyomiAddRepoDialogState();
+}
+
+class _TvAniyomiAddRepoDialogState extends State<_TvAniyomiAddRepoDialog> {
+  final _urlCtrl = TextEditingController();
+  final _urlFocus = FocusNode();
+
+  @override
+  void dispose() {
+    _urlCtrl.dispose();
+    _urlFocus.dispose();
+    super.dispose();
+  }
+
+  void _submit() => Navigator.pop(context, _urlCtrl.text.trim());
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text('Add Aniyomi repo', style: AppText.headline),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _urlCtrl,
+              focusNode: _urlFocus,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              onSubmitted: (_) => _submit(),
+              decoration: const InputDecoration(
+                labelText: 'Repo base URL',
+                hintText: 'https://.../repo',
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Paste the repo base URL — the app appends '
+              '"/index.min.json" automatically.',
+              style: AppText.caption,
+            ),
+            if (kRecommendedAniyomiRepos.isNotEmpty)
+              TvRecommendedAniyomiRepos(
+                onPick: (url) => Navigator.pop(context, url),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TvFocusable(
+          scale: 1.0,
+          onTap: () => Navigator.of(context).pop(),
+          child: TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+        ),
+        TvFocusable(
+          scale: 1.0,
+          onTap: _submit,
+          child: FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: _submit,
+            child: const Text('Add'),
           ),
         ),
       ],

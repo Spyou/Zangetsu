@@ -44,4 +44,18 @@ class ActiveSourceCubit extends Cubit<String> {
     // Fire-and-forget; Hive serializes writes so ordering is preserved.
     _box?.put(_key, id);
   }
+
+  /// Re-applies the persisted pick when it becomes valid *after* boot.
+  ///
+  /// Aniyomi sources load asynchronously, so a saved `ani:` source isn't in the
+  /// valid set when [_restore] runs at construction — we fall back to a JS source
+  /// then. Once the extensions register, the boot step calls this so the user's
+  /// actual pick is honored instead of the fallback. Returns true if it changed.
+  bool reapplySaved(bool Function(String id) isNowValid) {
+    final saved = _box?.get(_key) as String?;
+    if (saved == null || saved.isEmpty || saved == state) return false;
+    if (!isNowValid(saved)) return false;
+    emit(saved);
+    return true;
+  }
 }

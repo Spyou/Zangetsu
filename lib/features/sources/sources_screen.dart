@@ -1,16 +1,23 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 
+import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/app_mode.dart';
+import '../../core/provider/base_provider.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
+import 'aniyomi_repo_tab.dart';
 import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
@@ -57,14 +64,64 @@ class _SourcesViewState extends State<_SourcesView>
   late final TabController _tab;
   int _index = 0;
 
+  // ── Aniyomi repo state ────────────────────────────────────────────────────
+  List<String> _aniyomiRepoUrls = [];
+
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: 4, vsync: this);
     _tab.addListener(() {
       if (_tab.indexIsChanging) return;
       if (_index != _tab.index) setState(() => _index = _tab.index);
     });
+    _loadAniyomiRepos();
+  }
+
+  Future<void> _loadAniyomiRepos() async {
+    if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
+      await Hive.openBox<String>(kAniyomiReposBoxName);
+    }
+    final box = Hive.box<String>(kAniyomiReposBoxName);
+    if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
+  }
+
+  Future<void> _addAniyomiRepo(String url) async {
+    if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
+      await Hive.openBox<String>(kAniyomiReposBoxName);
+    }
+    final box = Hive.box<String>(kAniyomiReposBoxName);
+    if (box.values.contains(url)) return;
+    await box.add(url);
+    if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
+  }
+
+  Future<void> _removeAniyomiRepo(String url) async {
+    if (!Hive.isBoxOpen(kAniyomiReposBoxName)) return;
+    final box = Hive.box<String>(kAniyomiReposBoxName);
+    final key = box.toMap().entries
+        .where((e) => e.value == url)
+        .map((e) => e.key)
+        .firstOrNull;
+    if (key != null) await box.delete(key);
+    if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
+  }
+
+  /// Shows the add-repo dialog and, on a chosen URL, persists it directly.
+  /// This is a State method (not a free function) so it calls [_addAniyomiRepo]
+  /// on `this` — a free function only had the build context, whose
+  /// `findAncestorStateOfType` can't see its own State and silently no-op'd.
+  Future<void> _showAddAniyomiRepoDialog(BuildContext context) async {
+    final Set<String> alreadyAdded = {};
+    if (Hive.isBoxOpen(kAniyomiReposBoxName)) {
+      alreadyAdded.addAll(Hive.box<String>(kAniyomiReposBoxName).values);
+    }
+    final url = await showDialog<String>(
+      context: context,
+      builder: (_) => AniyomiAddRepoDialog(alreadyAddedUrls: alreadyAdded),
+    );
+    if (url == null || url.isEmpty) return;
+    await _addAniyomiRepo(url);
   }
 
   @override
@@ -103,6 +160,7 @@ class _SourcesViewState extends State<_SourcesView>
               Tab(text: 'Installed'),
               Tab(text: 'Repos'),
               Tab(text: 'CloudStream'),
+              Tab(text: 'Aniyomi'),
             ],
           ),
         ),
@@ -128,10 +186,29 @@ class _SourcesViewState extends State<_SourcesView>
                   style: AppText.button.copyWith(color: Colors.white),
                 ),
               )
+            : _index == 3
+            ? FloatingActionButton.extended(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                onPressed: () => _showAddAniyomiRepoDialog(context),
+                icon: const Icon(Icons.add),
+                label: Text(
+                  'Add Aniyomi repo',
+                  style: AppText.button.copyWith(color: Colors.white),
+                ),
+              )
             : null,
         body: TabBarView(
           controller: _tab,
-          children: const [_InstalledTab(), _ReposTab(), _CloudStreamTab()],
+          children: [
+            const _InstalledTab(),
+            const _ReposTab(),
+            const _CloudStreamTab(),
+            AniyomiRepoTab(
+              repoUrls: _aniyomiRepoUrls,
+              onRemoveRepo: _removeAniyomiRepo,
+            ),
+          ],
         ),
       ),
     );
@@ -192,7 +269,8 @@ class _InstalledTab extends StatelessWidget {
       builder: (context, state) {
         final entries = state.installed;
         final hasCs = sl<CloudStreamManager>().all.isNotEmpty;
-        if (entries.isEmpty && !hasCs) {
+        final hasAni = sl<AniyomiManager>().all.isNotEmpty;
+        if (entries.isEmpty && !hasCs && !hasAni) {
           return const EmptyState(
             icon: Icons.dns_rounded,
             message: 'No providers installed.',
@@ -228,12 +306,14 @@ class _InstalledTab extends StatelessWidget {
 
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-          // Index 0 is the CloudStream section (hides itself when empty); the
-          // JS provider groups follow.
-          itemCount: keys.length + 1,
+          // Index 0 is the Aniyomi section (hides itself when empty).
+          // Index 1 is the CloudStream section (hides itself when empty).
+          // JS provider groups follow from index 2 onward.
+          itemCount: keys.length + 2,
           itemBuilder: (_, i) {
-            if (i == 0) return const _CloudStreamGroup();
-            final key = keys[i - 1];
+            if (i == 0) return const _AniyomiInstalledGroup();
+            if (i == 1) return const _CloudStreamGroup();
+            final key = keys[i - 2];
             final items = groups[key]!
               ..sort((a, b) {
                 final an = a.displayName.isNotEmpty ? a.displayName : a.name;
@@ -1033,6 +1113,248 @@ class _AddRepoDialogState extends State<_AddRepoDialog> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Aniyomi installed group (Installed tab — item 0)
+// ---------------------------------------------------------------------------
+
+/// Aniyomi providers installed via `.apk` extensions, shown at the top of the
+/// Installed tab. Reads from [AniyomiManager] (a [ChangeNotifier]). Hidden when
+/// none are installed. Each provider row lets the user set it as the active
+/// source; there's no enable/disable toggle (all Aniyomi sources are always on).
+class _AniyomiInstalledGroup extends StatefulWidget {
+  const _AniyomiInstalledGroup();
+
+  @override
+  State<_AniyomiInstalledGroup> createState() => _AniyomiInstalledGroupState();
+}
+
+class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
+  bool _expanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: sl<AniyomiManager>(),
+      builder: (context, _) {
+        final sources = sl<AniyomiManager>().all;
+        if (sources.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+                child: Row(
+                  children: [
+                    AnimatedRotation(
+                      turns: _expanded ? 0 : -0.25,
+                      duration: const Duration(milliseconds: 200),
+                      child: const Icon(
+                        Icons.expand_more,
+                        color: AppColors.textTertiary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'ANIYOMI',
+                        style: AppText.overline.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '${sources.length}',
+                      style: AppText.overline.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: !_expanded
+                  ? const SizedBox(width: double.infinity)
+                  : BlocBuilder<ActiveSourceCubit, String>(
+                      builder: (context, activeId) => Container(
+                        clipBehavior: Clip.antiAlias,
+                        decoration: BoxDecoration(
+                          color: AppColors.surface,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          children: [
+                            for (var i = 0; i < sources.length; i++) ...[
+                              if (i > 0)
+                                const Divider(
+                                  height: 0.5,
+                                  thickness: 0.5,
+                                  color: AppColors.hairline,
+                                ),
+                              _AniSourceRow(
+                                source: sources[i],
+                                activeId: activeId,
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(height: 18),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Single Aniyomi source row in the Installed tab. Tapping makes it the active
+/// source. No enable/disable switch — Aniyomi sources are always active.
+class _AniSourceRow extends StatelessWidget {
+  const _AniSourceRow({required this.source, required this.activeId});
+
+  final BaseProvider source;
+  final String activeId;
+
+  /// Shows a confirm dialog then uninstalls the source: removes it from the
+  /// Hive installed box, deletes the APK file, and removes it from the
+  /// in-memory [AniyomiManager].
+  Future<void> _confirmUninstall(BuildContext context) async {
+    final name = source.displayName;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Uninstall $name?', style: AppText.headline),
+        content: Text(
+          'This removes the source from your installed list.',
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(
+              'Cancel',
+              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Uninstall',
+              style: AppText.body.copyWith(color: AppColors.accent),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final aniProvider =
+        source is AniyomiProvider ? source as AniyomiProvider : null;
+    final pkg = aniProvider?.info.pkg;
+
+    // (a) Remove from the Hive installed box and (b) delete the APK file.
+    const boxName = 'aniyomi_installed';
+    if (pkg != null && Hive.isBoxOpen(boxName)) {
+      final box = Hive.box<dynamic>(boxName);
+      final apkPath = box.get(pkg) as String?;
+      if (apkPath != null) {
+        try {
+          final f = File(apkPath);
+          if (await f.exists()) await f.delete();
+        } catch (_) {}
+      }
+      await box.delete(pkg);
+    }
+
+    // (c) Remove from the in-memory AniyomiManager.
+    if (pkg != null) {
+      sl<AniyomiManager>().removeWhere(
+        (p) => p is AniyomiProvider && p.info.pkg == pkg,
+      );
+    } else {
+      sl<AniyomiManager>().removeWhere((p) => p.sourceId == source.sourceId);
+    }
+
+    // (d) Notify the user. Active source id is left as-is — SourceRepository
+    // tolerates a missing source without crashing.
+    if (context.mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Uninstalled $name')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = source.sourceId == activeId;
+    final lang = source is AniyomiProvider
+        ? (source as AniyomiProvider).info.lang
+        : '';
+    final nameColor = active ? AppColors.accent : AppColors.textPrimary;
+    return InkWell(
+      onTap: () {
+        context.read<ActiveSourceCubit>().setSource(source.sourceId);
+        ScaffoldMessenger.of(context)
+          ..clearSnackBars()
+          ..showSnackBar(
+            SnackBar(content: Text('Active source: ${source.displayName}')),
+          );
+      },
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    source.displayName,
+                    style: AppText.headline.copyWith(
+                      fontSize: 15,
+                      color: nameColor,
+                      fontWeight: active ? FontWeight.w600 : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    lang.isNotEmpty ? 'aniyomi • $lang' : 'aniyomi',
+                    style: AppText.caption,
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Uninstall',
+              icon: const Icon(Icons.delete_outline_rounded, size: 20),
+              color: AppColors.textSecondary,
+              onPressed: () => _confirmUninstall(context),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// CloudStream installed group (Installed tab — item 1)
+// ---------------------------------------------------------------------------
 
 /// CloudStream sources (loaded `.cs3` plugins) shown at the top of the Installed
 /// tab. They live outside the JS [ProviderRegistry], so this reads them straight

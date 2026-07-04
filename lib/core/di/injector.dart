@@ -1,7 +1,11 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../announce/announcement.dart';
 import '../announce/announcement_service.dart';
@@ -51,6 +55,8 @@ import '../torrent/torrent_service.dart';
 import '../notify/subscription_store.dart';
 import '../notify/subscription_checker.dart';
 import '../discord/discord_rpc.dart';
+import '../aniyomi/aniyomi_extension_service.dart';
+import '../aniyomi/aniyomi_provider.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
@@ -222,6 +228,11 @@ Future<void> initDependencies() async {
   sl.registerSingleton<CloudStreamManager>(csManager);
   await csManager.loadInstalled();
 
+  // Aniyomi extension registry — empty on first launch; populated by the
+  // guarded boot step below once the box and the channel are ready.
+  final aniyomiManager = AniyomiManager();
+  sl.registerSingleton<AniyomiManager>(aniyomiManager);
+
   // --- Provider registry data layer ---------------------------------
   await ProviderReposRegistry.init();
   await ProviderRegistry.init();
@@ -273,6 +284,39 @@ Future<void> initDependencies() async {
     manager.setSettings(sourceId, entry.value);
   }
 
+  // Guarded Aniyomi boot step — reload any previously installed extensions.
+  // This runs on a microtask so it never blocks or slows app startup. Any
+  // failure is caught and logged; it must never propagate to the caller.
+  Future.microtask(() async {
+    try {
+      if (!Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
+        await Hive.openBox<dynamic>(AniyomiExtensionService.installedBoxName);
+      }
+      final box = Hive.box<dynamic>(AniyomiExtensionService.installedBoxName);
+      if (box.isEmpty) {
+        return; // nothing installed yet
+      }
+      final support = await getApplicationSupportDirectory();
+      final aniyomiDir = Directory('${support.path}/aniyomi');
+      final service = AniyomiExtensionService();
+      await service.loadInstalled(aniyomiDir.path);
+      final sources = await service.listSources();
+      final providers = sources.map((s) => AniyomiProvider(info: s)).toList();
+      aniyomiManager.registerAll(providers);
+      // Honor the user's saved active source when it's an Aniyomi source that
+      // wasn't loaded yet at boot (ActiveSourceCubit fell back to a JS source).
+      if (sl.isRegistered<ActiveSourceCubit>()) {
+        final changed = sl<ActiveSourceCubit>()
+            .reapplySaved((id) => aniyomiManager.get(id) != null);
+        if (changed && sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored source
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[aniyomi] boot step failed (non-fatal): $e\n$st');
+    }
+  });
+
   // Global cubit so any widget can read/write the active source id and
   // descendants can react via BlocBuilder/BlocListener. Persists the pick to a
   // Hive box and restores it on launch, validated against the providers that
@@ -294,6 +338,7 @@ Future<void> initDependencies() async {
     SourceRepository(
       manager: manager,
       csManager: csManager,
+      aniManager: aniyomiManager,
       activeSource: sl<ActiveSourceCubit>(),
     ),
   );

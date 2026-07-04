@@ -53,3 +53,6 @@ banner/
 # Poster render scratch (build/render scripts, generated art) — not shipped
 poster/
 secrets.json
+
+# Aniyomi loader test fixture APK — on-device validated instead of committed
+android/app/src/test/resources/aniyomi/*.apk

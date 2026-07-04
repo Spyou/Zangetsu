@@ -16,13 +16,16 @@ class SourceRepository {
   SourceRepository({
     required ProviderManager manager,
     required CloudStreamManager csManager,
+    required AniyomiManager aniManager,
     required ActiveSourceCubit activeSource,
   }) : _manager = manager,
        _csManager = csManager,
+       _aniManager = aniManager,
        _active = activeSource;
 
   final ProviderManager _manager;
   final CloudStreamManager _csManager;
+  final AniyomiManager _aniManager;
   final ActiveSourceCubit _active;
 
   /// Prefetch cache: `sourceId|episodeUrl` → an in-flight/complete fast
@@ -51,17 +54,22 @@ class SourceRepository {
   /// plugin host instead of the JS runtime.
   static bool _isCloudStream(String id) => id.startsWith('cs:');
 
+  /// True for Aniyomi source ids (`ani:<sourceId>`).
+  static bool _isAniyomi(String id) => id.startsWith('ani:');
+
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
   /// All currently-loaded sources (id + display name), for cross-source search
   /// and source labelling. JS providers first (registry order), then any
-  /// installed CloudStream sources.
+  /// installed CloudStream sources, then Aniyomi sources.
   List<({String id, String name})> get loadedSources => [
     ..._manager.all.map((p) => (id: p.sourceId, name: p.displayName)),
     // Only ENABLED CloudStream sources — a disabled source shouldn't be
     // searched (and skipping them trims the search fan-out).
     ..._csManager.enabled.map((p) => (id: p.sourceId, name: p.displayName)),
+    // Aniyomi sources — all registered providers.
+    ..._aniManager.all.map((p) => (id: p.sourceId, name: p.displayName)),
   ];
 
   /// Human-friendly name for a source id (falls back to the id itself).
@@ -69,16 +77,22 @@ class SourceRepository {
     if (_isCloudStream(sourceId)) {
       return _csManager.get(sourceId)?.displayName ?? sourceId;
     }
+    if (_isAniyomi(sourceId)) {
+      return _aniManager.get(sourceId)?.displayName ?? sourceId;
+    }
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
 
   /// Returns true when [sourceId] resolves to an installed/enabled provider on
   /// this device. Read-only — does not affect resolution or health.
-  /// CS ids use identity-compatible lookup ([resolveCompatible]); JS ids use
-  /// the manager registry.
+  /// CS ids use identity-compatible lookup ([resolveCompatible]); Aniyomi and JS
+  /// ids use their respective manager registries.
   bool hasSource(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.resolveCompatible(sourceId) != null;
+    }
+    if (_isAniyomi(sourceId)) {
+      return _aniManager.get(sourceId) != null;
     }
     return _manager.get(sourceId) != null;
   }
@@ -86,16 +100,23 @@ class SourceRepository {
   /// Resolves the provider for a per-call [id], falling back to the active
   /// source when [id] is null. Lets cross-source items (Continue Watching,
   /// My List, etc.) route to their OWN provider instead of the active one.
-  /// CloudStream ids (`cs:<name>`) route to the native plugin host.
+  /// CloudStream ids (`cs:<name>`) route to the native plugin host; Aniyomi
+  /// ids (`ani:<id>`) route to the Aniyomi manager; all others go to the JS
+  /// runtime.
   BaseProvider _providerFor(String? id) {
     final resolved = id ?? _active.state;
     // CloudStream ids carry a `@version@repoTag` suffix that differs between
     // installs, so resolve by provider IDENTITY (exact id first) — otherwise a
     // Watch Together room created on one device can't open on another that has
     // the same provider from a different repo/version.
-    final p = _isCloudStream(resolved)
-        ? _csManager.resolveCompatible(resolved)
-        : _manager.get(resolved);
+    final BaseProvider? p;
+    if (_isCloudStream(resolved)) {
+      p = _csManager.resolveCompatible(resolved);
+    } else if (_isAniyomi(resolved)) {
+      p = _aniManager.get(resolved);
+    } else {
+      p = _manager.get(resolved);
+    }
     if (p == null) {
       throw StateError('Provider not loaded: $resolved');
     }

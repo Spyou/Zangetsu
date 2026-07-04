@@ -88,6 +88,14 @@ class VideoSource extends Equatable {
   @JsonKey(defaultValue: <Subtitle>[])
   final List<Subtitle> subtitles;
 
+  /// Hidden local-proxy fallback URL (Aniyomi only): when the direct stream is
+  /// Cloudflare-blocked and won't start, the player transparently re-opens this
+  /// same quality via the proxy. Not serialized and NOT a separate picker entry —
+  /// set only at resolution time. `@JsonKey(includeFromJson/ToJson: false)` keeps
+  /// it out of the generated (de)serialization so no codegen change is needed.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? proxyUrl;
+
   const VideoSource({
     required this.url,
     this.quality,
@@ -97,6 +105,7 @@ class VideoSource extends Equatable {
     this.kind = AudioKind.unknown,
     this.audioLang,
     this.subtitles = const [],
+    this.proxyUrl,
   });
 
   factory VideoSource.fromJson(Map<String, dynamic> json) =>

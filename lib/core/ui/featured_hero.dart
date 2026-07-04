@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 
+import '../aniyomi/aniyomi_image_provider.dart';
 import '../di/injector.dart';
 import '../metadata/title_logo_service.dart';
 import '../models/media_item.dart';
@@ -117,7 +118,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         // but this avoids a full-resolution decode on the UI isolate every time
         // the cinematic carousel rotates to a new cover (the 30s-of-lag cause).
         ResizeImage(
-          CachedNetworkImageProvider(cover, headers: widget.item.coverHeaders),
+          aniyomiCoverProvider(cover, widget.item.coverHeaders),
           width: 180,
         ),
         size: const Size(180, 270),
@@ -147,7 +148,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     final tint = _artColor ?? AppColors.surface2;
 
     final provider = hasCover
-        ? CachedNetworkImageProvider(cover, headers: item.coverHeaders)
+        ? aniyomiCoverProvider(cover, item.coverHeaders)
         : null;
 
     return RepaintBoundary(

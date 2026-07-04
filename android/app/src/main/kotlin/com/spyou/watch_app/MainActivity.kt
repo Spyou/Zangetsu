@@ -14,9 +14,12 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.spyou.watch_app.aniyomi.AniyomiBridge
 import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import io.flutter.embedding.android.FlutterActivity
 import java.util.concurrent.TimeUnit
 import io.flutter.embedding.engine.FlutterEngine
@@ -583,6 +586,12 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Aniyomi channel: load Aniyomi anime-extension APKs, register sources,
+        // and expose them to the Flutter layer for browse/search/play. Mirrors the
+        // CloudStream channel registration style above.
+        val aniyomiChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/aniyomi")
+        AniyomiBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(aniyomiChannel)
 
         // Device-class detection: lets Dart know if the app is running on an
         // Android TV / Leanback device. Returns false on phones/tablets so every

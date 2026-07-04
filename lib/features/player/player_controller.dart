@@ -286,6 +286,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   // over to the next untried mirror at the same position.
   Timer? _stallTimer;
   Duration _stallAnchorPos = Duration.zero;
+  // Streams served by a local proxy (127.0.0.1 — Aniyomi's Cloudflare video
+  // proxy) buffer on seek while the proxy re-fetches segments through the source
+  // client; that's expected, not a dead source, so the stall watchdog is skipped
+  // for them (mirrors the torrent exemption handled via _activeTorrentId).
+  bool _isProxiedStream = false;
+  // Start watchdog for a DIRECT Aniyomi source: a Cloudflare-walled stream fails
+  // to start without emitting a clean mpv error (it just hangs), so the normal
+  // error-based failover never fires. If a direct Aniyomi source hasn't started
+  // within ~10s we fail over — pickDefault then auto-selects the higher-ranked
+  // "· proxy" version of the same quality. Aniyomi-only + direct-only, so
+  // CloudStream / JS / torrent sources are completely unaffected.
+  Timer? _startTimer;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
   // an episode crosses the 92% scrobble threshold).
@@ -529,6 +541,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         }
         if (p > Duration.zero) {
           _startedThisSource = true; // source is playing
+          _startTimer?.cancel();
+          _startTimer = null;
           if (!_markedWatching) {
             _markedWatching = true;
             _markWatching(); // "started watching" → CURRENT on AniList now
@@ -599,7 +613,11 @@ class PlayerCubit extends Cubit<PlayerState> {
         // A torrent local stream buffers while pieces download — that's normal,
         // not a dead source. Arming the stall watchdog would restart the torrent
         // from scratch and churn native memory (force close). Skip it for torrents.
-        if (buffering && _startedThisSource && !_recovering && _activeTorrentId == null) {
+        if (buffering &&
+            _startedThisSource &&
+            !_recovering &&
+            _activeTorrentId == null &&
+            !_isProxiedStream) {
           // Started source stalled — arm a watchdog. If we're still stuck and the
           // position hasn't advanced ~18s later, the stream is likely dead → fail
           // over.
@@ -1326,7 +1344,15 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  Future<void> _open(VideoSource s, {Duration? seekTo, int? gen}) async {
+  Future<void> _open(
+    VideoSource s, {
+    Duration? seekTo,
+    int? gen,
+    // When set, mpv plays this URL instead of [s.url] while [s] stays the active
+    // source (so the picker highlight is unchanged). Used to transparently swap
+    // a Cloudflare-blocked Aniyomi stream onto its hidden proxy fallback.
+    String? playUrlOverride,
+  }) async {
     final g = gen ?? ++_gen;
     // Torrent sources stream through the native engine into a local http url,
     // which then opens exactly like any progressive file. This branch is the
@@ -1336,6 +1362,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       if (g != _gen || resolved == null) return; // superseded or failed (error emitted)
       s = resolved;
     }
+    _startTimer?.cancel();
     _startedThisSource = false; // reset; set true once this source plays
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
@@ -1410,8 +1437,24 @@ class PlayerCubit extends Cubit<PlayerState> {
             : '0',
       );
     }
+    final playUrl = playUrlOverride ?? s.url;
+    _isProxiedStream = playUrl.startsWith('http://127.0.0.1');
+    // A direct Aniyomi stream can hang on Cloudflare without a clean mpv error —
+    // arm a start watchdog to swap to its hidden proxy fallback if it never
+    // starts. Aniyomi-only + direct-only, so other sources are untouched.
+    _startTimer?.cancel();
+    if (playUrlOverride == null &&
+        sourceId.startsWith('ani:') &&
+        !_isProxiedStream &&
+        s.proxyUrl != null) {
+      _startTimer = Timer(const Duration(seconds: 10), () {
+        if (!_startedThisSource) {
+          _open(s, seekTo: _lastPos, playUrlOverride: s.proxyUrl);
+        }
+      });
+    }
     await player.open(
-      Media(s.url, httpHeaders: s.headers),
+      Media(playUrl, httpHeaders: s.headers),
     );
     if (g != _gen) return; // superseded mid-open
     // Discord Rich Presence: announce the episode now playing.
@@ -1510,6 +1553,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Only a source that NEVER started is worth cycling away from.
     if (_startedThisSource) return;
     if (!fatal || _recovering) return;
+    // A direct Aniyomi stream that failed on Cloudflare → swap to its hidden
+    // proxy fallback (same quality) rather than cycling through other qualities.
+    final act = state.active;
+    if (sourceId.startsWith('ani:') && !_isProxiedStream && act?.proxyUrl != null) {
+      await _open(act!, seekTo: _lastPos, playUrlOverride: act.proxyUrl);
+      return;
+    }
     _recovering = true;
     final failed = state.active;
     if (failed != null) _tried.add(failed.url);

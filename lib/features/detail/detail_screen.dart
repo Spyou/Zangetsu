@@ -41,6 +41,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
@@ -1086,17 +1087,31 @@ class _Hero extends StatelessWidget {
   /// The static cover backdrop — used as the base layer when there's no
   /// trailer, and as the placeholder/fallback underneath the player.
   Widget _coverBackdrop() {
-    return hasCover
-        ? CachedNetworkImage(
-            imageUrl: coverUrl,
-            httpHeaders: coverHeaders,
-            fit: BoxFit.cover,
-            memCacheWidth: 800,
-            placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
-            errorWidget: (c, u, e) =>
-                const ColoredBox(color: AppColors.surface2),
-          )
-        : const ColoredBox(color: AppColors.surface2);
+    if (!hasCover) return const ColoredBox(color: AppColors.surface2);
+    // Aniyomi path: when the x-ani-src marker is present, fetch image bytes
+    // through the source's own OkHttpClient (which carries the CF session)
+    // instead of CachedNetworkImage which cannot pass Cloudflare.
+    final aniSrcId = coverHeaders?['x-ani-src'];
+    if (aniSrcId != null) {
+      return Image(
+        image: AniyomiImage(int.parse(aniSrcId), coverUrl),
+        fit: BoxFit.cover,
+        loadingBuilder: (_, child, progress) =>
+            progress == null
+                ? child
+                : const ColoredBox(color: AppColors.surface2),
+        errorBuilder: (context, error, stackTrace) =>
+            const ColoredBox(color: AppColors.surface2),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: coverUrl,
+      httpHeaders: coverHeaders,
+      fit: BoxFit.cover,
+      memCacheWidth: 800,
+      placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
+      errorWidget: (c, u, e) => const ColoredBox(color: AppColors.surface2),
+    );
   }
 
   @override

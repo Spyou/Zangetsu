@@ -4,6 +4,7 @@ import '../di/injector.dart';
 import '../models/provider_info.dart';
 import '../playback/playback_prefs.dart';
 import '../provider/cloudstream_provider.dart';
+import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -100,6 +101,11 @@ SourceBuckets categorizedSources() {
       movies.add(csRow);
     }
   }
+  // Aniyomi providers — always anime; keyed by their `ani:` sourceId.
+  for (final p in sl<AniyomiManager>().all) {
+    anime.add((id: p.sourceId, label: 'Ani · ${p.displayName}', repo: 'Aniyomi'));
+  }
+
   anime.sort(byRowLabel);
   movies.sort(byRowLabel);
 
@@ -129,6 +135,11 @@ class SourceSwitcher extends StatelessWidget {
       final cs = sl<CloudStreamManager>().get(currentId);
       final name = cs?.displayName;
       if (name != null && name.isNotEmpty) return 'CS · $name';
+      return currentId;
+    }
+    if (currentId.startsWith('ani:')) {
+      final name = sl<AniyomiManager>().get(currentId)?.displayName;
+      if (name != null && name.isNotEmpty) return 'Ani · $name';
       return currentId;
     }
     final entry = sl<ProviderRegistry>().entryFor(currentId);

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_js/flutter_js.dart';
@@ -747,5 +749,54 @@ class ProviderManager implements ProviderRuntimeLoader {
   void disposeAll() {
     _host.providers.clear();
     _host.dispose();
+  }
+}
+
+// ── Aniyomi provider registry ────────────────────────────────────────────────
+
+/// Holds all registered Aniyomi source providers — the counterpart to
+/// [CloudStreamManager] for the native Aniyomi extension bridge.
+///
+/// Providers are added at install time via [registerAll] and reloaded on cold
+/// start by the guarded boot step in [initDependencies]. All runtime state is
+/// in-memory; the persistence record (pkg → apk path) lives in the
+/// `'aniyomi_installed'` Hive box managed by [AniyomiExtensionService].
+class AniyomiManager extends ChangeNotifier {
+  final Map<String, BaseProvider> _providers = {};
+
+  /// All registered Aniyomi providers (`ani:*` source ids).
+  List<BaseProvider> get all => _providers.values.toList();
+
+  /// Resolves a provider by its `ani:<sourceId>` identifier, or null when not
+  /// installed.
+  BaseProvider? get(String sourceId) => _providers[sourceId];
+
+  /// Register [provider] under its [BaseProvider.sourceId]. Replaces any
+  /// existing entry with the same id.
+  void register(BaseProvider provider) {
+    _providers[provider.sourceId] = provider;
+    notifyListeners();
+  }
+
+  /// Batch-register [providers]; notifies listeners once when non-empty.
+  void registerAll(List<BaseProvider> providers) {
+    for (final p in providers) {
+      _providers[p.sourceId] = p;
+    }
+    if (providers.isNotEmpty) notifyListeners();
+  }
+
+  /// Removes all providers that match [predicate] and notifies listeners when
+  /// at least one was removed.  Used by the uninstall flow to remove all
+  /// sources that belong to a given extension package.
+  void removeWhere(bool Function(BaseProvider provider) predicate) {
+    final toRemove = _providers.entries
+        .where((e) => predicate(e.value))
+        .map((e) => e.key)
+        .toList();
+    for (final k in toRemove) {
+      _providers.remove(k);
+    }
+    if (toRemove.isNotEmpty) notifyListeners();
   }
 }
