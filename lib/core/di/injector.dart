@@ -219,14 +219,16 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ProviderDownloader>(downloader);
 
   // CloudStream sources route through a native MethodChannel (Android-only).
-  // Construct + load any cached plugins now so they appear in the picker; the
-  // load is a no-op on non-Android and swallows native channel errors. The
-  // repo box (persisted owner/repo grouping) MUST be opened before the manager
-  // touches it.
+  // The repo box (persisted owner/repo grouping) MUST be opened before the
+  // manager touches it. Loading the installed .cs3 plugins (DexClassLoad +
+  // instantiate) is deferred to a microtask AFTER boot (see the guarded step
+  // near the end of this function) so the splash is instant regardless of how
+  // many extensions are installed — and a slow/misbehaving plugin can't stall
+  // startup. Sources register a moment after launch; a saved `cs:` active
+  // source is restored via reapplySaved + a Home reload.
   await CloudStreamManager.init();
   final csManager = CloudStreamManager();
   sl.registerSingleton<CloudStreamManager>(csManager);
-  await csManager.loadInstalled();
 
   // Aniyomi extension registry — empty on first launch; populated by the
   // guarded boot step below once the box and the channel are ready.
@@ -334,8 +336,9 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ActiveSourceCubit>(
     ActiveSourceCubit(
       box: Hive.box(ActiveSourceCubit.boxName),
-      // Valid ids = JS providers + loaded CloudStream sources, so a saved
-      // `cs:` active source survives a cold restart instead of falling back.
+      // Valid ids = JS providers (CloudStream + Aniyomi load off the boot
+      // path, so a saved `cs:`/`ani:` active source is restored a moment later
+      // via reapplySaved rather than being in this initial set).
       valid: {
         ...manager.installedIds,
         ...csManager.all.map((p) => p.sourceId),
@@ -383,4 +386,28 @@ Future<void> initDependencies() async {
   // rows for the active source) while the intro animation plays — Home then
   // appears already populated instead of flashing skeletons.
   sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>()));
+
+  // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
+  // splash path (see the note where csManager is registered) so startup is
+  // instant and a heavy/misbehaving plugin can't stall it. Scheduled here,
+  // after ActiveSourceCubit + HomeCubit exist, so the restore below is safe.
+  // Any failure is caught and logged; it must never propagate to the caller.
+  Future.microtask(() async {
+    try {
+      await csManager.loadInstalled();
+      // Honor a saved `cs:` active source that wasn't loaded yet at boot
+      // (ActiveSourceCubit fell back to a JS source). reapplySaved only swaps
+      // when the saved id is now valid — it never resets an already-restored
+      // source — so this composes cleanly with the Aniyomi step above.
+      if (sl.isRegistered<ActiveSourceCubit>()) {
+        final changed = sl<ActiveSourceCubit>()
+            .reapplySaved((id) => csManager.get(id) != null);
+        if (changed && sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored source
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[cloudstream] deferred load failed (non-fatal): $e\n$st');
+    }
+  });
 }
