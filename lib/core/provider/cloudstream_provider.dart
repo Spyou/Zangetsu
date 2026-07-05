@@ -386,7 +386,16 @@ class CloudStreamProvider implements BaseProvider {
 
         final quality = (sm['quality'] as num?)?.toInt() ?? 0;
         final isM3u8 = sm['isM3u8'] == true;
-        final referer = (sm['referer'] ?? '').toString();
+        var referer = (sm['referer'] ?? '').toString();
+        // Some Cloudflare-fronted CDNs (e.g. mewstream/nekostream behind the
+        // MegaPlay/Vidtube embeds) run a WAF rule that 403s a bare-origin
+        // Referer ("https://host") but serves 200 for the "https://host/" a
+        // real browser always sends. Normalize a scheme+host-only Referer to
+        // include that trailing slash so these HLS streams play. Harmless for
+        // every other source (servers treat the two forms identically).
+        if (RegExp(r'^https?://[^/]+$').hasMatch(referer)) {
+          referer = '$referer/';
+        }
         final headers = <String, String>{};
         final rawHeaders = sm['headers'];
         if (rawHeaders is Map) {
