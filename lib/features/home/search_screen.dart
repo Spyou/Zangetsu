@@ -190,6 +190,8 @@ class _SearchViewState extends State<_SearchView> {
           tagsFor: _tagsFor,
           onTap: _openDetail,
           onLongPress: _showInfo,
+          // Search results are a fixed, already-fetched set — no pagination.
+          onLoadMore: null,
         ),
       ),
     ).then((_) {

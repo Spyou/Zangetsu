@@ -116,10 +116,8 @@ class _FakeRepo implements SourceRepository {
   }) => throw UnimplementedError();
 
   @override
-  Future<List<HomeSection>> home({
-    String category = 'sub',
-    String? sourceId,
-  }) => throw UnimplementedError();
+  Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) =>
+      throw UnimplementedError();
 
   @override
   Future<List<MediaItem>> search(
@@ -127,6 +125,10 @@ class _FakeRepo implements SourceRepository {
     String category = 'sub',
     String? sourceId,
   }) => throw UnimplementedError();
+
+  @override
+  Future<List<MediaItem>> browseMore(BrowseMore more, int page) =>
+      throw UnimplementedError();
 
   @override
   Future<List<AniyomiFilter>> aniFilters(String sourceId) =>
@@ -167,12 +169,12 @@ class _FakeRepo implements SourceRepository {
 // ---------------------------------------------------------------------------
 
 MediaItem _fakeItem(String sourceId, {String title = 'Naruto'}) => MediaItem(
-      id: 'id-$sourceId',
-      title: title,
-      url: 'https://example.com/$sourceId',
-      type: ProviderType.anime,
-      sourceId: sourceId,
-    );
+  id: 'id-$sourceId',
+  title: title,
+  url: 'https://example.com/$sourceId',
+  type: ProviderType.anime,
+  sourceId: sourceId,
+);
 
 /// Seeds a non-empty query into [bloc] and drains the resulting state changes.
 Future<void> _seedQuery(SearchBloc bloc, String query) async {
@@ -208,107 +210,145 @@ void main() {
   group('SearchBloc._onSourceFiltersApplied', () {
     // ── Test 1: filter stored + searchStatus called with filtersJson ─────────
 
-    test('stores selectionJson in aniFiltersBySource and forwards it to searchStatus',
-        () async {
-      await _seedQuery(bloc, 'naruto');
+    test(
+      'stores selectionJson in aniFiltersBySource and forwards it to searchStatus',
+      () async {
+        await _seedQuery(bloc, 'naruto');
 
-      repo.searchItems = [_fakeItem('ani:1')];
+        repo.searchItems = [_fakeItem('ani:1')];
 
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["sel"]'));
-      // One microtask loop lets the first synchronous emit complete; a second
-      // allows the awaited searchStatus future to resolve.
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["sel"]'));
+        // One microtask loop lets the first synchronous emit complete; a second
+        // allows the awaited searchStatus future to resolve.
+        await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(bloc.state.aniFiltersBySource['ani:1'], '["sel"]',
-          reason: 'filter should be stored under the source id');
-      expect(repo.capturedSourceId, 'ani:1',
-          reason: 'searchStatus should receive the correct sourceId');
-      expect(repo.capturedFiltersJson, '["sel"]',
-          reason: 'non-empty selection must be forwarded as filtersJson');
-    });
+        expect(
+          bloc.state.aniFiltersBySource['ani:1'],
+          '["sel"]',
+          reason: 'filter should be stored under the source id',
+        );
+        expect(
+          repo.capturedSourceId,
+          'ani:1',
+          reason: 'searchStatus should receive the correct sourceId',
+        );
+        expect(
+          repo.capturedFiltersJson,
+          '["sel"]',
+          reason: 'non-empty selection must be forwarded as filtersJson',
+        );
+      },
+    );
 
     // ── Test 2: empty selection clears the entry and passes null filtersJson ─
 
-    test('empty selectionJson removes the entry and calls searchStatus with null filtersJson',
-        () async {
-      await _seedQuery(bloc, 'naruto');
+    test(
+      'empty selectionJson removes the entry and calls searchStatus with null filtersJson',
+      () async {
+        await _seedQuery(bloc, 'naruto');
 
-      // Build up a filter entry first.
-      repo.searchItems = [_fakeItem('ani:1')];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["sel"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(bloc.state.aniFiltersBySource, contains('ani:1'));
+        // Build up a filter entry first.
+        repo.searchItems = [_fakeItem('ani:1')];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["sel"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(bloc.state.aniFiltersBySource, contains('ani:1'));
 
-      // Clear it.
-      repo.capturedFiltersJson = 'sentinel_should_be_overwritten';
-      bloc.add(const SearchSourceFiltersApplied('ani:1', ''));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+        // Clear it.
+        repo.capturedFiltersJson = 'sentinel_should_be_overwritten';
+        bloc.add(const SearchSourceFiltersApplied('ani:1', ''));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(bloc.state.aniFiltersBySource, isNot(contains('ani:1')),
-          reason: 'empty selection should remove the source entry');
-      expect(repo.capturedFiltersJson, isNull,
-          reason: 'cleared entry must be forwarded as null filtersJson');
-    });
+        expect(
+          bloc.state.aniFiltersBySource,
+          isNot(contains('ani:1')),
+          reason: 'empty selection should remove the source entry',
+        );
+        expect(
+          repo.capturedFiltersJson,
+          isNull,
+          reason: 'cleared entry must be forwarded as null filtersJson',
+        );
+      },
+    );
 
     // ── Test 3a: group is APPENDED when none existed ─────────────────────────
 
-    test('group is appended when searchStatus returns items and no group existed',
-        () async {
-      await _seedQuery(bloc, 'naruto');
-      expect(bloc.state.groups, isEmpty);
+    test(
+      'group is appended when searchStatus returns items and no group existed',
+      () async {
+        await _seedQuery(bloc, 'naruto');
+        expect(bloc.state.groups, isEmpty);
 
-      repo.searchItems = [_fakeItem('ani:1')];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+        repo.searchItems = [_fakeItem('ani:1')];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(bloc.state.groups, hasLength(1));
-      expect(bloc.state.groups.first.sourceId, 'ani:1');
-      expect(bloc.state.groups.first.arrivalIndex, 0,
-          reason: 'first appended group gets arrivalIndex 0');
-    });
+        expect(bloc.state.groups, hasLength(1));
+        expect(bloc.state.groups.first.sourceId, 'ani:1');
+        expect(
+          bloc.state.groups.first.arrivalIndex,
+          0,
+          reason: 'first appended group gets arrivalIndex 0',
+        );
+      },
+    );
 
     // ── Test 3b: group is REPLACED and arrivalIndex preserved ────────────────
 
-    test('group is replaced in-place on subsequent apply, preserving arrivalIndex',
-        () async {
-      await _seedQuery(bloc, 'naruto');
+    test(
+      'group is replaced in-place on subsequent apply, preserving arrivalIndex',
+      () async {
+        await _seedQuery(bloc, 'naruto');
 
-      // Seed the group.
-      repo.searchItems = [_fakeItem('ani:1', title: 'Naruto')];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      final originalArrival = bloc.state.groups.first.arrivalIndex;
+        // Seed the group.
+        repo.searchItems = [_fakeItem('ani:1', title: 'Naruto')];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        final originalArrival = bloc.state.groups.first.arrivalIndex;
 
-      // Replace with different items.
-      repo.searchItems = [_fakeItem('ani:1', title: 'Bleach')];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s2"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+        // Replace with different items.
+        repo.searchItems = [_fakeItem('ani:1', title: 'Bleach')];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["s2"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(bloc.state.groups, hasLength(1),
-          reason: 'replace should not duplicate the group');
-      expect(bloc.state.groups.first.items.first.title, 'Bleach');
-      expect(bloc.state.groups.first.arrivalIndex, originalArrival,
-          reason: 'arrivalIndex must be preserved on replace');
-    });
+        expect(
+          bloc.state.groups,
+          hasLength(1),
+          reason: 'replace should not duplicate the group',
+        );
+        expect(bloc.state.groups.first.items.first.title, 'Bleach');
+        expect(
+          bloc.state.groups.first.arrivalIndex,
+          originalArrival,
+          reason: 'arrivalIndex must be preserved on replace',
+        );
+      },
+    );
 
     // ── Test 3c: group is REMOVED when searchStatus returns empty items ───────
 
-    test('group is removed when searchStatus returns an empty item list', () async {
-      await _seedQuery(bloc, 'naruto');
+    test(
+      'group is removed when searchStatus returns an empty item list',
+      () async {
+        await _seedQuery(bloc, 'naruto');
 
-      // Seed a group.
-      repo.searchItems = [_fakeItem('ani:1')];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(bloc.state.groups, hasLength(1));
+        // Seed a group.
+        repo.searchItems = [_fakeItem('ani:1')];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["s1"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+        expect(bloc.state.groups, hasLength(1));
 
-      // Return empty → group removed.
-      repo.searchItems = [];
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s2"]'));
-      await Future<void>.delayed(const Duration(milliseconds: 10));
+        // Return empty → group removed.
+        repo.searchItems = [];
+        bloc.add(const SearchSourceFiltersApplied('ani:1', '["s2"]'));
+        await Future<void>.delayed(const Duration(milliseconds: 10));
 
-      expect(bloc.state.groups, isEmpty,
-          reason: 'group should be removed when there are no results');
-    });
+        expect(
+          bloc.state.groups,
+          isEmpty,
+          reason: 'group should be removed when there are no results',
+        );
+      },
+    );
   });
 }

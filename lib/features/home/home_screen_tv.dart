@@ -19,6 +19,7 @@ import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
+import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
 
 /// TV Home: a full-screen vertically-scrolling layout with the phone's real
@@ -55,8 +56,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       MaterialPageRoute<void>(
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
-          episodesResolver: () =>
-              sl<SourceRepository>().episodes(item.url, sourceId: item.sourceId),
+          episodesResolver: () => sl<SourceRepository>().episodes(
+            item.url,
+            sourceId: item.sourceId,
+          ),
           resume: sl<ResumeStore>(),
           resolveSources: (u) => sl<SourceRepository>().sources(
             u,
@@ -93,24 +96,45 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// Mirrors the phone's _HomeViewState._heroMeta.  Swallows any error
   /// (missing sl registration in tests, network failure) and returns null so
   /// the hero meta line gracefully stays empty.
-  Future<HeroMeta?> _heroMeta(MediaItem m) => _metaCache.putIfAbsent(
-    '${m.sourceId}:${m.id}',
-    () async {
-      try {
-        final d = await sl<SourceRepository>().detail(
-          m.url,
-          sourceId: m.sourceId,
-        );
-        return HeroMeta(
-          genres: d.genres,
-          episodeCount: d.episodes.length,
-          year: d.year,
-        );
-      } catch (_) {
-        return null;
-      }
-    },
-  );
+  Future<HeroMeta?> _heroMeta(MediaItem m) =>
+      _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
+        try {
+          final d = await sl<SourceRepository>().detail(
+            m.url,
+            sourceId: m.sourceId,
+          );
+          return HeroMeta(
+            genres: d.genres,
+            episodeCount: d.episodes.length,
+            year: d.year,
+          );
+        } catch (_) {
+          return null;
+        }
+      });
+
+  /// Open the full-grid "See All" view of a browse row. [SeeAllScreen] forwards
+  /// to the TV variant when [AppMode.isTv]; a paginable row (Aniyomi
+  /// popular/latest, CloudStream mainPage) carries a `more` descriptor that
+  /// drives infinite scroll, everything else stays a fixed list.
+  void _openSeeAll(HomeSection section) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SeeAllScreen(
+          title: section.title,
+          items: section.items,
+          onTap: _openDetail,
+          onLoadMore: section.more == null
+              ? null
+              : (page) =>
+                    sl<SourceRepository>().browseMore(section.more!, page),
+        ),
+      ),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
 
   /// Button decorator injected into [FeaturedHero.wrapButton]: wraps each hero
   /// action button with [TvFocusable] so it is D-pad focusable and OK-selectable.
@@ -120,11 +144,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     VoidCallback onTap, {
     bool autofocus = false,
   }) {
-    return TvFocusable(
-      autofocus: autofocus,
-      onTap: onTap,
-      child: child,
-    );
+    return TvFocusable(autofocus: autofocus, onTap: onTap, child: child);
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -177,6 +197,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               child: _TvRail(
                 section: sections[i],
                 onTap: _openDetail,
+                onSeeAll: () => _openSeeAll(sections[i]),
                 // Autofocus the first card in the first rail only when there
                 // is no hero (e.g. source still loading).
                 firstAutofocus: heroItem == null && i == 0,
@@ -197,11 +218,13 @@ class _TvRail extends StatelessWidget {
   const _TvRail({
     required this.section,
     required this.onTap,
+    this.onSeeAll,
     this.firstAutofocus = false,
   });
 
   final HomeSection section;
   final ValueChanged<MediaItem> onTap;
+  final VoidCallback? onSeeAll;
   final bool firstAutofocus;
 
   static const double _cardWidth = 140;
@@ -239,8 +262,51 @@ class _TvRail extends StatelessWidget {
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 40),
-              itemCount: items.length,
+              // +1 trailing "See all" card (D-pad: navigate right past the last
+              // poster to reach it). Only when a handler is supplied.
+              itemCount: items.length + (onSeeAll != null ? 1 : 0),
               itemBuilder: (context, index) {
+                if (index >= items.length) {
+                  // Trailing "See all" card — opens the full paginated grid.
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Center(
+                      child: SizedBox(
+                        width: _cardWidth,
+                        height: _cardHeight,
+                        child: TvFocusable(
+                          onTap: onSeeAll!,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: AppColors.surface2,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            alignment: Alignment.center,
+                            child: const Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.arrow_forward_rounded,
+                                  color: AppColors.textPrimary,
+                                  size: 28,
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  'See all',
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }
                 final item = items[index];
                 return Padding(
                   padding: const EdgeInsets.only(right: 12),

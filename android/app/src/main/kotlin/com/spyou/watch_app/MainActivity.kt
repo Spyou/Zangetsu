@@ -500,6 +500,28 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // One further page of a single mainPage category, for the
+                    // "See all" browse grid's infinite scroll. Additive — returns
+                    // a flat list of item maps (decoded like `search`).
+                    "getMainPagePaged" -> {
+                        val name = call.argument<String>("name")
+                        val data = call.argument<String>("data")
+                        val page = call.argument<Int>("page") ?: 1
+                        val apiName = call.argument<String>("apiName")
+                        csReadPool.execute {
+                            try {
+                                val res = host.getMainPagePaged(
+                                    apiName ?: "",
+                                    name ?: "",
+                                    data ?: "",
+                                    page,
+                                )
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     "search" -> {
                         val name = call.argument<String>("name")
                         val query = call.argument<String>("query")

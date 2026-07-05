@@ -26,10 +26,9 @@ const MethodChannel _csChannel = MethodChannel('zangetsu/cloudstream');
 Future<bool> csPluginHasSettings(String apiName) async {
   if (!Platform.isAndroid) return false;
   try {
-    return await _csChannel.invokeMethod<bool>(
-          'hasPluginSettings',
-          {'name': apiName},
-        ) ??
+    return await _csChannel.invokeMethod<bool>('hasPluginSettings', {
+          'name': apiName,
+        }) ??
         false;
   } catch (_) {
     return false;
@@ -72,7 +71,9 @@ String _csRepoTag(String repoUrl) {
   for (var i = 0; i < s.length; i++) {
     h = (31 * h + s.codeUnitAt(i)) & 0xFFFFFFFF; // 32-bit wrap, like Java int
   }
-  return h.toRadixString(16); // unsigned hex, lowercase — like Integer.toHexString
+  return h.toRadixString(
+    16,
+  ); // unsigned hex, lowercase — like Integer.toHexString
 }
 
 /// A single installed CloudStream source, adapted to the app's [BaseProvider]
@@ -114,15 +115,14 @@ class CloudStreamProvider implements BaseProvider {
   /// The key the native host resolves a call against. We prefer the unique
   /// `.cs3` file id so same-named sources address their OWN plugin; the host
   /// also accepts the bare name (legacy fallback), so older sources still work.
-  String get hostKey => (sourcePlugin != null && sourcePlugin!.isNotEmpty)
-      ? sourcePlugin!
-      : name;
+  String get hostKey =>
+      (sourcePlugin != null && sourcePlugin!.isNotEmpty) ? sourcePlugin! : name;
 
   @override
   String get sourceId =>
       (disambiguate && sourcePlugin != null && sourcePlugin!.isNotEmpty)
-          ? 'cs:${sourcePlugin!}'
-          : 'cs:$name';
+      ? 'cs:${sourcePlugin!}'
+      : 'cs:$name';
 
   @override
   String get displayName {
@@ -149,8 +149,9 @@ class CloudStreamProvider implements BaseProvider {
 
   /// Whether ANY of this source's advertised types is anime; drives the
   /// provider-level [ProviderType] and the default for items without a type.
-  ProviderType get _providerType =>
-      types.any(_kAnimeTypes.contains) ? ProviderType.anime : ProviderType.movie;
+  ProviderType get _providerType => types.any(_kAnimeTypes.contains)
+      ? ProviderType.anime
+      : ProviderType.movie;
 
   /// Public type accessor (anime vs movie/series) for UI bucketing — e.g. the
   /// home source switcher.
@@ -158,12 +159,12 @@ class CloudStreamProvider implements BaseProvider {
 
   @override
   Future<ProviderInfo> getInfo() async => ProviderInfo(
-        name: name,
-        lang: lang,
-        // CloudStream plugins don't expose a single base URL; the host owns it.
-        baseUrl: '',
-        type: _providerType,
-      );
+    name: name,
+    lang: lang,
+    // CloudStream plugins don't expose a single base URL; the host owns it.
+    baseUrl: '',
+    type: _providerType,
+  );
 
   @override
   Future<List<MediaItem>> search(
@@ -200,7 +201,8 @@ class CloudStreamProvider implements BaseProvider {
       {'name': hostKey, 'query': query},
     );
     final m = _asMap(raw);
-    final items = (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
+    final items =
+        (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
         const <MediaItem>[];
     final error = (m['error'] as String?)?.isNotEmpty == true
         ? m['error'] as String
@@ -340,7 +342,10 @@ class CloudStreamProvider implements BaseProvider {
   }
 
   @override
-  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) async {
+  Future<List<Episode>> getEpisodes(
+    String url, {
+    String category = 'sub',
+  }) async {
     final detail = await getDetail(url, category: category);
     return detail.episodes;
   }
@@ -439,7 +444,9 @@ class CloudStreamProvider implements BaseProvider {
 
   @override
   Future<List<HomeSection>?> getHome({String category = 'sub'}) {
-    return _inflightHome ??= _fetchHome().whenComplete(() => _inflightHome = null);
+    return _inflightHome ??= _fetchHome().whenComplete(
+      () => _inflightHome = null,
+    );
   }
 
   /// Static so it can run inside a `compute` isolate (off the UI thread).
@@ -452,10 +459,9 @@ class CloudStreamProvider implements BaseProvider {
     // thread). Handing Flutter a nested List<Map> would make the platform
     // channel encode it on the UI thread — which skips frames on big feeds like
     // MovieBox. Decode it OFF the UI thread (compute) when it's large.
-    final jsonStr = await _csChannel.invokeMethod<String>(
-      'getHome',
-      {'name': hostKey},
-    );
+    final jsonStr = await _csChannel.invokeMethod<String>('getHome', {
+      'name': hostKey,
+    });
     if (jsonStr == null || jsonStr.isEmpty || jsonStr == '[]') return null;
     final List<dynamic> raw = jsonStr.length > 20000
         ? await compute(_decodeJsonList, jsonStr)
@@ -468,11 +474,55 @@ class CloudStreamProvider implements BaseProvider {
           (m['items'] as List?)?.map(_mediaItemFromMap).toList() ??
           const <MediaItem>[];
       if (items.isEmpty) continue;
+      // The native host (getHome) stamps each row with the mainPage category
+      // identifiers so the "See all" grid can page further. When they're
+      // absent (older native build) leave `more` null → the row stays a fixed
+      // list, exactly as before.
+      final catName = (m['categoryName'] as String?) ?? '';
+      final catData = (m['categoryData'] as String?) ?? '';
+      final more = catName.isEmpty
+          ? null
+          : BrowseMore(
+              sourceId: sourceId,
+              kind: 'cs_mainpage',
+              // Pack name + data with a single space, split back in
+              // [browseMainPage]. CloudStream category names never contain a
+              // space that would confuse the split — data may, so we split on
+              // the FIRST space only.
+              categoryId: '$catName $catData',
+            );
       sections.add(
-        HomeSection(title: (m['title'] ?? '').toString(), items: items),
+        HomeSection(
+          title: (m['title'] ?? '').toString(),
+          items: items,
+          more: more,
+        ),
       );
     }
     return sections.isEmpty ? null : sections;
+  }
+
+  /// One further page of a CloudStream `mainPage` category, for the "See all"
+  /// browse grid's infinite scroll. [categoryId] is the packed `"<name> <data>"`
+  /// produced in [_fetchHome]; [page] is 1-based. Android-only; returns `[]` on
+  /// any error (never throws) so a failed page just stops the scroll.
+  Future<List<MediaItem>> browseMainPage(String categoryId, int page) async {
+    if (!Platform.isAndroid) return const [];
+    // Split on the FIRST space: name is a single token, data may itself contain
+    // spaces (it's an opaque category url/path).
+    final sep = categoryId.indexOf(' ');
+    final name = sep < 0 ? categoryId : categoryId.substring(0, sep);
+    final data = sep < 0 ? '' : categoryId.substring(sep + 1);
+    try {
+      final raw = await _csChannel.invokeMethod<List<dynamic>>(
+        'getMainPagePaged',
+        {'apiName': hostKey, 'name': name, 'data': data, 'page': page},
+      );
+      return (raw ?? const []).map(_mediaItemFromMap).toList();
+    } catch (e) {
+      debugPrint('[cloudstream] browseMainPage failed for $name p$page: $e');
+      return const [];
+    }
   }
 
   // ── mapping helpers ───────────────────────────────────────────────────────
@@ -787,10 +837,9 @@ class CloudStreamManager extends ChangeNotifier {
     ];
     if (Platform.isAndroid && files.isNotEmpty) {
       try {
-        final raw = await _csChannel.invokeMethod<List<dynamic>>(
-          'deleteRepo',
-          {'files': files},
-        );
+        final raw = await _csChannel.invokeMethod<List<dynamic>>('deleteRepo', {
+          'files': files,
+        });
         _rebuildFrom(raw);
       } catch (e) {
         debugPrint('[cloudstream] deleteRepo failed: $e');
@@ -863,7 +912,9 @@ class CloudStreamManager extends ChangeNotifier {
   Future<int> checkAllUpdates({bool force = false}) async {
     if (!Platform.isAndroid) return 0;
     final last = _lastUpdateCheck;
-    if (!force && last != null && DateTime.now().difference(last) < _updatesTtl) {
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < _updatesTtl) {
       return updateCount;
     }
     _lastUpdateCheck = DateTime.now();
@@ -991,8 +1042,9 @@ class CloudStreamManager extends ChangeNotifier {
   /// separately (un)installable entry (that's what lets you install the second
   /// copy). Without [repoUrl] it's the legacy name-only check.
   bool isPluginInstalled(String internalName, {String? repoUrl}) {
-    final tag =
-        (repoUrl != null && repoUrl.isNotEmpty) ? _csRepoTag(repoUrl) : null;
+    final tag = (repoUrl != null && repoUrl.isNotEmpty)
+        ? _csRepoTag(repoUrl)
+        : null;
     return _providers.values.any((p) {
       final sp = p.sourcePlugin;
       if (sp == null || sp.split('@').first != internalName) return false;
@@ -1009,12 +1061,13 @@ class CloudStreamManager extends ChangeNotifier {
   Future<void> installPlugin(CsPluginMeta plugin, {String repoUrl = ''}) async {
     if (!Platform.isAndroid) return;
     try {
-      final raw = await _csChannel.invokeMethod<List<dynamic>>('installPlugin', {
-        'url': plugin.url,
-        'internalName': plugin.internalName,
-        'version': plugin.version,
-        'repoUrl': repoUrl,
-      });
+      final raw = await _csChannel
+          .invokeMethod<List<dynamic>>('installPlugin', {
+            'url': plugin.url,
+            'internalName': plugin.internalName,
+            'version': plugin.version,
+            'repoUrl': repoUrl,
+          });
       _rebuildFrom(raw);
       notifyListeners();
     } catch (e) {
@@ -1025,7 +1078,10 @@ class CloudStreamManager extends ChangeNotifier {
 
   /// Uninstalls one plugin and its sources — repo-scoped via [repoUrl], so a
   /// same-named plugin from another repo is left intact. Rebuilds.
-  Future<void> uninstallPlugin(CsPluginMeta plugin, {String repoUrl = ''}) async {
+  Future<void> uninstallPlugin(
+    CsPluginMeta plugin, {
+    String repoUrl = '',
+  }) async {
     if (!Platform.isAndroid) return;
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>(
@@ -1140,7 +1196,9 @@ class CloudStreamManager extends ChangeNotifier {
     final repoTag = _csRepoTag(repoUrl); // tag derived from THIS repo's url
     for (final p in catalog) {
       final base = '${p['internalName']}@${p['version']}';
-      files.add(base); // legacy un-tagged id (installs from before per-repo tagging)
+      files.add(
+        base,
+      ); // legacy un-tagged id (installs from before per-repo tagging)
       files.add('$base@$repoTag'); // current tagged id (this repo's copy)
     }
     // If the native response carried explicit file ids (legacy), keep them too.
@@ -1156,7 +1214,9 @@ class CloudStreamManager extends ChangeNotifier {
       'name': (m['name'] ?? existing['name'] ?? '').toString(),
       'files': files.toList(),
       // Keep the prior catalog if the new response has none (defensive).
-      'catalog': catalog.isNotEmpty ? catalog : (existing['catalog'] ?? const []),
+      'catalog': catalog.isNotEmpty
+          ? catalog
+          : (existing['catalog'] ?? const []),
     };
     _repos.removeWhere((r) => (r['url'] ?? '').toString() == repoUrl);
     _repos.add(entry);
@@ -1308,7 +1368,8 @@ class CloudStreamManager extends ChangeNotifier {
       final sourcePlugin = (m['sourcePlugin'] as String?);
       // Disambiguate only when another installed source shares this name AND we
       // have a unique file id to identify it by.
-      final dup = (nameCounts[name] ?? 0) > 1 &&
+      final dup =
+          (nameCounts[name] ?? 0) > 1 &&
           sourcePlugin != null &&
           sourcePlugin.isNotEmpty;
       final provider = CloudStreamProvider(

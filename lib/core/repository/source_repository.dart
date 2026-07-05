@@ -181,6 +181,34 @@ class SourceRepository {
     return fallback.where((s) => s.items.isNotEmpty).toList();
   }
 
+  /// Fetches the next [page] of a paginable Home row (the "See all" grid's
+  /// infinite scroll), routing on [BrowseMore.kind]:
+  ///   * `ani_popular` → the Aniyomi/JS provider's `popular(page:)`
+  ///   * `ani_latest`  → the Aniyomi provider's `latest(page:)`
+  ///   * `cs_mainpage` → the CloudStream provider's `browseMainPage(id, page)`
+  ///
+  /// Never throws — any failure (unknown kind, wrong provider type, provider
+  /// error) degrades to an empty list so the caller just stops the scroll.
+  Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
+    try {
+      final p = _providerFor(more.sourceId);
+      switch (more.kind) {
+        case 'ani_popular':
+          return p.popular(page: page);
+        case 'ani_latest':
+          return p is AniyomiProvider ? p.latest(page: page) : const [];
+        case 'cs_mainpage':
+          return (p is CloudStreamProvider && more.categoryId != null)
+              ? p.browseMainPage(more.categoryId!, page)
+              : const [];
+        default:
+          return const [];
+      }
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<List<MediaItem>> search(
     String query, {
     String category = 'sub',
@@ -229,8 +257,12 @@ class SourceRepository {
       }
       final provider = _providerFor(resolved);
       final items = (_isAniyomi(resolved) && provider is AniyomiProvider)
-          ? await provider.search(query, 1,
-              category: category, filtersJson: filtersJson)
+          ? await provider.search(
+              query,
+              1,
+              category: category,
+              filtersJson: filtersJson,
+            )
           : await provider.search(query, 1, category: category);
       return (
         items: items,
@@ -294,8 +326,7 @@ class SourceRepository {
       final key = _prefetchKey(episodeUrl, sourceId);
       // 1. One-shot prefetch started on the detail screen.
       final entry = _prefetch.remove(key);
-      if (entry != null &&
-          DateTime.now().difference(entry.at) < _prefetchTtl) {
+      if (entry != null && DateTime.now().difference(entry.at) < _prefetchTtl) {
         final cached = await entry.future;
         // Fall through to a fresh resolve only if the prefetch came back empty
         // (or had failed → []), so this is never worse than no prefetch.

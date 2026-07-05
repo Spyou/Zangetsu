@@ -91,9 +91,17 @@ class AniyomiProvider implements BaseProvider {
     final latestItems = results[1];
     final sections = <HomeSection>[
       if (popularItems.isNotEmpty)
-        HomeSection(title: 'Popular', items: popularItems),
+        HomeSection(
+          title: 'Popular',
+          items: popularItems,
+          more: BrowseMore(sourceId: sourceId, kind: 'ani_popular'),
+        ),
       if (latestItems.isNotEmpty)
-        HomeSection(title: 'Latest', items: latestItems),
+        HomeSection(
+          title: 'Latest',
+          items: latestItems,
+          more: BrowseMore(sourceId: sourceId, kind: 'ani_latest'),
+        ),
     ];
     return sections.isEmpty ? null : sections;
   }
@@ -109,6 +117,11 @@ class AniyomiProvider implements BaseProvider {
     if (!Platform.isAndroid) return const [];
     return _invokeAnimeList('getPopular', {'sourceId': info.id, 'page': page});
   }
+
+  /// Returns the source's latest-updated anime page. Public wrapper over
+  /// [_fetchLatest] so the "See all" browse grid can page it (mirrors the
+  /// already-public [popular]).
+  Future<List<MediaItem>> latest({int page = 1}) => _fetchLatest(page: page);
 
   /// Returns the source's latest-updated anime page.
   Future<List<MediaItem>> _fetchLatest({int page = 1}) =>
@@ -188,9 +201,15 @@ class AniyomiProvider implements BaseProvider {
 
   /// Returns the episode list for [url].  [category] (sub/dub) is unused.
   @override
-  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) async {
+  Future<List<Episode>> getEpisodes(
+    String url, {
+    String category = 'sub',
+  }) async {
     if (!Platform.isAndroid) return const [];
-    final raw = await _safeInvoke('getEpisodes', {'sourceId': info.id, 'url': url});
+    final raw = await _safeInvoke('getEpisodes', {
+      'sourceId': info.id,
+      'url': url,
+    });
     return _parseEpisodeList(raw);
   }
 
@@ -203,10 +222,10 @@ class AniyomiProvider implements BaseProvider {
     bool fast = false,
   }) async {
     if (!Platform.isAndroid) return const [];
-    final raw = await _safeInvoke(
-      'getVideoList',
-      {'sourceId': info.id, 'url': episodeUrl},
-    );
+    final raw = await _safeInvoke('getVideoList', {
+      'sourceId': info.id,
+      'url': episodeUrl,
+    });
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;
@@ -225,10 +244,7 @@ class AniyomiProvider implements BaseProvider {
 
   /// Invokes [method] on the aniyomi channel with [args], returning the raw
   /// JSON string result.  Returns null on any error so callers degrade cleanly.
-  Future<String?> _safeInvoke(
-    String method,
-    Map<String, dynamic> args,
-  ) async {
+  Future<String?> _safeInvoke(String method, Map<String, dynamic> args) async {
     try {
       return await _aniChannel.invokeMethod<String>(method, args);
     } catch (e) {

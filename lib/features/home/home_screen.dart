@@ -115,18 +115,16 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   /// Genres + episode count for the hero banner (lazily fetched, cached).
-  Future<HeroMeta?> _heroMeta(MediaItem m) => _metaCache.putIfAbsent(
-    '${m.sourceId}:${m.id}',
-    () async {
-      final d = await _detailOf(m.url, m.sourceId);
-      if (d == null) return null;
-      return HeroMeta(
-        genres: d.genres,
-        episodeCount: d.episodes.length,
-        year: d.year,
-      );
-    },
-  );
+  Future<HeroMeta?> _heroMeta(MediaItem m) =>
+      _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
+        final d = await _detailOf(m.url, m.sourceId);
+        if (d == null) return null;
+        return HeroMeta(
+          genres: d.genres,
+          episodeCount: d.episodes.length,
+          year: d.year,
+        );
+      });
 
   /// Warm ONLY the first hero's metadata (the slide shown first). The rest load
   /// lazily, one at a time, as the carousel rotates — each via the hero's own
@@ -146,10 +144,7 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   void _openDetail(MediaItem item) {
-    Navigator.push(
-      context,
-      DetailScreen.route(item),
-    ).then((_) {
+    Navigator.push(context, DetailScreen.route(item)).then((_) {
       // Refresh Continue Watching + My List row when returning from detail.
       if (mounted) setState(() {});
     });
@@ -249,7 +244,8 @@ class _HomeViewState extends State<_HomeView> {
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           sourceId: item.sourceId,
-          episodesResolver: () => _repo.episodes(item.url, sourceId: item.sourceId),
+          episodesResolver: () =>
+              _repo.episodes(item.url, sourceId: item.sourceId),
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
               _repo.sources(u, sourceId: item.sourceId, fast: true),
@@ -383,6 +379,11 @@ class _HomeViewState extends State<_HomeView> {
           items: section.items,
           onTap: _openDetail,
           onLongPress: _showInfo,
+          // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
+          // carry a `more` descriptor; everything else stays a fixed list.
+          onLoadMore: section.more == null
+              ? null
+              : (page) => _repo.browseMore(section.more!, page),
         ),
       ),
     ).then((_) {
@@ -431,7 +432,8 @@ class _HomeViewState extends State<_HomeView> {
               // The load finished but the source returned no rows — almost
               // always a dead/blocked site (or a search-only source). Show a
               // clear message instead of a blank screen.
-              final loadedEmpty = !state.loading &&
+              final loadedEmpty =
+                  !state.loading &&
                   state.sections != null &&
                   state.sections!.isEmpty;
               return CustomScrollView(

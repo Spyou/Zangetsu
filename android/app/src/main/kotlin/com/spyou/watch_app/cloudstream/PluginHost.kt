@@ -417,17 +417,75 @@ class PluginHost(private val context: Context) {
                     }
                 }
             }.awaitAll()
-            for (resp in responses) {
+            // Zip each response back to the mainPage entry it came from so every
+            // row can carry the category identifiers (name + data) needed to
+            // re-fetch further pages. take(6) keeps them index-aligned.
+            val cats = api.mainPage.take(6)
+            for ((idx, resp) in responses.withIndex()) {
                 if (resp == null) continue
+                val mp = cats.getOrNull(idx)
                 for (hpl in resp.items) {
                     val items = hpl.list.map { it.toMap(apiName) }
                     if (items.isNotEmpty()) {
-                        rows.add(mapOf("title" to hpl.name, "items" to items))
+                        // Existing keys ("title","items") are unchanged; the two
+                        // "category*" keys are purely additive — an older Dart
+                        // build just ignores them.
+                        rows.add(
+                            mapOf(
+                                "title" to hpl.name,
+                                "items" to items,
+                                "categoryName" to (mp?.name ?: hpl.name),
+                                "categoryData" to (mp?.data?.toString() ?: ""),
+                            ),
+                        )
                     }
                 }
             }
         }
         return rows
+    }
+
+    /**
+     * One further page of a single `mainPage` category, for the "See all"
+     * browse grid's infinite scroll. Finds the mainPage entry matching [name]
+     * (preferring an exact [data] match), re-runs [MainAPI.getMainPage] for
+     * [page], and returns the item rows flattened across the response — mapped
+     * with the same [toMap] as [getHome]. Guarded like [getHome]; any failure
+     * (missing api/category, timeout, throw) degrades to an empty list.
+     */
+    fun getMainPagePaged(
+        apiName: String,
+        name: String,
+        data: String,
+        page: Int,
+    ): List<Map<String, Any?>> {
+        val api = apiByName(apiName) ?: return emptyList()
+        if (!api.hasMainPage) return emptyList()
+        // Prefer a category whose name AND data both match; fall back to a
+        // name-only match so a source that reports empty/rewritten data still
+        // paginates.
+        val mp = api.mainPage.firstOrNull { it.name == name && it.data == data }
+            ?: api.mainPage.firstOrNull { it.name == name }
+            ?: return emptyList()
+        val out = mutableListOf<Map<String, Any?>>()
+        runBlocking {
+            withTimeoutOrNull(HOME_ROW_TIMEOUT_MS) {
+                runCatching {
+                    api.getMainPage(page, MainPageRequest(mp.name, mp.data, true))
+                }.onFailure {
+                    android.util.Log.w(
+                        "PluginHost",
+                        "getMainPagePaged '$name' p$page failed for $apiName: $it",
+                        it,
+                    )
+                }.getOrNull()
+            }?.let { resp ->
+                for (hpl in resp.items) {
+                    out.addAll(hpl.list.map { it.toMap(apiName) })
+                }
+            }
+        }
+        return out
     }
 
     fun search(apiName: String, query: String): List<Map<String, Any?>> {
