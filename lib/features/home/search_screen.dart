@@ -391,6 +391,37 @@ class _SearchViewState extends State<_SearchView> {
             const SizedBox(height: 12),
             _scopePill(),
             const SizedBox(height: 10),
+            // Ecosystem tabs (All · Zangetsu · CloudStream · Aniyomi) — a pure
+            // view filter over the loaded groups; the layout inside each tab is
+            // unchanged. Hidden while typing, in current-source mode, and until
+            // at least two ecosystems are installed (otherwise the strip is
+            // redundant and the screen reads exactly as before).
+            BlocBuilder<SearchBloc, SearchState>(
+              buildWhen: (p, c) =>
+                  p.status != c.status ||
+                  p.currentSourceOnly != c.currentSourceOnly ||
+                  p.ecosystem != c.ecosystem ||
+                  p.suggestions != c.suggestions ||
+                  p.groups != c.groups,
+              builder: (context, state) {
+                final showingSuggestions =
+                    state.status != SearchStatus.success &&
+                    state.suggestions.isNotEmpty;
+                final tabs = ecosystemTabsFor(
+                  _repo.loadedSources.map((s) => s.id),
+                );
+                if (state.currentSourceOnly ||
+                    showingSuggestions ||
+                    state.status != SearchStatus.success ||
+                    tabs.length < 3) {
+                  return const SizedBox.shrink();
+                }
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ecosystemTabs(state, tabs),
+                );
+              },
+            ),
             // Per-source result chips — only meaningful when searching all
             // sources, so they're hidden in current-source-only mode (one
             // source can't be filtered down further).
@@ -743,6 +774,76 @@ class _SearchViewState extends State<_SearchView> {
     );
   }
 
+  // ── Ecosystem tabs (All · Zangetsu · CloudStream · Aniyomi) ────────────────
+  /// Horizontal underlined-tab strip that filters the shown source groups to a
+  /// single ecosystem. Styled to match the Detail screen's tab bar (accent
+  /// label + underline when selected) so it reads as top-level navigation,
+  /// visually distinct from the per-source pill chips below it. "All" (first,
+  /// default) applies no filter, i.e. current behaviour.
+  Widget _ecosystemTabs(SearchState state, List<SearchEcosystem> tabs) {
+    return SizedBox(
+      height: 42,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(left: 16),
+        children: [
+          for (var i = 0; i < tabs.length; i++)
+            _ecosystemTab(
+              label: tabs[i].label,
+              selected: state.ecosystem == tabs[i],
+              onTap: () => context.read<SearchBloc>().add(
+                SearchEcosystemChanged(tabs[i]),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// A single ecosystem tab: accent label + a 2.5px accent underline when
+  /// selected, muted with no underline otherwise — mirrors the Detail tab bar.
+  Widget _ecosystemTab({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(right: 24),
+        // Center a text-hugging underline box in the strip so the 2.5px line
+        // sits just under the label (padding.bottom) instead of at the far
+        // bottom of a full-height cell.
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.only(bottom: 5),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: selected ? AppColors.accent : Colors.transparent,
+                    width: 2.5,
+                  ),
+                ),
+              ),
+              child: Text(
+                label,
+                style: AppText.headline.copyWith(
+                  fontSize: 15,
+                  color: selected ? AppColors.accent : AppColors.textSecondary,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ── Source filter chips ───────────────────────────────────────────────────
   Widget _filterChips(SearchState state) {
     final groups = state.visibleGroups;
@@ -812,12 +913,20 @@ class _SearchViewState extends State<_SearchView> {
     final prefs = sl<SearchSourcePrefs>();
     final landed = {for (final g in state.groups) g.sourceId};
     // Current-source-only mode queries a single source, so there are never
-    // other sources still streaming in — no skeleton sections.
+    // other sources still streaming in — no skeleton sections. On a specific
+    // ecosystem tab, only that ecosystem's still-loading sources get skeletons
+    // (the "All" tab keeps every pending source, i.e. current behaviour).
     final pending =
         (state.currentSourceOnly || state.sourceFilter != kAllSources)
         ? const <({String id, String name})>[]
         : _repo.loadedSources
-              .where((s) => prefs.isIncluded(s.id) && !landed.contains(s.id))
+              .where(
+                (s) =>
+                    prefs.isIncluded(s.id) &&
+                    !landed.contains(s.id) &&
+                    (state.ecosystem == SearchEcosystem.all ||
+                        ecosystemOf(s.id) == state.ecosystem),
+              )
               .toList();
     final stillLoading = pending.isNotEmpty;
 

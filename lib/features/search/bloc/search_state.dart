@@ -106,11 +106,11 @@ class SourceResultGroup extends Equatable {
   final int arrivalIndex;
 
   SourceResultGroup withItems(List<MediaItem> items) => SourceResultGroup(
-        sourceId: sourceId,
-        sourceName: sourceName,
-        items: items,
-        arrivalIndex: arrivalIndex,
-      );
+    sourceId: sourceId,
+    sourceName: sourceName,
+    items: items,
+    arrivalIndex: arrivalIndex,
+  );
 
   @override
   List<Object?> get props => [sourceId, sourceName, items, arrivalIndex];
@@ -118,6 +118,46 @@ class SourceResultGroup extends Equatable {
 
 /// Sentinel source-filter value meaning "all sources".
 const String kAllSources = '__all__';
+
+/// The provider ecosystem a source belongs to. Drives the phone Search
+/// ecosystem tab strip (All · Zangetsu · CloudStream · Aniyomi). [all] is the
+/// default "no filter" tab, not a real ecosystem.
+enum SearchEcosystem {
+  all('All'),
+  zangetsu('Zangetsu'),
+  cloudstream('CloudStream'),
+  aniyomi('Aniyomi');
+
+  const SearchEcosystem(this.label);
+  final String label;
+}
+
+/// Maps a [sourceId] to its ecosystem from the id prefix: `ani:` → Aniyomi,
+/// `cs:` → CloudStream, anything else → Zangetsu (the app's own JS providers).
+/// Never returns [SearchEcosystem.all] — that's the "no filter" tab.
+SearchEcosystem ecosystemOf(String sourceId) {
+  if (sourceId.startsWith('ani:')) return SearchEcosystem.aniyomi;
+  if (sourceId.startsWith('cs:')) return SearchEcosystem.cloudstream;
+  return SearchEcosystem.zangetsu;
+}
+
+/// The ecosystem tabs to offer for the given installed [sourceIds]. Always
+/// leads with [SearchEcosystem.all]; each real ecosystem (Zangetsu, then
+/// CloudStream, then Aniyomi) is included only when at least one installed
+/// source belongs to it — so e.g. the Aniyomi tab never appears until an
+/// Aniyomi source is installed.
+List<SearchEcosystem> ecosystemTabsFor(Iterable<String> sourceIds) {
+  final present = {for (final id in sourceIds) ecosystemOf(id)};
+  return [
+    SearchEcosystem.all,
+    for (final e in const [
+      SearchEcosystem.zangetsu,
+      SearchEcosystem.cloudstream,
+      SearchEcosystem.aniyomi,
+    ])
+      if (present.contains(e)) e,
+  ];
+}
 
 class SearchState extends Equatable {
   final SearchStatus status;
@@ -128,6 +168,11 @@ class SearchState extends Equatable {
 
   /// Active source-filter chip: [kAllSources] or a specific sourceId.
   final String sourceFilter;
+
+  /// Active ecosystem tab (phone Search). [SearchEcosystem.all] (default) shows
+  /// every ecosystem's groups together — identical to the pre-tabs behaviour;
+  /// any other value narrows the rendered groups to that one ecosystem.
+  final SearchEcosystem ecosystem;
 
   /// When true the search is scoped to ONLY the active Home source (the heavy
   /// search never fans out). When false the legacy multi-source search runs.
@@ -164,6 +209,7 @@ class SearchState extends Equatable {
     this.query = '',
     this.groups = const [],
     this.sourceFilter = kAllSources,
+    this.ecosystem = SearchEcosystem.all,
     this.currentSourceOnly = true,
     this.sort = SearchSort.bestMatch,
     this.contentFilter = SearchContentFilter.all,
@@ -185,7 +231,8 @@ class SearchState extends Equatable {
   /// Applies the content-type + genre + decade filters to [item].
   bool _passes(MediaItem item) {
     if (!contentFilter.matches(item)) return false;
-    if (genreFilter != null && !SearchMeta.titleMentionsGenre(item, genreFilter!)) {
+    if (genreFilter != null &&
+        !SearchMeta.titleMentionsGenre(item, genreFilter!)) {
       return false;
     }
     if (decadeFilter != null) {
@@ -199,16 +246,29 @@ class SearchState extends Equatable {
     return true;
   }
 
-  /// Total results across every source, honouring all client-side filters.
-  int get totalCount =>
-      groups.fold(0, (sum, g) => sum + g.items.where(_passes).length);
+  /// True when [sourceId]'s ecosystem matches the active tab. The default "All"
+  /// tab matches every ecosystem, so nothing is filtered — keeping the All view
+  /// byte-for-byte identical to the pre-tabs behaviour.
+  bool _inEcosystem(String sourceId) =>
+      ecosystem == SearchEcosystem.all || ecosystemOf(sourceId) == ecosystem;
+
+  /// Total results across every source in the active ecosystem, honouring all
+  /// client-side filters.
+  int get totalCount => groups.fold(
+    0,
+    (sum, g) =>
+        sum + (_inEcosystem(g.sourceId) ? g.items.where(_passes).length : 0),
+  );
 
   /// Result count for one source group under the active filters.
   int countFor(SourceResultGroup g) => g.items.where(_passes).length;
 
-  /// Result groups that have at least one item under the active filters.
-  List<SourceResultGroup> get visibleGroups =>
-      [for (final g in groups) if (countFor(g) > 0) g];
+  /// Result groups (in the active ecosystem) that have at least one item under
+  /// the active filters.
+  List<SourceResultGroup> get visibleGroups => [
+    for (final g in groups)
+      if (_inEcosystem(g.sourceId) && countFor(g) > 0) g,
+  ];
 
   /// Per-source groups, each already filtered + sorted, ordered CloudStream-style
   /// by ARRIVAL: the source that returned results first sits at the top, slower
@@ -217,6 +277,7 @@ class SearchState extends Equatable {
   List<SourceResultGroup> get sortedVisibleGroups {
     final out = <SourceResultGroup>[];
     for (final g in groups) {
+      if (!_inEcosystem(g.sourceId)) continue;
       if (sourceFilter != kAllSources && g.sourceId != sourceFilter) continue;
       final items = _sortItems(g.items.where(_passes).toList());
       if (items.isEmpty) continue;
@@ -234,7 +295,8 @@ class SearchState extends Equatable {
   List<MediaItem> get visibleResults {
     final base = <MediaItem>[
       for (final g in groups)
-        if (sourceFilter == kAllSources || g.sourceId == sourceFilter)
+        if (_inEcosystem(g.sourceId) &&
+            (sourceFilter == kAllSources || g.sourceId == sourceFilter))
           for (final item in g.items)
             if (_passes(item)) item,
     ];
@@ -249,31 +311,30 @@ class SearchState extends Equatable {
       case SearchSort.bestMatch:
         return items;
       case SearchSort.titleAsc:
-        return items
-          ..sort((a, b) =>
-              a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        return items..sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
       case SearchSort.titleDesc:
-        return items
-          ..sort((a, b) =>
-              b.title.toLowerCase().compareTo(a.title.toLowerCase()));
+        return items..sort(
+          (a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()),
+        );
       case SearchSort.newest:
-        return items
-          ..sort((a, b) {
-            final ya = SearchMeta.year(a);
-            final yb = SearchMeta.year(b);
-            if (ya == null && yb == null) {
-              return a.title.toLowerCase().compareTo(b.title.toLowerCase());
-            }
-            if (ya == null) return 1; // unknown years sink to the bottom
-            if (yb == null) return -1;
-            return yb.compareTo(ya);
-          });
+        return items..sort((a, b) {
+          final ya = SearchMeta.year(a);
+          final yb = SearchMeta.year(b);
+          if (ya == null && yb == null) {
+            return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+          }
+          if (ya == null) return 1; // unknown years sink to the bottom
+          if (yb == null) return -1;
+          return yb.compareTo(ya);
+        });
       case SearchSort.rating:
         // No rating on search results — keep deterministic (title) order so the
         // option is wired without inventing a value. Best-effort by design.
-        return items
-          ..sort((a, b) =>
-              a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+        return items..sort(
+          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        );
     }
   }
 
@@ -282,6 +343,7 @@ class SearchState extends Equatable {
     String? query,
     List<SourceResultGroup>? groups,
     String? sourceFilter,
+    SearchEcosystem? ecosystem,
     bool? currentSourceOnly,
     SearchSort? sort,
     SearchContentFilter? contentFilter,
@@ -299,11 +361,14 @@ class SearchState extends Equatable {
     query: query ?? this.query,
     groups: groups ?? this.groups,
     sourceFilter: sourceFilter ?? this.sourceFilter,
+    ecosystem: ecosystem ?? this.ecosystem,
     currentSourceOnly: currentSourceOnly ?? this.currentSourceOnly,
     sort: sort ?? this.sort,
     contentFilter: contentFilter ?? this.contentFilter,
     genreFilter: clearGenreFilter ? null : (genreFilter ?? this.genreFilter),
-    decadeFilter: clearDecadeFilter ? null : (decadeFilter ?? this.decadeFilter),
+    decadeFilter: clearDecadeFilter
+        ? null
+        : (decadeFilter ?? this.decadeFilter),
     error: clearError ? null : (error ?? this.error),
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
@@ -312,18 +377,19 @@ class SearchState extends Equatable {
 
   @override
   List<Object?> get props => [
-        status,
-        query,
-        groups,
-        sourceFilter,
-        currentSourceOnly,
-        sort,
-        contentFilter,
-        genreFilter,
-        decadeFilter,
-        error,
-        trending,
-        suggestions,
-        aniFiltersBySource,
-      ];
+    status,
+    query,
+    groups,
+    sourceFilter,
+    ecosystem,
+    currentSourceOnly,
+    sort,
+    contentFilter,
+    genreFilter,
+    decadeFilter,
+    error,
+    trending,
+    suggestions,
+    aniFiltersBySource,
+  ];
 }

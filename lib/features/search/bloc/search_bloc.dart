@@ -20,17 +20,18 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     required SearchHistory history,
     SearchPrefs? prefs,
     TitleSuggestionService? suggestions,
-  })  : _repo = repo,
-        _history = history,
-        _prefs = prefs ?? sl<SearchPrefs>(),
-        _suggestions = suggestions ?? sl<TitleSuggestionService>(),
-        super(_restoredState(prefs ?? sl<SearchPrefs>())) {
+  }) : _repo = repo,
+       _history = history,
+       _prefs = prefs ?? sl<SearchPrefs>(),
+       _suggestions = suggestions ?? sl<TitleSuggestionService>(),
+       super(_restoredState(prefs ?? sl<SearchPrefs>())) {
     on<SearchStarted>(_onStarted);
     on<SearchQueryChanged>(_onQueryChanged);
     on<SearchSuggestionsUpdated>(_onSuggestionsUpdated);
     on<SearchSortChanged>(_onSortChanged);
     on<SearchScopeChanged>(_onScopeChanged);
     on<SearchSourceFilterChanged>(_onSourceFilterChanged);
+    on<SearchEcosystemChanged>(_onEcosystemChanged);
     on<SearchContentFilterChanged>(_onContentFilterChanged);
     on<SearchGenreFilterChanged>(_onGenreFilterChanged);
     on<SearchDecadeFilterChanged>(_onDecadeFilterChanged);
@@ -91,7 +92,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           ? sections.first.items.take(12).toList()
           : <MediaItem>[];
       emit(state.copyWith(trending: items));
-    } catch (_) {/* trending is best-effort */}
+    } catch (_) {
+      /* trending is best-effort */
+    }
   }
 
   /// Typing ONLY updates the field text and (debounced) fetches lightweight
@@ -105,12 +108,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     final trimmed = q.trim();
     if (trimmed.isEmpty) {
       // Clearing the field returns to the idle screen and drops suggestions.
-      emit(state.copyWith(
-        groups: const [],
-        suggestions: const [],
-        status: SearchStatus.idle,
-        clearError: true,
-      ));
+      emit(
+        state.copyWith(
+          groups: const [],
+          suggestions: const [],
+          status: SearchStatus.idle,
+          clearError: true,
+        ),
+      );
       return;
     }
 
@@ -118,13 +123,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // drifted away from the last-searched query, leave the results view (back
     // to idle) so the suggestion list takes over while typing the next query.
     final historyMatches = _historyMatches(trimmed);
-    final driftedFromResults = state.status == SearchStatus.success &&
+    final driftedFromResults =
+        state.status == SearchStatus.success &&
         trimmed.toLowerCase() != _lastRunQuery.toLowerCase();
-    emit(state.copyWith(
-      suggestions: historyMatches,
-      status: driftedFromResults ? SearchStatus.idle : null,
-      groups: driftedFromResults ? const [] : null,
-    ));
+    emit(
+      state.copyWith(
+        suggestions: historyMatches,
+        status: driftedFromResults ? SearchStatus.idle : null,
+        groups: driftedFromResults ? const [] : null,
+      ),
+    );
 
     // Then fetch live title autocomplete (one fast call) and merge it in.
     final seq = ++_suggestSeq;
@@ -158,10 +166,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     if (event.currentSourceOnly == state.currentSourceOnly) return;
     // Reset the per-source chip — it's meaningless in current-source mode and
     // stale when switching back to all-sources.
-    emit(state.copyWith(
-      currentSourceOnly: event.currentSourceOnly,
-      sourceFilter: kAllSources,
-    ));
+    emit(
+      state.copyWith(
+        currentSourceOnly: event.currentSourceOnly,
+        sourceFilter: kAllSources,
+        ecosystem: SearchEcosystem.all,
+      ),
+    );
     _prefs.setCurrentSourceOnly(event.currentSourceOnly);
     if (state.query.trim().isNotEmpty) {
       await _runSearch(state.query.trim(), emit);
@@ -175,16 +186,26 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     emit(state.copyWith(sourceFilter: event.sourceId));
   }
 
+  /// Switches the ecosystem tab. This is a pure VIEW filter over the loaded
+  /// groups (no re-search). Switching tabs can hide the source group the
+  /// per-source chip pointed at, so reset that chip to "all sources" — the user
+  /// never lands on an empty filtered view.
+  void _onEcosystemChanged(
+    SearchEcosystemChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    emit(state.copyWith(ecosystem: event.ecosystem, sourceFilter: kAllSources));
+  }
+
   void _onContentFilterChanged(
     SearchContentFilterChanged event,
     Emitter<SearchState> emit,
   ) {
     // Switching content type can hide the active source group; fall back to
     // "All sources" so the user never lands on an empty filtered view.
-    emit(state.copyWith(
-      contentFilter: event.filter,
-      sourceFilter: kAllSources,
-    ));
+    emit(
+      state.copyWith(contentFilter: event.filter, sourceFilter: kAllSources),
+    );
     _prefs.setContentFilterName(event.filter.name);
   }
 
@@ -192,11 +213,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchGenreFilterChanged event,
     Emitter<SearchState> emit,
   ) {
-    emit(state.copyWith(
-      genreFilter: event.genre,
-      clearGenreFilter: event.genre == null,
-      sourceFilter: kAllSources,
-    ));
+    emit(
+      state.copyWith(
+        genreFilter: event.genre,
+        clearGenreFilter: event.genre == null,
+        sourceFilter: kAllSources,
+      ),
+    );
     _prefs.setGenre(event.genre);
   }
 
@@ -204,11 +227,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchDecadeFilterChanged event,
     Emitter<SearchState> emit,
   ) {
-    emit(state.copyWith(
-      decadeFilter: event.decade,
-      clearDecadeFilter: event.decade == null,
-      sourceFilter: kAllSources,
-    ));
+    emit(
+      state.copyWith(
+        decadeFilter: event.decade,
+        clearDecadeFilter: event.decade == null,
+        sourceFilter: kAllSources,
+      ),
+    );
     _prefs.setDecade(event.decade);
   }
 
@@ -222,13 +247,17 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     _suggestDebounce?.cancel();
     final q = (event.query ?? state.query).trim();
     if (q.isEmpty) return;
-    // Reset only the per-search source chip — the user's remembered sort and
-    // content/genre/decade filters persist across searches (and screen opens).
-    emit(state.copyWith(
-      query: q,
-      suggestions: const [],
-      sourceFilter: kAllSources,
-    ));
+    // Reset only the per-search source chip + ecosystem tab — the user's
+    // remembered sort and content/genre/decade filters persist across searches
+    // (and screen opens); a fresh search always lands on the "All" tab.
+    emit(
+      state.copyWith(
+        query: q,
+        suggestions: const [],
+        sourceFilter: kAllSources,
+        ecosystem: SearchEcosystem.all,
+      ),
+    );
     await _runSearch(q, emit);
   }
 
@@ -253,11 +282,13 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     _lastRunQuery = q;
     _history.add(q);
 
-    emit(state.copyWith(
-      status: SearchStatus.loading,
-      groups: const [],
-      clearError: true,
-    ));
+    emit(
+      state.copyWith(
+        status: SearchStatus.loading,
+        groups: const [],
+        clearError: true,
+      ),
+    );
 
     // Choose the sources to query. In current-source-only mode that's JUST the
     // active Home source (read live, so a later source switch is picked up). In
@@ -286,8 +317,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // it — the user explicitly picked it).
     final health = sl<SourceHealthStore>();
     if (!state.currentSourceOnly) {
-      final live =
-          sources.where((s) => !health.isSkippable(s.id)).toList();
+      final live = sources.where((s) => !health.isSkippable(s.id)).toList();
       // If EVERY source is currently skippable, the windows have likely all
       // lapsed-or-not together; rather than show nothing, retry them all.
       if (live.isNotEmpty) sources = live;
@@ -297,9 +327,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         SourceHealth.dead => 2,
       };
       sources.sort(
-        (a, b) => rank(health.statusOf(a.id)).compareTo(
-          rank(health.statusOf(b.id)),
-        ),
+        (a, b) =>
+            rank(health.statusOf(a.id)).compareTo(rank(health.statusOf(b.id))),
       );
     }
 
@@ -309,53 +338,62 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // arrivalIndex N, so sections render fastest-first (CloudStream-style).
     var arrived = 0;
 
-    await Future.wait(sources.map((s) async {
-      final sw = Stopwatch()..start();
-      try {
-        final res = await _repo.searchStatus(q,
+    await Future.wait(
+      sources.map((s) async {
+        final sw = Stopwatch()..start();
+        try {
+          final res = await _repo.searchStatus(
+            q,
             sourceId: s.id,
-            filtersJson: state.aniFiltersBySource[s.id]);
-        sw.stop();
-        if (isClosed || gen != _runGen) return; // superseded/closed
-        // Record health: a response over the slow threshold downgrades an
-        // otherwise-ok outcome to "slow"; error/timeout/blocked mark it dead
-        // (recoverably); empty-without-error stays ok (NOT a strike).
-        var outcome = res.outcome;
-        final responded = outcome == SourceOutcome.ok ||
-            outcome == SourceOutcome.empty;
-        if (responded &&
-            sw.elapsed > SourceHealthStore.slowThreshold) {
-          outcome = SourceOutcome.slow;
+            filtersJson: state.aniFiltersBySource[s.id],
+          );
+          sw.stop();
+          if (isClosed || gen != _runGen) return; // superseded/closed
+          // Record health: a response over the slow threshold downgrades an
+          // otherwise-ok outcome to "slow"; error/timeout/blocked mark it dead
+          // (recoverably); empty-without-error stays ok (NOT a strike).
+          var outcome = res.outcome;
+          final responded =
+              outcome == SourceOutcome.ok || outcome == SourceOutcome.empty;
+          if (responded && sw.elapsed > SourceHealthStore.slowThreshold) {
+            outcome = SourceOutcome.slow;
+          }
+          // ignore: unawaited_futures
+          health.record(s.id, outcome, responseMs: sw.elapsedMilliseconds);
+          if (!responded && outcome != SourceOutcome.slow) anyError = true;
+          if (res.items.isNotEmpty) {
+            acc.add(
+              SourceResultGroup(
+                sourceId: s.id,
+                sourceName: s.name,
+                items: res.items,
+                arrivalIndex: arrived++,
+              ),
+            );
+            emit(
+              state.copyWith(
+                status: SearchStatus.success,
+                groups: List.of(acc),
+              ),
+            );
+          }
+        } catch (_) {
+          // searchStatus is no-throw, but stay defensive — never let one source
+          // break the fan-out.
+          anyError = true;
         }
-        // ignore: unawaited_futures
-        health.record(s.id, outcome, responseMs: sw.elapsedMilliseconds);
-        if (!responded && outcome != SourceOutcome.slow) anyError = true;
-        if (res.items.isNotEmpty) {
-          acc.add(SourceResultGroup(
-            sourceId: s.id,
-            sourceName: s.name,
-            items: res.items,
-            arrivalIndex: arrived++,
-          ));
-          emit(state.copyWith(
-            status: SearchStatus.success,
-            groups: List.of(acc),
-          ));
-        }
-      } catch (_) {
-        // searchStatus is no-throw, but stay defensive — never let one source
-        // break the fan-out.
-        anyError = true;
-      }
-    }));
+      }),
+    );
 
     if (isClosed || gen != _runGen) return;
     // Finalize: if nothing came back, surface error-or-empty appropriately.
     if (acc.isEmpty) {
-      emit(state.copyWith(
-        status: anyError ? SearchStatus.error : SearchStatus.success,
-        groups: const [],
-      ));
+      emit(
+        state.copyWith(
+          status: anyError ? SearchStatus.error : SearchStatus.success,
+          groups: const [],
+        ),
+      );
     } else {
       emit(state.copyWith(status: SearchStatus.success, groups: List.of(acc)));
     }
