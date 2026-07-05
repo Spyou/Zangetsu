@@ -172,10 +172,7 @@ class _SearchViewState extends State<_SearchView> {
   }
 
   void _openDetail(MediaItem item) {
-    Navigator.push(
-      context,
-      DetailScreen.route(item),
-    ).then((_) {
+    Navigator.push(context, DetailScreen.route(item)).then((_) {
       if (mounted) setState(() {});
     });
   }
@@ -200,18 +197,19 @@ class _SearchViewState extends State<_SearchView> {
     });
   }
 
-  /// Opens the Aniyomi per-source filter sheet for [g].
+  /// Opens the Aniyomi per-source filter sheet for [sourceId].
   ///
   /// Fetches the filter schema, shows the sheet, and dispatches
   /// [SearchSourceFiltersApplied] with the selection JSON when the user taps
   /// Apply. A brief SnackBar informs the user when the source has no filters.
-  Future<void> _openAniFilters(SourceResultGroup g) async {
-    final stored =
-        context.read<SearchBloc>().state.aniFiltersBySource[g.sourceId];
-    final List<AniyomiFilter> filters =
-        (stored != null && stored.isNotEmpty)
-            ? AniyomiFilters.parse(stored)
-            : await _repo.aniFilters(g.sourceId);
+  Future<void> _openAniFilters(String sourceId) async {
+    final stored = context
+        .read<SearchBloc>()
+        .state
+        .aniFiltersBySource[sourceId];
+    final List<AniyomiFilter> filters = (stored != null && stored.isNotEmpty)
+        ? AniyomiFilters.parse(stored)
+        : await _repo.aniFilters(sourceId);
     if (!mounted) return;
     if (filters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -222,15 +220,16 @@ class _SearchViewState extends State<_SearchView> {
     final result = await showAniyomiFilterSheet(context, filters);
     if (result == null || !mounted) return;
     context.read<SearchBloc>().add(
-          SearchSourceFiltersApplied(
-            g.sourceId,
-            AniyomiFilters.toSelectionJson(result),
-          ),
-        );
+      SearchSourceFiltersApplied(
+        sourceId,
+        AniyomiFilters.toSelectionJson(result),
+      ),
+    );
   }
 
   Future<void> _play(MediaItem item) async {
-    final category = sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
+    final category =
+        sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
     await Navigator.push(
       context,
@@ -335,8 +334,11 @@ class _SearchViewState extends State<_SearchView> {
                               ),
                             ),
                             if (state.sort == opt)
-                              const Icon(Icons.check_rounded,
-                                  size: 20, color: AppColors.accent),
+                              const Icon(
+                                Icons.check_rounded,
+                                size: 20,
+                                color: AppColors.accent,
+                              ),
                           ],
                         ),
                       ),
@@ -363,10 +365,8 @@ class _SearchViewState extends State<_SearchView> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => BlocProvider.value(
-        value: bloc,
-        child: const _SearchFilterSheet(),
-      ),
+      builder: (_) =>
+          BlocProvider.value(value: bloc, child: const _SearchFilterSheet()),
     );
     // Re-run so source toggles drop out / reappear (content-type filtering is
     // applied client-side and updates live via the bloc, but a fresh run also
@@ -405,7 +405,8 @@ class _SearchViewState extends State<_SearchView> {
                   p.suggestions != c.suggestions ||
                   p.status != c.status,
               builder: (context, state) {
-                final showingSuggestions = state.status != SearchStatus.success &&
+                final showingSuggestions =
+                    state.status != SearchStatus.success &&
                     state.suggestions.isNotEmpty;
                 if (state.currentSourceOnly ||
                     showingSuggestions ||
@@ -458,8 +459,11 @@ class _SearchViewState extends State<_SearchView> {
         children: [
           if (widget.showBack)
             IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new,
-                  color: Colors.white, size: 20),
+              icon: const Icon(
+                Icons.arrow_back_ios_new,
+                color: Colors.white,
+                size: 20,
+              ),
               onPressed: () => Navigator.pop(context),
               tooltip: 'Back',
             ),
@@ -474,18 +478,23 @@ class _SearchViewState extends State<_SearchView> {
                   const SizedBox(width: 4),
                   // Tappable magnifier — runs the full search (same as Enter).
                   IconButton(
-                    icon: const Icon(Icons.search,
-                        size: 20, color: AppColors.textTertiary),
+                    icon: const Icon(
+                      Icons.search,
+                      size: 20,
+                      color: AppColors.textTertiary,
+                    ),
                     tooltip: 'Search',
                     onPressed: () {
                       FocusScope.of(context).unfocus();
-                      context
-                          .read<SearchBloc>()
-                          .add(SearchRunRequested(_controller.text));
+                      context.read<SearchBloc>().add(
+                        SearchRunRequested(_controller.text),
+                      );
                     },
                     padding: EdgeInsets.zero,
-                    constraints:
-                        const BoxConstraints(minWidth: 36, minHeight: 36),
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   Expanded(
@@ -496,17 +505,19 @@ class _SearchViewState extends State<_SearchView> {
                       textInputAction: TextInputAction.search,
                       // Typing only updates suggestions — it never starts the
                       // heavy multi-source search.
-                      onChanged: (text) => context
-                          .read<SearchBloc>()
-                          .add(SearchQueryChanged(text)),
+                      onChanged: (text) => context.read<SearchBloc>().add(
+                        SearchQueryChanged(text),
+                      ),
                       // Enter / keyboard "search" runs the full search.
                       onSubmitted: (text) {
                         FocusScope.of(context).unfocus();
-                        context
-                            .read<SearchBloc>()
-                            .add(SearchRunRequested(text));
+                        context.read<SearchBloc>().add(
+                          SearchRunRequested(text),
+                        );
                       },
-                      style: AppText.body.copyWith(color: AppColors.textPrimary),
+                      style: AppText.body.copyWith(
+                        color: AppColors.textPrimary,
+                      ),
                       cursorColor: AppColors.accent,
                       decoration: const InputDecoration(
                         hintText: 'Search…',
@@ -523,13 +534,18 @@ class _SearchViewState extends State<_SearchView> {
                     builder: (context, value, _) => value.text.isEmpty
                         ? const SizedBox.shrink()
                         : IconButton(
-                            icon: const Icon(Icons.close_rounded,
-                                size: 18, color: AppColors.textTertiary),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: AppColors.textTertiary,
+                            ),
                             tooltip: 'Clear',
                             onPressed: _clear,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
-                                minWidth: 32, minHeight: 32),
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
                           ),
                   ),
                   // Sort — tinted coral when sort is not default.
@@ -546,8 +562,10 @@ class _SearchViewState extends State<_SearchView> {
                       tooltip: 'Sort',
                       onPressed: () => _openSortSheet(context),
                       padding: EdgeInsets.zero,
-                      constraints:
-                          const BoxConstraints(minWidth: 36, minHeight: 36),
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
                     ),
                   ),
                   // Filters — content type + genre + decade + which sources to
@@ -563,7 +581,8 @@ class _SearchViewState extends State<_SearchView> {
                       builder: (context, _) {
                         // Source excludes only count as an active filter when
                         // actually fanning out to all sources.
-                        final active = state.hasActiveFilter ||
+                        final active =
+                            state.hasActiveFilter ||
                             (!state.currentSourceOnly &&
                                 sl<SearchSourcePrefs>().excluded.isNotEmpty);
                         return IconButton(
@@ -577,8 +596,10 @@ class _SearchViewState extends State<_SearchView> {
                           tooltip: 'Filters',
                           onPressed: () => _openFilterSheet(context),
                           padding: EdgeInsets.zero,
-                          constraints:
-                              const BoxConstraints(minWidth: 36, minHeight: 36),
+                          constraints: const BoxConstraints(
+                            minWidth: 36,
+                            minHeight: 36,
+                          ),
                         );
                       },
                     ),
@@ -600,7 +621,9 @@ class _SearchViewState extends State<_SearchView> {
   /// chips. Follows the active source live via [ActiveSourceCubit].
   Widget _scopePill() {
     return BlocBuilder<SearchBloc, SearchState>(
-      buildWhen: (p, c) => p.currentSourceOnly != c.currentSourceOnly,
+      buildWhen: (p, c) =>
+          p.currentSourceOnly != c.currentSourceOnly ||
+          p.aniFiltersBySource != c.aniFiltersBySource,
       builder: (context, state) {
         final currentOnly = state.currentSourceOnly;
         return BlocBuilder<ActiveSourceCubit, String>(
@@ -616,63 +639,88 @@ class _SearchViewState extends State<_SearchView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => context
-                        .read<SearchBloc>()
-                        .add(SearchScopeChanged(!currentOnly)),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 7,
-                      ),
-                      decoration: BoxDecoration(
-                        color: currentOnly
-                            ? AppColors.accentSoft
-                            : AppColors.surface2,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: currentOnly
-                              ? AppColors.accent
-                              : AppColors.hairline,
-                          width: 1,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => context.read<SearchBloc>().add(
+                          SearchScopeChanged(!currentOnly),
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            currentOnly
-                                ? Icons.adjust_rounded
-                                : Icons.public_rounded,
-                            size: 15,
-                            color: currentOnly
-                                ? AppColors.accent
-                                : AppColors.textSecondary,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 7,
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            label,
-                            style: AppText.caption.copyWith(
+                          decoration: BoxDecoration(
+                            color: currentOnly
+                                ? AppColors.accentSoft
+                                : AppColors.surface2,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
                               color: currentOnly
                                   ? AppColors.accent
-                                  : AppColors.textSecondary,
-                              fontWeight: FontWeight.w700,
+                                  : AppColors.hairline,
+                              width: 1,
                             ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 4),
-                          Icon(
-                            Icons.swap_horiz_rounded,
-                            size: 15,
-                            color: currentOnly
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                currentOnly
+                                    ? Icons.adjust_rounded
+                                    : Icons.public_rounded,
+                                size: 15,
+                                color: currentOnly
+                                    ? AppColors.accent
+                                    : AppColors.textSecondary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                label,
+                                style: AppText.caption.copyWith(
+                                  color: currentOnly
+                                      ? AppColors.accent
+                                      : AppColors.textSecondary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.swap_horiz_rounded,
+                                size: 15,
+                                color: currentOnly
+                                    ? AppColors.accent
+                                    : AppColors.textTertiary,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // In single-source mode there is no per-source section
+                      // header to host the filter icon, so surface it here when
+                      // the active source is an Aniyomi one.
+                      if (currentOnly && activeId.startsWith('ani:'))
+                        IconButton(
+                          onPressed: () => _openAniFilters(activeId),
+                          icon: Icon(
+                            Icons.tune_rounded,
+                            size: 20,
+                            color:
+                                state.aniFiltersBySource.containsKey(activeId)
                                 ? AppColors.accent
                                 : AppColors.textTertiary,
                           ),
-                        ],
-                      ),
-                    ),
+                          tooltip: 'Source filters',
+                          constraints: const BoxConstraints(
+                            minWidth: 40,
+                            minHeight: 36,
+                          ),
+                        ),
+                    ],
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 4, top: 5),
@@ -707,9 +755,9 @@ class _SearchViewState extends State<_SearchView> {
           _chip(
             label: 'All ${state.totalCount}',
             selected: state.sourceFilter == kAllSources,
-            onTap: () => context
-                .read<SearchBloc>()
-                .add(const SearchSourceFilterChanged(kAllSources)),
+            onTap: () => context.read<SearchBloc>().add(
+              const SearchSourceFilterChanged(kAllSources),
+            ),
           ),
           for (final g in groups)
             Padding(
@@ -717,9 +765,9 @@ class _SearchViewState extends State<_SearchView> {
               child: _chip(
                 label: '${g.sourceName} ${state.countFor(g)}',
                 selected: state.sourceFilter == g.sourceId,
-                onTap: () => context
-                    .read<SearchBloc>()
-                    .add(SearchSourceFilterChanged(g.sourceId)),
+                onTap: () => context.read<SearchBloc>().add(
+                  SearchSourceFilterChanged(g.sourceId),
+                ),
               ),
             ),
         ],
@@ -765,11 +813,12 @@ class _SearchViewState extends State<_SearchView> {
     final landed = {for (final g in state.groups) g.sourceId};
     // Current-source-only mode queries a single source, so there are never
     // other sources still streaming in — no skeleton sections.
-    final pending = (state.currentSourceOnly || state.sourceFilter != kAllSources)
+    final pending =
+        (state.currentSourceOnly || state.sourceFilter != kAllSources)
         ? const <({String id, String name})>[]
         : _repo.loadedSources
-            .where((s) => prefs.isIncluded(s.id) && !landed.contains(s.id))
-            .toList();
+              .where((s) => prefs.isIncluded(s.id) && !landed.contains(s.id))
+              .toList();
     final stillLoading = pending.isNotEmpty;
 
     if (groups.isEmpty && !stillLoading) {
@@ -779,7 +828,8 @@ class _SearchViewState extends State<_SearchView> {
     // A single-source view reads best as the dense flat grid rather than one
     // lonely section: either an explicit chip selection, or only one source
     // returned and nothing else is still streaming in.
-    final singleSource = state.sourceFilter != kAllSources ||
+    final singleSource =
+        state.sourceFilter != kAllSources ||
         (groups.length == 1 && !stillLoading);
     final layout = _searchPrefs.layout;
 
@@ -846,8 +896,7 @@ class _SearchViewState extends State<_SearchView> {
               ),
               tooltip: 'Source filters',
               padding: EdgeInsets.zero,
-              constraints:
-                  const BoxConstraints(minWidth: 36, minHeight: 36),
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             ),
           if (onSeeAll != null)
             GestureDetector(
@@ -865,8 +914,11 @@ class _SearchViewState extends State<_SearchView> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const Icon(Icons.chevron_right_rounded,
-                        size: 18, color: AppColors.accent),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 18,
+                      color: AppColors.accent,
+                    ),
                   ],
                 ),
               ),
@@ -897,7 +949,7 @@ class _SearchViewState extends State<_SearchView> {
           g.sourceName,
           g.items.length,
           onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
-          onFilter: isAni ? () => _openAniFilters(g) : null,
+          onFilter: isAni ? () => _openAniFilters(g.sourceId) : null,
           filterActive: isAni && aniFilters.containsKey(g.sourceId),
         ),
         SizedBox(
@@ -952,7 +1004,7 @@ class _SearchViewState extends State<_SearchView> {
           g.sourceName,
           g.items.length,
           onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
-          onFilter: isAni ? () => _openAniFilters(g) : null,
+          onFilter: isAni ? () => _openAniFilters(g.sourceId) : null,
           filterActive: isAni && aniFilters.containsKey(g.sourceId),
         ),
         GridView.builder(
@@ -1009,8 +1061,11 @@ class _SearchViewState extends State<_SearchView> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_off_rounded,
-                size: 52, color: AppColors.textTertiary),
+            const Icon(
+              Icons.search_off_rounded,
+              size: 52,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(height: 14),
             Text(
               'No results for “${state.query}”',
@@ -1031,8 +1086,9 @@ class _SearchViewState extends State<_SearchView> {
                 onPressed: () {
                   final bloc = context.read<SearchBloc>();
                   bloc
-                    ..add(const SearchContentFilterChanged(
-                        SearchContentFilter.all))
+                    ..add(
+                      const SearchContentFilterChanged(SearchContentFilter.all),
+                    )
                     ..add(const SearchGenreFilterChanged(null))
                     ..add(const SearchDecadeFilterChanged(null));
                 },
@@ -1088,8 +1144,11 @@ class _SearchViewState extends State<_SearchView> {
           children: [
             Icon(Icons.search_rounded, size: 48, color: AppColors.textTertiary),
             SizedBox(height: 12),
-            Text('Search for something to watch',
-                textAlign: TextAlign.center, style: AppText.body),
+            Text(
+              'Search for something to watch',
+              textAlign: TextAlign.center,
+              style: AppText.body,
+            ),
           ],
         ),
       );
@@ -1103,9 +1162,7 @@ class _SearchViewState extends State<_SearchView> {
         if (recent.isNotEmpty) ...[
           Row(
             children: [
-              Expanded(
-                child: Text('Recent searches', style: AppText.overline),
-              ),
+              Expanded(child: Text('Recent searches', style: AppText.overline)),
               GestureDetector(
                 onTap: () async {
                   await _history.clear();
@@ -1204,8 +1261,11 @@ class _SearchViewState extends State<_SearchView> {
               },
               child: const Padding(
                 padding: EdgeInsets.all(4),
-                child: Icon(Icons.north_west_rounded,
-                    size: 16, color: AppColors.textTertiary),
+                child: Icon(
+                  Icons.north_west_rounded,
+                  size: 16,
+                  color: AppColors.textTertiary,
+                ),
               ),
             ),
           ],
@@ -1226,11 +1286,16 @@ class _SearchViewState extends State<_SearchView> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.history_rounded,
-                size: 15, color: AppColors.textTertiary),
+            const Icon(
+              Icons.history_rounded,
+              size: 15,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(width: 6),
-            Text(q,
-                style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+            Text(
+              q,
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            ),
             const SizedBox(width: 4),
             GestureDetector(
               onTap: () async {
@@ -1239,8 +1304,11 @@ class _SearchViewState extends State<_SearchView> {
               },
               child: const Padding(
                 padding: EdgeInsets.all(2),
-                child: Icon(Icons.close_rounded,
-                    size: 14, color: AppColors.textTertiary),
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 14,
+                  color: AppColors.textTertiary,
+                ),
               ),
             ),
           ],
@@ -1262,12 +1330,15 @@ class _SearchFilterSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final buckets = categorizedSources();
     final prefs = sl<SearchSourcePrefs>();
-    final sections = <({String title, List<({String id, String label, String? repo})> rows})>[
-      if (buckets.anime.isNotEmpty) (title: 'Anime', rows: buckets.anime),
-      if (buckets.movies.isNotEmpty)
-        (title: 'Movies & Series', rows: buckets.movies),
-      if (buckets.nsfw.isNotEmpty) (title: 'NSFW', rows: buckets.nsfw),
-    ];
+    final sections =
+        <
+          ({String title, List<({String id, String label, String? repo})> rows})
+        >[
+          if (buckets.anime.isNotEmpty) (title: 'Anime', rows: buckets.anime),
+          if (buckets.movies.isNotEmpty)
+            (title: 'Movies & Series', rows: buckets.movies),
+          if (buckets.nsfw.isNotEmpty) (title: 'NSFW', rows: buckets.nsfw),
+        ];
     final allIds = [for (final s in sections) ...s.rows.map((r) => r.id)];
 
     return SafeArea(
@@ -1291,9 +1362,7 @@ class _SearchFilterSheet extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 0, 12, 8),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text('Filters', style: AppText.headline),
-                  ),
+                  Expanded(child: Text('Filters', style: AppText.headline)),
                   BlocBuilder<SearchBloc, SearchState>(
                     buildWhen: (p, c) =>
                         p.contentFilter != c.contentFilter ||
@@ -1301,7 +1370,8 @@ class _SearchFilterSheet extends StatelessWidget {
                         p.decadeFilter != c.decadeFilter ||
                         p.currentSourceOnly != c.currentSourceOnly,
                     builder: (context, state) {
-                      final canReset = state.hasActiveFilter ||
+                      final canReset =
+                          state.hasActiveFilter ||
                           (!state.currentSourceOnly &&
                               prefs.excluded.isNotEmpty);
                       if (!canReset) return const SizedBox.shrink();
@@ -1311,15 +1381,17 @@ class _SearchFilterSheet extends StatelessWidget {
                             prefs.setManyIncluded(allIds, true);
                           }
                           context.read<SearchBloc>()
-                            ..add(const SearchContentFilterChanged(
-                                SearchContentFilter.all))
+                            ..add(
+                              const SearchContentFilterChanged(
+                                SearchContentFilter.all,
+                              ),
+                            )
                             ..add(const SearchGenreFilterChanged(null))
                             ..add(const SearchDecadeFilterChanged(null));
                         },
                         child: Text(
                           'Reset',
-                          style:
-                              AppText.body.copyWith(color: AppColors.accent),
+                          style: AppText.body.copyWith(color: AppColors.accent),
                         ),
                       );
                     },
@@ -1354,8 +1426,10 @@ class _SearchFilterSheet extends StatelessWidget {
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 28),
                           child: Center(
-                            child: Text('No sources installed',
-                                style: AppText.body),
+                            child: Text(
+                              'No sources installed',
+                              style: AppText.body,
+                            ),
                           ),
                         )
                       else ...[
@@ -1442,9 +1516,9 @@ class _SearchFilterSheet extends StatelessWidget {
                   _pill(
                     label: f.label,
                     selected: state.contentFilter == f,
-                    onTap: () => context
-                        .read<SearchBloc>()
-                        .add(SearchContentFilterChanged(f)),
+                    onTap: () => context.read<SearchBloc>().add(
+                      SearchContentFilterChanged(f),
+                    ),
                   ),
               ],
             ),
@@ -1474,9 +1548,9 @@ class _SearchFilterSheet extends StatelessWidget {
                 _pill(
                   label: 'Any',
                   selected: state.genreFilter == null,
-                  onTap: () => context
-                      .read<SearchBloc>()
-                      .add(const SearchGenreFilterChanged(null)),
+                  onTap: () => context.read<SearchBloc>().add(
+                    const SearchGenreFilterChanged(null),
+                  ),
                 ),
                 for (final g in SearchMeta.genres)
                   _pill(
@@ -1484,9 +1558,9 @@ class _SearchFilterSheet extends StatelessWidget {
                     selected: state.genreFilter == g,
                     onTap: () {
                       final next = state.genreFilter == g ? null : g;
-                      context
-                          .read<SearchBloc>()
-                          .add(SearchGenreFilterChanged(next));
+                      context.read<SearchBloc>().add(
+                        SearchGenreFilterChanged(next),
+                      );
                     },
                   ),
               ],
@@ -1503,9 +1577,7 @@ class _SearchFilterSheet extends StatelessWidget {
   Widget _decadeSelector(BuildContext context) {
     // Offer the current decade back to the 1980s.
     final nowDecade = (DateTime.now().year ~/ 10) * 10;
-    final decades = [
-      for (var d = nowDecade; d >= 1980; d -= 10) d,
-    ];
+    final decades = [for (var d = nowDecade; d >= 1980; d -= 10) d];
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
       child: Column(
@@ -1522,9 +1594,9 @@ class _SearchFilterSheet extends StatelessWidget {
                 _pill(
                   label: 'Any',
                   selected: state.decadeFilter == null,
-                  onTap: () => context
-                      .read<SearchBloc>()
-                      .add(const SearchDecadeFilterChanged(null)),
+                  onTap: () => context.read<SearchBloc>().add(
+                    const SearchDecadeFilterChanged(null),
+                  ),
                 ),
                 for (final d in decades)
                   _pill(
@@ -1532,9 +1604,9 @@ class _SearchFilterSheet extends StatelessWidget {
                     selected: state.decadeFilter == d,
                     onTap: () {
                       final next = state.decadeFilter == d ? null : d;
-                      context
-                          .read<SearchBloc>()
-                          .add(SearchDecadeFilterChanged(next));
+                      context.read<SearchBloc>().add(
+                        SearchDecadeFilterChanged(next),
+                      );
                     },
                   ),
               ],
@@ -1584,7 +1656,10 @@ class _SearchFilterSheet extends StatelessWidget {
     );
   }
 
-  Widget _sourceRow(SearchSourcePrefs prefs, ({String id, String label, String? repo}) r) {
+  Widget _sourceRow(
+    SearchSourcePrefs prefs,
+    ({String id, String label, String? repo}) r,
+  ) {
     final on = prefs.isIncluded(r.id);
     return InkWell(
       onTap: () => prefs.setIncluded(r.id, !on),
