@@ -54,7 +54,11 @@ part 'detail_screen_tv.dart';
 /// provider (e.g. its source was uninstalled): drop the `cs:` prefix and the
 /// `@version@tag` file-id suffix so the detail screen never shows "cs:X@31".
 String _friendlySourceId(String sourceId) {
-  var s = sourceId.startsWith('cs:') ? sourceId.substring(3) : sourceId;
+  var s = sourceId.startsWith('cs:')
+      ? sourceId.substring(3)
+      : sourceId.startsWith('ani:')
+      ? sourceId.substring(4)
+      : sourceId;
   final at = s.indexOf('@');
   if (at > 0) s = s.substring(0, at);
   return s;
@@ -63,6 +67,12 @@ String _friendlySourceId(String sourceId) {
 /// "Source · Repo" label for the detail screen, so the user can see which repo
 /// a source came from. Falls back to just the name when no repo is resolvable.
 String _sourceLabel(String sourceId) {
+  // Aniyomi sources (ani:<id>) resolve to their extension's display name;
+  // otherwise the detail screen would show the raw "ani:4383278740…" id.
+  if (sourceId.startsWith('ani:')) {
+    final name = sl<SourceRepository>().displayName(sourceId);
+    return name == sourceId ? _friendlySourceId(sourceId) : name;
+  }
   final js = sl<ProviderRegistry>().entryFor(sourceId);
   if (js != null) {
     final name = js.displayName.isNotEmpty ? js.displayName : js.name;
@@ -320,9 +330,7 @@ class _DetailViewState extends State<_DetailView>
         _snack('“${r.title}” isn’t on this source');
         return;
       }
-      Navigator.of(context).push(
-        DetailScreen.route(results.first),
-      );
+      Navigator.of(context).push(DetailScreen.route(results.first));
     } catch (_) {
       if (mounted) _snack('Couldn’t open “${r.title}”');
     }
@@ -454,7 +462,9 @@ class _DetailViewState extends State<_DetailView>
           showUrl: widget.item.url,
           category: launchCategory,
           malId: detail.malId ?? widget.item.malId,
-          scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+          scrobbleTitle: detail.type == ProviderType.anime
+              ? detail.title
+              : null,
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
@@ -497,8 +507,11 @@ class _DetailViewState extends State<_DetailView>
       }
     }
     if (highestMarked == null) return 0;
-    final mark =
-        store.get(widget.item.sourceId, widget.item.url, eps[highestMarked].id)!;
+    final mark = store.get(
+      widget.item.sourceId,
+      widget.item.url,
+      eps[highestMarked].id,
+    )!;
     if (!mark.finished) return highestMarked;
     if (highestMarked + 1 < eps.length) return highestMarked + 1;
     return highestMarked;
@@ -594,19 +607,22 @@ class _DetailViewState extends State<_DetailView>
     String category,
   ) async {
     final item = widget.item;
-    final res = await showModalBottomSheet<({VideoSource chosen, List<VideoSource> all})>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _SourcePickerSheet(
-        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-        resolve: () =>
-            sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
-      ),
-    );
+    final res =
+        await showModalBottomSheet<
+          ({VideoSource chosen, List<VideoSource> all})
+        >(
+          context: context,
+          backgroundColor: AppColors.surface,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => _SourcePickerSheet(
+            title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+            resolve: () =>
+                sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+          ),
+        );
     if (res == null || !mounted) return;
     unawaited(
       sl<DownloadManager>().enqueueSource(
@@ -697,8 +713,9 @@ class _DetailViewState extends State<_DetailView>
     // tapping Play is near-instant. Deferred to after this frame so it can't
     // affect the detail screen's rendering/scroll.
     if (eps.isNotEmpty) _maybePrefetch(eps[resumeIdx].url, item.sourceId);
-    final hasAnyMark =
-        eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
+    final hasAnyMark = eps.any(
+      (e) => store.get(item.sourceId, item.url, e.id) != null,
+    );
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
@@ -1096,10 +1113,9 @@ class _Hero extends StatelessWidget {
       return Image(
         image: AniyomiImage(int.parse(aniSrcId), coverUrl),
         fit: BoxFit.cover,
-        loadingBuilder: (_, child, progress) =>
-            progress == null
-                ? child
-                : const ColoredBox(color: AppColors.surface2),
+        loadingBuilder: (_, child, progress) => progress == null
+            ? child
+            : const ColoredBox(color: AppColors.surface2),
         errorBuilder: (context, error, stackTrace) =>
             const ColoredBox(color: AppColors.surface2),
       );
@@ -1746,8 +1762,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     final resume =
         widget.hasAnyMark && fullIndex == widget.resumeIndex(widget.eps);
     final fraction = inProgress
-        ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
-              .clamp(0.0, 1.0)
+        ? (mark.position.inMilliseconds / mark.duration.inMilliseconds).clamp(
+            0.0,
+            1.0,
+          )
         : 0.0;
     return (
       watched: watched,
@@ -1840,8 +1858,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         final fullIndex = widget.eps.indexOf(ep);
         final st = _stateFor(store, ep, fullIndex);
         final epNum = ep.number?.toInt() ?? (offset + i + 1);
-        final displayTitle =
-            widget.hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
+        final displayTitle = widget.hasMultipleSeasons
+            ? cleanTitle(ep.title)
+            : ep.title;
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -2598,7 +2617,9 @@ String _sourceName(VideoSource s, int index) {
   final q = s.quality?.trim();
   if (q != null && q.isNotEmpty) return q;
   final host = (Uri.tryParse(s.url)?.host ?? '').replaceFirst('www.', '');
-  return host.isNotEmpty ? 'Server ${index + 1} · $host' : 'Server ${index + 1}';
+  return host.isNotEmpty
+      ? 'Server ${index + 1} · $host'
+      : 'Server ${index + 1}';
 }
 
 // Server/mirror picker (CloudStream-style) — resolves the episode's sources
@@ -2891,7 +2912,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       setState(() {
         _sources = ranked;
         _selectedSourceIdx = 0;
-        _quality = ranked.isNotEmpty ? (ranked.first.quality ?? 'best') : 'best';
+        _quality = ranked.isNotEmpty
+            ? (ranked.first.quality ?? 'best')
+            : 'best';
         _loadingSources = false;
       });
     } catch (_) {
@@ -2914,13 +2937,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
   int _epNum(Episode e, int i) => e.number?.toInt() ?? (i + 1);
 
-  void _selectAllInSeason() => setState(
-    () => _selectedIds.addAll(_seasonEps.map((e) => e.id)),
-  );
+  void _selectAllInSeason() =>
+      setState(() => _selectedIds.addAll(_seasonEps.map((e) => e.id)));
 
-  void _clearSeason() => setState(
-    () => _selectedIds.removeAll(_seasonEps.map((e) => e.id)),
-  );
+  void _clearSeason() =>
+      setState(() => _selectedIds.removeAll(_seasonEps.map((e) => e.id)));
 
   bool get _allSeasonSelected =>
       _seasonEps.isNotEmpty &&
@@ -3021,14 +3042,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 autofocus: true,
                 onTap: count == 0
                     ? () {}
-                    : () => Navigator.pop(
-                        context,
-                        (
-                          quality: _quality,
-                          category: _category,
-                          episodes: _selectedEpisodes,
-                        ),
-                      ),
+                    : () => Navigator.pop(context, (
+                        quality: _quality,
+                        category: _category,
+                        episodes: _selectedEpisodes,
+                      )),
                 child: Material(
                   color: count == 0 ? AppColors.surface2 : AppColors.accent,
                   borderRadius: BorderRadius.circular(10),
@@ -3042,8 +3060,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                             ? 'Select episodes'
                             : 'Download $count episode${count == 1 ? '' : 's'}',
                         style: AppText.button.copyWith(
-                          color:
-                              count == 0 ? AppColors.textTertiary : Colors.white,
+                          color: count == 0
+                              ? AppColors.textTertiary
+                              : Colors.white,
                         ),
                       ),
                     ),
@@ -3058,14 +3077,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 child: InkWell(
                   onTap: count == 0
                       ? null
-                      : () => Navigator.pop(
-                          context,
-                          (
-                            quality: _quality,
-                            category: _category,
-                            episodes: _selectedEpisodes,
-                          ),
-                        ),
+                      : () => Navigator.pop(context, (
+                          quality: _quality,
+                          category: _category,
+                          episodes: _selectedEpisodes,
+                        )),
                   child: SizedBox(
                     height: 50,
                     width: double.infinity,
@@ -3075,8 +3091,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                             ? 'Select episodes'
                             : 'Download $count episode${count == 1 ? '' : 's'}',
                         style: AppText.button.copyWith(
-                          color:
-                              count == 0 ? AppColors.textTertiary : Colors.white,
+                          color: count == 0
+                              ? AppColors.textTertiary
+                              : Colors.white,
                         ),
                       ),
                     ),
@@ -3116,10 +3133,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       color: selected ? AppColors.accent : AppColors.surface2,
       borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => _setCategory(c),
-        child: label,
-      ),
+      child: InkWell(onTap: () => _setCategory(c), child: label),
     );
   }
 
@@ -3210,8 +3224,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             borderRadius: BorderRadius.circular(10),
             clipBehavior: Clip.antiAlias,
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: content,
             ),
           ),
@@ -3256,9 +3269,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
       child: Row(
         children: [
-          Expanded(
-            child: Text('Season $_season', style: AppText.headline),
-          ),
+          Expanded(child: Text('Season $_season', style: AppText.headline)),
           const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: AppColors.textPrimary,
@@ -3305,80 +3316,80 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       }
     });
     final card = SizedBox(
-        width: 132,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              // Selection = a thin accent ring around the thumbnail (no heavy
-              // colour wash).
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: sel ? AppColors.accent : Colors.transparent,
-                  width: 2,
-                ),
+      width: 132,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            // Selection = a thin accent ring around the thumbnail (no heavy
+            // colour wash).
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: sel ? AppColors.accent : Colors.transparent,
+                width: 2,
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: Stack(
-                  children: [
-                    SizedBox(
-                      width: 132,
-                      height: 74, // 16:9
-                      child: thumb.isNotEmpty
-                          ? CachedNetworkImage(
-                              imageUrl: thumb,
-                              httpHeaders: widget.coverHeaders,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 280,
-                              placeholder: (c, u) =>
-                                  const ColoredBox(color: AppColors.surface2),
-                              errorWidget: (c, u, e) =>
-                                  const ColoredBox(color: AppColors.surface2),
-                            )
-                          : const ColoredBox(color: AppColors.surface2),
-                    ),
-                    // Small check badge — filled accent only when selected, a
-                    // subtle dark chip otherwise (so it reads on any thumbnail).
-                    Positioned(
-                      top: 5,
-                      right: 5,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: sel ? AppColors.accent : const Color(0x99000000),
-                          shape: BoxShape.circle,
-                        ),
-                        padding: const EdgeInsets.all(2),
-                        child: Icon(
-                          sel ? Icons.check_rounded : Icons.add_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: Stack(
+                children: [
+                  SizedBox(
+                    width: 132,
+                    height: 74, // 16:9
+                    child: thumb.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: thumb,
+                            httpHeaders: widget.coverHeaders,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 280,
+                            placeholder: (c, u) =>
+                                const ColoredBox(color: AppColors.surface2),
+                            errorWidget: (c, u, e) =>
+                                const ColoredBox(color: AppColors.surface2),
+                          )
+                        : const ColoredBox(color: AppColors.surface2),
+                  ),
+                  // Small check badge — filled accent only when selected, a
+                  // subtle dark chip otherwise (so it reads on any thumbnail).
+                  Positioned(
+                    top: 5,
+                    right: 5,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: sel ? AppColors.accent : const Color(0x99000000),
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(2),
+                      child: Icon(
+                        sel ? Icons.check_rounded : Icons.add_rounded,
+                        size: 14,
+                        color: Colors.white,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 6),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'E$epNum',
+            style: AppText.caption.copyWith(
+              color: sel ? AppColors.accent : AppColors.textPrimary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (hasTitle)
             Text(
-              'E$epNum',
-              style: AppText.caption.copyWith(
-                color: sel ? AppColors.accent : AppColors.textPrimary,
-                fontWeight: FontWeight.w700,
-              ),
+              title,
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            if (hasTitle)
-              Text(
-                title,
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-          ],
-        ),
-      );
+        ],
+      ),
+    );
     if (sl<AppMode>().isTv) {
       return TvFocusable(onTap: onTap, child: card);
     }
@@ -3773,7 +3784,11 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
 
     Widget box(double w, double h, [double r = 8]) => ClipRRect(
       borderRadius: BorderRadius.circular(r),
-      child: SizedBox(width: w, height: h, child: ColoredBox(color: base)),
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: ColoredBox(color: base),
+      ),
     );
 
     // The skeleton shapes, painted in the flat base colour. A moving highlight
@@ -3824,7 +3839,8 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
         animation: _ctrl,
         child: shapes,
         builder: (context, child) {
-          final t = _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
+          final t =
+              _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
           return ShaderMask(
             blendMode: BlendMode.srcATop,
             shaderCallback: (bounds) => LinearGradient(
@@ -3853,4 +3869,3 @@ class _SlideGradient extends GradientTransform {
   Matrix4? transform(Rect bounds, {TextDirection? textDirection}) =>
       Matrix4.translationValues(bounds.width * t, 0, 0);
 }
-
