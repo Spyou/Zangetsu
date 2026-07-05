@@ -154,6 +154,11 @@ class SearchState extends Equatable {
   /// Live title/history autocomplete shown under the field while typing.
   final List<String> suggestions;
 
+  /// Per-source Aniyomi filter selections: maps `ani:` source ids to a
+  /// selection JSON string produced by [AniyomiFilters.toSelectionJson].
+  /// Only populated for `ani:` sources; non-Aniyomi ids are never present.
+  final Map<String, String> aniFiltersBySource;
+
   const SearchState({
     this.status = SearchStatus.idle,
     this.query = '',
@@ -167,6 +172,7 @@ class SearchState extends Equatable {
     this.error,
     this.trending = const [],
     this.suggestions = const [],
+    this.aniFiltersBySource = const {},
   });
 
   /// True when any client-side filter narrows the results (drives the active
@@ -287,6 +293,7 @@ class SearchState extends Equatable {
     bool clearError = false,
     List<MediaItem>? trending,
     List<String>? suggestions,
+    Map<String, String>? aniFiltersBySource,
   }) => SearchState(
     status: status ?? this.status,
     query: query ?? this.query,
@@ -300,6 +307,7 @@ class SearchState extends Equatable {
     error: clearError ? null : (error ?? this.error),
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
+    aniFiltersBySource: aniFiltersBySource ?? this.aniFiltersBySource,
   );
 
   @override
@@ -316,5 +324,6 @@ class SearchState extends Equatable {
         error,
         trending,
         suggestions,
+        aniFiltersBySource,
       ];
 }

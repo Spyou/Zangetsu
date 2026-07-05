@@ -57,6 +57,21 @@ class AniyomiExtensionService {
     }
   }
 
+  /// Returns the source's filter-list schema JSON (see [AniyomiFilters]), or
+  /// null when the source has no filters or any channel error occurs.
+  Future<String?> getFilterList(int sourceId) async {
+    try {
+      return await _channel.invokeMethod<String>(
+        'getFilterList',
+        {'sourceId': sourceId},
+      );
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// Returns true when the native source with [sourceId] implements
   /// ConfigurableAnimeSource and has settings to show.
   ///

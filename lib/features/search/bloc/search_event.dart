@@ -101,3 +101,14 @@ class SearchDecadeFilterChanged extends SearchEvent {
 class SearchStarted extends SearchEvent {
   const SearchStarted();
 }
+
+/// Applies (or clears, with an empty [selectionJson]) the per-source Aniyomi
+/// filter selection for [sourceId], then re-runs just that source's search.
+class SearchSourceFiltersApplied extends SearchEvent {
+  const SearchSourceFiltersApplied(this.sourceId, this.selectionJson);
+  final String sourceId;
+  final String selectionJson;
+
+  @override
+  List<Object?> get props => [sourceId, selectionJson];
+}

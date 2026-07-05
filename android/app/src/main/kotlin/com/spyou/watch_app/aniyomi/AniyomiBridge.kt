@@ -153,20 +153,43 @@ class AniyomiBridge(
                     }
                 }
 
-                "search" -> {
+                "getFilterList" -> {
                     val sourceId = (call.argument<Number>("sourceId") ?: run {
                         result.error("BAD_ARGS", "sourceId required", null); return@setMethodCallHandler
                     }).toLong()
-                    val query = call.argument<String>("query") ?: ""
-                    val page = call.argument<Int>("page") ?: 1
                     val src = AniyomiSourceManager.get(sourceId) as? AnimeCatalogueSource ?: run {
                         result.error("NO_SOURCE", "Source $sourceId not found or not a catalogue source", null)
                         return@setMethodCallHandler
                     }
                     scope.launch(Dispatchers.IO) {
                         runCatching {
-                            // filtersJson (Task 10) is not yet parsed — pass empty filter list
-                            val page2 = src.getSearchAnime(page, query, AnimeFilterList())
+                            AniyomiFilterJson.filterListToJson(src.getFilterList())
+                        }.fold(
+                            onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("FILTERS", "${err::class.java.simpleName}: ${err.message}", null) } },
+                        )
+                    }
+                }
+
+                "search" -> {
+                    val sourceId = (call.argument<Number>("sourceId") ?: run {
+                        result.error("BAD_ARGS", "sourceId required", null); return@setMethodCallHandler
+                    }).toLong()
+                    val query = call.argument<String>("query") ?: ""
+                    val page = call.argument<Int>("page") ?: 1
+                    val filtersJson = call.argument<String>("filters")
+                    val src = AniyomiSourceManager.get(sourceId) as? AnimeCatalogueSource ?: run {
+                        result.error("NO_SOURCE", "Source $sourceId not found or not a catalogue source", null)
+                        return@setMethodCallHandler
+                    }
+                    scope.launch(Dispatchers.IO) {
+                        runCatching {
+                            val fl = if (!filtersJson.isNullOrBlank()) {
+                                src.getFilterList().also { AniyomiFilterJson.applySelectionJson(it, filtersJson) }
+                            } else {
+                                AnimeFilterList()
+                            }
+                            val page2 = src.getSearchAnime(page, query, fl)
                             AniyomiJson.animesToJson(page2.animes)
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },

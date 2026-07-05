@@ -1,3 +1,4 @@
+import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
@@ -197,6 +198,9 @@ class SourceRepository {
   ///    an empty list is reported as [SourceOutcome.empty].
   ///  - For CloudStream sources it routes to [CloudStreamProvider.searchWithStatus]
   ///    (native `searchStatus`), which distinguishes timeout/error from empty.
+  ///  - For Aniyomi sources, [filtersJson] (when non-null) is forwarded to the
+  ///    provider so the native bridge can apply the user's filter selection.
+  ///    CloudStream and JS paths never receive it.
   ///
   /// CF suppression is reused automatically: JS search goes through the
   /// provider-manager `search` path (suppresses the solver) and CS search goes
@@ -205,6 +209,7 @@ class SourceRepository {
     String query, {
     String category = 'sub',
     String? sourceId,
+    String? filtersJson,
   }) async {
     final resolved = sourceId ?? _active.state;
     try {
@@ -222,8 +227,11 @@ class SourceRepository {
           outcome: r.items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
         );
       }
-      final items =
-          await _providerFor(resolved).search(query, 1, category: category);
+      final provider = _providerFor(resolved);
+      final items = (_isAniyomi(resolved) && provider is AniyomiProvider)
+          ? await provider.search(query, 1,
+              category: category, filtersJson: filtersJson)
+          : await provider.search(query, 1, category: category);
       return (
         items: items,
         outcome: items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
@@ -231,6 +239,14 @@ class SourceRepository {
     } catch (e) {
       return (items: const <MediaItem>[], outcome: _outcomeFromError('$e'));
     }
+  }
+
+  /// Returns the typed Aniyomi filter schema for [sourceId], or an empty list
+  /// for non-Aniyomi sources or when the source has no filters.
+  Future<List<AniyomiFilter>> aniFilters(String sourceId) async {
+    if (!_isAniyomi(sourceId)) return const [];
+    final p = _providerFor(sourceId);
+    return p is AniyomiProvider ? p.getFilters() : const [];
   }
 
   /// Classifies a failure message into a [SourceOutcome]. Timeouts and CF/WAF

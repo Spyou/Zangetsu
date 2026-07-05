@@ -12,6 +12,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import '../provider/base_provider.dart';
+import 'aniyomi_filters.dart';
 import 'aniyomi_source_info.dart';
 import 'aniyomi_mapping.dart';
 
@@ -113,18 +114,37 @@ class AniyomiProvider implements BaseProvider {
   Future<List<MediaItem>> _fetchLatest({int page = 1}) =>
       _invokeAnimeList('getLatest', {'sourceId': info.id, 'page': page});
 
-  /// Searches the source for [query].  [category] is unused.
+  /// Searches the source for [query].  [category] is unused by Aniyomi sources.
+  ///
+  /// When [filtersJson] is provided and non-empty it is forwarded to the native
+  /// bridge, which applies the selection back onto the live filter list before
+  /// running the search.
   @override
   Future<List<MediaItem>> search(
     String query,
     int page, {
     String category = '',
+    String? filtersJson,
   }) async {
     if (!Platform.isAndroid) return const [];
-    return _invokeAnimeList(
-      'search',
-      {'sourceId': info.id, 'query': query, 'page': page},
-    );
+    final args = <String, dynamic>{
+      'sourceId': info.id,
+      'query': query,
+      'page': page,
+    };
+    if (filtersJson != null && filtersJson.isNotEmpty) {
+      args['filters'] = filtersJson;
+    }
+    return _invokeAnimeList('search', args);
+  }
+
+  /// Returns the typed filter schema for this source, or an empty list when
+  /// the source has no filters or the platform is not Android.
+  Future<List<AniyomiFilter>> getFilters() async {
+    if (!Platform.isAndroid) return const [];
+    final raw = await _safeInvoke('getFilterList', {'sourceId': info.id});
+    if (raw == null || raw.isEmpty) return const [];
+    return AniyomiFilters.parse(raw);
   }
 
   /// Fetches the detail page and episode list for [url] in parallel and

@@ -24,6 +24,8 @@ import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/states.dart';
+import '../../core/aniyomi/aniyomi_filters.dart';
+import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
@@ -196,6 +198,35 @@ class _SearchViewState extends State<_SearchView> {
     ).then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  /// Opens the Aniyomi per-source filter sheet for [g].
+  ///
+  /// Fetches the filter schema, shows the sheet, and dispatches
+  /// [SearchSourceFiltersApplied] with the selection JSON when the user taps
+  /// Apply. A brief SnackBar informs the user when the source has no filters.
+  Future<void> _openAniFilters(SourceResultGroup g) async {
+    final stored =
+        context.read<SearchBloc>().state.aniFiltersBySource[g.sourceId];
+    final List<AniyomiFilter> filters =
+        (stored != null && stored.isNotEmpty)
+            ? AniyomiFilters.parse(stored)
+            : await _repo.aniFilters(g.sourceId);
+    if (!mounted) return;
+    if (filters.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This source has no filters')),
+      );
+      return;
+    }
+    final result = await showAniyomiFilterSheet(context, filters);
+    if (result == null || !mounted) return;
+    context.read<SearchBloc>().add(
+          SearchSourceFiltersApplied(
+            g.sourceId,
+            AniyomiFilters.toSelectionJson(result),
+          ),
+        );
   }
 
   Future<void> _play(MediaItem item) async {
@@ -782,7 +813,17 @@ class _SearchViewState extends State<_SearchView> {
   /// Section header — "MovieBox · 12" (source name + count under the filters).
   /// When [onSeeAll] is provided a right-aligned "See all ›" link opens that
   /// source's full results (shown only when the section is capped).
-  Widget _sectionHeader(String name, int count, {VoidCallback? onSeeAll}) {
+  ///
+  /// [onFilter] and [filterActive] are for Aniyomi (`ani:`) sources only.
+  /// When [onFilter] is null the header is visually identical to before, so
+  /// all non-Aniyomi callers are byte-for-byte unchanged.
+  Widget _sectionHeader(
+    String name,
+    int count, {
+    VoidCallback? onSeeAll,
+    VoidCallback? onFilter,
+    bool filterActive = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
       child: Row(
@@ -795,6 +836,19 @@ class _SearchViewState extends State<_SearchView> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (onFilter != null)
+            IconButton(
+              onPressed: onFilter,
+              icon: Icon(
+                Icons.tune_rounded,
+                size: 20,
+                color: filterActive ? AppColors.accent : AppColors.textTertiary,
+              ),
+              tooltip: 'Source filters',
+              padding: EdgeInsets.zero,
+              constraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
           if (onSeeAll != null)
             GestureDetector(
               onTap: onSeeAll,
@@ -831,12 +885,21 @@ class _SearchViewState extends State<_SearchView> {
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
         : g.items;
+    final isAni = g.sourceId.startsWith('ani:');
+    final aniFilters = isAni
+        ? context.read<SearchBloc>().state.aniFiltersBySource
+        : const <String, String>{};
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _sectionHeader(g.sourceName, g.items.length,
-            onSeeAll: overflows ? () => _openSourceSeeAll(g) : null),
+        _sectionHeader(
+          g.sourceName,
+          g.items.length,
+          onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
+          onFilter: isAni ? () => _openAniFilters(g) : null,
+          filterActive: isAni && aniFilters.containsKey(g.sourceId),
+        ),
         SizedBox(
           height: itemH,
           child: ListView.builder(
@@ -877,12 +940,21 @@ class _SearchViewState extends State<_SearchView> {
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
         : g.items;
+    final isAni = g.sourceId.startsWith('ani:');
+    final aniFilters = isAni
+        ? context.read<SearchBloc>().state.aniFiltersBySource
+        : const <String, String>{};
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        _sectionHeader(g.sourceName, g.items.length,
-            onSeeAll: overflows ? () => _openSourceSeeAll(g) : null),
+        _sectionHeader(
+          g.sourceName,
+          g.items.length,
+          onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
+          onFilter: isAni ? () => _openAniFilters(g) : null,
+          filterActive: isAni && aniFilters.containsKey(g.sourceId),
+        ),
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),

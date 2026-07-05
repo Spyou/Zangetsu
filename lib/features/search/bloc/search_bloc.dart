@@ -36,6 +36,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchDecadeFilterChanged>(_onDecadeFilterChanged);
     on<SearchRunRequested>(_onRunRequested);
     on<SearchSubmitted>(_onSubmitted);
+    on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
   }
 
   final SourceRepository _repo;
@@ -311,7 +312,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     await Future.wait(sources.map((s) async {
       final sw = Stopwatch()..start();
       try {
-        final res = await _repo.searchStatus(q, sourceId: s.id);
+        final res = await _repo.searchStatus(q,
+            sourceId: s.id,
+            filtersJson: state.aniFiltersBySource[s.id]);
         sw.stop();
         if (isClosed || gen != _runGen) return; // superseded/closed
         // Record health: a response over the slow threshold downgrades an
@@ -381,6 +384,51 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       if (out.length >= 8) break;
     }
     return out;
+  }
+
+  /// Stores the per-source Aniyomi filter selection and re-fetches that one
+  /// source with the updated selection applied.
+  ///
+  /// An empty [SearchSourceFiltersApplied.selectionJson] clears the entry,
+  /// reverting the source to unfiltered results on the next search.
+  Future<void> _onSourceFiltersApplied(
+    SearchSourceFiltersApplied event,
+    Emitter<SearchState> emit,
+  ) async {
+    final map = Map<String, String>.of(state.aniFiltersBySource);
+    if (event.selectionJson.isEmpty) {
+      map.remove(event.sourceId);
+    } else {
+      map[event.sourceId] = event.selectionJson;
+    }
+    emit(state.copyWith(aniFiltersBySource: map));
+    final q = state.query.trim();
+    if (q.isEmpty) return;
+    final res = await _repo.searchStatus(
+      q,
+      sourceId: event.sourceId,
+      filtersJson: map[event.sourceId],
+    );
+    if (isClosed || state.query.trim() != q) return;
+    final groups = List<SourceResultGroup>.of(state.groups);
+    final idx = groups.indexWhere((g) => g.sourceId == event.sourceId);
+    if (res.items.isEmpty) {
+      if (idx >= 0) groups.removeAt(idx);
+    } else {
+      final arrival = idx >= 0 ? groups[idx].arrivalIndex : groups.length;
+      final g = SourceResultGroup(
+        sourceId: event.sourceId,
+        sourceName: _repo.displayName(event.sourceId),
+        items: res.items,
+        arrivalIndex: arrival,
+      );
+      if (idx >= 0) {
+        groups[idx] = g;
+      } else {
+        groups.add(g);
+      }
+    }
+    emit(state.copyWith(groups: groups));
   }
 
   @override
