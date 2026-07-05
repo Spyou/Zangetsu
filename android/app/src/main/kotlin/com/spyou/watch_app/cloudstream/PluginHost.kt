@@ -407,6 +407,12 @@ class PluginHost(private val context: Context) {
                     withTimeoutOrNull(HOME_ROW_TIMEOUT_MS) {
                         runCatching {
                             api.getMainPage(1, MainPageRequest(mp.name, mp.data, false))
+                        }.onFailure {
+                            android.util.Log.w(
+                                "PluginHost",
+                                "getMainPage '${mp.name}' failed for $apiName: $it",
+                                it,
+                            )
                         }.getOrNull()
                     }
                 }
@@ -518,6 +524,8 @@ class PluginHost(private val context: Context) {
             val job = launch(Dispatchers.IO) {
                 runCatching {
                     api.loadLinks(data, false, { sf -> subs.add(sf) }, { el -> links.add(el) })
+                }.onFailure {
+                    android.util.Log.w("PluginHost", "loadLinks failed for $apiName: $it", it)
                 }
             }
             if (fast) {

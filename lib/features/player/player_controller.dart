@@ -148,7 +148,10 @@ class PlayerCubit extends Cubit<PlayerState> {
        super(const PlayerState());
 
   final String sourceId;
-  final List<Episode> episodes;
+  // Mutable: switching Sub/Dub on a provider that separates the two by episode
+  // DATA (not a /sub//dub/ URL segment) re-fetches the other category's episode
+  // list and swaps it in (see [switchCategory]).
+  List<Episode> episodes;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) _resolveSources;
   final Dio _dio;
@@ -357,7 +360,24 @@ class PlayerCubit extends Cubit<PlayerState> {
       ),
     );
     try {
-      final resolved = await _resolveSources(_episodeUrl(currentEpisode));
+      // Resolve the episode URL for the new language. For providers that encode
+      // sub/dub in the URL (e.g. AllAnime `.../sub/1`) the rewrite below is
+      // enough. Providers that keep SEPARATE episode lists per language (e.g.
+      // CloudStream AniKoto — different opaque `data` per episode) leave the URL
+      // unchanged; for those, re-fetch the other category's episode list and use
+      // the matching episode's data, otherwise dub would just replay the sub.
+      var epUrl = _episodeUrl(currentEpisode);
+      if (epUrl == currentEpisode.url &&
+          (showUrl?.isNotEmpty ?? false)) {
+        final catEps = await sl<SourceRepository>()
+            .episodes(showUrl!, sourceId: sourceId, category: cat);
+        if (gen != _gen) return;
+        if (state.currentIndex < catEps.length) {
+          episodes = catEps;
+          epUrl = catEps[state.currentIndex].url;
+        }
+      }
+      final resolved = await _resolveSources(epUrl);
       if (gen != _gen) return;
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen);
