@@ -373,25 +373,25 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   Widget _playButton() {
     return Material(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: widget.onPlay,
         child: const SizedBox(
-          width: 150,
-          height: 50,
+          width: 138,
+          height: 44,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 24),
-              SizedBox(width: 8),
+              Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 20),
+              SizedBox(width: 7),
               Text(
                 'Play',
                 style: TextStyle(
                   fontFamily: 'Inter',
                   color: AppColors.bg,
                   fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                  fontSize: 15,
                   letterSpacing: -0.2,
                 ),
               ),
@@ -408,8 +408,8 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 44,
+        height: 44,
         decoration: BoxDecoration(
           color: Colors.white.withValues(alpha: 0.14),
           shape: BoxShape.circle,
@@ -418,7 +418,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         child: Icon(
           icon,
           color: active ? AppColors.accent : Colors.white,
-          size: 24,
+          size: 21,
         ),
       ),
     );
