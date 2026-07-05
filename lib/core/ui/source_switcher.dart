@@ -154,7 +154,7 @@ class SourceSwitcher extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => _showPicker(context),
+      onTap: () => showPicker(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -183,7 +183,10 @@ class SourceSwitcher extends StatelessWidget {
     );
   }
 
-  void _showPicker(BuildContext context) {
+  /// Opens the shared source picker (tabbed anime/movies list with CS·/Ani·
+  /// labels + repo tags). Public so other screens (e.g. Settings → Active
+  /// source) can present the exact same picker as the Home header.
+  void showPicker(BuildContext context) {
     final b = _buckets();
 
     void choose(BuildContext ctx, String id) {

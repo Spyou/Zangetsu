@@ -31,6 +31,7 @@ import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/ui/source_switcher.dart';
 import '../../core/theme/app_text.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -217,110 +218,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (activeId.startsWith('cs:')) {
       return _csManager.get(activeId)?.displayName ?? activeId;
     }
+    if (activeId.startsWith('ani:')) {
+      return sl<AniyomiManager>().get(activeId)?.displayName ?? activeId;
+    }
     final entry = _registry.entryFor(activeId);
     if (entry == null) return activeId;
     return entry.displayName.isNotEmpty ? entry.displayName : entry.name;
   }
 
-  /// Bottom sheet listing enabled providers; sets the active source on the
-  /// [ActiveSourceCubit].
-  Future<void> _pickActiveSource() async {
-    final enabled = _registry.getAll().where((e) => e.enabled).toList()
-      ..sort((a, b) {
-        final an = a.displayName.isNotEmpty ? a.displayName : a.name;
-        final bn = b.displayName.isNotEmpty ? b.displayName : b.name;
-        return an.toLowerCase().compareTo(bn.toLowerCase());
-      });
-    // CloudStream sources (`cs:<name>`) live outside the registry; surface them
-    // alongside the JS providers so the user can switch to one.
-    final csSources = _csManager.enabled.toList()
-      ..sort(
-        (a, b) => a.displayName.toLowerCase().compareTo(
-          b.displayName.toLowerCase(),
-        ),
-      );
-    final currentId = _active.state;
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.85,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Active source', style: AppText.headline),
-              ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            if (enabled.isEmpty && csSources.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Text('No enabled sources', style: AppText.body),
-              )
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  padding: EdgeInsets.zero,
-                  children: [
-                    for (final e in enabled)
-                      ListTile(
-                        onTap: () => Navigator.pop(ctx, e.name),
-                        title: Text(
-                          e.displayName.isNotEmpty ? e.displayName : e.name,
-                          style: AppText.body.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        trailing: e.name == currentId
-                            ? const Icon(Icons.check, color: AppColors.accent)
-                            : null,
-                      ),
-                    for (final p in csSources)
-                      ListTile(
-                        onTap: () => Navigator.pop(ctx, p.sourceId),
-                        title: Text(
-                          p.displayName,
-                          style: AppText.body.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        subtitle: Text('CloudStream', style: AppText.caption),
-                        trailing: p.sourceId == currentId
-                            ? const Icon(Icons.check, color: AppColors.accent)
-                            : null,
-                      ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
-    if (picked != null && picked != currentId) {
-      _active.setSource(picked);
-      if (mounted) setState(() {});
-    }
+  /// Opens the SAME source picker as the Home header (tabbed anime/movies with
+  /// CS·/Ani· labels + repo tags) and applies the chosen source. Reuses
+  /// [SourceSwitcher.showPicker] so Settings and Home stay in sync.
+  void _pickActiveSource() {
+    SourceSwitcher(
+      currentId: _active.state,
+      onChanged: (id) {
+        if (id != _active.state) {
+          _active.setSource(id);
+          if (mounted) setState(() {});
+        }
+      },
+    ).showPicker(context);
   }
 
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
