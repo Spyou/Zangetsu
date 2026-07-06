@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
+import '../../core/aniyomi/aniyomi_update.dart';
 import '../../core/app_mode.dart';
 import '../../core/provider/base_provider.dart';
 import '../../core/di/injector.dart';
@@ -1223,10 +1224,23 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
 /// Single Aniyomi source row in the Installed tab. Tapping makes it the active
 /// source. No enable/disable switch — Aniyomi sources are always active.
 class _AniSourceRow extends StatefulWidget {
-  const _AniSourceRow({required this.source, required this.activeId});
+  const _AniSourceRow({
+    required this.source,
+    required this.activeId,
+    this.updateLookupFn,
+    this.applyUpdateFn,
+  });
 
   final BaseProvider source;
   final String activeId;
+
+  /// Test seam: overrides the live `AniyomiManager.updateFor` lookup. When
+  /// non-null the button also skips the `AnimatedBuilder` so widget tests
+  /// stay deterministic.
+  final AniyomiUpdate? Function(String pkg)? updateLookupFn;
+
+  /// Test seam: overrides the real install-from-repo apply flow.
+  final Future<void> Function(AniyomiUpdate update)? applyUpdateFn;
 
   @override
   State<_AniSourceRow> createState() => _AniSourceRowState();
@@ -1234,6 +1248,7 @@ class _AniSourceRow extends StatefulWidget {
 
 class _AniSourceRowState extends State<_AniSourceRow> {
   bool _hasSettings = false;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -1332,12 +1347,62 @@ class _AniSourceRowState extends State<_AniSourceRow> {
     }
   }
 
+  Future<void> _applyUpdate(AniyomiUpdate update) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final apply = widget.applyUpdateFn ?? _defaultApplyUpdate;
+      await apply(update);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Updated ${update.name}')));
+    } catch (e) {
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _defaultApplyUpdate(AniyomiUpdate update) async {
+    await AniyomiExtensionService()
+        .installFromRepo(update.entry, manager: sl<AniyomiManager>());
+    sl<AniyomiManager>().clearUpdatesForPkg(update.pkg);
+  }
+
   @override
   Widget build(BuildContext context) {
     final source = widget.source;
     final active = source.sourceId == widget.activeId;
     final lang = source is AniyomiProvider ? source.info.lang : '';
     final nameColor = active ? AppColors.accent : AppColors.textPrimary;
+    final aniProvider = source is AniyomiProvider ? source : null;
+    final lookup = widget.updateLookupFn ??
+        (String pkg) => sl<AniyomiManager>().updateFor(pkg);
+
+    Widget updateButton() {
+      final pkg = aniProvider?.info.pkg;
+      final update = pkg == null ? null : lookup(pkg);
+      if (update == null) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(right: 4),
+        child: FilledButton(
+          onPressed: _busy ? null : () => _applyUpdate(update),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          child: Text('Update → v${update.availableVersion}'),
+        ),
+      );
+    }
+
     return InkWell(
       onTap: () {
         context.read<ActiveSourceCubit>().setSource(source.sourceId);
@@ -1373,6 +1438,13 @@ class _AniSourceRowState extends State<_AniSourceRow> {
                 ],
               ),
             ),
+            if (widget.updateLookupFn != null)
+              updateButton()
+            else
+              AnimatedBuilder(
+                animation: sl<AniyomiManager>(),
+                builder: (_, _) => updateButton(),
+              ),
             if (_hasSettings)
               IconButton(
                 tooltip: 'Source settings',
@@ -2390,3 +2462,18 @@ class _CsAddRepoDialogState extends State<_CsAddRepoDialog> {
     );
   }
 }
+
+/// Test-only handle to the private installed Aniyomi row.
+@visibleForTesting
+Widget debugAniSourceRow({
+  required BaseProvider source,
+  required String activeId,
+  AniyomiUpdate? Function(String pkg)? updateLookupFn,
+  Future<void> Function(AniyomiUpdate update)? applyUpdateFn,
+}) =>
+    _AniSourceRow(
+      source: source,
+      activeId: activeId,
+      updateLookupFn: updateLookupFn,
+      applyUpdateFn: applyUpdateFn,
+    );
