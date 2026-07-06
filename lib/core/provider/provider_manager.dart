@@ -7,6 +7,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_js/flutter_js.dart';
 
+import '../aniyomi/aniyomi_extension_service.dart';
+import '../aniyomi/aniyomi_provider.dart';
+import '../aniyomi/aniyomi_update.dart';
 import '../error/exceptions.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
@@ -763,6 +766,91 @@ class ProviderManager implements ProviderRuntimeLoader {
 /// `'aniyomi_installed'` Hive box managed by [AniyomiExtensionService].
 class AniyomiManager extends ChangeNotifier {
   final Map<String, BaseProvider> _providers = {};
+
+  /// Available updates keyed by repo base URL. Mirrors CloudStreamManager._updates.
+  final Map<String, List<AniyomiUpdate>> _updates = {};
+
+  /// Overridable checker (test seam). Defaults to the real service fetch.
+  Future<List<AniyomiUpdate>> Function(String url, Map<String, int> codes)?
+      checkerOverride;
+
+  DateTime? _lastUpdateCheck;
+  static const Duration _updatesTtl = Duration(minutes: 30);
+
+  /// Installed extension packages → versionCode, derived from registered
+  /// Aniyomi providers (first source per pkg wins; all sources share a code).
+  Map<String, int> get installedCodes {
+    final m = <String, int>{};
+    for (final p in _providers.values) {
+      if (p is AniyomiProvider) {
+        m.putIfAbsent(p.info.pkg, () => p.info.versionCode);
+      }
+    }
+    return m;
+  }
+
+  /// Read-only update check for a single repo; stores + notifies. Never throws.
+  Future<List<AniyomiUpdate>> checkRepoUpdates(String url) async {
+    final checker = checkerOverride ??
+        (u, codes) => AniyomiExtensionService().checkRepoForUpdates(u, codes);
+    try {
+      final list = await checker(url, installedCodes);
+      if (list.isEmpty) {
+        _updates.remove(url);
+      } else {
+        _updates[url] = list;
+      }
+      notifyListeners();
+      return list;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  List<AniyomiUpdate> updatesFor(String url) => _updates[url] ?? const [];
+
+  /// The update for [pkg] across all repos, or null.
+  AniyomiUpdate? updateFor(String pkg) {
+    for (final list in _updates.values) {
+      for (final u in list) {
+        if (u.pkg == pkg) return u;
+      }
+    }
+    return null;
+  }
+
+  int get updateCount => _updates.values.fold(0, (a, l) => a + l.length);
+
+  /// Checks every repo URL. TTL-debounced (30 min) unless [force]. Returns the
+  /// total update count. Never throws.
+  Future<int> checkAllUpdates(List<String> repoUrls, {bool force = false}) async {
+    final last = _lastUpdateCheck;
+    if (!force &&
+        last != null &&
+        DateTime.now().difference(last) < _updatesTtl) {
+      return updateCount;
+    }
+    _lastUpdateCheck = DateTime.now();
+    for (final url in repoUrls) {
+      if (url.isNotEmpty) await checkRepoUpdates(url);
+    }
+    return updateCount;
+  }
+
+  /// Drops [pkg] from all repos' update lists (after a successful update).
+  void clearUpdatesForPkg(String pkg) {
+    var changed = false;
+    for (final url in _updates.keys.toList()) {
+      final filtered = _updates[url]!.where((u) => u.pkg != pkg).toList();
+      if (filtered.length != _updates[url]!.length) changed = true;
+      if (filtered.isEmpty) {
+        _updates.remove(url);
+      } else {
+        _updates[url] = filtered;
+      }
+    }
+    if (changed) notifyListeners();
+  }
 
   /// All registered Aniyomi providers (`ani:*` source ids).
   List<BaseProvider> get all => _providers.values.toList();
