@@ -1366,8 +1366,12 @@ class _AniSourceRowState extends State<_AniSourceRow> {
   }
 
   Future<void> _defaultApplyUpdate(AniyomiUpdate update) async {
-    await AniyomiExtensionService()
+    // installFromRepo never throws — it returns an empty list on failure —
+    // so a failed download must be surfaced here rather than silently
+    // reported as a success that clears the update badge.
+    final providers = await AniyomiExtensionService()
         .installFromRepo(update.entry, manager: sl<AniyomiManager>());
+    if (providers.isEmpty) throw Exception('Update failed to install');
     sl<AniyomiManager>().clearUpdatesForPkg(update.pkg);
   }
 

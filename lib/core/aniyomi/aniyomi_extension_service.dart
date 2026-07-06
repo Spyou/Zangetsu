@@ -210,7 +210,8 @@ class AniyomiExtensionService {
         }
       }
       return out;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[aniyomi] checkRepoForUpdates($repoUrl) failed: $e');
       return const [];
     }
   }

@@ -1,7 +1,8 @@
 /// A single source entry as returned by the native `listSources` bridge call.
 ///
 /// Field names match the JSON keys emitted by `AniyomiBridge.sourcesJson()`:
-/// `id`, `name`, `lang`, `nsfw`, `pkg`, `baseUrl`, `headers`.
+/// `id`, `name`, `lang`, `nsfw`, `pkg`, `baseUrl`, `headers`, `version`,
+/// `versionCode`.
 class AniyomiSourceInfo {
   const AniyomiSourceInfo({
     required this.id,
