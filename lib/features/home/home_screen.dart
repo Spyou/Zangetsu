@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive/hive.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -20,6 +22,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../announce/announcement_sheet.dart';
+import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../update/update_dialog.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/continue_card.dart';
@@ -104,10 +107,24 @@ class _HomeViewState extends State<_HomeView> {
     await Future<void>.delayed(const Duration(seconds: 4));
     if (!mounted) return;
     try {
-      final manager = sl<CloudStreamManager>();
-      final count = await manager.checkAllUpdates();
-      if (count > 0 && manager.notifyUpdates) {
-        await NotificationService.instance.showSourceUpdates(count: count);
+      final csManager = sl<CloudStreamManager>();
+      final csCount = await csManager.checkAllUpdates();
+
+      var aniCount = 0;
+      try {
+        final repoUrls = Hive.isBoxOpen(kAniyomiReposBoxName)
+            ? Hive.box<String>(kAniyomiReposBoxName).values.toList()
+            : const <String>[];
+        if (repoUrls.isNotEmpty) {
+          aniCount = await sl<AniyomiManager>().checkAllUpdates(repoUrls);
+        }
+      } catch (_) {
+        /* aniyomi check must never break the CS check or startup */
+      }
+
+      final total = csCount + aniCount;
+      if (total > 0 && csManager.notifyUpdates) {
+        await NotificationService.instance.showSourceUpdates(count: total);
       }
     } catch (_) {
       /* never affects startup */
