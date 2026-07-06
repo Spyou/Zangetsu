@@ -56,6 +56,15 @@ class AniyomiProvider implements BaseProvider {
   @override
   String get displayName => info.name;
 
+  /// Package name of the owning extension APK.
+  String get pkg => info.pkg;
+
+  /// Extension versionName (display).
+  String get version => info.version;
+
+  /// Extension versionCode (used for update comparisons).
+  int get versionCode => info.versionCode;
+
   /// Headers for cover/thumbnail image requests. Many Aniyomi image hosts
   /// (e.g. AnimePahe's CDN) return 403 without a `Referer`, and a source's
   /// default headers often omit it — so fall back to the source base URL.

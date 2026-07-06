@@ -11,6 +11,8 @@ class AniyomiSourceInfo {
     required this.pkg,
     required this.nsfw,
     this.headers = const {},
+    this.version = '',
+    this.versionCode = 0,
   });
 
   /// Numeric source id matching `AnimeSource.id` on the native side.
@@ -23,6 +25,12 @@ class AniyomiSourceInfo {
 
   /// Package name of the owning extension APK.
   final String pkg;
+
+  /// Extension versionName from the APK manifest (e.g. "1.4.21"). Display only.
+  final String version;
+
+  /// Extension versionCode from the APK manifest. Update comparisons use this.
+  final int versionCode;
 
   /// Whether the extension is flagged as not-safe-for-work.
   final bool nsfw;
@@ -41,6 +49,8 @@ class AniyomiSourceInfo {
       lang: (json['lang'] as String?) ?? '',
       baseUrl: (json['baseUrl'] as String?) ?? '',
       pkg: (json['pkg'] as String?) ?? '',
+      version: (json['version'] as String?) ?? '',
+      versionCode: (json['versionCode'] as num?)?.toInt() ?? 0,
       // Native side serialises a Kotlin Boolean → JSON true/false.
       nsfw: (json['nsfw'] as bool?) ?? false,
       // Native side serialises source-level OkHttp headers as a JSON object.
