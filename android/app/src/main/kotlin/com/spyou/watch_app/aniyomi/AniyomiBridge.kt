@@ -383,9 +383,11 @@ class AniyomiBridge(
      *   id      — [AnimeSource.id] (Long, serialised as a JSON number)
      *   name    — [AnimeSource.name]
      *   lang    — [AnimeSource.lang]
-     *   nsfw    — from the owning [LoadedExtension.nsfw]
-     *   pkg     — from the owning [LoadedExtension.pkg]
-     *   baseUrl — [AnimeHttpSource.baseUrl] when the source is an HTTP source; "" otherwise
+     *   nsfw        — from the owning [LoadedExtension.nsfw]
+     *   pkg         — from the owning [LoadedExtension.pkg]
+     *   version     — from the owning [LoadedExtension.versionName]
+     *   versionCode — from the owning [LoadedExtension.versionCode]
+     *   baseUrl     — [AnimeHttpSource.baseUrl] when the source is an HTTP source; "" otherwise
      */
     private fun sourcesJson(): String {
         val arr = JSONArray()
@@ -398,6 +400,8 @@ class AniyomiBridge(
                         put("lang", src.lang)
                         put("nsfw", ext.nsfw)
                         put("pkg", ext.pkg)
+                        put("version", ext.versionName)
+                        put("versionCode", ext.versionCode)
                         put("baseUrl", (src as? AnimeHttpSource)?.baseUrl ?: "")
                         // Source-level headers (Referer/User-Agent) needed by the Dart layer
                         // to fetch thumbnail images without 403 errors on strict image hosts.

@@ -20,6 +20,7 @@ package com.spyou.watch_app.aniyomi
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import dalvik.system.DexClassLoader
 import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.AnimeSourceFactory
@@ -30,6 +31,7 @@ import java.io.File
  *
  * @param pkg         the APK's declared package name.
  * @param versionName the full versionName string from the APK manifest.
+ * @param versionCode the APK's versionCode (longVersionCode on API 28+, versionCode below).
  * @param libVersion  the derived extensions-lib version (major.minor from [libVersionOf]).
  * @param nsfw        true when the extension is flagged for adult content.
  * @param sources     the [AnimeSource] instances produced by this extension.
@@ -37,6 +39,7 @@ import java.io.File
 data class LoadedExtension(
     val pkg: String,
     val versionName: String,
+    val versionCode: Long,
     val libVersion: Double,
     val nsfw: Boolean,
     val sources: List<AnimeSource>,
@@ -151,6 +154,14 @@ object AniyomiExtensionLoader {
         val versionName = pkgInfo.versionName
             ?: error("Missing versionName in APK manifest: ${apkFile.name}")
 
+        val versionCode: Long =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pkgInfo.longVersionCode
+            } else {
+                @Suppress("DEPRECATION")
+                pkgInfo.versionCode.toLong()
+            }
+
         val libVersion = runCatching { libVersionOf(versionName) }.getOrElse { e ->
             error("Cannot parse lib version from versionName \"$versionName\": ${e.message}")
         }
@@ -214,6 +225,7 @@ object AniyomiExtensionLoader {
         LoadedExtension(
             pkg = pkg,
             versionName = versionName,
+            versionCode = versionCode,
             libVersion = libVersion,
             nsfw = nsfw,
             sources = sources,

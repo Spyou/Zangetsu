@@ -36,6 +36,7 @@ class AniyomiSourceManagerTest {
     private fun fakeExtension(pkg: String, vararg sources: AnimeSource) = LoadedExtension(
         pkg = pkg,
         versionName = "14.1",
+        versionCode = 1L,
         libVersion = 14.0,
         nsfw = false,
         sources = sources.toList(),
