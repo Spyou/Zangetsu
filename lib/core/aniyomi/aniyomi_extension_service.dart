@@ -12,6 +12,7 @@ import '../provider/provider_manager.dart' show AniyomiManager;
 import 'aniyomi_provider.dart';
 import 'aniyomi_repo.dart';
 import 'aniyomi_source_info.dart';
+import 'aniyomi_update.dart';
 
 export 'aniyomi_source_info.dart';
 
@@ -178,6 +179,39 @@ class AniyomiExtensionService {
     } catch (e, st) {
       debugPrint('[aniyomi] installFromRepo(${entry.pkg}) failed: $e\n$st');
       return [];
+    }
+  }
+
+  /// Read-only check: fetches [repoUrl]'s index and returns updates for every
+  /// installed package whose repo `code` is newer than [installedCodes]. Never
+  /// throws — a failed fetch degrades to an empty list. Does NOT download APKs.
+  Future<List<AniyomiUpdate>> checkRepoForUpdates(
+    String repoUrl,
+    Map<String, int> installedCodes, {
+    Future<List<AniyomiRepoEntry>> Function(String url)? fetchIndex,
+  }) async {
+    try {
+      final fetch = fetchIndex ?? AniyomiRepo.fetchIndex;
+      final entries = await fetch(repoUrl);
+      final out = <AniyomiUpdate>[];
+      for (final e in entries) {
+        final installed = installedCodes[e.pkg];
+        if (installed != null && e.code > installed) {
+          out.add(
+            AniyomiUpdate(
+              pkg: e.pkg,
+              name: e.name,
+              installedCode: installed,
+              availableCode: e.code,
+              availableVersion: e.version,
+              entry: e,
+            ),
+          );
+        }
+      }
+      return out;
+    } catch (_) {
+      return const [];
     }
   }
 }
