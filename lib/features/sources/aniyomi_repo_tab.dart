@@ -5,6 +5,8 @@ import 'package:hive/hive.dart';
 import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_repo.dart';
+import '../../core/aniyomi/aniyomi_update.dart';
+import '../../core/di/injector.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -242,6 +244,7 @@ class _AniyomiRepoSection extends StatefulWidget {
     this.installFn,
     this.uninstallFn,
     this.installedPkgsFn,
+    this.managerOverride,
   });
 
   final String url;
@@ -250,6 +253,10 @@ class _AniyomiRepoSection extends StatefulWidget {
   final Future<void> Function(AniyomiRepoEntry entry)? installFn;
   final Future<void> Function(String pkg)? uninstallFn;
   final bool Function(String pkg)? installedPkgsFn;
+
+  /// Test seam: overrides the live `sl<AniyomiManager>()` lookup used for the
+  /// repo's update-check / update-all / badge behavior.
+  final AniyomiManager? managerOverride;
 
   @override
   State<_AniyomiRepoSection> createState() => _AniyomiRepoSectionState();
@@ -260,9 +267,12 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
   bool _fetching = true;
   String? _fetchError;
   bool _expanded = true;
+  bool _checking = false;
 
   // Local installed-state cache for instant UI feedback after install/uninstall.
   final Set<String> _installedPkgs = {};
+
+  AniyomiManager get _manager => widget.managerOverride ?? sl<AniyomiManager>();
 
   @override
   void initState() {
@@ -353,6 +363,50 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
     if (ok == true) widget.onRemove();
   }
 
+  /// READ-ONLY check of this repo for extension updates via
+  /// [AniyomiManager.checkRepoUpdates] (no download). Reports how many are
+  /// available; the accent badge + "Update all" menu item then appear.
+  Future<void> _checkForUpdates() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _checking = true);
+    try {
+      final list = await _manager.checkRepoUpdates(widget.url);
+      messenger
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: Text(list.isEmpty
+              ? 'Up to date'
+              : '${list.length} update${list.length == 1 ? '' : 's'} available'),
+        ));
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  /// Applies every pending update for this repo (re-installs each newer entry)
+  /// via [widget.installFn] or the default [AniyomiExtensionService.installFromRepo].
+  Future<void> _updateAll() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final updates = List<AniyomiUpdate>.from(_manager.updatesFor(widget.url));
+    if (updates.isEmpty) return;
+    final install = widget.installFn ??
+        (AniyomiRepoEntry e) =>
+            AniyomiExtensionService().installFromRepo(e, manager: _manager);
+    var done = 0;
+    for (final u in updates) {
+      try {
+        await install(u.entry);
+        _manager.clearUpdatesForPkg(u.pkg);
+        done++;
+      } catch (_) {}
+    }
+    messenger
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(
+        content: Text('Updated $done source${done == 1 ? '' : 's'}'),
+      ));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -418,6 +472,39 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                     ),
                   ),
                 ),
+                // "N updates" pill when this repo has installed extensions
+                // with a newer version available (tap → update all).
+                AnimatedBuilder(
+                  animation: _manager,
+                  builder: (context, _) {
+                    final n = _manager.updatesFor(widget.url).length;
+                    if (n == 0) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _updateAll,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.16),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            n == 1 ? '1 update' : '$n updates',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
                 PopupMenuButton<String>(
                   icon: const Icon(
                     Icons.more_vert,
@@ -426,6 +513,8 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                   color: AppColors.surface2,
                   onSelected: (v) {
                     if (v == 'refresh') _fetchCatalog();
+                    if (v == 'check' && !_checking) _checkForUpdates();
+                    if (v == 'update_all') _updateAll();
                     if (v == 'remove') _confirmRemove(context);
                   },
                   itemBuilder: (_) => [
@@ -437,6 +526,24 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                             .copyWith(color: AppColors.textPrimary),
                       ),
                     ),
+                    PopupMenuItem(
+                      value: 'check',
+                      enabled: !_checking,
+                      child: Text(
+                        _checking ? 'Checking for updates…' : 'Check for updates',
+                        style: AppText.body
+                            .copyWith(color: AppColors.textPrimary),
+                      ),
+                    ),
+                    if (_manager.updatesFor(widget.url).isNotEmpty)
+                      PopupMenuItem(
+                        value: 'update_all',
+                        child: Text(
+                          'Update all '
+                          '(${_manager.updatesFor(widget.url).length})',
+                          style: AppText.body.copyWith(color: AppColors.accent),
+                        ),
+                      ),
                     PopupMenuItem(
                       value: 'remove',
                       child: Text(
@@ -773,3 +880,26 @@ class _NsfwBadge extends StatelessWidget {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Test seam: builds a bare _AniyomiRepoSection with an injected AniyomiManager
+// so widget tests can drive checkRepoUpdates()/updatesFor() without touching
+// sl<AniyomiManager>() or the network.
+// ---------------------------------------------------------------------------
+
+@visibleForTesting
+Widget debugAniyomiRepoSection({
+  required String url,
+  required AniyomiManager manager,
+  required Future<List<AniyomiRepoEntry>> Function(String url) fetchIndexFn,
+  Future<void> Function(AniyomiRepoEntry entry)? installFn,
+  bool Function(String pkg)? installedPkgsFn,
+}) =>
+    _AniyomiRepoSection(
+      url: url,
+      onRemove: () {},
+      fetchIndexFn: fetchIndexFn,
+      installFn: installFn,
+      installedPkgsFn: installedPkgsFn,
+      managerOverride: manager,
+    );
