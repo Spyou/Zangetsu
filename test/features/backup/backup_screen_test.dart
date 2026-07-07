@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
@@ -110,7 +109,7 @@ void main() {
     },
   );
 
-  Future<void> _pumpBackup(WidgetTester tester) async {
+  Future<void> pumpBackup(WidgetTester tester) async {
     _mockPathProvider(tester);
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -127,7 +126,7 @@ void main() {
   testWidgets('TV: backup rows are wrapped in TvFocusable', (tester) async {
     sl.unregister<AppMode>();
     sl.registerSingleton<AppMode>(const AppMode(isTv: true));
-    await _pumpBackup(tester);
+    await pumpBackup(tester);
     // 4 action tiles + 3 bundle checkbox rows → at least 4 focusable rows.
     expect(
       tester.widgetList<TvFocusable>(find.byType(TvFocusable)).length,
@@ -137,7 +136,7 @@ void main() {
 
   testWidgets('phone: BackupScreen adds no TvFocusable (unchanged)', (tester) async {
     // setUp registered AppMode(isTv: false) — phone path.
-    await _pumpBackup(tester);
+    await pumpBackup(tester);
     expect(find.byType(TvFocusable), findsNothing);
   });
 }

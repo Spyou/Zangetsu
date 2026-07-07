@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -313,6 +312,7 @@ void main() {
       expect(find.text('Play'), findsOneWidget);
       expect(find.text('Delete'), findsOneWidget);
       expect(find.text('Pause'), findsNothing);
+      expect(find.text('Resume'), findsNothing);
       expect(find.text('Cancel'), findsNothing);
     });
 
