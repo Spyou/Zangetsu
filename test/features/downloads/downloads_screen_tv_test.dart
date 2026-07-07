@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_record.dart';
@@ -84,6 +85,34 @@ class _FakeDownloadManager extends ChangeNotifier implements DownloadManager {
   @override
   dynamic noSuchMethod(Invocation invocation) => null;
 }
+
+// ── Recording manager for action-dialog tests ──────────────────────────────
+class _RecordingManager extends ChangeNotifier implements DownloadManager {
+  DownloadRecord? paused, resumed, deleted;
+  @override
+  Future<void> pause(DownloadRecord r) async => paused = r;
+  @override
+  Future<void> resume(DownloadRecord r) async => resumed = r;
+  @override
+  Future<void> delete(DownloadRecord r) async => deleted = r;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+DownloadRecord _rec(DownloadStatus status) => DownloadRecord(
+      id: 'id1',
+      sourceId: 'src',
+      showId: 'aot',
+      showTitle: 'Attack on Titan',
+      showUrl: 'u',
+      episodeId: 'ep1',
+      episodeUrl: 'eu',
+      episodeTitle: 'Ep 1',
+      category: 'sub',
+      quality: '1080p',
+      status: status,
+      createdAt: DateTime(2026, 1, 1).millisecondsSinceEpoch,
+    );
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -233,4 +262,93 @@ void main() {
       expect(focusables[1].autofocus, isFalse);
     },
   );
+
+  // ── _TvDownloadActions ───────────────────────────────────────────────────
+  group('_TvDownloadActions', () {
+    testWidgets('downloading record shows Pause + Cancel + Delete (no Play/Resume)',
+        (tester) async {
+      final manager = _RecordingManager();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: debugTvDownloadActions(
+            record: _rec(DownloadStatus.downloading),
+            manager: manager,
+          ),
+        ),
+      ));
+      expect(find.text('Pause'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Play'), findsNothing);
+      expect(find.text('Resume'), findsNothing);
+    });
+
+    testWidgets('paused record shows Resume + Cancel + Delete', (tester) async {
+      final manager = _RecordingManager();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: debugTvDownloadActions(
+            record: _rec(DownloadStatus.paused),
+            manager: manager,
+          ),
+        ),
+      ));
+      expect(find.text('Resume'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Pause'), findsNothing);
+    });
+
+    testWidgets('done record shows Play + Delete (no Pause/Resume/Cancel)',
+        (tester) async {
+      final manager = _RecordingManager();
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: debugTvDownloadActions(
+            record: _rec(DownloadStatus.done),
+            manager: manager,
+          ),
+        ),
+      ));
+      expect(find.text('Play'), findsOneWidget);
+      expect(find.text('Delete'), findsOneWidget);
+      expect(find.text('Pause'), findsNothing);
+      expect(find.text('Cancel'), findsNothing);
+    });
+
+    testWidgets('tapping Pause calls manager.pause', (tester) async {
+      // TvFocusable is D-pad-driven (key-based), not tap-based — it wraps a
+      // bare Focus with no GestureDetector — so this drives it the same way
+      // every other TV test in this suite does: focus + the OK/select key.
+      // See test/core/tv/tv_focusable_test.dart and tv_back_button_test.dart.
+      final manager = _RecordingManager();
+      final r = _rec(DownloadStatus.downloading);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: debugTvDownloadActions(record: r, manager: manager)),
+      ));
+      await tester.pumpAndSettle();
+      // Pause is the first action for a downloading record, so it already
+      // holds autofocus — pressing OK activates it directly.
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(manager.paused, same(r));
+    });
+
+    testWidgets('tapping Delete calls manager.delete', (tester) async {
+      final manager = _RecordingManager();
+      final r = _rec(DownloadStatus.done);
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(body: debugTvDownloadActions(record: r, manager: manager)),
+      ));
+      await tester.pumpAndSettle();
+      // Delete is the second action for a done record (Play holds autofocus)
+      // — move focus with Tab, the default Flutter focus-traversal key, then
+      // press OK.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(manager.deleted, same(r));
+    });
+  });
 }
