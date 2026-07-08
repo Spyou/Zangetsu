@@ -230,13 +230,24 @@ class PlaybackPrefs {
   Future<void> setSubtitlePosition(int value) =>
       _box.put('subtitlePosition', value.clamp(0, 100));
 
-  /// Preferred subtitle language as an ISO-639-1 two-letter code (e.g. 'en').
-  /// Empty string means no preference (off). Written by the Settings language
-  /// picker; read by the player to auto-select a matching subtitle track.
-  String get preferredSubtitleLanguage =>
+  /// The single global subtitle preference: '' (Auto — no forcing), 'off'
+  /// (subtitles off on every video), or an ISO-639-1 language code (auto-select
+  /// the source's subtitle in that language). Stored under the legacy
+  /// `preferredSubtitleLang` key so an existing language choice migrates as-is.
+  String get subtitlePreference =>
       _box.get('preferredSubtitleLang', defaultValue: '') as String;
-  Future<void> setPreferredSubtitleLanguage(String value) =>
+  Future<void> setSubtitlePreference(String value) =>
       _box.put('preferredSubtitleLang', value);
+
+  /// The preference as a *language* code only: '' for Auto or Off, else the
+  /// iso1. Callers that want a language (online-search default, Settings label)
+  /// use this so the 'off' sentinel never leaks in as a language.
+  String get preferredSubtitleLanguage {
+    final p = subtitlePreference;
+    return p == 'off' ? '' : p;
+  }
+  Future<void> setPreferredSubtitleLanguage(String value) =>
+      setSubtitlePreference(value);
 
   /// Whether to automatically download subtitles from OpenSubtitles when the
   /// loaded source carries no subtitle in the preferred language. Defaults to
