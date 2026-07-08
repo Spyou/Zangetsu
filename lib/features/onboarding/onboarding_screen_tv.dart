@@ -47,6 +47,7 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
       final repo = await repos.fetchAndCache(kZangetsuRepoUrl);
       final total = repo.sources.length;
       var installed = 0;
+      final installedIds = <String>[];
       for (final s in repo.sources) {
         if (!mounted) return;
         setState(
@@ -62,6 +63,7 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
             force: true,
           );
           installed++;
+          installedIds.add(s.id);
         } catch (_) {
           // Skip a single failed source; keep installing the rest.
         }
@@ -69,7 +71,14 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
       if (installed == 0) {
         throw Exception('No sources could be installed');
       }
-      sl<ActiveSourceCubit>().setSource(repo.sources.first.id);
+      // New TV users default to AniKoto; fall back to the first installed source
+      // if it didn't install. Runs only on first-run onboarding — existing users
+      // keep their saved pick.
+      sl<ActiveSourceCubit>().setSource(
+        installedIds.contains(kDefaultSourceId)
+            ? kDefaultSourceId
+            : installedIds.first,
+      );
       sl<HomeCubit>().load();
       await _markOnboarded();
       if (mounted) {

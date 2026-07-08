@@ -17,6 +17,12 @@ const String kAppId = 'watch_app';
 const String kZangetsuRepoUrl =
     'https://raw.githubusercontent.com/Spyou/zangetsu-providers/main/index.json';
 
+/// Content source activated for a NEW user at the end of first-run onboarding.
+/// Must be an id present in the [kZangetsuRepoUrl] manifest. Existing users are
+/// never affected — onboarding runs once and their pick is already persisted;
+/// if this source fails to install, onboarding falls back to the first one.
+const String kDefaultSourceId = 'anikoto';
+
 /// Manifest schema version this app speaks. Repos below this are rejected.
 const int kManifestSchemaVersion = 2;
 

@@ -183,6 +183,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       final repo = await repos.fetchAndCache(kZangetsuRepoUrl);
       final total = repo.sources.length;
       var installed = 0;
+      final installedIds = <String>[];
       for (final s in repo.sources) {
         if (!mounted) return;
         setState(() => _status = 'Installing ${s.name}… (${installed + 1}/$total)');
@@ -196,6 +197,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             force: true,
           );
           installed++;
+          installedIds.add(s.id);
         } catch (_) {
           // Skip a single failed source; keep installing the rest.
         }
@@ -203,9 +205,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (installed == 0) {
         throw Exception('No sources could be installed');
       }
-      // Activate the first source so Home has something to show, and warm its
-      // rows so Home isn't empty when the shell appears.
-      sl<ActiveSourceCubit>().setSource(repo.sources.first.id);
+      // Activate the default source for a new user (AniKoto) so Home lands on a
+      // working, well-populated source; fall back to the first that installed if
+      // the default didn't. Only new users reach this (onboarding runs once), so
+      // existing users' saved pick is never touched. Warm its rows too.
+      sl<ActiveSourceCubit>().setSource(
+        installedIds.contains(kDefaultSourceId)
+            ? kDefaultSourceId
+            : installedIds.first,
+      );
       sl<HomeCubit>().load();
       await _markOnboarded();
       // Sources are installed; show the quick "how it works" guide, then the
