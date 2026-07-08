@@ -32,6 +32,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
+import '../../core/ui/subtitle_language_picker.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
 import '../watch_together/watch_together_controller.dart';
@@ -3623,6 +3624,25 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
             shrinkWrap: true,
             padding: EdgeInsets.zero,
             children: [
+              _SheetRow(
+                label: () {
+                  final p = sl<PlaybackPrefs>().subtitlePreference;
+                  final name = p.isEmpty
+                      ? 'Auto'
+                      : (p == 'off' ? 'Off' : (languageByPref(p)?.name ?? p.toUpperCase()));
+                  return 'Preferred language: $name';
+                }(),
+                icon: Icons.language_rounded,
+                active: false,
+                onTap: () async {
+                  final picked = await showSubtitleLanguagePicker(
+                    context, sl<PlaybackPrefs>().subtitlePreference);
+                  if (picked == null) return;
+                  await sl<PlaybackPrefs>().setSubtitlePreference(picked);
+                  c.reapplyPreferredSubtitle();
+                  widget.onInteract();
+                },
+              ),
               _SheetRow(
                 label: 'Off',
                 active: subId == 'no',
