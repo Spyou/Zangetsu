@@ -32,6 +32,7 @@ import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/source_switcher.dart';
+import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -1116,9 +1117,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 icon: Icons.language_outlined,
                 title: 'Subtitle language',
                 subtitle: () {
-                  final pref = _prefs.preferredSubtitleLanguage;
-                  if (pref.isEmpty) return 'None';
-                  return languageByPref(pref)?.name ?? pref.toUpperCase();
+                  final p = _prefs.subtitlePreference;
+                  if (p.isEmpty) return 'Auto';
+                  if (p == 'off') return 'Off';
+                  return languageByPref(p)?.name ?? p.toUpperCase();
                 }(),
                 onTap: _pickSubtitleLanguage,
               ),
@@ -1140,81 +1142,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     );
   }
 
-  /// Bottom sheet to pick the preferred subtitle language. The user can choose
-  /// "None" (clears the preference) or any language from [kSubtitleLanguages].
   Future<void> _pickSubtitleLanguage() async {
-    final current = _prefs.preferredSubtitleLanguage;
-    final picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.6,
-      ),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 8),
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textTertiary.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Subtitle language', style: AppText.headline),
-              ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                children: [
-                  ListTile(
-                    onTap: () => Navigator.pop(ctx, ''),
-                    title: Text(
-                      'None',
-                      style: AppText.body.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    trailing: current.isEmpty
-                        ? const Icon(Icons.check, color: AppColors.accent)
-                        : null,
-                  ),
-                  for (final lang in kSubtitleLanguages)
-                    ListTile(
-                      onTap: () => Navigator.pop(ctx, lang.iso1),
-                      title: Text(
-                        lang.name,
-                        style: AppText.body.copyWith(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                      trailing: current == lang.iso1
-                          ? const Icon(Icons.check, color: AppColors.accent)
-                          : null,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+    final picked = await showSubtitleLanguagePicker(
+      context,
+      _prefs.subtitlePreference,
     );
     if (picked == null) return; // dismissed
-    await _prefs.setPreferredSubtitleLanguage(picked);
+    await _prefs.setSubtitlePreference(picked);
     if (mounted) setState(() {});
   }
 
