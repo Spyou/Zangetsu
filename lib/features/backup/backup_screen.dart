@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -71,7 +73,10 @@ class _BackupScreenState extends State<BackupScreen> {
   Future<void> _saveToFile() async {
     setState(() => _busy = true);
     try {
-      final path = await BackupFile().export(_service.build(_selected));
+      // On TV also keep an app-private copy so restore-from-file can list it
+      // without a document picker (see [_restoreFromFile]).
+      final path = await BackupFile()
+          .export(_service.build(_selected), keepLocalCopy: _isTv);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -108,7 +113,11 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restoreFromFile() async {
-    final p = await BackupFile().import();
+    // TV boxes usually have no document-picker UI, so the system file picker
+    // silently no-ops. Instead list the app-readable backup files and let the
+    // user pick one with the D-pad.
+    final Map<String, dynamic>? p =
+        _isTv ? await _pickLocalBackupTv() : await BackupFile().import();
     if (p == null) return;
     setState(() => _busy = true);
     try {
@@ -123,6 +132,76 @@ class _BackupScreenState extends State<BackupScreen> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// TV restore: enumerate app-readable backup files and show a D-pad list.
+  /// Returns the parsed backup, or null if none exist / the user backs out.
+  Future<Map<String, dynamic>?> _pickLocalBackupTv() async {
+    final backup = BackupFile();
+    final files = await backup.listLocalBackups();
+    if (!mounted) return null;
+    if (files.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No backup files found on this device. Save one first, or use '
+            '"Restore from cloud".',
+          ),
+        ),
+      );
+      return null;
+    }
+    final chosen = await showDialog<File>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Pick a backup', style: AppText.headline),
+        children: [
+          for (var i = 0; i < files.length; i++)
+            TvFocusable(
+              autofocus: i == 0,
+              onTap: () => Navigator.pop(ctx, files[i]),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                child: Row(
+                  children: [
+                    const Icon(Icons.description_outlined,
+                        color: AppColors.textSecondary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _backupLabel(files[i]),
+                        style: AppText.body
+                            .copyWith(color: AppColors.textPrimary),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (chosen == null) return null;
+    try {
+      return await backup.readBackup(chosen);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't read that backup file.")),
+        );
+      }
+      return null;
+    }
+  }
+
+  /// Friendly label for a backup file, parsed from its
+  /// `zangetsu-backup-YYYYMMDD-HHMM.json` name (falls back to the raw name).
+  String _backupLabel(File f) {
+    final name = f.uri.pathSegments.last;
+    final m = RegExp(r'(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})').firstMatch(name);
+    if (m == null) return name;
+    return '${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}';
   }
 
   void _showResult(RestoreReport r) {
@@ -166,6 +245,7 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Widget _bundleRow(BackupBundle bundle, String label, String subtitle) {
+    final selected = _selected.contains(bundle);
     void toggle() => setState(() {
           if (_selected.contains(bundle)) {
             _selected.remove(bundle);
@@ -173,19 +253,32 @@ class _BackupScreenState extends State<BackupScreen> {
             _selected.add(bundle);
           }
         });
-    return _tvWrap(
-      onTap: _busy ? null : toggle,
-      child: CheckboxListTile(
-        value: _selected.contains(bundle),
-        onChanged: _busy ? null : (v) => toggle(),
-        title: Text(
-          label,
-          style: AppText.body.copyWith(color: AppColors.textPrimary),
+    // On TV, render as a SettingsTile (a check-box icon reflects selection) so
+    // every row on this screen — and every row across the TV Settings — shares
+    // one focus-highlight shape. Phones keep the Material CheckboxListTile.
+    if (_isTv) {
+      return _tvWrap(
+        onTap: _busy ? null : toggle,
+        child: SettingsTile(
+          icon: selected
+              ? Icons.check_box_rounded
+              : Icons.check_box_outline_blank_rounded,
+          title: label,
+          subtitle: subtitle,
+          onTap: _busy ? null : toggle,
         ),
-        subtitle: Text(subtitle, style: AppText.caption),
-        activeColor: AppColors.accent,
-        controlAffinity: ListTileControlAffinity.leading,
+      );
+    }
+    return CheckboxListTile(
+      value: selected,
+      onChanged: _busy ? null : (v) => toggle(),
+      title: Text(
+        label,
+        style: AppText.body.copyWith(color: AppColors.textPrimary),
       ),
+      subtitle: Text(subtitle, style: AppText.caption),
+      activeColor: AppColors.accent,
+      controlAffinity: ListTileControlAffinity.leading,
     );
   }
 
