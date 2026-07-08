@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/appwrite/appwrite_service.dart';
 import '../../core/backup/backup_cloud.dart';
 import '../../core/backup/backup_file.dart';
@@ -9,6 +10,7 @@ import '../../core/backup/backup_service.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
@@ -26,6 +28,19 @@ class _BackupScreenState extends State<BackupScreen> {
 
   BackupService get _service => sl<BackupService>();
   BackupCloud _cloud() => BackupCloud(sl<AppwriteService>());
+
+  bool get _isTv => sl<AppMode>().isTv;
+
+  /// On TV, make [child] D-pad focusable (OK runs [onTap]); on phone, return it
+  /// unchanged so the phone render/behaviour is byte-identical.
+  Widget _tvWrap({
+    required Widget child,
+    required VoidCallback? onTap,
+    bool autofocus = false,
+  }) {
+    if (!_isTv) return child;
+    return TvFocusable(autofocus: autofocus, onTap: onTap ?? () {}, child: child);
+  }
 
   Future<void> _backupToCloud() async {
     if (!requireLogin(context, action: 'back up to the cloud')) return;
@@ -151,24 +166,26 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Widget _bundleRow(BackupBundle bundle, String label, String subtitle) {
-    return CheckboxListTile(
-      value: _selected.contains(bundle),
-      onChanged: _busy
-          ? null
-          : (v) => setState(() {
-                if (v == true) {
-                  _selected.add(bundle);
-                } else {
-                  _selected.remove(bundle);
-                }
-              }),
-      title: Text(
-        label,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
+    void toggle() => setState(() {
+          if (_selected.contains(bundle)) {
+            _selected.remove(bundle);
+          } else {
+            _selected.add(bundle);
+          }
+        });
+    return _tvWrap(
+      onTap: _busy ? null : toggle,
+      child: CheckboxListTile(
+        value: _selected.contains(bundle),
+        onChanged: _busy ? null : (v) => toggle(),
+        title: Text(
+          label,
+          style: AppText.body.copyWith(color: AppColors.textPrimary),
+        ),
+        subtitle: Text(subtitle, style: AppText.caption),
+        activeColor: AppColors.accent,
+        controlAffinity: ListTileControlAffinity.leading,
       ),
-      subtitle: Text(subtitle, style: AppText.caption),
-      activeColor: AppColors.accent,
-      controlAffinity: ListTileControlAffinity.leading,
     );
   }
 
@@ -219,34 +236,47 @@ class _BackupScreenState extends State<BackupScreen> {
               const SettingsSectionLabel('Create a backup'),
               SettingsCard(
                 children: [
-                  SettingsTile(
-                    icon: Icons.save_alt_outlined,
-                    title: 'Save to a file',
-                    subtitle: 'Save a backup file to your Downloads folder',
+                  _tvWrap(
+                    autofocus: true,
                     onTap: _busy ? null : _saveToFile,
+                    child: SettingsTile(
+                      icon: Icons.save_alt_outlined,
+                      title: 'Save to a file',
+                      subtitle: 'Save a backup file to your Downloads folder',
+                      onTap: _busy ? null : _saveToFile,
+                    ),
                   ),
-                  SettingsTile(
-                    icon: Icons.cloud_upload_outlined,
-                    title: 'Back up to cloud',
-                    subtitle: 'Save a copy to your account · needs sign-in',
+                  _tvWrap(
                     onTap: _busy ? null : _backupToCloud,
+                    child: SettingsTile(
+                      icon: Icons.cloud_upload_outlined,
+                      title: 'Back up to cloud',
+                      subtitle: 'Save a copy to your account · needs sign-in',
+                      onTap: _busy ? null : _backupToCloud,
+                    ),
                   ),
                 ],
               ),
               const SettingsSectionLabel('Restore a backup'),
               SettingsCard(
                 children: [
-                  SettingsTile(
-                    icon: Icons.folder_open_outlined,
-                    title: 'Restore from a file',
-                    subtitle: 'Pick a backup file you saved earlier',
+                  _tvWrap(
                     onTap: _busy ? null : _restoreFromFile,
+                    child: SettingsTile(
+                      icon: Icons.folder_open_outlined,
+                      title: 'Restore from a file',
+                      subtitle: 'Pick a backup file you saved earlier',
+                      onTap: _busy ? null : _restoreFromFile,
+                    ),
                   ),
-                  SettingsTile(
-                    icon: Icons.cloud_download_outlined,
-                    title: 'Restore from cloud',
-                    subtitle: 'Bring back your latest cloud backup',
+                  _tvWrap(
                     onTap: _busy ? null : _restoreFromCloud,
+                    child: SettingsTile(
+                      icon: Icons.cloud_download_outlined,
+                      title: 'Restore from cloud',
+                      subtitle: 'Bring back your latest cloud backup',
+                      onTap: _busy ? null : _restoreFromCloud,
+                    ),
                   ),
                 ],
               ),

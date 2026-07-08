@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
@@ -158,15 +160,16 @@ class _TvShowGroup extends StatelessWidget {
         ),
         // ── Episode tiles ───────────────────────────────────────────────────
         for (var j = 0; j < records.length; j++)
-          TvFocusable(scale: 1.0, 
+          TvFocusable(scale: 1.0,
             // First tile of the first group is the initial D-pad target.
             autofocus: autofocusFirst && j == 0,
-            // Completed downloads play via the same launchDownloadedEpisode
-            // path the phone uses. In-progress tiles do nothing on OK,
-            // matching the phone's onTap: null behaviour for those states.
-            onTap: records[j].status == DownloadStatus.done
-                ? () => launchDownloadedEpisode(context, records[j])
-                : () {},
+            // OK opens the action dialog for the row's current status
+            // (Play/Pause/Resume/Cancel/Delete as applicable).
+            onTap: () => showDialog<void>(
+              context: context,
+              builder: (_) =>
+                  _TvDownloadActions(record: records[j], manager: manager),
+            ),
             // Reuse the phone's tile widget unchanged — only the interaction
             // model changes (D-pad vs touch). The tile's own ListTile.onTap
             // still works for pointer/touch input on hybrid remotes.
@@ -177,3 +180,93 @@ class _TvShowGroup extends StatelessWidget {
     );
   }
 }
+
+/// TV action dialog for a single download row: lists only the actions valid
+/// for the record's current status, each D-pad focusable. Mirrors the
+/// `_TvOptionPicker` pattern in settings_screen_tv.dart.
+class _TvDownloadActions extends StatelessWidget {
+  const _TvDownloadActions({required this.record, required this.manager});
+
+  final DownloadRecord record;
+  final DownloadManager manager;
+
+  List<(String, IconData, VoidCallback)> _actions(BuildContext context) {
+    final r = record;
+    final out = <(String, IconData, VoidCallback)>[];
+    if (r.status == DownloadStatus.done) {
+      out.add(('Play', Icons.play_arrow_rounded,
+          () => launchDownloadedEpisode(context, r)));
+    }
+    if (r.status == DownloadStatus.downloading) {
+      out.add(('Pause', Icons.pause_rounded, () => unawaited(manager.pause(r))));
+    }
+    if (r.status == DownloadStatus.paused) {
+      out.add(('Resume', Icons.play_arrow_rounded,
+          () => unawaited(manager.resume(r))));
+    }
+    if (r.isActive) {
+      out.add(('Cancel', Icons.close_rounded, () => unawaited(manager.delete(r))));
+    }
+    out.add(('Delete', Icons.delete_outline_rounded,
+        () => unawaited(manager.delete(r))));
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = _actions(context);
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+      child: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+              child: Text(
+                record.episodeTitle.isNotEmpty
+                    ? record.episodeTitle
+                    : record.showTitle,
+                style: AppText.title.copyWith(color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Divider(height: 1, color: AppColors.hairline),
+            for (int i = 0; i < actions.length; i++)
+              TvFocusable(
+                autofocus: i == 0,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  actions[i].$3();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                  child: Row(
+                    children: [
+                      Icon(actions[i].$2, color: AppColors.textPrimary, size: 22),
+                      const SizedBox(width: 16),
+                      Text(actions[i].$1, style: AppText.headline),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Test-only handle to the private TV download action dialog.
+@visibleForTesting
+Widget debugTvDownloadActions({
+  required DownloadRecord record,
+  required DownloadManager manager,
+}) =>
+    _TvDownloadActions(record: record, manager: manager);

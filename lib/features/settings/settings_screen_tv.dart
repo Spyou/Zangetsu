@@ -17,6 +17,7 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
+import '../backup/backup_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../onboarding/how_it_works.dart';
@@ -281,6 +282,15 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           icon: Icons.groups_2_outlined,
                           title: 'Watch Party',
                           subtitle: 'Create or join a watch party with friends',
+                          trailing: _kChevron,
+                        ),
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: () => _push(const BackupScreen()),
+                        child: const SettingsTile(
+                          icon: Icons.cloud_sync_outlined,
+                          title: 'Backup & Restore',
+                          subtitle: 'Save your sources, list & settings',
                           trailing: _kChevron,
                         ),
                       ),
