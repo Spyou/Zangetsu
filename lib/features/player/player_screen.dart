@@ -49,9 +49,10 @@ import 'seek_preview.dart';
 /// on dispose.
 /// External players that forward HTTP request headers (Referer/Origin/Cookie)
 /// to the stream. Players NOT on this list (VLC, SPlayer, LeePlayer, …) ignore
-/// them, so a header-gated source 403s — route those to the built-in player
-/// until the header-injecting local proxy ships. Prefix-matched to cover
-/// package variants (e.g. MX Player free `.ad` + `.pro`).
+/// them, so a header-gated source 403s — for those, `_launchExternalThenPop`
+/// hands the player the local header-injecting proxy URL instead (which adds
+/// the headers upstream). Prefix-matched to cover package variants (e.g. MX
+/// Player free `.ad` + `.pro`).
 const List<String> kHeaderForwardingPlayers = [
   'com.mxtech.videoplayer', // MX Player (free .ad + pro)
   'com.brouken.player',     // Just Player

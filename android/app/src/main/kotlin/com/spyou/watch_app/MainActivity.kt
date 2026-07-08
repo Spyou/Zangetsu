@@ -149,7 +149,7 @@ class MainActivity : FlutterActivity() {
                                 result.success(ExternalStreamProxy.proxyUrl(url, headers))
                             }
                         } catch (e: Exception) {
-                            android.util.Log.w(TAG, "proxyUrl failed: ${e.message}")
+                            android.util.Log.w("ext-player", "proxyUrl failed: ${e.message}")
                             result.success(null)
                         }
                     }
