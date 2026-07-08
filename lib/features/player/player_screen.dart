@@ -41,12 +41,37 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
+import '../../core/logging/app_logger.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
 /// stream-bound seek slider, and Speed / Audio / Quality / Source / Next
 /// controls. Forces landscape + immersive UI while open and restores portrait
 /// on dispose.
+/// External players that forward HTTP request headers (Referer/Origin/Cookie)
+/// to the stream. Players NOT on this list (VLC, SPlayer, LeePlayer, …) ignore
+/// them, so a header-gated source 403s — route those to the built-in player
+/// until the header-injecting local proxy ships. Prefix-matched to cover
+/// package variants (e.g. MX Player free `.ad` + `.pro`).
+const List<String> kHeaderForwardingPlayers = [
+  'com.mxtech.videoplayer', // MX Player (free .ad + pro)
+  'com.brouken.player',     // Just Player
+];
+
+/// True when [headers] carry a gating header (Referer/Origin/Cookie) that the
+/// chosen external player [pkg] cannot forward — so the stream would 403 and we
+/// should use the built-in player instead. Pure so it is unit-testable.
+@visibleForTesting
+bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
+  if (headers == null || headers.isEmpty || pkg.isEmpty) return false;
+  final gated = headers.keys.any((k) {
+    final lk = k.toLowerCase();
+    return lk == 'referer' || lk == 'origin' || lk == 'cookie';
+  });
+  if (!gated) return false;
+  return !kHeaderForwardingPlayers.any(pkg.startsWith);
+}
+
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -339,6 +364,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (isTorrentUrl(src.url)) {
         _initInApp();
         if (mounted) setState(() {});
+        return;
+      }
+      // Header-gated sources (Referer/Origin/Cookie) only play in external
+      // players that forward those headers (MX Player, Just Player). VLC,
+      // SPlayer, LeePlayer and most others ignore them → the CDN 403s and
+      // nothing plays. Skip the doomed hand-off and use the built-in player
+      // (which passes the headers to mpv directly). Removed once the
+      // header-injecting local proxy lands.
+      final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
+      if (headerGatedButPlayerCant(src.headers, extPkg)) {
+        AppLogger.instance.log(
+          '[ext-player] $extPkg cannot forward headers for a header-gated '
+          'source (${src.headers!.keys.toList()}) — using built-in',
+        );
+        _initInApp();
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'This source needs special headers your external player can’t '
+                'send — using the built-in player.',
+              ),
+            ),
+          );
+        }
         return;
       }
       // External players give no progress callback and the in-app scrobbler
