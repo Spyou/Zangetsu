@@ -293,12 +293,28 @@ class AniyomiProvider implements BaseProvider {
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;
-      return list
+      final eps = list
           .whereType<Map<String, dynamic>>()
           .map(episodeFromSEpisode)
           .toList();
+      return sortEpisodesAscending(eps);
     } catch (_) {
       return const [];
     }
   }
+}
+
+/// Aniyomi/Tachiyomi extensions return episodes newest-first (N→1). Normalise to
+/// chronological order (1→N) — like the app's other sources — so the first
+/// episode plays first and next-episode navigation works. Sorts by episode
+/// number when every episode has one (keeps 12 → 12.5 → 13 correct); otherwise
+/// reverses the source's newest-first convention.
+@visibleForTesting
+List<Episode> sortEpisodesAscending(List<Episode> eps) {
+  if (eps.length < 2) return eps;
+  if (eps.every((e) => e.number != null)) {
+    final sorted = [...eps]..sort((a, b) => a.number!.compareTo(b.number!));
+    return sorted;
+  }
+  return eps.reversed.toList();
 }
