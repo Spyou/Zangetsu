@@ -40,6 +40,9 @@ void main() {
       expect(matchesSourceLang('pt-BR', _lang('pt')), isTrue);
       expect(matchesSourceLang('fr-FR', _lang('fr')), isTrue);
     });
+    test('additive: a code glued to a digit still tokenises to the code', () {
+      expect(matchesSourceLang('en2', _lang('en')), isTrue);
+    });
     test('whole-token safety — no substring false matches', () {
       expect(matchesSourceLang('Bengali', _lang('en')), isFalse); // eng/en
       expect(matchesSourceLang('Marathi', _lang('ar')), isFalse); // ar

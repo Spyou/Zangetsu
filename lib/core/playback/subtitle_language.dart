@@ -122,9 +122,11 @@ bool matchesSourceLang(String sourceLang, Language lang) {
     if (n.length >= 3 && s.contains(n)) return true;
   }
   // Token match: a Latin code or name recognised only as a standalone word
-  // ("pt-BR" → "pt"). Native/CJK/RTL names are handled by the whole-string and
-  // contains checks above, so ASCII tokenisation here is sufficient.
-  for (final token in s.split(RegExp(r'[^a-z0-9]+'))) {
+  // ("pt-BR" → "pt"). Digits are treated as separators too, so a label like
+  // "en2" still tokenises to "en". Native/CJK/RTL names are handled by the
+  // whole-string and contains checks above, so ASCII tokenisation here is
+  // sufficient.
+  for (final token in s.split(RegExp(r'[^a-z]+'))) {
     if (token.isEmpty) continue;
     if (codes.contains(token) || names.contains(token)) return true;
   }
