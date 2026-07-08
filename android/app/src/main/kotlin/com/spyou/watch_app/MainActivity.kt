@@ -687,7 +687,12 @@ class MainActivity : FlutterActivity() {
             val headers = call.argument<Map<String, String>>("headers")
             val positionMs = (call.argument<Number>("positionMs") ?: 0).toLong()
             val subs = call.argument<List<Map<String, String>>>("subtitles")
-            val mime = if (url.contains(".m3u8")) "application/x-mpegURL" else "video/*"
+            val lower = url.lowercase()
+            val mime = when {
+                lower.contains("m3u8") -> "application/x-mpegURL" // HLS (incl. ?token= URLs)
+                lower.contains(".mpd") -> "application/dash+xml"  // MPEG-DASH
+                else -> "video/*"
+            }
 
             val intent = Intent(Intent.ACTION_VIEW)
             intent.setDataAndType(Uri.parse(url), mime)

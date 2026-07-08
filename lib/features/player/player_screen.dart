@@ -377,6 +377,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (res.launched && res.played) {
         Navigator.of(context).maybePop();
       } else {
+        // Opened but reported no playback — most often a header-gated HLS
+        // source in an external player that ignores the Referer/User-Agent
+        // (e.g. VLC). Tell the user why, then take over with the built-in
+        // player (which passes the headers to mpv directly).
+        if (res.launched && !res.played) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'External player couldn’t play this source — using the '
+                'built-in player.',
+              ),
+            ),
+          );
+        }
         _initInApp(); // not installed / opened but didn't play → built-in
         setState(() {});
       }

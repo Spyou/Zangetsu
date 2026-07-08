@@ -1,7 +1,15 @@
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+
+import '../logging/app_logger.dart';
+
+/// Redacts query strings + long tokens so a logged stream URL stays readable
+/// and doesn't leak signed credentials. Keeps host + path for diagnosis.
+String _safeUrl(String url) {
+  final q = url.indexOf('?');
+  return q >= 0 ? '${url.substring(0, q)}?…' : url;
+}
 
 /// Bridge to the native `zangetsu/external_player` channel: lists installed
 /// external video players and hands a resolved stream off to one via an
@@ -25,7 +33,7 @@ class ExternalPlayer {
       // A MissingPluginException here means the native channel isn't in the
       // running build (e.g. native changes applied via hot reload — they need a
       // full reinstall).
-      debugPrint('[ExternalPlayer] getPlayers failed: $e');
+      AppLogger.instance.log('[ext-player] getPlayers failed: $e', level: 'E');
       return const [];
     }
   }
@@ -52,6 +60,16 @@ class ExternalPlayer {
     if (!Platform.isAndroid) {
       return (launched: false, played: false, positionMs: 0);
     }
+    final isHls = url.toLowerCase().contains('.m3u8');
+    // Logged so external-player failures are visible in exported logs (they
+    // previously used debugPrint, which the log buffer doesn't capture). Header
+    // presence matters: header-gated HLS only plays in players that honour the
+    // Referer/UA extras (MX Player), and 403s in ones that ignore them (VLC).
+    AppLogger.instance.log(
+      '[ext-player] launch pkg=${package.isEmpty ? "(chooser)" : package} '
+      'hls=$isHls headers=${headers.keys.toList()} subs=${subtitles.length} '
+      'url=${_safeUrl(url)}',
+    );
     try {
       final res = await _ch.invokeMethod<dynamic>('launch', <String, dynamic>{
         'url': url,
@@ -62,13 +80,23 @@ class ExternalPlayer {
         'positionMs': positionMs,
       });
       final m = res is Map ? Map<String, dynamic>.from(res) : const {};
+      final launched = m['launched'] == true;
+      final played = m['played'] == true;
+      AppLogger.instance.log(
+        '[ext-player] result launched=$launched played=$played '
+        'pos=${(m['positionMs'] as num?)?.toInt() ?? 0}'
+        '${launched && !played ? " — opened but reported no playback "
+            "(header-gated HLS in a player that ignores headers?); "
+            "falling back to built-in" : ""}',
+        level: launched && !played ? 'E' : 'I',
+      );
       return (
-        launched: m['launched'] == true,
-        played: m['played'] == true,
+        launched: launched,
+        played: played,
         positionMs: (m['positionMs'] as num?)?.toInt() ?? 0,
       );
     } catch (e) {
-      debugPrint('[ExternalPlayer] launch failed: $e');
+      AppLogger.instance.log('[ext-player] launch failed: $e', level: 'E');
       return (launched: false, played: false, positionMs: 0);
     }
   }
