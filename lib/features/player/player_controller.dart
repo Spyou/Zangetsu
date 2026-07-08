@@ -796,12 +796,15 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void setSubtitle(SubtitleTrack t) {
     player.setSubtitleTrack(t);
-    _rememberSub(t.language ?? t.title ?? t.id);
+    // Remember globally by language when we can resolve one; a track we can't
+    // classify is a one-off pick that must not set a bad global default.
+    final lang = languageOfSource(t.language ?? t.title ?? '');
+    if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
   }
 
   void subtitlesOff() {
     player.setSubtitleTrack(SubtitleTrack.no());
-    _rememberSub('off');
+    sl<PlaybackPrefs>().setSubtitlePreference('off');
   }
 
   /// External "soft" subtitles advertised by the active source.
@@ -812,19 +815,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     await player.setSubtitleTrack(
       SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
     );
-    _rememberSub(s.lang);
+    final lang = languageOfSource(s.lang) ?? languageOfSource(s.label ?? '');
+    if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
   }
 
   /// Load an external subtitle file from disk (picked via file_picker).
   Future<void> setSubtitleFromFile(String path) async =>
       player.setSubtitleTrack(SubtitleTrack.uri(path));
-
-  void _rememberSub(String pref) {
-    final url = showUrl;
-    if (url != null && url.isNotEmpty && pref.isNotEmpty) {
-      sl<TitlePrefsStore>().setSubtitle(sourceId, url, pref);
-    }
-  }
 
   bool _subApplied = false; // remembered-subtitle restored for this episode
   bool _autoSubDlTried = false; // keyless auto-download fired at most once/episode
@@ -835,91 +832,62 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// until a match is found (or there's nothing to restore).
   void _tryApplySubPref() {
     if (_subApplied) return;
-    final url = showUrl;
-    if (url == null) return;
-    final pref = sl<TitlePrefsStore>().subtitle(sourceId, url);
-    if (pref == null) {
-      // No per-title remembered subtitle. Try the global preferred language as
-      // a third tier — soft-subs first, then embedded tracks. This branch is
-      // entered only when pref == null (no per-title memory), so the per-title
-      // memory always wins over the global preference.
-      // When preferredSubtitleLanguage is '' (the default) the inner block is
-      // never entered and _subApplied is set exactly as before, keeping the
-      // default code path byte-for-byte identical.
-      final prefLangCode = sl<PlaybackPrefs>().preferredSubtitleLanguage;
-      if (prefLangCode.isNotEmpty) {
-        final prefLang = languageByPref(prefLangCode);
-        if (prefLang != null) {
-          for (final s in softSubs) {
-            if (matchesSourceLang(s.lang, prefLang)) {
-              player.setSubtitleTrack(
-                SubtitleTrack.uri(
-                  s.url,
-                  title: s.label ?? s.lang,
-                  language: s.lang,
-                ),
-              );
-              _subApplied = true;
-              return;
-            }
-          }
-          for (final t in mediaSubtitleTracks) {
-            final tLang = t.language ?? '';
-            final tTitle = t.title ?? '';
-            if (matchesSourceLang(tLang, prefLang) ||
-                matchesSourceLang(tTitle, prefLang)) {
-              player.setSubtitleTrack(t);
-              _subApplied = true;
-              return;
-            }
-          }
-          // No matching track yet — embedded tracks may still be loading.
-          // Leave _subApplied = false so the retry-on-tracks loop fires again.
-          //
-          // Fire the keyless auto-download exactly once. The guard is set
-          // before the async work so subsequent track-stream retries of this
-          // method don't spawn a second download. The completion callback
-          // re-checks _subApplied in case an embedded track arrived and was
-          // selected while the download was in flight.
-          final titleForSub = showTitle ?? scrobbleTitle;
-          if (!_autoSubDlTried &&
-              sl<PlaybackPrefs>().autoDownloadSubtitles &&
-              (imdbId?.isNotEmpty == true ||
-                  tmdbId != null ||
-                  (titleForSub?.isNotEmpty == true))) {
-            _autoSubDlTried = true;
-            _fetchAndApplySubtitle(prefLang, title: titleForSub);
-          }
-          return;
-        }
-      }
-      _subApplied = true; // nothing remembered and no preferred language
-      return;
-    }
-    if (pref.toLowerCase() == 'off') {
+    final prefRaw = sl<PlaybackPrefs>().subtitlePreference;
+
+    // 'off' → subtitles off on every video.
+    if (prefRaw == 'off') {
       player.setSubtitleTrack(SubtitleTrack.no());
       _subApplied = true;
       return;
     }
-    final p = pref.toLowerCase();
-    for (final s in softSubs) {
-      if (s.lang.toLowerCase() == p || (s.label ?? '').toLowerCase() == p) {
-        player.setSubtitleTrack(
-          SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
-        );
-        _subApplied = true;
-        return;
-      }
+    // '' (Auto) → don't force anything.
+    if (prefRaw.isEmpty) {
+      _subApplied = true;
+      return;
+    }
+    // A language code → source subtitle first, then embedded, then download.
+    final prefLang = languageByPref(prefRaw);
+    if (prefLang == null) {
+      _subApplied = true;
+      return;
+    }
+    final soft = pickPreferredSub(softSubs, prefLang);
+    if (soft != null) {
+      player.setSubtitleTrack(
+        SubtitleTrack.uri(soft.url, title: soft.label ?? soft.lang, language: soft.lang),
+      );
+      _subApplied = true;
+      return;
     }
     for (final t in mediaSubtitleTracks) {
-      if ((t.language ?? '').toLowerCase() == p ||
-          (t.title ?? '').toLowerCase() == p) {
+      final tLang = t.language ?? '';
+      final tTitle = t.title ?? '';
+      if (matchesSourceLang(tLang, prefLang) || matchesSourceLang(tTitle, prefLang)) {
         player.setSubtitleTrack(t);
         _subApplied = true;
         return;
       }
     }
-    // No match yet — embedded tracks may still be loading; retry later.
+    // No source/embedded match — embedded tracks may still be loading; leave
+    // _subApplied false so the tracks-stream retry re-checks. Fire the keyless
+    // auto-download at most once per episode.
+    final titleForSub = showTitle ?? scrobbleTitle;
+    if (!_autoSubDlTried &&
+        sl<PlaybackPrefs>().autoDownloadSubtitles &&
+        (imdbId?.isNotEmpty == true ||
+            tmdbId != null ||
+            (titleForSub?.isNotEmpty == true))) {
+      _autoSubDlTried = true;
+      _fetchAndApplySubtitle(prefLang, title: titleForSub);
+    }
+  }
+
+  /// Re-run the global subtitle preference against the current video (used by
+  /// the in-player / Settings picker so a change applies immediately).
+  void reapplyPreferredSubtitle() {
+    _subApplied = false;
+    _autoSubDlTried = false;
+    _tryApplySubPref();
   }
 
   /// Keyless auto-download fallback. Calls [SubtitleDownloadService.find] with
@@ -1507,36 +1475,14 @@ class PlayerCubit extends Cubit<PlayerState> {
       player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
     if (s.subtitles.isNotEmpty) {
-      // If the user has a global preferred subtitle language AND there is no
-      // per-title remembered subtitle for this episode, try to auto-select the
-      // first soft-sub whose lang matches the preferred language. If no soft-sub
-      // matches, fall through to the existing isDefault/first logic unchanged.
-      // When preferredSubtitleLanguage is '' (the default) this branch is never
-      // taken and behaviour is byte-for-byte identical to before.
-      Subtitle? prefSub;
-      final prefLangCode = sl<PlaybackPrefs>().preferredSubtitleLanguage;
-      if (prefLangCode.isNotEmpty) {
-        final epUrl = showUrl;
-        final remembered = (epUrl != null && epUrl.isNotEmpty)
-            ? sl<TitlePrefsStore>().subtitle(sourceId, epUrl)
-            : null;
-        if (remembered == null) {
-          final prefLang = languageByPref(prefLangCode);
-          if (prefLang != null) {
-            for (final x in s.subtitles) {
-              if (matchesSourceLang(x.lang, prefLang)) {
-                prefSub = x;
-                break;
-              }
-            }
-          }
-        }
-      }
-      final sub = prefSub ??
-          s.subtitles.firstWhere(
-            (x) => x.isDefault,
-            orElse: () => s.subtitles.first,
-          );
+      // Initial pick is source-default/first; the global subtitle preference
+      // (off / language / auto) is applied right after via _tryApplySubPref,
+      // which is now the single source of truth for preference-driven
+      // selection (source-first, then embedded, then keyless download).
+      final sub = s.subtitles.firstWhere(
+        (x) => x.isDefault,
+        orElse: () => s.subtitles.first,
+      );
       await player.setSubtitleTrack(
         SubtitleTrack.uri(
           sub.url,
@@ -1547,7 +1493,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
     applySubtitleStyle(); // restore subtitle size/colour/background
-    _tryApplySubPref(); // restore the remembered subtitle (soft subs / off)
+    _tryApplySubPref(); // apply the global subtitle preference (off / lang / auto)
   }
 
   /// Try the next source after the current one fails (dead/DRM/unsupported),
