@@ -41,7 +41,6 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
-import '../../core/logging/app_logger.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
@@ -366,20 +365,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) setState(() {});
         return;
       }
-      // Header-gated sources (Referer/Origin/Cookie) only play in external
-      // players that forward those headers (MX Player, Just Player). VLC,
-      // SPlayer, LeePlayer and most others ignore them → the CDN 403s and
-      // nothing plays. Skip the doomed hand-off and use the built-in player
-      // (which passes the headers to mpv directly). Removed once the
-      // header-injecting local proxy lands.
+      // Header-gated source + a player that can't forward headers: hand the
+      // player our localhost proxy URL (no headers — the proxy injects them) so
+      // it plays instead of 403ing. Only if the proxy can't be set up do we fall
+      // back to the built-in player. MX/Just Player (header-forwarding) and
+      // non-header-gated sources never reach this branch — unchanged path below.
       final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
+      var playUrl = src.url;
+      var launchHeaders = src.headers ?? const <String, String>{};
       if (headerGatedButPlayerCant(src.headers, extPkg)) {
-        AppLogger.instance.log(
-          '[ext-player] $extPkg cannot forward headers for a header-gated '
-          'source (${src.headers!.keys.toList()}) — using built-in',
-        );
-        _initInApp();
-        if (mounted) {
+        final local = await ExternalPlayer().proxyStreamUrl(src.url, src.headers!);
+        if (!mounted) return;
+        if (local == null) {
+          _initInApp(); // proxy unavailable → built-in (never a black screen)
           setState(() {});
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -389,8 +387,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
           );
+          return;
         }
-        return;
+        // Play the proxied URL; headers are injected upstream, so none are
+        // needed on the intent (VLC/SPlayer ignore them anyway).
+        playUrl = local;
+        launchHeaders = const <String, String>{};
       }
       // External players give no progress callback and the in-app scrobbler
       // never runs for them — so scrobble the episode at hand-off (the only
@@ -417,10 +419,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // opened but couldn't play the stream (or wasn't installed) — in which
       // case the built-in player automatically takes over.
       final res = await ExternalPlayer().launch(
-        url: src.url,
+        url: playUrl,
         package: sl<PlaybackPrefs>().externalPlayerPackage,
         title: title.isEmpty ? null : title,
-        headers: src.headers ?? const {},
+        headers: launchHeaders,
         subtitles: subs,
         positionMs: 0,
       );
