@@ -12,6 +12,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
@@ -314,19 +315,40 @@ class _TvRail extends StatelessWidget {
                     child: SizedBox(
                       width: _cardWidth,
                       height: _cardHeight,
-                      child: TvFocusable(
-                        autofocus: firstAutofocus && index == 0,
-                        onTap: () => onTap(item),
-                        child: PosterCard(
-                          title: item.title,
-                          imageUrl: item.cover,
-                          headers: item.coverHeaders,
-                          cellWidth: _cardWidth,
-                          // Touch gestures are disabled on TV; TvFocusable
-                          // handles OK-key selection.
-                          onTap: null,
-                          onLongPress: null,
-                        ),
+                      // Focus wraps ONLY the poster art (thumbnail), so the
+                      // D-pad highlight is a clean rectangle around the image;
+                      // the title sits below, outside the focusable, and is
+                      // never bordered/scaled.
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: TvFocusable(
+                              autofocus: firstAutofocus && index == 0,
+                              onTap: () => onTap(item),
+                              child: PosterCard(
+                                title: item.title,
+                                imageUrl: item.cover,
+                                headers: item.coverHeaders,
+                                cellWidth: _cardWidth,
+                                showTitle: false,
+                                // Touch gestures are disabled on TV; TvFocusable
+                                // handles OK-key selection.
+                                onTap: null,
+                                onLongPress: null,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textPrimary),
+                          ),
+                        ],
                       ),
                     ),
                   ),

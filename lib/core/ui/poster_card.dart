@@ -14,6 +14,7 @@ class PosterCard extends StatefulWidget {
     this.onLongPress,
     this.tags = const [],
     this.cellWidth = 180,
+    this.showTitle = true,
   });
   final String title;
   final String? imageUrl;
@@ -24,6 +25,11 @@ class PosterCard extends StatefulWidget {
   /// Small overlay badges drawn at the bottom-left of the art (e.g. SUB/DUB).
   final List<String> tags;
   final double cellWidth;
+
+  /// When false, render only the poster art (no title below). Used on TV so the
+  /// D-pad focus highlight wraps just the thumbnail; the caller draws the title
+  /// separately. Defaults to true — every phone call site is unchanged.
+  final bool showTitle;
 
   @override
   State<PosterCard> createState() => _PosterCardState();
@@ -111,13 +117,15 @@ class _PosterCardState extends State<PosterCard> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                widget.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.caption.copyWith(color: AppColors.textPrimary),
-              ),
+              if (widget.showTitle) ...[
+                const SizedBox(height: 8),
+                Text(
+                  widget.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(color: AppColors.textPrimary),
+                ),
+              ],
             ],
           ),
         ),
