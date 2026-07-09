@@ -453,9 +453,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         widget.showTitle,
         ep.title,
       ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
-      // Completes when the external player closes. `played` is false when it
-      // opened but couldn't play the stream (or wasn't installed) — in which
-      // case the built-in player automatically takes over.
       final res = await ExternalPlayer().launch(
         url: playUrl,
         package: sl<PlaybackPrefs>().externalPlayerPackage,
@@ -465,24 +462,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
         positionMs: 0,
       );
       if (!mounted) return;
-      if (res.launched && res.played) {
+      // If the player LAUNCHED, trust it — it took the stream. Many players
+      // (VLC especially) open the video in their own task and return to us
+      // immediately with no progress report, so `played` is NOT a reliable
+      // failure signal; using it made the app spuriously fall back to the
+      // built-in player (double playback) even while the external player was
+      // playing fine. Only a genuine launch failure (not installed / no
+      // activity) falls back to the built-in player.
+      if (res.launched) {
         Navigator.of(context).maybePop();
       } else {
-        // Opened but reported no playback — most often a header-gated HLS
-        // source in an external player that ignores the Referer/User-Agent
-        // (e.g. VLC). Tell the user why, then take over with the built-in
-        // player (which passes the headers to mpv directly).
-        if (res.launched && !res.played) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'External player couldn’t play this source — using the '
-                'built-in player.',
-              ),
-            ),
-          );
-        }
-        _initInApp(); // not installed / opened but didn't play → built-in
+        _initInApp(); // not installed / no activity → built-in
         setState(() {});
       }
     } catch (_) {
