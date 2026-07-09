@@ -23,6 +23,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import 'tv_exo_controller.dart';
@@ -42,6 +43,11 @@ class TvExoPlayerScreen extends StatefulWidget {
     this.showUrl,
     this.showTitle,
     this.category = 'sub',
+    this.malId,
+    this.scrobbleTitle,
+    this.tmdbId,
+    this.tmdbIsTv = false,
+    this.imdbId,
   });
 
   final String sourceId;
@@ -52,6 +58,11 @@ class TvExoPlayerScreen extends StatefulWidget {
   final String? showUrl;
   final String? showTitle;
   final String category;
+  final int? malId;
+  final String? scrobbleTitle;
+  final int? tmdbId;
+  final bool tmdbIsTv;
+  final String? imdbId;
 
   @override
   State<TvExoPlayerScreen> createState() => _TvExoPlayerScreenState();
@@ -84,6 +95,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   List<SkipInterval> _skips = const [];
   bool _skipsFetched = false;
 
+  bool _markedWatching = false;
+  final _scrobbled = <int>{}; // episode indices already scrobbled this session
+
   @override
   void initState() {
     super.initState();
@@ -107,7 +121,53 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     c.audioTracks.addListener(_onTracksChanged);
     c.textTracks.addListener(_onTracksChanged);
     c.duration.addListener(_maybeFetchSkips);
+    c.position.addListener(_scrobbleTick);
     _loadEpisode();
+  }
+
+  void _scrobbleTick() => _maybeScrobble();
+
+  bool get _hasTitleId =>
+      widget.malId != null ||
+      widget.scrobbleTitle != null ||
+      widget.tmdbId != null ||
+      widget.imdbId != null;
+
+  void _maybeMarkWatching() {
+    if (_markedWatching || !_hasTitleId) return;
+    _markedWatching = true;
+    sl<TrackerHub>().markWatching(
+      malId: widget.malId,
+      title: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+    );
+  }
+
+  void _maybeScrobble({bool force = false}) {
+    final c = _c;
+    final ep = _ep;
+    if (c == null || ep == null || !_hasTitleId) return;
+    _maybeMarkWatching();
+    final fire = force
+        ? !_scrobbled.contains(_index)
+        : shouldScrobble(
+            positionMs: c.position.value,
+            durationMs: c.duration.value,
+            alreadyScrobbled: _scrobbled.contains(_index),
+          );
+    if (!fire) return;
+    _scrobbled.add(_index);
+    final epNum = (ep.number ?? (_index + 1)).toInt();
+    sl<TrackerHub>().scrobble(
+      malId: widget.malId,
+      title: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+      episode: epNum,
+    );
   }
 
   Future<void> _loadEpisode() async {
@@ -628,7 +688,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _onEnded() {
-    if (_c?.ended.value == true) _next();
+    if (_c?.ended.value != true) return;
+    _maybeScrobble(force: true);
+    _next();
   }
 
   void _next() {

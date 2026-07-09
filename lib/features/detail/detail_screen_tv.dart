@@ -154,6 +154,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
             showUrl: widget.item.url,
             showTitle: detail.title,
             category: launchCategory,
+            malId: detail.malId ?? widget.item.malId,
+            scrobbleTitle:
+                detail.type == ProviderType.anime ? detail.title : null,
+            tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+            tmdbIsTv: detail.tmdbIsTv,
+            imdbId: detail.imdbId ?? widget.item.imdbId,
           ),
         ),
       );
