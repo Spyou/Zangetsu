@@ -852,6 +852,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   @override
   void dispose() {
+    _loadGen++; // supersede any in-flight torrent resolve so it stops itself
     _stopTorrent();
     _cancelUpNext();
     final c = _c;
