@@ -88,6 +88,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   int? _seekTargetMs; // one-shot seek on next ready (resume OR source switch)
   bool _menuOpen = false;
   double _speed = 1.0;
+  // Focus for the player root (D-pad controls) and the up-next card. Overlays
+  // (menu / search / up-next) must explicitly grab focus and hand it back here,
+  // because the root Focus holds focus and `autofocus` can't steal it.
+  final _rootFocus = FocusNode(debugLabel: 'tvExoRoot');
+  final _upNextFocus = FocusNode(debugLabel: 'tvExoUpNext');
 
   bool _subApplied = false; // one-shot preferred-language per (re)load
   bool _subDownloadTried = false; // one auto-download attempt per episode
@@ -662,14 +667,17 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _toast('No subtitles found.');
       return;
     }
-    // Reuse the menu panel to present results.
+    // Reuse the menu panel to present results. Close the track menu so there's
+    // a single focused overlay (the results panel grabs focus on mount).
     setState(() {
+      _menuOpen = false;
       _searchResults = results;
     });
   }
 
   Future<void> _applySearchResult(SubtitleSearchResult r) async {
     setState(() => _searchResults = null);
+    _rootFocus.requestFocus();
     try {
       final path = await SubtitleSearchService().download(r);
       final cfg = TvSubtitleConfig(
@@ -694,7 +702,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _openMenu() => setState(() => _menuOpen = true);
-  void _closeMenu() => setState(() => _menuOpen = false);
+  void _closeMenu() {
+    setState(() => _menuOpen = false);
+    _rootFocus.requestFocus(); // hand D-pad back to the player controls
+  }
 
   void _onTracksChanged() {
     _maybeApplySubPref();
@@ -782,6 +793,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _startUpNext() {
     _upNextCountdown = 5;
     if (mounted) setState(() {});
+    // Move focus onto the card so OK=play-now / Back=cancel work.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _upNextCountdown != null) _upNextFocus.requestFocus();
+    });
     _upNextTimer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) {
         t.cancel();
@@ -802,6 +817,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _upNextTimer?.cancel();
     _upNextTimer = null;
     if (mounted) setState(() => _upNextCountdown = null);
+    _rootFocus.requestFocus(); // hand D-pad back to the player
   }
 
   void _next() {
@@ -832,6 +848,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
     if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    // While an overlay (menu / online search / up-next) is up, it owns the
+    // D-pad: let its focused widget + traversal handle keys, don't eat them.
+    if (_menuOpen || _searchResults != null || _upNextCountdown != null) {
+      return KeyEventResult.ignored;
+    }
     final k = e.logicalKey;
     if (okKeys.contains(k)) { _togglePlay(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowRight) { _seekBy(10000); return KeyEventResult.handled; }
@@ -839,12 +860,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     if (k == LogicalKeyboardKey.mediaTrackNext) { _next(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.mediaTrackPrevious) { _prev(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.contextMenu ||
-        k == LogicalKeyboardKey.arrowUp) {
+        k == LogicalKeyboardKey.arrowUp ||
+        k == LogicalKeyboardKey.arrowDown) {
       _openMenu();
-      return KeyEventResult.handled;
-    }
-    if (k == LogicalKeyboardKey.arrowDown && _menuOpen) {
-      _closeMenu();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -854,7 +872,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void dispose() {
     _loadGen++; // supersede any in-flight torrent resolve so it stops itself
     _stopTorrent();
-    _cancelUpNext();
+    _upNextTimer?.cancel(); // cancel directly — _cancelUpNext setStates/refocuses
     final c = _c;
     if (c != null) {
       // Persist final position before releasing.
@@ -871,6 +889,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       c.dispose();
     }
     _dio.close();
+    _rootFocus.dispose();
+    _upNextFocus.dispose();
     super.dispose();
   }
 
@@ -879,6 +899,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Focus(
+        focusNode: _rootFocus,
         autofocus: true,
         onKeyEvent: _onKey,
         child: Stack(
@@ -969,7 +990,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                 right: 40,
                 bottom: 160,
                 child: Focus(
-                  autofocus: true,
+                  focusNode: _upNextFocus,
                   onKeyEvent: (_, e) {
                     if (e is! KeyDownEvent) return KeyEventResult.ignored;
                     if (okKeys.contains(e.logicalKey)) {
@@ -1014,7 +1035,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
               ),
             if (_searchResults != null)
               TvTrackMenu(
-                onClose: () => setState(() => _searchResults = null),
+                onClose: () {
+                  setState(() => _searchResults = null);
+                  _rootFocus.requestFocus();
+                },
                 sections: [
                   TvMenuSection(
                     title: 'Online subtitles',
@@ -1104,6 +1128,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     playing ? 'Playing — OK to pause' : 'Paused — OK to play',
                     style: const TextStyle(color: Colors.white),
                   ),
+                ),
+                const SizedBox(width: 18),
+                Text(
+                  '▲ / ▼  Subtitles & options',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
                 ),
               ],
             ),

@@ -28,23 +28,56 @@ class TvMenuSection {
 /// A D-pad-navigable right-side panel of track sections. Up/Down move focus,
 /// OK selects, Back closes. Presentational: the screen supplies the sections
 /// and the per-option callbacks.
-class TvTrackMenu extends StatelessWidget {
+///
+/// Self-focusing: the player's root `Focus` already holds focus when this opens,
+/// so `autofocus` alone can't move focus here — the menu owns a [FocusScopeNode]
+/// and grabs focus explicitly once mounted, then the first row autofocuses.
+class TvTrackMenu extends StatefulWidget {
   const TvTrackMenu({super.key, required this.sections, required this.onClose});
 
   final List<TvMenuSection> sections;
   final VoidCallback onClose;
 
   @override
+  State<TvTrackMenu> createState() => _TvTrackMenuState();
+}
+
+class _TvTrackMenuState extends State<TvTrackMenu> {
+  final _scope = FocusScopeNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _scope.requestFocus();
+    });
+  }
+
+  @override
+  void dispose() {
+    _scope.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    var optionIndex = 0; // first option overall gets autofocus
     return Align(
       alignment: Alignment.centerRight,
-      child: Focus(
-        autofocus: true,
+      child: FocusScope(
+        node: _scope,
         onKeyEvent: (_, e) {
-          if (e is KeyDownEvent &&
-              (e.logicalKey == LogicalKeyboardKey.goBack ||
-                  e.logicalKey == LogicalKeyboardKey.escape)) {
-            onClose();
+          if (e is! KeyDownEvent) return KeyEventResult.ignored;
+          final k = e.logicalKey;
+          if (k == LogicalKeyboardKey.goBack ||
+              k == LogicalKeyboardKey.escape) {
+            widget.onClose();
+            return KeyEventResult.handled;
+          }
+          // Swallow Left/Right so focus can't traverse out of the side panel;
+          // Up/Down fall through to move between rows.
+          if (k == LogicalKeyboardKey.arrowLeft ||
+              k == LogicalKeyboardKey.arrowRight) {
             return KeyEventResult.handled;
           }
           return KeyEventResult.ignored;
@@ -58,7 +91,7 @@ class TvTrackMenu extends StatelessWidget {
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
               children: [
-                for (final s in sections) ...[
+                for (final s in widget.sections) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
                     child: Text(
@@ -71,7 +104,8 @@ class TvTrackMenu extends StatelessWidget {
                       ),
                     ),
                   ),
-                  for (final o in s.options) _Row(option: o),
+                  for (final o in s.options)
+                    _Row(option: o, autofocus: optionIndex++ == 0),
                 ],
               ],
             ),
@@ -83,8 +117,9 @@ class TvTrackMenu extends StatelessWidget {
 }
 
 class _Row extends StatefulWidget {
-  const _Row({required this.option});
+  const _Row({required this.option, this.autofocus = false});
   final TvMenuOption option;
+  final bool autofocus;
 
   @override
   State<_Row> createState() => _RowState();
@@ -97,6 +132,7 @@ class _RowState extends State<_Row> {
   Widget build(BuildContext context) {
     final o = widget.option;
     return Focus(
+      autofocus: widget.autofocus,
       onFocusChange: (f) => setState(() => _focused = f),
       onKeyEvent: (_, e) {
         if (e is KeyDownEvent && okKeys.contains(e.logicalKey)) {
