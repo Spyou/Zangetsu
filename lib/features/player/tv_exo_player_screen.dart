@@ -165,14 +165,20 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _c?.setMaxVideoBitrate(v?.bandwidth ?? 0);
   }
 
-  void _selectSourceQuality(String label) {
+  /// Sources for the active sub/dub kind, or all sources when the content
+  /// isn't kind-split (movies / unknown). The per-source quality menu and its
+  /// selection both draw from this same pool so a label can never resolve to a
+  /// source of the opposite kind.
+  List<VideoSource> _qualityPool() {
     final kind = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
     final pool = sourcesForKind(_sources, kind);
-    final match = pool.where((s) => s.quality == label).toList();
-    final src =
-        (match.isNotEmpty ? match : _sources.where((s) => s.quality == label).toList());
-    if (src.isEmpty) return;
-    _open(src.first, seekToMs: _c?.position.value ?? 0);
+    return pool.isNotEmpty ? pool : _sources;
+  }
+
+  void _selectSourceQuality(String label) {
+    final match = _qualityPool().where((s) => s.quality == label).toList();
+    if (match.isEmpty) return;
+    _open(match.first, seekToMs: _c?.position.value ?? 0);
   }
 
   void _selectAudio(TvTrack t) => _c?.selectAudioTrack(t.id);
@@ -217,7 +223,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       }
     } else {
       final labels = <String>{
-        for (final s in _sources)
+        for (final s in _qualityPool())
           if ((s.quality ?? '').isNotEmpty) s.quality!,
       }.toList()
         ..sort((a, b) => qualityHeight(b).compareTo(qualityHeight(a)));
