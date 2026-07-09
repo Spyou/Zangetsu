@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -12,9 +15,13 @@ import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/subtitle_download_service.dart';
+import '../../core/playback/subtitle_language.dart';
+import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_keys.dart';
+import '../../core/ui/subtitle_language_picker.dart';
 import 'tv_exo_controller.dart';
 import 'tv_track_menu.dart';
 
@@ -62,6 +69,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   HlsVariant? _activeQuality; // null = Auto
   int? _seekTargetMs; // one-shot seek on next ready (resume OR source switch)
   bool _menuOpen = false;
+
+  bool _subApplied = false; // one-shot preferred-language per (re)load
+  bool _subDownloadTried = false; // one auto-download attempt per episode
+  final _subDownloads = <TvSubtitleConfig>[]; // sourced-in during playback
+  String? _stagedFontPath;
+  String _stagedFontFamily = '';
+  List<SubtitleSearchResult>? _searchResults;
 
   @override
   void initState() {
@@ -112,16 +126,36 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }
   }
 
-  /// Loads [src] into the player and arms a one-shot seek to [seekToMs] once a
-  /// real duration arrives (used for episode-resume and same-episode source
-  /// switches). Overridden per call.
-  Future<void> _open(VideoSource src, {int seekToMs = 0}) async {
+  /// Loads [src] into the player (with any side-loaded subtitles) and arms a
+  /// one-shot seek to [seekToMs] once a real duration arrives. [keepDownloads]
+  /// preserves in-playback downloaded subs + the applied-pref flag (used when
+  /// re-opening to attach a just-downloaded subtitle).
+  Future<void> _open(VideoSource src,
+      {int seekToMs = 0, bool keepDownloads = false}) async {
     _activeSource = src;
     _resumeSeeked = false;
     _seekTargetMs = seekToMs > 0 ? seekToMs : null;
-    await _c?.setSource(src.url, src.headers ?? const {});
+    if (!keepDownloads) {
+      _subApplied = false;
+      _subDownloadTried = false;
+      _subDownloads.clear();
+    }
+    final subs = _subtitleConfigs(src);
+    await _c?.setSource(src.url, src.headers ?? const {}, subtitles: subs);
+    await _applyCaptionStyle();
     _loadQualities(src);
   }
+
+  List<TvSubtitleConfig> _subtitleConfigs(VideoSource src) => [
+        for (final s in src.subtitles)
+          TvSubtitleConfig(
+            url: s.url,
+            lang: s.lang,
+            label: s.label,
+            mime: subtitleMime(s.format, url: s.url),
+          ),
+        ..._subDownloads,
+      ];
 
   void _maybeResumeSeek() {
     final c = _c;
@@ -158,6 +192,44 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       pref: sl<PlaybackPrefs>().defaultQuality,
     );
     if (v != null) _selectQuality(v);
+  }
+
+  Future<void> _applyCaptionStyle() async {
+    final p = sl<PlaybackPrefs>();
+    final style = captionStyleFromPrefs(
+      scale: p.subtitleScale,
+      colorHex: p.subtitleColorHex,
+      bgOpacity: p.subtitleBgOpacity,
+      position: p.subtitlePosition,
+      font: p.subtitleFont,
+    );
+    final path = await _stageFont(style.fontFamily);
+    _c?.applyCaptionStyle(style, fontPath: path);
+  }
+
+  /// Copies the chosen bundled font to app-support once so Kotlin can
+  /// Typeface.createFromFile it. Returns null for the default family.
+  Future<String?> _stageFont(String family) async {
+    if (family.isEmpty) return null;
+    if (family == _stagedFontFamily && _stagedFontPath != null) {
+      return _stagedFontPath;
+    }
+    final asset = subtitleFontAsset(family);
+    if (asset == null) return null;
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final out = File('${dir.path}/sub_fonts/${asset.split('/').last}');
+      if (!await out.exists()) {
+        await out.parent.create(recursive: true);
+        final bytes = await rootBundle.load(asset);
+        await out.writeAsBytes(bytes.buffer.asUint8List());
+      }
+      _stagedFontFamily = family;
+      _stagedFontPath = out.path;
+      return out.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _selectQuality(HlsVariant? v) {
@@ -276,14 +348,184 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       ));
     }
 
+    // Subtitles
+    final text = c.textTracks.value;
+    final subOptions = <TvMenuOption>[
+      TvMenuOption(
+        label: 'Off',
+        selected: text.every((t) => !t.selected),
+        onSelect: () => c.selectTextTrack(null),
+      ),
+      for (final t in text)
+        TvMenuOption(
+          label: t.label ?? (t.language.isEmpty ? 'Subtitle' : t.language),
+          selected: t.selected,
+          onSelect: () => c.selectTextTrack(t.id),
+        ),
+      TvMenuOption(
+        label: 'Preferred language…',
+        onSelect: _pickPreferredLanguage,
+      ),
+      TvMenuOption(
+        label: 'Search online…',
+        onSelect: _openSubtitleSearch,
+      ),
+      TvMenuOption(
+        label: 'Subtitle size',
+        trailing: _sizeLabel(sl<PlaybackPrefs>().subtitleScale),
+        onSelect: _cycleSubtitleSize,
+      ),
+      TvMenuOption(
+        label: 'Background',
+        trailing: sl<PlaybackPrefs>().subtitleBgOpacity > 0 ? 'On' : 'Off',
+        onSelect: _toggleSubtitleBackground,
+      ),
+    ];
+    sections.add(TvMenuSection(title: 'Subtitles', options: subOptions));
+
     return sections;
+  }
+
+  String _sizeLabel(double s) => s <= 0.85 ? 'S' : (s >= 1.2 ? 'L' : 'M');
+
+  Future<void> _cycleSubtitleSize() async {
+    final p = sl<PlaybackPrefs>();
+    final next = p.subtitleScale <= 0.85
+        ? 1.0
+        : (p.subtitleScale >= 1.2 ? 0.8 : 1.3);
+    await p.setSubtitleScale(next);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleSubtitleBackground() async {
+    final p = sl<PlaybackPrefs>();
+    await p.setSubtitleBgOpacity(p.subtitleBgOpacity > 0 ? 0.0 : 0.6);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickPreferredLanguage() async {
+    final picked = await showSubtitleLanguagePicker(
+        context, sl<PlaybackPrefs>().subtitlePreference);
+    if (picked == null) return;
+    await sl<PlaybackPrefs>().setSubtitlePreference(picked);
+    _subApplied = false;
+    await _maybeApplySubPref();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openSubtitleSearch() async {
+    final query = widget.showTitle ?? '';
+    if (sl<PlaybackPrefs>().subtitleApiKey.isEmpty) {
+      _toast('Add an OpenSubtitles API key in Settings to search.');
+      return;
+    }
+    List<SubtitleSearchResult> results;
+    try {
+      results = await SubtitleSearchService().search(query);
+    } on SubtitleSearchException catch (e) {
+      _toast(e.toString());
+      return;
+    } catch (_) {
+      _toast('Subtitle search failed.');
+      return;
+    }
+    if (!mounted) return;
+    if (results.isEmpty) {
+      _toast('No subtitles found.');
+      return;
+    }
+    // Reuse the menu panel to present results.
+    setState(() {
+      _searchResults = results;
+    });
+  }
+
+  Future<void> _applySearchResult(SubtitleSearchResult r) async {
+    setState(() => _searchResults = null);
+    try {
+      final path = await SubtitleSearchService().download(r);
+      final cfg = TvSubtitleConfig(
+        url: path,
+        lang: r.language,
+        label: r.name,
+        mime: subtitleMime(r.format, url: path),
+      );
+      _subDownloads.add(cfg);
+      final src = _activeSource;
+      if (src != null) {
+        await _open(src, seekToMs: _c?.position.value ?? 0, keepDownloads: true);
+      }
+    } catch (_) {
+      _toast('Could not download subtitle.');
+    }
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   void _openMenu() => setState(() => _menuOpen = true);
   void _closeMenu() => setState(() => _menuOpen = false);
 
   void _onTracksChanged() {
+    _maybeApplySubPref();
     if (_menuOpen && mounted) setState(() {});
+  }
+
+  Future<void> _maybeApplySubPref() async {
+    final c = _c;
+    if (c == null || _subApplied) return;
+    final tracks = c.textTracks.value;
+    if (tracks.isEmpty && c.duration.value <= 0) return; // not ready yet
+    _subApplied = true;
+    final pref = sl<PlaybackPrefs>().subtitlePreference;
+    final d = decideSubtitle(textTracks: tracks, pref: pref);
+    switch (d.action) {
+      case TvSubAction.off:
+        c.selectTextTrack(null);
+        break;
+      case TvSubAction.auto:
+        break; // leave ExoPlayer's default
+      case TvSubAction.select:
+        c.selectTextTrack(d.track!.id);
+        break;
+      case TvSubAction.download:
+        if (!_subDownloadTried && sl<PlaybackPrefs>().autoDownloadSubtitles) {
+          await _downloadAndAttach(d.language!);
+        }
+        break;
+    }
+  }
+
+  Future<void> _downloadAndAttach(Language lang) async {
+    _subDownloadTried = true;
+    try {
+      final results = await SubtitleDownloadService().find(
+        title: widget.showTitle,
+        iso2: lang.iso2,
+        iso1: lang.iso1,
+      );
+      if (results.isEmpty || !mounted) return;
+      final r = results.first;
+      _subDownloads.add(TvSubtitleConfig(
+        url: r.url,
+        lang: lang.iso1,
+        label: lang.name,
+        mime: subtitleMime(null, url: r.url),
+      ));
+      // Re-open the current source with the added subtitle, keeping position
+      // AND the download list (keepDownloads: true). Then re-arm the pref pass
+      // so the now-present downloaded track gets selected on the next
+      // onTracksChanged (the _subDownloadTried guard prevents a re-download loop).
+      final src = _activeSource;
+      if (src != null) {
+        await _open(src, seekToMs: _c?.position.value ?? 0, keepDownloads: true);
+        _subApplied = false;
+      }
+    } catch (_) {}
   }
 
   void _maybeSaveProgress() {
@@ -417,6 +659,23 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
               TvTrackMenu(
                 sections: _buildSections(_c!),
                 onClose: _closeMenu,
+              ),
+            if (_searchResults != null)
+              TvTrackMenu(
+                onClose: () => setState(() => _searchResults = null),
+                sections: [
+                  TvMenuSection(
+                    title: 'Online subtitles',
+                    options: [
+                      for (final r in _searchResults!)
+                        TvMenuOption(
+                          label: r.name,
+                          trailing: r.language,
+                          onSelect: () => _applySearchResult(r),
+                        ),
+                    ],
+                  ),
+                ],
               ),
           ],
         ),
