@@ -3,12 +3,15 @@ package com.spyou.watch_app
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.media.AudioManager
+import android.media.audiofx.LoudnessEnhancer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
@@ -37,7 +40,12 @@ class ExoPlayerView(
     messenger: BinaryMessenger,
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
-    private val player = ExoPlayer.Builder(context).build()
+    private val audioSessionId =
+        (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
+    private val player = ExoPlayer.Builder(context).build().apply {
+        setAudioSessionId(audioSessionId)
+    }
+    private var loudness: LoudnessEnhancer? = null
     private val playerView = PlayerView(context).apply {
         player = this@ExoPlayerView.player
         useController = false // Flutter draws the controls on top
@@ -227,6 +235,23 @@ class ExoPlayerView(
                 applyCaptionStyle(call)
                 result.success(null)
             }
+            "setPlaybackSpeed" -> {
+                val speed = (call.argument<Number>("speed") ?: 1.0).toFloat()
+                player.playbackParameters = PlaybackParameters(speed)
+                result.success(null)
+            }
+            "setVolumeBoost" -> {
+                val pct = (call.argument<Number>("percent") ?: 100).toInt().coerceIn(100, 200)
+                val gainMb = (((pct - 100) / 100f) * 600f).toInt()
+                try {
+                    if (loudness == null) loudness = LoudnessEnhancer(audioSessionId)
+                    loudness?.setTargetGain(gainMb)
+                    loudness?.enabled = gainMb > 0
+                } catch (_: Exception) {
+                    // LoudnessEnhancer unavailable on this device/session — play at 100%.
+                }
+                result.success(null)
+            }
             else -> result.notImplemented()
         }
     }
@@ -236,6 +261,8 @@ class ExoPlayerView(
         channel.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null
+        try { loudness?.release() } catch (_: Exception) {}
+        loudness = null
         player.release()
     }
 }
