@@ -104,7 +104,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   String? _torrentId;
   String? _torrentPhase; // non-null while a torrent is resolving
-  StreamSubscription<TorrentProgress>? _torrentSub;
+  int _loadGen = 0; // bumped per _open; guards stale async torrent resolves
   int? _upNextCountdown;
   Timer? _upNextTimer;
 
@@ -220,13 +220,16 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _skipsFetched = false;
       _skips = const [];
     }
+    final gen = ++_loadGen; // this load supersedes any in-flight one
     _stopTorrent(); // kill any torrent from the previous source/episode
     _error = null;
     var playUrl = src.url;
     var playHeaders = src.headers ?? const <String, String>{};
     if (isTorrentUrl(src.url)) {
-      final local = await _resolveTorrent(src.url);
-      if (local == null) return; // error/wifi handled + shown by _resolveTorrent
+      final local = await _resolveTorrent(src.url, gen);
+      // Bail if a newer _open superseded us while resolving, or on error/wifi
+      // (shown by _resolveTorrent).
+      if (local == null || gen != _loadGen || !mounted) return;
       playUrl = local;
       playHeaders = const {};
     }
@@ -237,10 +240,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _loadQualities(src);
   }
 
-  Future<String?> _resolveTorrent(String uri) async {
+  Future<String?> _resolveTorrent(String uri, int gen) async {
     setState(() => _torrentPhase = 'Finding peers…');
-    _torrentSub = sl<TorrentService>().events().listen((e) {
-      if (!mounted) return;
+    // Local subscription (not a shared field) so an overlapping _open can't
+    // cancel this resolve's stream, or vice-versa. Stale ticks are ignored.
+    final sub = sl<TorrentService>().events().listen((e) {
+      if (!mounted || gen != _loadGen) return;
       if (e.state == TorrentState.buffering) {
         setState(() => _torrentPhase = 'Buffering ${(e.bufferPct * 100).round()}%');
       } else if (e.state == TorrentState.finding) {
@@ -252,14 +257,19 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         uri,
         allowMobileData: sl<TorrentPrefs>().allowMobileData,
       );
+      await sub.cancel();
+      if (gen != _loadGen) {
+        // A newer load superseded us — stop the torrent WE just started so it
+        // doesn't leak, and let the caller bail.
+        sl<TorrentService>().stop(t.id);
+        return null;
+      }
       _torrentId = t.id;
-      await _torrentSub?.cancel();
-      _torrentSub = null;
       if (mounted) setState(() => _torrentPhase = null);
       return t.localUrl;
     } on PlatformException catch (e) {
-      await _torrentSub?.cancel();
-      _torrentSub = null;
+      await sub.cancel();
+      if (gen != _loadGen) return null;
       if (mounted) {
         setState(() {
           _torrentPhase = null;
@@ -270,8 +280,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       }
       return null;
     } catch (_) {
-      await _torrentSub?.cancel();
-      _torrentSub = null;
+      await sub.cancel();
+      if (gen != _loadGen) return null;
       if (mounted) {
         setState(() {
           _torrentPhase = null;
@@ -283,8 +293,6 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _stopTorrent() {
-    _torrentSub?.cancel();
-    _torrentSub = null;
     final id = _torrentId;
     if (id != null) {
       sl<TorrentService>().stop(id);
