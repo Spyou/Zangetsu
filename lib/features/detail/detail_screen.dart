@@ -21,6 +21,7 @@ import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
+import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
 import '../../core/models/video_source.dart';
@@ -2825,6 +2826,19 @@ class _DownloadSheetState extends State<_DownloadSheet> {
   bool _loadingSources = true;
   int _selectedSourceIdx = 0;
 
+  // Episode search/filter (phone + TV). No autofocus so the TV leanback
+  // keyboard doesn't pop the moment the sheet opens.
+  final _searchCtrl = TextEditingController();
+  final _searchFocus = FocusNode();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -2931,21 +2945,28 @@ class _DownloadSheetState extends State<_DownloadSheet> {
   bool get _multiSeason => _seasons.length > 1;
   List<Episode> get _seasonEps => _episodesBySeason[_season] ?? const [];
 
+  /// The current season's episodes narrowed by the search query. Equals
+  /// [_seasonEps] when the query is empty, so every path below is unchanged
+  /// when the user isn't searching.
+  List<Episode> get _filtered => filterEpisodes(_seasonEps, _query);
+
   List<Episode> get _selectedEpisodes =>
       (_selectedIds.map((id) => _byId[id]).whereType<Episode>().toList())
         ..sort((a, b) => (a.number ?? 0).compareTo(b.number ?? 0));
 
   int _epNum(Episode e, int i) => e.number?.toInt() ?? (i + 1);
 
+  // Select-all / Clear act on the *filtered* view, so "filter to OVA →
+  // Select all" grabs just the matches. With no query, _filtered == _seasonEps.
   void _selectAllInSeason() =>
-      setState(() => _selectedIds.addAll(_seasonEps.map((e) => e.id)));
+      setState(() => _selectedIds.addAll(_filtered.map((e) => e.id)));
 
   void _clearSeason() =>
-      setState(() => _selectedIds.removeAll(_seasonEps.map((e) => e.id)));
+      setState(() => _selectedIds.removeAll(_filtered.map((e) => e.id)));
 
   bool get _allSeasonSelected =>
-      _seasonEps.isNotEmpty &&
-      _seasonEps.every((e) => _selectedIds.contains(e.id));
+      _filtered.isNotEmpty &&
+      _filtered.every((e) => _selectedIds.contains(e.id));
 
   @override
   Widget build(BuildContext context) {
@@ -3010,6 +3031,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
             // ── Episode multi-select (horizontal thumbnail cards) ──────────
             const SizedBox(height: 20),
+            // Filter box — only when there's a list long enough to be worth it.
+            if (_seasonEps.length > 5) ...[
+              _episodeSearchField(),
+              const SizedBox(height: 14),
+            ],
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -3026,13 +3052,27 @@ class _DownloadSheetState extends State<_DownloadSheet> {
             const SizedBox(height: 10),
             SizedBox(
               height: 118,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.zero,
-                itemCount: _seasonEps.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (c, i) => _episodeCard(_seasonEps[i], i),
-              ),
+              child: _filtered.isEmpty && _query.isNotEmpty
+                  ? Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'No episodes match',
+                        style: AppText.body
+                            .copyWith(color: AppColors.textTertiary),
+                      ),
+                    )
+                  : ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.zero,
+                      itemCount: _filtered.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 10),
+                      itemBuilder: (c, i) {
+                        final ep = _filtered[i];
+                        // Pass the ORIGINAL season index so a numberless
+                        // episode's E-number fallback stays correct.
+                        return _episodeCard(ep, _seasonEps.indexOf(ep));
+                      },
+                    ),
             ),
 
             // ── Download button ────────────────────────────────────────────
@@ -3101,6 +3141,41 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _episodeSearchField() {
+    return TextField(
+      controller: _searchCtrl,
+      focusNode: _searchFocus,
+      onChanged: (v) => setState(() => _query = v),
+      style: AppText.body.copyWith(color: AppColors.textPrimary),
+      cursorColor: AppColors.accent,
+      textInputAction: TextInputAction.search,
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: 'Search episodes',
+        hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+        prefixIcon: const Icon(Icons.search_rounded,
+            color: AppColors.textTertiary, size: 20),
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close_rounded,
+                    color: AppColors.textTertiary, size: 20),
+                onPressed: () {
+                  _searchCtrl.clear();
+                  setState(() => _query = '');
+                },
+              ),
+        filled: true,
+        fillColor: AppColors.surface2,
+        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
       ),
     );
@@ -3260,7 +3335,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
         builder: (_) => _SeasonSheet(seasons: _seasons, currentSeason: _season),
       );
       if (picked != null && picked != _season) {
-        setState(() => _season = picked);
+        setState(() {
+          _season = picked;
+          _query = ''; // don't carry a stale filter into the new season
+          _searchCtrl.clear();
+        });
         _resolveSources(); // sources differ per season
       }
     }
