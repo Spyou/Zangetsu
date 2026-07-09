@@ -137,6 +137,22 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "getPlayers" -> result.success(installedPlayers())
                     "launch" -> launchExternal(call, result)
+                    "proxyUrl" -> {
+                        try {
+                            val url = call.argument<String>("url")
+                            @Suppress("UNCHECKED_CAST")
+                            val headers = (call.argument<Map<String, String>>("headers"))
+                                ?: emptyMap()
+                            if (url.isNullOrEmpty()) {
+                                result.success(null)
+                            } else {
+                                result.success(ExternalStreamProxy.proxyUrl(url, headers))
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("ext-player", "proxyUrl failed: ${e.message}")
+                            result.success(null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

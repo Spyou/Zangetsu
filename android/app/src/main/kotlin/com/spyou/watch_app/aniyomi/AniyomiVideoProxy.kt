@@ -13,6 +13,7 @@
  */
 package com.spyou.watch_app.aniyomi
 
+import com.spyou.watch_app.HlsRewriter
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import fi.iki.elonen.NanoHTTPD
 import okhttp3.Dispatcher
@@ -250,72 +251,7 @@ object AniyomiVideoProxy {
         sourceId: Long,
         playlistUrl: String,
         headers: Map<String, String>,
-    ): String = rewritePlaylistUrls(body, playlistUrl) { absoluteUri ->
+    ): String = HlsRewriter.rewrite(body, playlistUrl) { absoluteUri ->
         proxyUrl(sourceId, absoluteUri, headers)
-    }
-
-    /**
-     * Pure URI-rewriting engine for HLS playlists.
-     *
-     * Processes every line in [body]:
-     * - Blank lines: passed through.
-     * - `#EXT-X-KEY:`, `#EXT-X-MEDIA:`, `#EXT-X-MAP:` tags: the `URI="…"`
-     *   attribute value is resolved to an absolute URL and replaced with the
-     *   value returned by [resolveUri].
-     * - Other `#…` lines: passed through unchanged.
-     * - All other lines (segment / variant URIs): resolved to an absolute URL
-     *   and replaced with the value returned by [resolveUri].
-     *
-     * Relative URIs are resolved against the directory part of [playlistUrl].
-     * Root-relative URIs (`/path`) use the scheme+host of [playlistUrl].
-     * Protocol-relative URIs (`//host/…`) are given `https:` scheme.
-     * Already-absolute URIs are forwarded as-is to [resolveUri].
-     *
-     * This function contains no I/O and is designed for direct unit testing.
-     */
-    internal fun rewritePlaylistUrls(
-        body: String,
-        playlistUrl: String,
-        resolveUri: (String) -> String,
-    ): String {
-        // Directory prefix for relative URIs: everything up to and including the last '/'.
-        val stripped = playlistUrl.substringBefore("?")
-        val baseDir = stripped.let { s ->
-            val idx = s.lastIndexOf('/')
-            if (idx >= 0) s.substring(0, idx + 1) else "$s/"
-        }
-        // Scheme + host for root-relative URIs.
-        val schemeHost = playlistUrl.let { u ->
-            val s = u.indexOf("://")
-            if (s < 0) return@let ""
-            val slash = u.indexOf('/', s + 3)
-            if (slash < 0) u else u.substring(0, slash)
-        }
-
-        fun toAbsolute(uri: String): String = when {
-            uri.startsWith("http://") || uri.startsWith("https://") -> uri
-            uri.startsWith("//") -> "https:$uri"
-            uri.startsWith("/") -> "$schemeHost$uri"
-            else -> "$baseDir$uri"
-        }
-
-        // Tags whose URI="…" attribute refers to a network resource.
-        val uriTagPrefix = Regex("""^#EXT-X-(KEY|MEDIA|MAP):""")
-        val uriAttr = Regex("""URI="([^"]+)"""")
-
-        return body.lines().joinToString("\n") { line ->
-            when {
-                line.isBlank() -> line
-                uriTagPrefix.containsMatchIn(line) -> {
-                    // Rewrite only the URI="…" attribute; leave all other attributes intact.
-                    uriAttr.replace(line) { m ->
-                        val abs = toAbsolute(m.groupValues[1])
-                        """URI="${resolveUri(abs)}""""
-                    }
-                }
-                line.startsWith("#") -> line  // #EXTINF, #EXT-X-VERSION, etc.
-                else -> resolveUri(toAbsolute(line.trim()))  // segment / variant URI
-            }
-        }
     }
 }

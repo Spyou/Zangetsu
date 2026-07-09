@@ -41,7 +41,6 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
-import '../../core/logging/app_logger.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
@@ -50,9 +49,10 @@ import '../../core/logging/app_logger.dart';
 /// on dispose.
 /// External players that forward HTTP request headers (Referer/Origin/Cookie)
 /// to the stream. Players NOT on this list (VLC, SPlayer, LeePlayer, …) ignore
-/// them, so a header-gated source 403s — route those to the built-in player
-/// until the header-injecting local proxy ships. Prefix-matched to cover
-/// package variants (e.g. MX Player free `.ad` + `.pro`).
+/// them, so a header-gated source 403s — for those, `_launchExternalThenPop`
+/// hands the player the local header-injecting proxy URL instead (which adds
+/// the headers upstream). Prefix-matched to cover package variants (e.g. MX
+/// Player free `.ad` + `.pro`).
 const List<String> kHeaderForwardingPlayers = [
   'com.mxtech.videoplayer', // MX Player (free .ad + pro)
   'com.brouken.player',     // Just Player
@@ -71,6 +71,25 @@ bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
   if (!gated) return false;
   return !kHeaderForwardingPlayers.any(pkg.startsWith);
 }
+
+/// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
+/// e.g. a CloudStream extractor's own proxy. Such a URL is already reachable and
+/// header-injected, so it's handed to the external player as-is rather than
+/// wrapped again (double-proxying breaks it).
+@visibleForTesting
+bool isLocalStreamUrl(String url) {
+  final u = url.toLowerCase();
+  return u.startsWith('http://localhost') ||
+      u.startsWith('http://127.0.0.1') ||
+      u.startsWith('https://localhost') ||
+      u.startsWith('https://127.0.0.1');
+}
+
+/// True when [url] is an MPEG-DASH manifest (`.mpd`, ignoring any query string).
+/// External players can't reliably play header-gated DASH and our proxy only
+/// rewrites HLS, so these route to the built-in player.
+@visibleForTesting
+bool isDashUrl(String url) => url.toLowerCase().split('?').first.endsWith('.mpd');
 
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
@@ -366,20 +385,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) setState(() {});
         return;
       }
-      // Header-gated sources (Referer/Origin/Cookie) only play in external
-      // players that forward those headers (MX Player, Just Player). VLC,
-      // SPlayer, LeePlayer and most others ignore them → the CDN 403s and
-      // nothing plays. Skip the doomed hand-off and use the built-in player
-      // (which passes the headers to mpv directly). Removed once the
-      // header-injecting local proxy lands.
+      // Header-gated source + a player that can't forward headers. Three cases:
+      //  • already-local (a CloudStream extractor's own localhost proxy): hand
+      //    it over as-is — it's already reachable + header-injected; wrapping it
+      //    again double-proxies and breaks it.
+      //  • DASH (.mpd): our proxy only rewrites HLS and external players can't do
+      //    header-gated DASH → play in the built-in player (mpv handles it).
+      //  • otherwise (remote header-gated HLS): hand the player our localhost
+      //    proxy URL (no headers — the proxy injects them upstream).
+      // MX/Just Player (header-forwarding) and non-header-gated sources never
+      // reach this branch — the unchanged direct hand-off below covers them.
       final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
-      if (headerGatedButPlayerCant(src.headers, extPkg)) {
-        AppLogger.instance.log(
-          '[ext-player] $extPkg cannot forward headers for a header-gated '
-          'source (${src.headers!.keys.toList()}) — using built-in',
-        );
-        _initInApp();
-        if (mounted) {
+      var playUrl = src.url;
+      var launchHeaders = src.headers ?? const <String, String>{};
+      if (headerGatedButPlayerCant(src.headers, extPkg) &&
+          !isLocalStreamUrl(src.url)) {
+        if (isDashUrl(src.url)) {
+          _initInApp(); // DASH → built-in (external can't do header-gated DASH)
+          if (mounted) {
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Using the built-in player for this source.'),
+              ),
+            );
+          }
+          return;
+        }
+        final local = await ExternalPlayer().proxyStreamUrl(src.url, src.headers!);
+        if (!mounted) return;
+        if (local == null) {
+          _initInApp(); // proxy unavailable → built-in (never a black screen)
           setState(() {});
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -389,8 +425,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
               ),
             ),
           );
+          return;
         }
-        return;
+        // Play the proxied URL; headers are injected upstream, so none are
+        // needed on the intent (VLC/SPlayer ignore them anyway).
+        playUrl = local;
+        launchHeaders = const <String, String>{};
       }
       // External players give no progress callback and the in-app scrobbler
       // never runs for them — so scrobble the episode at hand-off (the only
@@ -413,36 +453,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
         widget.showTitle,
         ep.title,
       ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
-      // Completes when the external player closes. `played` is false when it
-      // opened but couldn't play the stream (or wasn't installed) — in which
-      // case the built-in player automatically takes over.
       final res = await ExternalPlayer().launch(
-        url: src.url,
+        url: playUrl,
         package: sl<PlaybackPrefs>().externalPlayerPackage,
         title: title.isEmpty ? null : title,
-        headers: src.headers ?? const {},
+        headers: launchHeaders,
         subtitles: subs,
         positionMs: 0,
       );
       if (!mounted) return;
-      if (res.launched && res.played) {
+      // If the player LAUNCHED, trust it — it took the stream. Many players
+      // (VLC especially) open the video in their own task and return to us
+      // immediately with no progress report, so `played` is NOT a reliable
+      // failure signal; using it made the app spuriously fall back to the
+      // built-in player (double playback) even while the external player was
+      // playing fine. Only a genuine launch failure (not installed / no
+      // activity) falls back to the built-in player.
+      if (res.launched) {
         Navigator.of(context).maybePop();
       } else {
-        // Opened but reported no playback — most often a header-gated HLS
-        // source in an external player that ignores the Referer/User-Agent
-        // (e.g. VLC). Tell the user why, then take over with the built-in
-        // player (which passes the headers to mpv directly).
-        if (res.launched && !res.played) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'External player couldn’t play this source — using the '
-                'built-in player.',
-              ),
-            ),
-          );
-        }
-        _initInApp(); // not installed / opened but didn't play → built-in
+        _initInApp(); // not installed / no activity → built-in
         setState(() {});
       }
     } catch (_) {

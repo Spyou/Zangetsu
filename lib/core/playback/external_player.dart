@@ -38,6 +38,29 @@ class ExternalPlayer {
     }
   }
 
+  /// Registers [url] + [headers] with the native localhost proxy and returns a
+  /// `http://127.0.0.1/...` URL the external player can play WITHOUT headers
+  /// (the proxy injects them upstream). Returns null on non-Android or any
+  /// failure, so the caller can fall back to the built-in player.
+  Future<String?> proxyStreamUrl(String url, Map<String, String> headers) async {
+    if (!Platform.isAndroid) return null;
+    try {
+      final local = await _ch.invokeMethod<String?>('proxyUrl', <String, dynamic>{
+        'url': url,
+        'headers': headers,
+      });
+      AppLogger.instance.log(
+        '[ext-player] proxyUrl ${local == null ? "failed (null)" : "ok"} '
+        'for ${_safeUrl(url)}',
+        level: local == null ? 'E' : 'I',
+      );
+      return (local != null && local.isNotEmpty) ? local : null;
+    } catch (e) {
+      AppLogger.instance.log('[ext-player] proxyUrl error: $e', level: 'E');
+      return null;
+    }
+  }
+
   /// Launches [url] in the external player [package]. Forwards [headers]
   /// (so header-gated streams work in players that honour them, e.g. MX
   /// Player), [subtitles] (`[{url, name}]`), [title], and a resume [positionMs].
