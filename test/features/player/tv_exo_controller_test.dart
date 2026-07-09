@@ -32,6 +32,53 @@ void main() {
     });
   });
 
+  group('TvExoController.applyEvent (tracks)', () {
+    test('parses audio/text track lists', () {
+      final c = TvExoController(9001);
+      c.applyEvent({
+        'positionMs': 0,
+        'durationMs': 0,
+        'audioTracks': [
+          {'id': '0:0', 'language': 'jpn', 'label': 'Japanese', 'selected': true},
+          {'id': '0:1', 'language': 'eng', 'label': '', 'selected': false},
+        ],
+        'textTracks': [
+          {'id': '1:0', 'language': 'en', 'label': 'English', 'selected': false},
+        ],
+      });
+      expect(c.audioTracks.value.length, 2);
+      expect(c.audioTracks.value.first.language, 'jpn');
+      expect(c.audioTracks.value.first.selected, isTrue);
+      expect(c.audioTracks.value[1].label, isNull); // empty -> null
+      expect(c.textTracks.value.single.id, '1:0');
+      c.dispose();
+    });
+
+    test('missing/garbage track fields fall back to empty lists', () {
+      final c = TvExoController(9002);
+      c.applyEvent({'positionMs': 0, 'durationMs': 0}); // no track keys
+      expect(c.audioTracks.value, isEmpty);
+      c.applyEvent({'audioTracks': 'nope', 'textTracks': 42});
+      expect(c.audioTracks.value, isEmpty);
+      expect(c.textTracks.value, isEmpty);
+      c.dispose();
+    });
+
+    test('unchanged list does not create a new notifier value', () {
+      final c = TvExoController(9003);
+      const payload = {
+        'audioTracks': [
+          {'id': '0:0', 'language': 'jpn', 'label': 'Japanese', 'selected': true},
+        ],
+      };
+      c.applyEvent(Map<String, dynamic>.from(payload));
+      final first = c.audioTracks.value;
+      c.applyEvent(Map<String, dynamic>.from(payload));
+      expect(identical(c.audioTracks.value, first), isTrue); // no churn
+      c.dispose();
+    });
+  });
+
   group('TvExoController.shouldResumeSeek', () {
     test('seeks once when a resume point exists and duration is known', () {
       expect(
