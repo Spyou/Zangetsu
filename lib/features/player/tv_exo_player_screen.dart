@@ -1,16 +1,22 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/hls.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
+import '../../core/playback/tv_track_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_keys.dart';
 import 'tv_exo_controller.dart';
+import 'tv_track_menu.dart';
 
 /// TV ExoPlayer player (SP1a core: play/pause, D-pad seek, resume, next/prev).
 /// Constructor mirrors PlayerScreen so the SP1d router can swap it in unchanged.
@@ -48,12 +54,22 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   String? _error;
   int _lastSavedMs = 0;
 
+  final _dio = Dio();
+  late String _category;
+  List<VideoSource> _sources = const [];
+  VideoSource? _activeSource;
+  List<HlsVariant> _qualities = const [];
+  HlsVariant? _activeQuality; // null = Auto
+  int? _seekTargetMs; // one-shot seek on next ready (resume OR source switch)
+  bool _menuOpen = false;
+
   @override
   void initState() {
     super.initState();
     _index = widget.episodes.isEmpty
         ? 0
         : widget.startIndex.clamp(0, widget.episodes.length - 1);
+    _category = widget.category;
   }
 
   Episode? get _ep =>
@@ -67,6 +83,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     c.duration.addListener(_maybeResumeSeek);
     c.position.addListener(_maybeSaveProgress);
     c.ended.addListener(_onEnded);
+    c.audioTracks.addListener(_onTracksChanged);
+    c.textTracks.addListener(_onTracksChanged);
     _loadEpisode();
   }
 
@@ -76,37 +94,190 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       setState(() => _error = 'No episode to play.');
       return;
     }
-    _resumeSeeked = false;
     _lastSavedMs = 0;
     try {
-      final sources = await widget.resolveSources(ep.url);
-      final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
+      final sources =
+          await widget.resolveSources(tvEpisodeUrl(ep.url, _category));
+      final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) {
         setState(() => _error = 'No playable source.');
         return;
       }
-      await _c?.setSource(src.url, src.headers ?? const {});
+      _sources = sources;
+      final mark = widget.resume.get(widget.sourceId, _resumeShowId, ep.id);
+      await _open(src, seekToMs: mark?.position.inMilliseconds ?? 0);
     } catch (e) {
       setState(() => _error = 'Could not load this episode.');
     }
   }
 
+  /// Loads [src] into the player and arms a one-shot seek to [seekToMs] once a
+  /// real duration arrives (used for episode-resume and same-episode source
+  /// switches). Overridden per call.
+  Future<void> _open(VideoSource src, {int seekToMs = 0}) async {
+    _activeSource = src;
+    _resumeSeeked = false;
+    _seekTargetMs = seekToMs > 0 ? seekToMs : null;
+    await _c?.setSource(src.url, src.headers ?? const {});
+    _loadQualities(src);
+  }
+
   void _maybeResumeSeek() {
     final c = _c;
-    if (c == null) return;
-    final mark = c.duration.value > 0
-        ? widget.resume.get(widget.sourceId, _resumeShowId, _ep?.id ?? '')
-        : null;
-    final resumeMs = mark?.position.inMilliseconds ?? 0;
+    if (c == null || c.duration.value <= 0 || _resumeSeeked) return;
+    final target = _seekTargetMs ?? 0;
     if (TvExoController.shouldResumeSeek(
-      resumeMs: resumeMs,
+      resumeMs: target,
       durationMs: c.duration.value,
       alreadySeeked: _resumeSeeked,
     )) {
       _resumeSeeked = true;
-      c.seek(resumeMs);
+      c.seek(target);
+    } else {
+      _resumeSeeked = true; // nothing to seek; don't re-check every tick
     }
+  }
+
+  Future<void> _loadQualities(VideoSource src) async {
+    var qs = const <HlsVariant>[];
+    final u = src.url.toLowerCase();
+    if (u.contains('.m3u8')) {
+      try {
+        qs = await fetchHlsVariants(src.url, src.headers ?? const {}, _dio);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    setState(() {
+      _qualities = qs;
+      _activeQuality = null; // Auto after a fresh load
+    });
+    // Apply the user's default-quality pref (HLS only).
+    final v = decideDefaultQuality(
+      variants: qs,
+      pref: sl<PlaybackPrefs>().defaultQuality,
+    );
+    if (v != null) _selectQuality(v);
+  }
+
+  void _selectQuality(HlsVariant? v) {
+    setState(() => _activeQuality = v);
+    _c?.setMaxVideoBitrate(v?.bandwidth ?? 0);
+  }
+
+  void _selectSourceQuality(String label) {
+    final kind = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
+    final pool = sourcesForKind(_sources, kind);
+    final match = pool.where((s) => s.quality == label).toList();
+    final src =
+        (match.isNotEmpty ? match : _sources.where((s) => s.quality == label).toList());
+    if (src.isEmpty) return;
+    _open(src.first, seekToMs: _c?.position.value ?? 0);
+  }
+
+  void _selectAudio(TvTrack t) => _c?.selectAudioTrack(t.id);
+
+  void _switchCategory(String cat) {
+    if (cat == _category) return;
+    // Re-resolve the current episode under the new category, keep position.
+    final pos = _c?.position.value ?? 0;
+    () async {
+      final ep = _ep;
+      if (ep == null) return;
+      try {
+        final sources = await widget.resolveSources(tvEpisodeUrl(ep.url, cat));
+        final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
+        final src = pickDefault(sources, prefer: prefer);
+        if (src == null) return;
+        _sources = sources;
+        _category = cat;
+        await _open(src, seekToMs: pos);
+        if (mounted) setState(() {});
+      } catch (_) {}
+    }();
+  }
+
+  List<TvMenuSection> _buildSections(TvExoController c) {
+    final sections = <TvMenuSection>[];
+
+    // Quality
+    final qOptions = <TvMenuOption>[];
+    if (_qualities.isNotEmpty) {
+      qOptions.add(TvMenuOption(
+        label: 'Auto',
+        selected: _activeQuality == null,
+        onSelect: () => _selectQuality(null),
+      ));
+      for (final v in _qualities) {
+        qOptions.add(TvMenuOption(
+          label: v.quality,
+          selected: _activeQuality?.url == v.url,
+          onSelect: () => _selectQuality(v),
+        ));
+      }
+    } else {
+      final labels = <String>{
+        for (final s in _sources)
+          if ((s.quality ?? '').isNotEmpty) s.quality!,
+      }.toList()
+        ..sort((a, b) => qualityHeight(b).compareTo(qualityHeight(a)));
+      for (final label in labels) {
+        qOptions.add(TvMenuOption(
+          label: label,
+          selected: _activeSource?.quality == label,
+          onSelect: () => _selectSourceQuality(label),
+        ));
+      }
+    }
+    if (qOptions.isNotEmpty) {
+      sections.add(TvMenuSection(title: 'Quality', options: qOptions));
+    }
+
+    // Audio
+    final audio = c.audioTracks.value;
+    if (audio.length > 1) {
+      sections.add(TvMenuSection(
+        title: 'Audio',
+        options: [
+          for (final t in audio)
+            TvMenuOption(
+              label: t.label ?? (t.language.isEmpty ? 'Track' : t.language),
+              selected: t.selected,
+              onSelect: () => _selectAudio(t),
+            ),
+        ],
+      ));
+    }
+
+    // Version (sub/dub)
+    final kinds = availableKinds(_sources);
+    final hasBoth = kinds.contains(AudioKind.sub) && kinds.contains(AudioKind.dub);
+    if (hasBoth) {
+      sections.add(TvMenuSection(
+        title: 'Version',
+        options: [
+          TvMenuOption(
+            label: 'Sub',
+            selected: _category == 'sub',
+            onSelect: () => _switchCategory('sub'),
+          ),
+          TvMenuOption(
+            label: 'Dub',
+            selected: _category == 'dub',
+            onSelect: () => _switchCategory('dub'),
+          ),
+        ],
+      ));
+    }
+
+    return sections;
+  }
+
+  void _openMenu() => setState(() => _menuOpen = true);
+  void _closeMenu() => setState(() => _menuOpen = false);
+
+  void _onTracksChanged() {
+    if (_menuOpen && mounted) setState(() {});
   }
 
   void _maybeSaveProgress() {
@@ -163,6 +334,15 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     if (k == LogicalKeyboardKey.arrowLeft) { _seekBy(-10000); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.mediaTrackNext) { _next(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.mediaTrackPrevious) { _prev(); return KeyEventResult.handled; }
+    if (k == LogicalKeyboardKey.contextMenu ||
+        k == LogicalKeyboardKey.arrowUp) {
+      _openMenu();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowDown && _menuOpen) {
+      _closeMenu();
+      return KeyEventResult.handled;
+    }
     return KeyEventResult.ignored;
   }
 
@@ -183,6 +363,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       }
       c.dispose();
     }
+    _dio.close();
     super.dispose();
   }
 
@@ -226,6 +407,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     style: const TextStyle(color: Colors.white, fontSize: 18)),
               ),
             if (_c != null) _controlsOverlay(_c!),
+            if (_menuOpen && _c != null)
+              TvTrackMenu(
+                sections: _buildSections(_c!),
+                onClose: _closeMenu,
+              ),
           ],
         ),
       ),
