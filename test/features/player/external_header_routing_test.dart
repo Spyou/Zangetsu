@@ -39,4 +39,29 @@ void main() {
       expect(headerGatedButPlayerCant({'Referer': 'x'}, ''), isFalse);
     });
   });
+
+  group('isLocalStreamUrl (already-proxied CloudStream sources pass through)', () {
+    test('localhost / 127.0.0.1 (http+https) → true', () {
+      expect(isLocalStreamUrl('http://localhost:36107/m3u8?x=1'), isTrue);
+      expect(isLocalStreamUrl('http://127.0.0.1:37317/s/abc'), isTrue);
+      expect(isLocalStreamUrl('https://localhost:8080/x'), isTrue);
+      expect(isLocalStreamUrl('HTTP://127.0.0.1/x'), isTrue);
+    });
+    test('remote URLs → false', () {
+      expect(isLocalStreamUrl('https://cdn.mewstream.buzz/x/index.m3u8'), isFalse);
+      expect(isLocalStreamUrl('https://vivibebe.site/stream/1080.m3u8'), isFalse);
+    });
+  });
+
+  group('isDashUrl (.mpd routes to built-in)', () {
+    test('.mpd (with/without query) → true', () {
+      expect(isDashUrl('https://sacdn.hakunaymatata.com/dash/1_h265/index_web.mpd'), isTrue);
+      expect(isDashUrl('https://x/manifest.mpd?token=abc'), isTrue);
+      expect(isDashUrl('https://X/INDEX.MPD'), isTrue);
+    });
+    test('HLS / other → false', () {
+      expect(isDashUrl('https://cdn.mewstream.buzz/x/index.m3u8'), isFalse);
+      expect(isDashUrl('https://x/movie.mp4'), isFalse);
+    });
+  });
 }

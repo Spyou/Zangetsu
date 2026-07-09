@@ -60,16 +60,22 @@ object ExternalStreamProxy {
         server = newServer
     }
 
-    /** Registers (url, headers) and returns http://127.0.0.1:<port>/s/<token>. */
+    /** Registers (url, headers) and returns http://127.0.0.1:<port>/s/<token>.
+     *  HLS upstreams get a `.m3u8` suffix so the external player (and the intent
+     *  mime detection) probes the top-level URL as HLS; segment/key URLs (non-
+     *  m3u8 upstreams) get no suffix. serve() strips any extension. */
     fun proxyUrl(url: String, headers: Map<String, String>): String {
         ensureStarted()
         val token = UUID.randomUUID().toString().replace("-", "")
         sessions[token] = Session(url, headers)
-        return "http://127.0.0.1:${server!!.listeningPort}/s/$token"
+        val suffix = if (url.contains("m3u8", ignoreCase = true)) ".m3u8" else ""
+        return "http://127.0.0.1:${server!!.listeningPort}/s/$token$suffix"
     }
 
     private fun serve(httpSession: NanoHTTPD.IHTTPSession): NanoHTTPD.Response {
+        // Token is a dot-free UUID hex; strip the query and any `.m3u8` suffix.
         val token = httpSession.uri.removePrefix("/s/").substringBefore("?")
+            .substringBefore(".")
         val ps = sessions[token]
             ?: return NanoHTTPD.newFixedLengthResponse(
                 NanoHTTPD.Response.Status.NOT_FOUND, "text/plain", "unknown token",
