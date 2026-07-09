@@ -14,6 +14,7 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -80,6 +81,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   String _stagedFontFamily = '';
   List<SubtitleSearchResult>? _searchResults;
 
+  List<SkipInterval> _skips = const [];
+  bool _skipsFetched = false;
+
   @override
   void initState() {
     super.initState();
@@ -102,6 +106,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     c.ended.addListener(_onEnded);
     c.audioTracks.addListener(_onTracksChanged);
     c.textTracks.addListener(_onTracksChanged);
+    c.duration.addListener(_maybeFetchSkips);
     _loadEpisode();
   }
 
@@ -142,6 +147,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _subApplied = false;
       _subDownloadTried = false;
       _subDownloads.clear();
+      _skipsFetched = false;
+      _skips = const [];
     }
     final subs = _subtitleConfigs(src);
     await _c?.setSource(src.url, src.headers ?? const {}, subtitles: subs);
@@ -182,6 +189,26 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     } else {
       _resumeSeeked = true; // nothing to seek; don't re-check every tick
     }
+  }
+
+  void _maybeFetchSkips() {
+    final c = _c;
+    final ep = _ep;
+    if (c == null || ep == null || _skipsFetched || c.duration.value <= 0) return;
+    _skipsFetched = true;
+    if (!sl<PlaybackPrefs>().skipIntro) return;
+    final title = widget.showTitle;
+    if (title == null || title.isEmpty) return;
+    final epNum = (ep.number ?? (_index + 1)).toInt();
+    sl<SkipService>()
+        .skipTimes(
+          title: title,
+          episode: epNum,
+          duration: Duration(milliseconds: c.duration.value),
+        )
+        .then((s) {
+      if (mounted) setState(() => _skips = s);
+    }).catchError((_) {});
   }
 
   Future<void> _loadQualities(VideoSource src) async {
@@ -711,6 +738,44 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     style: const TextStyle(color: Colors.white, fontSize: 18)),
               ),
             if (_c != null) _controlsOverlay(_c!),
+            if (_c != null)
+              Positioned(
+                right: 40,
+                bottom: 120,
+                child: ValueListenableBuilder<int>(
+                  valueListenable: _c!.position,
+                  builder: (_, pos, _) {
+                    final children = <Widget>[];
+                    final skip = sl<PlaybackPrefs>().skipIntro
+                        ? activeSkipInterval(_skips, pos)
+                        : null;
+                    if (skip != null) {
+                      children.add(_pillButton(
+                        skip.type == 'ed' ? 'Skip Ending' : 'Skip Opening',
+                        () => _c?.seek(skip.end.inMilliseconds),
+                      ));
+                    }
+                    if (sl<PlaybackPrefs>().megaSkip) {
+                      final secs = sl<PlaybackPrefs>().megaSkipSeconds;
+                      children.add(_pillButton('+${secs}s', () {
+                        final c = _c;
+                        if (c != null) c.seek(c.position.value + secs * 1000);
+                      }));
+                    }
+                    if (children.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        for (final w in children) Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: w,
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
             if (_menuOpen && _c != null)
               TvTrackMenu(
                 sections: _buildSections(_c!),
@@ -822,5 +887,36 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final m = s ~/ 60;
     final sec = (s % 60).toString().padLeft(2, '0');
     return '$m:$sec';
+  }
+
+  Widget _pillButton(String label, VoidCallback onTap) {
+    return Focus(
+      onKeyEvent: (_, e) {
+        if (e is KeyDownEvent && okKeys.contains(e.logicalKey)) {
+          onTap();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(builder: (context) {
+        final focused = Focus.of(context).hasFocus;
+        return GestureDetector(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: focused ? AppColors.accent : Colors.white38,
+                width: 2,
+              ),
+            ),
+            child: Text(label,
+                style: const TextStyle(color: Colors.white, fontSize: 15)),
+          ),
+        );
+      }),
+    );
   }
 }
