@@ -157,12 +157,14 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
               return TvFocusable(
                 autofocus: i == 0,
                 onTap: () => widget.onTap(item),
+                focusLabel: item.title,
                 child: PosterCard(
                   title: item.title,
                   imageUrl: item.cover,
                   headers: item.coverHeaders,
                   tags: widget.tagsFor?.call(item) ?? const [],
                   cellWidth: _cardWidth,
+                  showTitle: false,
                   // Touch gestures are disabled on TV; [TvFocusable] handles
                   // OK-key selection.
                   onTap: null,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_text.dart';
 import 'tv_keys.dart';
 
 /// Wraps any tappable so it is D-pad focusable on TV: scales + outlines while
@@ -13,11 +14,18 @@ class TvFocusable extends StatefulWidget {
     required this.onTap,
     this.autofocus = false,
     this.scale = 1.08,
+    this.focusLabel,
   });
   final Widget child;
   final VoidCallback onTap;
   final bool autofocus;
   final double scale;
+
+  /// Optional caption drawn BELOW the focusable (e.g. a poster title). When set,
+  /// it shows as plain text normally and pops into a filled "chip" while
+  /// focused — a Netflix-style label. Only the [child] (the thumbnail) gets the
+  /// focus box/scale, so the highlight never wraps the text.
+  final String? focusLabel;
 
   @override
   State<TvFocusable> createState() => _TvFocusableState();
@@ -36,6 +44,80 @@ class _TvFocusableState extends State<TvFocusable> {
 
   @override
   Widget build(BuildContext context) {
+    // The child, optionally with a caption chip overlaid on its bottom edge.
+    // Layout-neutral (a Stack, not an extra row), so it works identically in a
+    // fixed-size hero card and in a GridView cell — no unbounded-height traps.
+    Widget inner = widget.child;
+    final label = widget.focusLabel;
+    if (label != null) {
+      inner = Stack(
+        children: [
+          Positioned.fill(child: widget.child),
+          Positioned(
+            left: 6,
+            right: 6,
+            bottom: 6,
+            // Plain (readable over the poster's built-in scrim) normally; pops
+            // into a white chip when focused — Netflix-style label.
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: _focused
+                  ? const EdgeInsets.symmetric(horizontal: 8, vertical: 3)
+                  : EdgeInsets.zero,
+              decoration: BoxDecoration(
+                color: _focused ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(
+                  color: _focused ? Colors.black : Colors.white,
+                  fontWeight: FontWeight.w600,
+                  shadows: _focused
+                      ? null
+                      : const [Shadow(color: Colors.black, blurRadius: 4)],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // The focus "box": scale + accent outline around the child only, so the
+    // highlight is always a clean box around the thumbnail/tile.
+    final Widget box = AnimatedScale(
+      scale: _focused ? widget.scale : 1.0,
+      duration: const Duration(milliseconds: 120),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: _focused ? AppColors.accent.withValues(alpha: 0.16) : null,
+          border: Border.all(
+            color: _focused ? AppColors.accent : Colors.transparent,
+            width: 3,
+          ),
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: _focused
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.25),
+                    blurRadius: 12,
+                    spreadRadius: 0,
+                  ),
+                ]
+              : null,
+        ),
+        child: inner,
+      ),
+    );
+
     return Focus(
       autofocus: widget.autofocus,
       onKeyEvent: _onKey,
@@ -49,42 +131,7 @@ class _TvFocusableState extends State<TvFocusable> {
           );
         }
       },
-      child: AnimatedScale(
-        scale: _focused ? widget.scale : 1.0,
-        duration: const Duration(milliseconds: 120),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            // Faint accent fill on focus — makes the highlight read clearly even
-            // over video or busy artwork, not just from the border alone.
-            color: _focused
-                ? AppColors.accent.withValues(alpha: 0.16)
-                : null,
-            border: Border.all(
-              color: _focused ? AppColors.accent : Colors.transparent,
-              width: 3,
-            ),
-            borderRadius: BorderRadius.circular(10),
-            // Dark drop-shadow + faint accent glow make the accent border
-            // pop on ANY background — white Play button or dark poster card.
-            // The shadow is TV-safe: subtle on dark surfaces, lifts on light.
-            boxShadow: _focused
-                ? [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.65),
-                      blurRadius: 8,
-                      spreadRadius: 1,
-                    ),
-                    BoxShadow(
-                      color: AppColors.accent.withValues(alpha: 0.25),
-                      blurRadius: 12,
-                      spreadRadius: 0,
-                    ),
-                  ]
-                : null,
-          ),
-          child: widget.child,
-        ),
-      ),
+      child: box,
     );
   }
 }

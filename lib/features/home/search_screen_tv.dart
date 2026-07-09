@@ -250,12 +250,14 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           // lands here immediately after results populate.
           autofocus: i == 0,
           onTap: () => _openDetail(item),
+          focusLabel: item.title,
           child: PosterCard(
             title: item.title,
             imageUrl: item.cover,
             headers: item.coverHeaders,
             tags: _tagsFor(item),
             cellWidth: _cardWidth,
+            showTitle: false,
             // Touch gestures disabled on TV; [TvFocusable] handles OK-key.
             onTap: null,
             onLongPress: null,

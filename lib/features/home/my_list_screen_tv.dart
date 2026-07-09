@@ -72,11 +72,13 @@ class MyListScreenTv extends StatelessWidget {
                       return TvFocusable(
                         autofocus: i == 0,
                         onTap: () => _openItem(context, entry.item),
+                        focusLabel: entry.item.title,
                         child: PosterCard(
                           title: entry.item.title,
                           imageUrl: entry.item.cover,
                           headers: entry.item.coverHeaders,
                           cellWidth: _cardWidth,
+                          showTitle: false,
                           // Touch gestures are disabled on TV; [TvFocusable]
                           // handles OK-key selection.
                           onTap: null,
