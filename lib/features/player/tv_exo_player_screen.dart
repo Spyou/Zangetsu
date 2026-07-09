@@ -51,7 +51,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _index = widget.startIndex.clamp(0, widget.episodes.length - 1);
+    _index = widget.episodes.isEmpty
+        ? 0
+        : widget.startIndex.clamp(0, widget.episodes.length - 1);
   }
 
   Episode? get _ep =>

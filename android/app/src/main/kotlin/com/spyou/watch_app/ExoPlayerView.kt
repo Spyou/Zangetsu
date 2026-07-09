@@ -96,6 +96,18 @@ class ExoPlayerView(
                 }
                 result.success(null)
             }
+            "setUrl" -> {
+                val url = call.argument<String>("url")
+                if (url != null) {
+                    val mediaSource = DefaultMediaSourceFactory(
+                        DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+                    ).createMediaSource(MediaItem.fromUri(url))
+                    player.setMediaSource(mediaSource)
+                    player.prepare()
+                    player.playWhenReady = true
+                }
+                result.success(null)
+            }
             "play" -> { player.play(); result.success(null) }
             "pause" -> { player.pause(); result.success(null) }
             "seekTo" -> {
