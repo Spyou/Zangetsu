@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart' show AniyomiManager;
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -167,6 +168,15 @@ class _RootShellTvState extends State<RootShellTv> {
         final cs = sl<CloudStreamManager>().get(id);
         final name = cs?.displayName;
         if (name != null && name.isNotEmpty) return 'CS · $name';
+      } catch (_) {}
+      return id;
+    }
+    // Aniyomi sources live in the AniyomiManager, not the ProviderRegistry — so
+    // resolve their `ani:<id>` to a friendly name here (mirrors SourceSwitcher).
+    if (id.startsWith('ani:')) {
+      try {
+        final name = sl<AniyomiManager>().get(id)?.displayName;
+        if (name != null && name.isNotEmpty) return 'Ani · $name';
       } catch (_) {}
       return id;
     }

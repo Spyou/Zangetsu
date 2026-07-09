@@ -52,18 +52,28 @@ class BackupFile {
     // browse public Downloads. Keep an app-private, always-readable copy (no
     // storage permission needed) that [listLocalBackups] can enumerate. Only
     // done when the caller asks (TV) — phone exports are byte-identical.
+    String? localCopyPath;
     if (keepLocalCopy) {
       try {
         final dir = await _localBackupDir();
-        if (dir != null) await file.copy('${dir.path}/$name');
+        if (dir != null) localCopyPath = (await file.copy('${dir.path}/$name')).path;
       } catch (_) {/* best-effort — never block the primary export */}
     }
 
-    return FileDownloader().moveFileToSharedStorage(
-      file.path,
-      SharedStorage.downloads,
-      directory: 'Zangetsu',
-    );
+    // Move into public Downloads/Zangetsu for the user's file manager. On TV
+    // boxes this often has no shared-storage target and returns null/throws —
+    // in which case the app-private copy above is the saved backup, so report
+    // its path (restore-from-file lists it) instead of failing. On a phone
+    // (keepLocalCopy == false) localCopyPath is null, so this is byte-identical.
+    try {
+      final shared = await FileDownloader().moveFileToSharedStorage(
+        file.path,
+        SharedStorage.downloads,
+        directory: 'Zangetsu',
+      );
+      if (shared != null && shared.isNotEmpty) return shared;
+    } catch (_) {/* shared storage unavailable (common on TV) */}
+    return localCopyPath;
   }
 
   /// App-private, permission-free backups directory in external app storage.
