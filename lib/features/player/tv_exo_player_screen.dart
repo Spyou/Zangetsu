@@ -18,6 +18,8 @@ import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_search_service.dart';
+import '../../core/playback/title_prefs.dart';
+import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_keys.dart';
@@ -69,6 +71,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   HlsVariant? _activeQuality; // null = Auto
   int? _seekTargetMs; // one-shot seek on next ready (resume OR source switch)
   bool _menuOpen = false;
+  double _speed = 1.0;
 
   bool _subApplied = false; // one-shot preferred-language per (re)load
   bool _subDownloadTried = false; // one auto-download attempt per episode
@@ -143,7 +146,15 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final subs = _subtitleConfigs(src);
     await _c?.setSource(src.url, src.headers ?? const {}, subtitles: subs);
     await _applyCaptionStyle();
+    _applyPlaybackTuning();
     _loadQualities(src);
+  }
+
+  void _applyPlaybackTuning() {
+    final perTitle = sl<TitlePrefsStore>().speed(widget.sourceId, _resumeShowId);
+    _speed = perTitle ?? sl<PlaybackPrefs>().defaultSpeed;
+    _c?.setPlaybackSpeed(_speed);
+    _c?.setVolumeBoost(sl<PlaybackPrefs>().volumeBoost);
   }
 
   List<TvSubtitleConfig> _subtitleConfigs(VideoSource src) => [
@@ -383,7 +394,48 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     ];
     sections.add(TvMenuSection(title: 'Subtitles', options: subOptions));
 
+    // Speed
+    sections.add(TvMenuSection(
+      title: 'Speed',
+      options: [
+        for (final s in kTvSpeeds)
+          TvMenuOption(
+            label: s == 1.0 ? 'Normal' : '${s}x',
+            selected: (_speed - s).abs() < 0.001,
+            onSelect: () => _setSpeed(s),
+          ),
+      ],
+    ));
+
+    // Volume boost
+    const volSteps = [100, 125, 150, 175, 200];
+    final vol = sl<PlaybackPrefs>().volumeBoost;
+    sections.add(TvMenuSection(
+      title: 'Volume',
+      options: [
+        for (final v in volSteps)
+          TvMenuOption(
+            label: v == 100 ? '100% (normal)' : '$v%',
+            selected: vol == v,
+            onSelect: () => _setVolume(v),
+          ),
+      ],
+    ));
+
     return sections;
+  }
+
+  void _setSpeed(double s) {
+    setState(() => _speed = s);
+    _c?.setPlaybackSpeed(s);
+    sl<TitlePrefsStore>().setSpeed(widget.sourceId, _resumeShowId, s);
+    sl<PlaybackPrefs>().setDefaultSpeed(s);
+  }
+
+  void _setVolume(int v) {
+    sl<PlaybackPrefs>().setVolumeBoost(v);
+    _c?.setVolumeBoost(v);
+    if (mounted) setState(() {});
   }
 
   String _sizeLabel(double s) => s <= 0.85 ? 'S' : (s >= 1.2 ? 'L' : 'M');

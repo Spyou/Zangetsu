@@ -115,6 +115,10 @@ class TvExoController {
         'edge': s.edge,
         'position': s.position,
       });
+  Future<void> setPlaybackSpeed(double speed) =>
+      _method.invokeMethod('setPlaybackSpeed', {'speed': speed});
+  Future<void> setVolumeBoost(int percent) =>
+      _method.invokeMethod('setVolumeBoost', {'percent': percent});
 
   void dispose() {
     _sub?.cancel();
