@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -23,6 +24,9 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/torrent/torrent_prefs.dart';
+import '../../core/torrent/torrent_service.dart';
+import '../../core/torrent/torrent_util.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/ui/subtitle_language_picker.dart';
@@ -97,6 +101,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   bool _markedWatching = false;
   final _scrobbled = <int>{}; // episode indices already scrobbled this session
+
+  String? _torrentId;
+  String? _torrentPhase; // non-null while a torrent is resolving
+  StreamSubscription<TorrentProgress>? _torrentSub;
+  int? _upNextCountdown;
+  Timer? _upNextTimer;
 
   @override
   void initState() {
@@ -210,11 +220,76 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _skipsFetched = false;
       _skips = const [];
     }
+    _stopTorrent(); // kill any torrent from the previous source/episode
+    _error = null;
+    var playUrl = src.url;
+    var playHeaders = src.headers ?? const <String, String>{};
+    if (isTorrentUrl(src.url)) {
+      final local = await _resolveTorrent(src.url);
+      if (local == null) return; // error/wifi handled + shown by _resolveTorrent
+      playUrl = local;
+      playHeaders = const {};
+    }
     final subs = _subtitleConfigs(src);
-    await _c?.setSource(src.url, src.headers ?? const {}, subtitles: subs);
+    await _c?.setSource(playUrl, playHeaders, subtitles: subs);
     await _applyCaptionStyle();
     _applyPlaybackTuning();
     _loadQualities(src);
+  }
+
+  Future<String?> _resolveTorrent(String uri) async {
+    setState(() => _torrentPhase = 'Finding peers…');
+    _torrentSub = sl<TorrentService>().events().listen((e) {
+      if (!mounted) return;
+      if (e.state == TorrentState.buffering) {
+        setState(() => _torrentPhase = 'Buffering ${(e.bufferPct * 100).round()}%');
+      } else if (e.state == TorrentState.finding) {
+        setState(() => _torrentPhase = 'Finding peers…');
+      }
+    });
+    try {
+      final t = await sl<TorrentService>().startStream(
+        uri,
+        allowMobileData: sl<TorrentPrefs>().allowMobileData,
+      );
+      _torrentId = t.id;
+      await _torrentSub?.cancel();
+      _torrentSub = null;
+      if (mounted) setState(() => _torrentPhase = null);
+      return t.localUrl;
+    } on PlatformException catch (e) {
+      await _torrentSub?.cancel();
+      _torrentSub = null;
+      if (mounted) {
+        setState(() {
+          _torrentPhase = null;
+          _error = e.code == 'wifi_only'
+              ? 'Connect to Wi-Fi or allow mobile data in Settings to stream torrents.'
+              : 'Could not start the torrent.';
+        });
+      }
+      return null;
+    } catch (_) {
+      await _torrentSub?.cancel();
+      _torrentSub = null;
+      if (mounted) {
+        setState(() {
+          _torrentPhase = null;
+          _error = 'Could not start the torrent.';
+        });
+      }
+      return null;
+    }
+  }
+
+  void _stopTorrent() {
+    _torrentSub?.cancel();
+    _torrentSub = null;
+    final id = _torrentId;
+    if (id != null) {
+      sl<TorrentService>().stop(id);
+      _torrentId = null;
+    }
   }
 
   void _applyPlaybackTuning() {
@@ -690,7 +765,35 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _onEnded() {
     if (_c?.ended.value != true) return;
     _maybeScrobble(force: true);
-    _next();
+    if (_index >= widget.episodes.length - 1) return;
+    if (sl<PlaybackPrefs>().autoplayNext) {
+      _startUpNext();
+    }
+  }
+
+  void _startUpNext() {
+    _upNextCountdown = 5;
+    if (mounted) setState(() {});
+    _upNextTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      final next = (_upNextCountdown ?? 1) - 1;
+      if (next <= 0) {
+        t.cancel();
+        _cancelUpNext();
+        _next();
+      } else {
+        setState(() => _upNextCountdown = next);
+      }
+    });
+  }
+
+  void _cancelUpNext() {
+    _upNextTimer?.cancel();
+    _upNextTimer = null;
+    if (mounted) setState(() => _upNextCountdown = null);
   }
 
   void _next() {
@@ -741,6 +844,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   @override
   void dispose() {
+    _stopTorrent();
+    _cancelUpNext();
     final c = _c;
     if (c != null) {
       // Persist final position before releasing.
@@ -799,6 +904,18 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                 child: Text(_error!,
                     style: const TextStyle(color: Colors.white, fontSize: 18)),
               ),
+            if (_torrentPhase != null)
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text(_torrentPhase!,
+                        style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  ],
+                ),
+              ),
             if (_c != null) _controlsOverlay(_c!),
             if (_c != null)
               Positioned(
@@ -836,6 +953,49 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                       ],
                     );
                   },
+                ),
+              ),
+            if (_upNextCountdown != null && _index < widget.episodes.length - 1)
+              Positioned(
+                right: 40,
+                bottom: 160,
+                child: Focus(
+                  autofocus: true,
+                  onKeyEvent: (_, e) {
+                    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+                    if (okKeys.contains(e.logicalKey)) {
+                      _cancelUpNext();
+                      _next();
+                      return KeyEventResult.handled;
+                    }
+                    if (e.logicalKey == LogicalKeyboardKey.goBack ||
+                        e.logicalKey == LogicalKeyboardKey.escape) {
+                      _cancelUpNext();
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.85),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppColors.accent, width: 2),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Up next: ${widget.episodes[_index + 1].title.isNotEmpty ? widget.episodes[_index + 1].title : 'Episode ${_index + 2}'}',
+                          style: const TextStyle(color: Colors.white, fontSize: 16),
+                        ),
+                        const SizedBox(height: 8),
+                        Text('Playing in $_upNextCountdown…  (OK to play now, Back to cancel)',
+                            style: const TextStyle(color: Colors.white70, fontSize: 13)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             if (_menuOpen && _c != null)
