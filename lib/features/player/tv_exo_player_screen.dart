@@ -421,9 +421,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _toast('Add an OpenSubtitles API key in Settings to search.');
       return;
     }
+    // Search in the user's preferred subtitle language when they've set one
+    // (subtitlePreference is '' for Auto or 'off'); fall back to English.
+    final pref = sl<PlaybackPrefs>().subtitlePreference;
+    final lang = (pref.isEmpty || pref == 'off') ? 'en' : pref;
     List<SubtitleSearchResult> results;
     try {
-      results = await SubtitleSearchService().search(query);
+      results = await SubtitleSearchService().search(query, language: lang);
     } on SubtitleSearchException catch (e) {
       _toast(e.toString());
       return;
