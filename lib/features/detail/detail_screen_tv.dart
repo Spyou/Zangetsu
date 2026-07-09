@@ -138,6 +138,27 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         sl<PlaybackPrefs>().defaultCategory;
     final launchCategory =
         availableCategories.contains(preferred) ? preferred : category;
+    if (kExoSpikeEnabled) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => TvExoPlayerScreen(
+            sourceId: widget.item.sourceId,
+            episodes: episodes,
+            startIndex: index,
+            resume: sl<ResumeStore>(),
+            resolveSources: (u) => sl<SourceRepository>().sources(
+              u,
+              sourceId: widget.item.sourceId,
+              fast: true,
+            ),
+            showUrl: widget.item.url,
+            showTitle: detail.title,
+            category: launchCategory,
+          ),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => PlayerScreen(

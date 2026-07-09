@@ -45,6 +45,8 @@ import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
+import '../player/tv_exo_player_screen.dart';
+import '../player/tv_exo_spike_screen.dart' show kExoSpikeEnabled;
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
