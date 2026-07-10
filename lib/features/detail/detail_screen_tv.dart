@@ -817,6 +817,11 @@ class _TvEpisodeList extends StatelessWidget {
         return TvFocusable(
           key: ValueKey('tv-ep-$i'),
           onTap: () => onOpen(fullIndex),
+          // Full-width row: draw the highlight as a foreground frame (not a
+          // strip behind the content) and don't scale outward under the poster.
+          // Same treatment for series and movies.
+          scale: 1.0,
+          foregroundHighlight: true,
           child: RepaintBoundary(
             child: _EpisodeRow(
               ep: ep,

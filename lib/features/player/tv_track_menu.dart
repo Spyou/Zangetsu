@@ -33,10 +33,19 @@ class TvMenuSection {
 /// so `autofocus` alone can't move focus here — the menu owns a [FocusScopeNode]
 /// and grabs focus explicitly once mounted, then the first row autofocuses.
 class TvTrackMenu extends StatefulWidget {
-  const TvTrackMenu({super.key, required this.sections, required this.onClose});
+  const TvTrackMenu({
+    super.key,
+    required this.sections,
+    required this.onClose,
+    this.onInteract,
+  });
 
   final List<TvMenuSection> sections;
   final VoidCallback onClose;
+
+  /// Called on any focus change / selection within the menu, so the host can
+  /// reset an inactivity auto-hide timer while the user is navigating.
+  final VoidCallback? onInteract;
 
   @override
   State<TvTrackMenu> createState() => _TvTrackMenuState();
@@ -105,7 +114,11 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
                     ),
                   ),
                   for (final o in s.options)
-                    _Row(option: o, autofocus: optionIndex++ == 0),
+                    _Row(
+                      option: o,
+                      autofocus: optionIndex++ == 0,
+                      onInteract: widget.onInteract,
+                    ),
                 ],
               ],
             ),
@@ -117,9 +130,10 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
 }
 
 class _Row extends StatefulWidget {
-  const _Row({required this.option, this.autofocus = false});
+  const _Row({required this.option, this.autofocus = false, this.onInteract});
   final TvMenuOption option;
   final bool autofocus;
+  final VoidCallback? onInteract;
 
   @override
   State<_Row> createState() => _RowState();
@@ -133,9 +147,13 @@ class _RowState extends State<_Row> {
     final o = widget.option;
     return Focus(
       autofocus: widget.autofocus,
-      onFocusChange: (f) => setState(() => _focused = f),
+      onFocusChange: (f) {
+        setState(() => _focused = f);
+        if (f) widget.onInteract?.call();
+      },
       onKeyEvent: (_, e) {
         if (e is KeyDownEvent && okKeys.contains(e.logicalKey)) {
+          widget.onInteract?.call();
           o.onSelect();
           return KeyEventResult.handled;
         }

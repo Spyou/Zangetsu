@@ -93,6 +93,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   // because the root Focus holds focus and `autofocus` can't steal it.
   final _rootFocus = FocusNode(debugLabel: 'tvExoRoot');
   final _upNextFocus = FocusNode(debugLabel: 'tvExoUpNext');
+  Timer? _menuHideTimer; // auto-hide the track menu after inactivity
 
   bool _subApplied = false; // one-shot preferred-language per (re)load
   bool _subDownloadTried = false; // one auto-download attempt per episode
@@ -701,8 +702,22 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  void _openMenu() => setState(() => _menuOpen = true);
+  void _openMenu() {
+    setState(() => _menuOpen = true);
+    _bumpMenuHide();
+  }
+
+  /// (Re)start the menu inactivity timer — reset on every menu interaction so
+  /// it only auto-closes when the user has stopped navigating it.
+  void _bumpMenuHide() {
+    _menuHideTimer?.cancel();
+    _menuHideTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted && _menuOpen) _closeMenu();
+    });
+  }
+
   void _closeMenu() {
+    _menuHideTimer?.cancel();
     setState(() => _menuOpen = false);
     _rootFocus.requestFocus(); // hand D-pad back to the player controls
   }
@@ -872,6 +887,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void dispose() {
     _loadGen++; // supersede any in-flight torrent resolve so it stops itself
     _stopTorrent();
+    _menuHideTimer?.cancel();
     _upNextTimer?.cancel(); // cancel directly — _cancelUpNext setStates/refocuses
     final c = _c;
     if (c != null) {
@@ -896,7 +912,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final overlayOpen =
+        _menuOpen || _searchResults != null || _upNextCountdown != null;
+    return PopScope(
+      // While an overlay is up, Back closes IT (the TV remote Back is a route
+      // pop, not a key event, so this — not the menu's onKeyEvent — is what
+      // actually catches it); only pop the player when nothing is open.
+      canPop: !overlayOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_searchResults != null) {
+          setState(() => _searchResults = null);
+          _rootFocus.requestFocus();
+        } else if (_menuOpen) {
+          _closeMenu();
+        } else if (_upNextCountdown != null) {
+          _cancelUpNext();
+        }
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Focus(
         focusNode: _rootFocus,
@@ -1032,6 +1066,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
               TvTrackMenu(
                 sections: _buildSections(_c!),
                 onClose: _closeMenu,
+                onInteract: _bumpMenuHide,
               ),
             if (_searchResults != null)
               TvTrackMenu(
@@ -1055,6 +1090,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }

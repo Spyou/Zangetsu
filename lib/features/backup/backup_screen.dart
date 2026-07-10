@@ -113,11 +113,21 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restoreFromFile() async {
-    // TV boxes usually have no document-picker UI, so the system file picker
-    // silently no-ops. Instead list the app-readable backup files and let the
-    // user pick one with the D-pad.
-    final Map<String, dynamic>? p =
-        _isTv ? await _pickLocalBackupTv() : await BackupFile().import();
+    // On TV, prefer the SAF document picker too — Android TV's DocumentsUI is
+    // D-pad-navigable, so a backup transferred from another device (e.g. the
+    // phone app) can be browsed to and restored. Fall back to scanning the
+    // app-readable backup files on boxes that genuinely lack a picker.
+    Map<String, dynamic>? p;
+    if (_isTv) {
+      try {
+        p = await BackupFile().import();
+      } catch (_) {
+        p = null;
+      }
+      p ??= await _pickLocalBackupTv();
+    } else {
+      p = await BackupFile().import();
+    }
     if (p == null) return;
     setState(() => _busy = true);
     try {

@@ -258,9 +258,13 @@ class _TvRail extends StatelessWidget {
             // focused card overflowed and the ListView cropped its title/poster
             // (tester report). The card itself stays [_cardHeight] and is centred
             // in the taller row, so unfocused cards look unchanged.
-            height: _cardHeight + 24,
+            height: _cardHeight + 40,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
+              // Don't clip the focused card's scale-up + accent glow. Combined
+              // with the extra row headroom above, the top rail (pinned under
+              // the hero) no longer crops the focused poster/title.
+              clipBehavior: Clip.none,
               padding: const EdgeInsets.symmetric(horizontal: 40),
               // +1 trailing "See all" card (D-pad: navigate right past the last
               // poster to reach it). Only when a handler is supplied.
