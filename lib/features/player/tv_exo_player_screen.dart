@@ -968,6 +968,19 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       if (_holdingSpeed) _endHoldSpeed(); // don't leave 2× stuck if a menu opens
       return KeyEventResult.ignored;
     }
+    // Back / Escape: hide the controls first, then exit. Handled HERE (before any
+    // _bumpControls) so a Back delivered as a key event can't re-show the
+    // controls and trap the user in the player — that was the "can't exit" bug.
+    if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
+      if (e is! KeyDownEvent) return KeyEventResult.ignored;
+      if (_controlsVisible) {
+        _controlsHideTimer?.cancel();
+        setState(() => _controlsVisible = false);
+      } else if (mounted) {
+        Navigator.of(context).maybePop();
+      }
+      return KeyEventResult.handled;
+    }
     // Center OK: a tap plays/pauses, a HOLD runs temporary 2× (YouTube-style).
     // The toggle is deferred to key-up so holding speeds up instead of pausing;
     // a hold is detected by the key-repeat that only a held button emits.
