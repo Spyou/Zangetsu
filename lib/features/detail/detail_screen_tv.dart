@@ -154,6 +154,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           ),
           showUrl: widget.item.url,
           showTitle: detail.title,
+          cover: detail.cover ?? widget.item.cover,
+          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           category: launchCategory,
           malId: detail.malId ?? widget.item.malId,
           scrobbleTitle:

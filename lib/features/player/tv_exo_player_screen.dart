@@ -15,6 +15,7 @@ import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/watch_history.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_download_service.dart';
@@ -46,6 +47,8 @@ class TvExoPlayerScreen extends StatefulWidget {
     this.startIndex = 0,
     this.showUrl,
     this.showTitle,
+    this.cover,
+    this.coverHeaders,
     this.category = 'sub',
     this.malId,
     this.scrobbleTitle,
@@ -61,6 +64,8 @@ class TvExoPlayerScreen extends StatefulWidget {
   final int startIndex;
   final String? showUrl;
   final String? showTitle;
+  final String? cover;
+  final Map<String, String>? coverHeaders;
   final String category;
   final int? malId;
   final String? scrobbleTitle;
@@ -858,6 +863,36 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       Duration(milliseconds: pos),
       Duration(milliseconds: c.duration.value),
     );
+    _saveHistory();
+  }
+
+  /// Records the current episode into Continue Watching (mirrors the phone
+  /// player's WatchHistory write). Without this, ExoPlayer-played titles never
+  /// appear in the Continue Watching rail. [flush] forces the throttled cloud
+  /// push on close.
+  void _saveHistory({bool flush = false}) {
+    final c = _c;
+    final ep = _ep;
+    if (c == null || ep == null || c.duration.value <= 0) return;
+    sl<WatchHistory>().save(
+      HistoryEntry(
+        sourceId: widget.sourceId,
+        showId: widget.showUrl ?? widget.sourceId,
+        showTitle: widget.showTitle ?? '',
+        cover: widget.cover,
+        coverHeaders: widget.coverHeaders,
+        showUrl: widget.showUrl ?? '',
+        category: _category,
+        episodeId: ep.id,
+        episodeNumber: ep.number,
+        episodeUrl: ep.url,
+        position: Duration(milliseconds: c.position.value),
+        duration: Duration(milliseconds: c.duration.value),
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        malId: widget.malId,
+      ),
+      flush: flush,
+    );
   }
 
   void _onEnded() {
@@ -996,6 +1031,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           Duration(milliseconds: c.position.value),
           Duration(milliseconds: c.duration.value),
         );
+        _saveHistory(flush: true);
       }
       c.dispose();
     }
