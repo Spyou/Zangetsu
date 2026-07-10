@@ -6,6 +6,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/home/home_screen_tv.dart';
 
@@ -39,6 +40,14 @@ class _StubSourceRepository implements SourceRepository {
 
   @override
   bool hasSource(String id) => false;
+}
+
+/// Fake [AuthCubit] with the default (logged-out) state — Continue Watching is
+/// login-gated, so this keeps the rail hidden and avoids needing WatchHistory.
+class _FakeAuthCubit extends Cubit<AuthState> implements AuthCubit {
+  _FakeAuthCubit() : super(const AuthState());
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }
 
 // ── Test ──────────────────────────────────────────────────────────────────────
@@ -79,8 +88,11 @@ void main() {
     'HomeScreenTv renders rail items and the first focusable has autofocus',
     (tester) async {
       await tester.pumpWidget(
-        BlocProvider<HomeCubit>.value(
-          value: cubit,
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<HomeCubit>.value(value: cubit),
+            BlocProvider<AuthCubit>.value(value: _FakeAuthCubit()),
+          ],
           child: const MaterialApp(home: HomeScreenTv()),
         ),
       );
