@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -13,12 +14,14 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
+import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
-import '../player/player_screen.dart';
+import '../player/tv_exo_player_screen.dart';
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
 
@@ -47,33 +50,85 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   }
 
   /// Begin playback from scratch — mirrors phone's _HomeViewState._playFeatured.
+  /// TV uses the native ExoPlayer player, which takes an episode LIST (not a
+  /// resolver), so resolve the episodes first, then open it.
   Future<void> _play(MediaItem item) async {
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
+    List<Episode> episodes;
+    try {
+      episodes = await sl<SourceRepository>().episodes(
+        item.url,
+        sourceId: item.sourceId,
+      );
+    } catch (_) {
+      episodes = const [];
+    }
+    if (!mounted || episodes.isEmpty) return;
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => PlayerScreen(
+        builder: (_) => TvExoPlayerScreen(
           sourceId: item.sourceId,
-          episodesResolver: () => sl<SourceRepository>().episodes(
-            item.url,
-            sourceId: item.sourceId,
-          ),
+          episodes: episodes,
+          startIndex: 0,
           resume: sl<ResumeStore>(),
           resolveSources: (u) => sl<SourceRepository>().sources(
             u,
             sourceId: item.sourceId,
             fast: true,
           ),
-          history: sl<WatchHistory>(),
           showTitle: item.title,
+          showUrl: item.url,
           cover: item.cover,
           coverHeaders: item.coverHeaders,
-          showUrl: item.url,
           category: category,
           malId: item.malId,
           scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Resume a Continue Watching entry — resolve its episodes, then open the
+  /// ExoPlayer player at the saved episode (it seeks to the stored position on
+  /// load via ResumeStore).
+  Future<void> _resume(HistoryEntry e) async {
+    List<Episode> episodes;
+    try {
+      episodes = await sl<SourceRepository>().episodes(
+        e.showUrl,
+        category: e.category,
+        sourceId: e.sourceId,
+      );
+    } catch (_) {
+      episodes = const [];
+    }
+    if (!mounted || episodes.isEmpty) return;
+    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
+    if (idx < 0) idx = 0;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => TvExoPlayerScreen(
+          sourceId: e.sourceId,
+          episodes: episodes,
+          startIndex: idx,
+          resume: sl<ResumeStore>(),
+          resolveSources: (u) => sl<SourceRepository>().sources(
+            u,
+            sourceId: e.sourceId,
+            fast: true,
+          ),
+          showTitle: e.showTitle,
+          showUrl: e.showUrl,
+          cover: e.cover,
+          coverHeaders: e.coverHeaders,
+          category: e.category,
+          malId: e.malId,
+          scrobbleTitle: e.malId != null ? e.showTitle : null,
         ),
       ),
     );
@@ -158,6 +213,12 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     final heroItems = state.heroItems;
     final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
 
+    // Continue Watching — same login-gated local history the phone home uses.
+    final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
+    final history = loggedIn
+        ? sl<WatchHistory>().recent()
+        : const <HistoryEntry>[];
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: CustomScrollView(
@@ -191,6 +252,16 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               ),
             ),
 
+          // ── Continue Watching (login-gated, resume on OK) ───────────────
+          if (history.isNotEmpty)
+            SliverToBoxAdapter(
+              child: _TvContinueRail(
+                history: history,
+                onResume: _resume,
+                firstAutofocus: heroItem == null,
+              ),
+            ),
+
           // ── Poster rails (one per section) ──────────────────────────────
           for (var i = 0; i < sections.length; i++)
             SliverToBoxAdapter(
@@ -198,9 +269,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
                 section: sections[i],
                 onTap: _openDetail,
                 onSeeAll: () => _openSeeAll(sections[i]),
-                // Autofocus the first card in the first rail only when there
-                // is no hero (e.g. source still loading).
-                firstAutofocus: heroItem == null && i == 0,
+                // Autofocus the first rail's first card only when nothing above
+                // it (hero or Continue Watching) can take the initial focus.
+                firstAutofocus:
+                    heroItem == null && history.isEmpty && i == 0,
               ),
             ),
 
@@ -258,9 +330,13 @@ class _TvRail extends StatelessWidget {
             // focused card overflowed and the ListView cropped its title/poster
             // (tester report). The card itself stays [_cardHeight] and is centred
             // in the taller row, so unfocused cards look unchanged.
-            height: _cardHeight + 24,
+            height: _cardHeight + 40,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
+              // Don't clip the focused card's scale-up + accent glow. Combined
+              // with the extra row headroom above, the top rail (pinned under
+              // the hero) no longer crops the focused poster/title.
+              clipBehavior: Clip.none,
               padding: const EdgeInsets.symmetric(horizontal: 40),
               // +1 trailing "See all" card (D-pad: navigate right past the last
               // poster to reach it). Only when a handler is supplied.
@@ -331,6 +407,90 @@ class _TvRail extends StatelessWidget {
                             showTitle: false,
                             // Touch gestures are disabled on TV; TvFocusable
                             // handles OK-key selection.
+                            onTap: null,
+                            onLongPress: null,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Continue Watching Rail ──────────────────────────────────────────────────
+
+/// A labelled row of D-pad-focusable Continue Watching cards (poster + progress
+/// bar). OK resumes the episode at its saved position. Mirrors the phone home's
+/// Continue Watching row; fed by the same login-gated [WatchHistory.recent].
+class _TvContinueRail extends StatelessWidget {
+  const _TvContinueRail({
+    required this.history,
+    required this.onResume,
+    this.firstAutofocus = false,
+  });
+
+  final List<HistoryEntry> history;
+  final void Function(HistoryEntry) onResume;
+  final bool firstAutofocus;
+
+  static const double _cardWidth = 140;
+  static const double _cardHeight = 236;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 48),
+            child: Text(
+              'Continue Watching',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: _cardHeight + 40,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              itemCount: history.length,
+              itemBuilder: (context, index) {
+                final e = history[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Center(
+                    child: SizedBox(
+                      width: _cardWidth,
+                      child: TvFocusable(
+                        autofocus: firstAutofocus && index == 0,
+                        onTap: () => onResume(e),
+                        child: SizedBox(
+                          width: _cardWidth,
+                          height: _cardHeight,
+                          child: ContinueCard(
+                            title: e.showTitle,
+                            imageUrl: e.cover,
+                            headers: e.coverHeaders,
+                            progress: e.progress,
+                            cellWidth: _cardWidth,
+                            subtitle: e.episodeNumber != null
+                                ? 'Episode ${e.episodeNumber!.toInt()}'
+                                : null,
                             onTap: null,
                             onLongPress: null,
                           ),

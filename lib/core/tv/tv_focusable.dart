@@ -15,11 +15,19 @@ class TvFocusable extends StatefulWidget {
     this.autofocus = false,
     this.scale = 1.08,
     this.focusLabel,
+    this.foregroundHighlight = false,
   });
   final Widget child;
   final VoidCallback onTap;
   final bool autofocus;
   final double scale;
+
+  /// Paint the focus box OVER the child instead of behind it. For full-width
+  /// rows (e.g. detail episode rows) whose content is partly transparent, the
+  /// default background paint reads as a strip behind the content; foreground
+  /// draws a clean rounded frame on top. Opt-in — posters/tiles keep the
+  /// background box so their art isn't tinted.
+  final bool foregroundHighlight;
 
   /// Optional caption drawn BELOW the focusable (e.g. a poster title). When set,
   /// it shows as plain text normally and pops into a filled "chip" while
@@ -70,7 +78,7 @@ class _TvFocusableState extends State<TvFocusable> {
               ),
               child: Text(
                 label,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(
                   color: _focused ? Colors.black : Colors.white,
@@ -92,6 +100,9 @@ class _TvFocusableState extends State<TvFocusable> {
       scale: _focused ? widget.scale : 1.0,
       duration: const Duration(milliseconds: 120),
       child: DecoratedBox(
+        position: widget.foregroundHighlight
+            ? DecorationPosition.foreground
+            : DecorationPosition.background,
         decoration: BoxDecoration(
           color: _focused ? AppColors.accent.withValues(alpha: 0.16) : null,
           border: Border.all(

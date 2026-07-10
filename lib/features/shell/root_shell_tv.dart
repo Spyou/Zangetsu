@@ -118,6 +118,28 @@ class _RootShellTvState extends State<RootShellTv> {
   final FocusScopeNode _contentScope =
       FocusScopeNode(debugLabel: 'tv-content-scope');
 
+  @override
+  void initState() {
+    super.initState();
+    // On first launch — especially the empty/no-provider Home where the content
+    // zone has NO focusable leaf — autofocus can settle on the bare _railScope
+    // node, which renders no visible cursor (the highlight only shows on a
+    // focused TvFocusable leaf). Force focus onto a real rail leaf so a cursor
+    // is always visible. Only acts when nothing real is focused, so it won't
+    // steal focus from the hero Play button once content exists. Mirrors the
+    // leaf-walk idiom in _onRailKey.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final primary = FocusManager.instance.primaryFocus;
+      if (primary == null || primary is FocusScopeNode) {
+        _railScope.traversalDescendants
+            .where((n) => n.canRequestFocus)
+            .firstOrNull
+            ?.requestFocus();
+      }
+    });
+  }
+
   KeyEventResult _onRailKey(FocusNode _, KeyEvent event) {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowRight) {

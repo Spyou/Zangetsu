@@ -24,8 +24,9 @@ import 'cubit/my_list_cubit.dart';
 class MyListScreenTv extends StatelessWidget {
   const MyListScreenTv({super.key});
 
-  /// 5 columns matches a typical 1080 p TV at ~140 dp card width + margins.
-  static const int _crossAxisCount = 5;
+  /// 6 columns keeps the cards near the home-rail ~140 dp scale on a 1080p TV
+  /// (matches the see-all grid; 5 rendered them oversized).
+  static const int _crossAxisCount = 6;
   static const double _cardWidth = 140;
 
   Future<void> _openItem(BuildContext context, MediaItem item) async {

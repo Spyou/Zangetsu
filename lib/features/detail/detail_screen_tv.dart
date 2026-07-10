@@ -138,9 +138,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         sl<PlaybackPrefs>().defaultCategory;
     final launchCategory =
         availableCategories.contains(preferred) ? preferred : category;
+    // TV always uses the native ExoPlayer / SurfaceView player — smooth even at
+    // 4K where the media_kit texture player lags. media_kit stays phone-only.
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => TvExoPlayerScreen(
           sourceId: widget.item.sourceId,
           episodes: episodes,
           startIndex: index,
@@ -150,11 +152,10 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
             sourceId: widget.item.sourceId,
             fast: true,
           ),
-          history: sl<WatchHistory>(),
+          showUrl: widget.item.url,
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-          showUrl: widget.item.url,
           category: launchCategory,
           malId: detail.malId ?? widget.item.malId,
           scrobbleTitle:
@@ -162,7 +163,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
-          availableCategories: availableCategories,
         ),
       ),
     );
@@ -790,6 +790,11 @@ class _TvEpisodeList extends StatelessWidget {
         return TvFocusable(
           key: ValueKey('tv-ep-$i'),
           onTap: () => onOpen(fullIndex),
+          // Full-width row: draw the highlight as a foreground frame (not a
+          // strip behind the content) and don't scale outward under the poster.
+          // Same treatment for series and movies.
+          scale: 1.0,
+          foregroundHighlight: true,
           child: RepaintBoundary(
             child: _EpisodeRow(
               ep: ep,

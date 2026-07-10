@@ -21,6 +21,7 @@ import '../backup/backup_screen.dart';
 import '../downloads/downloads_screen.dart';
 import '../notify/subscriptions_screen.dart';
 import '../onboarding/how_it_works.dart';
+import '../player/tv_exo_spike_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../sources/tv_recommended_cs_repos.dart';
@@ -525,7 +526,17 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           trailing: _kChevron,
                         ),
                       ),
-                      TvFocusable(scale: 1.0, 
+                      if (kExoSpikeEnabled)
+                        TvFocusable(
+                          scale: 1.0,
+                          onTap: () => _push(const TvExoSpikeScreen()),
+                          child: const SettingsTile(
+                            icon: Icons.speed_rounded,
+                            title: 'ExoPlayer spike (dev)',
+                            subtitle: 'SP0 — test SurfaceView playback smoothness',
+                          ),
+                        ),
+                      TvFocusable(scale: 1.0,
                         onTap: () => _push(const AboutSettingsScreen()),
                         child: SettingsTile(
                           icon: Icons.info_outline_rounded,
