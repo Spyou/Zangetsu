@@ -902,19 +902,20 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       if (_holdingSpeed) _endHoldSpeed(); // don't leave 2× stuck if a menu opens
       return KeyEventResult.ignored;
     }
-    // Hold RIGHT → temporary 2× playback (YouTube-style); release restores the
-    // chosen speed. A quick tap has no repeat, so it still lands as a +10s seek
-    // on key-down below.
-    if (k == LogicalKeyboardKey.arrowRight) {
+    // Center OK: a tap plays/pauses, a HOLD runs temporary 2× (YouTube-style).
+    // The toggle is deferred to key-up so holding speeds up instead of pausing;
+    // a hold is detected by the key-repeat that only a held button emits.
+    if (okKeys.contains(k)) {
+      if (e is KeyDownEvent) { _bumpControls(); return KeyEventResult.handled; }
       if (e is KeyRepeatEvent) { _startHoldSpeed(); return KeyEventResult.handled; }
       if (e is KeyUpEvent) {
-        if (_holdingSpeed) { _endHoldSpeed(); return KeyEventResult.handled; }
-        return KeyEventResult.ignored;
+        _holdingSpeed ? _endHoldSpeed() : _togglePlay();
+        return KeyEventResult.handled;
       }
+      return KeyEventResult.ignored;
     }
     if (e is! KeyDownEvent) return KeyEventResult.ignored;
     _bumpControls(); // any input reveals the controls + resets the hide timer
-    if (okKeys.contains(k)) { _togglePlay(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowRight) { _seekBy(10000); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowLeft) { _seekBy(-10000); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.mediaTrackNext) { _next(); return KeyEventResult.handled; }
@@ -928,7 +929,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     return KeyEventResult.ignored;
   }
 
-  /// D-pad RIGHT held → play at 2× until released (mirrors YouTube's hold-to-2×
+  /// Center OK held → play at 2× until released (mirrors YouTube's hold-to-2×
   /// and the phone player's long-press). Drives the controller directly so the
   /// boost is never persisted as the user's chosen speed.
   void _startHoldSpeed() {
