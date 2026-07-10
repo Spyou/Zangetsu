@@ -33,7 +33,7 @@ const _aniGreen = Color(0xFF4DD68C);
 /// user returns from an ecosystem screen (install/remove there is reflected
 /// here without re-entering the hub).
 ///
-/// NOT wired into navigation yet: `SourcesScreen` still shows the old tabs.
+/// Reached via `SourcesScreen` (Settings → Providers), on both phone and TV.
 class ProvidersHubScreen extends StatefulWidget {
   const ProvidersHubScreen({super.key});
 
