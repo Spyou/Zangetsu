@@ -50,70 +50,112 @@ class _CsPhoneView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final groups = sl<CloudStreamManager>().repoGroups;
-    final installedGroups = groups.where((g) => g.sources.isNotEmpty);
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(title: Text('CloudStream', style: AppText.title)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-        children: [
-          Text(
-            'INSTALLED'.toUpperCase(),
-            style: AppText.overline.copyWith(color: AppColors.textTertiary),
-          ),
-          const SizedBox(height: 8),
-          if (installedGroups.isEmpty)
-            const EmptyState(
-              icon: Icons.dns_rounded,
-              message: 'No CloudStream sources installed.',
-            )
-          else
-            BlocBuilder<ActiveSourceCubit, String>(
-              builder: (context, activeId) => Column(
-                children: [
-                  for (final group in installedGroups)
-                    _CsScreenInstalledGroup(group: group, activeId: activeId),
-                ],
-              ),
-            ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  'REPOSITORIES',
-                  style: AppText.overline.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: () => _showAddCsRepoDialog(context),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add CS repo'),
-                style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-              ),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: AppBar(
+          title: Text('CloudStream', style: AppText.title),
+          bottom: TabBar(
+            indicatorColor: AppColors.accent,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: AppColors.textPrimary,
+            unselectedLabelColor: AppColors.textSecondary,
+            labelStyle: AppText.headline,
+            unselectedLabelStyle: AppText.headline,
+            dividerHeight: 0,
+            tabs: const [
+              Tab(text: 'Installed'),
+              Tab(text: 'Repositories'),
             ],
           ),
-          const SizedBox(height: 8),
-          if (groups.isEmpty)
-            const EmptyState(
-              icon: Icons.cloud_outlined,
-              message:
-                  'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
-            )
-          else
-            BlocBuilder<ActiveSourceCubit, String>(
-              builder: (context, activeId) => Column(
-                children: [
-                  for (final group in groups)
-                    _CsScreenRepoSection(group: group, activeId: activeId),
-                ],
+        ),
+        body: const TabBarView(
+          children: [
+            _CsInstalledTab(),
+            _CsReposTab(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Installed tab body — CS sources grouped by origin repo.
+class _CsInstalledTab extends StatelessWidget {
+  const _CsInstalledTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = sl<CloudStreamManager>().repoGroups;
+    final installedGroups = groups.where((g) => g.sources.isNotEmpty);
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+      children: [
+        if (installedGroups.isEmpty)
+          const EmptyState(
+            icon: Icons.dns_rounded,
+            message: 'No CloudStream sources installed.',
+          )
+        else
+          BlocBuilder<ActiveSourceCubit, String>(
+            builder: (context, activeId) => Column(
+              children: [
+                for (final group in installedGroups)
+                  _CsScreenInstalledGroup(group: group, activeId: activeId),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Repositories tab body — add repo action + repo browse/install sections.
+class _CsReposTab extends StatelessWidget {
+  const _CsReposTab();
+
+  @override
+  Widget build(BuildContext context) {
+    final groups = sl<CloudStreamManager>().repoGroups;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'REPOSITORIES',
+                style: AppText.overline.copyWith(
+                  color: AppColors.textTertiary,
+                ),
               ),
             ),
-        ],
-      ),
+            TextButton.icon(
+              onPressed: () => _showAddCsRepoDialog(context),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add CS repo'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (groups.isEmpty)
+          const EmptyState(
+            icon: Icons.cloud_outlined,
+            message:
+                'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
+          )
+        else
+          BlocBuilder<ActiveSourceCubit, String>(
+            builder: (context, activeId) => Column(
+              children: [
+                for (final group in groups)
+                  _CsScreenRepoSection(group: group, activeId: activeId),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1086,8 +1128,7 @@ class _CsTvView extends StatefulWidget {
 }
 
 class _CsTvViewState extends State<_CsTvView> {
-  bool _installedExpanded = true;
-  bool _reposExpanded = true;
+  int _tab = 0;
 
   Future<void> _showAddCsRepoDialog() async {
     final url = await showDialog<String>(
@@ -1153,86 +1194,71 @@ class _CsTvViewState extends State<_CsTvView> {
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
                   child: Text('CloudStream', style: AppText.largeTitle),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                  child: Row(
+                    children: [
+                      _CsTvTabChip(
+                        title: 'Installed',
+                        selected: _tab == 0,
+                        autofocus: true,
+                        onTap: () => setState(() => _tab = 0),
+                      ),
+                      const SizedBox(width: 12),
+                      _CsTvTabChip(
+                        title: 'Repositories',
+                        selected: _tab == 1,
+                        onTap: () => setState(() => _tab = 1),
+                      ),
+                    ],
+                  ),
+                ),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                    children: [
-                      // ── Installed ──────────────────────────────────────
-                      _CsScreenTvSectionHeader(
-                        title: 'Installed',
-                        expanded: _installedExpanded,
-                        autofocus: true,
-                        onTap: () => setState(
-                          () => _installedExpanded = !_installedExpanded,
-                        ),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _installedExpanded
-                            ? const _CsScreenTvInstalledContent()
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Repositories ───────────────────────────────────
-                      _CsScreenTvSectionHeader(
-                        title: 'Repositories',
-                        expanded: _reposExpanded,
-                        onTap: () =>
-                            setState(() => _reposExpanded = !_reposExpanded),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _reposExpanded
-                            ? const _CsScreenTvReposContent()
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _reposExpanded
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: TvFocusable(
-                                  scale: 1.0,
-                                  onTap: _showAddCsRepoDialog,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 14,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surface,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.add,
+                    children: _tab == 0
+                        ? [
+                            // ── Installed ────────────────────────────────
+                            const _CsScreenTvInstalledContent(),
+                          ]
+                        : [
+                            // ── Repositories ─────────────────────────────
+                            const _CsScreenTvReposContent(),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: TvFocusable(
+                                scale: 1.0,
+                                onTap: _showAddCsRepoDialog,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.add,
+                                        color: AppColors.accent,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Add CS repo',
+                                        style: AppText.headline.copyWith(
                                           color: AppColors.accent,
-                                          size: 18,
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Add CS repo',
-                                          style: AppText.headline.copyWith(
-                                            color: AppColors.accent,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              )
-                            : const SizedBox(width: double.infinity),
-                      ),
-                    ],
+                              ),
+                            ),
+                          ],
                   ),
                 ),
               ],
@@ -1250,52 +1276,46 @@ class _CsTvViewState extends State<_CsTvView> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lifted verbatim from sources_screen_tv.dart — shared section header.
-// ---------------------------------------------------------------------------
-
-class _CsScreenTvSectionHeader extends StatelessWidget {
-  const _CsScreenTvSectionHeader({
+/// Focusable 2-tab switcher chip for TV — D-pad-friendly stand-in for a
+/// [TabBar]. A selected chip shows the accent highlight even when it isn't
+/// currently focused, so the active zone stays legible after focus moves
+/// down into the content.
+class _CsTvTabChip extends StatelessWidget {
+  const _CsTvTabChip({
     required this.title,
-    required this.expanded,
+    required this.selected,
     required this.onTap,
     this.autofocus = false,
   });
 
   final String title;
-  final bool expanded;
+  final bool selected;
   final VoidCallback onTap;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      scale: 1.0,
+      scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0 : -0.25,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(
-                Icons.expand_more,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title.toUpperCase(),
-              style: AppText.overline.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent.withValues(alpha: 0.18)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.accent : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Text(
+          title,
+          style: AppText.headline.copyWith(
+            color: selected ? AppColors.accent : AppColors.textSecondary,
+          ),
         ),
       ),
     );
