@@ -4,10 +4,10 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../downloads/downloads_screen.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
+import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
 import 'root_shell_tv.dart';
 
@@ -56,14 +56,14 @@ class _RootShellState extends State<RootShell> {
     if (i == _searchTab) _searchFocusSignal.value++;
   }
 
-  /// The five tab pages: the four from [buildShellPages] with [DownloadsScreen]
+  /// The five tab pages: the four from [buildShellPages] with [ScheduleScreen]
   /// inserted between My List (index 2) and Settings — the same slot the TV
   /// rail uses, keeping both shells identical.
   List<Widget> _pages() {
     final shared = buildShellPages(_searchFocusSignal);
     return [
       ...shared.sublist(0, 3), // Home, Search, My List
-      const DownloadsScreen(), // Downloads
+      const ScheduleScreen(), // Schedule
       shared.last, // Settings
     ];
   }
@@ -120,9 +120,9 @@ class _RootShellState extends State<RootShell> {
               label: 'My List',
             ),
             NavigationDestination(
-              icon: Icon(Icons.download_outlined),
-              selectedIcon: Icon(Icons.download),
-              label: 'Downloads',
+              icon: Icon(Icons.calendar_month_outlined),
+              selectedIcon: Icon(Icons.calendar_month),
+              label: 'Schedule',
             ),
             NavigationDestination(
               icon: Icon(Icons.settings_outlined),

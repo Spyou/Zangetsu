@@ -20,6 +20,9 @@ import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
+import 'package:watch_app/core/schedule/airing_service.dart';
+import 'package:watch_app/core/schedule/coming_soon_service.dart';
+import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
@@ -191,6 +194,21 @@ class _FakeDownloadPrefs extends DownloadPrefs {
   String? get locationLabel => null;
 }
 
+/// [ScheduleScreen] (now a TV rail item — see root_shell_tv.dart) is built
+/// eagerly by the IndexedStack and calls these on `..load()`. Override with
+/// immediate empty results so no real Dio call happens.
+class _FakeAiringService extends AiringService {
+  _FakeAiringService() : super(Dio());
+  @override
+  Future<List<AiringEntry>> weekAiring({DateTime? now}) async => const [];
+}
+
+class _FakeComingSoonService extends ComingSoonService {
+  _FakeComingSoonService() : super(Dio());
+  @override
+  Future<List<ComingSoonEntry>> upcoming() async => const [];
+}
+
 // ── Test ───────────────────────────────────────────────────────────────────
 
 void main() {
@@ -236,6 +254,8 @@ void main() {
     sl.registerSingleton<SimklService>(_FakeSimklService());
     sl.registerSingleton<TitleSuggestionService>(TitleSuggestionService(dio));
     sl.registerSingleton<DownloadPrefs>(_FakeDownloadPrefs());
+    sl.registerSingleton<AiringService>(_FakeAiringService());
+    sl.registerSingleton<ComingSoonService>(_FakeComingSoonService());
   });
 
   tearDown(() async {
