@@ -208,7 +208,8 @@ class _AiringList extends StatelessWidget {
               child: SizedBox(
                 width: _cardWidth,
                 child: TvFocusable(
-                  autofocus: index == 0,
+                  // Focus entry point is the top "Airing/Coming Soon" chip; the
+                  // cards don't self-autofocus (the chip always wins on mount).
                   onTap: () => openTitle(context, entry.title),
                   child: SizedBox(
                     width: _cardWidth,
@@ -321,7 +322,8 @@ class _ComingSoonList extends StatelessWidget {
               child: SizedBox(
                 width: _cardWidth,
                 child: TvFocusable(
-                  autofocus: index == 0,
+                  // Focus entry point is the top "Airing/Coming Soon" chip; the
+                  // cards don't self-autofocus (the chip always wins on mount).
                   onTap: () => openTitle(context, entry.title),
                   focusLabel: entry.title,
                   child: SizedBox(
