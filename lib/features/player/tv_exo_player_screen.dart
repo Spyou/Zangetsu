@@ -670,6 +670,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }
     // Reuse the menu panel to present results. Close the track menu so there's
     // a single focused overlay (the results panel grabs focus on mount).
+    _menuHideTimer?.cancel(); // menu is going away — don't let it re-close
     setState(() {
       _menuOpen = false;
       _searchResults = results;
@@ -711,7 +712,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   /// it only auto-closes when the user has stopped navigating it.
   void _bumpMenuHide() {
     _menuHideTimer?.cancel();
-    _menuHideTimer = Timer(const Duration(seconds: 8), () {
+    _menuHideTimer = Timer(const Duration(seconds: 15), () {
       if (mounted && _menuOpen) _closeMenu();
     });
   }

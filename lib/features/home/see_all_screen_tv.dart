@@ -46,7 +46,8 @@ class SeeAllScreenTv extends StatefulWidget {
 }
 
 class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
-  /// 5 columns matches a typical 1080p TV at ~140 dp card width + margins.
+  /// 6 columns keeps the cards near the home-rail ~140 dp scale on a 1080p TV
+  /// (5 rendered them oversized).
   static const int _crossAxisCount = 6;
   static const double _cardWidth = 140;
 

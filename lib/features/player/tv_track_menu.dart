@@ -77,6 +77,10 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
         node: _scope,
         onKeyEvent: (_, e) {
           if (e is! KeyDownEvent) return KeyEventResult.ignored;
+          // Any key inside the menu counts as activity — resets the host's
+          // inactivity auto-hide even when focus doesn't move (edge Up/Down,
+          // Left/Right) so the menu never closes while the user is interacting.
+          widget.onInteract?.call();
           final k = e.logicalKey;
           if (k == LogicalKeyboardKey.goBack ||
               k == LogicalKeyboardKey.escape) {
