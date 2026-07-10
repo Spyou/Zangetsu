@@ -16,8 +16,8 @@ import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
 
-/// Dedicated Zangetsu (JS provider) ecosystem screen — Installed +
-/// Repositories in one scroll. Self-contained: creates its own [SourcesBloc]
+/// Dedicated Zangetsu (JS provider) ecosystem screen — Installed and
+/// Repositories as two tabs. Self-contained: creates its own [SourcesBloc]
 /// so it works whether pushed standalone or from the Providers hub.
 ///
 /// Phone and TV share this file (`if (sl<AppMode>().isTv)`); every lifted
@@ -58,40 +58,61 @@ class _ZPhoneView extends StatelessWidget {
           context,
         ).showSnackBar(SnackBar(content: Text(state.notice!)));
       },
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        appBar: AppBar(title: Text('Zangetsu providers', style: AppText.title)),
-        body: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-          children: [
-            Text(
-              'INSTALLED'.toUpperCase(),
-              style: AppText.overline.copyWith(color: AppColors.textTertiary),
-            ),
-            const SizedBox(height: 8),
-            const _ZInstalledSection(),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'REPOSITORIES',
-                    style: AppText.overline.copyWith(
-                      color: AppColors.textTertiary,
-                    ),
-                  ),
-                ),
-                TextButton.icon(
-                  onPressed: () => _showAddRepoDialog(context),
-                  icon: const Icon(Icons.add, size: 18),
-                  label: const Text('Add repo'),
-                  style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-                ),
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          appBar: AppBar(
+            title: Text('Zangetsu providers', style: AppText.title),
+            bottom: TabBar(
+              indicatorColor: AppColors.accent,
+              indicatorSize: TabBarIndicatorSize.label,
+              labelColor: AppColors.textPrimary,
+              unselectedLabelColor: AppColors.textSecondary,
+              labelStyle: AppText.headline,
+              unselectedLabelStyle: AppText.headline,
+              dividerHeight: 0,
+              tabs: const [
+                Tab(text: 'Installed'),
+                Tab(text: 'Repositories'),
               ],
             ),
-            const SizedBox(height: 8),
-            const _ZReposSection(),
-          ],
+          ),
+          body: TabBarView(
+            children: [
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                children: const [_ZInstalledSection()],
+              ),
+              ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'REPOSITORIES',
+                          style: AppText.overline.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => _showAddRepoDialog(context),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Add repo'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const _ZReposSection(),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -971,8 +992,7 @@ class _ZTvView extends StatefulWidget {
 }
 
 class _ZTvViewState extends State<_ZTvView> {
-  bool _installedExpanded = true;
-  bool _reposExpanded = true;
+  int _tab = 0;
 
   Future<void> _showAddRepoDialog() {
     final bloc = context.read<SourcesBloc>();
@@ -1004,88 +1024,73 @@ class _ZTvViewState extends State<_ZTvView> {
                     padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
                     child: Text('Zangetsu providers', style: AppText.largeTitle),
                   ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                    child: Row(
+                      children: [
+                        _ZTvTabChip(
+                          title: 'Installed',
+                          selected: _tab == 0,
+                          autofocus: true,
+                          onTap: () => setState(() => _tab = 0),
+                        ),
+                        const SizedBox(width: 12),
+                        _ZTvTabChip(
+                          title: 'Repositories',
+                          selected: _tab == 1,
+                          onTap: () => setState(() => _tab = 1),
+                        ),
+                      ],
+                    ),
+                  ),
                   Expanded(
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                      children: [
-                        // ── Installed ────────────────────────────────────
-                        _ZTvSectionHeader(
-                          title: 'Installed',
-                          expanded: _installedExpanded,
-                          autofocus: true,
-                          onTap: () => setState(
-                            () => _installedExpanded = !_installedExpanded,
-                          ),
-                        ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: _installedExpanded
-                              ? const _ZTvInstalledContent()
-                              : const SizedBox(width: double.infinity),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // ── Repositories ─────────────────────────────────
-                        _ZTvSectionHeader(
-                          title: 'Repositories',
-                          expanded: _reposExpanded,
-                          onTap: () => setState(
-                            () => _reposExpanded = !_reposExpanded,
-                          ),
-                        ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: _reposExpanded
-                              ? const _ZTvReposContent()
-                              : const SizedBox(width: double.infinity),
-                        ),
-                        AnimatedSize(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOut,
-                          alignment: Alignment.topCenter,
-                          child: _reposExpanded
-                              ? Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-                                  child: TvFocusable(
-                                    scale: 1.0,
-                                    onTap: _showAddRepoDialog,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 20,
-                                        vertical: 14,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.surface,
-                                        borderRadius:
-                                            BorderRadius.circular(10),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(
-                                            Icons.add,
+                      children: _tab == 0
+                          ? [
+                              // ── Installed ────────────────────────────
+                              const _ZTvInstalledContent(),
+                            ]
+                          : [
+                              // ── Repositories ──────────────────────────
+                              const _ZTvReposContent(),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: TvFocusable(
+                                  scale: 1.0,
+                                  onTap: _showAddRepoDialog,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius:
+                                          BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(
+                                          Icons.add,
+                                          color: AppColors.accent,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Add repo',
+                                          style: AppText.headline
+                                              .copyWith(
                                             color: AppColors.accent,
-                                            size: 18,
                                           ),
-                                          const SizedBox(width: 8),
-                                          Text(
-                                            'Add repo',
-                                            style: AppText.headline.copyWith(
-                                              color: AppColors.accent,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                )
-                              : const SizedBox(width: double.infinity),
-                        ),
-                      ],
+                                ),
+                              ),
+                            ],
                     ),
                   ),
                 ],
@@ -1104,52 +1109,46 @@ class _ZTvViewState extends State<_ZTvView> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lifted verbatim from sources_screen_tv.dart — shared section header.
-// ---------------------------------------------------------------------------
-
-class _ZTvSectionHeader extends StatelessWidget {
-  const _ZTvSectionHeader({
+/// Focusable 2-tab switcher chip for TV — D-pad-friendly stand-in for a
+/// [TabBar]. A selected chip shows the accent highlight even when it isn't
+/// currently focused, so the active zone stays legible after focus moves
+/// down into the content.
+class _ZTvTabChip extends StatelessWidget {
+  const _ZTvTabChip({
     required this.title,
-    required this.expanded,
+    required this.selected,
     required this.onTap,
     this.autofocus = false,
   });
 
   final String title;
-  final bool expanded;
+  final bool selected;
   final VoidCallback onTap;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      scale: 1.0,
+      scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0 : -0.25,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(
-                Icons.expand_more,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title.toUpperCase(),
-              style: AppText.overline.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent.withValues(alpha: 0.18)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.accent : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Text(
+          title,
+          style: AppText.headline.copyWith(
+            color: selected ? AppColors.accent : AppColors.textSecondary,
+          ),
         ),
       ),
     );
