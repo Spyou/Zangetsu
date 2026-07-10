@@ -118,16 +118,19 @@ class _BackupScreenState extends State<BackupScreen> {
     // phone app) can be browsed to and restored. Fall back to scanning the
     // app-readable backup files on boxes that genuinely lack a picker.
     Map<String, dynamic>? p;
-    if (_isTv) {
-      try {
-        p = await BackupFile().import();
-      } catch (_) {
-        p = null;
-      }
-      p ??= await _pickLocalBackupTv();
-    } else {
+    try {
       p = await BackupFile().import();
+    } on FormatException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("That file isn't a valid backup.")),
+      );
+      if (!_isTv) return;
+      p = null; // on TV, fall back to the app-readable local picker below
+    } catch (_) {
+      p = null;
     }
+    if (_isTv) p ??= await _pickLocalBackupTv();
     if (p == null) return;
     setState(() => _busy = true);
     try {
@@ -138,6 +141,11 @@ class _BackupScreenState extends State<BackupScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore failed: $e')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);

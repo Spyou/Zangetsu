@@ -117,10 +117,13 @@ class BackupFile {
   /// Opens the system file picker (JSON filter), reads the chosen file, and
   /// returns the parsed map. Returns `null` if the user cancels.
   Future<Map<String, dynamic>?> import() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
+    // Pick ANY file rather than FileType.custom + ['json']: Android's document
+    // picker greys out .json on many devices (its MIME map doesn't tag them),
+    // which makes the backup impossible to select — the #1 "restore doesn't
+    // work" cause. The content is validated by parseBackupJson/unwrapPayload
+    // right after reading, so allowing any file is safe (bad picks get a clear
+    // "isn't a Zangetsu backup" error).
+    final result = await FilePicker.platform.pickFiles();
     if (result == null) return null;
 
     final picked = result.files.single;
