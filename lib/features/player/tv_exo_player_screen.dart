@@ -338,6 +338,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _applyPlaybackTuning() {
+    _holdingSpeed = false; // a fresh load always starts at the chosen speed
     final perTitle = sl<TitlePrefsStore>().speed(widget.sourceId, _resumeShowId);
     _speed = perTitle ?? sl<PlaybackPrefs>().defaultSpeed;
     _c?.setPlaybackSpeed(_speed);
