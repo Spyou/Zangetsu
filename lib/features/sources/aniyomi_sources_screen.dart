@@ -140,36 +140,50 @@ class _AniScreenPhoneView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      appBar: AppBar(title: Text('Aniyomi', style: AppText.title)),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.accent,
-        foregroundColor: Colors.white,
-        onPressed: onAddRepo,
-        icon: const Icon(Icons.add),
-        label: Text(
-          'Add Aniyomi repo',
-          style: AppText.button.copyWith(color: Colors.white),
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        appBar: AppBar(
+          title: Text('Aniyomi', style: AppText.title),
+          bottom: TabBar(
+            indicatorColor: AppColors.accent,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: AppColors.textPrimary,
+            unselectedLabelColor: AppColors.textSecondary,
+            labelStyle: AppText.headline,
+            unselectedLabelStyle: AppText.headline,
+            dividerHeight: 0,
+            tabs: const [
+              Tab(text: 'Installed'),
+              Tab(text: 'Repositories'),
+            ],
+          ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-        children: [
-          Text(
-            'INSTALLED'.toUpperCase(),
-            style: AppText.overline.copyWith(color: AppColors.textTertiary),
+        floatingActionButton: FloatingActionButton.extended(
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
+          onPressed: onAddRepo,
+          icon: const Icon(Icons.add),
+          label: Text(
+            'Add Aniyomi repo',
+            style: AppText.button.copyWith(color: Colors.white),
           ),
-          const SizedBox(height: 8),
-          const _AniyomiInstalledGroup(),
-          const SizedBox(height: 16),
-          Text(
-            'REPOSITORIES'.toUpperCase(),
-            style: AppText.overline.copyWith(color: AppColors.textTertiary),
-          ),
-          const SizedBox(height: 8),
-          AniyomiRepoTab(repoUrls: repoUrls, onRemoveRepo: onRemoveRepo),
-        ],
+        ),
+        body: TabBarView(
+          children: [
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              children: const [_AniyomiInstalledGroup()],
+            ),
+            ListView(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+              children: [
+                AniyomiRepoTab(repoUrls: repoUrls, onRemoveRepo: onRemoveRepo),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -550,8 +564,7 @@ class _AniScreenTvView extends StatefulWidget {
 }
 
 class _AniScreenTvViewState extends State<_AniScreenTvView> {
-  bool _installedExpanded = true;
-  bool _reposExpanded = true;
+  int _tab = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -589,89 +602,74 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
                   child: Text('Aniyomi', style: AppText.largeTitle),
                 ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
+                  child: Row(
+                    children: [
+                      _AniTvTabChip(
+                        title: 'Installed',
+                        selected: _tab == 0,
+                        autofocus: true,
+                        onTap: () => setState(() => _tab = 0),
+                      ),
+                      const SizedBox(width: 12),
+                      _AniTvTabChip(
+                        title: 'Repositories',
+                        selected: _tab == 1,
+                        onTap: () => setState(() => _tab = 1),
+                      ),
+                    ],
+                  ),
+                ),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
-                    children: [
-                      // ── Installed ──────────────────────────────────────
-                      _AniScreenTvSectionHeader(
-                        title: 'Installed',
-                        expanded: _installedExpanded,
-                        autofocus: true,
-                        onTap: () => setState(
-                          () => _installedExpanded = !_installedExpanded,
-                        ),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _installedExpanded
-                            ? const _AniScreenTvInstalledContent()
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // ── Repositories ───────────────────────────────────
-                      _AniScreenTvSectionHeader(
-                        title: 'Repositories',
-                        expanded: _reposExpanded,
-                        onTap: () =>
-                            setState(() => _reposExpanded = !_reposExpanded),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _reposExpanded
-                            ? _AniScreenTvContent(
-                                repoUrls: widget.repoUrls,
-                                onRemoveRepo: widget.onRemoveRepo,
-                              )
-                            : const SizedBox(width: double.infinity),
-                      ),
-                      AnimatedSize(
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.easeOut,
-                        alignment: Alignment.topCenter,
-                        child: _reposExpanded
-                            ? Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: TvFocusable(
-                                  scale: 1.0,
-                                  onTap: widget.onAddRepo,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 14,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surface,
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(
-                                          Icons.add,
+                    children: _tab == 0
+                        ? [
+                            // ── Installed ────────────────────────────────
+                            const _AniScreenTvInstalledContent(),
+                          ]
+                        : [
+                            // ── Repositories ─────────────────────────────
+                            _AniScreenTvContent(
+                              repoUrls: widget.repoUrls,
+                              onRemoveRepo: widget.onRemoveRepo,
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: TvFocusable(
+                                scale: 1.0,
+                                onTap: widget.onAddRepo,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 14,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surface,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(
+                                        Icons.add,
+                                        color: AppColors.accent,
+                                        size: 18,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        'Add Aniyomi repo',
+                                        style: AppText.headline.copyWith(
                                           color: AppColors.accent,
-                                          size: 18,
                                         ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Add Aniyomi repo',
-                                          style: AppText.headline.copyWith(
-                                            color: AppColors.accent,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                              )
-                            : const SizedBox(width: double.infinity),
-                      ),
-                    ],
+                              ),
+                            ),
+                          ],
                   ),
                 ),
               ],
@@ -689,52 +687,46 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lifted verbatim from sources_screen_tv.dart — shared section header.
-// ---------------------------------------------------------------------------
-
-class _AniScreenTvSectionHeader extends StatelessWidget {
-  const _AniScreenTvSectionHeader({
+/// Focusable 2-tab switcher chip for TV — D-pad-friendly stand-in for a
+/// [TabBar]. A selected chip shows the accent highlight even when it isn't
+/// currently focused, so the active zone stays legible after focus moves
+/// down into the content.
+class _AniTvTabChip extends StatelessWidget {
+  const _AniTvTabChip({
     required this.title,
-    required this.expanded,
+    required this.selected,
     required this.onTap,
     this.autofocus = false,
   });
 
   final String title;
-  final bool expanded;
+  final bool selected;
   final VoidCallback onTap;
   final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      scale: 1.0,
+      scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
-        child: Row(
-          children: [
-            AnimatedRotation(
-              turns: expanded ? 0 : -0.25,
-              duration: const Duration(milliseconds: 200),
-              child: const Icon(
-                Icons.expand_more,
-                color: AppColors.textSecondary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              title.toUpperCase(),
-              style: AppText.overline.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 1.0,
-              ),
-            ),
-          ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent.withValues(alpha: 0.18)
+              : AppColors.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected ? AppColors.accent : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Text(
+          title,
+          style: AppText.headline.copyWith(
+            color: selected ? AppColors.accent : AppColors.textSecondary,
+          ),
         ),
       ),
     );
