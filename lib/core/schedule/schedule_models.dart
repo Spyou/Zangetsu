@@ -9,6 +9,8 @@ class AiringEntry extends Equatable {
     required this.episode,
     required this.airsAtLocal,
     required this.format,
+    this.bannerUrl,
+    this.synopsis,
   });
 
   final int? malId;
@@ -18,9 +20,16 @@ class AiringEntry extends Equatable {
   final DateTime airsAtLocal;
   final String format;
 
+  /// Wide 16:9 art (AniList `bannerImage`), for the New&Hot backdrop cards.
+  /// Often null — the UI falls back to [coverUrl].
+  final String? bannerUrl;
+
+  /// Plain-text synopsis (AniList `description`), or null.
+  final String? synopsis;
+
   @override
   List<Object?> get props =>
-      [malId, title, coverUrl, episode, airsAtLocal, format];
+      [malId, title, coverUrl, episode, airsAtLocal, format, bannerUrl, synopsis];
 }
 
 /// One upcoming movie/TV title (from TMDB upcoming / on_the_air).
@@ -31,6 +40,8 @@ class ComingSoonEntry extends Equatable {
     required this.title,
     required this.posterUrl,
     required this.releaseDate,
+    this.backdropUrl,
+    this.synopsis,
   });
 
   final int tmdbId;
@@ -39,6 +50,13 @@ class ComingSoonEntry extends Equatable {
   final String? posterUrl;
   final DateTime? releaseDate;
 
+  /// Wide 16:9 art (TMDB `backdrop_path`); falls back to [posterUrl].
+  final String? backdropUrl;
+
+  /// Plain-text synopsis (TMDB `overview`), or null.
+  final String? synopsis;
+
   @override
-  List<Object?> get props => [tmdbId, isTv, title, posterUrl, releaseDate];
+  List<Object?> get props =>
+      [tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis];
 }

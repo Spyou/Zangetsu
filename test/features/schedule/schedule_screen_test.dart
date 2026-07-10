@@ -20,9 +20,9 @@ class _FS implements ComingSoonService { @override noSuchMethod(Invocation i) =>
 class _FM implements MyListStore { @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
 
 void main() {
-  testWidgets('renders Airing rows + Coming Soon tab', (tester) async {
-    // The AiringTab defaults its selected day to "today", so key the seed to
-    // today's local midnight — keeps the test deterministic on any run date.
+  testWidgets('renders Anime feed + Movies & TV tab', (tester) async {
+    // The Anime feed groups by local day, so key the seed to today's local
+    // midnight — keeps the test deterministic on any run date.
     final n = DateTime.now();
     final today = DateTime(n.year, n.month, n.day);
     final seed = ScheduleState(
@@ -48,8 +48,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('My Anime'), findsOneWidget);
     expect(find.textContaining('Ep 7'), findsOneWidget);
-    // Switch to Coming Soon tab.
-    await tester.tap(find.text('Coming Soon'));
+    // Switch to the Movies & TV tab.
+    await tester.tap(find.text('Movies & TV'));
     await tester.pumpAndSettle();
     expect(find.text('Big Movie'), findsOneWidget);
   });

@@ -45,9 +45,23 @@ List<AiringEntry> parseAiringSchedules(Map<String, dynamic> data) {
       airsAtLocal:
           DateTime.fromMillisecondsSinceEpoch(airingAt * 1000).toLocal(),
       format: (media['format'] as String?) ?? '',
+      bannerUrl: media['bannerImage'] as String?,
+      synopsis: _cleanDescription(media['description'] as String?),
     ));
   }
   return out;
+}
+
+/// AniList descriptions carry lightweight HTML (`<br>`, `<i>`, `<b>`). Strip
+/// tags + collapse whitespace so it fits a two-line card synopsis. Null/empty → null.
+String? _cleanDescription(String? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final text = raw
+      .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'<[^>]+>'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return text.isEmpty ? null : text;
 }
 
 /// Groups entries by their local calendar day, each day's list time-sorted.
@@ -83,6 +97,8 @@ query ($start: Int, $end: Int, $page: Int) {
         idMal
         title { romaji english }
         coverImage { large }
+        bannerImage
+        description(asHtml: false)
         format
         isAdult
       }

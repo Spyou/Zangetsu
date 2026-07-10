@@ -56,7 +56,7 @@ void main() {
     expect(c.state.errorAiring, isFalse);
   });
 
-  test('setFilter(myList) narrows airingByDay to My List malIds', () async {
+  test('myListByDay narrows to My List malIds while airingByDay keeps all', () async {
     final c = ScheduleCubit(
       _FakeAiring([_entry(1), _entry(2), _entry(3)]),
       _FakeSoon(const []),
@@ -65,10 +65,10 @@ void main() {
       ]),
     );
     await c.load();
-    c.setFilter(ScheduleFilter.myList);
-    final shown = c.state.airingByDay.values.expand((x) => x).toList();
-    expect(shown.map((e) => e.malId).toList(), [2]);
-    c.setFilter(ScheduleFilter.all);
+    // My List tab shows only tracked anime…
+    final mine = c.state.myListByDay.values.expand((x) => x).toList();
+    expect(mine.map((e) => e.malId).toList(), [2]);
+    // …while the Anime tab still shows everything.
     expect(c.state.airingByDay.values.expand((x) => x).length, 3);
   });
 }

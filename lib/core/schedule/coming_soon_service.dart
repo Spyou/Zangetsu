@@ -22,12 +22,21 @@ List<ComingSoonEntry> parseTmdbResults(List<dynamic> results,
         ? '${Tmdb.img}/w342$posterPath'
         : null;
     if (poster == null && date == null) continue;
+    final backdropPath = raw['backdrop_path'] as String?;
+    final backdrop = (backdropPath != null && backdropPath.isNotEmpty)
+        ? '${Tmdb.img}/w780$backdropPath'
+        : null;
+    final overview = raw['overview'] as String?;
     out.add(ComingSoonEntry(
       tmdbId: id,
       isTv: isTv,
       title: title,
       posterUrl: poster,
       releaseDate: date,
+      backdropUrl: backdrop,
+      synopsis: (overview != null && overview.trim().isNotEmpty)
+          ? overview.trim()
+          : null,
     ));
   }
   return out;
@@ -46,6 +55,18 @@ List<ComingSoonEntry> mergeSortByDate(
   return all;
 }
 
+/// Keep only genuinely-upcoming titles (release today or later) plus
+/// to-be-announced (null date). TMDB's `/tv/on_the_air` reports shows that
+/// are *currently* airing new episodes, but their date is the series premiere
+/// — decades old for long-runners like The Daily Show. Without this filter
+/// those float to the top of a "Coming Soon" list sorted ascending.
+List<ComingSoonEntry> onlyUpcoming(List<ComingSoonEntry> all, DateTime now) {
+  final cutoff = DateTime(now.year, now.month, now.day);
+  return all
+      .where((e) => e.releaseDate == null || !e.releaseDate!.isBefore(cutoff))
+      .toList();
+}
+
 /// Fetches upcoming movies + on-the-air TV from TMDB (key added by the Dio
 /// interceptor for Tmdb.host). Returns `[]` on any error.
 class ComingSoonService {
@@ -58,10 +79,11 @@ class ComingSoonService {
       final tvRes = await _dio.get<dynamic>('${Tmdb.base}/tv/on_the_air');
       final movies = _results(movieRes.data);
       final tv = _results(tvRes.data);
-      return mergeSortByDate(
+      final merged = mergeSortByDate(
         parseTmdbResults(movies, isTv: false),
         parseTmdbResults(tv, isTv: true),
       );
+      return onlyUpcoming(merged, DateTime.now());
     } catch (_) {
       return const [];
     }

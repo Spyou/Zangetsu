@@ -7,54 +7,59 @@ import '../../core/schedule/airing_service.dart';
 import '../../core/schedule/coming_soon_service.dart';
 import '../../core/schedule/schedule_models.dart';
 
-enum ScheduleFilter { all, myList }
-
 class ScheduleState extends Equatable {
   const ScheduleState({
     this.airingAll = const [],
     this.airingByDay = const {},
+    this.myListByDay = const {},
     this.comingSoon = const [],
     this.loadingAiring = true,
     this.loadingSoon = true,
     this.errorAiring = false,
     this.errorSoon = false,
-    this.filter = ScheduleFilter.all,
   });
 
   final List<AiringEntry> airingAll;
+
+  /// All airing entries grouped by local day (the Anime tab).
   final Map<DateTime, List<AiringEntry>> airingByDay;
+
+  /// Airing entries narrowed to anime the user tracks in My List, grouped by
+  /// day (the My List tab). Precomputed so both tabs read state without either
+  /// mutating the other's grouping.
+  final Map<DateTime, List<AiringEntry>> myListByDay;
+
   final List<ComingSoonEntry> comingSoon;
   final bool loadingAiring;
   final bool loadingSoon;
   final bool errorAiring;
   final bool errorSoon;
-  final ScheduleFilter filter;
 
   ScheduleState copyWith({
     List<AiringEntry>? airingAll,
     Map<DateTime, List<AiringEntry>>? airingByDay,
+    Map<DateTime, List<AiringEntry>>? myListByDay,
     List<ComingSoonEntry>? comingSoon,
     bool? loadingAiring,
     bool? loadingSoon,
     bool? errorAiring,
     bool? errorSoon,
-    ScheduleFilter? filter,
   }) =>
       ScheduleState(
         airingAll: airingAll ?? this.airingAll,
         airingByDay: airingByDay ?? this.airingByDay,
+        myListByDay: myListByDay ?? this.myListByDay,
         comingSoon: comingSoon ?? this.comingSoon,
         loadingAiring: loadingAiring ?? this.loadingAiring,
         loadingSoon: loadingSoon ?? this.loadingSoon,
         errorAiring: errorAiring ?? this.errorAiring,
         errorSoon: errorSoon ?? this.errorSoon,
-        filter: filter ?? this.filter,
       );
 
   @override
   List<Object?> get props => [
-        airingAll, airingByDay, comingSoon, loadingAiring, loadingSoon,
-        errorAiring, errorSoon, filter,
+        airingAll, airingByDay, myListByDay, comingSoon, loadingAiring,
+        loadingSoon, errorAiring, errorSoon,
       ];
 }
 
@@ -72,16 +77,13 @@ class ScheduleCubit extends Cubit<ScheduleState> {
 
   Future<void> refresh() => load();
 
-  void setFilter(ScheduleFilter f) {
-    emit(state.copyWith(filter: f, airingByDay: _regroup(state.airingAll, f)));
-  }
-
   Future<void> _loadAiring() async {
     emit(state.copyWith(loadingAiring: true, errorAiring: false));
     final entries = await _airing.weekAiring();
     emit(state.copyWith(
       airingAll: entries,
-      airingByDay: _regroup(entries, state.filter),
+      airingByDay: groupByLocalDay(entries),
+      myListByDay: groupByLocalDay(filterByMalIds(entries, _myListMalIds())),
       loadingAiring: false,
       errorAiring: entries.isEmpty, // best-effort; empty week reads as "nothing"
     ));
@@ -93,15 +95,8 @@ class ScheduleCubit extends Cubit<ScheduleState> {
     emit(state.copyWith(comingSoon: soon, loadingSoon: false, errorSoon: false));
   }
 
-  Map<DateTime, List<AiringEntry>> _regroup(
-      List<AiringEntry> all, ScheduleFilter f) {
-    if (f == ScheduleFilter.myList) {
-      final ids = <int>{
+  Set<int> _myListMalIds() => <int>{
         for (final m in _myList.all())
           if (m.type == ProviderType.anime && m.malId != null) m.malId!,
       };
-      return groupByLocalDay(filterByMalIds(all, ids));
-    }
-    return groupByLocalDay(all);
-  }
 }

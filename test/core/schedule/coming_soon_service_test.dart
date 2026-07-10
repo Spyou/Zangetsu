@@ -38,4 +38,17 @@ void main() {
     );
     expect(out.map((x) => x.tmdbId).toList(), [3, 1, 2]);
   });
+
+  test('onlyUpcoming drops past dates, keeps today/future + null', () {
+    ComingSoonEntry e(int id, DateTime? d) =>
+        ComingSoonEntry(tmdbId: id, isTv: false, title: 't', posterUrl: null, releaseDate: d);
+    final now = DateTime(2026, 7, 11, 14);
+    final out = onlyUpcoming([
+      e(1, DateTime(1996, 7, 22)), // old on_the_air premiere -> dropped
+      e(2, DateTime(2026, 7, 11)), // today -> kept
+      e(3, DateTime(2026, 12, 18)), // future -> kept
+      e(4, null), // TBA -> kept
+    ], now);
+    expect(out.map((x) => x.tmdbId).toList(), [2, 3, 4]);
+  });
 }
