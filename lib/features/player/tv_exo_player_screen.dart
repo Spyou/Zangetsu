@@ -472,6 +472,20 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _open(match.first, seekToMs: _c?.position.value ?? 0);
   }
 
+  /// Human label for a source mirror in the Servers menu — the provider's own
+  /// label (with quality appended when not already present), else the quality,
+  /// else the container name.
+  String _serverLabel(VideoSource s) {
+    final label = s.label;
+    final q = s.quality;
+    if (label != null && label.isNotEmpty) {
+      return (q != null && q.isNotEmpty && !label.contains(q))
+          ? '$label · $q'
+          : label;
+    }
+    return (q != null && q.isNotEmpty) ? q : s.container.name;
+  }
+
   void _selectAudio(TvTrack t) => _c?.selectAudioTrack(t.id);
 
   void _switchCategory(String cat) {
@@ -496,6 +510,23 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   List<TvMenuSection> _buildSections(TvExoController c) {
     final sections = <TvMenuSection>[];
+
+    // Servers — every resolved mirror for the current sub/dub kind, so the user
+    // can switch when one is slow or dead (mirrors the phone player's Sources).
+    final servers = sortByQuality(_qualityPool());
+    if (servers.length > 1) {
+      sections.add(TvMenuSection(
+        title: 'Servers',
+        options: [
+          for (final s in servers)
+            TvMenuOption(
+              label: _serverLabel(s),
+              selected: s.url == _activeSource?.url,
+              onSelect: () => _open(s, seekToMs: c.position.value),
+            ),
+        ],
+      ));
+    }
 
     // Quality
     final qOptions = <TvMenuOption>[];
