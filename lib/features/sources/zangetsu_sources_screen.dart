@@ -78,6 +78,16 @@ class _ZPhoneView extends StatelessWidget {
               ],
             ),
           ),
+          floatingActionButton: FloatingActionButton.extended(
+            backgroundColor: AppColors.accent,
+            foregroundColor: Colors.white,
+            onPressed: () => _showAddRepoDialog(context),
+            icon: const Icon(Icons.add),
+            label: Text(
+              'Add Zangetsu repo',
+              style: AppText.button.copyWith(color: Colors.white),
+            ),
+          ),
           body: TabBarView(
             children: [
               ListView(
@@ -86,30 +96,7 @@ class _ZPhoneView extends StatelessWidget {
               ),
               ListView(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'REPOSITORIES',
-                          style: AppText.overline.copyWith(
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _showAddRepoDialog(context),
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add repo'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.accent,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const _ZReposSection(),
-                ],
+                children: const [_ZReposSection()],
               ),
             ],
           ),

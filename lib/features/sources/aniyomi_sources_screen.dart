@@ -176,12 +176,10 @@ class _AniScreenPhoneView extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
               children: const [_AniyomiInstalledGroup()],
             ),
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-              children: [
-                AniyomiRepoTab(repoUrls: repoUrls, onRemoveRepo: onRemoveRepo),
-              ],
-            ),
+            // AniyomiRepoTab brings its own scrollable ListView.builder +
+            // padding; wrapping it in another ListView gives the inner list
+            // unbounded height and it renders blank, so mount it directly.
+            AniyomiRepoTab(repoUrls: repoUrls, onRemoveRepo: onRemoveRepo),
           ],
         ),
       ),

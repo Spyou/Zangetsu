@@ -70,6 +70,16 @@ class _CsPhoneView extends StatelessWidget {
             ],
           ),
         ),
+        floatingActionButton: FloatingActionButton.extended(
+          backgroundColor: AppColors.accent,
+          foregroundColor: Colors.white,
+          onPressed: () => _showAddCsRepoDialog(context),
+          icon: const Icon(Icons.add),
+          label: Text(
+            'Add CloudStream repo',
+            style: AppText.button.copyWith(color: Colors.white),
+          ),
+        ),
         body: const TabBarView(
           children: [
             _CsInstalledTab(),
@@ -121,25 +131,6 @@ class _CsReposTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'REPOSITORIES',
-                style: AppText.overline.copyWith(
-                  color: AppColors.textTertiary,
-                ),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => _showAddCsRepoDialog(context),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add CS repo'),
-              style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
         if (groups.isEmpty)
           const EmptyState(
             icon: Icons.cloud_outlined,
