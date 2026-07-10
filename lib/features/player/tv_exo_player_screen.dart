@@ -113,6 +113,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   int _loadGen = 0; // bumped per _open; guards stale async torrent resolves
   int? _upNextCountdown;
   Timer? _upNextTimer;
+  bool _controlsVisible = true; // bottom controls; auto-hide after inactivity
+  Timer? _controlsHideTimer;
 
   @override
   void initState() {
@@ -138,10 +140,38 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     c.textTracks.addListener(_onTracksChanged);
     c.duration.addListener(_maybeFetchSkips);
     c.position.addListener(_scrobbleTick);
+    c.playing.addListener(_onPlayingChanged);
+    _bumpControls();
     _loadEpisode();
   }
 
   void _scrobbleTick() => _maybeScrobble();
+
+  /// Show the bottom controls and (re)start the 5s inactivity hide. While
+  /// playing, they fade out after 5s of no input; while paused they stay.
+  void _bumpControls() {
+    _controlsHideTimer?.cancel();
+    if (!_controlsVisible) setState(() => _controlsVisible = true);
+    _controlsHideTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      if (_c?.playing.value == true &&
+          !_menuOpen &&
+          _searchResults == null &&
+          _upNextCountdown == null) {
+        setState(() => _controlsVisible = false);
+      }
+    });
+  }
+
+  void _onPlayingChanged() {
+    if (!mounted) return;
+    if (_c?.playing.value == true) {
+      _bumpControls(); // resumed → start the fade-out countdown
+    } else {
+      _controlsHideTimer?.cancel(); // paused → keep controls up
+      if (!_controlsVisible) setState(() => _controlsVisible = true);
+    }
+  }
 
   bool get _hasTitleId =>
       widget.malId != null ||
@@ -869,6 +899,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     if (_menuOpen || _searchResults != null || _upNextCountdown != null) {
       return KeyEventResult.ignored;
     }
+    _bumpControls(); // any input reveals the controls + resets the hide timer
     final k = e.logicalKey;
     if (okKeys.contains(k)) { _togglePlay(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowRight) { _seekBy(10000); return KeyEventResult.handled; }
@@ -889,6 +920,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _loadGen++; // supersede any in-flight torrent resolve so it stops itself
     _stopTorrent();
     _menuHideTimer?.cancel();
+    _controlsHideTimer?.cancel();
     _upNextTimer?.cancel(); // cancel directly — _cancelUpNext setStates/refocuses
     final c = _c;
     if (c != null) {
@@ -981,7 +1013,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                   ],
                 ),
               ),
-            if (_c != null) _controlsOverlay(_c!),
+            if (_c != null && _controlsVisible) _controlsOverlay(_c!),
             if (_c != null)
               Positioned(
                 right: 40,
