@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/announce/announcement.dart';
@@ -227,6 +228,13 @@ void main() {
 
     await sl.reset();
 
+    // Home's launch sequence shows a one-time community sheet backed by the
+    // 'app_flags' Hive box. Init Hive + mark it seen so that path no-ops
+    // (mirrors production, where Hive is initialized before runApp).
+    Hive.init('/tmp/zangetsu_nav_test_hive');
+    final flags = await Hive.openBox('app_flags');
+    await flags.put('communitySheetSeen', true);
+
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit();
@@ -260,6 +268,7 @@ void main() {
     await sl.reset();
     authCubit.close();
     activeSource.close();
+    await Hive.close();
   });
 
   Widget wrap(Widget child) => MultiBlocProvider(
