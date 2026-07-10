@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -9,7 +10,6 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
-import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -18,7 +18,7 @@ import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../detail/detail_screen.dart';
-import '../player/player_screen.dart';
+import '../player/tv_exo_player_screen.dart';
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
 
@@ -47,29 +47,36 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   }
 
   /// Begin playback from scratch — mirrors phone's _HomeViewState._playFeatured.
+  /// TV uses the native ExoPlayer player, which takes an episode LIST (not a
+  /// resolver), so resolve the episodes first, then open it.
   Future<void> _play(MediaItem item) async {
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
+    List<Episode> episodes;
+    try {
+      episodes = await sl<SourceRepository>().episodes(
+        item.url,
+        sourceId: item.sourceId,
+      );
+    } catch (_) {
+      episodes = const [];
+    }
+    if (!mounted || episodes.isEmpty) return;
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => PlayerScreen(
+        builder: (_) => TvExoPlayerScreen(
           sourceId: item.sourceId,
-          episodesResolver: () => sl<SourceRepository>().episodes(
-            item.url,
-            sourceId: item.sourceId,
-          ),
+          episodes: episodes,
+          startIndex: 0,
           resume: sl<ResumeStore>(),
           resolveSources: (u) => sl<SourceRepository>().sources(
             u,
             sourceId: item.sourceId,
             fast: true,
           ),
-          history: sl<WatchHistory>(),
           showTitle: item.title,
-          cover: item.cover,
-          coverHeaders: item.coverHeaders,
           showUrl: item.url,
           category: category,
           malId: item.malId,

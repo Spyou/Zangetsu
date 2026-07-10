@@ -138,36 +138,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         sl<PlaybackPrefs>().defaultCategory;
     final launchCategory =
         availableCategories.contains(preferred) ? preferred : category;
-    if (kExoSpikeEnabled) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => TvExoPlayerScreen(
-            sourceId: widget.item.sourceId,
-            episodes: episodes,
-            startIndex: index,
-            resume: sl<ResumeStore>(),
-            resolveSources: (u) => sl<SourceRepository>().sources(
-              u,
-              sourceId: widget.item.sourceId,
-              fast: true,
-            ),
-            showUrl: widget.item.url,
-            showTitle: detail.title,
-            category: launchCategory,
-            malId: detail.malId ?? widget.item.malId,
-            scrobbleTitle:
-                detail.type == ProviderType.anime ? detail.title : null,
-            tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-            tmdbIsTv: detail.tmdbIsTv,
-            imdbId: detail.imdbId ?? widget.item.imdbId,
-          ),
-        ),
-      );
-      return;
-    }
+    // TV always uses the native ExoPlayer / SurfaceView player — smooth even at
+    // 4K where the media_kit texture player lags. media_kit stays phone-only.
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => TvExoPlayerScreen(
           sourceId: widget.item.sourceId,
           episodes: episodes,
           startIndex: index,
@@ -177,11 +152,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
             sourceId: widget.item.sourceId,
             fast: true,
           ),
-          history: sl<WatchHistory>(),
-          showTitle: detail.title,
-          cover: detail.cover ?? widget.item.cover,
-          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           showUrl: widget.item.url,
+          showTitle: detail.title,
           category: launchCategory,
           malId: detail.malId ?? widget.item.malId,
           scrobbleTitle:
@@ -189,7 +161,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
-          availableCategories: availableCategories,
         ),
       ),
     );
