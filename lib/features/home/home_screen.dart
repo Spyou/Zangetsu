@@ -22,6 +22,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../announce/announcement_sheet.dart';
+import '../community/community_sheet.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../update/update_dialog.dart';
 import '../../core/ui/content_row.dart';
@@ -89,8 +90,10 @@ class _HomeViewState extends State<_HomeView> {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         await maybeShowUpdateDialog(context);
-        // After any update prompt, surface a new developer announcement (if any)
-        // — sequenced so the two never fight over the modal stack.
+        // One-time community welcome (its own flag, independent of the per-id
+        // announcement feed), then any new developer announcement — all awaited
+        // in sequence so the modals never fight over the stack.
+        if (mounted) await maybeShowCommunitySheet(context);
         if (mounted) await maybeShowAnnouncement(context);
       });
       _checkSourceUpdates();
