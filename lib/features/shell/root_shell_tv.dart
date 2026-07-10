@@ -12,6 +12,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../downloads/downloads_screen.dart';
 import '../home/cubit/home_cubit.dart';
+import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
 import 'tv_source_picker.dart';
 
@@ -21,8 +22,8 @@ import 'tv_source_picker.dart';
 /// phone [RootShell] and its [NavigationBar] are completely unchanged.
 ///
 /// Pages reuse [buildShellPages] from [RootShell] (one source of truth) and
-/// insert [DownloadsScreen] between My List and Settings — all cubits are
-/// GetIt singletons so nothing is re-instantiated.
+/// insert [DownloadsScreen] and [ScheduleScreen] between My List and Settings
+/// — all cubits are GetIt singletons so nothing is re-instantiated.
 class RootShellTv extends StatefulWidget {
   const RootShellTv({super.key});
 
@@ -64,6 +65,11 @@ const List<_RailItem> _kRailItems = [
     label: 'Downloads',
     icon: Icons.download_outlined,
     selectedIcon: Icons.download,
+  ),
+  _RailItem(
+    label: 'Schedule',
+    icon: Icons.calendar_month_outlined,
+    selectedIcon: Icons.calendar_month,
   ),
   _RailItem(
     label: 'Settings',
@@ -228,13 +234,15 @@ class _RootShellTvState extends State<RootShellTv> {
       );
   }
 
-  /// TV pages: the four from [buildShellPages] with [DownloadsScreen] inserted
-  /// between My List (index 2) and Settings (index 3).
+  /// TV pages: the four from [buildShellPages] with [DownloadsScreen] and
+  /// [ScheduleScreen] inserted between My List (index 2) and Settings
+  /// (last index) — order matches [_kRailItems].
   List<Widget> get _pages {
     final shared = buildShellPages(_searchFocusSignal);
     return [
       ...shared.sublist(0, 3), // Home, Search, My List
-      const DownloadsScreen(),  // Downloads (TV-only nav slot)
+      const DownloadsScreen(), // Downloads (TV-only nav slot)
+      const ScheduleScreen(),  // Schedule (TV-only nav slot)
       shared.last,              // Settings
     ];
   }

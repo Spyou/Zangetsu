@@ -23,6 +23,7 @@ import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
+import '../downloads/downloads_screen.dart';
 import 'discord_settings_screen.dart';
 import 'download_location_screen.dart';
 import 'torrent_settings_screen.dart';
@@ -456,6 +457,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Source health',
                         subtitle: 'Test which sources are working',
                         onTap: () => _push(const SourceHealthScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.download_outlined,
+                        title: 'Downloads',
+                        subtitle: 'Manage your downloaded episodes',
+                        onTap: () => _push(const DownloadsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.bug_report_outlined,
