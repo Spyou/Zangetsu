@@ -113,11 +113,25 @@ class _BackupScreenState extends State<BackupScreen> {
   }
 
   Future<void> _restoreFromFile() async {
-    // TV boxes usually have no document-picker UI, so the system file picker
-    // silently no-ops. Instead list the app-readable backup files and let the
-    // user pick one with the D-pad.
-    final Map<String, dynamic>? p =
-        _isTv ? await _pickLocalBackupTv() : await BackupFile().import();
+    Map<String, dynamic>? p;
+    if (_isTv) {
+      // TV boxes usually have no document-picker UI, so the system file picker
+      // silently no-ops. List the app-readable backup files instead and let the
+      // user pick one with the D-pad.
+      p = await _pickLocalBackupTv();
+    } else {
+      try {
+        p = await BackupFile().import();
+      } on FormatException {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("That file isn't a valid backup.")),
+        );
+        return;
+      } catch (_) {
+        p = null;
+      }
+    }
     if (p == null) return;
     setState(() => _busy = true);
     try {
@@ -128,6 +142,11 @@ class _BackupScreenState extends State<BackupScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Restore failed: $e')),
       );
     } finally {
       if (mounted) setState(() => _busy = false);
