@@ -90,11 +90,13 @@ class TvExoController {
     String url,
     Map<String, String> headers, {
     List<TvSubtitleConfig> subtitles = const [],
+    String? mimeType,
   }) =>
       _method.invokeMethod('setSource', {
         'url': url,
         'headers': headers,
         'subtitles': subtitles.map((s) => s.toMap()).toList(),
+        'mimeType': mimeType, // null → native infers the container from the URL
       });
   Future<void> play() => _method.invokeMethod('play');
   Future<void> pause() => _method.invokeMethod('pause');

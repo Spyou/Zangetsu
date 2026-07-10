@@ -162,29 +162,41 @@ class ExoPlayerView(
                 val headers = (call.argument<Map<String, String>>("headers")) ?: emptyMap()
                 @Suppress("UNCHECKED_CAST")
                 val subs = (call.argument<List<Map<String, String?>>>("subtitles")) ?: emptyList()
+                // Optional explicit container MIME (e.g. HLS/DASH). When set, ExoPlayer
+                // builds the correct MediaSource instead of guessing from the URL —
+                // needed for tokenized stream URLs with no file extension.
+                val mimeType = call.argument<String>("mimeType")
                 if (url != null) {
-                    val httpFactory = DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                    if (headers.isNotEmpty()) httpFactory.setDefaultRequestProperties(headers)
-                    val subConfigs = subs.mapNotNull { m ->
-                        val su = m["url"] ?: return@mapNotNull null
-                        MediaItem.SubtitleConfiguration.Builder(Uri.parse(su))
-                            .setMimeType(m["mime"])
-                            .setLanguage(m["lang"])
-                            .setLabel(m["label"])
-                            .build()
+                    try {
+                        val httpFactory = DefaultHttpDataSource.Factory()
+                            .setAllowCrossProtocolRedirects(true)
+                        if (headers.isNotEmpty()) httpFactory.setDefaultRequestProperties(headers)
+                        val subConfigs = subs.mapNotNull { m ->
+                            val su = m["url"] ?: return@mapNotNull null
+                            MediaItem.SubtitleConfiguration.Builder(Uri.parse(su))
+                                .setMimeType(m["mime"])
+                                .setLanguage(m["lang"])
+                                .setLabel(m["label"])
+                                .build()
+                        }
+                        val builder = MediaItem.Builder()
+                            .setUri(url)
+                            .setSubtitleConfigurations(subConfigs)
+                        if (!mimeType.isNullOrEmpty()) builder.setMimeType(mimeType)
+                        val mediaSource = DefaultMediaSourceFactory(httpFactory)
+                            .createMediaSource(builder.build())
+                        player.setMediaSource(mediaSource)
+                        player.prepare()
+                        player.playWhenReady = true
+                        result.success(null)
+                    } catch (e: Exception) {
+                        // Don't let a MediaSource-creation failure crash the channel;
+                        // surface it so Dart shows a clean error instead of a hang.
+                        result.error("setSource_failed", e.message, null)
                     }
-                    val item = MediaItem.Builder()
-                        .setUri(url)
-                        .setSubtitleConfigurations(subConfigs)
-                        .build()
-                    val mediaSource = DefaultMediaSourceFactory(httpFactory)
-                        .createMediaSource(item)
-                    player.setMediaSource(mediaSource)
-                    player.prepare()
-                    player.playWhenReady = true
+                } else {
+                    result.success(null)
                 }
-                result.success(null)
             }
             "setUrl" -> {
                 val url = call.argument<String>("url")

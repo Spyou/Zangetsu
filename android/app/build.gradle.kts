@@ -193,5 +193,11 @@ dependencies {
     // (hardware overlay) — unlike media_kit's Flutter texture, which lags at 4K.
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    // DASH + SmoothStreaming so streams in those containers play (e.g. some
+    // CloudStream movie sources like MovieBox). Without the DASH module,
+    // DefaultMediaSourceFactory throws when it meets a .mpd stream. Additive —
+    // media_kit (phone) doesn't use ExoPlayer, so the phone is unaffected.
+    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")
+    implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.4.1")
     implementation("androidx.media3:media3-ui:1.4.1")
 }

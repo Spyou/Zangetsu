@@ -276,7 +276,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       playHeaders = const {};
     }
     final subs = _subtitleConfigs(src);
-    await _c?.setSource(playUrl, playHeaders, subtitles: subs);
+    await _c?.setSource(playUrl, playHeaders,
+        subtitles: subs, mimeType: _mimeForSource(src));
     await _applyCaptionStyle();
     _applyPlaybackTuning();
     _loadQualities(src);
@@ -340,6 +341,22 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       sl<TorrentService>().stop(id);
       _torrentId = null;
     }
+  }
+
+  /// Explicit container MIME so ExoPlayer builds the correct MediaSource
+  /// instead of guessing from a URL that may be tokenized (no file extension).
+  /// HLS is hinted from the CloudStream `container` flag (set from isM3u8) or a
+  /// `.m3u8` URL; DASH/MP4 only from an explicit extension. Null → let ExoPlayer
+  /// infer (now that the DASH + SmoothStreaming modules are bundled). Torrent
+  /// sources return null (their local stream URL is inferred).
+  String? _mimeForSource(VideoSource src) {
+    final u = src.url.toLowerCase();
+    if (src.container == SourceContainer.hls || u.contains('.m3u8')) {
+      return 'application/x-mpegURL';
+    }
+    if (u.contains('.mpd')) return 'application/dash+xml';
+    if (u.contains('.mp4')) return 'video/mp4';
+    return null;
   }
 
   void _applyPlaybackTuning() {
