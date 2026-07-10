@@ -16,6 +16,8 @@ import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
 import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
+import '../schedule/airing_service.dart';
+import '../schedule/coming_soon_service.dart';
 import '../search/title_suggestion_service.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
@@ -159,6 +161,8 @@ Future<void> initDependencies() async {
     ),
   );
   sl.registerSingleton<Dio>(dio);
+  sl.registerSingleton<AiringService>(AiringService(sl<Dio>()));
+  sl.registerSingleton<ComingSoonService>(ComingSoonService(sl<Dio>()));
 
   // Lightweight title autocomplete for the search field (one fast AniList call
   // per debounced keystroke — NOT the heavy multi-source provider search).
