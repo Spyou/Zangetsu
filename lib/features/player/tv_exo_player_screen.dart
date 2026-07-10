@@ -115,6 +115,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Timer? _upNextTimer;
   bool _controlsVisible = true; // bottom controls; auto-hide after inactivity
   Timer? _controlsHideTimer;
+  bool _holdingSpeed = false; // D-pad RIGHT held → temporary 2× (YouTube-style)
 
   @override
   void initState() {
@@ -893,14 +894,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (e is! KeyDownEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
     // While an overlay (menu / online search / up-next) is up, it owns the
     // D-pad: let its focused widget + traversal handle keys, don't eat them.
     if (_menuOpen || _searchResults != null || _upNextCountdown != null) {
+      if (_holdingSpeed) _endHoldSpeed(); // don't leave 2× stuck if a menu opens
       return KeyEventResult.ignored;
     }
+    // Hold RIGHT → temporary 2× playback (YouTube-style); release restores the
+    // chosen speed. A quick tap has no repeat, so it still lands as a +10s seek
+    // on key-down below.
+    if (k == LogicalKeyboardKey.arrowRight) {
+      if (e is KeyRepeatEvent) { _startHoldSpeed(); return KeyEventResult.handled; }
+      if (e is KeyUpEvent) {
+        if (_holdingSpeed) { _endHoldSpeed(); return KeyEventResult.handled; }
+        return KeyEventResult.ignored;
+      }
+    }
+    if (e is! KeyDownEvent) return KeyEventResult.ignored;
     _bumpControls(); // any input reveals the controls + resets the hide timer
-    final k = e.logicalKey;
     if (okKeys.contains(k)) { _togglePlay(); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowRight) { _seekBy(10000); return KeyEventResult.handled; }
     if (k == LogicalKeyboardKey.arrowLeft) { _seekBy(-10000); return KeyEventResult.handled; }
@@ -913,6 +925,23 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// D-pad RIGHT held → play at 2× until released (mirrors YouTube's hold-to-2×
+  /// and the phone player's long-press). Drives the controller directly so the
+  /// boost is never persisted as the user's chosen speed.
+  void _startHoldSpeed() {
+    if (_holdingSpeed) return;
+    _holdingSpeed = true;
+    _bumpControls();
+    _c?.setPlaybackSpeed(2.0);
+  }
+
+  void _endHoldSpeed() {
+    if (!_holdingSpeed) return;
+    _holdingSpeed = false;
+    _c?.setPlaybackSpeed(_speed); // back to the user's chosen speed
+    _bumpControls();
   }
 
   @override
@@ -951,7 +980,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       // While an overlay is up, Back closes IT (the TV remote Back is a route
       // pop, not a key event, so this — not the menu's onKeyEvent — is what
       // actually catches it); only pop the player when nothing is open.
-      canPop: !overlayOpen,
+      // Netflix-style Back ladder: dismiss whatever is showing before exiting.
+      // An open overlay closes first; then the visible controls/progress bar
+      // hide; only a Back with nothing on screen pops the player.
+      canPop: !overlayOpen && !_controlsVisible,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_searchResults != null) {
@@ -961,6 +993,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           _closeMenu();
         } else if (_upNextCountdown != null) {
           _cancelUpNext();
+        } else if (_controlsVisible) {
+          _controlsHideTimer?.cancel();
+          setState(() => _controlsVisible = false);
         }
       },
       child: Scaffold(
@@ -1031,7 +1066,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                         () => _c?.seek(skip.end.inMilliseconds),
                       ));
                     }
-                    if (sl<PlaybackPrefs>().megaSkip) {
+                    // The manual "+Ns" jump pill rides with the controls — it
+                    // fades out on the same 5s timer instead of sitting on the
+                    // video the whole episode. (The AniSkip pill above still
+                    // shows for its interval, Netflix-style.)
+                    if (sl<PlaybackPrefs>().megaSkip && _controlsVisible) {
                       final secs = sl<PlaybackPrefs>().megaSkipSeconds;
                       children.add(_pillButton('+${secs}s', () {
                         final c = _c;
