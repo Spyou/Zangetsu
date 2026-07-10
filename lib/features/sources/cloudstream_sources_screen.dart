@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -1117,6 +1119,28 @@ class _CsTvViewState extends State<_CsTvView> {
 
   @override
   Widget build(BuildContext context) {
+    // CloudStream is Android-only (native plugin host) — the old TV screen
+    // gated the whole section behind Platform.isAndroid; preserve that here.
+    if (!Platform.isAndroid) {
+      return const Scaffold(
+        backgroundColor: AppColors.bg,
+        body: Stack(
+          children: [
+            Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Text(
+                  "CloudStream isn't available on this device.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
+                ),
+              ),
+            ),
+            Positioned(top: 8, left: 8, child: TvBackButton()),
+          ],
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: Stack(
