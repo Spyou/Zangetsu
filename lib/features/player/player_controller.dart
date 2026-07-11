@@ -1474,11 +1474,13 @@ class PlayerCubit extends Cubit<PlayerState> {
           : null;
       player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
-    if (s.subtitles.isNotEmpty) {
-      // Initial pick is source-default/first; the global subtitle preference
-      // (off / language / auto) is applied right after via _tryApplySubPref,
-      // which is now the single source of truth for preference-driven
-      // selection (source-first, then embedded, then keyless download).
+    // Seed the source's default subtitle ONLY in Auto mode. When the user has a
+    // specific language (or Off) preference, _tryApplySubPref is the sole
+    // authority: seeding a default here races the tracks-stream listener, which
+    // may have ALREADY applied the preferred sub — this seed would then clobber
+    // it, leaving the wrong subtitle selected (the preferred-language bug).
+    if (s.subtitles.isNotEmpty &&
+        sl<PlaybackPrefs>().subtitlePreference.isEmpty) {
       final sub = s.subtitles.firstWhere(
         (x) => x.isDefault,
         orElse: () => s.subtitles.first,
