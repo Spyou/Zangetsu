@@ -527,7 +527,17 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.tracks.listen((t) {
         emit(state.copyWith(tracks: t));
-        // Tracks just arrived — restore remembered audio/subtitle.
+        // Tracks just arrived — restore remembered audio/subtitle. When the
+        // stream's track list loads AFTER we've applied an external soft sub,
+        // mpv can drift off it (auto-select another track / none), silently
+        // overriding the preferred language. If the currently-selected sub is
+        // no longer the one we chose, re-arm so _tryApplySubPref re-applies it.
+        // Guarded on drift (not on every track change) so re-applying a URI sub
+        // — which media_kit does via a fresh `sub-add` — can't loop.
+        if (_wantedSubId != null &&
+            player.state.track.subtitle.id != _wantedSubId) {
+          _subApplied = false;
+        }
         _tryApplyAudioPref();
         _tryApplySubPref();
       }),
@@ -610,6 +620,18 @@ class PlayerCubit extends Cubit<PlayerState> {
           } else if (_lastPos < _pendingResume) {
             player.seek(_pendingResume);
           }
+        }
+        // Re-assert the subtitle preference ONCE at STATE_READY — but only if
+        // our chosen sub isn't actually the selected one (it was clobbered or
+        // failed to load during the racy open). Gating on the mismatch avoids a
+        // redundant duplicate `sub-add` in the common (already-correct) case.
+        if (d > Duration.zero &&
+            !_subReadyReapplied &&
+            _wantedSubId != null &&
+            player.state.track.subtitle.id != _wantedSubId) {
+          _subReadyReapplied = true;
+          _subApplied = false;
+          _tryApplySubPref();
         }
         // Fetch accurate OP/ED skip times once the episode length is known.
         if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
@@ -796,6 +818,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void setSubtitle(SubtitleTrack t) {
     player.setSubtitleTrack(t);
+    _wantedSubId = t.id;
     // Remember globally by language when we can resolve one; a track we can't
     // classify is a one-off pick that must not set a bad global default.
     final lang = languageOfSource(t.language ?? t.title ?? '');
@@ -804,6 +827,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void subtitlesOff() {
     player.setSubtitleTrack(SubtitleTrack.no());
+    _wantedSubId = 'no';
     sl<PlaybackPrefs>().setSubtitlePreference('off');
   }
 
@@ -815,16 +839,21 @@ class PlayerCubit extends Cubit<PlayerState> {
     await player.setSubtitleTrack(
       SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
     );
+    _wantedSubId = s.url;
     final lang = languageOfSource(s.lang) ?? languageOfSource(s.label ?? '');
     if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
   }
 
   /// Load an external subtitle file from disk (picked via file_picker).
-  Future<void> setSubtitleFromFile(String path) async =>
-      player.setSubtitleTrack(SubtitleTrack.uri(path));
+  Future<void> setSubtitleFromFile(String path) async {
+    await player.setSubtitleTrack(SubtitleTrack.uri(path));
+    _wantedSubId = path;
+  }
 
   bool _subApplied = false; // remembered-subtitle restored for this episode
   bool _autoSubDlTried = false; // keyless auto-download fired at most once/episode
+  String? _wantedSubId; // id/url of the subtitle we intend to keep selected
+  bool _subReadyReapplied = false; // re-asserted the sub pref once at STATE_READY
 
   /// Restore the title's remembered subtitle once per episode. 'off' turns subs
   /// off; otherwise match a soft-sub or embedded track by language/label.
@@ -837,11 +866,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     // 'off' → subtitles off on every video.
     if (prefRaw == 'off') {
       player.setSubtitleTrack(SubtitleTrack.no());
+      _wantedSubId = 'no';
       _subApplied = true;
       return;
     }
     // '' (Auto) → don't force anything.
     if (prefRaw.isEmpty) {
+      _wantedSubId = null;
       _subApplied = true;
       return;
     }
@@ -856,6 +887,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       player.setSubtitleTrack(
         SubtitleTrack.uri(soft.url, title: soft.label ?? soft.lang, language: soft.lang),
       );
+      _wantedSubId = soft.url;
       _subApplied = true;
       return;
     }
@@ -864,6 +896,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       final tTitle = t.title ?? '';
       if (matchesSourceLang(tLang, prefLang) || matchesSourceLang(tTitle, prefLang)) {
         player.setSubtitleTrack(t);
+        _wantedSubId = t.id;
         _subApplied = true;
         return;
       }
@@ -926,6 +959,7 @@ class PlayerCubit extends Cubit<PlayerState> {
               language: lang.iso2,
             ),
           );
+          _wantedSubId = subs.first.url;
           _subApplied = true;
         } catch (_) {
           // Silently ignored — playback continues without subtitles.
@@ -955,6 +989,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     _prefetchedNextForIndex = -1; // re-arm next-episode prefetch for the new ep
     _subApplied = false; // restore the remembered subtitle for the new episode
     _autoSubDlTried = false; // re-arm keyless auto-download for the new episode
+    _wantedSubId = null; // clear the intended-sub tracking for the new episode
+    _subReadyReapplied = false; // re-arm the STATE_READY sub re-assert
     _audioApplied = false; // restore the remembered audio track too
     emit(
       state.copyWith(
@@ -1474,11 +1510,11 @@ class PlayerCubit extends Cubit<PlayerState> {
           : null;
       player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
-    // Seed the source's default subtitle ONLY in Auto mode. When the user has a
-    // specific language (or Off) preference, _tryApplySubPref is the sole
-    // authority: seeding a default here races the tracks-stream listener, which
-    // may have ALREADY applied the preferred sub — this seed would then clobber
-    // it, leaving the wrong subtitle selected (the preferred-language bug).
+    // Seed the source's default subtitle ONLY in Auto mode. With a specific
+    // language / Off preference, _tryApplySubPref is the sole authority —
+    // seeding a default here would race and CLOBBER the preferred pick (proven:
+    // the seed's setSubtitleTrack lands after the preferred one and mpv shows
+    // the seed). For Auto, the seed gives the user the source's default sub.
     if (s.subtitles.isNotEmpty &&
         sl<PlaybackPrefs>().subtitlePreference.isEmpty) {
       final sub = s.subtitles.firstWhere(
