@@ -68,6 +68,20 @@ class _HubPhoneView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Recompute the counts live when a source is installed / enabled / updated
+    // while the hub is open (CS + Aniyomi managers are ChangeNotifiers). The
+    // Zangetsu registry isn't a Listenable, but it can only be mutated from its
+    // own screen, so its count refreshes on navigation back here anyway.
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        sl<CloudStreamManager>(),
+        sl<AniyomiManager>(),
+      ]),
+      builder: (context, _) => _body(context),
+    );
+  }
+
+  Widget _body(BuildContext context) {
     final zangetsuCount = sl<ProviderRegistry>().getAll().length;
     final showCs = Platform.isAndroid;
     final showAniyomi = Platform.isAndroid;

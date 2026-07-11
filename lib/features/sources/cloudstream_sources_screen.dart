@@ -34,8 +34,14 @@ class CloudStreamSourcesScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: sl<CloudStreamManager>(),
+      // NOT const: a const child is a canonicalized instance, so the
+      // ListenableBuilder would hand Flutter the identical widget on every
+      // notifyListeners() and updateChild would skip the whole subtree — the
+      // install/enable state would then only refresh on an unrelated rebuild
+      // (scroll / collapse-expand / re-open). A fresh instance lets the manager's
+      // notifications actually reach the Install/Installed buttons + counts.
       builder: (context, _) {
-        return sl<AppMode>().isTv ? const _CsTvView() : const _CsPhoneView();
+        return sl<AppMode>().isTv ? _CsTvView() : _CsPhoneView();
       },
     );
   }
