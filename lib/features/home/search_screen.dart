@@ -385,7 +385,10 @@ class _SearchViewState extends State<_SearchView> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
+      // bottom: false — the shell's floating dock overlays the content
+      // (extendBody); a full SafeArea would clip results at the dock's edge.
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -951,7 +954,8 @@ class _SearchViewState extends State<_SearchView> {
     }
 
     return ListView(
-      padding: const EdgeInsets.only(top: 6, bottom: 24),
+      padding: EdgeInsets.only(
+          top: 6, bottom: 24 + MediaQuery.paddingOf(context).bottom),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         for (final g in groups) ...[
@@ -1218,7 +1222,8 @@ class _SearchViewState extends State<_SearchView> {
   // ── Flat results grid (single-source / vertical) ──────────────────────────
   Widget _resultsGrid(List<MediaItem> items, double cellW) {
     return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+          16, 6, 16, 24 + MediaQuery.paddingOf(context).bottom),
       cacheExtent: 800,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1267,7 +1272,8 @@ class _SearchViewState extends State<_SearchView> {
 
     final cellW = (MediaQuery.of(context).size.width - 40 - 24) / 3;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+      padding: EdgeInsets.fromLTRB(
+          16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         if (recent.isNotEmpty) ...[
@@ -1329,7 +1335,8 @@ class _SearchViewState extends State<_SearchView> {
   Widget _suggestionList(List<String> suggestions) {
     final history = _history.recent().map((e) => e.toLowerCase()).toSet();
     return ListView.builder(
-      padding: const EdgeInsets.only(top: 4, bottom: 24),
+      padding: EdgeInsets.only(
+          top: 4, bottom: 24 + MediaQuery.paddingOf(context).bottom),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: suggestions.length,
       itemBuilder: (context, i) {

@@ -363,7 +363,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ].where((t) => t.isConnected).length;
     return Scaffold(
       backgroundColor: AppColors.bg,
+      // bottom: false — the shell's floating dock overlays the content
+      // (extendBody); a full SafeArea would clip the list at the dock's top
+      // edge, leaving a dead band on both sides of the capsule.
       body: SafeArea(
+        bottom: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -373,7 +377,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(top: 4, bottom: 24),
+                // Bottom: clear the floating dock (its height arrives as
+                // MediaQuery bottom padding thanks to extendBody).
+                padding: EdgeInsets.only(
+                    top: 4,
+                    bottom: 24 + MediaQuery.paddingOf(context).bottom),
                 children: [
                   _accountCard(context),
                   const SettingsSectionLabel('Account & sync'),

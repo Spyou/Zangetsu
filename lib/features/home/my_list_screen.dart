@@ -70,7 +70,11 @@ class _MyListViewState extends State<_MyListView> {
     if (sl<AppMode>().isTv) return const MyListScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
+      // bottom: false — the shell's floating dock overlays the content
+      // (extendBody); a full SafeArea would clip the grid at the dock's top
+      // edge, leaving a dead band on both sides of the capsule.
       body: SafeArea(
+        bottom: false,
         child: BlocBuilder<TrackerListCubit, TrackerListState>(
           builder: (context, tlState) {
             return Column(
@@ -353,7 +357,10 @@ class _MyListViewState extends State<_MyListView> {
                   message: 'Nothing here in this filter',
                 )
               : GridView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                  // Bottom: clear the floating dock (its height arrives as
+                  // MediaQuery bottom padding thanks to extendBody).
+                  padding: EdgeInsets.fromLTRB(
+                      16, 4, 16, 16 + MediaQuery.paddingOf(context).bottom),
                   physics: const AlwaysScrollableScrollPhysics(),
                   cacheExtent: 800,
                   gridDelegate:
