@@ -3758,7 +3758,9 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
               for (final s in soft)
                 _SheetRow(
                   label: s.label ?? s.lang,
-                  active: false,
+                  // A URI soft-sub is applied via SubtitleTrack.uri(s.url), whose
+                  // media_kit track id IS the url — so the active one highlights.
+                  active: subId == s.url,
                   onTap: () {
                     c.setSoftSub(s);
                     widget.onInteract();
