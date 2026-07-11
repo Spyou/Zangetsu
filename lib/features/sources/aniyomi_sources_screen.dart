@@ -20,6 +20,7 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import 'aniyomi_recommended_repos.dart';
 import 'aniyomi_repo_tab.dart' show kAniyomiReposBoxName, AniyomiAddRepoDialog, AniyomiRepoTab;
+import 'sources_search_field.dart';
 import 'tv_recommended_aniyomi_repos.dart';
 
 /// Dedicated Aniyomi ecosystem screen — Installed + Repositories in one
@@ -127,7 +128,7 @@ class _AniyomiSourcesScreenState extends State<AniyomiSourcesScreen> {
 // Phone view
 // ---------------------------------------------------------------------------
 
-class _AniScreenPhoneView extends StatelessWidget {
+class _AniScreenPhoneView extends StatefulWidget {
   const _AniScreenPhoneView({
     required this.repoUrls,
     required this.onAddRepo,
@@ -137,6 +138,20 @@ class _AniScreenPhoneView extends StatelessWidget {
   final List<String> repoUrls;
   final VoidCallback onAddRepo;
   final void Function(String url) onRemoveRepo;
+
+  @override
+  State<_AniScreenPhoneView> createState() => _AniScreenPhoneViewState();
+}
+
+class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -163,23 +178,41 @@ class _AniScreenPhoneView extends StatelessWidget {
         floatingActionButton: FloatingActionButton.extended(
           backgroundColor: AppColors.accent,
           foregroundColor: Colors.white,
-          onPressed: onAddRepo,
+          onPressed: widget.onAddRepo,
           icon: const Icon(Icons.add),
           label: Text(
             'Add Aniyomi repo',
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            ListView(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-              children: const [_AniyomiInstalledGroup()],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: SourcesSearchField(
+                controller: _searchCtrl,
+                onChanged: (q) => setState(() => _query = q),
+              ),
             ),
-            // AniyomiRepoTab brings its own scrollable ListView.builder +
-            // padding; wrapping it in another ListView gives the inner list
-            // unbounded height and it renders blank, so mount it directly.
-            AniyomiRepoTab(repoUrls: repoUrls, onRemoveRepo: onRemoveRepo),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                    children: [_AniyomiInstalledGroup(query: _query)],
+                  ),
+                  // AniyomiRepoTab brings its own scrollable ListView.builder +
+                  // padding; wrapping it in another ListView gives the inner
+                  // list unbounded height and it renders blank, so mount it
+                  // directly.
+                  AniyomiRepoTab(
+                    repoUrls: widget.repoUrls,
+                    onRemoveRepo: widget.onRemoveRepo,
+                    query: _query,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -193,7 +226,9 @@ class _AniScreenPhoneView extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _AniyomiInstalledGroup extends StatefulWidget {
-  const _AniyomiInstalledGroup();
+  const _AniyomiInstalledGroup({this.query = ''});
+
+  final String query;
 
   @override
   State<_AniyomiInstalledGroup> createState() => _AniyomiInstalledGroupState();
@@ -207,11 +242,20 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
     return ListenableBuilder(
       listenable: sl<AniyomiManager>(),
       builder: (context, _) {
-        final sources = sl<AniyomiManager>().all;
+        final query = widget.query;
+        final sources = sl<AniyomiManager>()
+            .all
+            .where((p) => sourceSearchMatches(
+                query,
+                p.displayName,
+                p is AniyomiProvider ? p.info.lang : null))
+            .toList();
         if (sources.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.extension_outlined,
-            message: 'No Aniyomi sources installed.',
+            message: query.trim().isEmpty
+                ? 'No Aniyomi sources installed.'
+                : 'No installed sources match "${query.trim()}".',
           );
         }
         return Column(
@@ -258,7 +302,8 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeOut,
               alignment: Alignment.topCenter,
-              child: !_expanded
+              // A live search forces the group open so matches are visible.
+              child: !(_expanded || query.trim().isNotEmpty)
                   ? const SizedBox(width: double.infinity)
                   : BlocBuilder<ActiveSourceCubit, String>(
                       builder: (context, activeId) => Container(
@@ -563,6 +608,14 @@ class _AniScreenTvView extends StatefulWidget {
 
 class _AniScreenTvViewState extends State<_AniScreenTvView> {
   int _tab = 0;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -616,6 +669,16 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                         selected: _tab == 1,
                         onTap: () => setState(() => _tab = 1),
                       ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 340),
+                          child: SourcesSearchField(
+                            controller: _searchCtrl,
+                            onChanged: (q) => setState(() => _query = q),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -625,13 +688,14 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                     children: _tab == 0
                         ? [
                             // ── Installed ────────────────────────────────
-                            const _AniScreenTvInstalledContent(),
+                            _AniScreenTvInstalledContent(query: _query),
                           ]
                         : [
                             // ── Repositories ─────────────────────────────
                             _AniScreenTvContent(
                               repoUrls: widget.repoUrls,
                               onRemoveRepo: widget.onRemoveRepo,
+                              query: _query,
                             ),
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
@@ -743,20 +807,30 @@ class _AniTvTabChip extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _AniScreenTvInstalledContent extends StatelessWidget {
-  const _AniScreenTvInstalledContent();
+  const _AniScreenTvInstalledContent({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: sl<AniyomiManager>(),
       builder: (context, _) {
-        final sources = sl<AniyomiManager>().all;
+        final sources = sl<AniyomiManager>()
+            .all
+            .where((p) => sourceSearchMatches(
+                query,
+                p.displayName,
+                p is AniyomiProvider ? p.info.lang : null))
+            .toList();
         if (sources.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: EmptyState(
               icon: Icons.extension_outlined,
-              message: 'No Aniyomi sources installed.',
+              message: query.trim().isEmpty
+                  ? 'No Aniyomi sources installed.'
+                  : 'No installed sources match "${query.trim()}".',
             ),
           );
         }
@@ -890,10 +964,14 @@ class _AniScreenTvContent extends StatelessWidget {
   const _AniScreenTvContent({
     required this.repoUrls,
     required this.onRemoveRepo,
+    this.query = '',
   });
 
   final List<String> repoUrls;
   final void Function(String url) onRemoveRepo;
+
+  /// Live search query — each repo section filters its entries by it.
+  final String query;
 
   Future<void> _removeRepo(BuildContext context, String url) async {
     final ok = await _aniScreenTvConfirm(
@@ -926,6 +1004,7 @@ class _AniScreenTvContent extends StatelessWidget {
           _AniScreenTvRepoSection(
             url: url,
             onRemove: () => _removeRepo(context, url),
+            query: query,
           ),
       ],
     );
@@ -933,10 +1012,18 @@ class _AniScreenTvContent extends StatelessWidget {
 }
 
 class _AniScreenTvRepoSection extends StatefulWidget {
-  const _AniScreenTvRepoSection({required this.url, required this.onRemove});
+  const _AniScreenTvRepoSection({
+    required this.url,
+    required this.onRemove,
+    this.query = '',
+  });
 
   final String url;
   final VoidCallback onRemove;
+
+  /// Live search query — filters the fetched entries; a non-empty query also
+  /// forces the section open and hides it entirely when nothing matches.
+  final String query;
 
   @override
   State<_AniScreenTvRepoSection> createState() =>
@@ -1008,7 +1095,15 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = _entries ?? [];
+    final searching = widget.query.trim().isNotEmpty;
+    final entries = [
+      for (final e in _entries ?? const <AniyomiRepoEntry>[])
+        if (sourceSearchMatches(widget.query, e.name, e.lang)) e,
+    ];
+    // While searching, a fully-loaded section with zero matches disappears.
+    if (searching && !_fetching && _fetchError == null && entries.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -1065,7 +1160,7 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
               ),
             ),
           ),
-          if (_expanded && !_fetching && entries.isNotEmpty)
+          if ((_expanded || searching) && !_fetching && entries.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Column(

@@ -14,6 +14,7 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import 'source_settings_screen.dart';
 import 'sources_screen.dart' show kRecommendedCsRepos;
+import 'sources_search_field.dart';
 import 'tv_recommended_cs_repos.dart';
 
 /// Dedicated CloudStream ecosystem screen — Installed + Repositories in one
@@ -51,8 +52,22 @@ class CloudStreamSourcesScreen extends StatelessWidget {
 // Phone view
 // ---------------------------------------------------------------------------
 
-class _CsPhoneView extends StatelessWidget {
+class _CsPhoneView extends StatefulWidget {
   const _CsPhoneView();
+
+  @override
+  State<_CsPhoneView> createState() => _CsPhoneViewState();
+}
+
+class _CsPhoneViewState extends State<_CsPhoneView> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -90,10 +105,23 @@ class _CsPhoneView extends StatelessWidget {
         // ListenableBuilder's rebuild would hand Flutter the identical subtree
         // and skip it — the install/enable state would never refresh. A fresh
         // instance lets the manager's notifyListeners() reach the tabs.
-        body: TabBarView(
+        body: Column(
           children: [
-            _CsInstalledTab(),
-            _CsReposTab(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: SourcesSearchField(
+                controller: _searchCtrl,
+                onChanged: (q) => setState(() => _query = q),
+              ),
+            ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _CsInstalledTab(query: _query),
+                  _CsReposTab(query: _query),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -103,19 +131,37 @@ class _CsPhoneView extends StatelessWidget {
 
 /// Installed tab body — CS sources grouped by origin repo.
 class _CsInstalledTab extends StatelessWidget {
-  const _CsInstalledTab();
+  const _CsInstalledTab({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
     final groups = sl<CloudStreamManager>().repoGroups;
-    final installedGroups = groups.where((g) => g.sources.isNotEmpty);
+    // Search: keep only matching sources; drop groups left with none.
+    final installedGroups = [
+      for (final g in groups)
+        if (g.sources.any((s) => sourceSearchMatches(query, s.displayName)))
+          CsRepoGroup(
+            url: g.url,
+            name: g.name,
+            owner: g.owner,
+            catalog: g.catalog,
+            sources: [
+              for (final s in g.sources)
+                if (sourceSearchMatches(query, s.displayName)) s,
+            ],
+          ),
+    ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       children: [
         if (installedGroups.isEmpty)
-          const EmptyState(
+          EmptyState(
             icon: Icons.dns_rounded,
-            message: 'No CloudStream sources installed.',
+            message: query.trim().isEmpty
+                ? 'No CloudStream sources installed.'
+                : 'No installed sources match "${query.trim()}".',
           )
         else
           BlocBuilder<ActiveSourceCubit, String>(
@@ -133,26 +179,52 @@ class _CsInstalledTab extends StatelessWidget {
 
 /// Repositories tab body — add repo action + repo browse/install sections.
 class _CsReposTab extends StatelessWidget {
-  const _CsReposTab();
+  const _CsReposTab({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
-    final groups = sl<CloudStreamManager>().repoGroups;
+    final searching = query.trim().isNotEmpty;
+    final all = sl<CloudStreamManager>().repoGroups;
+    // Search: keep only matching catalog plugins; drop repos left with none.
+    final groups = !searching
+        ? all
+        : [
+            for (final g in all)
+              if (g.catalog
+                  .any((m) => sourceSearchMatches(query, m.name, m.language)))
+                CsRepoGroup(
+                  url: g.url,
+                  name: g.name,
+                  owner: g.owner,
+                  catalog: [
+                    for (final m in g.catalog)
+                      if (sourceSearchMatches(query, m.name, m.language)) m,
+                  ],
+                  sources: g.sources,
+                ),
+          ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       children: [
         if (groups.isEmpty)
-          const EmptyState(
+          EmptyState(
             icon: Icons.cloud_outlined,
-            message:
-                'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
+            message: searching
+                ? 'No extensions match "${query.trim()}".'
+                : 'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
           )
         else
           BlocBuilder<ActiveSourceCubit, String>(
             builder: (context, activeId) => Column(
               children: [
                 for (final group in groups)
-                  _CsScreenRepoSection(group: group, activeId: activeId),
+                  _CsScreenRepoSection(
+                    group: group,
+                    activeId: activeId,
+                    searching: searching,
+                  ),
               ],
             ),
           ),
@@ -488,10 +560,19 @@ Future<void> _applyCsRepoUpdates(BuildContext context, CsRepoGroup group) async 
 /// shown as Installed. The synthetic "Other" group (empty url) lists orphan
 /// installed sources with an uninstall action and no ⋮ menu.
 class _CsScreenRepoSection extends StatefulWidget {
-  const _CsScreenRepoSection({required this.group, required this.activeId});
+  const _CsScreenRepoSection({
+    required this.group,
+    required this.activeId,
+    this.searching = false,
+  });
 
   final CsRepoGroup group;
   final String activeId;
+
+  /// True while a search query is active: the section stays expanded so the
+  /// matches are visible, and the lazy catalog fetch is skipped (the filtered
+  /// catalog handed in may be a subset of the real one).
+  final bool searching;
 
   @override
   State<_CsScreenRepoSection> createState() => _CsScreenRepoSectionState();
@@ -517,6 +598,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
 
   /// Lazily pull a repo's catalog if we don't have it yet (legacy repos).
   void _maybeFetchCatalog() {
+    if (widget.searching) return;
     if (group.url.isEmpty || group.catalog.isNotEmpty || _fetching) return;
     setState(() => _fetching = true);
     sl<CloudStreamManager>().ensureCatalog(group.url).whenComplete(() {
@@ -693,12 +775,13 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
               ],
             ),
           ),
-          // Collapsible catalog list (install one by one).
+          // Collapsible catalog list (install one by one). A live search
+          // forces the section open so its matches are visible.
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: !_expanded
+            child: !(_expanded || widget.searching)
                 ? const SizedBox(width: double.infinity)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1134,6 +1217,14 @@ class _CsTvView extends StatefulWidget {
 
 class _CsTvViewState extends State<_CsTvView> {
   int _tab = 0;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _showAddCsRepoDialog() async {
     final url = await showDialog<String>(
@@ -1215,6 +1306,16 @@ class _CsTvViewState extends State<_CsTvView> {
                         selected: _tab == 1,
                         onTap: () => setState(() => _tab = 1),
                       ),
+                      const SizedBox(width: 20),
+                      Expanded(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 340),
+                          child: SourcesSearchField(
+                            controller: _searchCtrl,
+                            onChanged: (q) => setState(() => _query = q),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1224,11 +1325,11 @@ class _CsTvViewState extends State<_CsTvView> {
                     children: _tab == 0
                         ? [
                             // ── Installed ────────────────────────────────
-                            const _CsScreenTvInstalledContent(),
+                            _CsScreenTvInstalledContent(query: _query),
                           ]
                         : [
                             // ── Repositories ─────────────────────────────
-                            const _CsScreenTvReposContent(),
+                            _CsScreenTvReposContent(query: _query),
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: TvFocusable(
@@ -1333,18 +1434,35 @@ class _CsTvTabChip extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _CsScreenTvInstalledContent extends StatelessWidget {
-  const _CsScreenTvInstalledContent();
+  const _CsScreenTvInstalledContent({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
-    final groups =
-        sl<CloudStreamManager>().repoGroups.where((g) => g.sources.isNotEmpty);
+    // Search: keep only matching sources; drop groups left with none.
+    final groups = [
+      for (final g in sl<CloudStreamManager>().repoGroups)
+        if (g.sources.any((s) => sourceSearchMatches(query, s.displayName)))
+          CsRepoGroup(
+            url: g.url,
+            name: g.name,
+            owner: g.owner,
+            catalog: g.catalog,
+            sources: [
+              for (final s in g.sources)
+                if (sourceSearchMatches(query, s.displayName)) s,
+            ],
+          ),
+    ];
     if (groups.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: EmptyState(
           icon: Icons.dns_rounded,
-          message: 'No CloudStream sources installed.',
+          message: query.trim().isEmpty
+              ? 'No CloudStream sources installed.'
+              : 'No installed sources match "${query.trim()}".',
         ),
       );
     }
@@ -1564,18 +1682,40 @@ class _CsScreenTvSourceRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _CsScreenTvReposContent extends StatelessWidget {
-  const _CsScreenTvReposContent();
+  const _CsScreenTvReposContent({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
-    final groups = sl<CloudStreamManager>().repoGroups;
+    final searching = query.trim().isNotEmpty;
+    final all = sl<CloudStreamManager>().repoGroups;
+    // Search: keep only matching catalog plugins; drop repos left with none.
+    final groups = !searching
+        ? all
+        : [
+            for (final g in all)
+              if (g.catalog
+                  .any((m) => sourceSearchMatches(query, m.name, m.language)))
+                CsRepoGroup(
+                  url: g.url,
+                  name: g.name,
+                  owner: g.owner,
+                  catalog: [
+                    for (final m in g.catalog)
+                      if (sourceSearchMatches(query, m.name, m.language)) m,
+                  ],
+                  sources: g.sources,
+                ),
+          ];
     if (groups.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: EmptyState(
           icon: Icons.cloud_outlined,
-          message:
-              'No CloudStream repos added yet.\nPress "Add CS repo" to add one.',
+          message: searching
+              ? 'No extensions match "${query.trim()}".'
+              : 'No CloudStream repos added yet.\nPress "Add CS repo" to add one.',
         ),
       );
     }
@@ -1584,7 +1724,11 @@ class _CsScreenTvReposContent extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final group in groups)
-            _CsScreenTvRepoSection(group: group, activeId: activeId),
+            _CsScreenTvRepoSection(
+              group: group,
+              activeId: activeId,
+              searching: searching,
+            ),
         ],
       ),
     );
@@ -1592,9 +1736,17 @@ class _CsScreenTvReposContent extends StatelessWidget {
 }
 
 class _CsScreenTvRepoSection extends StatefulWidget {
-  const _CsScreenTvRepoSection({required this.group, required this.activeId});
+  const _CsScreenTvRepoSection({
+    required this.group,
+    required this.activeId,
+    this.searching = false,
+  });
   final CsRepoGroup group;
   final String activeId;
+
+  /// True while a search query is active — stays expanded, skips the lazy
+  /// catalog fetch (the handed-in catalog may be a filtered subset).
+  final bool searching;
 
   @override
   State<_CsScreenTvRepoSection> createState() =>
@@ -1620,6 +1772,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
   }
 
   void _maybeFetchCatalog() {
+    if (widget.searching) return;
     if (group.url.isEmpty || group.catalog.isNotEmpty || _fetching) return;
     setState(() => _fetching = true);
     sl<CloudStreamManager>().ensureCatalog(group.url).whenComplete(() {
@@ -1828,12 +1981,12 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
               ],
             ),
           ),
-          // ── Collapsible plugin catalog ──────────────────────────────────
+          // ── Collapsible plugin catalog (search forces it open) ──────────
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: !_expanded
+            child: !(_expanded || widget.searching)
                 ? const SizedBox(width: double.infinity)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,

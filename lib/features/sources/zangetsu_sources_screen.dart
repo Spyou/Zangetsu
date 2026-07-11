@@ -15,6 +15,7 @@ import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
+import 'sources_search_field.dart';
 
 /// Dedicated Zangetsu (JS provider) ecosystem screen — Installed and
 /// Repositories as two tabs. Self-contained: creates its own [SourcesBloc]
@@ -44,8 +45,22 @@ class ZangetsuSourcesScreen extends StatelessWidget {
 // Phone view
 // ---------------------------------------------------------------------------
 
-class _ZPhoneView extends StatelessWidget {
+class _ZPhoneView extends StatefulWidget {
   const _ZPhoneView();
+
+  @override
+  State<_ZPhoneView> createState() => _ZPhoneViewState();
+}
+
+class _ZPhoneViewState extends State<_ZPhoneView> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -88,15 +103,28 @@ class _ZPhoneView extends StatelessWidget {
               style: AppText.button.copyWith(color: Colors.white),
             ),
           ),
-          body: TabBarView(
+          body: Column(
             children: [
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                children: const [_ZInstalledSection()],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: SourcesSearchField(
+                  controller: _searchCtrl,
+                  onChanged: (q) => setState(() => _query = q),
+                ),
               ),
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                children: const [_ZReposSection()],
+              Expanded(
+                child: TabBarView(
+                  children: [
+                    ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                      children: [_ZInstalledSection(query: _query)],
+                    ),
+                    ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                      children: [_ZReposSection(query: _query)],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -117,18 +145,25 @@ Future<void> _showAddRepoDialog(BuildContext context) {
 /// Installed zone body for phone — the JS provider groups by origin repo.
 /// Hides when empty with an empty-state line + hint.
 class _ZInstalledSection extends StatelessWidget {
-  const _ZInstalledSection();
+  const _ZInstalledSection({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SourcesBloc, SourcesState>(
       buildWhen: (a, b) => a.installed != b.installed || a.repos != b.repos,
       builder: (context, state) {
-        final entries = state.installed;
+        final entries = state.installed
+            .where((e) => sourceSearchMatches(
+                query, e.displayName.isNotEmpty ? e.displayName : e.name))
+            .toList();
         if (entries.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.dns_rounded,
-            message: 'No providers installed.',
+            message: query.trim().isEmpty
+                ? 'No providers installed.'
+                : 'No installed providers match "${query.trim()}".',
           );
         }
         // Group by origin repo. Bundled first, then repos alphabetically by
@@ -165,6 +200,7 @@ class _ZInstalledSection extends StatelessWidget {
               _ZInstalledGroup(
                 title: nameFor(key),
                 repoUrl: key,
+                searching: query.trim().isNotEmpty,
                 entries: groups[key]!
                   ..sort((a, b) {
                     final an = a.displayName.isNotEmpty
@@ -185,18 +221,31 @@ class _ZInstalledSection extends StatelessWidget {
 
 /// Repositories zone body for phone — repo rows with browse/install.
 class _ZReposSection extends StatelessWidget {
-  const _ZReposSection();
+  const _ZReposSection({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
+    final searching = query.trim().isNotEmpty;
     return BlocBuilder<SourcesBloc, SourcesState>(
       buildWhen: (a, b) => a.repos != b.repos || a.installed != b.installed,
       builder: (context, state) {
-        final all = state.repos;
+        // Search: keep only repos with at least one matching source.
+        final all = !searching
+            ? state.repos
+            : [
+                for (final r in state.repos)
+                  if (r.sources
+                      .any((s) => sourceSearchMatches(query, s.name, s.lang)))
+                    r,
+              ];
         if (all.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.cloud_off_rounded,
-            message: 'No repos added yet.\nTap "Add repo" to add one.',
+            message: searching
+                ? 'No providers match "${query.trim()}".'
+                : 'No repos added yet.\nTap "Add repo" to add one.',
           );
         }
         final installedKeys = state.installedKeys;
@@ -208,6 +257,7 @@ class _ZReposSection extends StatelessWidget {
                 repo: repo,
                 installedKeys: installedKeys,
                 updatableKeys: updatableKeys,
+                query: query,
               ),
           ],
         );
@@ -226,11 +276,16 @@ class _ZInstalledGroup extends StatefulWidget {
     required this.title,
     required this.repoUrl,
     required this.entries,
+    this.searching = false,
   });
 
   final String title;
   final String repoUrl;
   final List<ProviderRegistryEntry> entries;
+
+  /// True while a search query is active — the group stays expanded so its
+  /// matches are visible.
+  final bool searching;
 
   @override
   State<_ZInstalledGroup> createState() => _ZInstalledGroupState();
@@ -286,7 +341,8 @@ class _ZInstalledGroupState extends State<_ZInstalledGroup> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: !_expanded
+          // A live search forces the group open so matches are visible.
+          child: !(_expanded || widget.searching)
               ? const SizedBox(width: double.infinity)
               : Container(
                   clipBehavior: Clip.antiAlias,
@@ -441,11 +497,16 @@ class _ZRepoSection extends StatefulWidget {
     required this.repo,
     required this.installedKeys,
     required this.updatableKeys,
+    this.query = '',
   });
 
   final ProviderRepo repo;
   final Set<String> installedKeys;
   final Set<String> updatableKeys;
+
+  /// Live search query — filters the source rows; a non-empty query also
+  /// forces the section open so matches are visible.
+  final String query;
 
   @override
   State<_ZRepoSection> createState() => _ZRepoSectionState();
@@ -622,7 +683,8 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: !_expanded
+            // A live search forces the section open so matches are visible.
+            child: !(_expanded || widget.query.trim().isNotEmpty)
                 ? const SizedBox(width: double.infinity)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -637,9 +699,13 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                           ),
                         )
                       else
-                        // Hide NSFW sources unless the Privacy toggle is on.
+                        // Hide NSFW sources unless the Privacy toggle is on;
+                        // a live search also filters by name/lang.
                         for (final source in repo.sources.where(
-                          (s) => !s.nsfw || sl<PlaybackPrefs>().nsfwSources,
+                          (s) =>
+                              (!s.nsfw || sl<PlaybackPrefs>().nsfwSources) &&
+                              sourceSearchMatches(
+                                  widget.query, s.name, s.lang),
                         )) ...[
                           const Divider(
                             height: 0.5,
@@ -980,6 +1046,14 @@ class _ZTvView extends StatefulWidget {
 
 class _ZTvViewState extends State<_ZTvView> {
   int _tab = 0;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _showAddRepoDialog() {
     final bloc = context.read<SourcesBloc>();
@@ -1027,6 +1101,16 @@ class _ZTvViewState extends State<_ZTvView> {
                           selected: _tab == 1,
                           onTap: () => setState(() => _tab = 1),
                         ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 340),
+                            child: SourcesSearchField(
+                              controller: _searchCtrl,
+                              onChanged: (q) => setState(() => _query = q),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -1036,11 +1120,11 @@ class _ZTvViewState extends State<_ZTvView> {
                       children: _tab == 0
                           ? [
                               // ── Installed ────────────────────────────
-                              const _ZTvInstalledContent(),
+                              _ZTvInstalledContent(query: _query),
                             ]
                           : [
                               // ── Repositories ──────────────────────────
-                              const _ZTvReposContent(),
+                              _ZTvReposContent(query: _query),
                               Padding(
                                 padding: const EdgeInsets.only(top: 8),
                                 child: TvFocusable(
@@ -1147,20 +1231,27 @@ class _ZTvTabChip extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _ZTvInstalledContent extends StatelessWidget {
-  const _ZTvInstalledContent();
+  const _ZTvInstalledContent({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<SourcesBloc, SourcesState>(
       buildWhen: (a, b) => a.installed != b.installed || a.repos != b.repos,
       builder: (context, state) {
-        final entries = state.installed;
+        final entries = state.installed
+            .where((e) => sourceSearchMatches(
+                query, e.displayName.isNotEmpty ? e.displayName : e.name))
+            .toList();
         if (entries.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: EmptyState(
               icon: Icons.dns_rounded,
-              message: 'No providers installed.',
+              message: query.trim().isEmpty
+                  ? 'No providers installed.'
+                  : 'No installed providers match "${query.trim()}".',
             ),
           );
         }
@@ -1198,6 +1289,7 @@ class _ZTvInstalledContent extends StatelessWidget {
             for (final key in keys)
               _ZTvInstalledGroup(
                 title: nameFor(key),
+                searching: query.trim().isNotEmpty,
                 entries: groups[key]!
                   ..sort((a, b) {
                     final an =
@@ -1220,11 +1312,16 @@ class _ZTvInstalledGroup extends StatefulWidget {
     required this.title,
     required this.entries,
     required this.state,
+    this.searching = false,
   });
 
   final String title;
   final List<ProviderRegistryEntry> entries;
   final SourcesState state;
+
+  /// True while a search query is active — the group stays expanded so its
+  /// matches are visible.
+  final bool searching;
 
   @override
   State<_ZTvInstalledGroup> createState() => _ZTvInstalledGroupState();
@@ -1281,7 +1378,8 @@ class _ZTvInstalledGroupState extends State<_ZTvInstalledGroup> {
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
           alignment: Alignment.topCenter,
-          child: !_expanded
+          // A live search forces the group open so matches are visible.
+          child: !(_expanded || widget.searching)
               ? const SizedBox(width: double.infinity)
               : Container(
                   clipBehavior: Clip.antiAlias,
@@ -1498,20 +1596,33 @@ class _ZRowFocusHaloState extends State<_ZRowFocusHalo> {
 // ---------------------------------------------------------------------------
 
 class _ZTvReposContent extends StatelessWidget {
-  const _ZTvReposContent();
+  const _ZTvReposContent({this.query = ''});
+
+  final String query;
 
   @override
   Widget build(BuildContext context) {
+    final searching = query.trim().isNotEmpty;
     return BlocBuilder<SourcesBloc, SourcesState>(
       buildWhen: (a, b) => a.repos != b.repos || a.installed != b.installed,
       builder: (context, state) {
-        final repos = state.repos;
+        // Search: keep only repos with at least one matching source.
+        final repos = !searching
+            ? state.repos
+            : [
+                for (final r in state.repos)
+                  if (r.sources
+                      .any((s) => sourceSearchMatches(query, s.name, s.lang)))
+                    r,
+              ];
         if (repos.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
             child: EmptyState(
               icon: Icons.cloud_off_rounded,
-              message: 'No repos added yet.\nPress "Add repo" to add one.',
+              message: searching
+                  ? 'No providers match "${query.trim()}".'
+                  : 'No repos added yet.\nPress "Add repo" to add one.',
             ),
           );
         }
@@ -1523,6 +1634,7 @@ class _ZTvReposContent extends StatelessWidget {
                 repo: repo,
                 installedKeys: state.installedKeys,
                 updatableKeys: state.updatableKeys,
+                query: query,
               ),
           ],
         );
@@ -1536,11 +1648,16 @@ class _ZTvRepoGroup extends StatefulWidget {
     required this.repo,
     required this.installedKeys,
     required this.updatableKeys,
+    this.query = '',
   });
 
   final ProviderRepo repo;
   final Set<String> installedKeys;
   final Set<String> updatableKeys;
+
+  /// Live search query — filters the source rows; a non-empty query also
+  /// forces the group open so matches are visible.
+  final String query;
 
   @override
   State<_ZTvRepoGroup> createState() => _ZTvRepoGroupState();
@@ -1694,7 +1811,8 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: !_expanded
+            // A live search forces the group open so matches are visible.
+            child: !(_expanded || widget.query.trim().isNotEmpty)
                 ? const SizedBox(width: double.infinity)
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1711,11 +1829,14 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                       else
                         // Index-tracked loop so the first row gets autofocus,
                         // routing the D-pad there after the repo is added.
+                        // A live search also filters by name/lang.
                         for (final (idx, source) in repo.sources
                             .where(
                               (s) =>
-                                  !s.nsfw ||
-                                  sl<PlaybackPrefs>().nsfwSources,
+                                  (!s.nsfw ||
+                                      sl<PlaybackPrefs>().nsfwSources) &&
+                                  sourceSearchMatches(
+                                      widget.query, s.name, s.lang),
                             )
                             .indexed) ...[
                           const Divider(

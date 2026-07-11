@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
 import 'aniyomi_recommended_repos.dart';
+import 'sources_search_field.dart';
 
 /// Hive box name for persisted Aniyomi repo URLs.
 const String kAniyomiReposBoxName = 'aniyomi_repos';
@@ -191,6 +192,7 @@ class AniyomiRepoTab extends StatelessWidget {
     super.key,
     required this.repoUrls,
     required this.onRemoveRepo,
+    this.query = '',
     this.fetchIndexFn,
     this.installFn,
     this.uninstallFn,
@@ -199,6 +201,9 @@ class AniyomiRepoTab extends StatelessWidget {
 
   final List<String> repoUrls;
   final void Function(String url) onRemoveRepo;
+
+  /// Live search query — each repo section filters its entries by it.
+  final String query;
 
   final Future<List<AniyomiRepoEntry>> Function(String url)? fetchIndexFn;
   final Future<void> Function(AniyomiRepoEntry entry)? installFn;
@@ -224,6 +229,7 @@ class AniyomiRepoTab extends StatelessWidget {
         itemBuilder: (_, i) => _AniyomiRepoSection(
           url: repoUrls[i],
           onRemove: () => onRemoveRepo(repoUrls[i]),
+          query: query,
           fetchIndexFn: fetchIndexFn,
           installFn: installFn,
           uninstallFn: uninstallFn,
@@ -242,6 +248,7 @@ class _AniyomiRepoSection extends StatefulWidget {
   const _AniyomiRepoSection({
     required this.url,
     required this.onRemove,
+    this.query = '',
     this.fetchIndexFn,
     this.installFn,
     this.uninstallFn,
@@ -251,6 +258,10 @@ class _AniyomiRepoSection extends StatefulWidget {
 
   final String url;
   final VoidCallback onRemove;
+
+  /// Live search query — filters the fetched entries; a non-empty query also
+  /// forces the section open so matches are visible.
+  final String query;
   final Future<List<AniyomiRepoEntry>> Function(String url)? fetchIndexFn;
   final Future<void> Function(AniyomiRepoEntry entry)? installFn;
   final Future<void> Function(String pkg)? uninstallFn;
@@ -451,6 +462,15 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
 
   @override
   Widget build(BuildContext context) {
+    final searching = widget.query.trim().isNotEmpty;
+    // While searching, a fully-loaded section with zero matches disappears
+    // entirely (matching the CloudStream screen's behavior).
+    if (searching &&
+        !_fetching &&
+        _fetchError == null &&
+        _filteredEntries.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       clipBehavior: Clip.antiAlias,
@@ -619,12 +639,12 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
               ],
             ),
           ),
-          // ── Collapsible extension list ───────────────────────────────────
+          // ── Collapsible extension list (search forces it open) ───────────
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: !_expanded
+            child: !(_expanded || searching)
                 ? const SizedBox(width: double.infinity)
                 : _buildBody(),
           ),
@@ -632,6 +652,12 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
       ),
     );
   }
+
+  /// The fetched entries filtered by the live search query.
+  List<AniyomiRepoEntry> get _filteredEntries => [
+        for (final e in _entries ?? const <AniyomiRepoEntry>[])
+          if (sourceSearchMatches(widget.query, e.name, e.lang)) e,
+      ];
 
   Widget _buildBody() {
     if (_fetching) {
@@ -659,7 +685,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
         ),
       );
     }
-    final entries = _entries ?? [];
+    final entries = _filteredEntries;
     if (entries.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
