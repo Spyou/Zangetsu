@@ -621,14 +621,13 @@ class PlayerCubit extends Cubit<PlayerState> {
             player.seek(_pendingResume);
           }
         }
-        // Re-assert the subtitle preference ONCE at STATE_READY — but only if
-        // our chosen sub isn't actually the selected one (it was clobbered or
-        // failed to load during the racy open). Gating on the mismatch avoids a
-        // redundant duplicate `sub-add` in the common (already-correct) case.
-        if (d > Duration.zero &&
-            !_subReadyReapplied &&
-            _wantedSubId != null &&
-            player.state.track.subtitle.id != _wantedSubId) {
+        // Re-assert the subtitle preference ONCE at STATE_READY. A soft sub
+        // applied during the racy open can end up SELECTED but not rendering
+        // (mpv added it before the stream finished loading). Re-applying here —
+        // the point where a manual pick reliably renders — forces a fresh
+        // `sub-add` so the preferred language actually shows. The duplicate mpv
+        // track this creates is hidden from the picker (see mediaSubtitleTracks).
+        if (d > Duration.zero && !_subReadyReapplied && _wantedSubId != null) {
           _subReadyReapplied = true;
           _subApplied = false;
           _tryApplySubPref();
@@ -771,9 +770,17 @@ class PlayerCubit extends Cubit<PlayerState> {
   List<AudioTrack> get mediaAudioTracks =>
       state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
-  /// Embedded subtitle tracks for the open media (excludes auto/no).
+  /// Embedded subtitle tracks for the open media (excludes auto/no). Also
+  /// excludes externally `sub-add`ed tracks — a source soft-sub applied via
+  /// SubtitleTrack.uri shows up in mpv's track list with its URL as the id,
+  /// which would duplicate the entry already listed under source subtitles
+  /// (and pile up on every re-apply). Those are surfaced via [softSubs] instead.
   List<SubtitleTrack> get mediaSubtitleTracks => state.tracks.subtitle
-      .where((t) => t.id != 'auto' && t.id != 'no')
+      .where((t) =>
+          t.id != 'auto' &&
+          t.id != 'no' &&
+          !t.id.startsWith('http') &&
+          !t.id.startsWith('/'))
       .toList();
 
   /// Currently-selected audio track (id == 'auto'/'no' for the synthetic ones).
