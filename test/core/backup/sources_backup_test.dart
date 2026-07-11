@@ -1,9 +1,14 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_extension_service.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_provider.dart';
+import 'package:watch_app/core/aniyomi/aniyomi_repo.dart';
 import 'package:watch_app/core/backup/sources_backup.dart';
-import 'package:watch_app/core/provider/cloudstream_provider.dart';
+import 'package:watch_app/core/provider/provider_manager.dart'
+    show AniyomiManager;
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 
@@ -302,4 +307,130 @@ void main() {
 
     expect(registry.installedIds, isEmpty);
   });
+
+  // ── Aniyomi: build reads the repo + installed boxes ─────────────────────────
+
+  test('build: includes aniyomi repo urls and installed pkgs', () async {
+    final repoBox = await Hive.openBox<String>('aniyomi_repos');
+    await repoBox.add('https://raw.githubusercontent.com/o/r/main');
+    final instBox = await Hive.openBox<dynamic>(
+        AniyomiExtensionService.installedBoxName);
+    await instBox.put('eu.kanade.ext.animeworld', '/data/apk/a.apk');
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    final data = backup.build();
+
+    expect(data['aniyomiRepoUrls'],
+        ['https://raw.githubusercontent.com/o/r/main']);
+    expect(data['aniyomiPkgs'], ['eu.kanade.ext.animeworld']);
+  });
+
+  // ── Aniyomi: merge unions repo urls into the box ────────────────────────────
+
+  test('merge: adds missing aniyomi repo urls, skips existing', () async {
+    final repoBox = await Hive.openBox<String>('aniyomi_repos');
+    await repoBox.add('https://existing.example/main');
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    await backup.merge({
+      'aniyomiRepoUrls': [
+        'https://existing.example/main',
+        'https://new.example/main',
+      ],
+    });
+
+    expect(repoBox.values.toList(),
+        ['https://existing.example/main', 'https://new.example/main']);
+  });
+
+  // ── Aniyomi: merge reinstalls missing extensions from repo indexes ─────────
+
+  test('merge: reinstalls missing aniyomi pkgs, records not-found failures',
+      () async {
+    await Hive.openBox<dynamic>(AniyomiExtensionService.installedBoxName);
+    final ani = _StubAniyomiService();
+    final entry = AniyomiRepoEntry(
+      name: 'AnimeWorld',
+      pkg: 'eu.kanade.ext.animeworld',
+      apk: 'animeworld.apk',
+      lang: 'it',
+      version: '1.0',
+      code: 1,
+      nsfw: false,
+      sources: const [],
+      repoBaseUrl: 'https://repo.example/main',
+    );
+
+    final backup = SourcesBackup(
+      _StubRepos([]),
+      _StubProviderRegistry([]),
+      null,
+      aniyomi: ani,
+      fetchAniyomiIndex: (url) async => [entry],
+    );
+
+    final failures = await backup.merge({
+      'aniyomiRepoUrls': ['https://repo.example/main'],
+      'aniyomiPkgs': ['eu.kanade.ext.animeworld', 'eu.kanade.ext.ghost'],
+    });
+
+    // The known pkg was reinstalled; the unknown one is a recorded failure.
+    expect(ani.installedPkgs, ['eu.kanade.ext.animeworld']);
+    expect(failures, ['Aniyomi extension: eu.kanade.ext.ghost']);
+  });
+
+  test('merge: does not reinstall an already-installed aniyomi pkg', () async {
+    final instBox = await Hive.openBox<dynamic>(
+        AniyomiExtensionService.installedBoxName);
+    await instBox.put('eu.kanade.ext.animeworld', '/data/apk/a.apk');
+    final ani = _StubAniyomiService();
+
+    final backup = SourcesBackup(
+      _StubRepos([]),
+      _StubProviderRegistry([]),
+      null,
+      aniyomi: ani,
+      fetchAniyomiIndex: (url) async => [],
+    );
+
+    final failures = await backup.merge({
+      'aniyomiPkgs': ['eu.kanade.ext.animeworld'],
+    });
+
+    expect(ani.installedPkgs, isEmpty);
+    expect(failures, isEmpty);
+  });
+}
+
+/// Stub [AniyomiExtensionService]: records installFromRepo calls and pretends
+/// each install produced one provider (success).
+class _StubAniyomiService implements AniyomiExtensionService {
+  final List<String> installedPkgs = [];
+
+  @override
+  Future<List<AniyomiProvider>> installFromRepo(
+    AniyomiRepoEntry entry, {
+    Dio? dio,
+    Directory? apkDirectory,
+    Future<void> Function(String url, String savePath)? downloader,
+    AniyomiManager? manager,
+  }) async {
+    installedPkgs.add(entry.pkg);
+    // Non-empty result = success; the codec only checks isEmpty.
+    return [
+      AniyomiProvider(
+        info: const AniyomiSourceInfo(
+          id: 1,
+          name: 'AnimeWorld',
+          lang: 'it',
+          baseUrl: 'https://animeworld.example',
+          pkg: 'eu.kanade.ext.animeworld',
+          nsfw: false,
+        ),
+      ),
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
 }

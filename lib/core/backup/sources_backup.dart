@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import '../aniyomi/aniyomi_extension_service.dart';
+import '../aniyomi/aniyomi_repo.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
@@ -10,13 +12,23 @@ import '../provider/provider_repo_registry.dart';
 /// Restore is union-only — existing repos and providers are never removed,
 /// only missing ones are added.
 ///
-/// Inject the three dependencies so unit tests can supply fakes without any
+/// Inject the dependencies so unit tests can supply fakes without any
 /// Hive/network/platform involvement:
 ///   [_repos]   — JS provider repo registry
 ///   [_registry]— installed provider registry
 ///   [_cs]      — CloudStream manager (null on non-Android or in tests)
+///   [_ani]     — Aniyomi extension service (null on non-Android or in tests)
+///   [_fetchAniyomiIndex] — Aniyomi repo index fetcher (overridable in tests)
 class SourcesBackup {
-  const SourcesBackup(this._repos, this._registry, this._cs);
+  const SourcesBackup(
+    this._repos,
+    this._registry,
+    this._cs, {
+    AniyomiExtensionService? aniyomi,
+    Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)?
+        fetchAniyomiIndex,
+  })  : _ani = aniyomi,
+        _fetchAniyomiIndex = fetchAniyomiIndex ?? AniyomiRepo.fetchIndex;
 
   final ProviderReposRegistry _repos;
   final ProviderRegistry _registry;
@@ -24,11 +36,21 @@ class SourcesBackup {
   /// Null on non-Android platforms or in tests that don't need CS restore.
   final CloudStreamManager? _cs;
 
+  /// Null on non-Android platforms or in tests that don't need Aniyomi restore.
+  final AniyomiExtensionService? _ani;
+
+  final Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)
+      _fetchAniyomiIndex;
+
   static const String _psBoxName = 'provider_settings';
 
   // The Hive key under which CloudStreamManager persists its repo list.
   // Matches the private `_reposKey` constant in CloudStreamManager.
   static const String _csReposKey = 'repos';
+
+  // The Hive box of tracked Aniyomi repo base URLs (Box<String>, list-style).
+  // Matches `kAniyomiReposBoxName` in the sources UI.
+  static const String _aniReposBoxName = 'aniyomi_repos';
 
   // ── build ──────────────────────────────────────────────────────────────────
 
@@ -37,12 +59,18 @@ class SourcesBackup {
   /// Keys:
   /// - `jsRepoUrls` — list of JS provider repo manifest URLs.
   /// - `csRepoUrls` — list of CloudStream repo URLs (from the `cs_repos` box).
+  /// - `csPlugins`  — installed CloudStream plugins as `{internalName, repoUrl}`.
   /// - `providers`  — every installed provider entry serialised via `toJson`.
+  /// - `aniyomiRepoUrls` — tracked Aniyomi repo base URLs.
+  /// - `aniyomiPkgs` — installed Aniyomi extension package names.
   /// - `settings`   — contents of the `provider_settings` Hive box, or `{}`.
   Map<String, dynamic> build() => {
         'jsRepoUrls': _repos.getAll().map((r) => r.url).toList(),
         'csRepoUrls': _readCsRepoUrls(),
+        'csPlugins': _installedCsPlugins(),
         'providers': _registry.getAll().map((e) => e.toJson()).toList(),
+        'aniyomiRepoUrls': _readAniyomiRepoUrls(),
+        'aniyomiPkgs': _readAniyomiPkgs(),
         'settings': _readProviderSettings(),
       };
 
@@ -79,6 +107,87 @@ class SourcesBackup {
         await _cs.addRepo(url);
       } catch (_) {
         failures.add('CloudStream repo: $url');
+      }
+    }
+
+    // CloudStream plugins (after repos, so the catalogs exist) ----------------
+    final csPlugins = (data['csPlugins'] as List?) ?? const [];
+    for (final raw in csPlugins) {
+      if (_cs == null) break;
+      if (raw is! Map) continue;
+      final internalName = (raw['internalName'] ?? '').toString();
+      final repoUrl = (raw['repoUrl'] ?? '').toString();
+      if (internalName.isEmpty) continue;
+      if (_cs.isPluginInstalled(internalName,
+          repoUrl: repoUrl.isEmpty ? null : repoUrl)) {
+        continue; // already installed — skip
+      }
+      try {
+        // Find the plugin's meta in its repo's catalog, then install it.
+        final group = _cs.repoGroups.firstWhere((g) => g.url == repoUrl);
+        final meta =
+            group.catalog.firstWhere((m) => m.internalName == internalName);
+        await _cs.installPlugin(meta, repoUrl: repoUrl);
+      } catch (_) {
+        failures.add('CloudStream plugin: $internalName');
+      }
+    }
+
+    // Aniyomi repos (union into the Box<String> list) --------------------------
+    final aniRepoUrls =
+        (data['aniyomiRepoUrls'] as List?)?.cast<String>() ?? const <String>[];
+    if (aniRepoUrls.isNotEmpty) {
+      try {
+        final box = Hive.isBoxOpen(_aniReposBoxName)
+            ? Hive.box<String>(_aniReposBoxName)
+            : await Hive.openBox<String>(_aniReposBoxName);
+        for (final url in aniRepoUrls) {
+          if (box.values.contains(url)) continue;
+          await box.add(url);
+        }
+      } catch (_) {
+        failures.add('Aniyomi repos');
+      }
+    }
+
+    // Aniyomi extensions (re-download from any tracked repo's index) -----------
+    final aniPkgs =
+        (data['aniyomiPkgs'] as List?)?.cast<String>() ?? const <String>[];
+    if (aniPkgs.isNotEmpty && _ani != null) {
+      // installFromRepo persists pkg → apk path only when this box is open.
+      if (!Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
+        try {
+          await Hive.openBox<dynamic>(AniyomiExtensionService.installedBoxName);
+        } catch (_) {}
+      }
+      final installedPkgs = _readAniyomiPkgs().toSet();
+      final missing =
+          aniPkgs.where((p) => !installedPkgs.contains(p)).toList();
+      if (missing.isNotEmpty) {
+        // Fetch each tracked repo's index once, then look pkgs up locally.
+        final repoUrls = <String>{
+          ...aniRepoUrls,
+          if (Hive.isBoxOpen(_aniReposBoxName))
+            ...Hive.box<String>(_aniReposBoxName).values,
+        };
+        final entriesByPkg = <String, AniyomiRepoEntry>{};
+        for (final url in repoUrls) {
+          try {
+            for (final e in await _fetchAniyomiIndex(url)) {
+              entriesByPkg.putIfAbsent(e.pkg, () => e);
+            }
+          } catch (_) {} // fetchIndex never throws, but stay defensive
+        }
+        for (final pkg in missing) {
+          final entry = entriesByPkg[pkg];
+          if (entry == null) {
+            failures.add('Aniyomi extension: $pkg');
+            continue;
+          }
+          // installFromRepo never throws — [] means the install failed.
+          final providers = await _ani.installFromRepo(entry);
+          if (providers.isEmpty) failures.add('Aniyomi extension: ${entry.name}');
+        }
       }
     }
 
@@ -140,6 +249,33 @@ class SourcesBackup {
         if (r is Map) (r['url'] ?? '').toString(),
     ].where((u) => u.isNotEmpty).toList();
   }
+
+  /// Every installed CloudStream plugin as `{internalName, repoUrl}`, resolved
+  /// by checking each repo catalog entry against the live install state.
+  List<Map<String, String>> _installedCsPlugins() {
+    final cs = _cs;
+    if (cs == null) return const [];
+    return [
+      for (final g in cs.repoGroups)
+        for (final m in g.catalog)
+          if (cs.isPluginInstalled(m.internalName, repoUrl: g.url))
+            {'internalName': m.internalName, 'repoUrl': g.url},
+    ];
+  }
+
+  /// Tracked Aniyomi repo base URLs (empty when the box isn't open).
+  List<String> _readAniyomiRepoUrls() => Hive.isBoxOpen(_aniReposBoxName)
+      ? Hive.box<String>(_aniReposBoxName).values.toList()
+      : const [];
+
+  /// Installed Aniyomi extension package names (empty when the box isn't open).
+  List<String> _readAniyomiPkgs() =>
+      Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)
+          ? Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
+              .keys
+              .map((k) => k.toString())
+              .toList()
+          : const [];
 
   /// Reads the `provider_settings` Hive box as `{compositeKey: settingsMap}`.
   Map<String, dynamic> _readProviderSettings() {
