@@ -355,8 +355,8 @@ class _HomeViewState extends State<_HomeView> {
                 ),
               ),
             ),
-            _notificationBell(context),
-            const SizedBox(width: 10),
+            // Header bell is parked for now (design TBD) — re-add
+            // `_notificationBell(context)` here once one is chosen.
             BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
@@ -373,6 +373,10 @@ class _HomeViewState extends State<_HomeView> {
   /// Flat bell → Notifications screen. The accent dot shows while any
   /// announcement is unseen and clears itself reactively (the screen calls
   /// markAllSeen, the Hive box updates, the listenable rebuilds).
+  ///
+  /// Currently unwired — the header bell is parked until a design is chosen
+  /// (mockups in docs/mockups/bell-options.html).
+  // ignore: unused_element
   Widget _notificationBell(BuildContext context) {
     // Built fresh inside the listenable's builder — a captured widget
     // instance would be canonical and the rebuild would be skipped.
