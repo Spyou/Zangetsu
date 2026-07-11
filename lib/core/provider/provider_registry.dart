@@ -334,14 +334,18 @@ class ProviderRegistry {
   /// Loads every enabled installed entry into the runtime. Best-effort:
   /// per-entry failures are logged, not thrown, so one broken provider
   /// doesn't sink the app.
-  Future<List<String>> loadAll({bool force = false}) async {
+  Future<List<String>> loadAll({bool force = false, Duration? perEntryTimeout}) async {
     final loaded = <String>[];
     for (final entry in getAll()) {
       if (!entry.enabled) continue;
       try {
-        await _loadEntryIntoRuntime(entry, force: force);
+        final load = _loadEntryIntoRuntime(entry, force: force);
+        await (perEntryTimeout == null ? load : load.timeout(perEntryTimeout));
         loaded.add(providerKey(entry.originRepoUrl, entry.name));
       } catch (e) {
+        // Includes TimeoutException: a provider whose JS load HANGS (an infinite
+        // loop / flutter_js stall) is skipped rather than trapping the loop — and,
+        // upstream, the splash. A provider that just throws was already skipped.
         debugPrint('[ProviderRegistry] failed to load ${entry.name}: $e');
       }
     }

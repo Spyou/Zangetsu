@@ -280,7 +280,29 @@ Future<void> initDependencies() async {
   // legacy `bundled://` entries left by older installs, then load the
   // repo-installed providers persisted from previous launches.
   await registry.purgeBundled();
-  await registry.loadAll();
+  // Load repo-installed JS providers into the runtime. Bounded so a provider
+  // whose JS HANGS (flutter_js can deadlock) can't trap the splash — the
+  // reported "stuck on the splash for minutes":
+  //   • per-entry cap → one bad source is skipped, never fatal to the rest;
+  //   • total cap → if the whole step is still running (e.g. a runtime
+  //     deadlock), boot NOW and let the rest finish in the BACKGROUND, then
+  //     restore the saved active source + refresh Home so their content shows
+  //     without a relaunch.
+  // Normal boots load in ~1-2s, well under both caps, so this is a no-op there.
+  final providerLoad =
+      registry.loadAll(perEntryTimeout: const Duration(seconds: 6));
+  await providerLoad.timeout(const Duration(seconds: 8), onTimeout: () {
+    debugPrint('[boot] provider load exceeded 8s — booting now; '
+        'remaining providers finish in the background');
+    providerLoad.whenComplete(() {
+      if (sl.isRegistered<ActiveSourceCubit>()) {
+        sl<ActiveSourceCubit>()
+            .reapplySaved((id) => manager.installedIds.contains(id));
+      }
+      if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load();
+    });
+    return const <String>[];
+  });
 
   // Push every saved per-provider settings row into the runtime so the
   // first provider call sees the user's choices. Strip the repoUrl prefix
