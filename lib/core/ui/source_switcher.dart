@@ -170,19 +170,20 @@ class SourceSwitcher extends StatelessWidget {
   Widget build(BuildContext context) {
     final (tag, tagColor, name) = _tagAndName;
     // Hairline micro-capsule: outline only (the hero shows through), a tiny
-    // colored ecosystem tag, then the source name. FIXED width — a long name
-    // ellipsizes inside instead of growing the capsule and squeezing the
-    // wordmark on the left.
+    // colored ecosystem tag, then the source name. Hugs the text — but capped
+    // at 150px so a long name ellipsizes inside instead of growing the
+    // capsule and squeezing the wordmark on the left.
     return GestureDetector(
       onTap: () => showPicker(context),
       child: Container(
-        width: 150,
+        constraints: const BoxConstraints(maxWidth: 150),
         padding: const EdgeInsets.fromLTRB(11, 4, 7, 4),
         decoration: BoxDecoration(
           border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               tag,
@@ -194,7 +195,7 @@ class SourceSwitcher extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 6),
-            Expanded(
+            Flexible(
               child: Text(
                 name,
                 maxLines: 1,
