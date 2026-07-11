@@ -86,7 +86,11 @@ class _CsPhoneView extends StatelessWidget {
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
-        body: const TabBarView(
+        // NOT const: a const TabBarView is canonicalized, so the outer
+        // ListenableBuilder's rebuild would hand Flutter the identical subtree
+        // and skip it — the install/enable state would never refresh. A fresh
+        // instance lets the manager's notifyListeners() reach the tabs.
+        body: TabBarView(
           children: [
             _CsInstalledTab(),
             _CsReposTab(),
@@ -884,7 +888,11 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
 
   @override
   Widget build(BuildContext context) {
-    final installed = widget.installed;
+    // Read live from the manager (not the parent-computed widget.installed) so
+    // this row's own setState after _install/_uninstall reflects the new state
+    // immediately, even if the parent group hasn't rebuilt.
+    final installed = sl<CloudStreamManager>()
+        .isPluginInstalled(widget.plugin.internalName, repoUrl: widget.repoUrl);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
@@ -1993,7 +2001,11 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
 
   @override
   Widget build(BuildContext context) {
-    final installed = widget.installed;
+    // Read live from the manager (not the parent-computed widget.installed) so
+    // this row's own setState after _install/_uninstall reflects the new state
+    // immediately, even if the parent group hasn't rebuilt.
+    final installed = sl<CloudStreamManager>()
+        .isPluginInstalled(widget.plugin.internalName, repoUrl: widget.repoUrl);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
       child: Row(
