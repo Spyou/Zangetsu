@@ -67,7 +67,10 @@ const List<Language> kSubtitleLanguages = [
       aliases: ['Simplified', 'Traditional', 'Mandarin', 'Cantonese']),
   Language(name: 'Turkish',    iso1: 'tr', iso2: 'tur', native: ['Türkçe']),
   Language(name: 'Indonesian', iso1: 'id', iso2: 'ind',
-      native: ['Bahasa Indonesia']),
+      native: ['Bahasa Indonesia'],
+      // Sources overwhelmingly tag Indonesian subs with the country name
+      // ("Indonesia") or the short form ("Indo") rather than the language name.
+      aliases: ['Indonesia', 'Indo']),
   Language(name: 'Dutch',      iso1: 'nl', iso2: 'dut', iso2t: 'nld',
       native: ['Nederlands']),
   Language(name: 'Polish',     iso1: 'pl', iso2: 'pol', native: ['Polski']),

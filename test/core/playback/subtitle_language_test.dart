@@ -36,6 +36,14 @@ void main() {
       expect(matchesSourceLang('Simplified', _lang('zh')), isTrue);
       expect(matchesSourceLang('Latino', _lang('es')), isTrue);
     });
+    test('Indonesian by country name / short form (common sub labels)', () {
+      final id = _lang('id');
+      expect(matchesSourceLang('Indonesian', id), isTrue); // language name
+      expect(matchesSourceLang('Indonesia', id), isTrue); // country name
+      expect(matchesSourceLang('Indo', id), isTrue); // short form
+      expect(matchesSourceLang('Indonesia (Sub)', id), isTrue); // decorated
+      expect(matchesSourceLang('id', id), isTrue);
+    });
     test('region-suffixed codes tokenise', () {
       expect(matchesSourceLang('pt-BR', _lang('pt')), isTrue);
       expect(matchesSourceLang('fr-FR', _lang('fr')), isTrue);
