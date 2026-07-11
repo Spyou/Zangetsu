@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -21,8 +21,10 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
+import '../notify/subscriptions_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
 import '../update/update_dialog.dart';
 import '../../core/ui/content_row.dart';
@@ -353,6 +355,8 @@ class _HomeViewState extends State<_HomeView> {
                 ),
               ),
             ),
+            _notificationBell(context),
+            const SizedBox(width: 10),
             BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
@@ -363,6 +367,55 @@ class _HomeViewState extends State<_HomeView> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Flat bell → Notifications screen. The accent dot shows while any
+  /// announcement is unseen and clears itself reactively (the screen calls
+  /// markAllSeen, the Hive box updates, the listenable rebuilds).
+  Widget _notificationBell(BuildContext context) {
+    // Built fresh inside the listenable's builder — a captured widget
+    // instance would be canonical and the rebuild would be skipped.
+    Widget bell() => GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+                builder: (_) => const SubscriptionsScreen()),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(4),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 24,
+                  color: Colors.white,
+                ),
+                if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
+                    AnnouncementStore().unseenCount() > 0)
+                  Positioned(
+                    top: 1,
+                    right: 2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.accent,
+                        border: Border.all(color: AppColors.bg, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+    // Rebuild the dot when the announcements box changes (e.g. markAllSeen).
+    if (!Hive.isBoxOpen(AnnouncementStore.boxName)) return bell();
+    return ValueListenableBuilder(
+      valueListenable: Hive.box(AnnouncementStore.boxName).listenable(),
+      builder: (context, _, child) => bell(),
     );
   }
 

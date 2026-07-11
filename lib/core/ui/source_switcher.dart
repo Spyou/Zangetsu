@@ -134,47 +134,82 @@ class SourceSwitcher extends StatelessWidget {
   /// Installed + enabled providers bucketed by category (shared helper).
   SourceBuckets _buckets() => categorizedSources();
 
-  String get _label {
+  // Ecosystem signature colors for the chip tag (CS blue / Aniyomi purple /
+  // Zangetsu coral).
+  static const Color _csColor = Color(0xFF7EA2FF);
+  static const Color _aniColor = Color(0xFFBB8CFF);
+
+  /// Short colored ecosystem tag + source name for the chip. The tag replaces
+  /// the old "CS · " name prefix: still text (a colored dot alone was too
+  /// cryptic), but tiny and tinted per ecosystem.
+  (String, Color, String) get _tagAndName {
     if (currentId.startsWith('cs:')) {
-      final cs = sl<CloudStreamManager>().get(currentId);
-      final name = cs?.displayName;
-      if (name != null && name.isNotEmpty) return 'CS · $name';
-      return currentId;
+      final name = sl<CloudStreamManager>().get(currentId)?.displayName;
+      return (
+        'CS',
+        _csColor,
+        (name != null && name.isNotEmpty) ? name : currentId,
+      );
     }
     if (currentId.startsWith('ani:')) {
       final name = sl<AniyomiManager>().get(currentId)?.displayName;
-      if (name != null && name.isNotEmpty) return 'Ani · $name';
-      return currentId;
+      return (
+        'ANI',
+        _aniColor,
+        (name != null && name.isNotEmpty) ? name : currentId,
+      );
     }
     final entry = sl<ProviderRegistry>().entryFor(currentId);
-    if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
-    return entry?.name ?? currentId;
+    final name = (entry != null && entry.displayName.isNotEmpty)
+        ? entry.displayName
+        : (entry?.name ?? currentId);
+    return ('ZAN', AppColors.accent, name);
   }
 
   @override
   Widget build(BuildContext context) {
+    final (tag, tagColor, name) = _tagAndName;
+    // Hairline micro-capsule: outline only (the hero shows through), a tiny
+    // colored ecosystem tag, then the source name. FIXED width — a long name
+    // ellipsizes inside instead of growing the capsule and squeezing the
+    // wordmark on the left.
     return GestureDetector(
       onTap: () => showPicker(context),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        width: 150,
+        padding: const EdgeInsets.fromLTRB(11, 4, 7, 4),
         decoration: BoxDecoration(
-          color: AppColors.surface2,
-          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _label,
-              style: AppText.body.copyWith(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.w600,
+              tag,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.4,
+                color: tagColor,
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.body.copyWith(
+                  fontSize: 12.5,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 3),
             const Icon(
               Icons.keyboard_arrow_down,
-              size: 16,
+              size: 15,
               color: AppColors.textSecondary,
             ),
           ],
