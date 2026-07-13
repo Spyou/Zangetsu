@@ -225,84 +225,17 @@ class SourceSwitcher extends StatelessWidget {
   void showPicker(BuildContext context) {
     final b = _buckets();
 
-    void choose(BuildContext ctx, String id) {
-      Navigator.of(ctx).pop();
-      onChanged(id);
-    }
-
-    Widget rowFor(BuildContext ctx, ({String id, String label, String? repo}) src) =>
-        _SourceRow(
-          label: src.label,
-          repo: src.repo,
-          isActive: src.id == currentId,
-          onTap: () => choose(ctx, src.id),
-        );
-
-    // A scrollable flat list for a single tab.
-    Widget flat(BuildContext ctx, List<({String id, String label, String? repo})> rows) {
-      if (rows.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('No sources here', style: AppText.body),
-          ),
-        );
-      }
-      return ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.zero,
-        children: [for (final s in rows) rowFor(ctx, s)],
-      );
-    }
-
-    // The "All" tab: each bucket under its own header.
-    Widget grouped(BuildContext ctx) {
-      Widget header(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-        child: Text(
-          t.toUpperCase(),
-          style: AppText.overline.copyWith(color: AppColors.textTertiary),
-        ),
-      );
-      final children = <Widget>[];
-      if (b.anime.isNotEmpty) {
-        children.add(header('Anime'));
-        children.addAll(b.anime.map((s) => rowFor(ctx, s)));
-      }
-      if (b.movies.isNotEmpty) {
-        children.add(header('Movies & Series'));
-        children.addAll(b.movies.map((s) => rowFor(ctx, s)));
-      }
-      if (b.nsfw.isNotEmpty) {
-        children.add(header('NSFW'));
-        children.addAll(b.nsfw.map((s) => rowFor(ctx, s)));
-      }
-      if (children.isEmpty) {
-        return Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('No enabled sources', style: AppText.body),
-          ),
-        );
-      }
-      return ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: children);
-    }
-
-    // Tabs: All, Anime, Movies/Series, and NSFW only when there are NSFW
-    // sources to show (Privacy toggle on).
-    final tabs = <({String title, Widget Function(BuildContext) body})>[
-      (title: 'All', body: grouped),
-      (title: 'Anime', body: (ctx) => flat(ctx, b.anime)),
-      (title: 'Movies/Series', body: (ctx) => flat(ctx, b.movies)),
-      if (b.nsfw.isNotEmpty) (title: 'NSFW', body: (ctx) => flat(ctx, b.nsfw)),
-    ];
-
     // The "All" tab is the tallest; size the sheet to it (so it's compact for a
     // few sources) but cap at 85% screen — TabBarView needs a bounded height.
     final screenH = MediaQuery.of(context).size.height;
     final headers = [b.anime, b.movies, b.nsfw].where((l) => l.isNotEmpty).length;
-    final allRows = b.anime.length + b.movies.length + b.nsfw.length + headers;
-    final sheetH = (24 + 48 + allRows * 52 + 24).clamp(240.0, screenH * 0.85);
+    final total = b.anime.length + b.movies.length + b.nsfw.length;
+    // Search only earns its space once there's a list worth filtering.
+    final showSearch = total > 6;
+    final searchH = showSearch ? 56 : 0;
+    final sheetH =
+        (24 + 48 + searchH + (total + headers) * 52 + 24)
+            .clamp(240.0, screenH * 0.85);
 
     showModalBottomSheet<void>(
       context: context,
@@ -311,47 +244,229 @@ class SourceSwitcher extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        return SafeArea(
-          child: SizedBox(
-            height: sheetH.toDouble(),
-            child: DefaultTabController(
-              length: tabs.length,
-              child: Column(
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12, bottom: 8),
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.textTertiary.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.start,
-                    padding: const EdgeInsets.only(left: 16),
-                    labelPadding: const EdgeInsets.only(right: 24),
-                    labelColor: AppColors.accent,
-                    unselectedLabelColor: AppColors.textSecondary,
-                    indicatorColor: AppColors.accent,
-                    indicatorSize: TabBarIndicatorSize.label,
-                    dividerColor: AppColors.hairline,
-                    labelStyle: AppText.body.copyWith(fontWeight: FontWeight.w600),
-                    tabs: [for (final t in tabs) Tab(text: t.title)],
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [for (final t in tabs) t.body(ctx)],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+      builder: (ctx) => _SourcePickerSheet(
+        buckets: b,
+        currentId: currentId,
+        height: sheetH.toDouble(),
+        showSearch: showSearch,
+        onChoose: (id) {
+          Navigator.of(ctx).pop();
+          onChanged(id);
+        },
+      ),
+    );
+  }
+}
+
+/// True if a source [label] (or its origin [repo]) matches the search [query].
+/// Case-insensitive substring; a blank query matches everything.
+bool _sourcePickerMatches(String query, String label, String? repo) {
+  final q = query.trim().toLowerCase();
+  if (q.isEmpty) return true;
+  if (label.toLowerCase().contains(q)) return true;
+  return repo != null && repo.toLowerCase().contains(q);
+}
+
+/// The source-picker bottom sheet body. Stateful so the search field can filter
+/// the tab lists live. Tab set (All / Anime / Movies / NSFW) is fixed — only the
+/// rows inside each tab filter, so the [DefaultTabController] length is stable.
+class _SourcePickerSheet extends StatefulWidget {
+  const _SourcePickerSheet({
+    required this.buckets,
+    required this.currentId,
+    required this.height,
+    required this.showSearch,
+    required this.onChoose,
+  });
+
+  final SourceBuckets buckets;
+  final String currentId;
+  final double height;
+  final bool showSearch;
+  final void Function(String id) onChoose;
+
+  @override
+  State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
+}
+
+class _SourcePickerSheetState extends State<_SourcePickerSheet> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<({String id, String label, String? repo})> _filter(
+    List<({String id, String label, String? repo})> rows,
+  ) =>
+      [for (final s in rows) if (_sourcePickerMatches(_query, s.label, s.repo)) s];
+
+  Widget _rowFor(({String id, String label, String? repo}) src) => _SourceRow(
+        label: src.label,
+        repo: src.repo,
+        isActive: src.id == widget.currentId,
+        onTap: () => widget.onChoose(src.id),
+      );
+
+  Widget _empty(String message) => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(message, style: AppText.body, textAlign: TextAlign.center),
+        ),
+      );
+
+  // A scrollable flat list for a single tab.
+  Widget _flat(List<({String id, String label, String? repo})> all) {
+    final rows = _filter(all);
+    if (rows.isEmpty) {
+      return _empty(_query.trim().isEmpty ? 'No sources here' : 'No matches');
+    }
+    return ListView(
+      shrinkWrap: true,
+      padding: EdgeInsets.zero,
+      children: [for (final s in rows) _rowFor(s)],
+    );
+  }
+
+  // The "All" tab: each (filtered) bucket under its own header.
+  Widget _grouped() {
+    final b = widget.buckets;
+    Widget header(String t) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+          child: Text(
+            t.toUpperCase(),
+            style: AppText.overline.copyWith(color: AppColors.textTertiary),
           ),
         );
-      },
+    final anime = _filter(b.anime);
+    final movies = _filter(b.movies);
+    final nsfw = _filter(b.nsfw);
+    final children = <Widget>[];
+    if (anime.isNotEmpty) {
+      children.add(header('Anime'));
+      children.addAll(anime.map(_rowFor));
+    }
+    if (movies.isNotEmpty) {
+      children.add(header('Movies & Series'));
+      children.addAll(movies.map(_rowFor));
+    }
+    if (nsfw.isNotEmpty) {
+      children.add(header('NSFW'));
+      children.addAll(nsfw.map(_rowFor));
+    }
+    if (children.isEmpty) {
+      return _empty(_query.trim().isEmpty ? 'No enabled sources' : 'No matches');
+    }
+    return ListView(shrinkWrap: true, padding: EdgeInsets.zero, children: children);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.buckets;
+    // Tabs: All, Anime, Movies/Series, and NSFW only when there are NSFW
+    // sources to show (Privacy toggle on).
+    final tabs = <({String title, Widget Function() body})>[
+      (title: 'All', body: _grouped),
+      (title: 'Anime', body: () => _flat(b.anime)),
+      (title: 'Movies/Series', body: () => _flat(b.movies)),
+      if (b.nsfw.isNotEmpty) (title: 'NSFW', body: () => _flat(b.nsfw)),
+    ];
+
+    return SafeArea(
+      child: SizedBox(
+        height: widget.height,
+        child: DefaultTabController(
+          length: tabs.length,
+          child: Column(
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              if (widget.showSearch)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: _PickerSearchField(
+                    controller: _searchCtrl,
+                    onChanged: (q) => setState(() => _query = q),
+                  ),
+                ),
+              TabBar(
+                isScrollable: true,
+                tabAlignment: TabAlignment.start,
+                padding: const EdgeInsets.only(left: 16),
+                labelPadding: const EdgeInsets.only(right: 24),
+                labelColor: AppColors.accent,
+                unselectedLabelColor: AppColors.textSecondary,
+                indicatorColor: AppColors.accent,
+                indicatorSize: TabBarIndicatorSize.label,
+                dividerColor: AppColors.hairline,
+                labelStyle: AppText.body.copyWith(fontWeight: FontWeight.w600),
+                tabs: [for (final t in tabs) Tab(text: t.title)],
+              ),
+              Expanded(
+                child: TabBarView(children: [for (final t in tabs) t.body()]),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact search field for the picker sheet (self-contained so `core/ui` does
+/// not depend on the `features/sources` search widget).
+class _PickerSearchField extends StatelessWidget {
+  const _PickerSearchField({required this.controller, required this.onChanged});
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      onChanged: onChanged,
+      style: AppText.body,
+      cursorColor: AppColors.accent,
+      decoration: InputDecoration(
+        hintText: 'Search sources',
+        hintStyle: AppText.body.copyWith(color: AppColors.textSecondary),
+        prefixIcon:
+            const Icon(Icons.search, color: AppColors.textSecondary, size: 20),
+        suffixIcon: controller.text.isEmpty
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close,
+                    color: AppColors.textSecondary, size: 18),
+                onPressed: () {
+                  controller.clear();
+                  onChanged('');
+                },
+              ),
+        isDense: true,
+        filled: true,
+        fillColor: AppColors.surface2,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+        ),
+      ),
     );
   }
 }
