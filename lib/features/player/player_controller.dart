@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle, PlatformException;
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -30,6 +28,8 @@ import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
+import 'engine/mpv_engine.dart';
+import 'engine/playback_engine.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
@@ -212,24 +212,27 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
   String _activeCategory;
 
-  final Player player = Player();
-  late final VideoController videoController = VideoController(
-    player,
-    configuration: VideoControllerConfiguration(
-      // Pin hardware decoding (media_kit's default, made explicit) — smoother
-      // high-res playback + less battery/heat. media_kit auto-falls back to
-      // software decode if the device can't hardware-decode a codec.
-      enableHardwareAcceleration: true,
-      // TV-ONLY: cap the video OUTPUT to 720p. On old TVs the frame is still
-      // hardware-decoded, but the weak GPU chokes compositing a full 1080p/4K
-      // texture every frame → visible playback lag. Capping the render size is
-      // media_kit's documented performance lever ("substantial performance
-      // improvements if a small width & height is specified"). Phones are
-      // untouched — null keeps full-resolution output as before.
-      width: sl<AppMode>().isTv ? 1280 : null,
-      height: sl<AppMode>().isTv ? 720 : null,
-    ),
-  );
+  /// The active playback engine. Phase 1: always MpvEngine (constructed here).
+  /// Phase 2: assigned by EngineRouter and swappable for fallback.
+  late final PlaybackEngine engine = MpvEngine(isTv: sl<AppMode>().isTv);
+
+  // TEMPORARY during migration: existing code still references `player` /
+  // `videoController`. These delegate to the mpv engine and are deleted in Task 6.
+  Player get player => (engine as MpvEngine).rawPlayer;
+  VideoController get videoController => (engine as MpvEngine).rawVideoController;
+
+  ValueListenable<Duration> get positionListenable => engine.position;
+  ValueListenable<Duration> get durationListenable => engine.duration;
+  ValueListenable<bool> get playingListenable => engine.playing;
+  ValueListenable<bool> get bufferingListenable => engine.buffering;
+  ValueListenable<double> get rateListenable => engine.rate;
+  ValueListenable<int> get videoWidthListenable => engine.videoWidth;
+
+  Duration get position => engine.position.value;
+  Duration get duration => engine.duration.value;
+  bool get playing => engine.playing.value;
+  double get rate => engine.rate.value;
+  int get videoWidth => engine.videoWidth.value;
 
   /// Bumped whenever the subtitle style changes (or a source opens). The player
   /// screen listens to rebuild the Video's [SubtitleViewConfiguration] — media_kit
@@ -246,11 +249,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     _toastTimer?.cancel();
     _toastTimer = Timer(const Duration(seconds: 2), () => toast.value = null);
   }
-
-  /// One-shot mpv tuning, started on first access and awaited before every
-  /// [_open]. Must complete BEFORE `player.open` or its demuxer options (e.g.
-  /// the HLS fake-extension relaxation) don't apply to the file being opened.
-  late final Future<void> _mpvConfigured = _configureMpv();
 
   VideoSource?
   _hlsMaster; // the HLS master among `sources` that the quality menu expands
@@ -401,128 +399,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  /// mpv HTTP tuning so remote MP4s (e.g. 4khdhub file hosts) seek/resume
-  /// reliably: force-seekable treats them as seekable even when the host omits
-  /// Accept-Ranges, and the reconnect options recover the connection that many
-  /// hosts drop on a seek (which otherwise restarts playback at 0). HLS already
-  /// seeks fine; this is what lets the MP4 mirrors behave like they do in
-  /// ExoPlayer-based apps.
-  Future<void> _configureMpv() async {
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('force-seekable', 'yes');
-        await p.setProperty(
-          'stream-lavf-o',
-          'reconnect=1,reconnect_streamed=1,'
-              'reconnect_on_network_error=1,reconnect_delay_max=5',
-        );
-        // HLS workarounds for anti-leech CDNs (AnimeSalt/AnimixStream, …):
-        //  • extension_picky=0 + allowed_extensions=ALL — segments are disguised
-        //    with non-media extensions (.js/.css/.woff); FFmpeg 7 otherwise
-        //    rejects them by URL extension (segment bytes are still validated).
-        //  • http_persistent=0 — these CDNs break FFmpeg's HLS keepalive
-        //    ("keepalive request failed … Invalid argument"), which corrupts the
-        //    sub-playlist/segment fetches ("parse_playlist error Invalid data").
-        //    Forcing a fresh connection per request fixes playback.
-        //  • analyzeduration=2000000 (2s) — cap FFmpeg's pre-play stream probe
-        //    so the first frame appears sooner. 2s is ample to detect audio+
-        //    video on normal streams; raise it if a source ever loses a track.
-        await p.setProperty(
-          'demuxer-lavf-o',
-          'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
-              'analyzeduration=2000000',
-        );
-        // ── Anti-buffering: prefetch a LARGE read-ahead. ──────────────────
-        // mpv's default read-ahead is ~1s, so any CDN/network dip — made worse
-        // by http_persistent=0's per-segment reconnects — stalls playback
-        // instantly. Buffering ~30–60s ahead absorbs those dips. Playback still
-        // starts as soon as there's enough to begin, then keeps filling ahead,
-        // so this doesn't slow startup; ~128 MiB forward buffer is fine on phones.
-        await p.setProperty('cache', 'yes');
-        await p.setProperty('cache-secs', '60');
-        await p.setProperty('demuxer-readahead-secs', '60');
-        await p.setProperty('demuxer-max-bytes', '128MiB');
-        await p.setProperty('demuxer-max-back-bytes', '48MiB');
-        // ── A/V stays in sync after a mid-stream stall. ───────────────────────
-        // Symptom this fixes: a movie/episode freezes mid-playback (host throttle
-        // or a brief dip — not a visible "buffering"), and on recovery the audio
-        // runs AHEAD of the picture. Cause: Android's DIRECT mediacodec decoder
-        // freezes its last frame on the output surface during the hiccup while
-        // the audio track keeps draining, so audio ends up seconds ahead and
-        // mpv's default A/V sync (~0.1s/frame) can't claw it back. COPY mode
-        // routes frames through mpv's own pipeline, timed against the audio
-        // clock, so it drops/resyncs cleanly after a stall — the robustness
-        // ExoPlayer/CloudStream get from decoder fallback + shared-clock
-        // renderers. Still hardware-decoded; mpv falls back to software per-codec
-        // if a device can't hw-decode it.
-        await p.setProperty('hwdec', 'mediacodec-copy');
-        // On a cache underrun, pause audio+video together and wait until a little
-        // is rebuffered before resuming, so they restart in lock-step instead of
-        // audio-ahead (mirrors ExoPlayer's buffer-for-playback-after-rebuffer).
-        await p.setProperty('cache-pause', 'yes');
-        await p.setProperty('cache-pause-wait', '2');
-        // ── In-app volume + boost (CloudStream-style). The gain is a SOFTWARE
-        // audio filter (af=volume=N), so a >100% boost is genuinely louder than
-        // the source even when the phone's system volume is low. ────────────
-        await p.setProperty('volume-max', '200');
-        await p.setProperty('volume', '100'); // neutral base — gain is via af
-        await p.setProperty('af', _audioFilterChain());
-      } catch (_) {}
-      // Make the bundled subtitle fonts available to mpv/libass (which can't
-      // read Flutter's asset bundle). Fire-and-forget so it never delays the
-      // first open; the font picker just works once it's done.
-      unawaited(_setupSubtitleFonts(p));
-    }
-  }
-
-  // Extract-once guard (static: shared across player instances this session).
-  static bool _subFontsExtracted = false;
-
-  /// Copy the app's bundled .ttf subtitle fonts to a real on-disk folder and
-  /// point mpv/libass at it via `sub-fonts-dir`, so `sub-font` (the Subtitle
-  /// style picker) can actually resolve them. Best-effort, never throws.
-  Future<void> _setupSubtitleFonts(NativePlayer p) async {
-    try {
-      final dir = Directory(
-        '${(await getApplicationSupportDirectory()).path}/sub_fonts',
-      );
-      if (!_subFontsExtracted) {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        const fontAssets = <String>[
-          'assets/fonts/Inter.ttf',
-          'assets/fonts/Poppins-Regular.ttf',
-          'assets/fonts/Roboto-Regular.ttf',
-          'assets/fonts/OpenSans-Regular.ttf',
-          'assets/fonts/Lato-Regular.ttf',
-          'assets/fonts/Montserrat-Regular.ttf',
-          'assets/fonts/Nunito-Regular.ttf',
-          'assets/fonts/Rubik-Regular.ttf',
-          'assets/fonts/NotoSans-Regular.ttf',
-          'assets/fonts/SourceSans3-Regular.ttf',
-        ];
-        for (final a in fontAssets) {
-          final out = File('${dir.path}/${a.split('/').last}');
-          if (!out.existsSync()) {
-            try {
-              final data = await rootBundle.load(a);
-              await out.writeAsBytes(data.buffer.asUint8List(), flush: true);
-            } catch (_) {}
-          }
-        }
-        _subFontsExtracted = true;
-      }
-      // 'auto' → on Android (no fontconfig) libass uses the embedded provider,
-      // which scans sub-fonts-dir; the family name in sub-font then matches.
-      await p.setProperty('sub-fonts-dir', dir.path);
-      await p.setProperty('sub-font-provider', 'auto');
-    } catch (_) {}
-  }
-
   void init(int index) {
-    // Start mpv tuning now; [_open] awaits it before opening so the options
-    // (HLS fake-extension relaxation, reconnect, …) are in effect for the file.
-    unawaited(_mpvConfigured);
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -1424,10 +1301,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     // resume until we've actually reached it; otherwise honor seekTo / the mark.
     final base = (seekTo != null && seekTo > Duration.zero) ? seekTo : resumeAt;
     final start = _pendingResume > base ? _pendingResume : base;
-    // Ensure mpv tuning (incl. the HLS fake-extension relaxation) is applied
-    // before opening — otherwise the first file opens without it (black screen
-    // on AnimeSalt/AnimixStream-style streams).
-    await _mpvConfigured;
     // HLS needs the fake-extension relaxation + per-segment reconnect
     // (http_persistent=0) for anti-leech CDNs. But forcing http_persistent=0 on
     // a progressive MP4 makes file-hosts throttle/drop it mid-stream (a fresh
@@ -1807,37 +1680,15 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Set the in-app volume (0–200%) via mpv's own 'volume' property — this is
   /// independent of the Android system volume — and persist it as the default.
   Future<void> setVolumeBoost(int percent) async {
-    await sl<PlaybackPrefs>().setVolumeBoost(percent.clamp(0, 200));
-    await _applyAudioFilters();
+    await engine.setVolumeBoost(percent);
   }
 
-  /// The mpv audio-filter chain from prefs. `volume=N` is a SOFTWARE gain on the
-  /// decoded audio (applied inside libmpv, before the output) — so a >100% boost
-  /// is genuinely louder than the source, independent of the Android system
-  /// volume. dynaudnorm runs first so the user's boost isn't normalized away.
-  String _audioFilterChain() {
-    final prefs = sl<PlaybackPrefs>();
-    final parts = <String>[];
-    if (prefs.audioNormalize) parts.add('dynaudnorm');
-    if (prefs.volumeBoost != 100) {
-      parts.add('volume=${(prefs.volumeBoost / 100).toStringAsFixed(2)}');
-    }
-    return parts.join(',');
-  }
-
-  Future<void> _applyAudioFilters() async {
-    final p = player.platform;
-    if (p is! NativePlayer) return;
-    try {
-      await p.setProperty('af', _audioFilterChain());
-    } catch (_) {}
-  }
-
-  /// Toggle dynamic audio normalization (mpv 'dynaudnorm' filter) and persist.
+  /// Toggle dynamic audio normalization (mpv 'dynaudnorm' filter) and persist,
+  /// then re-apply the audio-filter chain (built inside the engine).
   Future<void> toggleAudioNormalize() async {
     final prefs = sl<PlaybackPrefs>();
     await prefs.setAudioNormalize(!prefs.audioNormalize);
-    await _applyAudioFilters();
+    await engine.setVolumeBoost(prefs.volumeBoost);
   }
 
   Future<void> _persist({bool flush = false}) async {
