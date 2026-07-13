@@ -67,6 +67,24 @@ List<ComingSoonEntry> onlyUpcoming(List<ComingSoonEntry> all, DateTime now) {
       .toList();
 }
 
+/// Groups coming-soon entries by their local release day (dated only — TBA
+/// entries with a null date are dropped since they can't sit on the calendar).
+/// Each day's list is sorted by title. Used by the Schedule month/week grid.
+Map<DateTime, List<ComingSoonEntry>> groupSoonByLocalDay(
+    List<ComingSoonEntry> entries) {
+  final map = <DateTime, List<ComingSoonEntry>>{};
+  for (final e in entries) {
+    final d = e.releaseDate;
+    if (d == null) continue;
+    final day = DateTime(d.year, d.month, d.day);
+    (map[day] ??= []).add(e);
+  }
+  for (final list in map.values) {
+    list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+  }
+  return map;
+}
+
 /// Fetches upcoming movies + on-the-air TV from TMDB (key added by the Dio
 /// interceptor for Tmdb.host). Returns `[]` on any error.
 class ComingSoonService {

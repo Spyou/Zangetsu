@@ -188,16 +188,37 @@ class _FakeDownloadPrefs extends DownloadPrefs {
 /// ScheduleCubit that calls these on `..load()`. Override with immediate
 /// empty results so no real Dio call happens — the nav test only cares that
 /// the destination exists, not what it renders.
+// Return one entry (not empty): the ScheduleCubit now retries with real
+// backoff timers when a fetch comes back empty, and a pending timer would
+// trip the "Timer still pending" teardown check. The nav test only cares
+// that the destination exists, so any non-empty result is fine.
 class _FakeAiringService extends AiringService {
   _FakeAiringService() : super(Dio());
   @override
-  Future<List<AiringEntry>> weekAiring({DateTime? now}) async => const [];
+  Future<List<AiringEntry>> weekAiring({DateTime? now}) async => [
+        AiringEntry(
+          malId: 1,
+          title: 'x',
+          coverUrl: null,
+          episode: 1,
+          airsAtLocal: DateTime(2026),
+          format: 'TV',
+        ),
+      ];
 }
 
 class _FakeComingSoonService extends ComingSoonService {
   _FakeComingSoonService() : super(Dio());
   @override
-  Future<List<ComingSoonEntry>> upcoming() async => const [];
+  Future<List<ComingSoonEntry>> upcoming() async => const [
+        ComingSoonEntry(
+          tmdbId: 1,
+          isTv: false,
+          title: 'x',
+          posterUrl: null,
+          releaseDate: null,
+        ),
+      ];
 }
 
 /// [HomeScreen] fires a fire-and-forget announcement check on launch (see

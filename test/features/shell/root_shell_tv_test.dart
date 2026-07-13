@@ -197,16 +197,35 @@ class _FakeDownloadPrefs extends DownloadPrefs {
 /// [ScheduleScreen] (now a TV rail item — see root_shell_tv.dart) is built
 /// eagerly by the IndexedStack and calls these on `..load()`. Override with
 /// immediate empty results so no real Dio call happens.
+// Non-empty: the ScheduleCubit retries with real backoff timers on an empty
+// fetch, and a pending timer would trip the "Timer still pending" teardown.
 class _FakeAiringService extends AiringService {
   _FakeAiringService() : super(Dio());
   @override
-  Future<List<AiringEntry>> weekAiring({DateTime? now}) async => const [];
+  Future<List<AiringEntry>> weekAiring({DateTime? now}) async => [
+        AiringEntry(
+          malId: 1,
+          title: 'x',
+          coverUrl: null,
+          episode: 1,
+          airsAtLocal: DateTime(2026),
+          format: 'TV',
+        ),
+      ];
 }
 
 class _FakeComingSoonService extends ComingSoonService {
   _FakeComingSoonService() : super(Dio());
   @override
-  Future<List<ComingSoonEntry>> upcoming() async => const [];
+  Future<List<ComingSoonEntry>> upcoming() async => const [
+        ComingSoonEntry(
+          tmdbId: 1,
+          isTv: false,
+          title: 'x',
+          posterUrl: null,
+          releaseDate: null,
+        ),
+      ];
 }
 
 // ── Test ───────────────────────────────────────────────────────────────────

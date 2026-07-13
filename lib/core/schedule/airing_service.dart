@@ -14,6 +14,17 @@ const String _kAniListEndpoint = 'https://graphql.anilist.co';
   );
 }
 
+/// UTC-epoch-seconds window covering the whole calendar month that [anchorLocal]
+/// falls in (its 1st .. the 1st of the next month, exclusive).
+({int startSec, int endSec}) monthWindowUtc(DateTime anchorLocal) {
+  final start = DateTime(anchorLocal.year, anchorLocal.month, 1);
+  final end = DateTime(anchorLocal.year, anchorLocal.month + 1, 1);
+  return (
+    startSec: start.toUtc().millisecondsSinceEpoch ~/ 1000,
+    endSec: end.toUtc().millisecondsSinceEpoch ~/ 1000,
+  );
+}
+
 /// Maps `data['Page']['airingSchedules']` → entries (SFW, valid media only).
 List<AiringEntry> parseAiringSchedules(Map<String, dynamic> data) {
   final page = data['Page'];
@@ -107,20 +118,34 @@ query ($start: Int, $end: Int, $page: Int) {
 }''';
 
   /// Returns every SFW airing event in the next 7 days, or `[]` on any error.
-  Future<List<AiringEntry>> weekAiring({DateTime? now}) async {
+  Future<List<AiringEntry>> weekAiring({DateTime? now}) {
     final win = weekWindowUtc(now ?? DateTime.now());
+    return _fetchRange(win.startSec, win.endSec, maxPages: 10);
+  }
+
+  /// Every SFW airing event in the calendar month [anchor] falls in, or `[]`
+  /// on error. AniList only has confirmed slots ~2 weeks out, so later days are
+  /// sparse; cap pages so the fetch stays quick (skeleton covers the wait).
+  Future<List<AiringEntry>> monthAiring(DateTime anchor) {
+    final win = monthWindowUtc(anchor);
+    return _fetchRange(win.startSec, win.endSec, maxPages: 12);
+  }
+
+  /// Paginated AniList airingSchedules fetch for a UTC-epoch-seconds window.
+  /// Never throws — returns `[]` on any error.
+  Future<List<AiringEntry>> _fetchRange(
+    int startSec,
+    int endSec, {
+    required int maxPages,
+  }) async {
     final all = <AiringEntry>[];
     try {
-      for (var page = 1; page <= 10; page++) {
+      for (var page = 1; page <= maxPages; page++) {
         final res = await _dio.post<dynamic>(
           _kAniListEndpoint,
           data: {
             'query': _query,
-            'variables': {
-              'start': win.startSec,
-              'end': win.endSec,
-              'page': page,
-            },
+            'variables': {'start': startSec, 'end': endSec, 'page': page},
           },
           options: Options(
             headers: const {
@@ -136,10 +161,9 @@ query ($start: Int, $end: Int, $page: Int) {
             : const <String, dynamic>{};
         all.addAll(parseAiringSchedules(root));
         final page0 = root['Page'];
-        final hasNext =
-            (page0 is Map && page0['pageInfo'] is Map)
-                ? page0['pageInfo']['hasNextPage'] == true
-                : false;
+        final hasNext = (page0 is Map && page0['pageInfo'] is Map)
+            ? page0['pageInfo']['hasNextPage'] == true
+            : false;
         if (!hasNext) break;
       }
     } catch (_) {

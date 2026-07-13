@@ -20,13 +20,12 @@ class _FS implements ComingSoonService { @override noSuchMethod(Invocation i) =>
 class _FM implements MyListStore { @override noSuchMethod(Invocation i) => super.noSuchMethod(i); }
 
 void main() {
-  testWidgets('renders Anime feed + Movies & TV tab', (tester) async {
-    // The Anime feed groups by local day, so key the seed to today's local
-    // midnight — keeps the test deterministic on any run date.
+  testWidgets('renders Anime timeline + Movies & TV segment', (tester) async {
+    // Key the seed to today's local midnight so the selected day matches.
     final n = DateTime.now();
     final today = DateTime(n.year, n.month, n.day);
     final seed = ScheduleState(
-      airingAll: const [],
+      selectedDay: today,
       airingByDay: {
         today: [
           AiringEntry(malId: 1, title: 'My Anime', coverUrl: null, episode: 7,
@@ -34,9 +33,12 @@ void main() {
               format: 'TV'),
         ],
       },
-      comingSoon: const [
-        ComingSoonEntry(tmdbId: 5, isTv: false, title: 'Big Movie', posterUrl: null, releaseDate: null),
-      ],
+      soonByDay: {
+        today: [
+          ComingSoonEntry(tmdbId: 5, isTv: false, title: 'Big Movie',
+              posterUrl: null, releaseDate: today),
+        ],
+      },
       loadingAiring: false, loadingSoon: false,
     );
     await tester.pumpWidget(MaterialApp(
@@ -47,8 +49,8 @@ void main() {
     ));
     await tester.pumpAndSettle();
     expect(find.text('My Anime'), findsOneWidget);
-    expect(find.textContaining('Ep 7'), findsOneWidget);
-    // Switch to the Movies & TV tab.
+    expect(find.textContaining('Episode 7'), findsOneWidget);
+    // Switch to the Movies & TV segment.
     await tester.tap(find.text('Movies & TV'));
     await tester.pumpAndSettle();
     expect(find.text('Big Movie'), findsOneWidget);
