@@ -42,10 +42,21 @@ class _PosterCardState extends State<PosterCard> {
   void _handleTapUp(TapUpDetails _) => setState(() => _pressed = false);
   void _handleTapCancel() => setState(() => _pressed = false);
 
+  /// The Aniyomi source id for this cover, or null when the header is absent
+  /// or malformed. Parsing here (instead of inline with `!`/`int.parse`) keeps
+  /// a bad `x-ani-src` value or a null cover from throwing during build — an
+  /// unhandled throw here renders the whole card as Flutter's grey error box.
+  int? get _aniSrcId {
+    final raw = widget.headers?['x-ani-src'];
+    if (raw == null || widget.imageUrl == null) return null;
+    return int.tryParse(raw);
+  }
+
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final memW = (widget.cellWidth * dpr).round();
+    final aniSrcId = _aniSrcId;
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
@@ -68,13 +79,13 @@ class _PosterCardState extends State<PosterCard> {
                     children: [
                       if (widget.imageUrl == null)
                         const ColoredBox(color: AppColors.surface2)
-                      else if (widget.headers?['x-ani-src'] != null)
+                      else if (aniSrcId != null)
                         // Aniyomi path: fetch bytes through the source's own
                         // OkHttpClient (carries CF session cookies) instead of
                         // going through CachedNetworkImage which can't pass CF.
                         Image(
                           image: AniyomiImage(
-                            int.parse(widget.headers!['x-ani-src']!),
+                            aniSrcId,
                             widget.imageUrl!,
                           ),
                           fit: BoxFit.cover,
