@@ -443,7 +443,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           final nowS = DateTime.now().millisecondsSinceEpoch;
           if (nowS - _lastResumeSeekMs > 2500) {
             _lastResumeSeekMs = nowS;
-            player.seek(_pendingResume);
+            engine.seek(_pendingResume);
           }
         }
         if (p > Duration.zero) {
@@ -495,7 +495,7 @@ class PlayerCubit extends Cubit<PlayerState> {
             // there; drop it so playback + saving proceed normally.
             _pendingResume = Duration.zero;
           } else if (_lastPos < _pendingResume) {
-            player.seek(_pendingResume);
+            engine.seek(_pendingResume);
           }
         }
         // Re-assert the subtitle preference ONCE at STATE_READY. A soft sub
@@ -553,13 +553,13 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   // ── Public playback helpers (used by the Netflix-style overlay) ───────────
 
-  void setRate(double r) => player.setRate(r);
+  void setRate(double r) => engine.setRate(r);
 
   /// Apply a USER-chosen playback speed and persist it — per-title (this
   /// movie/series) AND globally (so new titles start at the same preference).
   /// Best-effort; mirrors [_rememberQuality].
   void setRateRemembered(double r) {
-    player.setRate(r);
+    engine.setRate(r);
     final url = showUrl;
     if (url != null && url.isNotEmpty) {
       sl<TitlePrefsStore>().setSpeed(sourceId, url, r);
@@ -574,8 +574,12 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void togglePlay() {
     if (_isRoomViewer) return;
-    final willPlay = !player.state.playing;
-    player.playOrPause();
+    final willPlay = !playing;
+    if (willPlay) {
+      engine.play();
+    } else {
+      engine.pause();
+    }
     if (roomRole == RoomRole.host) {
       onLocalPlayback?.call(willPlay ? 'play' : 'pause', _lastPos);
     }
@@ -584,7 +588,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (_isRoomViewer) return;
     _pendingResume = Duration.zero; // user took control → drop the resume floor
     _markUserSeek(d);
-    player.seek(d);
+    engine.seek(d);
     if (roomRole == RoomRole.host) onLocalPlayback?.call('seek', d);
   }
 
@@ -598,7 +602,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         ? Duration.zero
         : (dur > Duration.zero && target > dur ? dur : target);
     _markUserSeek(clamped);
-    player.seek(clamped);
+    engine.seek(clamped);
     if (roomRole == RoomRole.host) onLocalPlayback?.call('seek', clamped);
   }
 
@@ -667,7 +671,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
 
   void setAudioTrack(AudioTrack t) {
-    player.setAudioTrack(t);
+    engine.selectAudioTrack(t.id);
     final url = showUrl;
     final pref = t.language ?? t.title ?? t.id;
     if (url != null && url.isNotEmpty && pref.isNotEmpty) {
@@ -692,7 +696,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (final t in mediaAudioTracks) {
       if ((t.language ?? '').toLowerCase() == p ||
           (t.title ?? '').toLowerCase() == p) {
-        player.setAudioTrack(t);
+        engine.selectAudioTrack(t.id);
         _audioApplied = true;
         return;
       }
@@ -701,7 +705,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void setSubtitle(SubtitleTrack t) {
-    player.setSubtitleTrack(t);
+    engine.selectTextTrack(t.id);
     _wantedSubId = t.id;
     // Remember globally by language when we can resolve one; a track we can't
     // classify is a one-off pick that must not set a bad global default.
@@ -710,7 +714,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void subtitlesOff() {
-    player.setSubtitleTrack(SubtitleTrack.no());
+    engine.selectTextTrack(null);
     _wantedSubId = 'no';
     sl<PlaybackPrefs>().setSubtitlePreference('off');
   }
@@ -720,9 +724,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Load one of the source's soft-subs by URL.
   Future<void> setSoftSub(Subtitle s) async {
-    await player.setSubtitleTrack(
-      SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
-    );
+    await engine.addExternalSubtitle(s.url, language: s.lang);
     _wantedSubId = s.url;
     final lang = languageOfSource(s.lang) ?? languageOfSource(s.label ?? '');
     if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
@@ -730,7 +732,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Load an external subtitle file from disk (picked via file_picker).
   Future<void> setSubtitleFromFile(String path) async {
-    await player.setSubtitleTrack(SubtitleTrack.uri(path));
+    await engine.addExternalSubtitle(path);
     _wantedSubId = path;
   }
 
@@ -749,7 +751,7 @@ class PlayerCubit extends Cubit<PlayerState> {
 
     // 'off' → subtitles off on every video.
     if (prefRaw == 'off') {
-      player.setSubtitleTrack(SubtitleTrack.no());
+      engine.selectTextTrack(null);
       _wantedSubId = 'no';
       _subApplied = true;
       return;
@@ -768,9 +770,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     final soft = pickPreferredSub(softSubs, prefLang);
     if (soft != null) {
-      player.setSubtitleTrack(
-        SubtitleTrack.uri(soft.url, title: soft.label ?? soft.lang, language: soft.lang),
-      );
+      engine.addExternalSubtitle(soft.url, language: soft.lang);
       _wantedSubId = soft.url;
       _subApplied = true;
       return;
@@ -779,7 +779,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       final tLang = t.language ?? '';
       final tTitle = t.title ?? '';
       if (matchesSourceLang(tLang, prefLang) || matchesSourceLang(tTitle, prefLang)) {
-        player.setSubtitleTrack(t);
+        engine.selectTextTrack(t.id);
         _wantedSubId = t.id;
         _subApplied = true;
         return;
@@ -836,13 +836,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           // Discard if the user moved to a different episode or a track was
           // already matched by the time the response arrived.
           if (capturedGen != _gen || _subApplied || subs.isEmpty) return;
-          await player.setSubtitleTrack(
-            SubtitleTrack.uri(
-              subs.first.url,
-              title: lang.name,
-              language: lang.iso2,
-            ),
-          );
+          await engine.addExternalSubtitle(subs.first.url, language: lang.iso2);
           _wantedSubId = subs.first.url;
           _subApplied = true;
         } catch (_) {
@@ -1388,7 +1382,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       final perTitle = (url != null && url.isNotEmpty)
           ? sl<TitlePrefsStore>().speed(sourceId, url)
           : null;
-      player.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
+      engine.setRate(perTitle ?? sl<PlaybackPrefs>().defaultSpeed);
     }
     // Seed the source's default subtitle ONLY in Auto mode. With a specific
     // language / Off preference, _tryApplySubPref is the sole authority —
@@ -1401,13 +1395,7 @@ class PlayerCubit extends Cubit<PlayerState> {
         (x) => x.isDefault,
         orElse: () => s.subtitles.first,
       );
-      await player.setSubtitleTrack(
-        SubtitleTrack.uri(
-          sub.url,
-          title: sub.label ?? sub.lang,
-          language: sub.lang,
-        ),
-      );
+      await engine.addExternalSubtitle(sub.url, language: sub.lang);
     }
     _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
     applySubtitleStyle(); // restore subtitle size/colour/background
@@ -1472,7 +1460,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _failoverFromStall() async {
     // Bail if playback recovered (position moved past the stall anchor) or
     // we're no longer buffering — it was just a slow network dip, not a death.
-    if (!player.state.buffering) return;
+    if (!engine.buffering.value) return;
     if (_lastPos > _stallAnchorPos + const Duration(seconds: 1)) return;
     if (_recovering) return;
     _recovering = true;
@@ -1517,7 +1505,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     // the resume, restart from 0, and reset the bad mark so the title plays.
     if ((_lastPos - before).abs() < const Duration(milliseconds: 600)) {
       _pendingResume = Duration.zero;
-      await player.seek(Duration.zero);
+      await engine.seek(Duration.zero);
       await resume.save(
         sourceId,
         _showKey,
@@ -1537,13 +1525,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (var attempt = 0; attempt < 20; attempt++) {
       await Future.delayed(const Duration(milliseconds: 750));
       if (g != _gen) return; // a newer open superseded this
-      final pos = player.state.position;
+      final pos = position;
       if ((pos - target).abs() <= const Duration(seconds: 8)) return; // reached
       // Seeking needs a KNOWN duration: remote MP4s (file hosts) report
       // duration only after mpv reads the moov atom, and a seek issued before
       // then is clamped to 0 — the "always starts from 0" bug. Wait for it.
-      final dur = player.state.duration;
-      if (dur > Duration.zero && target < dur) await player.seek(target);
+      final dur = duration;
+      if (dur > Duration.zero && target < dur) await engine.seek(target);
     }
   }
 
@@ -1805,11 +1793,11 @@ class PlayerCubit extends Cubit<PlayerState> {
     if ((_lastPos - position).abs() > const Duration(milliseconds: 2500)) {
       // Reuse the robust resume machinery so the seek lands on flaky hosts.
       _pendingResume = position;
-      await player.seek(position);
+      await engine.seek(position);
     }
-    if (rate != null && rate > 0) player.setRate(rate);
-    if (playing && !player.state.playing) player.play();
-    if (!playing && player.state.playing) player.pause();
+    if (rate != null && rate > 0) engine.setRate(rate);
+    if (playing && !engine.playing.value) engine.play();
+    if (!playing && engine.playing.value) engine.pause();
   }
 
   @override
