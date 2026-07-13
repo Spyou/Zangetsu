@@ -1084,13 +1084,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (master == null) return;
     // Target the variant by bitrate; 'max' for Auto (or when BANDWIDTH is
     // missing, since we can't pin precisely without it).
-    final target = (v == null || v.bandwidth <= 0) ? 'max' : '${v.bandwidth}';
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('hls-bitrate', target);
-      } catch (_) {}
-    }
+    await engine.setMaxVideoBitrate((v == null || v.bandwidth <= 0) ? 0 : v.bandwidth);
     await _open(
       VideoSource(
         url: master.url, // always the master — preserves the audio renditions
@@ -1575,22 +1569,12 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   Future<void> setSubtitleDelay(Duration d) async {
     subtitleDelay = d;
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('sub-delay', (d.inMilliseconds / 1000).toString());
-      } catch (_) {}
-    }
+    await engine.setSubtitleDelay(d);
   }
 
   Future<void> setAudioDelay(Duration d) async {
     audioDelay = d;
-    final p = player.platform;
-    if (p is NativePlayer) {
-      try {
-        await p.setProperty('audio-delay', (d.inMilliseconds / 1000).toString());
-      } catch (_) {}
-    }
+    await engine.setAudioDelay(d);
   }
 
   /// Re-apply the current sync offsets (mpv resets them on a new file).

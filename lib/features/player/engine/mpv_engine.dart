@@ -49,6 +49,10 @@ class MpvEngine implements PlaybackEngine {
   final _subs = <StreamSubscription>[];
   late final Future<void> _configured = _configure();
 
+  Tracks _lastTracks = const Tracks();
+  String? _activeAudioId;
+  String? _activeSubtitleId;
+
   void _wireStreams() {
     _subs.add(_player.stream.position.listen((v) => _position.value = v));
     _subs.add(_player.stream.duration.listen((v) => _duration.value = v));
@@ -59,19 +63,42 @@ class MpvEngine implements PlaybackEngine {
     _subs.add(_player.stream.width.listen((v) => _videoWidth.value = v ?? 0));
     // audio/text track mapping: convert media_kit tracks → EngineTrack.
     _subs.add(_player.stream.tracks.listen((t) {
-      _audioTracks.value = [
-        for (final a in t.audio)
-          EngineTrack(id: a.id, language: a.language ?? '', label: a.title),
-      ];
-      _textTracks.value = [
-        for (final s in t.subtitle)
-          EngineTrack(id: s.id, language: s.language ?? '', label: s.title),
-      ];
+      _lastTracks = t;
+      _rebuildTracks();
+    }));
+    // currently-active audio/subtitle track (drives EngineTrack.selected).
+    _subs.add(_player.stream.track.listen((t) {
+      _activeAudioId = t.audio.id;
+      _activeSubtitleId = t.subtitle.id;
+      _rebuildTracks();
     }));
     // media_kit surfaces errors via stream.error; treat as fatal-ish.
     _subs.add(_player.stream.error.listen(
       (msg) => _errors.add(EngineError(code: msg, framesRendered: true)),
     ));
+  }
+
+  /// Rebuild the exposed [EngineTrack] lists from the latest tracks list +
+  /// active track, so `.selected` reflects what mpv is actually playing.
+  void _rebuildTracks() {
+    _audioTracks.value = [
+      for (final a in _lastTracks.audio)
+        EngineTrack(
+          id: a.id,
+          language: a.language ?? '',
+          label: a.title,
+          selected: a.id == _activeAudioId,
+        ),
+    ];
+    _textTracks.value = [
+      for (final s in _lastTracks.subtitle)
+        EngineTrack(
+          id: s.id,
+          language: s.language ?? '',
+          label: s.title,
+          selected: s.id == _activeSubtitleId,
+        ),
+    ];
   }
 
   Future<void> _configure() async {
@@ -272,6 +299,39 @@ class MpvEngine implements PlaybackEngine {
 
   EngineSubtitleStyle _style = const EngineSubtitleStyle();
   final _styleRev = ValueNotifier<int>(0);
+
+  @override
+  Future<void> setSubtitleDelay(Duration delay) async {
+    final p = _player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty(
+            'sub-delay', (delay.inMilliseconds / 1000).toString());
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Future<void> setAudioDelay(Duration delay) async {
+    final p = _player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty(
+            'audio-delay', (delay.inMilliseconds / 1000).toString());
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Future<void> setMaxVideoBitrate(int bandwidth) async {
+    final p = _player.platform;
+    if (p is NativePlayer) {
+      final target = bandwidth <= 0 ? 'max' : '$bandwidth';
+      try {
+        await p.setProperty('hls-bitrate', target);
+      } catch (_) {}
+    }
+  }
 
   @override
   Widget buildVideo(BuildContext context) {

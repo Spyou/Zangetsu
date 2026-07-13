@@ -106,6 +106,17 @@ abstract class PlaybackEngine {
 
   Future<void> setSubtitleStyle(EngineSubtitleStyle style);
 
+  /// Subtitle timing offset (positive = subtitles later). mpv: `sub-delay`.
+  /// Engines without native support may no-op.
+  Future<void> setSubtitleDelay(Duration delay);
+
+  /// Audio timing offset (positive = audio later). mpv: `audio-delay`.
+  /// Engines without native support may no-op.
+  Future<void> setAudioDelay(Duration delay);
+
+  /// Cap the adaptive/HLS variant by bandwidth in bits/s. `<= 0` = auto/max.
+  Future<void> setMaxVideoBitrate(int bandwidth);
+
   /// The video render surface for this engine (mpv Video widget or the
   /// ExoPlayer PlatformView). Owns subtitle rendering appropriate to the engine.
   Widget buildVideo(BuildContext context);
