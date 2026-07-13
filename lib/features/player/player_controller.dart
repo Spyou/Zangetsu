@@ -254,6 +254,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   _hlsMaster; // the HLS master among `sources` that the quality menu expands
 
   final List<StreamSubscription> _subs = [];
+  /// Detachers for engine ValueListenable listeners (removed in close()).
+  final List<VoidCallback> _engineDetach = [];
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
   // The resume position we still need to reach. Set when a resume mark is
@@ -419,134 +421,141 @@ class PlayerCubit extends Cubit<PlayerState> {
         _tryApplySubPref();
       }),
     );
-    _subs.add(
-      player.stream.position.listen((p) {
-        _lastPos = p;
-        // Keep the resume target as a FLOOR for re-opens until we're safely past
-        // it (NOT the instant it's touched — a re-open firing right then would
-        // otherwise lose the floor and snap back to ~0). 15s past = stable.
-        if (_pendingResume > Duration.zero &&
-            p > _pendingResume + const Duration(seconds: 15)) {
+    void onEnginePosition() {
+      final p = engine.position.value;
+      _lastPos = p;
+      // Keep the resume target as a FLOOR for re-opens until we're safely past
+      // it (NOT the instant it's touched — a re-open firing right then would
+      // otherwise lose the floor and snap back to ~0). 15s past = stable.
+      if (_pendingResume > Duration.zero &&
+          p > _pendingResume + const Duration(seconds: 15)) {
+        _pendingResume = Duration.zero;
+      }
+      // Force the resume seek to actually STICK. Some remote MP4 hosts briefly
+      // report the resume position (mpv's `start` property) then reset to 0
+      // and play from the beginning — the seek-on-open silently failed, and a
+      // one-shot re-seek can be fooled by that transient reading. So while a
+      // resume is still pending and we're playing well short of it, re-issue
+      // the seek, paced so each range request has time to land (never
+      // thrashing). Cleared automatically once playback gets past the target.
+      if (_pendingResume > Duration.zero &&
+          _lastDur > Duration.zero &&
+          _pendingResume < _lastDur &&
+          p + const Duration(seconds: 15) < _pendingResume) {
+        final nowS = DateTime.now().millisecondsSinceEpoch;
+        if (nowS - _lastResumeSeekMs > 2500) {
+          _lastResumeSeekMs = nowS;
+          engine.seek(_pendingResume);
+        }
+      }
+      if (p > Duration.zero) {
+        _startedThisSource = true; // source is playing
+        _startTimer?.cancel();
+        _startTimer = null;
+        if (!_markedWatching) {
+          _markedWatching = true;
+          _markWatching(); // "started watching" → CURRENT on AniList now
+        }
+      }
+
+      // Throttled progress capture so Continue Watching fills mid-episode
+      // (without waiting for an episode switch / dispose). Cheap: at most one
+      // write every ~5s. NOT gated on duration — downloaded HLS (concatenated
+      // TS) often reports no duration, and we still want resume to work.
+      final now = DateTime.now().millisecondsSinceEpoch;
+      if (now - _lastHistoryMs >= 5000) {
+        _lastHistoryMs = now;
+        _persist();
+      }
+
+      // Seamless binge: once we pass ~85% of the episode, resolve the NEXT
+      // episode's stream in the background so advancing is instant. Fires at
+      // most once per current episode (re-armed when the index changes).
+      final idx = state.currentIndex;
+      if (_prefetchedNextForIndex != idx &&
+          idx + 1 < episodes.length &&
+          _lastDur > Duration.zero &&
+          p >= _lastDur * 0.85) {
+        _prefetchedNextForIndex = idx;
+        sl<SourceRepository>()
+            .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
+      }
+    }
+    engine.position.addListener(onEnginePosition);
+    _engineDetach.add(() => engine.position.removeListener(onEnginePosition));
+    void onEngineDuration() {
+      final d = engine.duration.value;
+      _lastDur = d;
+      // The duration arriving is mpv's "ready" signal (its STATE_READY): only
+      // now is the stream reliably seekable. A remote MP4 reports duration
+      // only after its moov atom loads, and any seek issued before that is
+      // clamped to 0 — the "always resumes from 0" bug. So apply the pending
+      // resume HERE, the moment seeking is possible. (This is how CloudStream
+      // does it — re-seek to the saved position on STATE_READY.)
+      if (_pendingResume > Duration.zero && d > Duration.zero) {
+        if (_pendingResume >= d) {
+          // Mark is at/after the end (corrupted/too-large) — can't resume
+          // there; drop it so playback + saving proceed normally.
           _pendingResume = Duration.zero;
+        } else if (_lastPos < _pendingResume) {
+          engine.seek(_pendingResume);
         }
-        // Force the resume seek to actually STICK. Some remote MP4 hosts briefly
-        // report the resume position (mpv's `start` property) then reset to 0
-        // and play from the beginning — the seek-on-open silently failed, and a
-        // one-shot re-seek can be fooled by that transient reading. So while a
-        // resume is still pending and we're playing well short of it, re-issue
-        // the seek, paced so each range request has time to land (never
-        // thrashing). Cleared automatically once playback gets past the target.
-        if (_pendingResume > Duration.zero &&
-            _lastDur > Duration.zero &&
-            _pendingResume < _lastDur &&
-            p + const Duration(seconds: 15) < _pendingResume) {
-          final nowS = DateTime.now().millisecondsSinceEpoch;
-          if (nowS - _lastResumeSeekMs > 2500) {
-            _lastResumeSeekMs = nowS;
-            engine.seek(_pendingResume);
-          }
-        }
-        if (p > Duration.zero) {
-          _startedThisSource = true; // source is playing
-          _startTimer?.cancel();
-          _startTimer = null;
-          if (!_markedWatching) {
-            _markedWatching = true;
-            _markWatching(); // "started watching" → CURRENT on AniList now
-          }
-        }
-
-        // Throttled progress capture so Continue Watching fills mid-episode
-        // (without waiting for an episode switch / dispose). Cheap: at most one
-        // write every ~5s. NOT gated on duration — downloaded HLS (concatenated
-        // TS) often reports no duration, and we still want resume to work.
-        final now = DateTime.now().millisecondsSinceEpoch;
-        if (now - _lastHistoryMs >= 5000) {
-          _lastHistoryMs = now;
-          _persist();
-        }
-
-        // Seamless binge: once we pass ~85% of the episode, resolve the NEXT
-        // episode's stream in the background so advancing is instant. Fires at
-        // most once per current episode (re-armed when the index changes).
-        final idx = state.currentIndex;
-        if (_prefetchedNextForIndex != idx &&
-            idx + 1 < episodes.length &&
-            _lastDur > Duration.zero &&
-            p >= _lastDur * 0.85) {
-          _prefetchedNextForIndex = idx;
-          sl<SourceRepository>()
-              .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
-        }
-      }),
-    );
-    _subs.add(
-      player.stream.duration.listen((d) {
-        _lastDur = d;
-        // The duration arriving is mpv's "ready" signal (its STATE_READY): only
-        // now is the stream reliably seekable. A remote MP4 reports duration
-        // only after its moov atom loads, and any seek issued before that is
-        // clamped to 0 — the "always resumes from 0" bug. So apply the pending
-        // resume HERE, the moment seeking is possible. (This is how CloudStream
-        // does it — re-seek to the saved position on STATE_READY.)
-        if (_pendingResume > Duration.zero && d > Duration.zero) {
-          if (_pendingResume >= d) {
-            // Mark is at/after the end (corrupted/too-large) — can't resume
-            // there; drop it so playback + saving proceed normally.
-            _pendingResume = Duration.zero;
-          } else if (_lastPos < _pendingResume) {
-            engine.seek(_pendingResume);
-          }
-        }
-        // Re-assert the subtitle preference ONCE at STATE_READY. A soft sub
-        // applied during the racy open can end up SELECTED but not rendering
-        // (mpv added it before the stream finished loading). Re-applying here —
-        // the point where a manual pick reliably renders — forces a fresh
-        // `sub-add` so the preferred language actually shows. The duplicate mpv
-        // track this creates is hidden from the picker (see mediaSubtitleTracks).
-        if (d > Duration.zero && !_subReadyReapplied && _wantedSubId != null) {
-          _subReadyReapplied = true;
-          _subApplied = false;
-          _tryApplySubPref();
-        }
-        // Fetch accurate OP/ED skip times once the episode length is known.
-        if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
-          _skipsForIndex = state.currentIndex;
-          _fetchSkips(state.currentIndex, d);
-        }
-      }),
-    );
+      }
+      // Re-assert the subtitle preference ONCE at STATE_READY. A soft sub
+      // applied during the racy open can end up SELECTED but not rendering
+      // (mpv added it before the stream finished loading). Re-applying here —
+      // the point where a manual pick reliably renders — forces a fresh
+      // `sub-add` so the preferred language actually shows. The duplicate mpv
+      // track this creates is hidden from the picker (see mediaSubtitleTracks).
+      if (d > Duration.zero && !_subReadyReapplied && _wantedSubId != null) {
+        _subReadyReapplied = true;
+        _subApplied = false;
+        _tryApplySubPref();
+      }
+      // Fetch accurate OP/ED skip times once the episode length is known.
+      if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
+        _skipsForIndex = state.currentIndex;
+        _fetchSkips(state.currentIndex, d);
+      }
+    }
+    engine.duration.addListener(onEngineDuration);
+    _engineDetach.add(() => engine.duration.removeListener(onEngineDuration));
     // Completion is handled by the player screen (it shows the "Up next"
     // countdown card and then advances), so the controller doesn't auto-advance
     // here — avoids double-advancing. We DO use it to force an AniList scrobble
     // (covers HLS streams that report no duration, so the 92% check never fires).
-    _subs.add(
-      player.stream.completed.listen((done) {
-        if (done) _maybeScrobble(force: true);
-      }),
+    void onEngineCompleted() {
+      if (engine.completed.value) _maybeScrobble(force: true);
+    }
+    engine.completed.addListener(onEngineCompleted);
+    _engineDetach.add(
+      () => engine.completed.removeListener(onEngineCompleted),
     );
-    _subs.add(player.stream.error.listen((e) => _onPlaybackError(e)));
-    _subs.add(
-      player.stream.buffering.listen((buffering) {
-        // A torrent local stream buffers while pieces download — that's normal,
-        // not a dead source. Arming the stall watchdog would restart the torrent
-        // from scratch and churn native memory (force close). Skip it for torrents.
-        if (buffering &&
-            _startedThisSource &&
-            !_recovering &&
-            _activeTorrentId == null &&
-            !_isProxiedStream) {
-          // Started source stalled — arm a watchdog. If we're still stuck and the
-          // position hasn't advanced ~18s later, the stream is likely dead → fail
-          // over.
-          _stallAnchorPos = _lastPos;
-          _stallTimer?.cancel();
-          _stallTimer = Timer(const Duration(seconds: 18), _failoverFromStall);
-        } else {
-          _stallTimer?.cancel();
-          _stallTimer = null;
-        }
-      }),
+    _subs.add(engine.errors.listen((e) => _onPlaybackError(e.code)));
+    void onEngineBuffering() {
+      final buffering = engine.buffering.value;
+      // A torrent local stream buffers while pieces download — that's normal,
+      // not a dead source. Arming the stall watchdog would restart the torrent
+      // from scratch and churn native memory (force close). Skip it for torrents.
+      if (buffering &&
+          _startedThisSource &&
+          !_recovering &&
+          _activeTorrentId == null &&
+          !_isProxiedStream) {
+        // Started source stalled — arm a watchdog. If we're still stuck and the
+        // position hasn't advanced ~18s later, the stream is likely dead → fail
+        // over.
+        _stallAnchorPos = _lastPos;
+        _stallTimer?.cancel();
+        _stallTimer = Timer(const Duration(seconds: 18), _failoverFromStall);
+      } else {
+        _stallTimer?.cancel();
+        _stallTimer = null;
+      }
+    }
+    engine.buffering.addListener(onEngineBuffering);
+    _engineDetach.add(
+      () => engine.buffering.removeListener(onEngineBuffering),
     );
     openEpisode(index);
   }
@@ -1794,13 +1803,17 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (final s in _subs) {
       s.cancel();
     }
+    for (final d in _engineDetach) {
+      d();
+    }
+    _engineDetach.clear();
     _stallTimer?.cancel();
     _toastTimer?.cancel();
     // Stop any active torrent stream + delete its buffered pieces.
     await _stopTorrent();
     toast.dispose();
     subtitleStyleRev.dispose();
-    await player.dispose();
+    await engine.dispose();
     return super.close();
   }
 }
