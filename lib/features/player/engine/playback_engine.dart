@@ -87,6 +87,17 @@ abstract class PlaybackEngine {
   /// Fatal errors (decoder init fail, unsupported codec). Drives fallback.
   Stream<EngineError> get errors;
 
+  // Stream forms of the reactive state, for existing StreamBuilder call sites.
+  Stream<Duration> get positionStream;
+  Stream<Duration> get durationStream;
+  Stream<bool> get playingStream;
+  Stream<bool> get bufferingStream;
+  Stream<bool> get completedStream;
+  /// Video width in px (0 until known).
+  Stream<int> get widthStream;
+  /// Buffered-ahead position (for the seek bar's buffered indicator).
+  Stream<Duration> get bufferedStream;
+
   // ── commands ──
   Future<void> load(EngineSource source, {Duration startAt = Duration.zero});
   Future<void> play();

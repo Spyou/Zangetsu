@@ -243,6 +243,15 @@ class MpvEngine implements PlaybackEngine {
   @override ValueListenable<List<EngineTrack>> get textTracks => _textTracks;
   @override Stream<EngineError> get errors => _errors.stream;
 
+  @override Stream<Duration> get positionStream => _player.stream.position;
+  @override Stream<Duration> get durationStream => _player.stream.duration;
+  @override Stream<bool> get playingStream => _player.stream.playing;
+  @override Stream<bool> get bufferingStream => _player.stream.buffering;
+  @override Stream<bool> get completedStream => _player.stream.completed;
+  @override
+  Stream<int> get widthStream => _player.stream.width.map((w) => w ?? 0);
+  @override Stream<Duration> get bufferedStream => _player.stream.buffer;
+
   @override
   Future<void> load(EngineSource source,
       {Duration startAt = Duration.zero}) async {
