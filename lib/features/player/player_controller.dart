@@ -231,6 +231,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Human label for the engine currently playing — drives the beta badge.
   String get activeEngineLabel => engine is ExoEngine ? 'ExoPlayer' : 'mpv';
 
+  /// True when the native ExoPlayer surface is active. The screen uses this to
+  /// drop the backdrop-blur on sheets/overlays — a BackdropFilter over the
+  /// Hybrid-Composition PlatformView re-blurs the live video every frame and
+  /// janks the sheet animation. mpv (Flutter texture) blurs cheaply, so it keeps
+  /// the frosted look.
+  bool get isExoActive => engine is ExoEngine;
+
   /// Fatal-error subscription for the CURRENT engine (re-created on every swap).
   StreamSubscription<EngineError>? _engineErrorSub;
 

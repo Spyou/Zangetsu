@@ -1218,13 +1218,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Sheets ──────────────────────────────────────────────────────────────
 
+  // While ExoPlayer's native surface is active, drop the sheet backdrop-blur
+  // (a BackdropFilter over the Hybrid-Composition view re-blurs the live video
+  // every frame → the open animation janks) and make the panel near-solid
+  // instead. mpv (Flutter texture) keeps the frosted-glass look.
+  bool get _sheetBlur => !_c.isExoActive;
+  double _sheetOpacity(double blurred) => _c.isExoActive ? 0.95 : blurred;
+
   Future<T?> _sheet<T>(Widget child) {
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (_) => FrostedSurface(
-        blur: true,
-        opacity: 0.75,
+        blur: _sheetBlur,
+        opacity: _sheetOpacity(0.75),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: SafeArea(top: false, child: child),
       ),
@@ -1261,8 +1268,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => FrostedSurface(
-        blur: true,
-        opacity: 0.82,
+        blur: _sheetBlur,
+        opacity: _sheetOpacity(0.82),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: SafeArea(
           top: false,
@@ -1314,8 +1321,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (_) => FrostedSurface(
-        blur: true,
-        opacity: 0.82,
+        blur: _sheetBlur,
+        opacity: _sheetOpacity(0.82),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         child: SafeArea(
           top: false,
@@ -4073,8 +4080,8 @@ void _openSubtitleStyleSheet(
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
     builder: (_) => FrostedSurface(
-      blur: true,
-      opacity: 0.82,
+      blur: !controller.isExoActive,
+      opacity: controller.isExoActive ? 0.95 : 0.82,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
       child: SafeArea(
         top: false,
