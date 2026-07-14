@@ -1223,10 +1223,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => FrostedSurface(
-        blur: true,
-        opacity: 0.75,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+      isScrollControlled: true,
+      builder: (_) => _SheetSurface(
         child: SafeArea(top: false, child: child),
       ),
     );
@@ -1344,7 +1342,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => FrostedSurface(
+      builder: (_) => _SheetSurface(
         blur: true,
         opacity: 0.82,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -1397,7 +1395,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (_) => FrostedSurface(
+      builder: (_) => _SheetSurface(
         blur: true,
         opacity: 0.82,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -4151,7 +4149,7 @@ void _openSubtitleStyleSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (_) => FrostedSurface(
+    builder: (_) => _SheetSurface(
       blur: true,
       opacity: 0.82,
       borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -4416,6 +4414,59 @@ class _SliderRow extends StatelessWidget {
               style: AppText.body.copyWith(
                 color: AppColors.accent,
                 fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The player's bottom-sheet surface: a SOLID, detached card that floats above
+/// the screen edges (margins + full-radius + soft shadow), centred in landscape
+/// — instead of an edge-to-edge frosted panel. Drop-in for the old
+/// `FrostedSurface(...)` sheet wrappers: it accepts (and ignores) blur/opacity/
+/// borderRadius so those call sites only needed a rename.
+class _SheetSurface extends StatelessWidget {
+  const _SheetSurface({
+    bool blur = true,
+    double opacity = 0.75,
+    BorderRadius? borderRadius,
+    required this.child,
+  });
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = BorderRadius.circular(24);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        10,
+        0,
+        10,
+        MediaQuery.of(context).padding.bottom + 12,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Flexible(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: r,
+                  border: Border.all(color: AppColors.hairline),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x66000000),
+                      blurRadius: 40,
+                      offset: Offset(0, 14),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(borderRadius: r, child: child),
               ),
             ),
           ),
