@@ -2616,6 +2616,70 @@ class _ControlsOverlay extends StatelessWidget {
   final bool showQuality; // plain quality text on the top-bar right (with controls)
   final VoidCallback onScreenshot; // grab the current frame → gallery
 
+  /// Overflow sheet for the occasional actions, keeping the control bars clean.
+  void _showMore(BuildContext context) {
+    onInteract();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _SheetSurface(
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 10),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              _MoreRow(
+                icon: Icons.photo_camera_rounded,
+                label: 'Snapshot',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onScreenshot();
+                },
+              ),
+              _MoreRow(
+                icon: Icons.aspect_ratio_rounded,
+                label: 'Aspect ratio · $zoomLabel',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onZoom();
+                },
+              ),
+              _MoreRow(
+                icon: sleepActive
+                    ? Icons.bedtime_rounded
+                    : Icons.bedtime_outlined,
+                label: 'Sleep timer',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onSleep();
+                },
+              ),
+              if (onPip != null)
+                _MoreRow(
+                  icon: Icons.picture_in_picture_alt_rounded,
+                  label: 'Picture-in-picture',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onPip!();
+                  },
+                ),
+              const SizedBox(height: 6),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = controller;
@@ -2820,15 +2884,8 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                       onPressed: onInfo,
                     ),
-                  // PiP + episodes + sleep + lock (top-right). Zoom is bottom row.
-                  if (onPip != null)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.picture_in_picture_alt_rounded,
-                        color: Colors.white,
-                      ),
-                      onPressed: onPip,
-                    ),
+                  // Episodes + lock (top-right). PiP/Sleep/Aspect/Snapshot moved
+                  // to the ⋮ More sheet on the bottom row.
                   if (onEpisodes != null)
                     IconButton(
                       icon: const Icon(
@@ -2837,15 +2894,6 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                       onPressed: onEpisodes,
                     ),
-                  IconButton(
-                    icon: Icon(
-                      sleepActive
-                          ? Icons.bedtime_rounded
-                          : Icons.bedtime_outlined,
-                      color: sleepActive ? AppColors.accent : Colors.white,
-                    ),
-                    onPressed: onSleep,
-                  ),
                   IconButton(
                     icon: const Icon(
                       Icons.lock_open_rounded,
@@ -3006,16 +3054,6 @@ class _ControlsOverlay extends StatelessWidget {
                         label: 'Sources',
                         onTap: onSources,
                       ),
-                      _ControlButton(
-                        icon: Icons.aspect_ratio_rounded,
-                        label: zoomLabel,
-                        onTap: onZoom,
-                      ),
-                      _ControlButton(
-                        icon: Icons.photo_camera_rounded,
-                        label: 'Snapshot',
-                        onTap: onScreenshot,
-                      ),
                       if (hasNext)
                         _ControlButton(
                           icon: Icons.skip_next_rounded,
@@ -3025,6 +3063,11 @@ class _ControlsOverlay extends StatelessWidget {
                             onInteract();
                           },
                         ),
+                      _ControlButton(
+                        icon: Icons.more_vert_rounded,
+                        label: 'More',
+                        onTap: () => _showMore(context),
+                      ),
                     ],
                   ),
                 ],
@@ -3627,6 +3670,46 @@ class _ControlButton extends StatelessWidget {
             const SizedBox(height: 3),
             Text(label, style: AppText.caption.copyWith(color: Colors.white)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A single leading-icon row in the ⋮ More overflow sheet.
+class _MoreRow extends StatelessWidget {
+  const _MoreRow({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            child: Row(
+              children: [
+                Icon(icon, color: AppColors.textPrimary, size: 22),
+                const SizedBox(width: 14),
+                Text(
+                  label,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
