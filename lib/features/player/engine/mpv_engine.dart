@@ -19,6 +19,13 @@ import 'playback_engine.dart';
 class MpvEngine implements PlaybackEngine {
   MpvEngine({bool isTv = false}) : _isTv = isTv {
     _wireStreams();
+    // Eagerly warm up the mpv tuning (force-seekable, cache, demuxer opts) NOW,
+    // exactly as the pre-refactor controller did at init via
+    // `unawaited(_mpvConfigured)` — so it's fully applied well before the first
+    // open instead of being set microseconds ahead of it. Without this,
+    // `force-seekable` can miss the first file and seeks past the demuxer cache
+    // get clamped to the buffered edge. load() still awaits `_configured`.
+    unawaited(_configured);
   }
   final bool _isTv;
 
@@ -300,6 +307,7 @@ class MpvEngine implements PlaybackEngine {
 
   @override Future<void> play() => _player.play();
   @override Future<void> pause() => _player.pause();
+  @override Future<void> playOrPause() => _player.playOrPause();
   @override Future<void> seek(Duration to) => _player.seek(to);
   @override Future<void> setRate(double rate) async {
     await _player.setRate(rate);

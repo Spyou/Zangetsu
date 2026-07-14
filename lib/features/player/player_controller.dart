@@ -580,12 +580,12 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void togglePlay() {
     if (_isRoomViewer) return;
+    // Atomic toggle off the engine's OWN state (like the pre-refactor
+    // `player.playOrPause()`). Deciding from the Dart-side `playing` flag is
+    // racy — if it lags mpv by a beat, the button flips the wrong way and
+    // appears dead. `willPlay` is only for the room-sync signal below.
     final willPlay = !playing;
-    if (willPlay) {
-      engine.play();
-    } else {
-      engine.pause();
-    }
+    engine.playOrPause();
     if (roomRole == RoomRole.host) {
       onLocalPlayback?.call(willPlay ? 'play' : 'pause', _lastPos);
     }

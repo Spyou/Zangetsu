@@ -102,6 +102,11 @@ abstract class PlaybackEngine {
   Future<void> load(EngineSource source, {Duration startAt = Duration.zero});
   Future<void> play();
   Future<void> pause();
+
+  /// Atomically toggle play/pause based on the engine's OWN current state (not a
+  /// Dart-side cached flag, which can lag). Mirrors mpv's `playOrPause`.
+  Future<void> playOrPause();
+
   Future<void> seek(Duration to);
   Future<void> setRate(double rate);
 
