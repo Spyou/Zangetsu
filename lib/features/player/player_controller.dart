@@ -224,7 +224,19 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
   String _activeCategory;
 
-  final Player player = Player();
+  final Player player = Player(
+    configuration: PlayerConfiguration(
+      // Render subtitles via mpv/libass (real ASS styling — fonts, positions,
+      // karaoke, signs) when the user opts in. media_kit then draws subs into
+      // the video texture and hides its Flutter overlay. The Android font is
+      // libass's fallback (system fonts aren't visible to libass on Android);
+      // _setupSubtitleFonts / applySubtitleStyle refine sub-fonts-dir/sub-font
+      // after open. Off → default Player() behaviour (Flutter text overlay).
+      libass: sl<PlaybackPrefs>().styledSubtitles,
+      libassAndroidFont: 'assets/fonts/Roboto-Regular.ttf',
+      libassAndroidFontName: 'Roboto',
+    ),
+  );
   late final VideoController videoController = VideoController(
     player,
     configuration: VideoControllerConfiguration(
@@ -2150,11 +2162,15 @@ class PlayerCubit extends Cubit<PlayerState> {
       } catch (_) {}
     }
 
-    // CRITICAL: ASS/SSA subtitles (common for anime/scraped sources) carry their
-    // OWN embedded styling, so mpv ignores sub-color/sub-font/sub-scale/sub-pos
-    // by default → "changing the style does nothing". 'force' makes our settings
-    // win for both ASS and plain (srt/vtt) subtitles.
-    await set('sub-ass-override', 'force');
+    // ASS/SSA subtitles carry their OWN embedded styling. With libass ON
+    // (styled subtitles) keep it faithful — 'no' preserves signs/karaoke/
+    // positions, which is the whole point; the style sheet then governs only
+    // plain srt/vtt. With libass OFF this value is inert (a Flutter overlay
+    // renders text), but 'force' stays the sensible default there.
+    await set(
+      'sub-ass-override',
+      sl<PlaybackPrefs>().styledSubtitles ? 'no' : 'force',
+    );
     await set('sub-scale', prefs.subtitleScale.toString());
     if (prefs.subtitleFont.isNotEmpty) {
       await set('sub-font', prefs.subtitleFont);

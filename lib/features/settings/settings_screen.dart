@@ -1675,6 +1675,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           const SettingsSectionLabel('Subtitles'),
           SettingsCard(
             children: [
+              _toggleRow(
+                icon: Icons.subtitles_outlined,
+                title: 'Styled subtitles (libass)',
+                subtitle: 'Real .ass styling — fonts, positions, karaoke, '
+                    'signs. Best for anime. Applies from the next episode.',
+                value: _prefs.styledSubtitles,
+                onChanged: (v) async {
+                  await _prefs.setStyledSubtitles(v);
+                  if (mounted) setState(() {});
+                },
+              ),
               SettingsTile(
                 icon: Icons.format_size_rounded,
                 title: 'Size',

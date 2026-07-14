@@ -377,6 +377,16 @@ class PlaybackPrefs {
       _box.put('showNsfwAniyomi', value);
 
   // ── Subtitle styling (applied via mpv) ─────────────────────────────────────
+  /// Render subtitles with mpv/libass — real .ass styling (fonts, positions,
+  /// karaoke, signs) — instead of media_kit's flat Flutter text overlay.
+  /// Read at player creation. Default off: libass on Android uses the app's
+  /// bundled (Latin) fonts, so non-Latin subs (CJK/Devanagari/Arabic) can show
+  /// missing-glyph boxes — the Flutter overlay falls back to the system font.
+  bool get styledSubtitles =>
+      _box.get('styledSubtitles', defaultValue: false) as bool;
+  Future<void> setStyledSubtitles(bool value) =>
+      _box.put('styledSubtitles', value);
+
   /// Subtitle size multiplier: 0.8 (small) / 1.0 / 1.3 (large).
   double get subtitleScale =>
       (_box.get('subtitleScale', defaultValue: 1.0) as num).toDouble();
