@@ -2731,8 +2731,9 @@ class _ControlsOverlay extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _CircleBtn(
+              _SeekButton(
                 icon: Icons.replay_10_rounded,
+                forward: false,
                 onTap: () {
                   c.seekBy(const Duration(seconds: -10));
                   onInteract();
@@ -2778,8 +2779,9 @@ class _ControlsOverlay extends StatelessWidget {
                 },
               ),
               const SizedBox(width: 24),
-              _CircleBtn(
+              _SeekButton(
                 icon: Icons.forward_10_rounded,
+                forward: true,
                 onTap: () {
                   c.seekBy(const Duration(seconds: 10));
                   onInteract();
@@ -4527,46 +4529,68 @@ class _AnimatedPlayPauseState extends State<_AnimatedPlayPause>
     return GestureDetector(
       onTap: widget.onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 62,
-        height: 62,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.all(6),
         child: AnimatedIcon(
           icon: AnimatedIcons.play_pause,
           progress: _ctrl,
           color: Colors.white,
-          size: 30,
+          size: 50,
         ),
       ),
     );
   }
 }
 
-/// A soft translucent circular icon button — used for the ±10s seek transport.
-class _CircleBtn extends StatelessWidget {
-  const _CircleBtn({required this.icon, required this.onTap});
+/// ±10s seek button — a clean icon (no background) that spins once when tapped
+/// (rewind spins back, forward spins ahead). Apple-style: just the icon.
+class _SeekButton extends StatefulWidget {
+  const _SeekButton({
+    required this.icon,
+    required this.forward,
+    required this.onTap,
+  });
   final IconData icon;
+  final bool forward;
   final VoidCallback onTap;
+
+  @override
+  State<_SeekButton> createState() => _SeekButtonState();
+}
+
+class _SeekButtonState extends State<_SeekButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 500),
+  );
+  late final Animation<double> _turn = Tween<double>(
+    begin: 0,
+    end: widget.forward ? 1 : -1,
+  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _tap() {
+    _ctrl.forward(from: 0);
+    widget.onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: _tap,
       behavior: HitTestBehavior.opaque,
-      child: Container(
-        width: 46,
-        height: 46,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withValues(alpha: 0.10),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: RotationTransition(
+          turns: _turn,
+          child: Icon(widget.icon, color: Colors.white, size: 34),
         ),
-        child: Icon(icon, color: Colors.white, size: 23),
       ),
     );
   }
