@@ -1254,6 +1254,45 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  /// Short label for the in-player decoder button.
+  static String _shortDecoder(String mode) => switch (mode) {
+        'hw+' => 'HW+',
+        'sw' => 'SW',
+        'auto' => 'AUTO',
+        _ => 'HW',
+      };
+
+  /// In-player decoder switch (top-right). Applies LIVE — mpv re-inits the
+  /// decoder in place, so a stuttering/green/black stream can be fixed without
+  /// leaving the video.
+  void _openDecoderSheet() {
+    const modes = [
+      ('hw', 'Hardware (default)'),
+      ('hw+', 'Hardware+ (faster)'),
+      ('sw', 'Software (most compatible)'),
+      ('auto', 'Auto'),
+    ];
+    final current = _c.decoderMode;
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Video decoder',
+        children: [
+          for (final (mode, label) in modes)
+            _SheetRow(
+              label: label,
+              active: current == mode,
+              onTap: () {
+                Navigator.pop(context);
+                _c.setDecoder(mode);
+                _bumpControls();
+                if (mounted) setState(() {});
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
   /// Build the Flutter subtitle overlay style from the user's prefs. media_kit
   /// renders text subtitles via this [SubtitleViewConfiguration] (a Flutter
   /// overlay), NOT libass — so font/colour/size/background/position all live
@@ -1952,6 +1991,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onPip: _pipSupported ? _enterPip : null,
                       onSleep: _openSleepSheet,
                       sleepActive: _sleepActive,
+                      decoderLabel: _shortDecoder(_c.decoderMode),
+                      onDecoder: _openDecoderSheet,
                       onEpisodes: _c.episodes.length > 1
                           ? _openEpisodesPanel
                           : null,
@@ -2426,6 +2467,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onPrev,
     required this.onSleep,
     required this.sleepActive,
+    required this.decoderLabel,
+    required this.onDecoder,
     required this.onEpisodes,
     required this.megaSkipEnabled,
     required this.megaSkipSeconds,
@@ -2451,6 +2494,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback? onPrev; // null = no previous episode
   final VoidCallback onSleep;
   final bool sleepActive;
+  final String decoderLabel; // current decoder short label (HW/HW+/SW/AUTO)
+  final VoidCallback onDecoder; // opens the in-player decoder picker
   final VoidCallback? onEpisodes; // null = single episode (no picker)
   final bool megaSkipEnabled; // MegaSkip pill above the seek bar
   final int megaSkipSeconds;
@@ -2569,6 +2614,34 @@ class _ControlsOverlay extends StatelessWidget {
                             ),
                           ),
                       ],
+                    ),
+                  ),
+                  // Decoder quick-switch (top-right) — tap to flip HW/SW live if
+                  // a stream stutters / goes green / black. Aniyomi-style.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: InkWell(
+                      onTap: onDecoder,
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.white54),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          decoderLabel,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                   // PiP + episodes + sleep + lock (top-right). Zoom is bottom row.

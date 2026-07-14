@@ -681,6 +681,23 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   void setRate(double r) => player.setRate(r);
 
+  /// Current video-decoder mode ('hw'|'hw+'|'sw'|'auto') — drives the in-player
+  /// decoder button label.
+  String get decoderMode => sl<PlaybackPrefs>().videoDecoder;
+
+  /// Switch the video decoder AT RUNTIME: mpv re-initialises its decoder in
+  /// place, so a stuttering / green / black stream can be fixed WITHOUT leaving
+  /// the video. Also persisted as the new default for future opens.
+  Future<void> setDecoder(String mode) async {
+    await sl<PlaybackPrefs>().setVideoDecoder(mode);
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('hwdec', sl<PlaybackPrefs>().hwdecValue);
+      } catch (_) {}
+    }
+  }
+
   /// Apply a USER-chosen playback speed and persist it — per-title (this
   /// movie/series) AND globally (so new titles start at the same preference).
   /// Best-effort; mirrors [_rememberQuality].
