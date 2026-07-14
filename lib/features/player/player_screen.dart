@@ -3812,6 +3812,8 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   label: 'Subtitle delay',
                   initial: c.subtitleDelay,
                   onChanged: (d) => c.setSubtitleDelay(d),
+                  // Aniyomi-style two-tap auto-sync (subtitle only).
+                  positionMs: () => c.player.state.position.inMilliseconds,
                 ),
                 _DelayAdjuster(
                   label: 'Audio delay',
@@ -4818,10 +4820,15 @@ class _DelayAdjuster extends StatefulWidget {
     required this.label,
     required this.initial,
     required this.onChanged,
+    this.positionMs,
   });
   final String label;
   final Duration initial;
   final ValueChanged<Duration> onChanged;
+
+  /// When set, shows the Aniyomi-style two-tap auto-sync below the stepper.
+  /// Returns the current playback position (ms) at the moment of a tap.
+  final int Function()? positionMs;
 
   @override
   State<_DelayAdjuster> createState() => _DelayAdjusterState();
@@ -4831,48 +4838,173 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
   late int _ms = widget.initial.inMilliseconds;
   static const int _step = 250;
 
+  // Two-tap sync captures: playback position when the voice was heard and when
+  // the subtitle was seen. Delay adjustment = voice − text (which cancels the
+  // roughly-equal human reaction lag on both taps).
+  int? _voiceMs;
+  int? _textMs;
+  String? _note;
+  Timer? _noteTimer;
+
+  @override
+  void dispose() {
+    _noteTimer?.cancel();
+    super.dispose();
+  }
+
   void _bump(int delta) {
     setState(() => _ms = (_ms + delta).clamp(-30000, 30000));
     widget.onChanged(Duration(milliseconds: _ms));
+  }
+
+  void _capture(bool voice) {
+    final pos = widget.positionMs!();
+    if (voice) {
+      _voiceMs = pos;
+    } else {
+      _textMs = pos;
+    }
+    if (_voiceMs != null && _textMs != null) {
+      final delta = _voiceMs! - _textMs!;
+      _voiceMs = null;
+      _textMs = null;
+      _bump(delta); // folds the alignment into the delay + applies it
+      final s = (delta / 1000).toStringAsFixed(2);
+      _flashNote('Aligned ${delta >= 0 ? '+' : ''}${s}s');
+    } else {
+      setState(() {}); // reflect the single-capture highlight
+    }
+  }
+
+  void _flashNote(String msg) {
+    _noteTimer?.cancel();
+    setState(() => _note = msg);
+    _noteTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _note = null);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final secs = (_ms / 1000).toStringAsFixed(2);
     final shown = _ms > 0 ? '+${secs}s' : '${secs}s';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              widget.label,
-              style: AppText.body.copyWith(color: AppColors.textPrimary),
-            ),
-          ),
-          _stepBtn(Icons.remove_rounded, () => _bump(-_step)),
-          SizedBox(
-            width: 72,
-            child: Text(
-              shown,
-              textAlign: TextAlign.center,
-              style: AppText.body.copyWith(
-                color: _ms == 0 ? AppColors.textSecondary : AppColors.accent,
-                fontWeight: FontWeight.w700,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 12, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  widget.label,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
               ),
+              _stepBtn(Icons.remove_rounded, () => _bump(-_step)),
+              SizedBox(
+                width: 72,
+                child: Text(
+                  shown,
+                  textAlign: TextAlign.center,
+                  style: AppText.body.copyWith(
+                    color: _ms == 0 ? AppColors.textSecondary : AppColors.accent,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              _stepBtn(Icons.add_rounded, () => _bump(_step)),
+              IconButton(
+                tooltip: 'Reset',
+                icon: const Icon(
+                  Icons.restart_alt_rounded,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+                onPressed: _ms == 0 ? null : () => _bump(-_ms),
+              ),
+            ],
+          ),
+        ),
+        if (widget.positionMs != null) _syncSection(),
+      ],
+    );
+  }
+
+  Widget _syncSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _note ??
+                'Auto-sync: tap when you HEAR a line, then when its SUBTITLE '
+                    'appears.',
+            style: AppText.caption.copyWith(
+              color: _note != null ? AppColors.accent : AppColors.textTertiary,
             ),
           ),
-          _stepBtn(Icons.add_rounded, () => _bump(_step)),
-          IconButton(
-            tooltip: 'Reset',
-            icon: const Icon(
-              Icons.restart_alt_rounded,
-              color: AppColors.textSecondary,
-              size: 20,
-            ),
-            onPressed: _ms == 0 ? null : () => _bump(-_ms),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _syncBtn(
+                  'Voice heard',
+                  Icons.hearing_rounded,
+                  _voiceMs != null,
+                  () => _capture(true),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _syncBtn(
+                  'Subtitle seen',
+                  Icons.subtitles_rounded,
+                  _textMs != null,
+                  () => _capture(false),
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _syncBtn(String label, IconData icon, bool done, VoidCallback onTap) {
+    return Material(
+      color: done
+          ? AppColors.accent.withValues(alpha: 0.18)
+          : AppColors.surface2,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: done ? AppColors.accent : AppColors.textSecondary,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppText.caption.copyWith(
+                    color: done ? AppColors.accent : AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
