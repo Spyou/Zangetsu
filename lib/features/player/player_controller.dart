@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
+import 'package:gal/gal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle, PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1764,6 +1765,33 @@ class PlayerCubit extends Cubit<PlayerState> {
   void clearSubSync() {
     subSyncVoiceMs = null;
     subSyncTextMs = null;
+  }
+
+  /// Grab the current video frame and save it to the gallery. Returns true on
+  /// success. NOTE: subtitles are a Flutter overlay, so they are NOT part of the
+  /// captured frame — only the raw video.
+  Future<bool> captureScreenshot() async {
+    try {
+      final bytes = await player.screenshot(format: 'image/png');
+      if (bytes == null || bytes.isEmpty) {
+        _toast("Couldn't capture the frame");
+        return false;
+      }
+      final name = 'Zangetsu_${DateTime.now().millisecondsSinceEpoch}';
+      // Saving needs no runtime permission on Android 10+; on older Android /
+      // iOS the first attempt throws accessDenied — request, then retry once.
+      try {
+        await Gal.putImageBytes(bytes, name: name);
+      } on GalException {
+        await Gal.requestAccess();
+        await Gal.putImageBytes(bytes, name: name);
+      }
+      _toast('Saved to gallery');
+      return true;
+    } catch (_) {
+      _toast('Screenshot failed');
+      return false;
+    }
   }
 
   /// Read a single mpv property as a string, for the in-player info overlay.

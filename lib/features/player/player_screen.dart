@@ -236,6 +236,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // ⓘ button in the top bar, NOT auto with the controls.
   final List<String> _infoFields = sl<PlaybackPrefs>().playerInfoFields;
   bool _infoPanelOpen = false;
+  bool _flashing = false; // brief white flash on screenshot capture
   // Always-on plain-text quality label (top-right), independent of the ⓘ panel.
   final bool _alwaysShowQuality = sl<PlaybackPrefs>().alwaysShowQuality;
   // MegaSkip — manual jump-forward button (Aniyomi-style). Read once at open
@@ -955,6 +956,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _megaFlashTimer = Timer(const Duration(milliseconds: 700), () {
       if (mounted) setState(() => _megaFlash = false);
     });
+  }
+
+  Future<void> _captureScreenshot() async {
+    // Instant camera-flash feedback. It's a Flutter overlay (not in the mpv
+    // frame), so it never corrupts the captured image.
+    setState(() => _flashing = true);
+    Future.delayed(const Duration(milliseconds: 130), () {
+      if (mounted) setState(() => _flashing = false);
+    });
+    await _c.captureScreenshot(); // saves to gallery + toasts the result
+    _bumpControls();
   }
 
   void _onEpisodeComplete() {
@@ -2052,6 +2064,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             },
                       infoOpen: _infoPanelOpen,
                       showQuality: _alwaysShowQuality,
+                      onScreenshot: _captureScreenshot,
                     ),
                   ),
                 )
@@ -2097,6 +2110,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: _InfoOverlay(controller: _c, fields: _infoFields),
                   ),
                 ),
+
+              // 6b-iii. Camera flash on screenshot capture.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedOpacity(
+                    opacity: _flashing ? 0.85 : 0,
+                    duration: const Duration(milliseconds: 110),
+                    child: const ColoredBox(color: Colors.white),
+                  ),
+                ),
+              ),
 
 
               // 6c. Skip button — accurate AniSkip OP/ED intervals (anime) when
@@ -2559,6 +2583,7 @@ class _ControlsOverlay extends StatelessWidget {
     this.onInfo,
     this.infoOpen = false,
     this.showQuality = false,
+    required this.onScreenshot,
   });
 
   final PlayerCubit controller;
@@ -2589,6 +2614,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
   final bool showQuality; // plain quality text on the top-bar right (with controls)
+  final VoidCallback onScreenshot; // grab the current frame → gallery
 
   @override
   Widget build(BuildContext context) {
@@ -2984,6 +3010,11 @@ class _ControlsOverlay extends StatelessWidget {
                         icon: Icons.aspect_ratio_rounded,
                         label: zoomLabel,
                         onTap: onZoom,
+                      ),
+                      _ControlButton(
+                        icon: Icons.photo_camera_rounded,
+                        label: 'Snapshot',
+                        onTap: onScreenshot,
                       ),
                       if (hasNext)
                         _ControlButton(
