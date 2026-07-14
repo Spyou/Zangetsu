@@ -83,6 +83,18 @@ class PlaybackPrefs {
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);
 
+  /// Fast player (beta): route normal streams to the native ExoPlayer engine
+  /// (smoother than mpv's Flutter-texture rendering). Default OFF — with it off
+  /// the router always picks mpv, so playback is byte-for-byte today's behaviour.
+  bool get fastPlayer => _box.get('fastPlayer', defaultValue: false) as bool;
+  Future<void> setFastPlayer(bool value) => _box.put('fastPlayer', value);
+
+  /// Diagnostic: which engine actually played the last source ('ExoPlayer' /
+  /// 'mpv'). Shown under the toggle so the beta is legible.
+  String? get lastEngineUsed => _box.get('lastEngineUsed') as String?;
+  Future<void> setLastEngineUsed(String value) =>
+      _box.put('lastEngineUsed', value);
+
   /// Whether vertical swipe gestures in the player adjust brightness (left half)
   /// and volume (right half), MX/Netflix-style.
   bool get gestureControls =>
