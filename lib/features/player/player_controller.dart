@@ -658,15 +658,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// the last known position, so a failed ExoPlayer decode is invisible.
   Future<void> _fallbackToMpv() async {
     final src = _currentSource;
-    if (src == null || engine is MpvEngine) return;
+    final active = state.active;
+    if (src == null || active == null || engine is MpvEngine) return;
     // Visible feedback so the switch never looks like a frozen loader.
     _toast('Switching player…');
-    // Remember this host failed exo → future plays route straight to mpv.
-    unawaited(sl<PlaybackPrefs>().addExoBlockedHost(_hostOf(src.url)));
-    final resumeAt = position;
-    _swapEngine(MpvEngine(isTv: sl<AppMode>().isTv));
-    sl<PlaybackPrefs>().setLastEngineUsed('mpv');
-    await engine.load(src, startAt: resumeAt);
+    // Block this host FIRST (awaited, so it's persisted before _ensureEngineFor
+    // reads it below), then re-open the source through the NORMAL open path.
+    // Routing sees the blocked host → mpv, and _open runs its full flow (state
+    // emit → screen rebuild, resume, speed, subtitles) so the mpv engine behaves
+    // EXACTLY like a normal open — not a bare in-place swap that left the
+    // controls unresponsive.
+    await sl<PlaybackPrefs>().addExoBlockedHost(_hostOf(src.url));
+    await _open(active, seekTo: _lastPos);
   }
 
   /// Arm a one-shot exo start watchdog: some streams silently hang on ExoPlayer

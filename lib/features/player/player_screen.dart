@@ -506,6 +506,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
       initialResume: widget.resumePosition,
     )..init(startIndex);
 
+    // Rebuild the WHOLE player after an engine swap (exo↔mpv). The video mount
+    // re-mounts via engineRev on its own, but the gesture/controls layer needs a
+    // fresh build too after the platform-view↔texture transition — otherwise a
+    // swapped-in mpv left seek/pause unresponsive.
+    _c.engineRev.addListener(_onEngineSwap);
+
     _room.attachPlayer(
       localPosition: () => _c.position,
       onApplyRemote: (playing, pos, rate) =>
@@ -642,6 +648,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       FlutterVolumeController.updateShowSystemUI(true);
     }
     WakelockPlus.disable();
+    if (_ready) _c.engineRev.removeListener(_onEngineSwap);
     if (_ready) _c.close();
     // Detach from the app-level party controller (nulls out player hooks and,
     // if this client is host, marks the room lobby). Does NOT leave the party —
@@ -1224,6 +1231,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // instead. mpv (Flutter texture) keeps the frosted-glass look.
   bool get _sheetBlur => !_c.isExoActive;
   double _sheetOpacity(double blurred) => _c.isExoActive ? 0.95 : blurred;
+
+  // Full rebuild after an engine swap so the gesture/controls layer is freshly
+  // laid out over the new (mpv texture / exo platform-view) surface.
+  void _onEngineSwap() {
+    if (mounted) setState(() {});
+  }
 
   Future<T?> _sheet<T>(Widget child) {
     return showModalBottomSheet<T>(
