@@ -2655,14 +2655,6 @@ class _ControlsOverlay extends StatelessWidget {
                       },
                     ),
                     _MoreRow(
-                      icon: Icons.aspect_ratio_rounded,
-                      label: 'Aspect ratio · $zoomLabel',
-                      onTap: () {
-                        Navigator.pop(ctx);
-                        onZoom();
-                      },
-                    ),
-                    _MoreRow(
                       icon: sleepActive
                           ? Icons.bedtime_rounded
                           : Icons.bedtime_outlined,
@@ -3077,6 +3069,11 @@ class _ControlsOverlay extends StatelessWidget {
                         icon: Icons.video_settings_rounded,
                         label: 'Sources',
                         onTap: onSources,
+                      ),
+                      _ControlButton(
+                        icon: Icons.aspect_ratio_rounded,
+                        label: zoomLabel,
+                        onTap: onZoom,
                       ),
                       if (hasNext)
                         _ControlButton(
