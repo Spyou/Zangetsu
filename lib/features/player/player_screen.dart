@@ -2051,6 +2051,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               _bumpControls();
                             },
                       infoOpen: _infoPanelOpen,
+                      showQuality: _alwaysShowQuality,
                     ),
                   ),
                 )
@@ -2097,41 +2098,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 6b-ii. Always-on quality — plain text (no badge), top-right,
-              // visible the whole time. Prefers the source's quality label,
-              // else the live video height (e.g. "1080p").
-              if (!sl<AppMode>().isTv && _alwaysShowQuality)
-                Positioned(
-                  top: MediaQuery.of(context).padding.top + 58,
-                  right: 16,
-                  child: IgnorePointer(
-                    child: StreamBuilder<int?>(
-                      stream: _c.player.stream.height,
-                      initialData: _c.player.state.height,
-                      builder: (context, snap) {
-                        final q = state.active?.quality?.trim();
-                        final h = snap.data ?? 0;
-                        final label =
-                            (q != null &&
-                                q.isNotEmpty &&
-                                q.toLowerCase() != 'auto')
-                            ? q
-                            : (h > 0 ? '${h}p' : '');
-                        if (label.isEmpty) return const SizedBox.shrink();
-                        return Text(
-                          label,
-                          style: AppText.caption.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            shadows: const [
-                              Shadow(blurRadius: 4, color: Colors.black87),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
 
               // 6c. Skip button — accurate AniSkip OP/ED intervals (anime) when
               // detected. Independent of the controls (stays visible like
@@ -2588,6 +2554,7 @@ class _ControlsOverlay extends StatelessWidget {
     this.onChat,
     this.onInfo,
     this.infoOpen = false,
+    this.showQuality = false,
   });
 
   final PlayerCubit controller;
@@ -2617,6 +2584,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
   final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
   final bool infoOpen; // whether the info panel is currently shown
+  final bool showQuality; // plain quality text on the top-bar right (with controls)
 
   @override
   Widget build(BuildContext context) {
@@ -2768,6 +2736,35 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Quality — plain text on the right (reDantotsu-style), shown
+                  // with the controls. Prefers the source's label, else the live
+                  // video height (e.g. "1080p").
+                  if (showQuality)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6),
+                      child: StreamBuilder<int?>(
+                        stream: c.player.stream.height,
+                        initialData: c.player.state.height,
+                        builder: (context, snap) {
+                          final q = state.active?.quality?.trim();
+                          final h = snap.data ?? 0;
+                          final label =
+                              (q != null &&
+                                  q.isNotEmpty &&
+                                  q.toLowerCase() != 'auto')
+                              ? q
+                              : (h > 0 ? '${h}p' : '');
+                          if (label.isEmpty) return const SizedBox.shrink();
+                          return Text(
+                            label,
+                            style: AppText.caption.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
                   // Decoder quick-switch (top-right) — tap to flip HW/SW live if
                   // a stream stutters / goes green / black. Aniyomi-style.
                   Padding(

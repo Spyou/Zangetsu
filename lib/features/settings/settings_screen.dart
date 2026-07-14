@@ -1166,8 +1166,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.high_quality_outlined,
-                title: 'Always show quality',
-                subtitle: 'Plain quality text (e.g. 1080p) pinned in the player',
+                title: 'Show quality label',
+                subtitle: 'Plain quality text (e.g. 1080p) on the top-bar right',
                 value: _prefs.alwaysShowQuality,
                 onChanged: (v) async {
                   await _prefs.setAlwaysShowQuality(v);

@@ -175,8 +175,9 @@ class PlaybackPrefs {
   Future<void> setPlayerInfoFields(List<String> value) =>
       _box.put('playerInfoFields', value);
 
-  /// Show the current quality as plain always-on text (top-right of the player),
-  /// separate from the ⓘ info panel. Default off.
+  /// Show the current quality as plain text on the top-bar right (reDantotsu-
+  /// style), fading with the controls — separate from the ⓘ info panel. The
+  /// legacy Hive key name is kept. Default off.
   bool get alwaysShowQuality =>
       _box.get('alwaysShowQuality', defaultValue: false) as bool;
   Future<void> setAlwaysShowQuality(bool value) =>
