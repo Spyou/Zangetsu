@@ -3420,42 +3420,88 @@ class _PreviewBubble extends StatelessWidget {
 // Small bits.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Netflix-style "Skip intro" pill.
-class _SkipButton extends StatelessWidget {
+// Netflix-style "Skip intro/ending" pill — fades + slides up when it appears
+// (it's mounted only while inside an AniSkip interval), with a ripple + a
+// premium rounded look. A press-scale gives tactile feedback.
+class _SkipButton extends StatefulWidget {
   const _SkipButton({required this.label, required this.onTap});
   final String label;
   final VoidCallback onTap;
 
   @override
+  State<_SkipButton> createState() => _SkipButtonState();
+}
+
+class _SkipButtonState extends State<_SkipButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 340),
+  )..forward();
+  bool _pressed = false;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.black.withValues(alpha: 0.6),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: Colors.white70, width: 1),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: AppText.body.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _ctrl, curve: Curves.easeOut),
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.45),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic)),
+        child: AnimatedScale(
+          scale: _pressed ? 0.94 : 1,
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          child: Material(
+            color: Colors.black.withValues(alpha: 0.55),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.85),
+                width: 1.4,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            elevation: 5,
+            shadowColor: Colors.black54,
+            child: InkWell(
+              onTap: widget.onTap,
+              onTapDown: (_) => setState(() => _pressed = true),
+              onTapCancel: () => setState(() => _pressed = false),
+              onTapUp: (_) => setState(() => _pressed = false),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 10,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.label,
+                      style: AppText.body.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                    const SizedBox(width: 7),
+                    const Icon(
+                      Icons.skip_next_rounded,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.fast_forward_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-            ],
+            ),
           ),
         ),
       ),
