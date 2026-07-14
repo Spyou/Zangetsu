@@ -95,6 +95,22 @@ class PlaybackPrefs {
   Future<void> setLastEngineUsed(String value) =>
       _box.put('lastEngineUsed', value);
 
+  /// Stream hosts that hung/failed on ExoPlayer once — routed straight to mpv
+  /// on future plays so the fast-player beta doesn't re-hit the ~10s start
+  /// watchdog every time. Keyed by URL host (stable; the tokenised path isn't).
+  List<String> get exoBlockedHosts =>
+      (_box.get('exoBlockedHosts', defaultValue: const <String>[]) as List)
+          .cast<String>();
+  Future<void> addExoBlockedHost(String host) async {
+    if (host.isEmpty) return;
+    final cur = exoBlockedHosts;
+    if (cur.contains(host)) return;
+    await _box.put('exoBlockedHosts', [...cur, host]);
+  }
+
+  /// Clear the ExoPlayer host blocklist (lets those hosts try exo again).
+  Future<void> clearExoBlockedHosts() => _box.delete('exoBlockedHosts');
+
   /// Whether vertical swipe gestures in the player adjust brightness (left half)
   /// and volume (right half), MX/Netflix-style.
   bool get gestureControls =>

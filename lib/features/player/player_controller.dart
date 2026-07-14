@@ -614,14 +614,25 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// type. Toggle off → choice is always mpv → engine already mpv → no-op, so
   /// the default path never swaps. Must run BEFORE [engine.load].
   void _ensureEngineFor(EngineSource source) {
-    final choice = EngineRouter.pick(
+    var choice = EngineRouter.pick(
       source: source,
       fastPlayer: sl<PlaybackPrefs>().fastPlayer,
     );
+    // A host that already hung/failed on ExoPlayer → skip exo (and its ~10s
+    // start watchdog) and go straight to mpv this time.
+    if (choice == EngineChoice.exo && _isExoBlockedHost(source.url)) {
+      choice = EngineChoice.mpv;
+    }
     final wantExo = choice == EngineChoice.exo;
     sl<PlaybackPrefs>().setLastEngineUsed(wantExo ? 'ExoPlayer' : 'mpv');
     if (wantExo == (engine is ExoEngine)) return; // already the right engine
     _swapEngine(wantExo ? ExoEngine() : MpvEngine(isTv: sl<AppMode>().isTv));
+  }
+
+  String _hostOf(String url) => Uri.tryParse(url)?.host ?? '';
+  bool _isExoBlockedHost(String url) {
+    final h = _hostOf(url);
+    return h.isNotEmpty && sl<PlaybackPrefs>().exoBlockedHosts.contains(h);
   }
 
   /// Replace [engine] with [next]: detach listeners from the old, dispose it,
@@ -641,6 +652,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _fallbackToMpv() async {
     final src = _currentSource;
     if (src == null || engine is MpvEngine) return;
+    // Remember this host failed exo → future plays route straight to mpv.
+    unawaited(sl<PlaybackPrefs>().addExoBlockedHost(_hostOf(src.url)));
     final resumeAt = position;
     _swapEngine(MpvEngine(isTv: sl<AppMode>().isTv));
     sl<PlaybackPrefs>().setLastEngineUsed('mpv');

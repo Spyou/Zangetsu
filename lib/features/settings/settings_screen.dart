@@ -981,10 +981,26 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
                 if (_prefs.lastEngineUsed != null)
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(52, 0, 16, 4),
                     child: Text(
                       'Last played with: ${_prefs.lastEngineUsed}',
                       style: AppText.caption,
+                    ),
+                  ),
+                if (_prefs.exoBlockedHosts.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
+                    child: GestureDetector(
+                      onTap: () async {
+                        await _prefs.clearExoBlockedHosts();
+                        if (mounted) setState(() {});
+                      },
+                      child: Text(
+                        'Reset fast-player exclusions '
+                        '(${_prefs.exoBlockedHosts.length})',
+                        style:
+                            AppText.caption.copyWith(color: AppColors.accent),
+                      ),
                     ),
                   ),
               ],
