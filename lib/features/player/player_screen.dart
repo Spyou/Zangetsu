@@ -2755,11 +2755,12 @@ class _ControlsOverlay extends StatelessWidget {
                               ? q
                               : (h > 0 ? '${h}p' : '');
                           if (label.isEmpty) return const SizedBox.shrink();
+                          // Grey, normal-weight — matches the "E1 · …" secondary
+                          // title so it reads as a label, not a button/icon.
                           return Text(
                             label,
                             style: AppText.caption.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
+                              color: Colors.white70,
                             ),
                           );
                         },
