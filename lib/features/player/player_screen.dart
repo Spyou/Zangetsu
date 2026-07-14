@@ -2616,66 +2616,84 @@ class _ControlsOverlay extends StatelessWidget {
   final bool showQuality; // plain quality text on the top-bar right (with controls)
   final VoidCallback onScreenshot; // grab the current frame → gallery
 
-  /// Overflow sheet for the occasional actions, keeping the control bars clean.
+  /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
+  /// holds the occasional actions so the control bars stay clean.
   void _showMore(BuildContext context) {
     onInteract();
-    showModalBottomSheet<void>(
+    showGeneralDialog<void>(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => _SheetSurface(
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 10),
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(2),
+      barrierDismissible: true,
+      barrierLabel: 'More',
+      barrierColor: Colors.black54,
+      transitionDuration: const Duration(milliseconds: 240),
+      pageBuilder: (ctx, _, _) {
+        final w = (MediaQuery.of(ctx).size.width * 0.4).clamp(240.0, 360.0);
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            color: AppColors.surface,
+            child: SafeArea(
+              left: false,
+              child: SizedBox(
+                width: w,
+                height: double.infinity,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
+                      child: Text('More', style: AppText.headline),
+                    ),
+                    const Divider(color: AppColors.hairline, height: 1),
+                    const SizedBox(height: 4),
+                    _MoreRow(
+                      icon: Icons.photo_camera_rounded,
+                      label: 'Snapshot',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onScreenshot();
+                      },
+                    ),
+                    _MoreRow(
+                      icon: Icons.aspect_ratio_rounded,
+                      label: 'Aspect ratio · $zoomLabel',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onZoom();
+                      },
+                    ),
+                    _MoreRow(
+                      icon: sleepActive
+                          ? Icons.bedtime_rounded
+                          : Icons.bedtime_outlined,
+                      label: 'Sleep timer',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onSleep();
+                      },
+                    ),
+                    if (onPip != null)
+                      _MoreRow(
+                        icon: Icons.picture_in_picture_alt_rounded,
+                        label: 'Picture-in-picture',
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          onPip!();
+                        },
+                      ),
+                  ],
                 ),
               ),
-              _MoreRow(
-                icon: Icons.photo_camera_rounded,
-                label: 'Snapshot',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onScreenshot();
-                },
-              ),
-              _MoreRow(
-                icon: Icons.aspect_ratio_rounded,
-                label: 'Aspect ratio · $zoomLabel',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onZoom();
-                },
-              ),
-              _MoreRow(
-                icon: sleepActive
-                    ? Icons.bedtime_rounded
-                    : Icons.bedtime_outlined,
-                label: 'Sleep timer',
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onSleep();
-                },
-              ),
-              if (onPip != null)
-                _MoreRow(
-                  icon: Icons.picture_in_picture_alt_rounded,
-                  label: 'Picture-in-picture',
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    onPip!();
-                  },
-                ),
-              const SizedBox(height: 6),
-            ],
+            ),
           ),
-        ),
+        );
+      },
+      transitionBuilder: (ctx, anim, _, child) => SlideTransition(
+        position: Tween(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+        child: child,
       ),
     );
   }
@@ -2909,6 +2927,12 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                       onPressed: onChat,
                     ),
+                  // ⋮ More — opens the right-slide overflow panel.
+                  IconButton(
+                    tooltip: 'More',
+                    icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
+                    onPressed: () => _showMore(context),
+                  ),
                 ],
               ),
             ),
@@ -3063,11 +3087,6 @@ class _ControlsOverlay extends StatelessWidget {
                             onInteract();
                           },
                         ),
-                      _ControlButton(
-                        icon: Icons.more_vert_rounded,
-                        label: 'More',
-                        onTap: () => _showMore(context),
-                      ),
                     ],
                   ),
                 ],
