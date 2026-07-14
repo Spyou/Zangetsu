@@ -2109,8 +2109,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   builder: (context, snap) {
                     final btn = _skipButtonFor(snap.data ?? Duration.zero);
                     if (btn == null) return const SizedBox.shrink();
-                    return Align(
-                      alignment: const Alignment(0.94, 0.66),
+                    // Sit low (Netflix-style) while watching; slide up above the
+                    // seek bar when the controls are showing so they never clash.
+                    return AnimatedAlign(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOut,
+                      alignment: Alignment(0.94, _controlsVisible ? 0.4 : 0.74),
                       child: btn,
                     );
                   },
@@ -3460,11 +3464,15 @@ class _SkipButtonState extends State<_SkipButton>
           duration: const Duration(milliseconds: 110),
           curve: Curves.easeOut,
           child: Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(6),
+            color: Colors.black.withValues(alpha: 0.38),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+              side: BorderSide(
+                color: Colors.white.withValues(alpha: 0.6),
+                width: 1.2,
+              ),
+            ),
             clipBehavior: Clip.antiAlias,
-            elevation: 6,
-            shadowColor: Colors.black54,
             child: InkWell(
               onTap: widget.onTap,
               onTapDown: (_) => setState(() => _pressed = true),
@@ -3472,15 +3480,15 @@ class _SkipButtonState extends State<_SkipButton>
               onTapUp: (_) => setState(() => _pressed = false),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 26,
-                  vertical: 11,
+                  horizontal: 24,
+                  vertical: 10,
                 ),
                 child: Text(
                   widget.label,
                   style: AppText.body.copyWith(
-                    color: Colors.black,
+                    color: Colors.white,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: 0.2,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ),
