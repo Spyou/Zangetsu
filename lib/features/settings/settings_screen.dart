@@ -968,6 +968,25 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                             : 'External app'),
                   onTap: _pickPlayer,
                 ),
+                _toggleRow(
+                  icon: Icons.bolt_outlined,
+                  title: 'Fast player (beta)',
+                  subtitle: 'Smoother playback on most videos. Falls back '
+                      'automatically for unsupported files.',
+                  value: _prefs.fastPlayer,
+                  onChanged: (v) async {
+                    await _prefs.setFastPlayer(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                if (_prefs.lastEngineUsed != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(52, 0, 16, 10),
+                    child: Text(
+                      'Last played with: ${_prefs.lastEngineUsed}',
+                      style: AppText.caption,
+                    ),
+                  ),
               ],
             ),
           ],
