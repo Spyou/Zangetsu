@@ -2031,6 +2031,49 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 ),
+
+              // 9. Beta engine badge — which player is rendering right now.
+              // Shown only while the Fast-player beta is on; reactive to the
+              // exo↔mpv swap. Non-interactive, pinned top-centre.
+              if (sl<PlaybackPrefs>().fastPlayer)
+                Positioned(
+                  top: 6,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    bottom: false,
+                    child: IgnorePointer(
+                      child: Center(
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: _c.engineRev,
+                          builder: (context, _, _) => Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.55),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: Colors.white24,
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              _c.activeEngineLabel,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
             ),
           );

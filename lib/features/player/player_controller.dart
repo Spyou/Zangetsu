@@ -228,6 +228,9 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// `engine.buildVideo` (mpv Video ↔ ExoPlayer PlatformView).
   final engineRev = ValueNotifier<int>(0);
 
+  /// Human label for the engine currently playing — drives the beta badge.
+  String get activeEngineLabel => engine is ExoEngine ? 'ExoPlayer' : 'mpv';
+
   /// Fatal-error subscription for the CURRENT engine (re-created on every swap).
   StreamSubscription<EngineError>? _engineErrorSub;
 
