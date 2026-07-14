@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -221,11 +220,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Phase 2: assigned by EngineRouter and swappable for fallback.
   late final PlaybackEngine engine = MpvEngine(isTv: sl<AppMode>().isTv);
 
-  // TEMPORARY during migration: existing code still references `player` /
-  // `videoController`. These delegate to the mpv engine and are deleted in Task 6.
-  Player get player => (engine as MpvEngine).rawPlayer;
-  VideoController get videoController => (engine as MpvEngine).rawVideoController;
-
   ValueListenable<Duration> get positionListenable => engine.position;
   ValueListenable<Duration> get durationListenable => engine.duration;
   ValueListenable<bool> get playingListenable => engine.playing;
@@ -238,12 +232,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   bool get playing => engine.playing.value;
   double get rate => engine.rate.value;
   int get videoWidth => engine.videoWidth.value;
-
-  /// Bumped whenever the subtitle style changes (or a source opens). The player
-  /// screen listens to rebuild the Video's [SubtitleViewConfiguration] — media_kit
-  /// renders text subs via a Flutter overlay, so styling lives there, NOT in
-  /// mpv's sub-* properties.
-  final ValueNotifier<int> subtitleStyleRev = ValueNotifier<int>(0);
 
   /// Brief user-facing status (e.g. "Switching server…") the player screen
   /// shows as a transient toast. Auto-clears after a couple of seconds.
@@ -1758,7 +1746,6 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Stop any active torrent stream + delete its buffered pieces.
     await _stopTorrent();
     toast.dispose();
-    subtitleStyleRev.dispose();
     await engine.dispose();
     return super.close();
   }

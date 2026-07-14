@@ -32,10 +32,6 @@ class MpvEngine implements PlaybackEngine {
     ),
   );
 
-  // TEMPORARY escape hatches for the migration (removed in Task 6).
-  Player get rawPlayer => _player;
-  VideoController get rawVideoController => _videoController;
-
   final _position = ValueNotifier<Duration>(Duration.zero);
   final _duration = ValueNotifier<Duration>(Duration.zero);
   final _playing = ValueNotifier<bool>(false);
