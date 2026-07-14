@@ -2605,6 +2605,23 @@ class _ControlsOverlay extends StatelessWidget {
     final secondaryTitle = showTitle == null
         ? null
         : 'E$epNum${hasEpName ? ' · $epName' : ''}';
+    // Quality appended to the E-line (reDantotsu-style) when enabled — prefers
+    // the source's quality label, else the live video height (e.g. "1080p").
+    String? qualityLabel;
+    if (showQuality) {
+      final q = state.active?.quality?.trim();
+      if (q != null && q.isNotEmpty && q.toLowerCase() != 'auto') {
+        qualityLabel = q;
+      } else {
+        final h = c.player.state.height ?? 0;
+        if (h > 0) qualityLabel = '${h}p';
+      }
+    }
+    final secondaryLine = qualityLabel == null
+        ? secondaryTitle
+        : (secondaryTitle == null
+              ? qualityLabel
+              : '$secondaryTitle · $qualityLabel');
     final hasNext = state.currentIndex + 1 < c.episodes.length;
 
     return Stack(
@@ -2721,11 +2738,11 @@ class _ControlsOverlay extends StatelessWidget {
                             ],
                           ],
                         ),
-                        if (secondaryTitle != null)
+                        if (secondaryLine != null)
                           Padding(
                             padding: const EdgeInsets.only(top: 1),
                             child: Text(
-                              secondaryTitle,
+                              secondaryLine,
                               style: AppText.caption.copyWith(
                                 color: Colors.white70,
                               ),
@@ -2736,36 +2753,6 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
-                  // Quality — plain text on the right (reDantotsu-style), shown
-                  // with the controls. Prefers the source's label, else the live
-                  // video height (e.g. "1080p").
-                  if (showQuality)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6),
-                      child: StreamBuilder<int?>(
-                        stream: c.player.stream.height,
-                        initialData: c.player.state.height,
-                        builder: (context, snap) {
-                          final q = state.active?.quality?.trim();
-                          final h = snap.data ?? 0;
-                          final label =
-                              (q != null &&
-                                  q.isNotEmpty &&
-                                  q.toLowerCase() != 'auto')
-                              ? q
-                              : (h > 0 ? '${h}p' : '');
-                          if (label.isEmpty) return const SizedBox.shrink();
-                          // Grey, normal-weight — matches the "E1 · …" secondary
-                          // title so it reads as a label, not a button/icon.
-                          return Text(
-                            label,
-                            style: AppText.caption.copyWith(
-                              color: Colors.white70,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
                   // Decoder quick-switch (top-right) — tap to flip HW/SW live if
                   // a stream stutters / goes green / black. Aniyomi-style.
                   Padding(
