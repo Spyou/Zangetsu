@@ -659,6 +659,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _fallbackToMpv() async {
     final src = _currentSource;
     if (src == null || engine is MpvEngine) return;
+    // Visible feedback so the switch never looks like a frozen loader.
+    _toast('Switching player…');
     // Remember this host failed exo → future plays route straight to mpv.
     unawaited(sl<PlaybackPrefs>().addExoBlockedHost(_hostOf(src.url)));
     final resumeAt = position;
@@ -675,12 +677,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     _exoStartTimer?.cancel();
     _exoStartTimer = null;
     if (engine is! ExoEngine) return;
-    _exoStartTimer = Timer(const Duration(seconds: 10), () {
+    _exoStartTimer = Timer(const Duration(seconds: 6), () {
       if (g != _gen || engine is! ExoEngine) return;
       // Position advancing is the only reliable "actually playing" signal —
       // videoWidth can be set from the track format BEFORE a frame renders, so
       // a stuck stream would falsely look started. A working stream (even from
-      // 0) advances within ~1s, so at 10s a still-zero position means a hang.
+      // 0) advances within ~1s, so at 6s a still-zero position means a hang.
+      // (A rare false trigger on a slow stream just moves it to mpv, which
+      // plays it too — no worse than exo, so 6s trades a little for snappier UX.)
       if (_lastPos <= Duration.zero) unawaited(_fallbackToMpv());
     });
   }
