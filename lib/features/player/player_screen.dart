@@ -933,7 +933,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Hide a beat before the interval ends so it doesn't flicker at the edge.
       if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
         return _SkipButton(
-          label: iv.type == 'ed' ? 'Skip ending' : 'Skip opening',
+          label: 'Skip',
           onTap: () {
             _c.seekTo(iv.end);
             _bumpControls();
@@ -3460,16 +3460,10 @@ class _SkipButtonState extends State<_SkipButton>
           duration: const Duration(milliseconds: 110),
           curve: Curves.easeOut,
           child: Material(
-            color: Colors.black.withValues(alpha: 0.55),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: Colors.white.withValues(alpha: 0.85),
-                width: 1.4,
-              ),
-            ),
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(6),
             clipBehavior: Clip.antiAlias,
-            elevation: 5,
+            elevation: 6,
             shadowColor: Colors.black54,
             child: InkWell(
               onTap: widget.onTap,
@@ -3478,27 +3472,16 @@ class _SkipButtonState extends State<_SkipButton>
               onTapUp: (_) => setState(() => _pressed = false),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
+                  horizontal: 26,
+                  vertical: 11,
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.label,
-                      style: AppText.body.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                    const SizedBox(width: 7),
-                    const Icon(
-                      Icons.skip_next_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ],
+                child: Text(
+                  widget.label,
+                  style: AppText.body.copyWith(
+                    color: Colors.black,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
                 ),
               ),
             ),
