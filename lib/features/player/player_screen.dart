@@ -3816,6 +3816,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   // live on the controller so they survive closing the sheet.
                   sync: (
                     capture: c.captureSubSync,
+                    clear: c.clearSubSync,
                     currentMs: () => c.subtitleDelay.inMilliseconds,
                     voiceOn: () => c.subSyncVoiceMs != null,
                     textOn: () => c.subSyncTextMs != null,
@@ -4838,6 +4839,7 @@ class _DelayAdjuster extends StatefulWidget {
   /// [textOn] report which point is currently captured (for the highlight).
   final ({
     int? Function(bool voice) capture,
+    void Function() clear,
     int Function() currentMs,
     bool Function() voiceOn,
     bool Function() textOn,
@@ -4954,13 +4956,42 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            hint,
-            style: AppText.caption.copyWith(
-              color: (_note != null || voiceOn || textOn)
-                  ? AppColors.accent
-                  : AppColors.textTertiary,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  hint,
+                  style: AppText.caption.copyWith(
+                    color: (_note != null || voiceOn || textOn)
+                        ? AppColors.accent
+                        : AppColors.textTertiary,
+                  ),
+                ),
+              ),
+              // Cancel a pending capture without applying anything.
+              if (voiceOn || textOn)
+                InkWell(
+                  onTap: () {
+                    s.clear();
+                    _noteTimer?.cancel();
+                    setState(() => _note = null);
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Text(
+                      'Clear',
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 8),
           Row(

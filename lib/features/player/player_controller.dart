@@ -1760,6 +1760,12 @@ class PlayerCubit extends Cubit<PlayerState> {
     return null;
   }
 
+  /// Discard a pending sync capture (Clear/cancel).
+  void clearSubSync() {
+    subSyncVoiceMs = null;
+    subSyncTextMs = null;
+  }
+
   Future<void> setSubtitleDelay(Duration d) async {
     subtitleDelay = d;
     final p = player.platform;
