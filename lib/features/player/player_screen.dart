@@ -3037,6 +3037,17 @@ class _SeekRowState extends State<_SeekRow> {
                                   bufferedColor: Colors.white.withValues(
                                     alpha: 0.55,
                                   ),
+                                  marks: [
+                                    if (totalMs > 0 &&
+                                        sl<PlaybackPrefs>().skipIntro)
+                                      for (final iv
+                                          in widget.controller.currentSkips) ...[
+                                        (iv.start.inMilliseconds / totalMs)
+                                            .clamp(0.0, 1.0),
+                                        (iv.end.inMilliseconds / totalMs)
+                                            .clamp(0.0, 1.0),
+                                      ],
+                                  ],
                                 ),
                                 thumbColor: Colors.white,
                                 overlayColor: AppColors.accentSoft,
@@ -3152,11 +3163,16 @@ class _BufferedSliderTrackShape extends SliderTrackShape
   _BufferedSliderTrackShape({
     required this.buffered,
     required this.bufferedColor,
+    this.marks = const [],
   });
 
   /// Buffered fraction in [0, 1].
   final double buffered;
   final Color bufferedColor;
+
+  /// Chapter/skip marker fractions in [0, 1] (AniSkip OP/ED boundaries),
+  /// drawn as small notches poking above/below the track.
+  final List<double> marks;
 
   @override
   void paint(
@@ -3209,6 +3225,23 @@ class _BufferedSliderTrackShape extends SliderTrackShape
       ),
       Paint()..color = sliderTheme.activeTrackColor ?? AppColors.accent,
     );
+
+    // 4. Chapter / skip markers (AniSkip OP/ED boundaries) — small notches
+    // that overhang the track so they read as markers, not part of the fill.
+    if (marks.isNotEmpty) {
+      final markPaint = Paint()..color = Colors.white.withValues(alpha: 0.95);
+      final h = rect.height + 4;
+      for (final m in marks) {
+        final x = rect.left + rect.width * m.clamp(0.0, 1.0);
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(x, rect.center.dy), width: 3, height: h),
+            const Radius.circular(1.5),
+          ),
+          markPaint,
+        );
+      }
+    }
   }
 }
 
