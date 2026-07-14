@@ -3010,7 +3010,7 @@ class _SeekRowState extends State<_SeekRow> {
                 builder: (context, cons) {
                   final w = cons.maxWidth;
                   final frac = max > 0 ? (value / max).clamp(0.0, 1.0) : 0.0;
-                  const bubbleW = 132.0;
+                  const bubbleW = 168.0;
                   final left = (frac * w - bubbleW / 2).clamp(
                     0.0,
                     (w - bubbleW).clamp(0.0, double.infinity),
@@ -3035,14 +3035,15 @@ class _SeekRowState extends State<_SeekRow> {
                                 trackShape: _BufferedSliderTrackShape(
                                   buffered: bufferedFrac,
                                   bufferedColor: Colors.white.withValues(
-                                    alpha: 0.45,
+                                    alpha: 0.55,
                                   ),
                                 ),
                                 thumbColor: Colors.white,
                                 overlayColor: AppColors.accentSoft,
-                                trackHeight: 5,
-                                thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 8,
+                                trackHeight: 6,
+                                // Thumb grows while scrubbing (YouTube-style).
+                                thumbShape: RoundSliderThumbShape(
+                                  enabledThumbRadius: _dragMs != null ? 11 : 7,
                                 ),
                                 overlayShape: const RoundSliderOverlayShape(
                                   overlayRadius: 18,
@@ -3237,8 +3238,8 @@ class _PreviewBubble extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    width: 132,
-                    height: 74,
+                    width: 168,
+                    height: 94,
                     color: Colors.black,
                     child: Image.memory(
                       bytes,
