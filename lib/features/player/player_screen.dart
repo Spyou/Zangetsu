@@ -2647,6 +2647,14 @@ class _ControlsOverlay extends StatelessWidget {
                     const Divider(color: AppColors.hairline, height: 1),
                     const SizedBox(height: 4),
                     _MoreRow(
+                      icon: Icons.memory_rounded,
+                      label: 'Decoder · $decoderLabel',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onDecoder();
+                      },
+                    ),
+                    _MoreRow(
                       icon: Icons.photo_camera_rounded,
                       label: 'Snapshot',
                       onTap: () {
@@ -2855,34 +2863,6 @@ class _ControlsOverlay extends StatelessWidget {
                             ),
                           ),
                       ],
-                    ),
-                  ),
-                  // Decoder quick-switch (top-right) — tap to flip HW/SW live if
-                  // a stream stutters / goes green / black. Aniyomi-style.
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: InkWell(
-                      onTap: onDecoder,
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.white54),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          decoderLabel,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                   // Info-panel toggle — the "stats for nerds" overlay.
