@@ -665,6 +665,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     (30, '30s'),
   ];
 
+  static const List<(String, String)> _decoderOptions = [
+    ('hw', 'Hardware (default)'),
+    ('hw+', 'Hardware+ (faster)'),
+    ('sw', 'Software (most compatible)'),
+    ('auto', 'Auto'),
+  ];
+
   String _labelFor<T>(List<(T, String)> options, T value, String fallback) {
     for (final (v, label) in options) {
       if (v == value) return label;
@@ -735,6 +742,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     );
     if (picked == null) return;
     await _prefs.setDefaultQuality(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickDecoder() async {
+    final picked = await _pick<String>(
+      title: 'Video decoder',
+      options: _decoderOptions,
+      current: _prefs.videoDecoder,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoDecoder(picked);
     if (mounted) setState(() {});
   }
 
@@ -949,6 +967,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   '${_prefs.defaultSpeed}x',
                 ),
                 onTap: _pickSpeed,
+              ),
+              SettingsTile(
+                icon: Icons.memory_outlined,
+                title: 'Video decoder',
+                subtitle: _labelFor(
+                  _decoderOptions,
+                  _prefs.videoDecoder,
+                  'Hardware (default)',
+                ),
+                onTap: _pickDecoder,
               ),
             ],
           ),

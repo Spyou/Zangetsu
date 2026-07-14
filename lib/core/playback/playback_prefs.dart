@@ -109,6 +109,31 @@ class PlaybackPrefs {
   Future<void> setAudioNormalize(bool value) =>
       _box.put('audioNormalize', value);
 
+  /// Video decoder mode. Default 'hw' = hardware (mpv `hwdec=mediacodec-copy`),
+  /// exactly today's behaviour. 'hw+' is the faster direct-output hardware path
+  /// (some filter limits); 'sw' is software decoding — slower / more battery but
+  /// plays codecs the hardware chokes on (fixes stutter / green / black video on
+  /// tricky streams); 'auto' lets mpv pick a safe decoder.
+  String get videoDecoder =>
+      _box.get('videoDecoder', defaultValue: 'hw') as String;
+  Future<void> setVideoDecoder(String value) =>
+      _box.put('videoDecoder', value);
+
+  /// The mpv `hwdec` property value for the current [videoDecoder] choice.
+  String get hwdecValue {
+    switch (videoDecoder) {
+      case 'hw+':
+        return 'mediacodec';
+      case 'sw':
+        return 'no';
+      case 'auto':
+        return 'auto-safe';
+      case 'hw':
+      default:
+        return 'mediacodec-copy';
+    }
+  }
+
   /// Home hero banner animation: 'cinematic' (cross-fade + Ken-Burns) or
   /// 'parallax' (parallax slide). A/B while we settle on the final one.
   String get heroStyle =>

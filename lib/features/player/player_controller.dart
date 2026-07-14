@@ -456,7 +456,10 @@ class PlayerCubit extends Cubit<PlayerState> {
         // ExoPlayer/CloudStream get from decoder fallback + shared-clock
         // renderers. Still hardware-decoded; mpv falls back to software per-codec
         // if a device can't hw-decode it.
-        await p.setProperty('hwdec', 'mediacodec-copy');
+        // Decoder is user-selectable (Settings → Playback → Video decoder).
+        // Default 'hw' → 'mediacodec-copy' (unchanged); 'sw' → software decode
+        // for streams the hardware decoder chokes on.
+        await p.setProperty('hwdec', sl<PlaybackPrefs>().hwdecValue);
         // On a cache underrun, pause audio+video together and wait until a little
         // is rebuffered before resuming, so they restart in lock-step instead of
         // audio-ahead (mirrors ExoPlayer's buffer-for-playback-after-rebuffer).
