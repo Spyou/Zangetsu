@@ -1161,8 +1161,18 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 title: 'Player info overlay',
                 subtitle: _prefs.playerInfoFields.isEmpty
                     ? 'Off'
-                    : '${_prefs.playerInfoFields.length} fields shown',
+                    : '${_prefs.playerInfoFields.length} fields (ⓘ button)',
                 onTap: _pickPlayerInfo,
+              ),
+              _toggleRow(
+                icon: Icons.high_quality_outlined,
+                title: 'Always show quality',
+                subtitle: 'Plain quality text (e.g. 1080p) pinned in the player',
+                value: _prefs.alwaysShowQuality,
+                onChanged: (v) async {
+                  await _prefs.setAlwaysShowQuality(v);
+                  if (mounted) setState(() {});
+                },
               ),
             ],
           ),

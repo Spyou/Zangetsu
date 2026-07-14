@@ -232,8 +232,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
-  // Fields for the in-player info overlay (read once; auto-shown with controls).
+  // Fields for the in-player info overlay (read once). Shown on demand via the
+  // ⓘ button in the top bar, NOT auto with the controls.
   final List<String> _infoFields = sl<PlaybackPrefs>().playerInfoFields;
+  bool _infoPanelOpen = false;
+  // Always-on plain-text quality label (top-right), independent of the ⓘ panel.
+  final bool _alwaysShowQuality = sl<PlaybackPrefs>().alwaysShowQuality;
   // MegaSkip — manual jump-forward button (Aniyomi-style). Read once at open
   // (the player is recreated per session, like the other prefs above).
   final bool _megaSkipEnabled = sl<PlaybackPrefs>().megaSkip;
@@ -2038,6 +2042,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onChat: (_room.room != null)
                           ? () => setState(() => _chatOpen = !_chatOpen)
                           : null,
+                      onInfo: _infoFields.isEmpty
+                          ? null
+                          : () {
+                              setState(
+                                () => _infoPanelOpen = !_infoPanelOpen,
+                              );
+                              _bumpControls();
+                            },
+                      infoOpen: _infoPanelOpen,
                     ),
                   ),
                 )
@@ -2070,17 +2083,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
 
               // 6b. Player info overlay ("stats for nerds") — the fields the
-              // user ticked in Settings, auto-shown with the controls (top-left,
-              // below the top bar).
+              // user ticked in Settings, toggled by the ⓘ button (top-left,
+              // below the top bar). Persists until toggled off.
               if (!sl<AppMode>().isTv &&
                   !_locked &&
-                  _controlsVisible &&
+                  _infoPanelOpen &&
                   _infoFields.isNotEmpty)
                 Positioned(
                   left: 16,
                   top: MediaQuery.of(context).padding.top + 58,
                   child: IgnorePointer(
                     child: _InfoOverlay(controller: _c, fields: _infoFields),
+                  ),
+                ),
+
+              // 6b-ii. Always-on quality — plain text (no badge), top-right,
+              // visible the whole time. Prefers the source's quality label,
+              // else the live video height (e.g. "1080p").
+              if (!sl<AppMode>().isTv && _alwaysShowQuality)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 58,
+                  right: 16,
+                  child: IgnorePointer(
+                    child: StreamBuilder<int?>(
+                      stream: _c.player.stream.height,
+                      initialData: _c.player.state.height,
+                      builder: (context, snap) {
+                        final q = state.active?.quality?.trim();
+                        final h = snap.data ?? 0;
+                        final label =
+                            (q != null &&
+                                q.isNotEmpty &&
+                                q.toLowerCase() != 'auto')
+                            ? q
+                            : (h > 0 ? '${h}p' : '');
+                        if (label.isEmpty) return const SizedBox.shrink();
+                        return Text(
+                          label,
+                          style: AppText.caption.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            shadows: const [
+                              Shadow(blurRadius: 4, color: Colors.black87),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
 
@@ -2537,6 +2586,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onMegaSkip,
     this.onPip,
     this.onChat,
+    this.onInfo,
+    this.infoOpen = false,
   });
 
   final PlayerCubit controller;
@@ -2564,6 +2615,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onMegaSkip;
   final VoidCallback? onPip; // null = PiP unsupported (hide the button)
   final VoidCallback? onChat; // in-room chat toggle (null = no active room)
+  final VoidCallback? onInfo; // toggle the info panel (null = no fields picked)
+  final bool infoOpen; // whether the info panel is currently shown
 
   @override
   Widget build(BuildContext context) {
@@ -2743,6 +2796,15 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // Info-panel toggle — the "stats for nerds" overlay.
+                  if (onInfo != null)
+                    IconButton(
+                      icon: Icon(
+                        Icons.info_outline_rounded,
+                        color: infoOpen ? AppColors.accent : Colors.white,
+                      ),
+                      onPressed: onInfo,
+                    ),
                   // PiP + episodes + sleep + lock (top-right). Zoom is bottom row.
                   if (onPip != null)
                     IconButton(

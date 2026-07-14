@@ -175,6 +175,13 @@ class PlaybackPrefs {
   Future<void> setPlayerInfoFields(List<String> value) =>
       _box.put('playerInfoFields', value);
 
+  /// Show the current quality as plain always-on text (top-right of the player),
+  /// separate from the ⓘ info panel. Default off.
+  bool get alwaysShowQuality =>
+      _box.get('alwaysShowQuality', defaultValue: false) as bool;
+  Future<void> setAlwaysShowQuality(bool value) =>
+      _box.put('alwaysShowQuality', value);
+
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).
   bool get skipIntro => _box.get('skipIntro', defaultValue: true) as bool;
