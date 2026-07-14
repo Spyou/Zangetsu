@@ -4457,49 +4457,36 @@ class _SliderRow extends StatelessWidget {
 /// Play/pause button whose icon MORPHS between play and pause (Dantotsu/YouTube
 /// style) instead of a hard swap. Driven by [playing]; sits in a soft ringed
 /// circle. Pure UI — [onTap] is the same togglePlay call as before.
-class _AnimatedPlayPause extends StatefulWidget {
+/// Soft, rounded play/pause (reDantotsu-style) — the stock [AnimatedIcons]
+/// morph uses sharp, blocky shapes; the `_rounded` variants have the pill
+/// corners we want. Cross-fades + gently scales between the two on toggle.
+class _AnimatedPlayPause extends StatelessWidget {
   const _AnimatedPlayPause({required this.playing, required this.onTap});
   final bool playing;
   final VoidCallback onTap;
 
   @override
-  State<_AnimatedPlayPause> createState() => _AnimatedPlayPauseState();
-}
-
-class _AnimatedPlayPauseState extends State<_AnimatedPlayPause>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 260),
-    value: widget.playing ? 1 : 0,
-  );
-
-  @override
-  void didUpdateWidget(covariant _AnimatedPlayPause old) {
-    super.didUpdateWidget(old);
-    if (widget.playing != old.playing) {
-      widget.playing ? _ctrl.forward() : _ctrl.reverse();
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: widget.onTap,
+      onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.all(6),
-        child: AnimatedIcon(
-          icon: AnimatedIcons.play_pause,
-          progress: _ctrl,
-          color: Colors.white,
-          size: 50,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.72, end: 1).animate(anim),
+              child: child,
+            ),
+          ),
+          child: Icon(
+            playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            key: ValueKey<bool>(playing),
+            color: Colors.white,
+            size: 58,
+          ),
         ),
       ),
     );
