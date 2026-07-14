@@ -47,7 +47,8 @@ class PlayerState extends Equatable {
     this.qualities = const [],
     this.activeQuality,
     this.currentIndex = 0,
-    this.tracks = const Tracks(),
+    this.audioTracks = const [],
+    this.subtitleTracks = const [],
     this.torrentPhase,
   });
 
@@ -72,9 +73,10 @@ class PlayerState extends Equatable {
   /// Index into the episode list of the currently-open episode.
   final int currentIndex;
 
-  /// Available audio/sub/video tracks for the open media (driven by
-  /// `player.stream.tracks`).
-  final Tracks tracks;
+  /// Available audio/subtitle tracks for the open media (driven by the
+  /// engine's `audioTracks`/`textTracks` listenables).
+  final List<EngineTrack> audioTracks;
+  final List<EngineTrack> subtitleTracks;
 
   /// Non-null while a torrent source is being prepared — the human status to
   /// show as a buffering overlay ("Finding peers…", "Buffering 12%"). Null for
@@ -89,7 +91,8 @@ class PlayerState extends Equatable {
     List<HlsVariant>? qualities,
     HlsVariant? Function()? activeQuality,
     int? currentIndex,
-    Tracks? tracks,
+    List<EngineTrack>? audioTracks,
+    List<EngineTrack>? subtitleTracks,
     String? Function()? torrentPhase,
   }) => PlayerState(
     loadingSources: loadingSources ?? this.loadingSources,
@@ -99,7 +102,8 @@ class PlayerState extends Equatable {
     qualities: qualities ?? this.qualities,
     activeQuality: activeQuality != null ? activeQuality() : this.activeQuality,
     currentIndex: currentIndex ?? this.currentIndex,
-    tracks: tracks ?? this.tracks,
+    audioTracks: audioTracks ?? this.audioTracks,
+    subtitleTracks: subtitleTracks ?? this.subtitleTracks,
     torrentPhase: torrentPhase != null ? torrentPhase() : this.torrentPhase,
   );
 
@@ -112,7 +116,8 @@ class PlayerState extends Equatable {
     qualities,
     activeQuality,
     currentIndex,
-    tracks,
+    audioTracks,
+    subtitleTracks,
     torrentPhase,
   ];
 }
@@ -402,25 +407,29 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   void init(int index) {
-    emit(state.copyWith(tracks: player.state.tracks));
-    _subs.add(
-      player.stream.tracks.listen((t) {
-        emit(state.copyWith(tracks: t));
-        // Tracks just arrived — restore remembered audio/subtitle. When the
-        // stream's track list loads AFTER we've applied an external soft sub,
-        // mpv can drift off it (auto-select another track / none), silently
-        // overriding the preferred language. If the currently-selected sub is
-        // no longer the one we chose, re-arm so _tryApplySubPref re-applies it.
-        // Guarded on drift (not on every track change) so re-applying a URI sub
-        // — which media_kit does via a fresh `sub-add` — can't loop.
-        if (_wantedSubId != null &&
-            player.state.track.subtitle.id != _wantedSubId) {
-          _subApplied = false;
-        }
-        _tryApplyAudioPref();
-        _tryApplySubPref();
-      }),
-    );
+    void onEngineTracks() {
+      emit(state.copyWith(
+        audioTracks: engine.audioTracks.value,
+        subtitleTracks: engine.textTracks.value,
+      ));
+      // Tracks just arrived — restore remembered audio/subtitle. When the
+      // stream's track list loads AFTER we've applied an external soft sub,
+      // mpv can drift off it (auto-select another track / none), silently
+      // overriding the preferred language. If the currently-selected sub is
+      // no longer the one we chose, re-arm so _tryApplySubPref re-applies it.
+      // Guarded on drift (not on every track change) so re-applying a URI sub
+      // — which media_kit does via a fresh `sub-add` — can't loop.
+      if (_wantedSubId != null && activeSubtitleTrackId != _wantedSubId) {
+        _subApplied = false;
+      }
+      _tryApplyAudioPref();
+      _tryApplySubPref();
+    }
+    engine.audioTracks.addListener(onEngineTracks);
+    engine.textTracks.addListener(onEngineTracks);
+    _engineDetach.add(() => engine.audioTracks.removeListener(onEngineTracks));
+    _engineDetach.add(() => engine.textTracks.removeListener(onEngineTracks));
+    onEngineTracks(); // land the first snapshot
     void onEnginePosition() {
       final p = engine.position.value;
       _lastPos = p;
@@ -657,15 +666,15 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Embedded audio tracks for the open media (excludes the synthetic
   /// auto/no entries media_kit always reports).
-  List<AudioTrack> get mediaAudioTracks =>
-      state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+  List<EngineTrack> get mediaAudioTracks =>
+      engine.audioTracks.value.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
   /// Embedded subtitle tracks for the open media (excludes auto/no). Also
   /// excludes externally `sub-add`ed tracks — a source soft-sub applied via
   /// SubtitleTrack.uri shows up in mpv's track list with its URL as the id,
   /// which would duplicate the entry already listed under source subtitles
   /// (and pile up on every re-apply). Those are surfaced via [softSubs] instead.
-  List<SubtitleTrack> get mediaSubtitleTracks => state.tracks.subtitle
+  List<EngineTrack> get mediaSubtitleTracks => engine.textTracks.value
       .where((t) =>
           t.id != 'auto' &&
           t.id != 'no' &&
@@ -673,16 +682,22 @@ class PlayerCubit extends Cubit<PlayerState> {
           !t.id.startsWith('/'))
       .toList();
 
-  /// Currently-selected audio track (id == 'auto'/'no' for the synthetic ones).
-  AudioTrack get activeAudioTrack => player.state.track.audio;
+  /// Id of the currently-selected audio track ('auto' when none explicit).
+  String get activeAudioTrackId {
+    for (final t in engine.audioTracks.value) { if (t.selected) return t.id; }
+    return 'auto';
+  }
 
-  /// Currently-selected subtitle track (id == 'no' when subs are off).
-  SubtitleTrack get activeSubtitleTrack => player.state.track.subtitle;
+  /// Id of the currently-selected subtitle track ('no' when off).
+  String get activeSubtitleTrackId {
+    for (final t in engine.textTracks.value) { if (t.selected) return t.id; }
+    return 'no';
+  }
 
-  void setAudioTrack(AudioTrack t) {
+  void setAudioTrack(EngineTrack t) {
     engine.selectAudioTrack(t.id);
     final url = showUrl;
-    final pref = t.language ?? t.title ?? t.id;
+    final pref = t.language.isNotEmpty ? t.language : (t.label ?? t.id);
     if (url != null && url.isNotEmpty && pref.isNotEmpty) {
       sl<TitlePrefsStore>().setAudioTrack(sourceId, url, pref);
     }
@@ -703,8 +718,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     final p = pref.toLowerCase();
     for (final t in mediaAudioTracks) {
-      if ((t.language ?? '').toLowerCase() == p ||
-          (t.title ?? '').toLowerCase() == p) {
+      if (t.language.toLowerCase() == p ||
+          (t.label ?? '').toLowerCase() == p) {
         engine.selectAudioTrack(t.id);
         _audioApplied = true;
         return;
@@ -713,12 +728,12 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Not loaded yet — retry on the next tracks update.
   }
 
-  void setSubtitle(SubtitleTrack t) {
+  void setSubtitle(EngineTrack t) {
     engine.selectTextTrack(t.id);
     _wantedSubId = t.id;
     // Remember globally by language when we can resolve one; a track we can't
     // classify is a one-off pick that must not set a bad global default.
-    final lang = languageOfSource(t.language ?? t.title ?? '');
+    final lang = languageOfSource(t.language.isNotEmpty ? t.language : (t.label ?? ''));
     if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
   }
 
@@ -785,8 +800,8 @@ class PlayerCubit extends Cubit<PlayerState> {
       return;
     }
     for (final t in mediaSubtitleTracks) {
-      final tLang = t.language ?? '';
-      final tTitle = t.title ?? '';
+      final tLang = t.language;
+      final tTitle = t.label ?? '';
       if (matchesSourceLang(tLang, prefLang) || matchesSourceLang(tTitle, prefLang)) {
         engine.selectTextTrack(t.id);
         _wantedSubId = t.id;

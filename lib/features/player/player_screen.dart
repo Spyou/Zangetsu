@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:media_kit/media_kit.dart' show Track;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -3588,12 +3587,11 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
   Widget build(BuildContext context) {
     final c = widget.controller;
     final h = MediaQuery.of(context).size.height;
-    return StreamBuilder<Track>(
-      stream: c.player.stream.track,
-      builder: (context, snap) {
-        final track = snap.data ?? c.player.state.track;
-        final audioId = track.audio.id;
-        final subId = track.subtitle.id;
+    return ListenableBuilder(
+      listenable: Listenable.merge([c.engine.audioTracks, c.engine.textTracks]),
+      builder: (context, _) {
+        final audioId = c.activeAudioTrackId;
+        final subId = c.activeSubtitleTrackId;
         return Padding(
           padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
           child: SingleChildScrollView(
@@ -3690,7 +3688,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   ),
               for (final t in tracks)
                 _SheetRow(
-                  label: t.language ?? t.title ?? t.id,
+                  label: t.language.isNotEmpty ? t.language : (t.label ?? t.id),
                   active: audioId == t.id,
                   onTap: () {
                     c.setAudioTrack(t);
@@ -3748,7 +3746,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
               ),
               for (final t in embedded)
                 _SheetRow(
-                  label: t.title ?? t.language ?? t.id,
+                  label: (t.label?.isNotEmpty ?? false) ? t.label! : (t.language.isNotEmpty ? t.language : t.id),
                   active: subId == t.id,
                   onTap: () {
                     c.setSubtitle(t);
