@@ -311,6 +311,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   // "· proxy" version of the same quality. Aniyomi-only + direct-only, so
   // CloudStream / JS / torrent sources are completely unaffected.
   Timer? _startTimer;
+  // Exo-only: if ExoPlayer never renders a first frame within the window (a
+  // stream it silently can't play — no hard error, so the error-fallback never
+  // fires), fall back to mpv. Cancelled the moment a real frame/position lands.
+  Timer? _exoStartTimer;
   // Fired once per session: mark the anime CURRENT on AniList as soon as
   // playback starts (so "started watching" shows immediately, not only after
   // an episode crosses the 92% scrobble threshold).
@@ -467,6 +471,8 @@ class PlayerCubit extends Cubit<PlayerState> {
       }
       if (p > Duration.zero) {
         _startedThisSource = true; // source is playing
+        _exoStartTimer?.cancel();
+        _exoStartTimer = null;
         _startTimer?.cancel();
         _startTimer = null;
         if (!_markedWatching) {
@@ -578,6 +584,8 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Detach every listener from the current [engine] (before a swap / on close).
   void _unwireEngine() {
+    _exoStartTimer?.cancel();
+    _exoStartTimer = null;
     _engineErrorSub?.cancel();
     _engineErrorSub = null;
     for (final d in _engineDetach) {
@@ -637,6 +645,24 @@ class PlayerCubit extends Cubit<PlayerState> {
     _swapEngine(MpvEngine(isTv: sl<AppMode>().isTv));
     sl<PlaybackPrefs>().setLastEngineUsed('mpv');
     await engine.load(src, startAt: resumeAt);
+  }
+
+  /// Arm a one-shot exo start watchdog: some streams silently hang on ExoPlayer
+  /// (no first frame, and NO PlaybackException — so [_onEngineError] never fires
+  /// and the source sits on the poster forever). If exo hasn't produced a frame
+  /// or advanced position within the window, fall back to mpv (plays far more).
+  void _armExoStartWatchdog(int g) {
+    _exoStartTimer?.cancel();
+    _exoStartTimer = null;
+    if (engine is! ExoEngine) return;
+    _exoStartTimer = Timer(const Duration(seconds: 10), () {
+      if (g != _gen || engine is! ExoEngine) return;
+      // Position advancing is the only reliable "actually playing" signal —
+      // videoWidth can be set from the track format BEFORE a frame renders, so
+      // a stuck stream would falsely look started. A working stream (even from
+      // 0) advances within ~1s, so at 10s a still-zero position means a hang.
+      if (_lastPos <= Duration.zero) unawaited(_fallbackToMpv());
+    });
   }
 
   // ── Public playback helpers (used by the Netflix-style overlay) ───────────
@@ -1420,6 +1446,9 @@ class PlayerCubit extends Cubit<PlayerState> {
     _ensureEngineFor(engineSource);
     await engine.load(engineSource, startAt: start);
     if (g != _gen) return; // superseded mid-open
+    // ExoPlayer can silently hang on some streams (MovieBox etc.) — no frame,
+    // no error. Watch for a first frame; fall back to mpv if it never comes.
+    _armExoStartWatchdog(g);
     // Discord Rich Presence: announce the episode now playing.
     final discordTitle = showTitle ?? scrobbleTitle;
     if (discordTitle != null &&
