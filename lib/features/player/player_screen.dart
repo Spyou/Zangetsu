@@ -240,6 +240,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _megaFlashTimer;
   bool _dragIsBrightness = false; // left half = brightness, right half = volume
   double _dragValue = 0; // running 0..1 value during a vertical drag
+  int _lastHudPct = -1; // last HUD %, to haptic-tick when crossing a landmark
   // HUD shown while adjusting (Netflix-style brightness/volume indicator).
   bool _hudVisible = false;
   double _hudValue = 0;
@@ -738,6 +739,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // tracks finger movement; a swipe across ~70% of the height covers 0→100%.
   Future<void> _onVDragStart(DragStartDetails d) async {
     if (!_gesturesEnabled) return;
+    _lastHudPct = -1; // fresh swipe → don't tick on the first sample
     _dragIsBrightness =
         d.localPosition.dx < MediaQuery.of(context).size.width / 2;
     if (_dragIsBrightness) {
@@ -775,6 +777,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final boost = combined <= 1.0 ? 100 : (combined * 100).round();
       if (boost != sl<PlaybackPrefs>().volumeBoost) _c.setVolumeBoost(boost);
     }
+    // Haptic tick when the value crosses a landmark (min / system-max / boost).
+    final pct = ((_dragIsBrightness ? 1 : 2) * _dragValue * 100).round();
+    if (_lastHudPct >= 0) {
+      for (final b in (_dragIsBrightness ? const [0, 100] : const [0, 100, 200])) {
+        if ((_lastHudPct - b) * (pct - b) <= 0 && _lastHudPct != pct) {
+          HapticFeedback.selectionClick();
+          break;
+        }
+      }
+    }
+    _lastHudPct = pct;
     setState(() {
       _hudVisible = true;
       _hudValue = _dragValue;
@@ -2211,26 +2224,43 @@ class _AdjustHud extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            // Vertical fill track (bottom-anchored).
+            // Vertical fill track (bottom-anchored) — glides to each value and
+            // the accent fill carries a soft glow.
             SizedBox(
-              width: 6,
+              width: 8,
               height: 150,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    const ColoredBox(color: Colors.white24),
-                    Align(
-                      alignment: Alignment.bottomCenter,
-                      child: FractionallySizedBox(
-                        heightFactor: fill,
-                        widthFactor: 1,
-                        child: ColoredBox(color: fillColor),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedFractionallySizedBox(
+                      duration: const Duration(milliseconds: 120),
+                      curve: Curves.easeOut,
+                      heightFactor: fill,
+                      widthFactor: 1,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: fillColor,
+                          borderRadius: BorderRadius.circular(4),
+                          boxShadow: [
+                            BoxShadow(
+                              color: fillColor.withValues(alpha: 0.55),
+                              blurRadius: 8,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 12),
