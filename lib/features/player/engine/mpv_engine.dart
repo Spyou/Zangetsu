@@ -247,9 +247,49 @@ class MpvEngine implements PlaybackEngine {
   Future<void> load(EngineSource source,
       {Duration startAt = Duration.zero}) async {
     await _configured;
+    // HLS needs the fake-extension relaxation + per-segment reconnect
+    // (http_persistent=0) for anti-leech CDNs. But forcing http_persistent=0 on
+    // a progressive MP4 makes file-hosts throttle/drop it mid-stream (a fresh
+    // TCP per read) — the "movie freezes in the middle" report. So apply that
+    // string only to HLS; let MP4 use persistent connections (mpv's default).
+    final plat = _player.platform;
+    if (plat is NativePlayer) {
+      final isHls = source.isHls;
+      await plat.setProperty(
+        'demuxer-lavf-o',
+        isHls
+            ? 'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
+                  'analyzeduration=2000000'
+            : 'extension_picky=0,allowed_extensions=ALL,analyzeduration=2000000',
+      );
+      // Progressive MP4 file hosts often drop the connection right after a
+      // range-request seek (resume / scrub), which stalls playback at the seek
+      // point. Let libavformat reconnect and continue — what ExoPlayer (and so
+      // CloudStream) does natively. HLS reconnects per-segment already.
+      if (!isHls) {
+        await plat.setProperty(
+          'stream-lavf-o',
+          'reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,'
+              'reconnect_delay_max=30',
+        );
+      }
+      // Set mpv's `start` BEFORE loadfile so it opens AT the resume position (a
+      // range request to that offset), the way CloudStream sets the start
+      // position at prepare time. media_kit's own Media.start is applied late —
+      // in its playlist-pos callback, AFTER the file already began decoding at
+      // 0 — so slow remote MP4s (file hosts) ignore it and land back at 0. We
+      // set it ourselves before open, and to '0' otherwise (the property is
+      // sticky across files, so it must be reset every open).
+      await plat.setProperty(
+        'start',
+        startAt > Duration.zero
+            ? (startAt.inMilliseconds / 1000).toStringAsFixed(3)
+            : '0',
+      );
+    }
     await _player.open(
-      Media(source.url, httpHeaders: source.headers, start: startAt),
-      play: false,
+      Media(source.url, httpHeaders: source.headers),
+      play: true,
     );
   }
 

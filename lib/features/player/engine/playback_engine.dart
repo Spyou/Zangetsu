@@ -9,6 +9,7 @@ class EngineSource {
     required this.url,
     this.headers = const {},
     this.mimeType,
+    this.isHls = false,
     this.isTorrent = false,
     this.hasAssSubtitles = false,
   });
@@ -18,6 +19,9 @@ class EngineSource {
 
   /// Container hint (e.g. 'application/x-mpegURL', 'video/mp4'); null → infer.
   final String? mimeType;
+
+  /// HLS (.m3u8) source — needs mpv's per-segment reconnect demuxer opts.
+  final bool isHls;
 
   /// Magnet/.torrent (or a local file served by the torrent HTTP bridge).
   final bool isTorrent;
