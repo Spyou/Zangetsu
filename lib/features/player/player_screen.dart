@@ -3812,8 +3812,14 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   label: 'Subtitle delay',
                   initial: c.subtitleDelay,
                   onChanged: (d) => c.setSubtitleDelay(d),
-                  // Aniyomi-style two-tap auto-sync (subtitle only).
-                  positionMs: () => c.player.state.position.inMilliseconds,
+                  // Aniyomi-style two-tap auto-sync (subtitle only). Captures
+                  // live on the controller so they survive closing the sheet.
+                  sync: (
+                    capture: c.captureSubSync,
+                    currentMs: () => c.subtitleDelay.inMilliseconds,
+                    voiceOn: () => c.subSyncVoiceMs != null,
+                    textOn: () => c.subSyncTextMs != null,
+                  ),
                 ),
                 _DelayAdjuster(
                   label: 'Audio delay',
@@ -4820,15 +4826,23 @@ class _DelayAdjuster extends StatefulWidget {
     required this.label,
     required this.initial,
     required this.onChanged,
-    this.positionMs,
+    this.sync,
   });
   final String label;
   final Duration initial;
   final ValueChanged<Duration> onChanged;
 
   /// When set, shows the Aniyomi-style two-tap auto-sync below the stepper.
-  /// Returns the current playback position (ms) at the moment of a tap.
-  final int Function()? positionMs;
+  /// [capture] records a tap (voice/text) and returns the applied delta (ms)
+  /// once both are set; [currentMs] reads the resulting delay; [voiceOn]/
+  /// [textOn] report which point is currently captured (for the highlight).
+  final ({
+    int? Function(bool voice) capture,
+    int Function() currentMs,
+    bool Function() voiceOn,
+    bool Function() textOn,
+  })?
+  sync;
 
   @override
   State<_DelayAdjuster> createState() => _DelayAdjusterState();
@@ -4838,11 +4852,8 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
   late int _ms = widget.initial.inMilliseconds;
   static const int _step = 250;
 
-  // Two-tap sync captures: playback position when the voice was heard and when
-  // the subtitle was seen. Delay adjustment = voice − text (which cancels the
-  // roughly-equal human reaction lag on both taps).
-  int? _voiceMs;
-  int? _textMs;
+  // The two-tap captures themselves live on the controller (via [widget.sync])
+  // so they survive closing the sheet; here we only hold the transient note.
   String? _note;
   Timer? _noteTimer;
 
@@ -4858,17 +4869,10 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
   }
 
   void _capture(bool voice) {
-    final pos = widget.positionMs!();
-    if (voice) {
-      _voiceMs = pos;
-    } else {
-      _textMs = pos;
-    }
-    if (_voiceMs != null && _textMs != null) {
-      final delta = _voiceMs! - _textMs!;
-      _voiceMs = null;
-      _textMs = null;
-      _bump(delta); // folds the alignment into the delay + applies it
+    final delta = widget.sync!.capture(voice);
+    if (delta != null) {
+      // Both points captured → the controller applied the offset; mirror it.
+      setState(() => _ms = widget.sync!.currentMs().clamp(-30000, 30000));
       final s = (delta / 1000).toStringAsFixed(2);
       _flashNote('Aligned ${delta >= 0 ? '+' : ''}${s}s');
     } else {
@@ -4926,23 +4930,36 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
             ],
           ),
         ),
-        if (widget.positionMs != null) _syncSection(),
+        if (widget.sync != null) _syncSection(),
       ],
     );
   }
 
   Widget _syncSection() {
+    final s = widget.sync!;
+    final voiceOn = s.voiceOn();
+    final textOn = s.textOn();
+    // Progress-aware hint so it's obvious what to do next (and that a capture
+    // is still pending after you reopen the sheet).
+    final hint = _note ??
+        (voiceOn
+            ? 'Voice captured ✓ — play until the subtitle shows, then tap '
+                  'Subtitle seen. (You can close this sheet meanwhile.)'
+            : textOn
+            ? 'Subtitle captured ✓ — now tap Voice heard when you hear the line.'
+            : 'Auto-sync: tap when you HEAR a line, then when its SUBTITLE '
+                  'appears.');
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _note ??
-                'Auto-sync: tap when you HEAR a line, then when its SUBTITLE '
-                    'appears.',
+            hint,
             style: AppText.caption.copyWith(
-              color: _note != null ? AppColors.accent : AppColors.textTertiary,
+              color: (_note != null || voiceOn || textOn)
+                  ? AppColors.accent
+                  : AppColors.textTertiary,
             ),
           ),
           const SizedBox(height: 8),
@@ -4952,7 +4969,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
                 child: _syncBtn(
                   'Voice heard',
                   Icons.hearing_rounded,
-                  _voiceMs != null,
+                  voiceOn,
                   () => _capture(true),
                 ),
               ),
@@ -4961,7 +4978,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
                 child: _syncBtn(
                   'Subtitle seen',
                   Icons.subtitles_rounded,
-                  _textMs != null,
+                  textOn,
                   () => _capture(false),
                 ),
               ),

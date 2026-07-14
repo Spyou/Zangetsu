@@ -1732,6 +1732,34 @@ class PlayerCubit extends Cubit<PlayerState> {
   Duration subtitleDelay = Duration.zero;
   Duration audioDelay = Duration.zero;
 
+  // Aniyomi-style two-tap subtitle sync. Kept on the controller (not the sheet)
+  // so a capture survives closing the sheet — the user taps "Voice heard", shuts
+  // the sheet to watch, then reopens to tap "Subtitle seen". Playback position
+  // (ms) at each tap; the applied delay adjustment is voice − text.
+  int? subSyncVoiceMs;
+  int? subSyncTextMs;
+
+  /// Record a sync tap at the current playback position. When both points are
+  /// set, folds `voice − text` into [subtitleDelay] and returns that delta (ms);
+  /// otherwise returns null (one point captured, waiting for the other).
+  int? captureSubSync(bool voice) {
+    final pos = player.state.position.inMilliseconds;
+    if (voice) {
+      subSyncVoiceMs = pos;
+    } else {
+      subSyncTextMs = pos;
+    }
+    if (subSyncVoiceMs != null && subSyncTextMs != null) {
+      final delta = subSyncVoiceMs! - subSyncTextMs!;
+      subSyncVoiceMs = null;
+      subSyncTextMs = null;
+      final ms = (subtitleDelay.inMilliseconds + delta).clamp(-30000, 30000);
+      setSubtitleDelay(Duration(milliseconds: ms));
+      return delta;
+    }
+    return null;
+  }
+
   Future<void> setSubtitleDelay(Duration d) async {
     subtitleDelay = d;
     final p = player.platform;
