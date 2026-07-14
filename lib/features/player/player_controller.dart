@@ -682,13 +682,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (engine is! ExoEngine) return;
     _exoStartTimer = Timer(const Duration(seconds: 6), () {
       if (g != _gen || engine is! ExoEngine) return;
-      // Position advancing is the only reliable "actually playing" signal —
-      // videoWidth can be set from the track format BEFORE a frame renders, so
-      // a stuck stream would falsely look started. A working stream (even from
-      // 0) advances within ~1s, so at 6s a still-zero position means a hang.
-      // (A rare false trigger on a slow stream just moves it to mpv, which
-      // plays it too — no worse than exo, so 6s trades a little for snappier UX.)
-      if (_lastPos <= Duration.zero) unawaited(_fallbackToMpv());
+      // "Actually playing" is the reliable signal, NOT position>0: a source with
+      // a resume mark makes ExoPlayer seek to (say) 30:18 immediately, so
+      // position is non-zero even though no frame ever renders — the old
+      // position check missed that and the stream sat stuck. If exo isn't in an
+      // actively-playing state by 6s, it's a hang → fall back to mpv. (A rare
+      // false trigger on a slow stream just moves it to mpv, which plays it too.)
+      if (!engine.playing.value) unawaited(_fallbackToMpv());
     });
   }
 
@@ -1584,6 +1584,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     if (!engine.buffering.value) return;
     if (_lastPos > _stallAnchorPos + const Duration(seconds: 1)) return;
     if (_recovering) return;
+    // On ExoPlayer a stall almost always means the stream just doesn't play on
+    // exo — the SAME source usually plays fine on mpv. Fall back to mpv (block +
+    // re-open) instead of cycling to another server that will also stall on exo.
+    if (engine is ExoEngine) {
+      unawaited(_fallbackToMpv());
+      return;
+    }
     _recovering = true;
     final dead = state.active;
     if (dead != null) _tried.add(dead.url);
