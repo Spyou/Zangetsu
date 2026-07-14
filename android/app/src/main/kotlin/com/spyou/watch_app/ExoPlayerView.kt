@@ -121,6 +121,7 @@ class ExoPlayerView(
             mapOf(
                 "positionMs" to player.currentPosition.toInt(),
                 "durationMs" to (if (player.duration > 0) player.duration.toInt() else 0),
+                "bufferedMs" to player.bufferedPosition.toInt(),
                 "buffering" to (player.playbackState == Player.STATE_BUFFERING),
                 "playing" to player.isPlaying,
                 "ended" to (player.playbackState == Player.STATE_ENDED),
@@ -269,6 +270,12 @@ class ExoPlayerView(
             "setPlaybackSpeed" -> {
                 val speed = (call.argument<Number>("speed") ?: 1.0).toFloat()
                 player.playbackParameters = PlaybackParameters(speed)
+                result.success(null)
+            }
+            "setResizeMode" -> {
+                // AspectRatioFrameLayout.RESIZE_MODE_*: 0=FIT, 3=FILL, 4=ZOOM.
+                val mode = (call.argument<Number>("mode") ?: 0).toInt()
+                playerView.resizeMode = mode
                 result.success(null)
             }
             "setVolumeBoost" -> {

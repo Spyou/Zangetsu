@@ -24,6 +24,7 @@ class TvExoController {
 
   final position = ValueNotifier<int>(0); // ms
   final duration = ValueNotifier<int>(0); // ms
+  final buffered = ValueNotifier<int>(0); // ms buffered-ahead
   final playing = ValueNotifier<bool>(false);
   final buffering = ValueNotifier<bool>(false);
   final ended = ValueNotifier<bool>(false);
@@ -55,6 +56,7 @@ class TvExoController {
     final rawDuration = e['durationMs'];
     position.value = rawPosition is num ? rawPosition.toInt() : 0;
     duration.value = rawDuration is num ? rawDuration.toInt() : 0;
+    buffered.value = (e['bufferedMs'] as num?)?.toInt() ?? 0;
     playing.value = e['playing'] == true;
     buffering.value = e['buffering'] == true;
     ended.value = e['ended'] == true;
@@ -140,6 +142,8 @@ class TvExoController {
       _method.invokeMethod('setPlaybackSpeed', {'speed': speed});
   Future<void> setVolumeBoost(int percent) =>
       _method.invokeMethod('setVolumeBoost', {'percent': percent});
+  Future<void> setResizeMode(int mode) =>
+      _method.invokeMethod('setResizeMode', {'mode': mode});
 
   void dispose() {
     _sub?.cancel();
@@ -151,5 +155,6 @@ class TvExoController {
     audioTracks.dispose();
     textTracks.dispose();
     videoWidth.dispose();
+    buffered.dispose();
   }
 }

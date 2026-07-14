@@ -31,8 +31,12 @@ class ExoEngine implements PlaybackEngine {
   EngineSource? _lastSource;
   final _externalSubs = <TvSubtitleConfig>[];
 
+  // Last BoxFit pushed to the native resize-mode (skip redundant channel calls).
+  BoxFit? _lastFit;
+
   final _position = ValueNotifier<Duration>(Duration.zero);
   final _duration = ValueNotifier<Duration>(Duration.zero);
+  final _buffered = ValueNotifier<Duration>(Duration.zero);
   final _playing = ValueNotifier<bool>(false);
   final _buffering = ValueNotifier<bool>(false);
   final _completed = ValueNotifier<bool>(false);
@@ -65,10 +69,8 @@ class ExoEngine implements PlaybackEngine {
   Stream<bool> get completedStream => _streamOf(_completed);
   @override
   Stream<int> get widthStream => _streamOf(_videoWidth);
-  // ExoPlayer exposes no buffered-ahead position to Dart today; the seek
-  // bar's buffered indicator simply won't fill for this engine.
   @override
-  Stream<Duration> get bufferedStream => const Stream<Duration>.empty();
+  Stream<Duration> get bufferedStream => _streamOf(_buffered);
 
   /// Turns a [ValueListenable] into a broadcast [Stream], seeded with the
   /// current value on listen (ExoPlayer has no raw streams to forward).
@@ -98,6 +100,7 @@ class ExoEngine implements PlaybackEngine {
     _c = c;
     c.position.addListener(() => _position.value = Duration(milliseconds: c.position.value));
     c.duration.addListener(() => _duration.value = Duration(milliseconds: c.duration.value));
+    c.buffered.addListener(() => _buffered.value = Duration(milliseconds: c.buffered.value));
     c.playing.addListener(() => _playing.value = c.playing.value);
     c.buffering.addListener(() => _buffering.value = c.buffering.value);
     c.ended.addListener(() => _completed.value = c.ended.value);
@@ -227,10 +230,20 @@ class ExoEngine implements PlaybackEngine {
   Future<void> setMaxVideoBitrate(int bandwidth) =>
       _run(() async => _c?.setMaxVideoBitrate(bandwidth));
 
+  // media3 AspectRatioFrameLayout.RESIZE_MODE_*: FIT=0, FILL=3 (stretch),
+  // ZOOM=4 (fill+crop). App: contain=Fit, fill=Stretch, cover=Fill.
+  int _resizeModeFor(BoxFit f) =>
+      f == BoxFit.cover ? 4 : (f == BoxFit.fill ? 3 : 0);
+
   @override
   Widget buildVideo(BuildContext context, {BoxFit fit = BoxFit.contain}) {
-    // fit: the native SurfaceView/PlayerView self-fits; there is no
-    // native resize-mode creationParam wired up today, so [fit] is unused.
+    // Map the app's Fit/Fill/Stretch (BoxFit) to media3 PlayerView.resizeMode
+    // and push it natively — only when it changes (avoids a channel call per
+    // rebuild). Queued if the view isn't bound yet, so it applies on attach.
+    if (fit != _lastFit) {
+      _lastFit = fit;
+      _run(() async => _c?.setResizeMode(_resizeModeFor(fit)));
+    }
     return PlatformViewLink(
       viewType: 'zangetsu/exoplayer_view',
       surfaceFactory: (context, controller) => AndroidViewSurface(
@@ -261,6 +274,7 @@ class ExoEngine implements PlaybackEngine {
     await _errors.close();
     _position.dispose();
     _duration.dispose();
+    _buffered.dispose();
     _playing.dispose();
     _buffering.dispose();
     _completed.dispose();
