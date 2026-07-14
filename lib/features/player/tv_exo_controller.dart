@@ -29,9 +29,28 @@ class TvExoController {
   final ended = ValueNotifier<bool>(false);
   final audioTracks = ValueNotifier<List<TvTrack>>(const []);
   final textTracks = ValueNotifier<List<TvTrack>>(const []);
+  final videoWidth = ValueNotifier<int>(0);
+
+  /// Fired on a native fatal player error (decoder init fail, unsupported
+  /// codec, etc). [framesRendered] distinguishes "never started" from "died
+  /// mid-playback" so the caller can decide whether a fallback is safe.
+  void Function(String code, bool framesRendered)? onFatalError;
 
   /// Pure event→state mapping (unit-tested). Tolerates missing/garbage fields.
   void applyEvent(Map<String, dynamic> e) {
+    if (e['fatalError'] == true) {
+      onFatalError?.call(
+        '${e['code'] ?? 'UNKNOWN'}',
+        e['framesRendered'] == true,
+      );
+      return;
+    }
+    if (e.containsKey('videoWidth')) {
+      // ponytail: native sends this as a standalone event (no position/
+      // duration/playing keys) — return so those don't get zeroed below.
+      videoWidth.value = (e['videoWidth'] as num?)?.toInt() ?? 0;
+      return;
+    }
     final rawPosition = e['positionMs'];
     final rawDuration = e['durationMs'];
     position.value = rawPosition is num ? rawPosition.toInt() : 0;
@@ -131,5 +150,6 @@ class TvExoController {
     ended.dispose();
     audioTracks.dispose();
     textTracks.dispose();
+    videoWidth.dispose();
   }
 }

@@ -62,6 +62,8 @@ class ExoPlayerView(
         }
     }
 
+    private var framesRendered = false
+
     init {
         channel.setMethodCallHandler(this)
         events.setStreamHandler(object : EventChannel.StreamHandler {
@@ -75,6 +77,22 @@ class ExoPlayerView(
             override fun onPlaybackStateChanged(state: Int) = emitState()
             override fun onIsPlayingChanged(isPlaying: Boolean) = emitState()
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) = emitState()
+
+            override fun onRenderedFirstFrame() { framesRendered = true }
+
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                sink?.success(
+                    mapOf(
+                        "fatalError" to true,
+                        "code" to (error.errorCodeName ?: "UNKNOWN"),
+                        "framesRendered" to framesRendered,
+                    ),
+                )
+            }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
+                sink?.success(mapOf("videoWidth" to videoSize.width))
+            }
         })
         handler.post(tick)
     }
@@ -157,6 +175,7 @@ class ExoPlayerView(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "setSource" -> {
+                framesRendered = false // new media → no frames yet
                 val url = call.argument<String>("url")
                 @Suppress("UNCHECKED_CAST")
                 val headers = (call.argument<Map<String, String>>("headers")) ?: emptyMap()
