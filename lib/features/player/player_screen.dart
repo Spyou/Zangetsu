@@ -2874,7 +2874,6 @@ class _ControlsOverlay extends StatelessWidget {
                         _ControlButton(
                           icon: Icons.skip_next_rounded,
                           label: 'Next',
-                          accent: true,
                           onTap: () {
                             c.playNext();
                             onInteract();
@@ -3395,49 +3394,14 @@ class _ControlButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.accent = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
-  /// Renders as a filled coral pill (icon + label in a row) instead of the
-  /// plain icon-over-label column — used for the "Next" action so it stands out.
-  final bool accent;
-
   @override
   Widget build(BuildContext context) {
-    if (accent) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: Material(
-          color: AppColors.accent,
-          borderRadius: BorderRadius.circular(11),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, color: Colors.white, size: 18),
-                  const SizedBox(width: 7),
-                  Text(
-                    label,
-                    style: AppText.caption.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      );
-    }
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
