@@ -2558,6 +2558,43 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         ),
 
+        // Soft gradient scrims so the controls sit on a gentle fade, not a flat
+        // dark wash (YouTube/Dantotsu-style). Non-interactive.
+        const Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 120,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x99000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: 170,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Color(0xB3000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+          ),
+        ),
+
         // Top bar.
         Positioned(
           top: 0,
@@ -2570,7 +2607,7 @@ class _ControlsOverlay extends StatelessWidget {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
                     onPressed: onBack,
                   ),
                   Expanded(
@@ -2694,10 +2731,9 @@ class _ControlsOverlay extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              IconButton(
-                iconSize: 40,
-                icon: const Icon(Icons.replay_10, color: Colors.white),
-                onPressed: () {
+              _CircleBtn(
+                icon: Icons.replay_10_rounded,
+                onTap: () {
                   c.seekBy(const Duration(seconds: -10));
                   onInteract();
                 },
@@ -2712,12 +2748,12 @@ class _ControlsOverlay extends StatelessWidget {
                   // more spinner-over-button overlap.
                   if (buffering) {
                     return const SizedBox(
-                      width: 72,
-                      height: 72,
+                      width: 62,
+                      height: 62,
                       child: Center(
                         child: SizedBox(
-                          width: 34,
-                          height: 34,
+                          width: 32,
+                          height: 32,
                           child: CircularProgressIndicator(
                             color: Colors.white,
                             strokeWidth: 3,
@@ -2730,15 +2766,9 @@ class _ControlsOverlay extends StatelessWidget {
                     stream: c.player.stream.playing,
                     builder: (context, snap) {
                       final playing = snap.data ?? c.player.state.playing;
-                      return IconButton(
-                        iconSize: 56,
-                        icon: Icon(
-                          playing
-                              ? Icons.pause_circle_filled
-                              : Icons.play_circle_filled,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
+                      return _AnimatedPlayPause(
+                        playing: playing,
+                        onTap: () {
                           c.togglePlay();
                           onInteract();
                         },
@@ -2748,10 +2778,9 @@ class _ControlsOverlay extends StatelessWidget {
                 },
               ),
               const SizedBox(width: 24),
-              IconButton(
-                iconSize: 40,
-                icon: const Icon(Icons.forward_10, color: Colors.white),
-                onPressed: () {
+              _CircleBtn(
+                icon: Icons.forward_10_rounded,
+                onTap: () {
                   c.seekBy(const Duration(seconds: 10));
                   onInteract();
                 },
@@ -2808,12 +2837,12 @@ class _ControlsOverlay extends StatelessWidget {
                     children: [
                       if (onPrev != null)
                         _ControlButton(
-                          icon: Icons.skip_previous,
+                          icon: Icons.skip_previous_rounded,
                           label: 'Previous',
                           onTap: onPrev!,
                         ),
                       _ControlButton(
-                        icon: Icons.speed,
+                        icon: Icons.speed_rounded,
                         label: 'Speed',
                         onTap: onSpeed,
                       ),
@@ -2825,12 +2854,12 @@ class _ControlsOverlay extends StatelessWidget {
                       if (state.qualities.isNotEmpty ||
                           c.sourceQualities.length > 1)
                         _ControlButton(
-                          icon: Icons.high_quality,
+                          icon: Icons.high_quality_rounded,
                           label: 'Quality',
                           onTap: onQuality,
                         ),
                       _ControlButton(
-                        icon: Icons.video_settings,
+                        icon: Icons.video_settings_rounded,
                         label: 'Sources',
                         onTap: onSources,
                       ),
@@ -2841,8 +2870,9 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                       if (hasNext)
                         _ControlButton(
-                          icon: Icons.skip_next,
+                          icon: Icons.skip_next_rounded,
                           label: 'Next',
+                          accent: true,
                           onTap: () {
                             c.playNext();
                             onInteract();
@@ -3009,12 +3039,12 @@ class _SeekRowState extends State<_SeekRow> {
                                 ),
                                 thumbColor: Colors.white,
                                 overlayColor: AppColors.accentSoft,
-                                trackHeight: 3,
+                                trackHeight: 5,
                                 thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 7,
+                                  enabledThumbRadius: 8,
                                 ),
                                 overlayShape: const RoundSliderOverlayShape(
-                                  overlayRadius: 16,
+                                  overlayRadius: 18,
                                 ),
                               ),
                               child: Slider(
@@ -3363,14 +3393,49 @@ class _ControlButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.accent = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
 
+  /// Renders as a filled coral pill (icon + label in a row) instead of the
+  /// plain icon-over-label column — used for the "Next" action so it stands out.
+  final bool accent;
+
   @override
   Widget build(BuildContext context) {
+    if (accent) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Material(
+          color: AppColors.accent,
+          borderRadius: BorderRadius.circular(11),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: Colors.white, size: 18),
+                  const SizedBox(width: 7),
+                  Text(
+                    label,
+                    style: AppText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -4418,6 +4483,90 @@ class _SliderRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Play/pause button whose icon MORPHS between play and pause (Dantotsu/YouTube
+/// style) instead of a hard swap. Driven by [playing]; sits in a soft ringed
+/// circle. Pure UI — [onTap] is the same togglePlay call as before.
+class _AnimatedPlayPause extends StatefulWidget {
+  const _AnimatedPlayPause({required this.playing, required this.onTap});
+  final bool playing;
+  final VoidCallback onTap;
+
+  @override
+  State<_AnimatedPlayPause> createState() => _AnimatedPlayPauseState();
+}
+
+class _AnimatedPlayPauseState extends State<_AnimatedPlayPause>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+    value: widget.playing ? 1 : 0,
+  );
+
+  @override
+  void didUpdateWidget(covariant _AnimatedPlayPause old) {
+    super.didUpdateWidget(old);
+    if (widget.playing != old.playing) {
+      widget.playing ? _ctrl.forward() : _ctrl.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 62,
+        height: 62,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        ),
+        child: AnimatedIcon(
+          icon: AnimatedIcons.play_pause,
+          progress: _ctrl,
+          color: Colors.white,
+          size: 30,
+        ),
+      ),
+    );
+  }
+}
+
+/// A soft translucent circular icon button — used for the ±10s seek transport.
+class _CircleBtn extends StatelessWidget {
+  const _CircleBtn({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 46,
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.10),
+        ),
+        child: Icon(icon, color: Colors.white, size: 23),
       ),
     );
   }
