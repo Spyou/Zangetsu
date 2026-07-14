@@ -18,6 +18,25 @@ const List<String> kBundledSubtitleFonts = [
   'Source Sans 3',
 ];
 
+/// (key, label) for the in-player info overlay, in display order. The overlay
+/// shows the fields the user ticks (Settings → Playback → Player info overlay)
+/// and auto-appears with the player controls. "Stats for nerds"-style.
+const List<(String, String)> kPlayerInfoFields = [
+  ('resolution', 'Resolution'),
+  ('source', 'Source'),
+  ('quality', 'Quality'),
+  ('vcodec', 'Video codec'),
+  ('acodec', 'Audio codec'),
+  ('fps', 'Frame rate'),
+  ('vbitrate', 'Video bitrate'),
+  ('buffer', 'Buffer'),
+  ('dropped', 'Dropped frames'),
+  ('decoder', 'Decoder'),
+  ('speed', 'Speed'),
+  ('atrack', 'Audio track'),
+  ('strack', 'Subtitle track'),
+];
+
 /// Persistent, app-wide playback preferences (default quality, sub/dub
 /// category, autoplay, speed, seek step, keep-screen-on, auto-resume). Backed
 /// by a tiny untyped Hive box read anywhere via `sl<PlaybackPrefs>()`. Values
@@ -147,6 +166,14 @@ class PlaybackPrefs {
       _box.get('seekPreviewOnline', defaultValue: true) as bool;
   Future<void> setSeekPreviewOnline(bool value) =>
       _box.put('seekPreviewOnline', value);
+
+  /// Which fields the in-player info overlay shows (keys from
+  /// [kPlayerInfoFields]). Empty = overlay off. Auto-shown with the controls.
+  List<String> get playerInfoFields =>
+      (_box.get('playerInfoFields', defaultValue: const <String>[]) as List)
+          .cast<String>();
+  Future<void> setPlayerInfoFields(List<String> value) =>
+      _box.put('playerInfoFields', value);
 
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).

@@ -1766,6 +1766,19 @@ class PlayerCubit extends Cubit<PlayerState> {
     subSyncTextMs = null;
   }
 
+  /// Read a single mpv property as a string, for the in-player info overlay.
+  /// Read-only — never touches playback. Returns null when unavailable.
+  Future<String?> mpvStat(String property) async {
+    final p = player.platform;
+    if (p is! NativePlayer) return null;
+    try {
+      final v = await p.getProperty(property);
+      return v.isEmpty ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> setSubtitleDelay(Duration d) async {
     subtitleDelay = d;
     final p = player.platform;

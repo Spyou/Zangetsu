@@ -635,6 +635,88 @@ class PlaybackSettingsScreen extends StatefulWidget {
 class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
 
+  /// Multi-select of which fields the in-player info overlay shows.
+  Future<void> _pickPlayerInfo() async {
+    final selected = _prefs.playerInfoFields.toSet();
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.textTertiary.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 2),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Player info overlay', style: AppText.headline),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Pick what shows over the video (appears with the '
+                    'controls). Like YouTube\'s "Stats for nerds".',
+                    style: AppText.caption,
+                  ),
+                ),
+              ),
+              const Divider(color: AppColors.hairline, height: 1),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final f in kPlayerInfoFields)
+                        CheckboxListTile(
+                          value: selected.contains(f.$1),
+                          onChanged: (v) => setSheet(() {
+                            if (v == true) {
+                              selected.add(f.$1);
+                            } else {
+                              selected.remove(f.$1);
+                            }
+                          }),
+                          title: Text(f.$2, style: AppText.body),
+                          activeColor: AppColors.accent,
+                          controlAffinity: ListTileControlAffinity.trailing,
+                          dense: true,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+    // Persist the ticked fields in canonical (display) order.
+    final ordered = [
+      for (final f in kPlayerInfoFields)
+        if (selected.contains(f.$1)) f.$1,
+    ];
+    await _prefs.setPlayerInfoFields(ordered);
+    if (mounted) setState(() {});
+  }
+
   // Ordered (value, label) options for each picker.
   static const List<(String, String)> _qualityOptions = [
     ('auto', 'Auto'),
@@ -1074,6 +1156,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     if (mounted) setState(() {});
                   },
                 ),
+              SettingsTile(
+                icon: Icons.info_outline_rounded,
+                title: 'Player info overlay',
+                subtitle: _prefs.playerInfoFields.isEmpty
+                    ? 'Off'
+                    : '${_prefs.playerInfoFields.length} fields shown',
+                onTap: _pickPlayerInfo,
+              ),
             ],
           ),
 

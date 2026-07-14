@@ -232,6 +232,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
+  // Fields for the in-player info overlay (read once; auto-shown with controls).
+  final List<String> _infoFields = sl<PlaybackPrefs>().playerInfoFields;
   // MegaSkip — manual jump-forward button (Aniyomi-style). Read once at open
   // (the player is recreated per session, like the other prefs above).
   final bool _megaSkipEnabled = sl<PlaybackPrefs>().megaSkip;
@@ -2064,6 +2066,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ],
                       ),
                     ),
+                  ),
+                ),
+
+              // 6b. Player info overlay ("stats for nerds") — the fields the
+              // user ticked in Settings, auto-shown with the controls (top-left,
+              // below the top bar).
+              if (!sl<AppMode>().isTv &&
+                  !_locked &&
+                  _controlsVisible &&
+                  _infoFields.isNotEmpty)
+                Positioned(
+                  left: 16,
+                  top: MediaQuery.of(context).padding.top + 58,
+                  child: IgnorePointer(
+                    child: _InfoOverlay(controller: _c, fields: _infoFields),
                   ),
                 ),
 
@@ -5069,6 +5086,149 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
       ),
     ),
   );
+}
+
+/// "Stats for nerds" info panel — shows the user-selected [fields] (keys from
+/// [kPlayerInfoFields]) in a translucent top-left card, refreshed ~1×/sec.
+/// Read-only; auto-shown with the controls.
+class _InfoOverlay extends StatefulWidget {
+  const _InfoOverlay({required this.controller, required this.fields});
+  final PlayerCubit controller;
+  final List<String> fields;
+
+  @override
+  State<_InfoOverlay> createState() => _InfoOverlayState();
+}
+
+class _InfoOverlayState extends State<_InfoOverlay> {
+  Map<String, String> _values = const {};
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    final c = widget.controller;
+    final st = c.player.state;
+    final out = <String, String>{};
+    for (final key in widget.fields) {
+      switch (key) {
+        case 'resolution':
+          final w = st.width ?? 0, h = st.height ?? 0;
+          out[key] = (w > 0 && h > 0) ? '$w×$h' : '—';
+        case 'source':
+          final l = c.state.active?.label?.trim();
+          out[key] = (l != null && l.isNotEmpty) ? l : '—';
+        case 'quality':
+          out[key] =
+              c.activeSourceQuality ?? c.state.active?.quality ?? 'auto';
+        case 'buffer':
+          out[key] = '${st.buffer.inSeconds}s';
+        case 'decoder':
+          out[key] = _decoderLabel(sl<PlaybackPrefs>().videoDecoder);
+        case 'speed':
+          out[key] = '${st.rate}×';
+        case 'atrack':
+          out[key] = _trackLabel(st.track.audio.id, st.track.audio.title,
+              st.track.audio.language);
+        case 'strack':
+          out[key] = _trackLabel(st.track.subtitle.id, st.track.subtitle.title,
+              st.track.subtitle.language);
+        case 'vcodec':
+          out[key] = await c.mpvStat('video-codec') ?? '—';
+        case 'acodec':
+          out[key] = await c.mpvStat('audio-codec') ?? '—';
+        case 'fps':
+          final f = await c.mpvStat('estimated-vf-fps');
+          out[key] =
+              f == null ? '—' : (double.tryParse(f)?.toStringAsFixed(2) ?? f);
+        case 'vbitrate':
+          out[key] = _bitrate(await c.mpvStat('video-bitrate'));
+        case 'dropped':
+          out[key] = await c.mpvStat('frame-drop-count') ?? '0';
+      }
+    }
+    if (mounted) setState(() => _values = out);
+  }
+
+  String _decoderLabel(String mode) => switch (mode) {
+    'hw+' => 'Hardware+',
+    'sw' => 'Software',
+    'auto' => 'Auto',
+    _ => 'Hardware',
+  };
+
+  String _trackLabel(String id, String? title, String? language) {
+    if (id == 'no') return 'Off';
+    final t = title?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    final l = language?.trim();
+    if (l != null && l.isNotEmpty) return l;
+    return id;
+  }
+
+  String _bitrate(String? bps) {
+    final v = int.tryParse(bps ?? '');
+    if (v == null || v <= 0) return '—';
+    return v >= 1000000
+        ? '${(v / 1000000).toStringAsFixed(1)} Mbps'
+        : '${(v / 1000).round()} kbps';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final labels = {for (final f in kPlayerInfoFields) f.$1: f.$2};
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 280),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final key in widget.fields)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 1),
+                  child: Text.rich(
+                    TextSpan(
+                      style: const TextStyle(fontSize: 11, height: 1.35),
+                      children: [
+                        TextSpan(
+                          text: '${labels[key] ?? key}  ',
+                          style: const TextStyle(color: Colors.white54),
+                        ),
+                        TextSpan(
+                          text: _values[key] ?? '…',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Small grouped-section label inside a sheet (e.g. "Version" / "Audio track").
