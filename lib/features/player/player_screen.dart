@@ -191,6 +191,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // (which fires ~300ms later) knows to swallow its toggle. A timestamp can't
   // leak the way a bool would when a gesture fires onTapDown but never onTap.
   int _hideOnTapDownMs = 0;
+  // We DON'T use Flutter's onDoubleTap — its recognizer delays every single tap
+  // ~300ms to disambiguate, which made tapping to reveal controls feel dead. We
+  // compare consecutive tap-down timestamps instead, so single taps are instant.
+  int _lastTapDownMs = 0; // previous tap-down (a "double" = within 300ms)
+  int _seekConsumedMs = 0; // a double-tap seek just fired → swallow the onTap
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
 
@@ -1769,25 +1774,37 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     // Hide instantly on tap-down (no double-tap wait). Showing
                     // still goes through onTap so the first tap of a double-tap
                     // seek doesn't flash the controls.
-                    onTapDown: (_locked || !_controlsVisible)
+                    onTapDown: _locked
                         ? null
-                        : (_) {
-                            _hideTimer?.cancel();
-                            setState(() => _controlsVisible = false);
-                            _hideOnTapDownMs =
+                        : (d) {
+                            final now =
                                 DateTime.now().millisecondsSinceEpoch;
+                            final second = now - _lastTapDownMs < 300;
+                            _lastTapDownMs = now;
+                            if (second) {
+                              // Second tap of a double → seek by zone. Rapid
+                              // taps keep firing this (accumulate −10/−20…).
+                              _seekConsumedMs = now;
+                              _onDoubleTapDown(d);
+                              return;
+                            }
+                            // First tap: hide instantly if controls are up
+                            // (snappy dismiss). Showing happens on tap-up so a
+                            // drag/second-tap doesn't falsely reveal controls.
+                            if (_controlsVisible) {
+                              _hideTimer?.cancel();
+                              setState(() => _controlsVisible = false);
+                              _hideOnTapDownMs = now;
+                            }
                           },
                     onTap: () {
-                      // Swallow the toggle if we just hid on tap-down.
-                      if (DateTime.now().millisecondsSinceEpoch -
-                              _hideOnTapDownMs <
-                          600) {
-                        return;
-                      }
-                      _toggleControls();
+                      final now = DateTime.now().millisecondsSinceEpoch;
+                      // Swallow the trailing tap of a double-tap seek…
+                      if (now - _seekConsumedMs < 600) return;
+                      // …or the tap that just hid controls on tap-down.
+                      if (now - _hideOnTapDownMs < 600) return;
+                      _toggleControls(); // hidden → show, instantly.
                     },
-                    onDoubleTapDown: _locked ? null : _onDoubleTapDown,
-                    onDoubleTap: _locked ? null : () {},
                     onLongPressStart: (_locked || !_holdSpeedEnabled)
                         ? null
                         : (_) {
