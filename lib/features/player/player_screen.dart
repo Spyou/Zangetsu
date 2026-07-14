@@ -507,7 +507,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     )..init(startIndex);
 
     _room.attachPlayer(
-      localPosition: () => _c.player.state.position,
+      localPosition: () => _c.position,
       onApplyRemote: (playing, pos, rate) =>
           _c.applyRemote(playing: playing, position: pos, rate: rate),
       onEpisodeChange: (r) {
@@ -533,7 +533,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
         'category': widget.category ?? 'sub',
         'malId': widget.malId,
         'tmdbId': widget.tmdbId,
-        'positionMs': _c.player.state.position.inMilliseconds,
+        'positionMs': _c.position.inMilliseconds,
       },
     );
     _wireRoom(_room);
@@ -541,7 +541,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
     // Drive the "Up next" card on episode completion (the controller no longer
     // auto-advances; we show a 5s countdown card instead).
-    _completedSub = _c.player.stream.completed.listen((done) {
+    _completedSub = _c.engine.completedStream.listen((done) {
       if (done) _onEpisodeComplete();
     });
     if (mounted) setState(() => _ready = true);
@@ -671,7 +671,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 4), () {
       // Don't hide while paused (no auto-hide when not playing).
-      if (mounted && _c.player.state.playing) {
+      if (mounted && _c.playing) {
         setState(() => _controlsVisible = false);
       }
     });
@@ -788,7 +788,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // the target while dragging, and the seek commits on release.
   void _onHDragStart(DragStartDetails d) {
     if (_duration <= Duration.zero) return; // can't scrub without a duration
-    _hSeekStart = _c.player.state.position;
+    _hSeekStart = _c.position;
     _hSeekTarget = _hSeekStart;
     setState(() => _hSeeking = true);
   }
@@ -935,7 +935,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _onEpisodeComplete() {
     // Sleep timer set to "end of episode" — stop here instead of advancing.
     if (_sleepEndOfEpisode) {
-      _c.player.pause();
+      _c.engine.pause();
       setState(() {
         _sleepActive = false;
         _sleepEndOfEpisode = false;
@@ -1045,7 +1045,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (d != null) {
       _sleepTimer = Timer(d, () {
         if (!mounted) return;
-        _c.player.pause();
+        _c.engine.pause();
         setState(() => _sleepActive = false);
       });
     }
@@ -1175,10 +1175,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
     if (!hasNext) return const SizedBox.shrink();
     return StreamBuilder<Duration>(
-      stream: _c.player.stream.position,
+      stream: _c.engine.positionStream,
       builder: (context, snap) {
         final pos = snap.data ?? Duration.zero;
-        final dur = _c.player.state.duration;
+        final dur = _c.duration;
         final remaining = dur - pos;
         final show =
             dur > Duration.zero && remaining <= const Duration(seconds: 75);
@@ -1233,7 +1233,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   void _openSpeedSheet() {
     const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-    final current = _c.player.state.rate;
+    final current = _c.rate;
     _sheet<void>(
       _SheetColumn(
         header: 'Playback Speed',
@@ -1251,50 +1251,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ],
       ),
     );
-  }
-
-  /// Build the Flutter subtitle overlay style from the user's prefs. media_kit
-  /// renders text subtitles via this [SubtitleViewConfiguration] (a Flutter
-  /// overlay), NOT libass — so font/colour/size/background/position all live
-  /// here. Bundled fonts work because Flutter resolves them from pubspec.
-  SubtitleViewConfiguration _subtitleConfig() {
-    final p = sl<PlaybackPrefs>();
-    final fam = p.subtitleFont.isEmpty ? null : p.subtitleFont;
-    // position 0 (top) … 100 (bottom). Higher value → nearer the bottom (less
-    // bottom padding); lower value lifts the text up the frame.
-    final pos = p.subtitlePosition.clamp(0, 100);
-    final bottom = 16.0 + (100 - pos) * 3.0;
-    return SubtitleViewConfiguration(
-      textAlign: TextAlign.center,
-      padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
-      style: TextStyle(
-        height: 1.4,
-        fontSize: 32.0 * p.subtitleScale,
-        fontFamily: fam,
-        fontWeight: FontWeight.w600,
-        color: _parseSubColor(p.subtitleColorHex),
-        backgroundColor: Color.fromRGBO(
-          0,
-          0,
-          0,
-          p.subtitleBgOpacity.clamp(0.0, 1.0),
-        ),
-        // A soft shadow keeps text legible when the background box is off.
-        shadows: const [Shadow(blurRadius: 4, color: Color(0xCC000000))],
-      ),
-    );
-  }
-
-  /// Parse a `#RRGGBB` or `#RRGGBBAA` hex (the prefs format) into a [Color].
-  Color _parseSubColor(String hex) {
-    var h = hex.replaceFirst('#', '').toUpperCase();
-    if (h.length == 6) h = '${h}FF';
-    if (h.length != 8) return const Color(0xFFFFFFFF);
-    final r = int.tryParse(h.substring(0, 2), radix: 16) ?? 255;
-    final g = int.tryParse(h.substring(2, 4), radix: 16) ?? 255;
-    final b = int.tryParse(h.substring(4, 6), radix: 16) ?? 255;
-    final a = int.tryParse(h.substring(6, 8), radix: 16) ?? 255;
-    return Color.fromARGB(a, r, g, b);
   }
 
   /// Netflix-style combined Audio | Subtitles panel (two columns, live
@@ -1545,11 +1501,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           // gestures, no controls. The same controller keeps the texture live.
           if (_inPip) {
             return Center(
-              child: Video(
-                controller: _c.videoController,
-                controls: NoVideoControls,
-                fit: BoxFit.contain,
-              ),
+              child: _c.engine.buildVideo(context),
             );
           }
           if (state.loadingSources) {
@@ -1617,21 +1569,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // so ONLY our custom Netflix overlay shows — fixes the duplicate
               // spinner / double controls.
               Center(
-                child: ValueListenableBuilder<int>(
-                  valueListenable: _c.subtitleStyleRev,
-                  builder: (context, _, _) => Transform.translate(
-                    // Pinch-zoom: scale about centre, then pan. Overflow is
-                    // clipped by the Stack so a zoomed frame crops to screen.
-                    offset: _zoomPan,
-                    child: Transform.scale(
-                      scale: _zoom,
-                      child: Video(
-                        controller: _c.videoController,
-                        controls: NoVideoControls,
-                        fit: _fits[_fitIndex].$1,
-                        subtitleViewConfiguration: _subtitleConfig(),
-                      ),
-                    ),
+                child: Transform.translate(
+                  // Pinch-zoom: scale about centre, then pan. Overflow is
+                  // clipped by the Stack so a zoomed frame crops to screen.
+                  offset: _zoomPan,
+                  child: Transform.scale(
+                    scale: _zoom,
+                    // engine.buildVideo owns subtitle-style rebuilds internally.
+                    child: _c.engine.buildVideo(context, fit: _fits[_fitIndex].$1),
                   ),
                 ),
               ),
@@ -1642,8 +1587,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // resets per new media so the poster re-shows each episode.
               Positioned.fill(
                 child: StreamBuilder<int?>(
-                  stream: _c.player.stream.width,
-                  initialData: _c.player.state.width,
+                  stream: _c.engine.widthStream,
+                  initialData: _c.videoWidth,
                   builder: (context, snap) {
                     final hasFrame = (snap.data ?? 0) > 0;
                     final img =
@@ -1697,14 +1642,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         ? () => _c.playNext()
                         : null,
                     onBack: () => Navigator.of(context).maybePop(),
-                    playingStream: _c.player.stream.playing,
-                    initialPlaying: _c.player.state.playing,
+                    playingStream: _c.engine.playingStream,
+                    initialPlaying: _c.playing,
                     barVisible: _tvBarVisible,
                     onBarChange: (v) => setState(() => _tvBarVisible = v),
-                    positionStream: _c.player.stream.position,
-                    durationStream: _c.player.stream.duration,
-                    initialPosition: _c.player.state.position,
-                    initialDuration: _c.player.state.duration,
+                    positionStream: _c.engine.positionStream,
+                    durationStream: _c.engine.durationStream,
+                    initialPosition: _c.position,
+                    initialDuration: _c.duration,
                     skipInfoFor: (pos) {
                       for (final iv in _c.currentSkips) {
                         if (pos >= iv.start &&
@@ -1773,7 +1718,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
               // 3. Buffering spinner when controls are hidden.
               StreamBuilder<bool>(
-                stream: _c.player.stream.buffering,
+                stream: _c.engine.bufferingStream,
                 builder: (context, snap) {
                   final buffering = snap.data ?? false;
                   if (!buffering || _controlsVisible) {
@@ -2003,7 +1948,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // is MegaSkip (6c-ii) below.
               if (!_locked && !_upNext && !sl<AppMode>().isTv)
                 StreamBuilder<Duration>(
-                  stream: _c.player.stream.position,
+                  stream: _c.engine.positionStream,
                   builder: (context, snap) {
                     final btn = _skipButtonFor(snap.data ?? Duration.zero);
                     if (btn == null) return const SizedBox.shrink();
@@ -2632,9 +2577,9 @@ class _ControlsOverlay extends StatelessWidget {
               ),
               const SizedBox(width: 24),
               StreamBuilder<bool>(
-                stream: c.player.stream.buffering,
+                stream: c.engine.bufferingStream,
                 builder: (context, bSnap) {
-                  final buffering = bSnap.data ?? c.player.state.buffering;
+                  final buffering = bSnap.data ?? c.engine.buffering.value;
                   // While buffering, show the spinner IN PLACE OF the play/pause
                   // button (same 72px footprint so the row doesn't shift) — no
                   // more spinner-over-button overlap.
@@ -2655,9 +2600,9 @@ class _ControlsOverlay extends StatelessWidget {
                     );
                   }
                   return StreamBuilder<bool>(
-                    stream: c.player.stream.playing,
+                    stream: c.engine.playingStream,
                     builder: (context, snap) {
-                      final playing = snap.data ?? c.player.state.playing;
+                      final playing = snap.data ?? c.playing;
                       return IconButton(
                         iconSize: 56,
                         icon: Icon(
@@ -2715,7 +2660,7 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                   // Duration tracker (off-screen listener via StreamBuilder).
                   StreamBuilder<Duration>(
-                    stream: c.player.stream.duration,
+                    stream: c.engine.durationStream,
                     builder: (context, snap) {
                       final d = snap.data ?? duration;
                       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2835,7 +2780,7 @@ class _SeekRowState extends State<_SeekRow> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _ensurePreview();
-      _preview?.request(c.player.state.position);
+      _preview?.request(c.position);
     });
   }
 
@@ -2888,7 +2833,7 @@ class _SeekRowState extends State<_SeekRow> {
     final totalMs = widget.duration.inMilliseconds;
     final max = totalMs > 0 ? totalMs.toDouble() : 1.0;
     return StreamBuilder<Duration>(
-      stream: widget.controller.player.stream.position,
+      stream: widget.controller.engine.positionStream,
       builder: (context, snap) {
         final streamMs = (snap.data ?? Duration.zero).inMilliseconds
             .clamp(0, max.toInt())
@@ -2918,7 +2863,7 @@ class _SeekRowState extends State<_SeekRow> {
                       SizedBox(
                         width: w,
                         child: StreamBuilder<Duration>(
-                          stream: widget.controller.player.stream.buffer,
+                          stream: widget.controller.engine.bufferedStream,
                           builder: (context, bufSnap) {
                             final bufMs =
                                 (bufSnap.data ?? Duration.zero).inMilliseconds;

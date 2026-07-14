@@ -383,11 +383,14 @@ class MpvEngine implements PlaybackEngine {
   }
 
   @override
-  Widget buildVideo(BuildContext context) {
+  Widget buildVideo(BuildContext context, {BoxFit fit = BoxFit.contain}) {
     return ValueListenableBuilder<int>(
       valueListenable: _styleRev,
       builder: (context, _, _) => Video(
         controller: _videoController,
+        // The app draws its own player UI — never media_kit's built-in controls.
+        controls: NoVideoControls,
+        fit: fit,
         subtitleViewConfiguration: _subtitleConfigFromStyle(),
       ),
     );

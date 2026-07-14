@@ -1575,70 +1575,34 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   /// Apply the saved subtitle styling (size / font / colour / background /
-  /// position) via mpv. Called after each open and whenever the user changes a
-  /// style preference.
+  /// position) via the engine. Called after each open and whenever the user
+  /// changes a style preference.
   Future<void> applySubtitleStyle() async {
-    final p = player.platform;
-    if (p is! NativePlayer) return;
-    final prefs = sl<PlaybackPrefs>();
-    // Text colour: prefer the new hex pref (#RRGGBBAA → mpv #AARRGGBB), else
-    // fall back to the legacy white/yellow token.
-    final color =
-        _mpvColor(prefs.subtitleColorHex) ??
-        (prefs.subtitleColor == 'yellow' ? '#FFFFFF00' : '#FFFFFFFF');
-    // Box behind subtitles: prefer the new opacity slider (0–1 → alpha over
-    // black), else the legacy on/off toggle. mpv colour is #AARRGGBB.
-    final bgOpacity = prefs.subtitleBgOpacity;
-    final back = bgOpacity > 0
-        ? '#${_alphaHex(bgOpacity)}000000'
-        : (prefs.subtitleBackground ? '#A0000000' : '#00000000');
-    // Each property is set independently so a single rejected value can't abort
-    // the rest (the old single try/catch did).
-    Future<void> set(String k, String v) async {
-      try {
-        await p.setProperty(k, v);
-      } catch (_) {}
-    }
-
-    // CRITICAL: ASS/SSA subtitles (common for anime/scraped sources) carry their
-    // OWN embedded styling, so mpv ignores sub-color/sub-font/sub-scale/sub-pos
-    // by default → "changing the style does nothing". 'force' makes our settings
-    // win for both ASS and plain (srt/vtt) subtitles.
-    await set('sub-ass-override', 'force');
-    await set('sub-scale', prefs.subtitleScale.toString());
-    if (prefs.subtitleFont.isNotEmpty) {
-      await set('sub-font', prefs.subtitleFont);
-    }
-    await set('sub-color', color);
-    await set('sub-back-color', back);
-    // A thin border keeps text legible without a box; mpv default is ~3.
-    await set('sub-border-size', '3');
-    await set('sub-pos', prefs.subtitlePosition.toString());
-    // media_kit renders text subtitles via a Flutter overlay (not libass), so
-    // the above mpv props are ignored in practice — the real styling is the
-    // Video's SubtitleViewConfiguration. Bump so the player screen rebuilds it.
-    subtitleStyleRev.value++;
+    final p = sl<PlaybackPrefs>();
+    await engine.setSubtitleStyle(EngineSubtitleStyle(
+      scale: p.subtitleScale,
+      fontPath: p.subtitleFont.isEmpty ? null : p.subtitleFont,
+      fgColor: _subFgArgb(p.subtitleColorHex),
+      bgColor: _subBgArgb(p.subtitleBgOpacity),
+      position: p.subtitlePosition,
+    ));
   }
 
-  /// Convert a `#RRGGBBAA` (or `#RRGGBB`) hex string into mpv's alpha-first
-  /// `#AARRGGBB` form. Returns null on a malformed/empty value so the caller
-  /// can fall back to the legacy token.
-  static String? _mpvColor(String hex) {
-    final h = hex.replaceFirst('#', '').trim();
-    if (h.length == 6) return '#FF${h.toUpperCase()}';
-    if (h.length == 8) {
-      final rgb = h.substring(0, 6);
-      final a = h.substring(6, 8);
-      return '#${a.toUpperCase()}${rgb.toUpperCase()}';
-    }
-    return null;
+  /// ARGB int for a subtitle fg colour hex (#RRGGBB or #RRGGBBAA); white on bad input.
+  static int _subFgArgb(String hex) {
+    var h = hex.replaceFirst('#', '').toUpperCase();
+    if (h.length == 6) h = '${h}FF';
+    if (h.length != 8) return 0xFFFFFFFF;
+    final r = int.tryParse(h.substring(0, 2), radix: 16) ?? 255;
+    final g = int.tryParse(h.substring(2, 4), radix: 16) ?? 255;
+    final b = int.tryParse(h.substring(4, 6), radix: 16) ?? 255;
+    final a = int.tryParse(h.substring(6, 8), radix: 16) ?? 255;
+    return (a << 24) | (r << 16) | (g << 8) | b;
   }
 
-  /// Two-digit hex (00–FF) for an opacity in 0–1, for mpv's alpha-first colour.
-  static String _alphaHex(double opacity) {
-    final v = (opacity.clamp(0.0, 1.0) * 255).round();
-    return v.toRadixString(16).padLeft(2, '0').toUpperCase();
-  }
+  /// ARGB int for the subtitle background: black at [opacity] alpha (0..1).
+  static int _subBgArgb(double opacity) =>
+      ((opacity.clamp(0.0, 1.0) * 255).round()) << 24;
 
   /// Set the in-app volume (0–200%) via mpv's own 'volume' property — this is
   /// independent of the Android system volume — and persist it as the default.

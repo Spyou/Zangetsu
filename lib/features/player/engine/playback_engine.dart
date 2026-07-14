@@ -134,7 +134,9 @@ abstract class PlaybackEngine {
 
   /// The video render surface for this engine (mpv Video widget or the
   /// ExoPlayer PlatformView). Owns subtitle rendering appropriate to the engine.
-  Widget buildVideo(BuildContext context);
+  /// [fit] drives the Fit/Fill/Stretch toggle; engines never draw their own
+  /// controls (the app renders its own player UI).
+  Widget buildVideo(BuildContext context, {BoxFit fit = BoxFit.contain});
 
   Future<void> dispose();
 }
