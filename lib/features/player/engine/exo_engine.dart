@@ -13,13 +13,17 @@ import 'playback_engine.dart';
 
 /// ExoPlayer implementation of [PlaybackEngine], wrapping the native
 /// `ExoPlayerView` PlatformView via [TvExoController]. The controller only
-/// exists once the platform view is created, so [load] before that stashes
-/// the source and replays it in [_bind].
+/// exists once the platform view is created — but the owning controller fires
+/// load/setRate/setSubtitleStyle/seeded-subs/track-selects immediately after
+/// swapping to this engine, while `_c` is still null. So every `_c`-dependent
+/// command runs through [_run]: if `_c` is null it's queued (in call order) and
+/// flushed in [_bind]; otherwise it runs now.
 class ExoEngine implements PlaybackEngine {
   TvExoController? _c;
 
-  EngineSource? _pending;
-  Duration _pendingStart = Duration.zero;
+  // Pre-bind command queue: thunks captured while `_c == null`, flushed in
+  // order once the platform view exists. Each thunk re-reads `_c` at flush time.
+  final List<Future<void> Function()> _preBind = [];
 
   // Last-loaded source + external subs, kept so addExternalSubtitle can
   // rebuild setSource with the sidecar sub added (ExoPlayer only takes
@@ -81,6 +85,14 @@ class ExoEngine implements PlaybackEngine {
     return controller.stream;
   }
 
+  /// Run [thunk] now if the controller exists, else queue it (preserving call
+  /// order) for [_bind] to flush. The thunk re-reads `_c` at run time.
+  Future<void> _run(Future<void> Function() thunk) {
+    if (_c != null) return thunk();
+    _preBind.add(thunk);
+    return Future.value();
+  }
+
   void _bind(int id) {
     final c = TvExoController(id);
     _c = c;
@@ -95,11 +107,15 @@ class ExoEngine implements PlaybackEngine {
     c.onFatalError = (code, framesRendered) =>
         _errors.add(EngineError(code: code, framesRendered: framesRendered));
 
-    final pending = _pending;
-    if (pending != null) {
-      _pending = null;
-      unawaited(load(pending, startAt: _pendingStart));
-    }
+    // Flush queued pre-bind commands IN ORDER (load/setSource must precede
+    // seek/play/subs). Fire-and-forget so _bind stays a sync platform callback.
+    final pending = List.of(_preBind);
+    _preBind.clear();
+    unawaited(() async {
+      for (final t in pending) {
+        await t();
+      }
+    }());
   }
 
   List<EngineTrack> _mapTracks(List<TvTrack> tracks) => [
@@ -113,37 +129,36 @@ class ExoEngine implements PlaybackEngine {
       ];
 
   @override
-  Future<void> load(EngineSource source, {Duration startAt = Duration.zero}) async {
-    final c = _c;
-    if (c == null) {
-      _pending = source;
-      _pendingStart = startAt;
-      return;
-    }
+  Future<void> load(EngineSource source, {Duration startAt = Duration.zero}) {
+    // Capture source state NOW so it's stable even if queued (later mutations
+    // to _lastSource/_externalSubs by addExternalSubtitle happen in order).
     _lastSource = source;
     _externalSubs.clear();
-    await c.setSource(source.url, source.headers, mimeType: source.mimeType);
-    if (startAt > Duration.zero) await c.seek(startAt.inMilliseconds);
-    await c.play();
-  }
-
-  @override Future<void> play() => _c?.play() ?? Future.value();
-  @override Future<void> pause() => _c?.pause() ?? Future.value();
-
-  @override
-  Future<void> playOrPause() {
-    final c = _c;
-    if (c == null) return Future.value();
-    return _playing.value ? c.pause() : c.play();
+    return _run(() async {
+      final c = _c;
+      if (c == null) return;
+      await c.setSource(source.url, source.headers, mimeType: source.mimeType);
+      if (startAt > Duration.zero) await c.seek(startAt.inMilliseconds);
+      await c.play();
+    });
   }
 
   @override
-  Future<void> seek(Duration to) => _c?.seek(to.inMilliseconds) ?? Future.value();
+  Future<void> play() => _run(() async => _c?.play());
+  @override
+  Future<void> pause() => _run(() async => _c?.pause());
 
   @override
-  Future<void> setRate(double rate) async {
-    _rate.value = rate;
-    await _c?.setPlaybackSpeed(rate);
+  Future<void> playOrPause() =>
+      _run(() async => _playing.value ? _c?.pause() : _c?.play());
+
+  @override
+  Future<void> seek(Duration to) => _run(() async => _c?.seek(to.inMilliseconds));
+
+  @override
+  Future<void> setRate(double rate) {
+    _rate.value = rate; // reflect immediately; native call is queued if pre-bind
+    return _run(() async => _c?.setPlaybackSpeed(rate));
   }
 
   // exo: device volume is handled by the OS/native view; no per-engine gain
@@ -153,39 +168,42 @@ class ExoEngine implements PlaybackEngine {
 
   @override
   Future<void> setVolumeBoost(int percent) =>
-      _c?.setVolumeBoost(percent) ?? Future.value();
+      _run(() async => _c?.setVolumeBoost(percent));
 
   @override
   Future<void> selectAudioTrack(String id) =>
-      _c?.selectAudioTrack(id) ?? Future.value();
+      _run(() async => _c?.selectAudioTrack(id));
 
   @override
   Future<void> selectTextTrack(String? id) =>
-      _c?.selectTextTrack(id) ?? Future.value();
+      _run(() async => _c?.selectTextTrack(id));
 
   @override
   Future<void> addExternalSubtitle(String uriOrPath,
-      {String? language, bool select = true}) async {
-    final c = _c;
-    final src = _lastSource;
-    if (c == null || src == null) return;
+      {String? language, bool select = true}) {
+    // Append to _externalSubs NOW so ordering holds even when queued pre-bind.
     _externalSubs.add(TvSubtitleConfig(
       url: uriOrPath,
       lang: language ?? '',
       mime: subtitleMime(null, url: uriOrPath),
     ));
-    final resumeAt = _position.value;
-    await c.setSource(src.url, src.headers,
-        subtitles: List.unmodifiable(_externalSubs), mimeType: src.mimeType);
-    if (resumeAt > Duration.zero) await c.seek(resumeAt.inMilliseconds);
-    await c.play();
+    return _run(() async {
+      final c = _c;
+      final src = _lastSource;
+      if (c == null || src == null) return;
+      final resumeAt = _position.value;
+      await c.setSource(src.url, src.headers,
+          subtitles: List.unmodifiable(_externalSubs), mimeType: src.mimeType);
+      if (resumeAt > Duration.zero) await c.seek(resumeAt.inMilliseconds);
+      await c.play();
+    });
   }
 
   @override
   Future<void> setSubtitleStyle(EngineSubtitleStyle style) {
     final fg = style.fgColor ?? 0xFFFFFFFF;
     final bg = style.bgColor ?? 0x00000000;
-    return _c?.applyCaptionStyle(
+    return _run(() async => _c?.applyCaptionStyle(
           TvCaptionStyle(
             scale: style.scale,
             fgColor: fg,
@@ -194,8 +212,7 @@ class ExoEngine implements PlaybackEngine {
             position: (style.position.clamp(0, 100)) / 100.0,
           ),
           fontPath: style.fontPath,
-        ) ??
-        Future.value();
+        ));
   }
 
   // exo: no native sub/audio-delay; handled by routing exotic sources to mpv
@@ -208,7 +225,7 @@ class ExoEngine implements PlaybackEngine {
 
   @override
   Future<void> setMaxVideoBitrate(int bandwidth) =>
-      _c?.setMaxVideoBitrate(bandwidth) ?? Future.value();
+      _run(() async => _c?.setMaxVideoBitrate(bandwidth));
 
   @override
   Widget buildVideo(BuildContext context, {BoxFit fit = BoxFit.contain}) {

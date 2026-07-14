@@ -1501,7 +1501,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
           // gestures, no controls. The same controller keeps the texture live.
           if (_inPip) {
             return Center(
-              child: _c.engine.buildVideo(context),
+              child: ValueListenableBuilder<int>(
+                valueListenable: _c.engineRev,
+                builder: (context, _, _) => _c.engine.buildVideo(context),
+              ),
             );
           }
           if (state.loadingSources) {
@@ -1576,7 +1579,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Transform.scale(
                     scale: _zoom,
                     // engine.buildVideo owns subtitle-style rebuilds internally.
-                    child: _c.engine.buildVideo(context, fit: _fits[_fitIndex].$1),
+                    // Wrapped so an engine swap (mpv↔exo) re-mounts the surface.
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: _c.engineRev,
+                      builder: (context, _, _) => _c.engine
+                          .buildVideo(context, fit: _fits[_fitIndex].$1),
+                    ),
                   ),
                 ),
               ),

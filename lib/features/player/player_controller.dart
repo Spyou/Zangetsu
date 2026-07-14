@@ -27,6 +27,8 @@ import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
+import 'engine/engine_router.dart';
+import 'engine/exo_engine.dart';
 import 'engine/mpv_engine.dart';
 import 'engine/playback_engine.dart';
 
@@ -216,9 +218,21 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// episode URL's `/sub/` ↔ `/dub/` segment to this. Persisted per-title.
   String _activeCategory;
 
-  /// The active playback engine. Phase 1: always MpvEngine (constructed here).
-  /// Phase 2: assigned by EngineRouter and swappable for fallback.
-  late final PlaybackEngine engine = MpvEngine(isTv: sl<AppMode>().isTv);
+  /// The active playback engine. Starts as MpvEngine; [_ensureEngineFor] swaps
+  /// it per source when the Fast-player toggle is on (default off → always mpv →
+  /// no swap ever → behaviour identical to before). A silent exo→mpv fallback
+  /// re-assigns it on a fatal ExoPlayer error.
+  late PlaybackEngine engine = MpvEngine(isTv: sl<AppMode>().isTv);
+
+  /// Bumped whenever [engine] is swapped, so the screen re-mounts
+  /// `engine.buildVideo` (mpv Video ↔ ExoPlayer PlatformView).
+  final engineRev = ValueNotifier<int>(0);
+
+  /// Fatal-error subscription for the CURRENT engine (re-created on every swap).
+  StreamSubscription<EngineError>? _engineErrorSub;
+
+  /// Last source handed to [engine.load] — replayed when falling back exo→mpv.
+  EngineSource? _currentSource;
 
   ValueListenable<Duration> get positionListenable => engine.position;
   ValueListenable<Duration> get durationListenable => engine.duration;
@@ -394,7 +408,10 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  void init(int index) {
+  /// Attach the state/error listeners to the CURRENT [engine]. Idempotent per
+  /// engine: pair with [_unwireEngine] before swapping. Called from [init] and
+  /// after every engine swap.
+  void _wireEngine() {
     void onEngineTracks() {
       emit(state.copyWith(
         audioTracks: engine.audioTracks.value,
@@ -528,7 +545,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _engineDetach.add(
       () => engine.completed.removeListener(onEngineCompleted),
     );
-    _subs.add(engine.errors.listen((e) => _onPlaybackError(e.code)));
+    _engineErrorSub = engine.errors.listen(_onEngineError);
     void onEngineBuffering() {
       final buffering = engine.buffering.value;
       // A torrent local stream buffers while pieces download — that's normal,
@@ -554,7 +571,69 @@ class PlayerCubit extends Cubit<PlayerState> {
     _engineDetach.add(
       () => engine.buffering.removeListener(onEngineBuffering),
     );
+  }
+
+  /// Detach every listener from the current [engine] (before a swap / on close).
+  void _unwireEngine() {
+    _engineErrorSub?.cancel();
+    _engineErrorSub = null;
+    for (final d in _engineDetach) {
+      d();
+    }
+    _engineDetach.clear();
+  }
+
+  void init(int index) {
+    _wireEngine();
     openEpisode(index);
+  }
+
+  /// Fatal engine error. On an ExoPlayer failure we silently fall back to mpv
+  /// (which plays far more exotic formats); otherwise route to the normal
+  /// source-cycling recovery.
+  void _onEngineError(EngineError e) {
+    if (engine is ExoEngine && shouldFallback(e)) {
+      unawaited(_fallbackToMpv());
+      return;
+    }
+    _onPlaybackError(e.code);
+  }
+
+  /// Swap [engine] to the [choice] engine for [source] if it isn't already that
+  /// type. Toggle off → choice is always mpv → engine already mpv → no-op, so
+  /// the default path never swaps. Must run BEFORE [engine.load].
+  void _ensureEngineFor(EngineSource source) {
+    final choice = EngineRouter.pick(
+      source: source,
+      fastPlayer: sl<PlaybackPrefs>().fastPlayer,
+    );
+    final wantExo = choice == EngineChoice.exo;
+    sl<PlaybackPrefs>().setLastEngineUsed(wantExo ? 'ExoPlayer' : 'mpv');
+    if (wantExo == (engine is ExoEngine)) return; // already the right engine
+    _swapEngine(wantExo ? ExoEngine() : MpvEngine(isTv: sl<AppMode>().isTv));
+  }
+
+  /// Replace [engine] with [next]: detach listeners from the old, dispose it,
+  /// re-wire to the new, and bump [engineRev] so the screen re-mounts the new
+  /// engine's video surface.
+  void _swapEngine(PlaybackEngine next) {
+    _unwireEngine();
+    final old = engine;
+    engine = next;
+    unawaited(old.dispose());
+    _wireEngine();
+    engineRev.value++;
+  }
+
+  /// Silent exo→mpv fallback: rebuild on mpv and re-load the current source at
+  /// the last known position, so a failed ExoPlayer decode is invisible.
+  Future<void> _fallbackToMpv() async {
+    final src = _currentSource;
+    if (src == null || engine is MpvEngine) return;
+    final resumeAt = position;
+    _swapEngine(MpvEngine(isTv: sl<AppMode>().isTv));
+    sl<PlaybackPrefs>().setLastEngineUsed('mpv');
+    await engine.load(src, startAt: resumeAt);
   }
 
   // ── Public playback helpers (used by the Netflix-style overlay) ───────────
@@ -1317,16 +1396,26 @@ class PlayerCubit extends Cubit<PlayerState> {
         }
       });
     }
-    await engine.load(
-      EngineSource(
-        url: playUrl,
-        headers: s.headers ?? const {},
-        isHls: s.container == SourceContainer.hls,
-        isTorrent: _isProxiedStream, // torrent HTTP bridge; best-effort, refined in Phase 2
-        mimeType: s.container == SourceContainer.hls ? 'application/x-mpegURL' : null,
-      ),
-      startAt: start,
+    final engineSource = EngineSource(
+      url: playUrl,
+      headers: s.headers ?? const {},
+      isHls: s.container == SourceContainer.hls,
+      // 127.0.0.1 = torrent HTTP bridge OR an Aniyomi CF proxy; both stay on
+      // mpv (ExoPlayer has no torrent pipeline and the proxies are mpv-tuned).
+      isTorrent: _isProxiedStream,
+      hasAssSubtitles: s.subtitles.any((sub) {
+        final u = sub.url.toLowerCase();
+        return u.endsWith('.ass') || u.endsWith('.ssa');
+      }),
+      mimeType:
+          s.container == SourceContainer.hls ? 'application/x-mpegURL' : null,
     );
+    _currentSource = engineSource;
+    // Pick + swap the engine for this source BEFORE loading. Toggle off → always
+    // mpv → no swap → identical behaviour. The exo→mpv fallback re-loads via
+    // _currentSource.
+    _ensureEngineFor(engineSource);
+    await engine.load(engineSource, startAt: start);
     if (g != _gen) return; // superseded mid-open
     // Discord Rich Presence: announce the episode now playing.
     final discordTitle = showTitle ?? scrobbleTitle;
@@ -1737,16 +1826,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     for (final s in _subs) {
       s.cancel();
     }
-    for (final d in _engineDetach) {
-      d();
-    }
-    _engineDetach.clear();
+    _unwireEngine();
     _stallTimer?.cancel();
     _toastTimer?.cancel();
     // Stop any active torrent stream + delete its buffered pieces.
     await _stopTorrent();
     toast.dispose();
     await engine.dispose();
+    engineRev.dispose();
     return super.close();
   }
 }
