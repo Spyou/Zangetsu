@@ -62,14 +62,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // from native on open; CsDns.off (default) until then.
   int _dnsChoice = CsDns.off;
 
+  // Compact collapsing header: the big "Settings." scrolls away and a centered
+  // app-bar title fades in. 0 = expanded, 1 = collapsed.
+  final ScrollController _scroll = ScrollController();
+  final ValueNotifier<double> _collapse = ValueNotifier<double>(0);
+
   @override
   void initState() {
     super.initState();
+    _scroll.addListener(() {
+      _collapse.value = ((_scroll.offset - 6) / 40).clamp(0.0, 1.0);
+    });
     if (Platform.isAndroid) {
       CsDns.get().then((c) {
         if (mounted) setState(() => _dnsChoice = c);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    _collapse.dispose();
+    super.dispose();
   }
 
   ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
@@ -375,31 +390,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         bottom: false,
         child: CustomScrollView(
+          controller: _scroll,
           slivers: [
-            // Large "Settings." title that collapses into a centered nav-bar
-            // title on scroll; a hairline appears under the bar when collapsed.
-            // .large draws its own expanding large title from [title]; we only
-            // pass the wordmark + centerTitle for the collapsed alignment.
-            SliverAppBar.large(
+            // Compact collapsing header: a short pinned bar whose CENTERED title
+            // fades in only once you scroll past the big "Settings." wordmark
+            // below — so the header stays tight, not a tall empty large-title.
+            SliverAppBar(
+              pinned: true,
+              toolbarHeight: 54,
               backgroundColor: AppColors.bg,
               surfaceTintColor: Colors.transparent,
-              pinned: true,
+              elevation: 0,
+              scrolledUnderElevation: 0,
               centerTitle: true,
-              title: _settingsWordmark(),
-              bottom: const PreferredSize(
-                preferredSize: Size.fromHeight(1),
-                child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
+              title: ValueListenableBuilder<double>(
+                valueListenable: _collapse,
+                builder: (_, v, _) =>
+                    Opacity(opacity: v, child: _settingsWordmark(size: 17)),
+              ),
+              bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(1),
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _collapse,
+                  builder: (_, v, _) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.hairline.withValues(alpha: v * 0.9),
+                  ),
+                ),
               ),
             ),
             SliverPadding(
               // Bottom: clear the floating dock (its height arrives as
               // MediaQuery bottom padding thanks to extendBody).
               padding: EdgeInsets.only(
-                top: 8,
                 bottom: 24 + MediaQuery.paddingOf(context).bottom,
               ),
               sliver: SliverList.list(
                 children: [
+                  // Big "Settings." wordmark — scrolls away (fades as it goes).
+                  ValueListenableBuilder<double>(
+                    valueListenable: _collapse,
+                    builder: (_, v, _) => Opacity(
+                      opacity: (1 - v).clamp(0.0, 1.0),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
+                        child: _settingsWordmark(size: 30),
+                      ),
+                    ),
+                  ),
                   _searchField(),
                   _accountCard(context),
                   // 1 · Account & sync
@@ -658,21 +697,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// "Settings" with a coral "." — the collapsed nav-bar wordmark. .large
-  /// scales this up for the expanded large title, so the glyph stays consistent.
-  Widget _settingsWordmark() {
-    // NO explicit fontSize: SliverAppBar.large sizes the title itself — large
-    // when expanded, small when collapsed. An explicit size on the span would
-    // override that DefaultTextStyle and kill the shrink transition. We only set
-    // colour + weight (both inherit the animated size).
-    return const Text.rich(
+  /// "Settings" with a coral "." — used both big (the scroll-away title) and
+  /// small (the centered nav-bar title that fades in on collapse).
+  Widget _settingsWordmark({required double size}) {
+    return Text.rich(
       TextSpan(
         style: TextStyle(
           color: AppColors.textPrimary,
           fontWeight: FontWeight.w700,
+          fontSize: size,
           letterSpacing: -0.5,
         ),
-        children: [
+        children: const [
           TextSpan(text: 'Settings'),
           TextSpan(text: '.', style: TextStyle(color: AppColors.accent)),
         ],

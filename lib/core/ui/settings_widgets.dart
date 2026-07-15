@@ -47,7 +47,7 @@ class SettingsTile extends StatelessWidget {
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 15),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
         child: Row(
           children: [
             // Thin monochrome line icon, muted grey, no background square.
@@ -119,7 +119,7 @@ class SettingsCard extends StatelessWidget {
       }
     }
     return Container(
-      margin: margin ?? const EdgeInsets.fromLTRB(20, 4, 20, 12),
+      margin: margin ?? const EdgeInsets.fromLTRB(20, 0, 20, 4),
       child: Column(mainAxisSize: MainAxisSize.min, children: separated),
     );
   }
@@ -133,7 +133,7 @@ class SettingsSectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 26, 24, 6),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
       child: Text(
         label.toUpperCase(),
         style: const TextStyle(
