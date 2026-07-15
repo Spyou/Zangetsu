@@ -1906,18 +1906,21 @@ class PlayerCubit extends Cubit<PlayerState> {
     await _applyAudioFilters();
   }
 
-  /// The mpv audio-filter chain from prefs. `volume=N` is a SOFTWARE gain on the
-  /// decoded audio (applied inside libmpv, before the output) — so a >100% boost
-  /// is genuinely louder than the source, independent of the Android system
-  /// volume. dynaudnorm runs first so the user's boost isn't normalized away.
+  /// The mpv audio-filter chain from prefs, as an ffmpeg graph via mpv's `lavfi`
+  /// bridge. CRITICAL: mpv has NO native `volume`/`dynaudnorm` filter, so a bare
+  /// `af=volume=2.0` is an unknown filter and the whole chain silently fails —
+  /// that's the "200% still sounds normal" bug. Routing through `lavfi=[...]`
+  /// uses ffmpeg's real `volume` filter, where the value is a LINEAR multiplier
+  /// (2.0 = 2×, a genuine software gain before the output). dynaudnorm runs
+  /// first so the user's boost isn't normalized away.
   String _audioFilterChain() {
     final prefs = sl<PlaybackPrefs>();
-    final parts = <String>[];
-    if (prefs.audioNormalize) parts.add('dynaudnorm');
+    final inner = <String>[];
+    if (prefs.audioNormalize) inner.add('dynaudnorm');
     if (prefs.volumeBoost != 100) {
-      parts.add('volume=${(prefs.volumeBoost / 100).toStringAsFixed(2)}');
+      inner.add('volume=${(prefs.volumeBoost / 100).toStringAsFixed(2)}');
     }
-    return parts.join(',');
+    return inner.isEmpty ? '' : 'lavfi=[${inner.join(',')}]';
   }
 
   Future<void> _applyAudioFilters() async {
