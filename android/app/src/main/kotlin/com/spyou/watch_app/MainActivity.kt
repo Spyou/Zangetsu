@@ -651,6 +651,25 @@ class MainActivity : FlutterActivity() {
                             packageManager.hasSystemFeature("android.software.leanback_only")
                         result.success(isTv)
                     }
+                    // Does a SAF content:// document still exist on disk? Used by
+                    // the Downloads screen to prune entries whose file was deleted
+                    // outside the app. On ANY uncertainty we return true so a valid
+                    // download is never wrongly removed from the list.
+                    "documentExists" -> {
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr.isNullOrEmpty()) {
+                            result.success(true)
+                            return@setMethodCallHandler
+                        }
+                        val exists = try {
+                            androidx.documentfile.provider.DocumentFile
+                                .fromSingleUri(applicationContext, android.net.Uri.parse(uriStr))
+                                ?.exists() ?: true
+                        } catch (e: Exception) {
+                            true
+                        }
+                        result.success(exists)
+                    }
                     else -> result.notImplemented()
                 }
             }

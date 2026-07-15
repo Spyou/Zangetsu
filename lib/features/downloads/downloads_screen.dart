@@ -57,7 +57,6 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Coming back from a file manager (where a file may have been deleted) →
     // reconcile the list with disk. This is the case initState alone missed.
-    debugPrint('[prune] lifecycle=$state');
     if (state == AppLifecycleState.resumed) _prune();
   }
 

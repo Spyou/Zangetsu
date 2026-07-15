@@ -655,30 +655,44 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  static const MethodChannel _deviceChannel = MethodChannel(
+    'com.spyou.watch_app/device',
+  );
+
+  /// Does a SAF `content://` download still exist? Checked natively via
+  /// DocumentFile (Dart can't stat a content:// URI). Returns true on any
+  /// uncertainty so a valid download is never wrongly pruned.
+  Future<bool> _documentExists(String uri) async {
+    try {
+      final r = await _deviceChannel.invokeMethod<bool>('documentExists', {
+        'uri': uri,
+      });
+      return r ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   /// Reconcile the list with disk: drop `done` records whose file was removed
   /// OUTSIDE the app (a file manager), so the UI can't show phantom downloads.
-  /// Fast + non-blocking — only stats plain file paths (a cheap syscall each),
-  /// skips in-flight records and content:// (SAF) paths. Call when the Downloads
-  /// screen opens; it emits a single [notifyListeners] if anything was pruned.
+  /// Handles BOTH default downloads (plain file path — a cheap `exists` syscall)
+  /// and custom-folder SAF downloads (content:// — via native DocumentFile).
+  /// Skips in-flight records; emits a single [notifyListeners] if anything went.
   Future<void> pruneMissing() async {
     final gone = <String>[];
     for (final rec in _records.values) {
       if (rec.status != DownloadStatus.done) continue;
       final fp = rec.filePath;
-      if (fp == null || fp.isEmpty || isUriPath(fp)) {
-        debugPrint('[prune] skip ${rec.id} fp=$fp');
-        continue;
-      }
+      if (fp == null || fp.isEmpty) continue;
       try {
-        final f = File(fp);
-        if (await f.exists()) {
-          debugPrint('[prune] keep (exists) $fp');
-          continue; // file present → keep
+        if (isUriPath(fp)) {
+          if (!await _documentExists(fp)) gone.add(rec.id);
+          continue;
         }
-        // Storage is "available" if ANY ancestor dir still exists (walk up) —
-        // so a missing file means it was deleted, not that the volume is
-        // unmounted. (A single parent check failed when the whole show folder
-        // was deleted.)
+        final f = File(fp);
+        if (await f.exists()) continue; // file present → keep
+        // Storage is "available" if ANY ancestor dir still exists (walk up), so
+        // a missing file means it was deleted — not that the volume is unmounted.
         var storageOk = false;
         var d = f.parent;
         for (var i = 0; i < 8; i++) {
@@ -690,13 +704,9 @@ class DownloadManager extends ChangeNotifier {
           if (up.path == d.path) break;
           d = up;
         }
-        debugPrint('[prune] $fp missing storageOk=$storageOk');
         if (storageOk) gone.add(rec.id);
-      } catch (e) {
-        debugPrint('[prune] error $fp: $e');
-      }
+      } catch (_) {}
     }
-    debugPrint('[prune] removing ${gone.length}/${_records.length}');
     if (gone.isEmpty) return;
     for (final id in gone) {
       _records.remove(id);

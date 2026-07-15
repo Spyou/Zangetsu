@@ -143,6 +143,8 @@ dependencies {
     // Flutter UI keeps its own theme, so this doesn't affect the main app.
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
+    // SAF DocumentFile — used to check if a content:// download still exists.
+    implementation("androidx.documentfile:documentfile:1.0.1")
     // RecyclerView 1.3.2 (transitive default is 1.1.0, which lacks
     // ViewHolder.getBindingAdapterPosition() — added in 1.2.0). Newer CS plugin
     // settings UIs (e.g. StremioAddon's addon-list) call it and would otherwise
