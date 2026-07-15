@@ -466,11 +466,13 @@ class PlayerCubit extends Cubit<PlayerState> {
         // audio-ahead (mirrors ExoPlayer's buffer-for-playback-after-rebuffer).
         await p.setProperty('cache-pause', 'yes');
         await p.setProperty('cache-pause-wait', '2');
-        // ── In-app volume + boost (CloudStream-style). The gain is a SOFTWARE
-        // audio filter (af=volume=N), so a >100% boost is genuinely louder than
-        // the source even when the phone's system volume is low. ────────────
+        // ── In-app volume + boost. The gain uses mpv's NATIVE `volume` property
+        // (softvol) with volume-max raised to 200 — a real up-to-2× software
+        // gain, exactly like Aniyomi. NOT an af filter: media_kit's Android
+        // ffmpeg build lacks the `volume` libavfilter, so `af=lavfi=[volume=…]`
+        // fails to init and KILLS all audio (the "no sound" bug). ────────────
         await p.setProperty('volume-max', '200');
-        await p.setProperty('volume', '100'); // neutral base — gain is via af
+        await p.setProperty('volume', sl<PlaybackPrefs>().volumeBoost.toString());
         await p.setProperty('af', _audioFilterChain());
       } catch (_) {}
       // Make the bundled subtitle fonts available to mpv/libass (which can't
@@ -1902,25 +1904,22 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Set the in-app volume (0–200%) via mpv's own 'volume' property — this is
   /// independent of the Android system volume — and persist it as the default.
   Future<void> setVolumeBoost(int percent) async {
-    await sl<PlaybackPrefs>().setVolumeBoost(percent.clamp(0, 200));
-    await _applyAudioFilters();
+    final v = percent.clamp(0, 200);
+    await sl<PlaybackPrefs>().setVolumeBoost(v);
+    // Real software gain via mpv's native volume property (0–200, softvol).
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty('volume', v.toString());
+      } catch (_) {}
+    }
   }
 
-  /// The mpv audio-filter chain from prefs, as an ffmpeg graph via mpv's `lavfi`
-  /// bridge. CRITICAL: mpv has NO native `volume`/`dynaudnorm` filter, so a bare
-  /// `af=volume=2.0` is an unknown filter and the whole chain silently fails —
-  /// that's the "200% still sounds normal" bug. Routing through `lavfi=[...]`
-  /// uses ffmpeg's real `volume` filter, where the value is a LINEAR multiplier
-  /// (2.0 = 2×, a genuine software gain before the output). dynaudnorm runs
-  /// first so the user's boost isn't normalized away.
+  /// The mpv audio-filter chain from prefs. Volume boost is NOT here — it's the
+  /// native `volume` property (see _configureMpv). Only dynaudnorm lives in the
+  /// af chain (opt-in normalization).
   String _audioFilterChain() {
-    final prefs = sl<PlaybackPrefs>();
-    final inner = <String>[];
-    if (prefs.audioNormalize) inner.add('dynaudnorm');
-    if (prefs.volumeBoost != 100) {
-      inner.add('volume=${(prefs.volumeBoost / 100).toStringAsFixed(2)}');
-    }
-    return inner.isEmpty ? '' : 'lavfi=[${inner.join(',')}]';
+    return sl<PlaybackPrefs>().audioNormalize ? 'dynaudnorm' : '';
   }
 
   Future<void> _applyAudioFilters() async {
