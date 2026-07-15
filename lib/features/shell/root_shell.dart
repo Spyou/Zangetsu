@@ -41,10 +41,22 @@ class RootShell extends StatefulWidget {
   State<RootShell> createState() => _RootShellState();
 }
 
-class _RootShellState extends State<RootShell> {
+class _RootShellState extends State<RootShell>
+    with SingleTickerProviderStateMixin {
   static const int _searchTab = 1;
 
   int _index = 0;
+
+  /// The tab we're transitioning to; the visible page swaps to it at the
+  /// fade's trough.
+  int _targetIndex = 0;
+
+  /// Fade-through between tabs: a 0→1 run whose opacity dips to 0 at the
+  /// midpoint (where we swap the visible page) and back to 1 — the old tab
+  /// fades out, the new one fades in. The [IndexedStack] stays alive
+  /// throughout, so every tab keeps its scroll position.
+  late final AnimationController _fadeCtrl;
+  late final Animation<double> _fade;
 
   /// Bumped each time the Search tab is (re)selected so the search screen can
   /// auto-focus its field and pop the keyboard, without stealing focus while
@@ -52,14 +64,53 @@ class _RootShellState extends State<RootShell> {
   final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
 
   @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+      value: 1,
+    );
+    _fade = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 1.0,
+          end: 0.0,
+        ).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 1,
+      ),
+      TweenSequenceItem(
+        tween: Tween(
+          begin: 0.0,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 1,
+      ),
+    ]).animate(_fadeCtrl);
+    _fadeCtrl.addListener(() {
+      // Swap the visible page at the trough, once per run.
+      if (_index != _targetIndex && _fadeCtrl.value >= 0.5) {
+        setState(() => _index = _targetIndex);
+        if (_index == _searchTab) _searchFocusSignal.value++;
+      }
+    });
+  }
+
+  @override
   void dispose() {
+    _fadeCtrl.dispose();
     _searchFocusSignal.dispose();
     super.dispose();
   }
 
   void _onTabSelected(int i) {
-    setState(() => _index = i);
-    if (i == _searchTab) _searchFocusSignal.value++;
+    // Re-tapping the current tab: no transition, just re-focus Search.
+    if (i == _index && !_fadeCtrl.isAnimating) {
+      if (i == _searchTab) _searchFocusSignal.value++;
+      return;
+    }
+    _targetIndex = i;
+    _fadeCtrl.forward(from: 0);
   }
 
   /// The five tab pages: the four from [buildShellPages] with [ScheduleScreen]
@@ -83,7 +134,18 @@ class _RootShellState extends State<RootShell> {
       // Content runs under the floating dock (screens keep their own bottom
       // padding so the last row scrolls clear of it).
       extendBody: true,
-      body: IndexedStack(index: _index, children: _pages()),
+      body: AnimatedBuilder(
+        animation: _fade,
+        builder: (context, child) {
+          final v = _fade.value;
+          return Opacity(
+            opacity: v,
+            // A whisper of zoom on the incoming half sells the fade-through.
+            child: Transform.scale(scale: 0.985 + 0.015 * v, child: child),
+          );
+        },
+        child: IndexedStack(index: _index, children: _pages()),
+      ),
       bottomNavigationBar: _FloatingDock(
         index: _index,
         onSelected: _onTabSelected,
