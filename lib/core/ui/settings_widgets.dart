@@ -3,10 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
-/// One flat row inside a [SettingsCard]. Sits directly on the background:
-/// thin monochrome line icon + title (Expanded) + optional short subtitle
-/// under it + trailing value/switch and/or a subtle chevron. No colored
-/// icon square, no card box. Set [destructive] for the accent-red danger tint.
+/// One Material-You list row. Sits directly on the background (no card box):
+/// a roomy leading line icon + title with an optional description under it +
+/// trailing chevron / switch / value. Set [destructive] for the danger tint.
 class SettingsTile extends StatelessWidget {
   const SettingsTile({
     super.key,
@@ -47,14 +46,14 @@ class SettingsTile extends StatelessWidget {
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
         child: Row(
           children: [
-            // Thin monochrome line icon, muted grey, no background square.
-            Icon(icon, color: fg ?? AppColors.textSecondary, size: 20),
-            const SizedBox(width: 15),
-            // Title + subtitle stacked (subtitle sits UNDER the title), so long
-            // values read cleanly and the trailing widget always lands right.
+            // Roomy monochrome line icon, muted grey (M3 leading icon).
+            Icon(icon, color: fg ?? AppColors.textSecondary, size: 23),
+            const SizedBox(width: 18),
+            // Title + description stacked, so the trailing widget always lands
+            // cleanly on the right regardless of subtitle length.
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -65,7 +64,7 @@ class SettingsTile extends StatelessWidget {
                     style: AppText.headline.copyWith(
                       color: fg ?? AppColors.textPrimary,
                       fontWeight: FontWeight.w500,
-                      fontSize: 15,
+                      fontSize: 15.5,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -85,7 +84,7 @@ class SettingsTile extends StatelessWidget {
               ),
             ),
             if (trailingWidget != null) ...[
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               trailingWidget,
             ],
           ],
@@ -95,8 +94,8 @@ class SettingsTile extends StatelessWidget {
   }
 }
 
-/// Groups rows into one flat list. No box, no border, no fill — the rows
-/// float on the background, separated only by a single 1px hairline.
+/// Stacks the rows of one category. No box, no border, no dividers — rows just
+/// sit on the background; category separation comes from [SettingsSectionLabel].
 class SettingsCard extends StatelessWidget {
   const SettingsCard({super.key, required this.children, this.margin});
 
@@ -105,45 +104,48 @@ class SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final separated = <Widget>[];
-    for (var i = 0; i < children.length; i++) {
-      separated.add(children[i]);
-      if (i < children.length - 1) {
-        separated.add(
-          const Divider(
-            height: 1,
-            thickness: 1,
-            color: AppColors.hairline,
-          ),
-        );
-      }
-    }
     return Container(
-      margin: margin ?? const EdgeInsets.fromLTRB(20, 0, 20, 4),
-      child: Column(mainAxisSize: MainAxisSize.min, children: separated),
+      margin: margin ?? EdgeInsets.zero,
+      child: Column(mainAxisSize: MainAxisSize.min, children: children),
     );
   }
 }
 
-/// Tiny uppercase section label drawn above a group. Muted, wide tracking.
+/// Material-You category header: an accent-coloured label, preceded by a full
+/// hairline (except the [first] one) that visually separates the groups.
 class SettingsSectionLabel extends StatelessWidget {
-  const SettingsSectionLabel(this.label, {super.key});
+  const SettingsSectionLabel(this.label, {super.key, this.first = false});
   final String label;
+
+  /// The topmost section: no divider above it, tighter top padding.
+  final bool first;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 6),
-      child: Text(
-        label.toUpperCase(),
-        style: const TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.5, // ~.14em at 11px
-          color: AppColors.textTertiary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!first) ...[
+          const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 22),
+            child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
+          ),
+        ],
+        Padding(
+          padding: EdgeInsets.fromLTRB(22, first ? 6 : 18, 22, 8),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.2,
+              color: AppColors.accent,
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -62,29 +62,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // from native on open; CsDns.off (default) until then.
   int _dnsChoice = CsDns.off;
 
-  // Compact collapsing header: the big "Settings." scrolls away and a centered
-  // app-bar title fades in. 0 = expanded, 1 = collapsed.
-  final ScrollController _scroll = ScrollController();
-  final ValueNotifier<double> _collapse = ValueNotifier<double>(0);
-
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(() {
-      _collapse.value = ((_scroll.offset - 6) / 40).clamp(0.0, 1.0);
-    });
     if (Platform.isAndroid) {
       CsDns.get().then((c) {
         if (mounted) setState(() => _dnsChoice = c);
       });
     }
-  }
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    _collapse.dispose();
-    super.dispose();
   }
 
   ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
@@ -258,9 +243,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
-  /// Account header — signed-in hero profile (pfp + name → Profile) or a
-  /// Sign-in tile. Flat + text-forward: a small monochrome avatar, name, email
-  /// and a thin chevron, floating card-less on the background.
+  /// Account header — signed-in profile (pfp + name → Profile) or a Sign-in
+  /// prompt, inside a rounded surface card (Material-You account block).
   Widget _accountCard(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
@@ -268,65 +252,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          return InkWell(
-            onTap: () => _push(const ProfileScreen()),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 23,
-                    backgroundColor: AppColors.surface2,
-                    backgroundImage: auth.avatarUrl != null
-                        ? CachedNetworkImageProvider(auth.avatarUrl!)
-                        : null,
-                    child: auth.avatarUrl == null
-                        ? Text(
-                            initial,
-                            style: AppText.headline.copyWith(fontSize: 18),
-                          )
-                        : null,
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+            child: Material(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
+                onTap: () => _push(const ProfileScreen()),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: 14,
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          auth.displayName,
-                          style: AppText.headline.copyWith(fontSize: 16),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 23,
+                        backgroundColor: AppColors.surface2,
+                        backgroundImage: auth.avatarUrl != null
+                            ? CachedNetworkImageProvider(auth.avatarUrl!)
+                            : null,
+                        child: auth.avatarUrl == null
+                            ? Text(
+                                initial,
+                                style: AppText.headline.copyWith(fontSize: 18),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              auth.displayName,
+                              style: AppText.headline.copyWith(fontSize: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              auth.user?.email ?? '',
+                              style: AppText.caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          auth.user?.email ?? '',
-                          style: AppText.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textTertiary,
+                        size: 20,
+                      ),
+                    ],
                   ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary,
-                    size: 20,
-                  ),
-                ],
+                ),
               ),
             ),
           );
         }
-        return SettingsCard(
-          children: [
-            SettingsTile(
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+          child: Material(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            clipBehavior: Clip.antiAlias,
+            child: SettingsTile(
               icon: Icons.person_outline_rounded,
               title: 'Sign in',
               subtitle: 'Sync your list & continue watching',
               onTap: () => _push(const LoginScreen()),
             ),
-          ],
+          ),
         );
       },
     );
@@ -390,36 +389,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: SafeArea(
         bottom: false,
         child: CustomScrollView(
-          controller: _scroll,
           slivers: [
-            // Compact collapsing header: a short pinned bar whose CENTERED title
-            // fades in only once you scroll past the big "Settings." wordmark
-            // below — so the header stays tight, not a tall empty large-title.
-            SliverAppBar(
-              pinned: true,
-              toolbarHeight: 54,
-              backgroundColor: AppColors.bg,
-              surfaceTintColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              centerTitle: true,
-              title: ValueListenableBuilder<double>(
-                valueListenable: _collapse,
-                builder: (_, v, _) =>
-                    Opacity(opacity: v, child: _settingsWordmark(size: 17)),
-              ),
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(1),
-                child: ValueListenableBuilder<double>(
-                  valueListenable: _collapse,
-                  builder: (_, v, _) => Divider(
-                    height: 1,
-                    thickness: 1,
-                    color: AppColors.hairline.withValues(alpha: v * 0.9),
-                  ),
-                ),
-              ),
-            ),
             SliverPadding(
               // Bottom: clear the floating dock (its height arrives as
               // MediaQuery bottom padding thanks to extendBody).
@@ -428,21 +398,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               sliver: SliverList.list(
                 children: [
-                  // Big "Settings." wordmark — scrolls away (fades as it goes).
-                  ValueListenableBuilder<double>(
-                    valueListenable: _collapse,
-                    builder: (_, v, _) => Opacity(
-                      opacity: (1 - v).clamp(0.0, 1.0),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 2, 20, 10),
-                        child: _settingsWordmark(size: 30),
-                      ),
-                    ),
+                  // Big "Settings." title — tight to the top (right under the
+                  // status bar), scrolls away with the content.
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 12, 20, 14),
+                    child: _settingsWordmark(size: 30),
                   ),
                   _searchField(),
                   _accountCard(context),
                   // 1 · Account & sync
-                  const SettingsSectionLabel('Account & sync'),
+                  const SettingsSectionLabel('Account & sync', first: true),
                   SettingsCard(
                     children: [
                       SettingsTile(
