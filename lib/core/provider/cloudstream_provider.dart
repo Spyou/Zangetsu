@@ -1269,6 +1269,30 @@ class CloudStreamManager extends ChangeNotifier {
     }
   }
 
+  bool _bridgeWired = false;
+
+  /// "Mega repo" plugins add a batch of repositories by calling the native
+  /// RepositoryManager.addRepository during their load(); the native side
+  /// forwards each URL here so it goes through the real [addRepo] (which
+  /// dedupes, so re-adds on later boots are harmless).
+  void _wireRepoAddedBridge() {
+    if (_bridgeWired) return;
+    _bridgeWired = true;
+    _csChannel.setMethodCallHandler((call) async {
+      if (call.method == 'onRepoAdded') {
+        final url = call.arguments as String?;
+        if (url != null && url.isNotEmpty) {
+          try {
+            await addRepo(url);
+          } catch (e) {
+            debugPrint('[cloudstream] mega-repo addRepo failed: $e');
+          }
+        }
+      }
+      return null;
+    });
+  }
+
   /// Loads any cached/installed plugins into the provider set AND reads the
   /// persisted repo list into memory. No-op (channel) on non-Android; failures
   /// are swallowed so a missing native channel can't break startup.
@@ -1278,6 +1302,7 @@ class CloudStreamManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _wireRepoAddedBridge();
     try {
       final raw = await _csChannel.invokeMethod<List<dynamic>>('listSources');
       _rebuildFrom(raw);

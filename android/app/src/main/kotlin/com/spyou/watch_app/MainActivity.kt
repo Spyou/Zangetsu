@@ -106,8 +106,19 @@ class MainActivity : FlutterActivity() {
     // Cast: wired in configureFlutterEngine; released in onDestroy.
     private var castManager: CastManager? = null
 
+    // Stored so RepositoryManager (mega-repo plugins) can push added repos to
+    // Dart. Set in configureFlutterEngine.
+    private var csChannel: MethodChannel? = null
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
+        // RepositoryManager.addRepository(...), forward each URL to Dart so it
+        // goes through the real CloudStreamManager.addRepo(). Purely additive.
+        com.lagradost.cloudstream3.plugins.RepositoryManager.onRepoAdded = { url ->
+            runOnUiThread { csChannel?.invokeMethod("onRepoAdded", url) }
+        }
 
         // TV ExoPlayer spike (SP0) — register the SurfaceView PlatformView.
         flutterEngine.platformViewsController.registry.registerViewFactory(
@@ -225,6 +236,7 @@ class MainActivity : FlutterActivity() {
         // work is blocking) and post back via runOnUiThread; any failure is
         // surfaced to Dart as a "cs_error".
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cloudstream")
+            .also { csChannel = it }
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     // Solve Cloudflare for [url] in the WebView solver and hand back
