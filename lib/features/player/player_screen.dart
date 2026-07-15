@@ -1947,9 +1947,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   duration: Duration(milliseconds: _hudVisible ? 120 : 260),
                   curve: Curves.easeOut,
                   child: Align(
+                    // Show the indicator on the OPPOSITE side to the swiping
+                    // finger, so your hand doesn't cover it: brightness (left
+                    // swipe) → right rail; volume (right swipe) → left rail.
                     alignment: _hudIsBrightness
-                        ? const Alignment(-0.88, 0.0) // left rail = brightness
-                        : const Alignment(0.88, 0.0), // right rail = volume
+                        ? const Alignment(0.88, 0.0) // brightness → RIGHT rail
+                        : const Alignment(-0.88, 0.0), // volume → LEFT rail
                     child: _AdjustHud(
                       value: _hudValue,
                       isBrightness: _hudIsBrightness,
