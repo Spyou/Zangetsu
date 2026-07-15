@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
+import '../../core/download/download_prefs.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -15,6 +16,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
+import '../settings/download_location_screen.dart';
 import '../player/player_screen.dart';
 import 'downloads_screen_tv.dart';
 
@@ -29,7 +31,8 @@ class DownloadsScreen extends StatefulWidget {
   State<DownloadsScreen> createState() => _DownloadsScreenState();
 }
 
-class _DownloadsScreenState extends State<DownloadsScreen> {
+class _DownloadsScreenState extends State<DownloadsScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _searchCtrl = TextEditingController();
   String _query = '';
 
@@ -39,20 +42,84 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   @override
   void initState() {
     super.initState();
-    // Reconcile with disk once on open: drop downloads whose file was deleted
-    // outside the app so they don't linger as phantom entries. Non-blocking.
-    unawaited(sl<DownloadManager>().pruneMissing());
+    WidgetsBinding.instance.addObserver(this);
+    _prune();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchCtrl.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Coming back from a file manager (where a file may have been deleted) →
+    // reconcile the list with disk. This is the case initState alone missed.
+    if (state == AppLifecycleState.resumed) _prune();
+  }
+
+  /// Drop downloads whose file was deleted outside the app. Non-blocking.
+  void _prune() => unawaited(sl<DownloadManager>().pruneMissing());
+
   void _toggle(String showId) => setState(() {
     if (!_expanded.remove(showId)) _expanded.add(showId);
   });
+
+  /// "Saving to: `folder` · Change" — surfaces the download location right here
+  /// (opens the existing picker) instead of only burying it in Settings.
+  Widget _locationHeader() {
+    final label = sl<DownloadPrefs>().locationLabel ?? 'Download/Zangetsu';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 6, 8, 2),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.folder_outlined,
+            size: 18,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Saving to',
+                  style: AppText.caption.copyWith(color: AppColors.textTertiary),
+                ),
+                Text(
+                  label,
+                  style: AppText.body,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const DownloadLocationScreen(),
+                ),
+              );
+              if (mounted) setState(() {}); // refresh the shown folder
+            },
+            child: Text(
+              'Change',
+              style: AppText.body.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,16 +132,20 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         listenable: manager,
         builder: (context, _) {
           final groups = manager.byShow;
-          if (groups.isEmpty) {
-            return const EmptyState(
-              icon: Icons.download_outlined,
-              message: 'Episodes you download appear here',
-            );
-          }
           return Column(
             children: [
-              _searchField(),
-              Expanded(child: _list(groups, manager)),
+              _locationHeader(),
+              if (groups.isEmpty)
+                const Expanded(
+                  child: EmptyState(
+                    icon: Icons.download_outlined,
+                    message: 'Episodes you download appear here',
+                  ),
+                )
+              else ...[
+                _searchField(),
+                Expanded(child: _list(groups, manager)),
+              ],
             ],
           );
         },

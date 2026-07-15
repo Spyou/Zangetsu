@@ -667,7 +667,11 @@ class DownloadManager extends ChangeNotifier {
       final fp = rec.filePath;
       if (fp == null || fp.isEmpty || isUriPath(fp)) continue;
       try {
-        if (!await File(fp).exists()) gone.add(rec.id);
+        final f = File(fp);
+        if (await f.exists()) continue; // file present → keep
+        // Only prune when the containing folder is reachable — otherwise storage
+        // may just be temporarily unavailable, and we must NOT nuke valid records.
+        if (await f.parent.exists()) gone.add(rec.id);
       } catch (_) {}
     }
     if (gone.isEmpty) return;
