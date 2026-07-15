@@ -47,16 +47,13 @@ class _RootShellState extends State<RootShell>
 
   int _index = 0;
 
-  /// The tab we're transitioning to; the visible page swaps to it at the
-  /// fade's trough.
-  int _targetIndex = 0;
-
-  /// Fade-through between tabs: a 0→1 run whose opacity dips to 0 at the
-  /// midpoint (where we swap the visible page) and back to 1 — the old tab
-  /// fades out, the new one fades in. The [IndexedStack] stays alive
-  /// throughout, so every tab keeps its scroll position.
-  late final AnimationController _fadeCtrl;
-  late final Animation<double> _fade;
+  /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
+  /// tab fades + slides up into place (200ms, ease-out). We never fade the old
+  /// tab out to blank — that midpoint blank frame read as a stutter. The
+  /// [IndexedStack] stays alive, so every tab keeps its scroll position and
+  /// nothing is rebuilt during the animation (the page is a cached layer).
+  late final AnimationController _switchCtrl;
+  late final Animation<double> _switch;
 
   /// Bumped each time the Search tab is (re)selected so the search screen can
   /// auto-focus its field and pop the keyboard, without stealing focus while
@@ -66,51 +63,30 @@ class _RootShellState extends State<RootShell>
   @override
   void initState() {
     super.initState();
-    _fadeCtrl = AnimationController(
+    _switchCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 170),
+      duration: const Duration(milliseconds: 200),
       value: 1,
     );
-    _fade = TweenSequence<double>([
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 1.0,
-          end: 0.0,
-        ).chain(CurveTween(curve: Curves.easeIn)),
-        weight: 1,
-      ),
-      TweenSequenceItem(
-        tween: Tween(
-          begin: 0.0,
-          end: 1.0,
-        ).chain(CurveTween(curve: Curves.easeOut)),
-        weight: 1,
-      ),
-    ]).animate(_fadeCtrl);
-    _fadeCtrl.addListener(() {
-      // Swap the visible page at the trough, once per run.
-      if (_index != _targetIndex && _fadeCtrl.value >= 0.5) {
-        setState(() => _index = _targetIndex);
-        if (_index == _searchTab) _searchFocusSignal.value++;
-      }
-    });
+    _switch = CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic);
   }
 
   @override
   void dispose() {
-    _fadeCtrl.dispose();
+    _switchCtrl.dispose();
     _searchFocusSignal.dispose();
     super.dispose();
   }
 
   void _onTabSelected(int i) {
-    // Re-tapping the current tab: no transition, just re-focus Search.
-    if (i == _index && !_fadeCtrl.isAnimating) {
+    if (i == _index) {
+      // Re-tapping the current tab: no transition, just re-focus Search.
       if (i == _searchTab) _searchFocusSignal.value++;
       return;
     }
-    _targetIndex = i;
-    _fadeCtrl.forward(from: 0);
+    setState(() => _index = i);
+    if (i == _searchTab) _searchFocusSignal.value++;
+    _switchCtrl.forward(from: 0);
   }
 
   /// The five tab pages, in dock order: Home · Schedule · Search · My List ·
@@ -137,16 +113,23 @@ class _RootShellState extends State<RootShell>
       // padding so the last row scrolls clear of it).
       extendBody: true,
       body: AnimatedBuilder(
-        animation: _fade,
+        animation: _switch,
         builder: (context, child) {
-          final v = _fade.value;
+          final v = _switch.value;
+          // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
           return Opacity(
-            opacity: v,
-            // A whisper of zoom on the incoming half sells the fade-through.
-            child: Transform.scale(scale: 0.985 + 0.015 * v, child: child),
+            opacity: 0.4 + 0.6 * v,
+            child: Transform.translate(
+              offset: Offset(0, (1 - v) * 20),
+              child: child,
+            ),
           );
         },
-        child: IndexedStack(index: _index, children: _pages()),
+        // RepaintBoundary → the page is a single cached layer the transition
+        // just composites (opacity + translate), so no repaint per frame.
+        child: RepaintBoundary(
+          child: IndexedStack(index: _index, children: _pages()),
+        ),
       ),
       bottomNavigationBar: _FloatingDock(
         index: _index,
