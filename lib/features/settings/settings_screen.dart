@@ -244,8 +244,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
   /// Account header — signed-in hero profile (pfp + name → Profile) or a
-  /// Sign-in tile. The hero floats card-less on the background: a 64px avatar
-  /// in a crimson accent ring with a soft glow, big display name, email below.
+  /// Sign-in tile. Flat + text-forward: a small monochrome avatar, name, email
+  /// and a thin chevron, floating card-less on the background.
   Widget _accountCard(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
@@ -253,64 +253,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          // Profile card — plain surface card matching the sections below.
-          // Just a comfortable avatar, bold name, and email. Nothing fancy.
-          return Container(
-            margin: const EdgeInsets.fromLTRB(16, 6, 16, 4),
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Material(
-              type: MaterialType.transparency,
-              child: InkWell(
-                onTap: () => _push(const ProfileScreen()),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 26,
-                        backgroundColor: AppColors.surface2,
-                        backgroundImage: auth.avatarUrl != null
-                            ? CachedNetworkImageProvider(auth.avatarUrl!)
-                            : null,
-                        child: auth.avatarUrl == null
-                            ? Text(
-                                initial,
-                                style: AppText.headline.copyWith(fontSize: 20),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              auth.displayName,
-                              style: AppText.headline.copyWith(fontSize: 17),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              auth.user?.email ?? '',
-                              style: AppText.caption,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textTertiary,
-                      ),
-                    ],
+          return InkWell(
+            onTap: () => _push(const ProfileScreen()),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 6, 20, 8),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: AppColors.surface2,
+                    backgroundImage: auth.avatarUrl != null
+                        ? CachedNetworkImageProvider(auth.avatarUrl!)
+                        : null,
+                    child: auth.avatarUrl == null
+                        ? Text(
+                            initial,
+                            style: AppText.headline.copyWith(fontSize: 18),
+                          )
+                        : null,
                   ),
-                ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.displayName,
+                          style: AppText.headline.copyWith(fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.user?.email ?? '',
+                          style: AppText.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                ],
               ),
             ),
           );
@@ -329,6 +317,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// A plain grey value shown at the row's trailing edge (before the chevron).
+  /// Used for e.g. "Rows", "Off", "2 linked".
+  Widget _value(String text) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Text(text, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+      const SizedBox(width: 6),
+      const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textTertiary,
+        size: 20,
+      ),
+    ],
+  );
+
+  /// Minimal, monochrome "Search settings" field. Visual for now — tapping
+  /// focuses nothing (live filtering is out of scope); a raise-fill pill with a
+  /// search glyph matching the mockup.
+  // ponytail: visual-only search field; wire live filtering when it's needed.
+  Widget _searchField() => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+    child: Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(13),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: AppColors.textTertiary, size: 20),
+          const SizedBox(width: 11),
+          Text(
+            'Search settings',
+            style: AppText.body.copyWith(color: AppColors.textTertiary),
+          ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const SettingsScreenTv();
@@ -346,25 +374,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // edge, leaving a dead band on both sides of the capsule.
       body: SafeArea(
         bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Text('Settings', style: AppText.largeTitle),
+        child: CustomScrollView(
+          slivers: [
+            // Large "Settings." title that collapses into a centered nav-bar
+            // title on scroll; a hairline appears under the bar when collapsed.
+            // .large draws its own expanding large title from [title]; we only
+            // pass the wordmark + centerTitle for the collapsed alignment.
+            SliverAppBar.large(
+              backgroundColor: AppColors.bg,
+              surfaceTintColor: Colors.transparent,
+              pinned: true,
+              centerTitle: true,
+              title: _settingsWordmark(),
+              bottom: const PreferredSize(
+                preferredSize: Size.fromHeight(1),
+                child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
+              ),
             ),
-            Expanded(
-              child: ListView(
-                // Bottom: clear the floating dock (its height arrives as
-                // MediaQuery bottom padding thanks to extendBody).
-                padding: EdgeInsets.only(
-                    top: 4,
-                    bottom: 24 + MediaQuery.paddingOf(context).bottom),
+            SliverPadding(
+              // Bottom: clear the floating dock (its height arrives as
+              // MediaQuery bottom padding thanks to extendBody).
+              padding: EdgeInsets.only(
+                top: 8,
+                bottom: 24 + MediaQuery.paddingOf(context).bottom,
+              ),
+              sliver: SliverList.list(
                 children: [
+                  _searchField(),
                   _accountCard(context),
+                  // 1 · Account & sync
                   const SettingsSectionLabel('Account & sync'),
                   SettingsCard(
                     children: [
+                      SettingsTile(
+                        icon: Icons.sync_alt_rounded,
+                        title: 'Connections',
+                        subtitle: connectedCount > 0
+                            ? '$connectedCount connected'
+                            : 'AniList, MyAnimeList, Simkl',
+                        onTap: () async {
+                          await _push(const ConnectionsScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
+                        icon: Icons.gamepad_outlined,
+                        title: 'Discord',
+                        subtitle: 'Rich Presence — show your status',
+                        onTap: () async {
+                          await _push(const DiscordSettingsScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
                       SettingsTile(
                         icon: Icons.groups_2_outlined,
                         title: 'Watch Party',
@@ -391,28 +452,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Save your sources, list & settings',
                         onTap: () => _push(const BackupScreen()),
                       ),
-                      SettingsTile(
-                        icon: Icons.sync_alt_rounded,
-                        title: 'Connections',
-                        subtitle: connectedCount > 0
-                            ? '$connectedCount connected'
-                            : 'AniList, MyAnimeList, Simkl',
-                        onTap: () async {
-                          await _push(const ConnectionsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.gamepad_outlined,
-                        title: 'Discord',
-                        subtitle: 'Rich Presence — show your status',
-                        onTap: () async {
-                          await _push(const DiscordSettingsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
                     ],
                   ),
+                  // 2 · Sources
                   const SettingsSectionLabel('Sources'),
                   SettingsCard(
                     children: [
@@ -429,6 +471,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         icon: Icons.swap_horiz_rounded,
                         title: 'Active source',
                         subtitle: _activeLabel(activeId),
+                        // The one coral accent here: an "active" dot before the
+                        // chevron.
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            _AccentDot(),
+                            SizedBox(width: 10),
+                            Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.textTertiary,
+                              size: 20,
+                            ),
+                          ],
+                        ),
                         onTap: _pickActiveSource,
                       ),
                       // "Add CloudStream repository" removed — it duplicated the
@@ -440,29 +496,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Test which sources are working',
                         onTap: () => _push(const SourceHealthScreen()),
                       ),
-                      SettingsTile(
-                        icon: Icons.download_outlined,
-                        title: 'Downloads',
-                        subtitle: 'Manage your downloaded episodes',
-                        onTap: () => _push(const DownloadsScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.bug_report_outlined,
-                        title: 'Share logs',
-                        subtitle: 'Send a diagnostic log to help fix an issue',
-                        onTap: _shareLogs,
-                      ),
+                      // Source updates (Android-only toggle) moved here from the
+                      // old Notifications group.
                       if (Platform.isAndroid)
                         SettingsTile(
-                          icon: Icons.vpn_lock_outlined,
-                          title: 'DNS',
-                          subtitle: _dnsChoice == CsDns.off
-                              ? 'Off · bypass ISP blocks on CS sources'
-                              : CsDns.labelFor(_dnsChoice),
-                          onTap: _pickDns,
+                          icon: Icons.update_rounded,
+                          title: 'Source updates',
+                          subtitle: 'Notify when installed sources have updates',
+                          trailing: Switch.adaptive(
+                            value: sl<CloudStreamManager>().notifyUpdates,
+                            activeThumbColor: AppColors.accent,
+                            onChanged: (v) async {
+                              await sl<CloudStreamManager>()
+                                  .setNotifyUpdates(v);
+                              if (mounted) setState(() {});
+                            },
+                          ),
                         ),
                     ],
                   ),
+                  // 3 · Playback & downloads
                   const SettingsSectionLabel('Playback & downloads'),
                   SettingsCard(
                     children: [
@@ -471,6 +524,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: 'Playback',
                         subtitle: 'Quality, autoplay, speed',
                         onTap: () => _push(const PlaybackSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.download_outlined,
+                        title: 'Downloads',
+                        subtitle: 'Manage your downloaded episodes',
+                        onTap: () => _push(const DownloadsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.sd_storage_outlined,
@@ -486,50 +545,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Streaming & data settings',
                         onTap: () => _push(const TorrentSettingsScreen()),
                       ),
-                      SettingsTile(
-                        icon: Icons.search_rounded,
-                        title: 'Search layout',
-                        subtitle: sl<SearchPrefs>().layout.label,
-                        onTap: _pickSearchLayout,
-                      ),
                     ],
                   ),
-                  if (Platform.isAndroid) ...[
-                    const SettingsSectionLabel('Notifications'),
-                    SettingsCard(
-                      children: [
+                  // 4 · Interface & notifications
+                  const SettingsSectionLabel('Interface & notifications'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.grid_view_rounded,
+                        title: 'Search layout',
+                        subtitle: 'How cross-source results are shown',
+                        trailing: _value(sl<SearchPrefs>().layout.label),
+                        onTap: _pickSearchLayout,
+                      ),
+                      if (Platform.isAndroid)
                         SettingsTile(
                           icon: Icons.notifications_none_rounded,
                           title: 'Notifications',
                           subtitle: 'New-episode alerts for subscribed shows',
                           onTap: () => _push(const SubscriptionsScreen()),
                         ),
-                        SettingsTile(
-                          icon: Icons.update_rounded,
-                          title: 'Source updates',
-                          subtitle: 'Notify when installed sources have updates',
-                          trailing: Switch.adaptive(
-                            value: sl<CloudStreamManager>().notifyUpdates,
-                            activeThumbColor: AppColors.accent,
-                            onChanged: (v) async {
-                              await sl<CloudStreamManager>()
-                                  .setNotifyUpdates(v);
-                              if (mounted) setState(() {});
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SettingsSectionLabel('More'),
+                    ],
+                  ),
+                  // 5 · Advanced
+                  const SettingsSectionLabel('Advanced'),
                   SettingsCard(
                     children: [
-                      SettingsTile(
-                        icon: Icons.help_outline_rounded,
-                        title: 'How it works',
-                        subtitle: 'New here? A quick guide',
-                        onTap: () => _push(const HowItWorksScreen()),
-                      ),
+                      if (Platform.isAndroid)
+                        SettingsTile(
+                          icon: Icons.vpn_lock_outlined,
+                          title: 'DNS',
+                          subtitle: 'Bypass ISP blocks on CS sources',
+                          trailing: _value(
+                            _dnsChoice == CsDns.off
+                                ? 'Off'
+                                : CsDns.labelFor(_dnsChoice),
+                          ),
+                          onTap: _pickDns,
+                        ),
                       SettingsTile(
                         icon: Icons.shield_outlined,
                         title: 'Privacy',
@@ -538,6 +591,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           await _push(const PrivacySettingsScreen());
                           if (mounted) setState(() {});
                         },
+                      ),
+                      SettingsTile(
+                        icon: Icons.bug_report_outlined,
+                        title: 'Share logs',
+                        subtitle: 'Send a diagnostic log to help fix an issue',
+                        onTap: _shareLogs,
+                      ),
+                    ],
+                  ),
+                  // 6 · About
+                  const SettingsSectionLabel('About'),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.help_outline_rounded,
+                        title: 'How it works',
+                        subtitle: 'New here? A quick guide',
+                        onTap: () => _push(const HowItWorksScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.system_update_rounded,
@@ -553,9 +624,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         },
                       ),
                       SettingsTile(
-                        icon: Icons.coffee_rounded,
+                        icon: Icons.favorite_border_rounded,
                         title: 'Support the app',
                         subtitle: 'Buy me a coffee',
+                        // The one coral accent here: a filled heart.
+                        trailing: const Icon(
+                          Icons.favorite_rounded,
+                          color: AppColors.accent,
+                          size: 18,
+                        ),
                         onTap: () => _push(const DonateScreen()),
                       ),
                       SettingsTile(
@@ -580,6 +657,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+
+  /// "Settings" with a coral "." — the collapsed nav-bar wordmark. .large
+  /// scales this up for the expanded large title, so the glyph stays consistent.
+  Widget _settingsWordmark() {
+    // NO explicit fontSize: SliverAppBar.large sizes the title itself — large
+    // when expanded, small when collapsed. An explicit size on the span would
+    // override that DefaultTextStyle and kill the shrink transition. We only set
+    // colour + weight (both inherit the animated size).
+    return const Text.rich(
+      TextSpan(
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w700,
+          letterSpacing: -0.5,
+        ),
+        children: [
+          TextSpan(text: 'Settings'),
+          TextSpan(text: '.', style: TextStyle(color: AppColors.accent)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The 6px coral "active source" dot.
+class _AccentDot extends StatelessWidget {
+  const _AccentDot();
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 6,
+    height: 6,
+    decoration: const BoxDecoration(
+      color: AppColors.accent,
+      shape: BoxShape.circle,
+    ),
+  );
 }
 
 
