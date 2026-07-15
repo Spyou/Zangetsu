@@ -3,11 +3,18 @@ import 'package:flutter/material.dart';
 
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/models/media_detail.dart';
+import '../../core/models/media_item.dart';
+import '../../core/models/provider_info.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/list_status_sheet.dart';
+import '../../core/ui/media_info_sheet.dart';
+import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
 
 /// Full watch history — every show you've watched, newest-first, grouped by
@@ -24,9 +31,68 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   final _history = sl<WatchHistory>();
   final _repo = sl<SourceRepository>();
+  final _myList = sl<MyListStore>();
   late List<HistoryEntry> _entries = _history.all();
 
   void _reload() => setState(() => _entries = _history.all());
+
+  MediaItem _stub(HistoryEntry e) => MediaItem(
+    id: e.showId,
+    title: e.showTitle,
+    cover: e.cover,
+    coverHeaders: e.coverHeaders,
+    url: e.showUrl,
+    type: ProviderType.anime,
+    sourceId: e.sourceId,
+  );
+
+  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
+    try {
+      return await _repo.detail(url, sourceId: sourceId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _openDetail(MediaItem item) {
+    Navigator.push(context, DetailScreen.route(item)).then((_) => _reload());
+  }
+
+  /// Long-press info sheet — mirrors the Home Continue Watching card
+  /// (Resume, progress, add-to-list, open detail, remove).
+  void _showInfo(HistoryEntry e) {
+    final stub = _stub(e);
+    final pct = (e.progress * 100).round();
+    showMediaInfoSheet(
+      context,
+      title: e.showTitle,
+      cover: e.cover,
+      headers: e.coverHeaders,
+      detail: _detailOf(e.showUrl, e.sourceId),
+      inMyList: _myList.contains(stub),
+      playLabel: 'Resume',
+      progress: e.progress,
+      progressLabel: e.episodeNumber != null
+          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
+          : '$pct% watched',
+      onPlay: () => _resume(e),
+      onOpenDetail: () => _openDetail(stub),
+      onToggleMyList: () async {
+        await showListStatusSheet(
+          context,
+          item: stub,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
+        return _myList.contains(stub);
+      },
+      onRemoveFromContinue: () async {
+        await _history.remove(e.sourceId, e.showId);
+        _reload();
+      },
+    );
+  }
 
   Future<void> _resume(HistoryEntry e) async {
     await Navigator.push(
@@ -140,6 +206,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       _HistoryRow(
                         entry: e,
                         onTap: () => _resume(e),
+                        onLongPress: () => _showInfo(e),
                         onRemove: () => _remove(e),
                       ),
                   ],
@@ -202,11 +269,13 @@ class _HistoryRow extends StatelessWidget {
   const _HistoryRow({
     required this.entry,
     required this.onTap,
+    required this.onLongPress,
     required this.onRemove,
   });
 
   final HistoryEntry entry;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback onRemove;
 
   @override
@@ -219,6 +288,7 @@ class _HistoryRow extends StatelessWidget {
     final subtitle = [?ep, time].join('  ·  ');
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
