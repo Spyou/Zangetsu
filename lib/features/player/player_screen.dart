@@ -5351,9 +5351,14 @@ class _InfoOverlayState extends State<_InfoOverlay> {
         case 'dropped':
           out[key] = await c.mpvStat('frame-drop-count') ?? '0';
         case 'af':
-          // Live mpv audio-filter chain — confirms the volume boost is applied
-          // (e.g. "lavfi=[volume=2.00]"). Empty = no filter / boost off.
-          out[key] = await c.mpvStat('af') ?? 'none';
+          // Parse the actual applied gain out of the live mpv filter chain
+          // (e.g. "lavfi=[volume=2.00]" → "200%"), so it's human-readable AND
+          // still reflects what mpv really applied (not just the setting).
+          final af = await c.mpvStat('af') ?? '';
+          final m = RegExp(r'volume=([0-9.]+)').firstMatch(af);
+          out[key] = m != null
+              ? '${((double.tryParse(m.group(1)!) ?? 1) * 100).round()}%'
+              : 'Off';
       }
     }
     if (mounted) setState(() => _values = out);
