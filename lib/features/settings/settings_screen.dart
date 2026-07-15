@@ -25,9 +25,7 @@ import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
 import 'discord_settings_screen.dart';
-import 'download_location_screen.dart';
 import 'torrent_settings_screen.dart';
-import '../../core/download/download_prefs.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -504,16 +502,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: 'Manage space used by the app',
                         onTap: () => _push(const StorageSettingsScreen()),
                       ),
-                      SettingsTile(
-                        icon: Icons.folder_outlined,
-                        title: 'Download location',
-                        subtitle: sl<DownloadPrefs>().locationLabel ??
-                            'Downloads › Zangetsu',
-                        onTap: () async {
-                          await _push(const DownloadLocationScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
+                      // Download location moved to the Downloads tab header
+                      // ("Saving to: … · Change") — no longer a Settings row.
                       SettingsTile(
                         icon: Icons.downloading_outlined,
                         title: 'Torrents',

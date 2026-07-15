@@ -665,15 +665,38 @@ class DownloadManager extends ChangeNotifier {
     for (final rec in _records.values) {
       if (rec.status != DownloadStatus.done) continue;
       final fp = rec.filePath;
-      if (fp == null || fp.isEmpty || isUriPath(fp)) continue;
+      if (fp == null || fp.isEmpty || isUriPath(fp)) {
+        debugPrint('[prune] skip ${rec.id} fp=$fp');
+        continue;
+      }
       try {
         final f = File(fp);
-        if (await f.exists()) continue; // file present → keep
-        // Only prune when the containing folder is reachable — otherwise storage
-        // may just be temporarily unavailable, and we must NOT nuke valid records.
-        if (await f.parent.exists()) gone.add(rec.id);
-      } catch (_) {}
+        if (await f.exists()) {
+          debugPrint('[prune] keep (exists) $fp');
+          continue; // file present → keep
+        }
+        // Storage is "available" if ANY ancestor dir still exists (walk up) —
+        // so a missing file means it was deleted, not that the volume is
+        // unmounted. (A single parent check failed when the whole show folder
+        // was deleted.)
+        var storageOk = false;
+        var d = f.parent;
+        for (var i = 0; i < 8; i++) {
+          if (await d.exists()) {
+            storageOk = true;
+            break;
+          }
+          final up = d.parent;
+          if (up.path == d.path) break;
+          d = up;
+        }
+        debugPrint('[prune] $fp missing storageOk=$storageOk');
+        if (storageOk) gone.add(rec.id);
+      } catch (e) {
+        debugPrint('[prune] error $fp: $e');
+      }
     }
+    debugPrint('[prune] removing ${gone.length}/${_records.length}');
     if (gone.isEmpty) return;
     for (final id in gone) {
       _records.remove(id);
