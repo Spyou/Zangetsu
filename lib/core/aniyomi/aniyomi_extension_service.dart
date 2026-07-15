@@ -150,9 +150,8 @@ class AniyomiExtensionService {
       if (downloader != null) {
         await downloader(entry.apkUrl, apkPath);
       } else {
-        final effectiveDio =
-            dio ?? GetIt.instance.get<Dio>();
-        await effectiveDio.download(entry.apkUrl, apkPath);
+        final effectiveDio = dio ?? GetIt.instance.get<Dio>();
+        await _downloadApk(effectiveDio, entry.apkUrl, apkPath);
       }
 
       // 3. Install and list sources.
@@ -179,6 +178,28 @@ class AniyomiExtensionService {
     } catch (e, st) {
       debugPrint('[aniyomi] installFromRepo(${entry.pkg}) failed: $e\n$st');
       return [];
+    }
+  }
+
+  /// Extension APKs are multi-MB, but the shared Dio is tuned for small API
+  /// calls (8s receiveTimeout) — the #1 cause of "No source loaded" was that
+  /// timeout firing mid-download on slow connections (the tiny repo index
+  /// still loads, so the list looks fine). Give the download a generous
+  /// timeout, and if the direct raw.githubusercontent.com fetch fails (ISP
+  /// blocks / rate limits), retry via the jsDelivr GitHub CDN mirror.
+  static const Duration _apkDownloadTimeout = Duration(minutes: 3);
+
+  Future<void> _downloadApk(Dio dio, String url, String savePath) async {
+    final opts = Options(
+      receiveTimeout: _apkDownloadTimeout,
+      sendTimeout: _apkDownloadTimeout,
+    );
+    try {
+      await dio.download(url, savePath, options: opts);
+    } on DioException {
+      final mirror = jsdelivrMirror(url);
+      if (mirror == null) rethrow;
+      await dio.download(mirror, savePath, options: opts);
     }
   }
 
@@ -215,4 +236,22 @@ class AniyomiExtensionService {
       return const [];
     }
   }
+}
+
+/// Rewrites a `raw.githubusercontent.com` URL to its jsDelivr CDN equivalent,
+/// which is often reachable where GitHub raw is ISP-blocked or rate-limited.
+/// Returns null for non-GitHub-raw URLs (nothing to mirror).
+///
+/// `raw.githubusercontent.com/<owner>/<repo>/<ref>/<path…>`
+///   → `cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path…>`
+String? jsdelivrMirror(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host != 'raw.githubusercontent.com') return null;
+  final segs = u.pathSegments;
+  if (segs.length < 4) return null;
+  final owner = segs[0];
+  final repo = segs[1];
+  final ref = segs[2];
+  final path = segs.sublist(3).join('/');
+  return 'https://cdn.jsdelivr.net/gh/$owner/$repo@$ref/$path';
 }
