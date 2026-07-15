@@ -35,6 +35,7 @@ const List<(String, String)> kPlayerInfoFields = [
   ('speed', 'Speed'),
   ('atrack', 'Audio track'),
   ('strack', 'Subtitle track'),
+  ('af', 'Audio filter'),
 ];
 
 /// Persistent, app-wide playback preferences (default quality, sub/dub

@@ -5350,6 +5350,10 @@ class _InfoOverlayState extends State<_InfoOverlay> {
           out[key] = _bitrate(await c.mpvStat('video-bitrate'));
         case 'dropped':
           out[key] = await c.mpvStat('frame-drop-count') ?? '0';
+        case 'af':
+          // Live mpv audio-filter chain — confirms the volume boost is applied
+          // (e.g. "lavfi=[volume=2.00]"). Empty = no filter / boost off.
+          out[key] = await c.mpvStat('af') ?? 'none';
       }
     }
     if (mounted) setState(() => _values = out);
