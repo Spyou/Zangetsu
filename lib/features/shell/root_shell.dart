@@ -68,7 +68,7 @@ class _RootShellState extends State<RootShell>
     super.initState();
     _fadeCtrl = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
+      duration: const Duration(milliseconds: 170),
       value: 1,
     );
     _fade = TweenSequence<double>([
