@@ -256,7 +256,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return InkWell(
             onTap: () => _push(const ProfileScreen()),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 4, 22, 12),
+              padding: const EdgeInsets.fromLTRB(22, 16, 22, 20),
               child: Row(
                 children: [
                   CircleAvatar(
