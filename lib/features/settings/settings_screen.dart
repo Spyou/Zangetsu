@@ -244,7 +244,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
   /// Account header — signed-in profile (pfp + name → Profile) or a Sign-in
-  /// prompt, inside a rounded surface card (Material-You account block).
+  /// prompt. Card-less: the row sits flat on the background like every other
+  /// settings row.
   Widget _accountCard(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
@@ -252,80 +253,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
-            child: Material(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => _push(const ProfileScreen()),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 15,
-                    vertical: 14,
+          return InkWell(
+            onTap: () => _push(const ProfileScreen()),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 4, 22, 12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 23,
+                    backgroundColor: AppColors.surface2,
+                    backgroundImage: auth.avatarUrl != null
+                        ? CachedNetworkImageProvider(auth.avatarUrl!)
+                        : null,
+                    child: auth.avatarUrl == null
+                        ? Text(
+                            initial,
+                            style: AppText.headline.copyWith(fontSize: 18),
+                          )
+                        : null,
                   ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 23,
-                        backgroundColor: AppColors.surface2,
-                        backgroundImage: auth.avatarUrl != null
-                            ? CachedNetworkImageProvider(auth.avatarUrl!)
-                            : null,
-                        child: auth.avatarUrl == null
-                            ? Text(
-                                initial,
-                                style: AppText.headline.copyWith(fontSize: 18),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              auth.displayName,
-                              style: AppText.headline.copyWith(fontSize: 16),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              auth.user?.email ?? '',
-                              style: AppText.caption,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
+                  const SizedBox(width: 15),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.displayName,
+                          style: AppText.headline.copyWith(fontSize: 16),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.textTertiary,
-                        size: 20,
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.user?.email ?? '',
+                          style: AppText.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: AppColors.textTertiary,
+                    size: 20,
+                  ),
+                ],
               ),
             ),
           );
         }
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
-          child: Material(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(20),
-            clipBehavior: Clip.antiAlias,
-            child: SettingsTile(
-              icon: Icons.person_outline_rounded,
-              title: 'Sign in',
-              subtitle: 'Sync your list & continue watching',
-              onTap: () => _push(const LoginScreen()),
-            ),
-          ),
+        return SettingsTile(
+          icon: Icons.person_outline_rounded,
+          title: 'Sign in',
+          subtitle: 'Sync your list & continue watching',
+          onTap: () => _push(const LoginScreen()),
         );
       },
     );
