@@ -62,6 +62,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // from native on open; CsDns.off (default) until then.
   int _dnsChoice = CsDns.off;
 
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +73,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) setState(() => _dnsChoice = c);
       });
     }
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
@@ -328,10 +337,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ],
   );
 
-  /// Minimal, monochrome "Search settings" field. Visual for now — tapping
-  /// focuses nothing (live filtering is out of scope); a raise-fill pill with a
-  /// search glyph matching the mockup.
-  // ponytail: visual-only search field; wire live filtering when it's needed.
+  /// Live "Search settings" field — filters every setting as you type
+  /// (title, description and keyword synonyms), Samsung-style. A clear (×)
+  /// button appears once there's a query.
   Widget _searchField() => Padding(
     padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
     child: Container(
@@ -339,15 +347,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(13),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.only(left: 14, right: 4),
       child: Row(
         children: [
           const Icon(Icons.search_rounded, color: AppColors.textTertiary, size: 20),
           const SizedBox(width: 11),
-          Text(
-            'Search settings',
-            style: AppText.body.copyWith(color: AppColors.textTertiary),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _query = v.trim()),
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              cursorColor: AppColors.accent,
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                isCollapsed: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                border: InputBorder.none,
+                hintText: 'Search settings',
+                hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
+              ),
+            ),
           ),
+          if (_query.isNotEmpty)
+            InkWell(
+              borderRadius: BorderRadius.circular(20),
+              onTap: () {
+                _searchCtrl.clear();
+                setState(() => _query = '');
+                FocusScope.of(context).unfocus();
+              },
+              child: const Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textSecondary,
+                  size: 18,
+                ),
+              ),
+            ),
         ],
       ),
     ),
@@ -363,6 +400,255 @@ class _SettingsScreenState extends State<SettingsScreen> {
       sl<MalService>(),
       sl<SimklService>(),
     ].where((t) => t.isConnected).length;
+
+    // Single source of truth for both the grouped list and the search filter.
+    final entries = <_SettingsEntry>[
+      // Account & sync
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.sync_alt_rounded,
+        title: 'Connections',
+        subtitle: connectedCount > 0
+            ? '$connectedCount connected'
+            : 'AniList, MyAnimeList, Simkl',
+        keywords: 'anilist myanimelist mal simkl tracker sync account login connect',
+        onTap: () async {
+          await _push(const ConnectionsScreen());
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.gamepad_outlined,
+        title: 'Discord',
+        subtitle: 'Rich Presence — show your status',
+        keywords: 'discord rich presence status rpc',
+        onTap: () async {
+          await _push(const DiscordSettingsScreen());
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.groups_2_outlined,
+        title: 'Watch Party',
+        subtitle: 'Create or join a watch party with friends',
+        keywords: 'watch party together sync friends room',
+        onTap: () {
+          if (sl<AuthCubit>().state.user == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Sign in to watch together')),
+            );
+            return;
+          }
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const WatchPartyLobbyScreen()),
+          );
+        },
+      ),
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.cloud_sync_outlined,
+        title: 'Backup & Restore',
+        subtitle: 'Save your sources, list & settings',
+        keywords: 'backup restore export import save cloud',
+        onTap: () => _push(const BackupScreen()),
+      ),
+      // Sources
+      _SettingsEntry(
+        section: 'Sources',
+        icon: Icons.dns_rounded,
+        title: 'Providers',
+        subtitle: '$enabledCount enabled',
+        keywords: 'providers sources extensions plugins cloudstream aniyomi repository',
+        onTap: () async {
+          await _push(const SourcesScreen());
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Sources',
+        icon: Icons.swap_horiz_rounded,
+        title: 'Active source',
+        subtitle: _activeLabel(activeId),
+        keywords: 'active source default provider switch',
+        // The one coral accent here: an "active" dot before the chevron.
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            _AccentDot(),
+            SizedBox(width: 10),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
+          ],
+        ),
+        onTap: _pickActiveSource,
+      ),
+      _SettingsEntry(
+        section: 'Sources',
+        icon: Icons.health_and_safety_outlined,
+        title: 'Source health',
+        subtitle: 'Test which sources are working',
+        keywords: 'source health test working dead status check',
+        onTap: () => _push(const SourceHealthScreen()),
+      ),
+      if (Platform.isAndroid)
+        _SettingsEntry(
+          section: 'Sources',
+          icon: Icons.update_rounded,
+          title: 'Source updates',
+          subtitle: 'Notify when installed sources have updates',
+          keywords: 'source updates notify extensions upgrade',
+          trailing: Switch.adaptive(
+            value: sl<CloudStreamManager>().notifyUpdates,
+            activeThumbColor: AppColors.accent,
+            onChanged: (v) async {
+              await sl<CloudStreamManager>().setNotifyUpdates(v);
+              if (mounted) setState(() {});
+            },
+          ),
+        ),
+      // Playback & downloads
+      _SettingsEntry(
+        section: 'Playback & downloads',
+        icon: Icons.play_circle_outline,
+        title: 'Playback',
+        subtitle: 'Quality, autoplay, speed',
+        keywords: 'playback quality autoplay speed player decoder audio subtitle resume gesture',
+        onTap: () => _push(const PlaybackSettingsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Playback & downloads',
+        icon: Icons.download_outlined,
+        title: 'Downloads',
+        subtitle: 'Manage your downloaded episodes',
+        keywords: 'downloads offline episodes save manage',
+        onTap: () => _push(const DownloadsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Playback & downloads',
+        icon: Icons.sd_storage_outlined,
+        title: 'Storage',
+        subtitle: 'Manage space used by the app',
+        keywords: 'storage space cache clear disk usage',
+        onTap: () => _push(const StorageSettingsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Playback & downloads',
+        icon: Icons.downloading_outlined,
+        title: 'Torrents',
+        subtitle: 'Streaming & data settings',
+        keywords: 'torrent magnet streaming seed data wifi',
+        onTap: () => _push(const TorrentSettingsScreen()),
+      ),
+      // Interface & notifications
+      _SettingsEntry(
+        section: 'Interface & notifications',
+        icon: Icons.grid_view_rounded,
+        title: 'Search layout',
+        subtitle: 'How cross-source results are shown',
+        keywords: 'search layout grid list results view interface',
+        trailing: _value(sl<SearchPrefs>().layout.label),
+        onTap: _pickSearchLayout,
+      ),
+      if (Platform.isAndroid)
+        _SettingsEntry(
+          section: 'Interface & notifications',
+          icon: Icons.notifications_none_rounded,
+          title: 'Notifications',
+          subtitle: 'New-episode alerts for subscribed shows',
+          keywords: 'notifications alerts new episode subscribe airing',
+          onTap: () => _push(const SubscriptionsScreen()),
+        ),
+      // Advanced
+      if (Platform.isAndroid)
+        _SettingsEntry(
+          section: 'Advanced',
+          icon: Icons.vpn_lock_outlined,
+          title: 'DNS',
+          subtitle: 'Bypass ISP blocks on CS sources',
+          keywords: 'dns cloudflare google adguard quad9 isp block bypass private',
+          trailing: _value(
+            _dnsChoice == CsDns.off ? 'Off' : CsDns.labelFor(_dnsChoice),
+          ),
+          onTap: _pickDns,
+        ),
+      _SettingsEntry(
+        section: 'Advanced',
+        icon: Icons.shield_outlined,
+        title: 'Privacy',
+        subtitle: 'NSFW sources',
+        keywords: 'privacy nsfw adult content hide 18',
+        onTap: () async {
+          await _push(const PrivacySettingsScreen());
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Advanced',
+        icon: Icons.bug_report_outlined,
+        title: 'Share logs',
+        subtitle: 'Send a diagnostic log to help fix an issue',
+        keywords: 'logs share diagnostic debug bug report crash',
+        onTap: _shareLogs,
+      ),
+      // About
+      _SettingsEntry(
+        section: 'About',
+        icon: Icons.help_outline_rounded,
+        title: 'How it works',
+        subtitle: 'New here? A quick guide',
+        keywords: 'how it works guide help tutorial intro faq',
+        onTap: () => _push(const HowItWorksScreen()),
+      ),
+      _SettingsEntry(
+        section: 'About',
+        icon: Icons.system_update_rounded,
+        title: 'Check for updates',
+        subtitle: 'Get the latest version from GitHub',
+        keywords: 'check updates version github upgrade app latest',
+        onTap: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Checking for updates…')),
+          );
+          maybeShowUpdateDialog(context, manual: true);
+        },
+      ),
+      _SettingsEntry(
+        section: 'About',
+        icon: Icons.favorite_border_rounded,
+        title: 'Support the app',
+        subtitle: 'Buy me a coffee',
+        keywords: 'support donate coffee tip contribute',
+        // The one coral accent here: a filled heart.
+        trailing: const Icon(
+          Icons.favorite_rounded,
+          color: AppColors.accent,
+          size: 18,
+        ),
+        onTap: () => _push(const DonateScreen()),
+      ),
+      _SettingsEntry(
+        section: 'About',
+        icon: Icons.people_outline_rounded,
+        title: 'Developers',
+        subtitle: 'Meet the people behind Zangetsu',
+        keywords: 'developers credits team contributors about',
+        onTap: () => _push(const DevelopersScreen()),
+      ),
+      _SettingsEntry(
+        section: 'About',
+        icon: Icons.info_outline_rounded,
+        title: 'About',
+        subtitle: 'v$kAppVersion',
+        keywords: 'about version app info license',
+        onTap: () => _push(const AboutSettingsScreen()),
+      ),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.bg,
       // bottom: false — the shell's floating dock overlays the content
@@ -387,254 +673,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: _settingsWordmark(size: 30),
                   ),
                   _searchField(),
-                  _accountCard(context),
-                  // 1 · Account & sync
-                  const SettingsSectionLabel('Account & sync', first: true),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.sync_alt_rounded,
-                        title: 'Connections',
-                        subtitle: connectedCount > 0
-                            ? '$connectedCount connected'
-                            : 'AniList, MyAnimeList, Simkl',
-                        onTap: () async {
-                          await _push(const ConnectionsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.gamepad_outlined,
-                        title: 'Discord',
-                        subtitle: 'Rich Presence — show your status',
-                        onTap: () async {
-                          await _push(const DiscordSettingsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.groups_2_outlined,
-                        title: 'Watch Party',
-                        subtitle: 'Create or join a watch party with friends',
-                        onTap: () {
-                          if (sl<AuthCubit>().state.user == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Sign in to watch together'),
-                              ),
-                            );
-                            return;
-                          }
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const WatchPartyLobbyScreen(),
-                            ),
-                          );
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.cloud_sync_outlined,
-                        title: 'Backup & Restore',
-                        subtitle: 'Save your sources, list & settings',
-                        onTap: () => _push(const BackupScreen()),
-                      ),
-                    ],
-                  ),
-                  // 2 · Sources
-                  const SettingsSectionLabel('Sources'),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.dns_rounded,
-                        title: 'Providers',
-                        subtitle: '$enabledCount enabled',
-                        onTap: () async {
-                          await _push(const SourcesScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.swap_horiz_rounded,
-                        title: 'Active source',
-                        subtitle: _activeLabel(activeId),
-                        // The one coral accent here: an "active" dot before the
-                        // chevron.
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: const [
-                            _AccentDot(),
-                            SizedBox(width: 10),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppColors.textTertiary,
-                              size: 20,
-                            ),
-                          ],
-                        ),
-                        onTap: _pickActiveSource,
-                      ),
-                      // "Add CloudStream repository" removed — it duplicated the
-                      // "Add CloudStream repo" action in the CloudStream sources
-                      // screen (Providers). Managed there now.
-                      SettingsTile(
-                        icon: Icons.health_and_safety_outlined,
-                        title: 'Source health',
-                        subtitle: 'Test which sources are working',
-                        onTap: () => _push(const SourceHealthScreen()),
-                      ),
-                      // Source updates (Android-only toggle) moved here from the
-                      // old Notifications group.
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.update_rounded,
-                          title: 'Source updates',
-                          subtitle: 'Notify when installed sources have updates',
-                          trailing: Switch.adaptive(
-                            value: sl<CloudStreamManager>().notifyUpdates,
-                            activeThumbColor: AppColors.accent,
-                            onChanged: (v) async {
-                              await sl<CloudStreamManager>()
-                                  .setNotifyUpdates(v);
-                              if (mounted) setState(() {});
-                            },
-                          ),
-                        ),
-                    ],
-                  ),
-                  // 3 · Playback & downloads
-                  const SettingsSectionLabel('Playback & downloads'),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.play_circle_outline,
-                        title: 'Playback',
-                        subtitle: 'Quality, autoplay, speed',
-                        onTap: () => _push(const PlaybackSettingsScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.download_outlined,
-                        title: 'Downloads',
-                        subtitle: 'Manage your downloaded episodes',
-                        onTap: () => _push(const DownloadsScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.sd_storage_outlined,
-                        title: 'Storage',
-                        subtitle: 'Manage space used by the app',
-                        onTap: () => _push(const StorageSettingsScreen()),
-                      ),
-                      // Download location moved to the Downloads tab header
-                      // ("Saving to: … · Change") — no longer a Settings row.
-                      SettingsTile(
-                        icon: Icons.downloading_outlined,
-                        title: 'Torrents',
-                        subtitle: 'Streaming & data settings',
-                        onTap: () => _push(const TorrentSettingsScreen()),
-                      ),
-                    ],
-                  ),
-                  // 4 · Interface & notifications
-                  const SettingsSectionLabel('Interface & notifications'),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.grid_view_rounded,
-                        title: 'Search layout',
-                        subtitle: 'How cross-source results are shown',
-                        trailing: _value(sl<SearchPrefs>().layout.label),
-                        onTap: _pickSearchLayout,
-                      ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.notifications_none_rounded,
-                          title: 'Notifications',
-                          subtitle: 'New-episode alerts for subscribed shows',
-                          onTap: () => _push(const SubscriptionsScreen()),
-                        ),
-                    ],
-                  ),
-                  // 5 · Advanced
-                  const SettingsSectionLabel('Advanced'),
-                  SettingsCard(
-                    children: [
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.vpn_lock_outlined,
-                          title: 'DNS',
-                          subtitle: 'Bypass ISP blocks on CS sources',
-                          trailing: _value(
-                            _dnsChoice == CsDns.off
-                                ? 'Off'
-                                : CsDns.labelFor(_dnsChoice),
-                          ),
-                          onTap: _pickDns,
-                        ),
-                      SettingsTile(
-                        icon: Icons.shield_outlined,
-                        title: 'Privacy',
-                        subtitle: 'NSFW sources',
-                        onTap: () async {
-                          await _push(const PrivacySettingsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.bug_report_outlined,
-                        title: 'Share logs',
-                        subtitle: 'Send a diagnostic log to help fix an issue',
-                        onTap: _shareLogs,
-                      ),
-                    ],
-                  ),
-                  // 6 · About
-                  const SettingsSectionLabel('About'),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.help_outline_rounded,
-                        title: 'How it works',
-                        subtitle: 'New here? A quick guide',
-                        onTap: () => _push(const HowItWorksScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.system_update_rounded,
-                        title: 'Check for updates',
-                        subtitle: 'Get the latest version from GitHub',
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Checking for updates…'),
-                            ),
-                          );
-                          maybeShowUpdateDialog(context, manual: true);
-                        },
-                      ),
-                      SettingsTile(
-                        icon: Icons.favorite_border_rounded,
-                        title: 'Support the app',
-                        subtitle: 'Buy me a coffee',
-                        // The one coral accent here: a filled heart.
-                        trailing: const Icon(
-                          Icons.favorite_rounded,
-                          color: AppColors.accent,
-                          size: 18,
-                        ),
-                        onTap: () => _push(const DonateScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.people_outline_rounded,
-                        title: 'Developers',
-                        subtitle: 'Meet the people behind Zangetsu',
-                        onTap: () => _push(const DevelopersScreen()),
-                      ),
-                      SettingsTile(
-                        icon: Icons.info_outline_rounded,
-                        title: 'About',
-                        subtitle: 'v$kAppVersion',
-                        onTap: () => _push(const AboutSettingsScreen()),
-                      ),
-                    ],
-                  ),
+                  // Account row only in the un-filtered (browse) view.
+                  if (_query.isEmpty) _accountCard(context),
+                  ..._buildSettingsList(entries),
                 ],
               ),
             ),
@@ -642,6 +683,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  static const _sectionOrder = <String>[
+    'Account & sync',
+    'Sources',
+    'Playback & downloads',
+    'Interface & notifications',
+    'Advanced',
+    'About',
+  ];
+
+  /// Renders [entries] grouped by section. When there's a query, only matching
+  /// entries survive; sections that end up empty are dropped, and an empty
+  /// result shows a "no matches" line.
+  List<Widget> _buildSettingsList(List<_SettingsEntry> entries) {
+    final q = _query.toLowerCase();
+    final out = <Widget>[];
+    var first = true;
+    for (final section in _sectionOrder) {
+      final items = entries
+          .where((e) => e.section == section && (q.isEmpty || e.matches(q)))
+          .toList();
+      if (items.isEmpty) continue;
+      out.add(SettingsSectionLabel(section, first: first));
+      first = false;
+      out.add(SettingsCard(children: [for (final e in items) e.toTile()]));
+    }
+    if (out.isEmpty) {
+      out.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(22, 40, 22, 40),
+          child: Center(
+            child: Text(
+              'No settings match "${_searchCtrl.text}"',
+              style: AppText.body.copyWith(color: AppColors.textTertiary),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+    return out;
   }
 
   /// "Settings" with a coral "." — used both big (the scroll-away title) and
@@ -676,6 +759,42 @@ class _AccentDot extends StatelessWidget {
       color: AppColors.accent,
       shape: BoxShape.circle,
     ),
+  );
+}
+
+/// One searchable settings row — the single source of truth for both the
+/// grouped list and the "Search settings" filter.
+class _SettingsEntry {
+  const _SettingsEntry({
+    required this.section,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.keywords = '',
+    this.trailing,
+    this.onTap,
+  });
+
+  final String section;
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+
+  /// Extra search terms (synonyms) that never render but widen matches.
+  final String keywords;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  /// [q] is already lower-cased by the caller.
+  bool matches(String q) =>
+      '$title ${subtitle ?? ''} $keywords $section'.toLowerCase().contains(q);
+
+  SettingsTile toTile() => SettingsTile(
+    icon: icon,
+    title: title,
+    subtitle: subtitle,
+    trailing: trailing,
+    onTap: onTap,
   );
 }
 
