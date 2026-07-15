@@ -71,9 +71,10 @@ void downloadServiceOnStart(ServiceInstance service) async {
   final hls = HlsDownloader(dio);
   final queue = <Map<String, dynamic>>[];
   final canceled = <String>{};
-  var processing = false;
   // How many episodes download at once (from the user's setting; last job wins).
   var parallelLimit = 3;
+  // Live worker count — [pump] tops it back up to [parallelLimit] as jobs arrive.
+  var running = 0;
 
   Future<void> setNotif(String title, String content) async {
     if (service is AndroidServiceInstance) {
@@ -155,30 +156,34 @@ void downloadServiceOnStart(ServiceInstance service) async {
     service.invoke('done', {'id': id, 'filePath': finalPath});
   }
 
-  Future<void> process() async {
-    if (processing) return;
-    processing = true;
-    if (service is AndroidServiceInstance) {
-      await service.setAsForegroundService();
+  // One worker: drains queued jobs until the queue is empty, then retires.
+  // removeAt(0) is synchronous, so the single-threaded isolate never hands the
+  // same job to two workers.
+  Future<void> workerLoop() async {
+    while (queue.isNotEmpty) {
+      await runJob(queue.removeAt(0));
     }
-    // Bounded worker pool: up to [parallelLimit] episodes download at once.
-    // Each worker pulls the next queued job until the queue drains (new jobs
-    // enqueued mid-run are picked up too). removeAt(0) is synchronous, so the
-    // single-threaded isolate never hands the same job to two workers.
-    Future<void> worker() async {
-      while (queue.isNotEmpty) {
-        await runJob(queue.removeAt(0));
+    running--;
+    if (running == 0) {
+      if (service is AndroidServiceInstance) {
+        await service.setAsBackgroundService();
       }
+      await service.stopSelf();
     }
+  }
 
-    final n = parallelLimit.clamp(1, 6);
-    await Future.wait(List.generate(n, (_) => worker()));
-
-    processing = false;
-    if (service is AndroidServiceInstance) {
-      await service.setAsBackgroundService();
+  // Spawn workers until [parallelLimit] are live (or the queue empties). Called
+  // on EVERY new job, so episodes queued one-by-one still fill all the parallel
+  // slots — not just the first worker.
+  void pump() {
+    final limit = parallelLimit.clamp(1, 6);
+    while (running < limit && queue.isNotEmpty) {
+      if (running == 0 && service is AndroidServiceInstance) {
+        service.setAsForegroundService();
+      }
+      running++;
+      workerLoop();
     }
-    await service.stopSelf();
   }
 
   service.on('download').listen((data) {
@@ -186,7 +191,7 @@ void downloadServiceOnStart(ServiceInstance service) async {
     final p = data['parallel'];
     if (p is int) parallelLimit = p;
     queue.add(data);
-    process();
+    pump();
   });
   service.on('cancel').listen((data) {
     final id = data?['id'] as String?;
