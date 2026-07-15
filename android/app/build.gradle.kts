@@ -156,6 +156,9 @@ dependencies {
     // Background "new episode" checks for CloudStream sources (CloudStream's own
     // mechanism): a native periodic worker re-runs PluginHost.load() + notifies.
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    // Google Cast Framework: Chromecast support with the default media receiver.
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    implementation("androidx.mediarouter:mediarouter:1.6.0")
 
     // Torrent streaming engine (native libtorrent). Per-ABI native libs; the
     // in-app updater ships the matching per-ABI APK, so no fat-APK bloat.

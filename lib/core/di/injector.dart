@@ -63,6 +63,7 @@ import '../../features/auth/auth_cubit.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
 import '../../features/watch_together/watch_together_controller.dart';
+import '../cast/cast_controller.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -412,6 +413,16 @@ Future<void> initDependencies() async {
   sl.registerSingleton<DownloadManager>(
     DownloadManager(sl<SourceRepository>(), sl<DownloadPrefs>())..setup(),
   );
+
+  // Chromecast session controller. Wraps the native zangetsu/cast channel.
+  // init() is guarded: if the native side is absent (non-Android, test) the
+  // controller stays in CastState.unavailable and never throws.
+  sl.registerSingleton<CastController>(CastController());
+  try {
+    await sl<CastController>().init();
+  } catch (_) {
+    // Native side missing or init failed — state already defaults to unavailable.
+  }
 
   // Home data cubit as a singleton so the splash can warm it (preload the
   // rows for the active source) while the intro animation plays — Home then

@@ -35,6 +35,7 @@ import '../../core/ui/frosted_surface.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
+import '../../core/cast/cast_controller.dart';
 import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
 import '../../core/app_mode.dart';
@@ -279,6 +280,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   bool _chatOpen = false; // in-room chat panel visible
 
+  // ── Chromecast ────────────────────────────────────────────────────────────
+  CastState _prevCastState = CastState.unavailable;
+
   // TV bar visibility — only used when [AppMode.isTv] is true.
   // Stored here so [PopScope] can gate it at the Scaffold level.
   bool _tvBarVisible = true;
@@ -326,10 +330,55 @@ class _PlayerScreenState extends State<PlayerScreen> {
       FlutterVolumeController.updateShowSystemUI(false);
     }
     _setupPip();
+    // Cast state listener — wired here so it is active even before the episode
+    // list resolves. The callbacks are guarded on _ready (session built) and on
+    // state.active != null, so they are always safe to call.
+    _prevCastState = sl<CastController>().state;
+    sl<CastController>().removeListener(_onCastStateChanged); // idempotent
+    sl<CastController>().addListener(_onCastStateChanged);
     if (widget.episodesResolver != null && widget.episodes.isEmpty) {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
     } else {
       _startSession(widget.episodes, widget.startIndex);
+    }
+  }
+
+  // ── Chromecast handoff / disconnect-resume ────────────────────────────────
+
+  void _onCastStateChanged() {
+    if (!mounted) return;
+    final castCtrl = sl<CastController>();
+    final newState = castCtrl.state;
+    final prev = _prevCastState;
+    _prevCastState = newState;
+
+    if (!_ready) return; // session not built yet; nothing to pause/resume
+
+    // --- Handoff: local → cast ---
+    if (newState == CastState.connected && prev != CastState.connected) {
+      final active = _c.state.active;
+      if (active == null) return;
+      if (_c.player.state.playing) _c.player.pause(); // pause local mpv first
+      // Load the current stream onto the Cast receiver at the current position.
+      castCtrl.loadCurrent(
+        url: active.url,
+        container: active.container,
+        headers: active.headers,
+        title: widget.showTitle,
+        poster: widget.cover,
+        subtitles: active.subtitles,
+        startAt: _c.currentPosition,
+      );
+      if (mounted) setState(() {}); // show the "Casting to <TV>" panel
+      return;
+    }
+
+    // --- Disconnect-resume: cast → local ---
+    if (prev == CastState.connected && newState != CastState.connected) {
+      final resumePos = castCtrl.position;
+      if (resumePos > Duration.zero) _c.seekTo(resumePos);
+      _c.player.play();
+      if (mounted) setState(() {}); // restore the normal player UI
     }
   }
 
@@ -645,6 +694,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _sleepTimer?.cancel();
     _completedSub?.cancel();
     _pipSub?.cancel();
+    sl<CastController>().removeListener(_onCastStateChanged);
     // Disarm auto-PiP so leaving the closed player can't trigger it.
     if (_pipSupported) _pipChannel.invokeMethod('setAutoPip', false);
     // Hand brightness back to the system when leaving the player.
@@ -2211,6 +2261,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     ),
                   ),
                 ),
+
+              // 9. Cast remote panel — replaces the normal gesture + controls
+              // layer while a Chromecast session is active. Consumes all taps so
+              // the gesture layer underneath is inert during casting.
+              AnimatedBuilder(
+                animation: sl<CastController>(),
+                builder: (context, _) {
+                  final castCtrl = sl<CastController>();
+                  if (castCtrl.state != CastState.connected) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned.fill(
+                    child: _CastRemotePanel(
+                      deviceName: castCtrl.deviceName ?? 'TV',
+                      showTitle: widget.showTitle,
+                      cover: widget.cover,
+                      loadError: castCtrl.loadError,
+                      onBack: () => Navigator.of(context).maybePop(),
+                      onStop: () => castCtrl.stop(),
+                    ),
+                  );
+                },
+              ),
             ],
             ),
           );
@@ -2233,6 +2306,318 @@ class _PlayerScreenState extends State<PlayerScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Cast remote panel — shown full-screen while a Chromecast session is active.
+// Hides the Video widget behind it and provides a seek bar + play/pause / ±10s
+// / Stop casting controls bound to CastController's live position/duration.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CastRemotePanel extends StatefulWidget {
+  const _CastRemotePanel({
+    required this.deviceName,
+    required this.showTitle,
+    required this.cover,
+    required this.onBack,
+    required this.onStop,
+    this.loadError,
+  });
+
+  final String deviceName;
+  final String? showTitle;
+  final String? cover;
+  final String? loadError;
+  final VoidCallback onBack;
+  final VoidCallback onStop;
+
+  @override
+  State<_CastRemotePanel> createState() => _CastRemotePanelState();
+}
+
+class _CastRemotePanelState extends State<_CastRemotePanel> {
+  // While the user drags the seek thumb, hold the value locally so the live
+  // cast position stream doesn't yank it back.
+  double? _dragMs;
+
+  static String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return d.inHours > 0 ? '${d.inHours}:$m:$s' : '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black.withValues(alpha: 0.92),
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Top bar — back + "Casting to <TV>" heading.
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: widget.onBack,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.cast_connected,
+                              color: AppColors.accent,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Casting to ${widget.deviceName}',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.accent,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (widget.showTitle != null)
+                          Text(
+                            widget.showTitle!,
+                            style: AppText.headline.copyWith(color: Colors.white),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Poster art (optional) + centre transport controls (or error).
+            Expanded(
+              child: widget.loadError != null
+                  // ── Load-error state ──────────────────────────────────────
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.cast_connected,
+                              color: Colors.white38,
+                              size: 56,
+                            ),
+                            const SizedBox(height: 20),
+                            const Text(
+                              "This source can't be cast — try another source.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  // ── Normal playback state ─────────────────────────────────
+                  : AnimatedBuilder(
+                      animation: sl<CastController>(),
+                      builder: (context, _) {
+                        final castCtrl = sl<CastController>();
+                        final isPlaying = castCtrl.isPlaying;
+                        return Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Optional poster thumbnail.
+                            if (widget.cover != null && widget.cover!.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 24),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: CachedNetworkImage(
+                                    imageUrl: widget.cover!,
+                                    height: 120,
+                                    fit: BoxFit.contain,
+                                    errorWidget: (_, _, _) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ),
+
+                            // Transport: −10s / play-pause / +10s.
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  iconSize: 40,
+                                  icon: const Icon(
+                                    Icons.replay_10,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    final target =
+                                        castCtrl.position -
+                                        const Duration(seconds: 10);
+                                    castCtrl.seek(
+                                      target < Duration.zero
+                                          ? Duration.zero
+                                          : target,
+                                    );
+                                  },
+                                ),
+                                const SizedBox(width: 24),
+                                IconButton(
+                                  iconSize: 56,
+                                  icon: Icon(
+                                    isPlaying
+                                        ? Icons.pause_circle_filled
+                                        : Icons.play_circle_filled,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () => isPlaying
+                                      ? castCtrl.pause()
+                                      : castCtrl.play(),
+                                ),
+                                const SizedBox(width: 24),
+                                IconButton(
+                                  iconSize: 40,
+                                  icon: const Icon(
+                                    Icons.forward_10,
+                                    color: Colors.white,
+                                  ),
+                                  onPressed: () {
+                                    final dur = castCtrl.duration;
+                                    final target =
+                                        castCtrl.position +
+                                        const Duration(seconds: 10);
+                                    castCtrl.seek(
+                                      dur > Duration.zero && target > dur
+                                          ? dur
+                                          : target,
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+            ),
+
+            // Seek bar + stop button at the bottom.
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: AnimatedBuilder(
+                animation: sl<CastController>(),
+                builder: (context, _) {
+                  final castCtrl = sl<CastController>();
+                  final pos = castCtrl.position;
+                  final dur = castCtrl.duration;
+                  final totalMs =
+                      dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1.0;
+                  final posMs = pos.inMilliseconds
+                      .clamp(0, totalMs.toInt())
+                      .toDouble();
+                  final value = (_dragMs ?? posMs).clamp(0.0, totalMs);
+
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Time + seek bar + total — hidden when load failed.
+                      if (widget.loadError == null) ...[
+                        Row(
+                          children: [
+                            Text(
+                              _fmt(Duration(milliseconds: value.round())),
+                              style: AppText.caption.copyWith(color: Colors.white),
+                            ),
+                            Expanded(
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: AppColors.accent,
+                                  inactiveTrackColor: Colors.white24,
+                                  thumbColor: Colors.white,
+                                  overlayColor: AppColors.accentSoft,
+                                  trackHeight: 3,
+                                  thumbShape: const RoundSliderThumbShape(
+                                    enabledThumbRadius: 7,
+                                  ),
+                                  overlayShape: const RoundSliderOverlayShape(
+                                    overlayRadius: 16,
+                                  ),
+                                ),
+                                child: Slider(
+                                  min: 0,
+                                  max: totalMs,
+                                  value: value,
+                                  onChangeStart: dur <= Duration.zero
+                                      ? null
+                                      : (v) => setState(() => _dragMs = v),
+                                  onChanged: dur <= Duration.zero
+                                      ? null
+                                      : (v) => setState(() => _dragMs = v),
+                                  onChangeEnd: dur <= Duration.zero
+                                      ? null
+                                      : (v) {
+                                          castCtrl.seek(
+                                            Duration(milliseconds: v.round()),
+                                          );
+                                          setState(() => _dragMs = null);
+                                        },
+                                ),
+                              ),
+                            ),
+                            Text(
+                              _fmt(dur),
+                              style: AppText.caption.copyWith(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Stop casting button — always visible.
+                      TextButton.icon(
+                        onPressed: widget.onStop,
+                        icon: const Icon(
+                          Icons.cast,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                        label: const Text(
+                          'Stop casting',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.white12,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // Brightness / volume HUD — a compact dark side-rail bar with a percentage on
 // top, a vertical fill track and an icon at the bottom, pinned to the half being
 // swiped while the user drags (MX Player / CloudStream-style).
@@ -2868,6 +3253,28 @@ class _ControlsOverlay extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Cast button: Android only, shown whenever the Cast framework
+                  // is supported (like YouTube — always visible once Cast is
+                  // available; tapping opens the chooser + triggers discovery).
+                  if (Platform.isAndroid)
+                    AnimatedBuilder(
+                      animation: sl<CastController>(),
+                      builder: (context, _) {
+                        final castCtrl = sl<CastController>();
+                        if (!castCtrl.castSupported) {
+                          return const SizedBox.shrink();
+                        }
+                        return IconButton(
+                          icon: Icon(
+                            castCtrl.state == CastState.connected
+                                ? Icons.cast_connected
+                                : Icons.cast,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => castCtrl.pickDevice(),
+                        );
+                      },
+                    ),
                   // Info-panel toggle — the "stats for nerds" overlay.
                   if (onInfo != null)
                     IconButton(

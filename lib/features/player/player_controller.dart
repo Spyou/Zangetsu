@@ -682,6 +682,10 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   // ── Public playback helpers (used by the Netflix-style overlay) ───────────
 
+  /// The latest position seen from the mpv stream. Used by the cast handoff to
+  /// start the Cast receiver at the exact position local playback left off.
+  Duration get currentPosition => _lastPos;
+
   void setRate(double r) => player.setRate(r);
 
   /// Current video-decoder mode ('hw'|'hw+'|'sw'|'auto') — drives the in-player

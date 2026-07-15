@@ -15,6 +15,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.spyou.watch_app.aniyomi.AniyomiBridge
+import com.spyou.watch_app.cast.CastManager
 import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
@@ -23,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import io.flutter.embedding.android.FlutterActivity
 import java.util.concurrent.TimeUnit
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.ByteArrayOutputStream
@@ -100,6 +102,9 @@ class MainActivity : FlutterActivity() {
     // Set in configureFlutterEngine; used by onNewIntent to hand a tapped
     // "new episode" notification to Dart while the app is already running.
     private var notifChannel: MethodChannel? = null
+
+    // Cast: wired in configureFlutterEngine; released in onDestroy.
+    private var castManager: CastManager? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -726,6 +731,40 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+
+        // Cast channel: load media onto a Chromecast + transport controls.
+        // CastContext init is guarded in CastManager — safe on devices without Play Services.
+        val cm = CastManager(this).also { castManager = it }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cast")
+            .setMethodCallHandler { call, result ->
+                try {
+                    when (call.method) {
+                        "init" -> result.success(cm.init())
+                        "loadMedia" -> {
+                            @Suppress("UNCHECKED_CAST")
+                            val args = call.arguments as? Map<String, Any?> ?: emptyMap()
+                            cm.loadMedia(args)
+                            result.success(null)
+                        }
+                        "play" -> { cm.play(); result.success(null) }
+                        "pause" -> { cm.pause(); result.success(null) }
+                        "seek" -> {
+                            val ms = (call.argument<Number>("ms") ?: 0).toInt()
+                            cm.seek(ms)
+                            result.success(null)
+                        }
+                        "stop" -> { cm.stop(); result.success(null) }
+                        "pickDevice" -> { cm.pickDevice(); result.success(null) }
+                        "startDiscovery" -> { cm.startDiscovery(); result.success(null) }
+                        "stopDiscovery" -> { cm.stopDiscovery(); result.success(null) }
+                        else -> result.notImplemented()
+                    }
+                } catch (e: Exception) {
+                    result.error("cast_error", e.message, null)
+                }
+            }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/cast/events")
+            .setStreamHandler(cm)
     }
 
     // Android 8.0–11 have no auto-enter API, so enter PiP here when the user
@@ -945,6 +984,7 @@ class MainActivity : FlutterActivity() {
         executor.shutdown()
         csExecutor.shutdown()
         csReadPool.shutdown()
+        castManager?.release()
         super.onDestroy()
     }
 
