@@ -32,7 +32,10 @@ class HlsDownloader {
     required String preferredQuality,
     required void Function(double progress) onProgress,
     required bool Function() canceled,
+    int? connections,
   }) async {
+    // Segment-fetch parallelism for THIS download (clamped); defaults to 4.
+    final concurrency = (connections ?? _concurrency).clamp(1, _concurrency * 4);
     // 1. Resolve a master playlist down to a media (segment) playlist.
     final media = await _resolveMediaPlaylist(url, headers, preferredQuality);
     if (media == null) return false;
@@ -108,7 +111,7 @@ class HlsDownloader {
       sink.add(init);
     }
 
-    await Future.wait(List.generate(_concurrency, (_) => worker()));
+    await Future.wait(List.generate(concurrency, (_) => worker()));
     await sink.flush();
     await sink.close();
 

@@ -72,11 +72,87 @@ void downloadServiceOnStart(ServiceInstance service) async {
   final queue = <Map<String, dynamic>>[];
   final canceled = <String>{};
   var processing = false;
+  // How many episodes download at once (from the user's setting; last job wins).
+  var parallelLimit = 3;
 
   Future<void> setNotif(String title, String content) async {
     if (service is AndroidServiceInstance) {
       await service.setForegroundNotificationInfo(title: title, content: content);
     }
+  }
+
+  // Download ONE HLS job end-to-end. Fully self-contained (its own output
+  // sink + local state in [HlsDownloader]), so multiple runJob() calls are
+  // safe to run concurrently.
+  Future<void> runJob(Map<String, dynamic> job) async {
+    final id = job['id'] as String;
+    if (canceled.remove(id)) return;
+
+    final url = job['url'] as String;
+    final headers = Map<String, String>.from(job['headers'] as Map? ?? {});
+    final outputPath = job['outputPath'] as String;
+    final quality = job['quality'] as String? ?? 'best';
+    final label = job['label'] as String? ?? 'Episode';
+    final showTitle = job['showTitle'] as String? ?? '';
+    final sharedSubDir = job['sharedSubDir'] as String? ?? DownloadService.sharedDir;
+    final connections = job['connections'] as int?;
+
+    await setNotif('Downloading $showTitle', '$label · 0%');
+    service.invoke('progress', {'id': id, 'progress': 0.0});
+
+    var lastPct = -1;
+    final ok = await hls.download(
+      url: url,
+      headers: headers,
+      outputPath: outputPath,
+      preferredQuality: quality,
+      connections: connections,
+      onProgress: (p) {
+        service.invoke('progress', {'id': id, 'progress': p});
+        final pct = (p * 100).floor();
+        if (pct != lastPct) {
+          lastPct = pct;
+          setNotif('Downloading $showTitle', '$label · $pct%');
+        }
+      },
+      canceled: () => canceled.contains(id),
+    );
+
+    if (canceled.remove(id)) {
+      await _writeResult(id, status: 'canceled');
+      service.invoke('failed', {'id': id, 'canceled': true});
+      return;
+    }
+    if (!ok) {
+      await _writeResult(id, status: 'failed', error: 'HLS download failed');
+      service.invoke('failed', {'id': id, 'error': 'HLS download failed'});
+      return;
+    }
+
+    final customUri = job['customUri'] as String?;
+    if (customUri != null && customUri.isNotEmpty) {
+      // Custom SAF folder: moving into a user-picked tree needs the app's
+      // Activity/persisted permission, which this background isolate lacks —
+      // hand the local temp + target tree to the main isolate to finish.
+      await _writeResult(id, status: 'done', filePath: outputPath);
+      service.invoke('done', {
+        'id': id,
+        'filePath': outputPath,
+        'customUri': customUri,
+      });
+      return;
+    }
+    String? finalPath;
+    try {
+      finalPath = await FileDownloader().moveFileToSharedStorage(
+        outputPath,
+        SharedStorage.downloads,
+        directory: sharedSubDir,
+      );
+    } catch (_) {}
+    finalPath ??= outputPath;
+    await _writeResult(id, status: 'done', filePath: finalPath);
+    service.invoke('done', {'id': id, 'filePath': finalPath});
   }
 
   Future<void> process() async {
@@ -85,75 +161,19 @@ void downloadServiceOnStart(ServiceInstance service) async {
     if (service is AndroidServiceInstance) {
       await service.setAsForegroundService();
     }
-    while (queue.isNotEmpty) {
-      final job = queue.removeAt(0);
-      final id = job['id'] as String;
-      if (canceled.remove(id)) continue;
-
-      final url = job['url'] as String;
-      final headers = Map<String, String>.from(job['headers'] as Map? ?? {});
-      final outputPath = job['outputPath'] as String;
-      final quality = job['quality'] as String? ?? 'best';
-      final label = job['label'] as String? ?? 'Episode';
-      final showTitle = job['showTitle'] as String? ?? '';
-      final sharedSubDir = job['sharedSubDir'] as String? ?? DownloadService.sharedDir;
-
-      await setNotif('Downloading $showTitle', '$label · 0%');
-      service.invoke('progress', {'id': id, 'progress': 0.0});
-
-      var lastPct = -1;
-      final ok = await hls.download(
-        url: url,
-        headers: headers,
-        outputPath: outputPath,
-        preferredQuality: quality,
-        onProgress: (p) {
-          service.invoke('progress', {'id': id, 'progress': p});
-          final pct = (p * 100).floor();
-          if (pct != lastPct) {
-            lastPct = pct;
-            setNotif('Downloading $showTitle', '$label · $pct%');
-          }
-        },
-        canceled: () => canceled.contains(id),
-      );
-
-      if (canceled.remove(id)) {
-        await _writeResult(id, status: 'canceled');
-        service.invoke('failed', {'id': id, 'canceled': true});
-        continue;
+    // Bounded worker pool: up to [parallelLimit] episodes download at once.
+    // Each worker pulls the next queued job until the queue drains (new jobs
+    // enqueued mid-run are picked up too). removeAt(0) is synchronous, so the
+    // single-threaded isolate never hands the same job to two workers.
+    Future<void> worker() async {
+      while (queue.isNotEmpty) {
+        await runJob(queue.removeAt(0));
       }
-      if (!ok) {
-        await _writeResult(id, status: 'failed', error: 'HLS download failed');
-        service.invoke('failed', {'id': id, 'error': 'HLS download failed'});
-        continue;
-      }
-
-      final customUri = job['customUri'] as String?;
-      if (customUri != null && customUri.isNotEmpty) {
-        // Custom SAF folder: moving into a user-picked tree needs the app's
-        // Activity/persisted permission, which this background isolate lacks —
-        // hand the local temp + target tree to the main isolate to finish.
-        await _writeResult(id, status: 'done', filePath: outputPath);
-        service.invoke('done', {
-          'id': id,
-          'filePath': outputPath,
-          'customUri': customUri,
-        });
-        continue;
-      }
-      String? finalPath;
-      try {
-        finalPath = await FileDownloader().moveFileToSharedStorage(
-          outputPath,
-          SharedStorage.downloads,
-          directory: sharedSubDir,
-        );
-      } catch (_) {}
-      finalPath ??= outputPath;
-      await _writeResult(id, status: 'done', filePath: finalPath);
-      service.invoke('done', {'id': id, 'filePath': finalPath});
     }
+
+    final n = parallelLimit.clamp(1, 6);
+    await Future.wait(List.generate(n, (_) => worker()));
+
     processing = false;
     if (service is AndroidServiceInstance) {
       await service.setAsBackgroundService();
@@ -163,6 +183,8 @@ void downloadServiceOnStart(ServiceInstance service) async {
 
   service.on('download').listen((data) {
     if (data == null) return;
+    final p = data['parallel'];
+    if (p is int) parallelLimit = p;
     queue.add(data);
     process();
   });

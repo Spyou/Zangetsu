@@ -121,13 +121,120 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     );
   }
 
+  /// Bottom sheet with the CloudStream-style download concurrency sliders.
+  /// Applies to the NEXT downloads started (running HLS jobs aren't retimed).
+  void _openDownloadSettings() {
+    final prefs = sl<DownloadPrefs>();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          Widget slider({
+            required String title,
+            required String subtitle,
+            required int value,
+            required int min,
+            required int max,
+            required ValueChanged<int> onChanged,
+          }) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(title, style: AppText.headline)),
+                      Text('$value', style: AppText.headline.copyWith(
+                        color: AppColors.accent,
+                      )),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                  child: Text(subtitle, style: AppText.caption),
+                ),
+                Slider(
+                  value: value.toDouble(),
+                  min: min.toDouble(),
+                  max: max.toDouble(),
+                  divisions: max - min,
+                  activeColor: AppColors.accent,
+                  label: '$value',
+                  onChanged: (v) => setSheet(() => onChanged(v.round())),
+                ),
+              ],
+            );
+          }
+
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Download settings', style: AppText.title),
+                  ),
+                ),
+                slider(
+                  title: 'Parallel downloads',
+                  subtitle: 'How many episodes download at the same time.',
+                  value: prefs.parallelDownloads,
+                  min: DownloadPrefs.parallelMin,
+                  max: DownloadPrefs.parallelMax,
+                  onChanged: (n) => prefs.setParallelDownloads(n),
+                ),
+                const SizedBox(height: 8),
+                slider(
+                  title: 'Connections per download',
+                  subtitle: 'Segment connections a single download uses. '
+                      'Higher = faster, more data at once.',
+                  value: prefs.connectionsPerDownload,
+                  min: DownloadPrefs.connectionsMin,
+                  max: DownloadPrefs.connectionsMax,
+                  onChanged: (n) => prefs.setConnectionsPerDownload(n),
+                ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const DownloadsScreenTv();
     final manager = sl<DownloadManager>();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: Text('Downloads', style: AppText.title)),
+      appBar: AppBar(
+        title: Text('Downloads', style: AppText.title),
+        actions: [
+          IconButton(
+            tooltip: 'Download settings',
+            icon: const Icon(Icons.tune_rounded),
+            onPressed: _openDownloadSettings,
+          ),
+        ],
+      ),
       body: ListenableBuilder(
         listenable: manager,
         builder: (context, _) {

@@ -32,4 +32,26 @@ class DownloadPrefs {
       await _box.put('locationLabel', label);
     }
   }
+
+  // ── Parallel downloads (CloudStream-style) ────────────────────────────────
+  // Only the HLS path was serial (one episode at a time); MP4 already runs
+  // concurrently via background_downloader. These govern the HLS worker pool.
+  static const int parallelMin = 1;
+  static const int parallelMax = 6;
+  static const int connectionsMin = 1;
+  static const int connectionsMax = 8;
+
+  /// How many different episodes download at the same time. Default 3.
+  int get parallelDownloads =>
+      (_box.get('parallel') as int? ?? 3).clamp(parallelMin, parallelMax);
+
+  Future<void> setParallelDownloads(int n) =>
+      _box.put('parallel', n.clamp(parallelMin, parallelMax));
+
+  /// How many segment connections a single HLS download uses. Default 4.
+  int get connectionsPerDownload =>
+      (_box.get('connections') as int? ?? 4).clamp(connectionsMin, connectionsMax);
+
+  Future<void> setConnectionsPerDownload(int n) =>
+      _box.put('connections', n.clamp(connectionsMin, connectionsMax));
 }

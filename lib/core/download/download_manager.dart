@@ -476,6 +476,9 @@ class DownloadManager extends ChangeNotifier {
         // Custom SAF folder (if any): the isolate can't SAF-write, so it hands
         // the local temp back and the main isolate moves it into this tree.
         'customUri': _downloadPrefs.locationUri,
+        // How many episodes run at once + segment connections per download.
+        'parallel': _downloadPrefs.parallelDownloads,
+        'connections': _downloadPrefs.connectionsPerDownload,
       });
     } catch (_) {
       if (_isCanceled(rec.id)) return;
