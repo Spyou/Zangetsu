@@ -382,8 +382,6 @@ class DownloadManager extends ChangeNotifier {
   /// downloader, everything else via background_downloader.
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
     if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
-    debugPrint('[dl] enqueue "${rec.showTitle}" isHls=${_isHls(source)} '
-        'torrent=${isTorrentSource(source)} customUri=${_downloadPrefs.locationUri}');
     // Save any soft subtitles this source advertises, in parallel with the
     // video (they're tiny and best-effort — never block or fail the download).
     unawaited(_fetchSubtitles(rec, source));
