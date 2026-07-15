@@ -243,26 +243,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
-  Future<void> _addCloudStreamRepo() async {
-    final url = await showDialog<String>(
-      context: context,
-      builder: (_) => const _AddRepoDialog(),
-    );
-    if (url == null || url.isEmpty || !mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final count = await _csManager.addRepo(url);
-      messenger.showSnackBar(
-        SnackBar(content: Text('Added — $count CloudStream source(s) available')),
-      );
-      if (mounted) setState(() {});
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to add repository: $e')),
-      );
-    }
-  }
-
   /// Account header — signed-in hero profile (pfp + name → Profile) or a
   /// Sign-in tile. The hero floats card-less on the background: a 64px avatar
   /// in a crimson accent ring with a soft glow, big display name, email below.
@@ -451,13 +431,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSource,
                       ),
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.extension_outlined,
-                          title: 'Add CloudStream repository',
-                          subtitle: 'Install CloudStream sources',
-                          onTap: _addCloudStreamRepo,
-                        ),
+                      // "Add CloudStream repository" removed — it duplicated the
+                      // "Add CloudStream repo" action in the CloudStream sources
+                      // screen (Providers). Managed there now.
                       SettingsTile(
                         icon: Icons.health_and_safety_outlined,
                         title: 'Source health',
@@ -1722,13 +1698,11 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   }
 }
 
-/// Self-contained URL-entry dialog for adding a CloudStream repository. Owns its
-/// own [TextEditingController] and disposes it on unmount (after the route's
-/// exit animation finishes) — avoids the "used after dispose" crash that a
-/// caller-owned controller disposed right after `await showDialog` would hit.
 /// Text-entry dialog for the OpenSubtitles API key. Returns the entered string
-/// on save (empty clears the key) or null when dismissed. Mirrors
-/// [_AddRepoDialog] for visual consistency.
+/// on save (empty clears the key) or null when dismissed. Owns its own
+/// [TextEditingController] and disposes it on unmount (after the route's exit
+/// animation) — avoids the "used after dispose" crash a caller-owned controller
+/// disposed right after `await showDialog` would hit.
 class _ApiKeyDialog extends StatefulWidget {
   const _ApiKeyDialog({required this.initial});
   final String initial;
@@ -1796,56 +1770,3 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
   }
 }
 
-class _AddRepoDialog extends StatefulWidget {
-  const _AddRepoDialog();
-
-  @override
-  State<_AddRepoDialog> createState() => _AddRepoDialogState();
-}
-
-class _AddRepoDialogState extends State<_AddRepoDialog> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.surface,
-      title: Text('Add CloudStream repository', style: AppText.headline),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        keyboardType: TextInputType.url,
-        cursorColor: AppColors.accent,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
-        decoration: const InputDecoration(
-          labelText: 'Repository URL',
-          hintText: 'https://.../repo.json',
-        ),
-        onSubmitted: (v) => Navigator.pop(context, v.trim()),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            'Cancel',
-            style: AppText.body.copyWith(color: AppColors.textSecondary),
-          ),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
-          ),
-          onPressed: () => Navigator.pop(context, _controller.text.trim()),
-          child: const Text('Add'),
-        ),
-      ],
-    );
-  }
-}
