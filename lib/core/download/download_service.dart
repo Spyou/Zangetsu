@@ -8,6 +8,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'download_prefs.dart';
 import 'hls_downloader.dart';
 
 /// Foreground-service host for HLS downloads so they continue with the app
@@ -176,7 +177,7 @@ void downloadServiceOnStart(ServiceInstance service) async {
   // on EVERY new job, so episodes queued one-by-one still fill all the parallel
   // slots — not just the first worker.
   void pump() {
-    final limit = parallelLimit.clamp(1, 6);
+    final limit = parallelLimit.clamp(1, DownloadPrefs.parallelMax);
     while (running < limit && queue.isNotEmpty) {
       if (running == 0 && service is AndroidServiceInstance) {
         service.setAsForegroundService();
@@ -192,6 +193,16 @@ void downloadServiceOnStart(ServiceInstance service) async {
     if (p is int) parallelLimit = p;
     queue.add(data);
     pump();
+  });
+  // Live setting change: raising the limit mid-batch starts queued episodes
+  // right away (pump spawns the extra workers). Lowering it just stops NEW
+  // workers spawning — running downloads are never interrupted.
+  service.on('setParallel').listen((data) {
+    final n = data?['n'];
+    if (n is int) {
+      parallelLimit = n;
+      pump();
+    }
   });
   service.on('cancel').listen((data) {
     final id = data?['id'] as String?;

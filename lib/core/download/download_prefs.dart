@@ -37,7 +37,7 @@ class DownloadPrefs {
   // Only the HLS path was serial (one episode at a time); MP4 already runs
   // concurrently via background_downloader. These govern the HLS worker pool.
   static const int parallelMin = 1;
-  static const int parallelMax = 6;
+  static const int parallelMax = 10;
   static const int connectionsMin = 1;
   static const int connectionsMax = 8;
 

@@ -7,6 +7,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
+import '../../core/download/download_service.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -140,6 +141,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             required int min,
             required int max,
             required ValueChanged<int> onChanged,
+            ValueChanged<int>? onCommit,
           }) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,6 +169,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   activeColor: AppColors.accent,
                   label: '$value',
                   onChanged: (v) => setSheet(() => onChanged(v.round())),
+                  onChangeEnd: onCommit == null
+                      ? null
+                      : (v) => onCommit(v.round()),
                 ),
               ],
             );
@@ -199,6 +204,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   min: DownloadPrefs.parallelMin,
                   max: DownloadPrefs.parallelMax,
                   onChanged: (n) => prefs.setParallelDownloads(n),
+                  // Apply live: raising it starts queued episodes immediately.
+                  onCommit: (n) =>
+                      DownloadService.instance.invoke('setParallel', {'n': n}),
                 ),
                 const SizedBox(height: 8),
                 slider(
