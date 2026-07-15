@@ -36,6 +36,7 @@ import '../../core/ui/subtitle_language_picker.dart';
 import '../detail/cubit/detail_cubit.dart'
     show parseSeason, seasonsOf, cleanTitle;
 import '../../core/cast/cast_controller.dart';
+import '../../core/cast/cast_proxy.dart';
 import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
 import '../../core/app_mode.dart';
@@ -359,27 +360,65 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final active = _c.state.active;
       if (active == null) return;
       if (_c.player.state.playing) _c.player.pause(); // pause local mpv first
-      // Load the current stream onto the Cast receiver at the current position.
-      castCtrl.loadCurrent(
-        url: active.url,
-        container: active.container,
-        headers: active.headers,
-        title: widget.showTitle,
-        poster: widget.cover,
-        subtitles: active.subtitles,
-        startAt: _c.currentPosition,
-      );
+      _castHandoff(active); // async: start proxy → load onto the receiver
       if (mounted) setState(() {}); // show the "Casting to <TV>" panel
       return;
     }
 
     // --- Disconnect-resume: cast → local ---
     if (prev == CastState.connected && newState != CastState.connected) {
+      sl<CastProxyServer>().stop(); // tear down the LAN proxy
       final resumePos = castCtrl.position;
       if (resumePos > Duration.zero) _c.seekTo(resumePos);
       _c.player.play();
       if (mounted) setState(() {}); // restore the normal player UI
     }
+  }
+
+  /// Route the current stream through the on-device proxy so the Chromecast
+  /// can fetch header-locked HLS (Referer / UA / cookies the Cast receiver
+  /// can't send itself), then load it onto the receiver at the current
+  /// position. Falls back to the direct URL when no LAN proxy is available —
+  /// casting then works only for un-protected streams.
+  Future<void> _castHandoff(VideoSource active) async {
+    final castCtrl = sl<CastController>();
+    final proxy = sl<CastProxyServer>();
+    final startAt = _c.currentPosition;
+    // The proxy URL carries no extension, so send the real mime explicitly.
+    final mime = castMimeFor(active.container, active.url);
+
+    var url = active.url;
+    var subs = active.subtitles;
+    try {
+      final proxied = await proxy.serve(active.url, active.headers);
+      if (proxied != null) {
+        url = proxied;
+        // Header-locked subtitle tracks need proxying too.
+        subs = [
+          for (final s in active.subtitles)
+            Subtitle(
+              url: proxy.proxify(s.url) ?? s.url,
+              lang: s.lang,
+              label: s.label,
+              format: s.format,
+              isDefault: s.isDefault,
+            ),
+        ];
+      }
+    } catch (_) {
+      // Proxy failed to start — fall through with the direct URL.
+    }
+    if (!mounted) return;
+    castCtrl.loadCurrent(
+      url: url,
+      container: active.container,
+      mime: mime,
+      // Headers are injected by the proxy now (the native side ignores them).
+      title: widget.showTitle,
+      poster: widget.cover,
+      subtitles: subs,
+      startAt: startAt,
+    );
   }
 
   // ── Picture-in-Picture ────────────────────────────────────────────────────

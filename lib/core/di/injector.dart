@@ -64,6 +64,7 @@ import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
 import '../../features/watch_together/watch_together_controller.dart';
 import '../cast/cast_controller.dart';
+import '../cast/cast_proxy.dart';
 
 final GetIt sl = GetIt.instance;
 
@@ -423,6 +424,11 @@ Future<void> initDependencies() async {
   } catch (_) {
     // Native side missing or init failed — state already defaults to unavailable.
   }
+
+  // On-device HTTP proxy that lets the Chromecast play header-locked streams
+  // (it injects the request headers the Cast receiver can't send). Lazily
+  // started only when a cast hand-off actually happens.
+  sl.registerLazySingleton<CastProxyServer>(() => CastProxyServer());
 
   // Home data cubit as a singleton so the splash can warm it (preload the
   // rows for the active source) while the intro animation plays — Home then

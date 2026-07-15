@@ -136,6 +136,7 @@ class CastController extends ChangeNotifier {
     required String url,
     required SourceContainer container,
     Map<String, String>? headers,
+    String? mime,
     String? title,
     String? poster,
     List<Subtitle> subtitles = const [],
@@ -149,7 +150,9 @@ class CastController extends ChangeNotifier {
     try {
       await _method.invokeMethod<void>('loadMedia', {
         'url': url,
-        'mime': castMimeFor(container, url),
+        // Prefer an explicit mime (the proxy URL has no extension to sniff);
+        // otherwise derive it from the container / URL.
+        'mime': mime ?? castMimeFor(container, url),
         'headers': ?headers,
         'title': ?title,
         'poster': ?poster,
