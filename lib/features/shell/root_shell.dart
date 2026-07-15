@@ -43,7 +43,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell>
     with SingleTickerProviderStateMixin {
-  static const int _searchTab = 1;
+  static const int _searchTab = 2;
 
   int _index = 0;
 
@@ -113,15 +113,17 @@ class _RootShellState extends State<RootShell>
     _fadeCtrl.forward(from: 0);
   }
 
-  /// The five tab pages: the four from [buildShellPages] with [ScheduleScreen]
-  /// inserted between My List (index 2) and Settings — the same slot the TV
-  /// rail uses, keeping both shells identical. The last tab (Settings screen)
-  /// is presented as "Profile" in the dock.
+  /// The five tab pages, in dock order: Home · Schedule · Search · My List ·
+  /// Settings. Search sits centre (best thumb reach); [ScheduleScreen] takes
+  /// the second slot. The last tab (Settings screen) is presented as "Profile"
+  /// in the dock. [buildShellPages] yields Home/Search/My List/…/Settings.
   List<Widget> _pages() {
     final shared = buildShellPages(_searchFocusSignal);
     return [
-      ...shared.sublist(0, 3), // Home, Search, My List
+      shared[0], // Home
       const ScheduleScreen(), // Schedule
+      shared[1], // Search
+      shared[2], // My List
       shared.last, // Settings (Profile tab)
     ];
   }
@@ -192,20 +194,20 @@ class _FloatingDock extends StatelessWidget {
                   onTap: () => onSelected(0),
                 ),
                 _DockItem(
-                  label: 'Search',
-                  glyph: DockGlyph.search,
+                  label: 'Schedule',
+                  glyph: DockGlyph.calendar,
                   selected: index == 1,
                   onTap: () => onSelected(1),
                 ),
                 _DockItem(
-                  label: 'My List',
-                  glyph: DockGlyph.bookmark,
+                  label: 'Search',
+                  glyph: DockGlyph.search,
                   selected: index == 2,
                   onTap: () => onSelected(2),
                 ),
                 _DockItem(
-                  label: 'Schedule',
-                  glyph: DockGlyph.calendar,
+                  label: 'My List',
+                  glyph: DockGlyph.bookmark,
                   selected: index == 3,
                   onTap: () => onSelected(3),
                 ),
