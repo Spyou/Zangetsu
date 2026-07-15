@@ -619,12 +619,35 @@ class DownloadManager extends ChangeNotifier {
         if (await f.exists()) await f.delete();
       } catch (_) {}
     }
-    // A file published into a user-picked SAF folder is a content:// URI, not
-    // a task file — remove it through UriUtils (best-effort).
+    // Delete the actual media file on disk. Two cases:
+    //  • SAF custom folder → a content:// URI, removed via UriUtils.
+    //  • Default download (public Download/Zangetsu) → a plain file path the
+    //    app owns. Previously ONLY the content:// case was handled, so default
+    //    downloads left the file on disk (the "still in the folder" bug). Delete
+    //    it directly; if scoped storage blocks the raw delete, fall back to the
+    //    plugin's native (MediaStore-aware) delete. Then drop the empty show dir.
     final fp = rec.filePath;
-    if (fp != null && isUriPath(fp)) {
+    if (fp != null && fp.isNotEmpty) {
       try {
-        await _dl.uri.deleteFile(Uri.parse(fp));
+        if (isUriPath(fp)) {
+          await _dl.uri.deleteFile(Uri.parse(fp));
+        } else {
+          final f = File(fp);
+          try {
+            if (await f.exists()) await f.delete();
+          } catch (_) {}
+          if (await f.exists()) {
+            try {
+              await _dl.uri.deleteFile(f.uri);
+            } catch (_) {}
+          }
+          try {
+            final dir = f.parent;
+            if (await dir.exists() && await dir.list().isEmpty) {
+              await dir.delete();
+            }
+          } catch (_) {}
+        }
       } catch (_) {}
     }
     _records.remove(rec.id);
