@@ -37,6 +37,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
   final Set<String> _expanded = <String>{};
 
   @override
+  void initState() {
+    super.initState();
+    // Reconcile with disk once on open: drop downloads whose file was deleted
+    // outside the app so they don't linger as phantom entries. Non-blocking.
+    unawaited(sl<DownloadManager>().pruneMissing());
+  }
+
+  @override
   void dispose() {
     _searchCtrl.dispose();
     super.dispose();

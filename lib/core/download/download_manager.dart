@@ -655,6 +655,31 @@ class DownloadManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Reconcile the list with disk: drop `done` records whose file was removed
+  /// OUTSIDE the app (a file manager), so the UI can't show phantom downloads.
+  /// Fast + non-blocking — only stats plain file paths (a cheap syscall each),
+  /// skips in-flight records and content:// (SAF) paths. Call when the Downloads
+  /// screen opens; it emits a single [notifyListeners] if anything was pruned.
+  Future<void> pruneMissing() async {
+    final gone = <String>[];
+    for (final rec in _records.values) {
+      if (rec.status != DownloadStatus.done) continue;
+      final fp = rec.filePath;
+      if (fp == null || fp.isEmpty || isUriPath(fp)) continue;
+      try {
+        if (!await File(fp).exists()) gone.add(rec.id);
+      } catch (_) {}
+    }
+    if (gone.isEmpty) return;
+    for (final id in gone) {
+      _records.remove(id);
+      _candidates.remove(id);
+      _tasks.remove(id);
+      await _box.delete(id);
+    }
+    notifyListeners();
+  }
+
   // ── Update stream ──────────────────────────────────────────────────────────
 
   Future<void> _onUpdate(TaskUpdate update) async {
