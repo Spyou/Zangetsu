@@ -1300,6 +1300,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.movie_outlined,
+                title: 'Autoplay trailer',
+                subtitle: 'Play a title\'s trailer on its detail page',
+                value: _prefs.autoplayTrailer,
+                onChanged: (v) async {
+                  await _prefs.setAutoplayTrailer(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.fast_forward_outlined,
                 title: 'Skip intro button',
                 subtitle: 'Show Skip opening/ending on anime (when detected)',

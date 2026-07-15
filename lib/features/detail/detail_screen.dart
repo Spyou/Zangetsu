@@ -1213,10 +1213,14 @@ class _HeroTrailerState extends State<_HeroTrailer> {
   bool _errored = false;
   // Mute state — default muted; preserved across pause/resume.
   bool _muted = true;
+  // User-facing play/pause intent (separate from the scroll-driven collapse
+  // pause). Seeded from the "Autoplay trailer" setting: off → start paused.
+  bool _paused = false;
 
   @override
   void initState() {
     super.initState();
+    _paused = !sl<PlaybackPrefs>().autoplayTrailer;
     _resolveAndOpen();
   }
 
@@ -1252,7 +1256,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     // Belt-and-braces loop: also restart on completion (covers engines where
     // PlaylistMode.single doesn't auto-restart a single media).
     _completedSub = player.stream.completed.listen((done) {
-      if (done && mounted && !widget.collapsed) {
+      if (done && mounted && !widget.collapsed && !_paused) {
         _player?.seek(Duration.zero);
         _player?.play();
       }
@@ -1263,13 +1267,14 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       // don't honor the autoplay flag until the first user interaction. Open
       // paused, then explicitly play() the moment the media is loaded and the
       // widget is still mounted, so the trailer starts on its own with no touch.
-      await player.open(Media(url), play: !widget.collapsed);
+      final autostart = !_paused && !widget.collapsed;
+      await player.open(Media(url), play: autostart);
       if (!mounted) return;
-      // Only autostart when the hero is on-screen (expanded). If the user has
-      // already scrolled past by the time the URL resolved, stay paused — the
-      // collapsed/expanded handler in didUpdateWidget will play it when they
-      // scroll back up.
-      if (!widget.collapsed) {
+      // Autostart only when the hero is on-screen AND the user hasn't paused
+      // (via the button or the "Autoplay trailer" setting being off). If it's
+      // paused or already scrolled past, stay put — the play button and the
+      // collapsed handler in didUpdateWidget start it later.
+      if (autostart) {
         await player.play();
       }
     } catch (_) {
@@ -1288,11 +1293,12 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       _errored = false;
       _resolveAndOpen();
     }
-    // Pause when scrolled past the hero; resume when it's expanded again.
+    // Pause when scrolled past the hero; resume when it's expanded again —
+    // but never resume a trailer the user deliberately paused.
     if (widget.collapsed != old.collapsed && !_errored) {
       if (widget.collapsed) {
         _player?.pause();
-      } else {
+      } else if (!_paused) {
         _player?.play();
       }
     }
@@ -1305,6 +1311,18 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     await player.setVolume(next ? 0 : 100);
     if (!mounted) return;
     setState(() => _muted = next);
+  }
+
+  Future<void> _togglePlay() async {
+    final player = _player;
+    if (player == null) return;
+    final next = !_paused;
+    setState(() => _paused = next);
+    if (next) {
+      await player.pause();
+    } else if (!widget.collapsed) {
+      await player.play();
+    }
   }
 
   void _disposePlayer() {
@@ -1326,6 +1344,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
   @override
   Widget build(BuildContext context) {
     final controller = _videoController;
+    final topInset = MediaQuery.of(context).padding.top;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -1357,40 +1376,69 @@ class _HeroTrailerState extends State<_HeroTrailer> {
               onTap: widget.onTapFullscreen,
             ),
           ),
-        // Mute toggle — bottom-left, clear of the bottom-right poster and the
-        // top-left back arrow. Only shown once the player is ready (mute is
-        // meaningless before that).
-        if (_ready && !_errored)
+        // Controls — a horizontal row at top-right (clear of the top-left back
+        // arrow and the bottom subtitles): play/pause then mute. Offset below
+        // the status bar. Play/pause shows as soon as the player exists (so a
+        // paused-start trailer can be started); mute only once it's actually
+        // playing (mute is meaningless before that).
+        if (controller != null && !_errored)
           Positioned(
-            left: 14,
-            bottom: 14,
-            child: _MuteButton(muted: _muted, onTap: _toggleMute),
+            right: 14,
+            top: topInset + 8,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HeroCircleButton(
+                  icon: _paused
+                      ? Icons.play_arrow_rounded
+                      : Icons.pause_rounded,
+                  onTap: _togglePlay,
+                ),
+                if (_ready) ...[
+                  const SizedBox(width: 8),
+                  _HeroCircleButton(
+                    icon: _muted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    onTap: _toggleMute,
+                  ),
+                ],
+              ],
+            ),
           ),
       ],
     );
   }
 }
 
-// Small translucent circular mute/unmute toggle for the hero trailer.
-class _MuteButton extends StatelessWidget {
-  const _MuteButton({required this.muted, required this.onTap});
-  final bool muted;
+// Small translucent circular icon button for the hero trailer controls
+// (mute/unmute and play/pause).
+class _HeroCircleButton extends StatelessWidget {
+  const _HeroCircleButton({required this.icon, required this.onTap});
+  final IconData icon;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: const Color(0x66000000),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(
-            muted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-            color: Colors.white,
-            size: 20,
+    // The visible circle is 36dp, but the tap target is a full 48dp. Using an
+    // opaque GestureDetector (NOT an InkWell, which defers hit-testing to its
+    // painted child) so the whole 48dp square absorbs the tap — otherwise taps
+    // in the ring around the icon fall through to the banner's fullscreen
+    // gesture behind, which is what made the buttons feel unresponsive.
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0x66000000),
+              shape: BoxShape.circle,
+            ),
+            padding: const EdgeInsets.all(8),
+            child: Icon(icon, color: Colors.white, size: 20),
           ),
         ),
       ),

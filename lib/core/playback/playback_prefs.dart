@@ -72,6 +72,13 @@ class PlaybackPrefs {
       _box.get('autoplayNext', defaultValue: true) as bool;
   Future<void> setAutoplayNext(bool value) => _box.put('autoplayNext', value);
 
+  /// Whether the detail-screen hero trailer autoplays once it resolves
+  /// (Netflix-style). On by default; off opens it paused with a play button.
+  bool get autoplayTrailer =>
+      _box.get('autoplayTrailer', defaultValue: true) as bool;
+  Future<void> setAutoplayTrailer(bool value) =>
+      _box.put('autoplayTrailer', value);
+
   /// Default playback speed multiplier.
   double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();
