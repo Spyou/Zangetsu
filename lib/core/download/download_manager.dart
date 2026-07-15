@@ -100,13 +100,20 @@ class DownloadManager extends ChangeNotifier {
       _put(rec.copyWith(status: DownloadStatus.downloading, progress: p));
       notifyListeners();
     });
-    svc.on('done').listen((d) {
+    svc.on('done').listen((d) async {
       final id = d?['id'] as String?;
       if (id == null) return;
       final rec = _records[id];
       if (rec == null) return;
       _candidates.remove(id);
-      final path = d?['filePath'] as String?;
+      var path = d?['filePath'] as String?;
+      // HLS into a custom folder: the isolate handed us the local temp; move it
+      // into the user's SAF tree here (persisted permission; no isolate needed).
+      final customUri = d?['customUri'] as String?;
+      if (path != null && customUri != null && customUri.isNotEmpty) {
+        final moved = await _moveIntoTree(path, customUri, path.split('/').last);
+        if (moved != null) path = moved;
+      }
       _put(rec.copyWith(
         status: DownloadStatus.done,
         progress: 1,
@@ -375,6 +382,8 @@ class DownloadManager extends ChangeNotifier {
   /// downloader, everything else via background_downloader.
   Future<void> _enqueueTaskFor(DownloadRecord rec, VideoSource source) async {
     if (_isCanceled(rec.id)) return; // don't (re)start a canceled download
+    debugPrint('[dl] enqueue "${rec.showTitle}" isHls=${_isHls(source)} '
+        'torrent=${isTorrentSource(source)} customUri=${_downloadPrefs.locationUri}');
     // Save any soft subtitles this source advertises, in parallel with the
     // video (they're tiny and best-effort — never block or fail the download).
     unawaited(_fetchSubtitles(rec, source));
@@ -466,6 +475,9 @@ class DownloadManager extends ChangeNotifier {
         'label': 'E${rec.episodeNumber?.toInt() ?? ''}',
         'showTitle': rec.showTitle,
         'sharedSubDir': '$_sharedDir/$safeShow',
+        // Custom SAF folder (if any): the isolate can't SAF-write, so it hands
+        // the local temp back and the main isolate moves it into this tree.
+        'customUri': _downloadPrefs.locationUri,
       });
     } catch (_) {
       if (_isCanceled(rec.id)) return;
@@ -670,6 +682,25 @@ class DownloadManager extends ChangeNotifier {
       return r ?? true;
     } catch (_) {
       return true;
+    }
+  }
+
+  /// Move a finished local file into a user-picked SAF tree (via native
+  /// DocumentFile — works without a foreground activity). Returns the new
+  /// content:// URI, or null on failure so the caller keeps the local path.
+  Future<String?> _moveIntoTree(
+    String localPath,
+    String treeUri,
+    String filename,
+  ) async {
+    try {
+      return await _deviceChannel.invokeMethod<String>('moveIntoTree', {
+        'localPath': localPath,
+        'treeUri': treeUri,
+        'filename': filename,
+      });
+    } catch (_) {
+      return null;
     }
   }
 

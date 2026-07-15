@@ -670,6 +670,40 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(exists)
                     }
+                    // Move a finished local file into a user-picked SAF tree
+                    // folder (persisted permission → works without a foreground
+                    // activity). Used by HLS downloads, whose background isolate
+                    // can't do the SAF write. Returns the new content:// URI (or
+                    // null on failure, so the caller keeps the local file).
+                    "moveIntoTree" -> {
+                        val localPath = call.argument<String>("localPath")
+                        val treeUri = call.argument<String>("treeUri")
+                        val filename = call.argument<String>("filename")
+                        if (localPath.isNullOrEmpty() || treeUri.isNullOrEmpty() || filename.isNullOrEmpty()) {
+                            result.success(null)
+                            return@setMethodCallHandler
+                        }
+                        executor.execute {
+                            val out: String? = try {
+                                val tree = androidx.documentfile.provider.DocumentFile
+                                    .fromTreeUri(applicationContext, android.net.Uri.parse(treeUri))
+                                tree?.findFile(filename)?.delete() // replace an old copy
+                                val doc = tree?.createFile("video/mp4", filename)
+                                if (doc != null) {
+                                    applicationContext.contentResolver.openOutputStream(doc.uri)?.use { os ->
+                                        java.io.File(localPath).inputStream().use { it.copyTo(os) }
+                                    }
+                                    java.io.File(localPath).delete()
+                                    doc.uri.toString()
+                                } else {
+                                    null
+                                }
+                            } catch (e: Exception) {
+                                null
+                            }
+                            runOnUiThread { result.success(out) }
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

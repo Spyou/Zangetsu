@@ -129,6 +129,19 @@ void downloadServiceOnStart(ServiceInstance service) async {
         continue;
       }
 
+      final customUri = job['customUri'] as String?;
+      if (customUri != null && customUri.isNotEmpty) {
+        // Custom SAF folder: moving into a user-picked tree needs the app's
+        // Activity/persisted permission, which this background isolate lacks —
+        // hand the local temp + target tree to the main isolate to finish.
+        await _writeResult(id, status: 'done', filePath: outputPath);
+        service.invoke('done', {
+          'id': id,
+          'filePath': outputPath,
+          'customUri': customUri,
+        });
+        continue;
+      }
       String? finalPath;
       try {
         finalPath = await FileDownloader().moveFileToSharedStorage(
