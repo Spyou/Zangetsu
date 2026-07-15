@@ -24,6 +24,7 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
+import '../history/history_screen.dart';
 import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
@@ -519,6 +520,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Quality, autoplay, speed',
         keywords: 'playback quality autoplay speed player decoder audio subtitle resume gesture',
         onTap: () => _push(const PlaybackSettingsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Playback & downloads',
+        icon: Icons.history_rounded,
+        title: 'History',
+        subtitle: 'Shows you\'ve watched',
+        keywords: 'history watch watched continue recent resume',
+        onTap: () async {
+          await _push(const HistoryScreen());
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: 'Playback & downloads',

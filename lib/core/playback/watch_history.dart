@@ -197,6 +197,13 @@ class WatchHistory {
     return all.take(limit).toList();
   }
 
+  /// Every watched show, newest-first, including finished ones — the full
+  /// History screen (Continue Watching only surfaces the unfinished subset).
+  List<HistoryEntry> all() {
+    return _box.values.map(_fromMap).toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  }
+
   /// Replace the local cache with the signed-in user's cloud history. The
   /// cloud doc stores ms ints (`position`/`duration`); map them to the Hive
   /// shape used by [recent].

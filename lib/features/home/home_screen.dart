@@ -39,6 +39,7 @@ import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
+import '../history/history_screen.dart';
 import '../player/player_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
@@ -446,6 +447,16 @@ class _HomeViewState extends State<_HomeView> {
     );
   }
 
+  /// Open the full watch-history screen (Continue Watching "See all").
+  void _openHistory() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
   /// Open the full-grid "See All" view of a browse row.
   void _openSeeAll(HomeSection section) {
     Navigator.push(
@@ -572,6 +583,7 @@ class _HomeViewState extends State<_HomeView> {
                             title: 'Continue Watching',
                             itemWidth: 140,
                             itemHeight: 236,
+                            onSeeAll: _openHistory,
                             itemCount: history.length,
                             itemBuilder: (c, i) {
                               final e = history[i];
