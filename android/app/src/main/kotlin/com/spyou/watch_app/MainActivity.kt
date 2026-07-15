@@ -670,6 +670,25 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(exists)
                     }
+                    // Byte size of a SAF content:// document (-1 if unknown) —
+                    // lets the download content-guard reject a tiny stub (e.g. a
+                    // DASH .mpd manifest MovieBox serves) that landed in a custom
+                    // folder, same as it already does for default downloads.
+                    "documentSize" -> {
+                        val uriStr = call.argument<String>("uri")
+                        if (uriStr.isNullOrEmpty()) {
+                            result.success(-1L)
+                            return@setMethodCallHandler
+                        }
+                        val size = try {
+                            androidx.documentfile.provider.DocumentFile
+                                .fromSingleUri(applicationContext, android.net.Uri.parse(uriStr))
+                                ?.length() ?: -1L
+                        } catch (e: Exception) {
+                            -1L
+                        }
+                        result.success(size)
+                    }
                     // Move a finished local file into a user-picked SAF tree
                     // folder (persisted permission → works without a foreground
                     // activity). Used by HLS downloads, whose background isolate

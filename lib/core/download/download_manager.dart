@@ -683,6 +683,19 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Byte size of a SAF content:// document (-1 if unknown), via native
+  /// DocumentFile — Dart can't stat a content:// URI.
+  Future<int> _documentSize(String uri) async {
+    try {
+      final r = await _deviceChannel.invokeMethod<int>('documentSize', {
+        'uri': uri,
+      });
+      return r ?? -1;
+    } catch (_) {
+      return -1;
+    }
+  }
+
   /// Move a finished local file into a user-picked SAF tree (via native
   /// DocumentFile — works without a foreground activity). Returns the new
   /// content:// URI, or null on failure so the caller keeps the local path.
@@ -810,9 +823,6 @@ class DownloadManager extends ChangeNotifier {
     if (task is UriDownloadTask) {
       // Custom-folder download: the file streamed straight into the user's
       // picked SAF folder, so it's already published as a content:// URI.
-      // (The size/HTML content-guard below stats a file:// path, which a
-      // content:// file doesn't have — so it's skipped for this path; it still
-      // fully applies to the default Downloads/Zangetsu downloads.)
       path = task.fileUri?.toString();
       if (path == null) {
         if (await _tryNext(rec)) return;
@@ -820,6 +830,27 @@ class DownloadManager extends ChangeNotifier {
           rec.copyWith(
             status: DownloadStatus.failed,
             error: () => "Couldn't save to the chosen folder",
+          ),
+        );
+        notifyListeners();
+        return;
+      }
+      // Same content-guard as the default path, but via a native size check
+      // (Dart can't stat content://). A tiny file is a stub, NOT a video — e.g.
+      // MovieBox streams DASH and hands back a ~95 KB `.mpd` manifest. Bin it and
+      // try the next mirror; only reject on a CONFIDENT small size (>0), so an
+      // unknown size (-1) never discards a real download.
+      final size = await _documentSize(path);
+      if (size > 0 && size < 524288) {
+        try {
+          await _dl.uri.deleteFile(Uri.parse(path));
+        } catch (_) {}
+        if (await _tryNext(rec)) return;
+        _put(
+          rec.copyWith(
+            status: DownloadStatus.failed,
+            error: () => "This source can't be downloaded (stream-only / DASH) — "
+                'try a different server',
           ),
         );
         notifyListeners();
