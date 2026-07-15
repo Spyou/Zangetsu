@@ -642,7 +642,14 @@ class _HomeViewState extends State<_HomeView> {
                     ),
 
                   // ── Bottom padding ────────────────────────────────────────
-                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                  // Clear the floating dock: its height arrives as MediaQuery
+                  // bottom padding (the shell's extendBody). A fixed gap hid the
+                  // last row's titles behind the capsule.
+                  SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 24 + MediaQuery.paddingOf(context).bottom,
+                    ),
+                  ),
                 ],
               );
             },
