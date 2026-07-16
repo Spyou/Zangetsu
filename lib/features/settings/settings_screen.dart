@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
@@ -829,6 +830,61 @@ class PlaybackSettingsScreen extends StatefulWidget {
 class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
 
+  int _cacheBytes = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCacheSize();
+  }
+
+  Future<void> _loadCacheSize() async {
+    final n = await MediaCache.sizeBytes();
+    if (mounted) setState(() => _cacheBytes = n);
+  }
+
+  Future<void> _clearCache() async {
+    await MediaCache.clear();
+    await _loadCacheSize();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Cache cleared')));
+  }
+
+  static const List<(String, String)> _bufferSizeOptions = [
+    ('low', 'Low (32 MB) — low-RAM / TV'),
+    ('default', 'Default (128 MB)'),
+    ('high', 'High (512 MB) — smoother'),
+  ];
+  static const List<(String, String)> _bufferLengthOptions = [
+    ('low', 'Low (15s) — low-RAM / TV'),
+    ('default', 'Default (60s)'),
+    ('high', 'High (120s) — smoother'),
+  ];
+
+  Future<void> _pickBufferSize() async {
+    final picked = await _pick<String>(
+      title: 'Video buffer size',
+      options: _bufferSizeOptions,
+      current: _prefs.videoBufferSize,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoBufferSize(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickBufferLength() async {
+    final picked = await _pick<String>(
+      title: 'Video buffer length',
+      options: _bufferLengthOptions,
+      current: _prefs.videoBufferLength,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoBufferLength(picked);
+    if (mounted) setState(() {});
+  }
+
   /// Multi-select of which fields the in-player info overlay shows.
   Future<void> _pickPlayerInfo() async {
     final selected = _prefs.playerInfoFields.toSet();
@@ -1414,6 +1470,39 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   await _prefs.setHoldSpeed(v);
                   if (mounted) setState(() {});
                 },
+              ),
+            ],
+          ),
+
+          // ── Cache (buffering + clear) ───────────────────────────────────
+          const SettingsSectionLabel('Cache'),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.memory_rounded,
+                title: 'Video buffer size',
+                subtitle: _labelFor(
+                  _bufferSizeOptions,
+                  _prefs.videoBufferSize,
+                  'Default (128 MB)',
+                ),
+                onTap: _pickBufferSize,
+              ),
+              SettingsTile(
+                icon: Icons.timelapse_rounded,
+                title: 'Video buffer length',
+                subtitle: _labelFor(
+                  _bufferLengthOptions,
+                  _prefs.videoBufferLength,
+                  'Default (60s)',
+                ),
+                onTap: _pickBufferLength,
+              ),
+              SettingsTile(
+                icon: Icons.delete_outline_rounded,
+                title: 'Clear image & video cache',
+                subtitle: MediaCache.formatBytes(_cacheBytes),
+                onTap: _clearCache,
               ),
             ],
           ),

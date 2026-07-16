@@ -161,6 +161,70 @@ class PlaybackPrefs {
     }
   }
 
+  // ── Video buffering (mpv cache) ────────────────────────────────────────────
+  // Presets, NOT raw values, so a user can't set a footgun. 'default' returns
+  // exactly today's hardcoded numbers, so a fresh install / untouched setting is
+  // byte-identical. 'low' shrinks the buffers for low-RAM / Android-TV to avoid
+  // OOM; 'high' enlarges them for smoother playback on strong devices.
+  static const List<String> bufferPresets = ['low', 'default', 'high'];
+
+  /// Forward+back demuxer buffer SIZE preset: 'low' | 'default' | 'high'.
+  String get videoBufferSize =>
+      _box.get('videoBufferSize', defaultValue: 'default') as String;
+  Future<void> setVideoBufferSize(String value) =>
+      _box.put('videoBufferSize', value);
+
+  /// Buffer LENGTH (seconds of readahead) preset: 'low' | 'default' | 'high'.
+  String get videoBufferLength =>
+      _box.get('videoBufferLength', defaultValue: 'default') as String;
+  Future<void> setVideoBufferLength(String value) =>
+      _box.put('videoBufferLength', value);
+
+  /// mpv `demuxer-max-bytes` for the current size preset (default = 128MiB).
+  String get bufferMaxBytes => bufferMaxBytesFor(videoBufferSize);
+
+  /// mpv `demuxer-max-back-bytes`, scaled with the size preset (default = 48MiB).
+  String get bufferMaxBackBytes => bufferMaxBackBytesFor(videoBufferSize);
+
+  /// Seconds for mpv `cache-secs` + `demuxer-readahead-secs` (default = 60).
+  int get bufferSecs => bufferSecsFor(videoBufferLength);
+
+  // Pure preset→mpv-value maps (static so they're unit-testable without Hive).
+  // The 'default' branch MUST return the app's legacy hardcoded values so an
+  // untouched setting keeps playback byte-identical.
+  static String bufferMaxBytesFor(String preset) {
+    switch (preset) {
+      case 'low':
+        return '32MiB';
+      case 'high':
+        return '512MiB';
+      default:
+        return '128MiB';
+    }
+  }
+
+  static String bufferMaxBackBytesFor(String preset) {
+    switch (preset) {
+      case 'low':
+        return '16MiB';
+      case 'high':
+        return '128MiB';
+      default:
+        return '48MiB';
+    }
+  }
+
+  static int bufferSecsFor(String preset) {
+    switch (preset) {
+      case 'low':
+        return 15;
+      case 'high':
+        return 120;
+      default:
+        return 60;
+    }
+  }
+
   /// Home hero banner animation: 'cinematic' (cross-fade + Ken-Burns) or
   /// 'parallax' (parallax slide). A/B while we settle on the final one.
   String get heroStyle =>

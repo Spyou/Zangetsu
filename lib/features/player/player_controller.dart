@@ -440,11 +440,16 @@ class PlayerCubit extends Cubit<PlayerState> {
         // instantly. Buffering ~30–60s ahead absorbs those dips. Playback still
         // starts as soon as there's enough to begin, then keeps filling ahead,
         // so this doesn't slow startup; ~128 MiB forward buffer is fine on phones.
+        // Buffer size + length come from the user's preset (Settings → Cache);
+        // the 'default' preset returns exactly these numbers (60s / 128MiB /
+        // 48MiB), so untouched installs are unchanged. 'low' shrinks them for
+        // low-RAM/TV, 'high' enlarges them.
+        final bufPrefs = sl<PlaybackPrefs>();
         await p.setProperty('cache', 'yes');
-        await p.setProperty('cache-secs', '60');
-        await p.setProperty('demuxer-readahead-secs', '60');
-        await p.setProperty('demuxer-max-bytes', '128MiB');
-        await p.setProperty('demuxer-max-back-bytes', '48MiB');
+        await p.setProperty('cache-secs', '${bufPrefs.bufferSecs}');
+        await p.setProperty('demuxer-readahead-secs', '${bufPrefs.bufferSecs}');
+        await p.setProperty('demuxer-max-bytes', bufPrefs.bufferMaxBytes);
+        await p.setProperty('demuxer-max-back-bytes', bufPrefs.bufferMaxBackBytes);
         // ── A/V stays in sync after a mid-stream stall. ───────────────────────
         // Symptom this fixes: a movie/episode freezes mid-playback (host throttle
         // or a brief dip — not a visible "buffering"), and on recovery the audio
