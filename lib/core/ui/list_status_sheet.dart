@@ -157,7 +157,7 @@ class ListStatusSheet extends StatelessWidget {
                 ),
               ),
               trailing: current == s
-                  ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                  ? Icon(Icons.check_rounded, color: AppColors.accent)
                   : null,
               onTap: () => Navigator.pop(context, s),
             ),

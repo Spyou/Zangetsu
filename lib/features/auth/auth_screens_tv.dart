@@ -56,7 +56,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accent, width: 2),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
         ),
       );
 
@@ -125,7 +125,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                           const SizedBox(height: 10),
                         ],
                         if (state.busy)
-                          const Center(
+                          Center(
                             child: SizedBox(
                               width: 28,
                               height: 28,
@@ -259,7 +259,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accent, width: 2),
+          borderSide: BorderSide(color: AppColors.accent, width: 2),
         ),
       );
 
@@ -336,7 +336,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                           const SizedBox(height: 10),
                         ],
                         if (state.busy)
-                          const Center(
+                          Center(
                             child: SizedBox(
                               width: 28,
                               height: 28,

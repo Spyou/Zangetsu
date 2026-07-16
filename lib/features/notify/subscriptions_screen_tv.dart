@@ -99,11 +99,11 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
                                         imageUrl: s.cover!,
                                         httpHeaders: s.coverHeaders,
                                         fit: BoxFit.cover,
-                                        errorWidget: (_, _, _) => const ColoredBox(
+                                        errorWidget: (_, _, _) => ColoredBox(
                                           color: AppColors.surface2,
                                         ),
                                       )
-                                    : const ColoredBox(color: AppColors.surface2),
+                                    : ColoredBox(color: AppColors.surface2),
                               ),
                             ),
                             title: Text(

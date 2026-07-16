@@ -1023,7 +1023,7 @@ class _DetailViewState extends State<_DetailView>
               labelColor: AppColors.accent,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorSize: TabBarIndicatorSize.label,
-              indicator: const UnderlineTabIndicator(
+              indicator: UnderlineTabIndicator(
                 borderSide: BorderSide(color: AppColors.accent, width: 2.5),
                 insets: EdgeInsets.symmetric(horizontal: 2),
               ),
@@ -1128,7 +1128,7 @@ class _Hero extends StatelessWidget {
   /// The static cover backdrop — used as the base layer when there's no
   /// trailer, and as the placeholder/fallback underneath the player.
   Widget _coverBackdrop() {
-    if (!hasCover) return const ColoredBox(color: AppColors.surface2);
+    if (!hasCover) return ColoredBox(color: AppColors.surface2);
     // Aniyomi path: when the x-ani-src marker is present, fetch image bytes
     // through the source's own OkHttpClient (which carries the CF session)
     // instead of CachedNetworkImage which cannot pass Cloudflare.
@@ -1139,9 +1139,9 @@ class _Hero extends StatelessWidget {
         fit: BoxFit.cover,
         loadingBuilder: (_, child, progress) => progress == null
             ? child
-            : const ColoredBox(color: AppColors.surface2),
+            : ColoredBox(color: AppColors.surface2),
         errorBuilder: (context, error, stackTrace) =>
-            const ColoredBox(color: AppColors.surface2),
+            ColoredBox(color: AppColors.surface2),
       );
     }
     return CachedNetworkImage(
@@ -1149,8 +1149,8 @@ class _Hero extends StatelessWidget {
       httpHeaders: coverHeaders,
       fit: BoxFit.cover,
       memCacheWidth: 800,
-      placeholder: (c, u) => const ColoredBox(color: AppColors.surface2),
-      errorWidget: (c, u, e) => const ColoredBox(color: AppColors.surface2),
+      placeholder: (c, u) => ColoredBox(color: AppColors.surface2),
+      errorWidget: (c, u, e) => ColoredBox(color: AppColors.surface2),
     );
   }
 
@@ -2169,7 +2169,7 @@ class _SeasonSheet extends StatelessWidget {
                           ),
                         ),
                         if (selected)
-                          const Icon(
+                          Icon(
                             Icons.check_rounded,
                             color: AppColors.accent,
                             size: 22,
@@ -2278,7 +2278,7 @@ class _EpisodeGridTile extends StatelessWidget {
         ? Colors.white
         : (isWatched ? AppColors.textTertiary : AppColors.textPrimary);
     final side = highlight
-        ? const BorderSide(color: AppColors.accent, width: 2)
+        ? BorderSide(color: AppColors.accent, width: 2)
         : (isResume
               ? BorderSide.none
               : const BorderSide(color: AppColors.hairline, width: 0.5));
@@ -2483,14 +2483,14 @@ class _EpisodeRow extends StatelessWidget {
                                   httpHeaders: coverHeaders,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 320,
-                                  placeholder: (c, u) => const ColoredBox(
+                                  placeholder: (c, u) => ColoredBox(
                                     color: AppColors.surface2,
                                   ),
-                                  errorWidget: (c, u, e) => const ColoredBox(
+                                  errorWidget: (c, u, e) => ColoredBox(
                                     color: AppColors.surface2,
                                   ),
                                 )
-                              : const ColoredBox(color: AppColors.surface2),
+                              : ColoredBox(color: AppColors.surface2),
                           if (isWatched)
                             const DecoratedBox(
                               decoration: BoxDecoration(
@@ -2631,7 +2631,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
 
   Widget _glyph(DownloadStatus? status, double progress) {
     final child = switch (status) {
-      DownloadStatus.done => const Icon(
+      DownloadStatus.done => Icon(
         Icons.download_done_rounded,
         color: AppColors.accent,
         size: 24,
@@ -2659,7 +2659,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
         color: AppColors.textTertiary,
         size: 22,
       ),
-      DownloadStatus.failed => const Icon(
+      DownloadStatus.failed => Icon(
         Icons.refresh_rounded,
         color: AppColors.accent,
         size: 24,
@@ -2771,7 +2771,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
             ),
             const SizedBox(height: 12),
             if (_loading)
-              const Padding(
+              Padding(
                 padding: EdgeInsets.symmetric(vertical: 28),
                 child: Center(
                   child: SizedBox(
@@ -2822,7 +2822,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         onTap: onTap,
         child: ListTile(
           contentPadding: const EdgeInsets.only(right: 8),
-          leading: const Icon(Icons.download_rounded, color: AppColors.accent),
+          leading: Icon(Icons.download_rounded, color: AppColors.accent),
           title: Text(
             label,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
@@ -2835,7 +2835,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     }
     return ListTile(
       contentPadding: const EdgeInsets.only(right: 8),
-      leading: const Icon(Icons.download_rounded, color: AppColors.accent),
+      leading: Icon(Icons.download_rounded, color: AppColors.accent),
       title: Text(
         label,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
@@ -3285,7 +3285,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
 
   Widget _sourceSection() {
     if (_loadingSources) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 16),
         child: Center(
           child: SizedBox(
@@ -3494,11 +3494,11 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                             fit: BoxFit.cover,
                             memCacheWidth: 280,
                             placeholder: (c, u) =>
-                                const ColoredBox(color: AppColors.surface2),
+                                ColoredBox(color: AppColors.surface2),
                             errorWidget: (c, u, e) =>
-                                const ColoredBox(color: AppColors.surface2),
+                                ColoredBox(color: AppColors.surface2),
                           )
-                        : const ColoredBox(color: AppColors.surface2),
+                        : ColoredBox(color: AppColors.surface2),
                   ),
                   // Small check badge — filled accent only when selected, a
                   // subtle dark chip otherwise (so it reads on any thumbnail).
@@ -3594,7 +3594,7 @@ class _ThumbnailProgressBar extends StatelessWidget {
           FractionallySizedBox(
             widthFactor: fraction,
             alignment: Alignment.centerLeft,
-            child: const ColoredBox(color: AppColors.accent),
+            child: ColoredBox(color: AppColors.accent),
           ),
         ],
       ),

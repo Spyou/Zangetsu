@@ -464,7 +464,7 @@ class _PickerSearchField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+          borderSide: BorderSide(color: AppColors.accent, width: 1.5),
         ),
       ),
     );
@@ -519,7 +519,7 @@ class _SourceRow extends StatelessWidget {
               ),
             ),
             if (isActive)
-              const Icon(Icons.check, color: AppColors.accent, size: 20),
+              Icon(Icons.check, color: AppColors.accent, size: 20),
           ],
         ),
       ),

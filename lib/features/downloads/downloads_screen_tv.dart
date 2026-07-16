@@ -131,9 +131,9 @@ class _TvShowGroup extends StatelessWidget {
                           httpHeaders: head.coverHeaders,
                           fit: BoxFit.cover,
                           errorWidget: (c, u, e) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                         )
-                      : const ColoredBox(color: AppColors.surface2),
+                      : ColoredBox(color: AppColors.surface2),
                 ),
               ),
               const SizedBox(width: 12),

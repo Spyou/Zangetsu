@@ -129,7 +129,7 @@ class TvSourcePicker extends StatelessWidget {
                           ),
                           // Check mark on the active source row
                           if (isActive)
-                            const Icon(Icons.check,
+                            Icon(Icons.check,
                                 color: AppColors.accent, size: 20),
                         ],
                       ),

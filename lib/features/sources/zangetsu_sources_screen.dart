@@ -1143,7 +1143,7 @@ class _ZTvViewState extends State<_ZTvView> {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(
+                                        Icon(
                                           Icons.add,
                                           color: AppColors.accent,
                                           size: 18,
@@ -1485,7 +1485,7 @@ class _ZTvInstalledRow extends StatelessWidget {
                     context.read<SourcesBloc>().add(SourceUpdated(_key)),
                 child: Tooltip(
                   message: 'Update to v$newVersion',
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.all(8),
                     child: Icon(
                       Icons.download_rounded,

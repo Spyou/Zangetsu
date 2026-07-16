@@ -467,9 +467,9 @@ class _ShowGroup extends StatelessWidget {
                             httpHeaders: head.coverHeaders,
                             fit: BoxFit.cover,
                             errorWidget: (c, u, e) =>
-                                const ColoredBox(color: AppColors.surface2),
+                                ColoredBox(color: AppColors.surface2),
                           )
-                        : const ColoredBox(color: AppColors.surface2),
+                        : ColoredBox(color: AppColors.surface2),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -659,7 +659,7 @@ class _StatusGlyph extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return switch (record.status) {
-      DownloadStatus.done => const Icon(
+      DownloadStatus.done => Icon(
         Icons.play_circle_fill_rounded,
         color: AppColors.accent,
         size: 32,
@@ -684,7 +684,7 @@ class _StatusGlyph extends StatelessWidget {
         color: AppColors.textTertiary,
         size: 26,
       ),
-      DownloadStatus.failed => const Icon(
+      DownloadStatus.failed => Icon(
         Icons.error_outline_rounded,
         color: AppColors.accent,
         size: 28,

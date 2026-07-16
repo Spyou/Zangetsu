@@ -154,12 +154,12 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
               httpHeaders: widget.headers,
               fit: BoxFit.cover,
               alignment: const Alignment(0, -0.25),
-              placeholder: (_, _) => const ColoredBox(color: AppColors.surface2),
+              placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
               errorWidget: (_, _, _) =>
-                  const ColoredBox(color: AppColors.surface2),
+                  ColoredBox(color: AppColors.surface2),
             )
           else
-            const ColoredBox(color: AppColors.surface2),
+            ColoredBox(color: AppColors.surface2),
 
           // Cinematic gradient — clear at top, melts to the sheet surface so the
           // image flows seamlessly into the content.
@@ -298,7 +298,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
                 value: p.clamp(0.0, 1.0),
                 minHeight: 5,
                 backgroundColor: AppColors.hairline,
-                valueColor: const AlwaysStoppedAnimation(AppColors.accent),
+                valueColor: AlwaysStoppedAnimation(AppColors.accent),
               ),
             ),
             const SizedBox(height: 16),
@@ -394,7 +394,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.play_arrow_rounded,
+                      Icon(Icons.play_arrow_rounded,
                           color: AppColors.bg, size: 24),
                       const SizedBox(width: 6),
                       Text(
@@ -544,7 +544,7 @@ class _IconAction extends StatelessWidget {
                     : null,
               ),
               child: busy
-                  ? const Padding(
+                  ? Padding(
                       padding: EdgeInsets.all(11),
                       child: CircularProgressIndicator(
                         strokeWidth: 2,

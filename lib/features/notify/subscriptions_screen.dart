@@ -175,9 +175,9 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
                 httpHeaders: s.coverHeaders,
                 fit: BoxFit.cover,
                 errorWidget: (_, _, _) =>
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
               )
-            : const ColoredBox(color: AppColors.surface2),
+            : ColoredBox(color: AppColors.surface2),
       ),
     ),
     title: Text(

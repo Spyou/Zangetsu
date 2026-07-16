@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'app_colors.dart';
 
 ThemeData buildAppTheme() {
-  const scheme = ColorScheme.dark(
+  final scheme = ColorScheme.dark(
     surface: AppColors.bg,
     primary: AppColors.textPrimary, // white primary actions
     secondary: AppColors.accent,

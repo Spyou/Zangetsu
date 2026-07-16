@@ -176,7 +176,7 @@ class _MyListViewState extends State<_MyListView> {
                 ),
                 title: Text('My List', style: AppText.body),
                 trailing: tlState.isMyList
-                    ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
                     : null,
                 onTap: () {
                   Navigator.pop(sheetContext);
@@ -188,7 +188,7 @@ class _MyListViewState extends State<_MyListView> {
                   leading: _switcherAvatar(t),
                   title: Text(t.displayName, style: AppText.body),
                   trailing: tlState.tracker == t
-                      ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                      ? Icon(Icons.check_rounded, color: AppColors.accent)
                       : null,
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -197,7 +197,7 @@ class _MyListViewState extends State<_MyListView> {
                 ),
               if (connected.isEmpty)
                 ListTile(
-                  leading: const Icon(
+                  leading: Icon(
                     Icons.add_link_rounded,
                     color: AppColors.accent,
                   ),
@@ -245,7 +245,7 @@ class _MyListViewState extends State<_MyListView> {
   Widget _avatarFallback() => Container(
     width: 28,
     height: 28,
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: AppColors.surface2,
       shape: BoxShape.circle,
     ),
@@ -278,7 +278,7 @@ class _MyListViewState extends State<_MyListView> {
     final Widget content;
     switch (tlState.status) {
       case TrackerListStatus.loading:
-        content = const Center(
+        content = Center(
           child: CircularProgressIndicator(color: AppColors.accent),
         );
       case TrackerListStatus.error:

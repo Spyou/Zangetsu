@@ -787,7 +787,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (catalog.isEmpty && _fetching)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
                           child: Center(
                             child: SizedBox(
@@ -997,7 +997,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
           ),
           const SizedBox(width: 8),
           if (_busy)
-            const SizedBox(
+            SizedBox(
               width: 96,
               height: 36,
               child: Center(
@@ -1259,7 +1259,7 @@ class _CsTvViewState extends State<_CsTvView> {
     // CloudStream is Android-only (native plugin host) — the old TV screen
     // gated the whole section behind Platform.isAndroid; preserve that here.
     if (!Platform.isAndroid) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: AppColors.bg,
         body: Stack(
           children: [
@@ -1347,7 +1347,7 @@ class _CsTvViewState extends State<_CsTvView> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.add,
                                         color: AppColors.accent,
                                         size: 18,
@@ -1992,7 +1992,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       if (catalog.isEmpty && _fetching)
-                        const Padding(
+                        Padding(
                           padding: EdgeInsets.symmetric(vertical: 20),
                           child: Center(
                             child: SizedBox(
@@ -2180,7 +2180,7 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
           ),
           const SizedBox(width: 8),
           if (_busy)
-            const SizedBox(
+            SizedBox(
               width: 80,
               height: 36,
               child: Center(

@@ -617,7 +617,7 @@ class _TvOptionPicker<T> extends StatelessWidget {
                         child: Text(options[i].$2, style: AppText.headline),
                       ),
                       if (options[i].$1 == current)
-                        const Icon(
+                        Icon(
                           Icons.check,
                           color: AppColors.accent,
                           size: 20,

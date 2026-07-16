@@ -77,7 +77,7 @@ class _Field extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.accent, width: 1),
+          borderSide: BorderSide(color: AppColors.accent, width: 1),
         ),
       ),
     );
@@ -356,7 +356,7 @@ class ProfileScreen extends StatelessWidget {
                       ),
                       Container(
                         padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           color: AppColors.accent,
                           shape: BoxShape.circle,
                         ),
@@ -429,7 +429,7 @@ class _AvatarPicker extends StatelessWidget {
               ),
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   color: AppColors.accent,
                   shape: BoxShape.circle,
                 ),
@@ -507,7 +507,7 @@ class _SubmitBlock extends StatelessWidget {
         SizedBox(
           height: 52,
           child: busy
-              ? const Center(
+              ? Center(
                   child: SizedBox(
                     width: 24,
                     height: 24,

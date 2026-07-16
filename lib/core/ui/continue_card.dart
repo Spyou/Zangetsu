@@ -76,7 +76,7 @@ class _ContinueCardState extends State<ContinueCard> {
                     fit: StackFit.expand,
                     children: [
                       if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
-                        const ColoredBox(color: AppColors.surface2)
+                        ColoredBox(color: AppColors.surface2)
                       else if (widget.headers?['x-ani-src'] != null)
                         // Cloudflare-walled Aniyomi cover — load via the source's
                         // native client instead of CachedNetworkImage.
@@ -87,7 +87,7 @@ class _ContinueCardState extends State<ContinueCard> {
                           ),
                           fit: BoxFit.cover,
                           errorBuilder: (context, err, st) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                         )
                       else
                         CachedNetworkImage(
@@ -97,9 +97,9 @@ class _ContinueCardState extends State<ContinueCard> {
                           fit: BoxFit.cover,
                           fadeInDuration: const Duration(milliseconds: 180),
                           placeholder: (context, url) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                           errorWidget: (context, url, err) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                         ),
 
                       // Subtle scrim for the play affordance + progress contrast.
@@ -138,7 +138,7 @@ class _ContinueCardState extends State<ContinueCard> {
                           children: [
                             Expanded(
                               flex: (p * 1000).round(),
-                              child: const ColoredBox(color: AppColors.accent),
+                              child: ColoredBox(color: AppColors.accent),
                             ),
                             Expanded(
                               flex: ((1.0 - p) * 1000).round(),

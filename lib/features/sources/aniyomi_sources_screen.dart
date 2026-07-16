@@ -622,7 +622,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
     // Aniyomi is Android-only (native extension host) — the old TV screen
     // gated this whole section behind Platform.isAndroid; preserve that here.
     if (!Platform.isAndroid) {
-      return const Scaffold(
+      return Scaffold(
         backgroundColor: AppColors.bg,
         body: Stack(
           children: [
@@ -714,7 +714,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      const Icon(
+                                      Icon(
                                         Icons.add,
                                         color: AppColors.accent,
                                         size: 18,
@@ -1303,7 +1303,7 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
               ),
               const SizedBox(width: 12),
               if (_busy)
-                const SizedBox(
+                SizedBox(
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(

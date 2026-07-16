@@ -1301,7 +1301,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                           minHeight: 4,
                           backgroundColor: Colors.white24,
                           valueColor:
-                              const AlwaysStoppedAnimation(AppColors.accent),
+                              AlwaysStoppedAnimation(AppColors.accent),
                         ),
                       ),
                       const SizedBox(width: 12),

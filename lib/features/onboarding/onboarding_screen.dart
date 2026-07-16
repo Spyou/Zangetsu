@@ -139,7 +139,7 @@ class _Logo extends StatelessWidget {
       borderRadius: BorderRadius.circular(22),
     ),
     alignment: Alignment.center,
-    child: const Icon(
+    child: Icon(
       Icons.play_circle_fill_rounded,
       color: AppColors.accent,
       size: 46,
@@ -350,7 +350,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
               if (_busy)
                 Column(
                   children: [
-                    const SizedBox(
+                    SizedBox(
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(

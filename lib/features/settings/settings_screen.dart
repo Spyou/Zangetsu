@@ -26,12 +26,14 @@ import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
+import 'appearance_screen.dart';
 import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
@@ -151,7 +153,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 title: Text(e.value, style: AppText.body),
                 trailing: e.key == _dnsChoice
-                    ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
                     : null,
                 onTap: () => Navigator.pop(ctx, e.key),
               ),
@@ -211,7 +213,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 title: Text(l.label, style: AppText.body),
                 trailing: l == prefs.layout
-                    ? const Icon(Icons.check_rounded, color: AppColors.accent)
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
                     : null,
                 onTap: () => Navigator.pop(ctx, l),
               ),
@@ -560,6 +562,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Interface & notifications
       _SettingsEntry(
         section: 'Interface & notifications',
+        icon: Icons.palette_outlined,
+        title: 'Appearance',
+        subtitle: 'Accent colour',
+        keywords:
+            'appearance accent colour color theme highlight personalise',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _value(ThemeController.accentLabel),
+            const SizedBox(width: 10),
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.hairline),
+              ),
+            ),
+          ],
+        ),
+        onTap: () => _push(const AppearanceScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Interface & notifications',
         icon: Icons.grid_view_rounded,
         title: 'Search layout',
         subtitle: 'How cross-source results are shown',
@@ -637,7 +664,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Buy me a coffee',
         keywords: 'support donate coffee tip contribute',
         // The one coral accent here: a filled heart.
-        trailing: const Icon(
+        trailing: Icon(
           Icons.favorite_rounded,
           color: AppColors.accent,
           size: 18,
@@ -751,7 +778,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           fontSize: size,
           letterSpacing: -0.5,
         ),
-        children: const [
+        children: [
           TextSpan(text: 'Settings'),
           TextSpan(text: '.', style: TextStyle(color: AppColors.accent)),
         ],
@@ -768,7 +795,7 @@ class _AccentDot extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     width: 6,
     height: 6,
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: AppColors.accent,
       shape: BoxShape.circle,
     ),
@@ -1055,7 +1082,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   style: AppText.body.copyWith(color: AppColors.textPrimary),
                 ),
                 trailing: isSelected
-                    ? const Icon(Icons.check, color: AppColors.accent)
+                    ? Icon(Icons.check, color: AppColors.accent)
                     : null,
               );
             }),

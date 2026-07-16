@@ -193,7 +193,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
                       child: Text(
                         g.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -363,13 +363,13 @@ class _Cover extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (url == null || url!.isEmpty)
-              const ColoredBox(color: AppColors.surface2)
+              ColoredBox(color: AppColors.surface2)
             else if (headers?['x-ani-src'] != null)
               Image(
                 image: AniyomiImage(int.parse(headers!['x-ani-src']!), url!),
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) =>
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
               )
             else
               CachedNetworkImage(
@@ -378,9 +378,9 @@ class _Cover extends StatelessWidget {
                 memCacheWidth: 144,
                 fit: BoxFit.cover,
                 placeholder: (_, _) =>
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
                 errorWidget: (_, _, _) =>
-                    const ColoredBox(color: AppColors.surface2),
+                    ColoredBox(color: AppColors.surface2),
               ),
             if (p > 0)
               Positioned(
@@ -392,7 +392,7 @@ class _Cover extends StatelessWidget {
                   children: [
                     Expanded(
                       flex: (p * 1000).round(),
-                      child: const ColoredBox(color: AppColors.accent),
+                      child: ColoredBox(color: AppColors.accent),
                     ),
                     Expanded(
                       flex: ((1.0 - p) * 1000).round(),

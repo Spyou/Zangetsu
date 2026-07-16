@@ -326,7 +326,7 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                                                 value: progress,
                                                 backgroundColor: Colors.white24,
                                                 valueColor:
-                                                    const AlwaysStoppedAnimation(
+                                                    AlwaysStoppedAnimation(
                                                   AppColors.accent,
                                                 ),
                                                 minHeight: 4,

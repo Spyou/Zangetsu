@@ -34,7 +34,7 @@ class _BrandLoaderState extends State<BrandLoader>
               borderRadius: BorderRadius.circular(2),
               child: Stack(
                 children: [
-                  const ColoredBox(
+                  ColoredBox(
                     color: AppColors.surface2,
                     child: SizedBox.expand(),
                   ),
@@ -42,7 +42,7 @@ class _BrandLoaderState extends State<BrandLoader>
                     animation: _c,
                     builder: (context, _) => Align(
                       alignment: Alignment(-1.0 + 2.0 * _c.value, 0),
-                      child: const FractionallySizedBox(
+                      child: FractionallySizedBox(
                         widthFactor: 0.4,
                         heightFactor: 1,
                         child: DecoratedBox(

@@ -661,7 +661,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
 
   Widget _buildBody() {
     if (_fetching) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 20),
         child: Center(
           child: SizedBox(
@@ -892,7 +892,7 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
           ),
           const SizedBox(width: 8),
           if (_busy)
-            const SizedBox(
+            SizedBox(
               width: 96,
               height: 36,
               child: Center(

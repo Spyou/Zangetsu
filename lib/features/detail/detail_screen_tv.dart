@@ -365,7 +365,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     return BlocBuilder<DetailCubit, DetailState>(
       builder: (context, state) {
         if (state.status == DetailStatus.loading) {
-          return const Scaffold(
+          return Scaffold(
             backgroundColor: AppColors.bg,
             body: Center(
               child: CircularProgressIndicator(color: AppColors.accent),
@@ -373,7 +373,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           );
         }
         if (state.status == DetailStatus.error || state.detail == null) {
-          return const Scaffold(
+          return Scaffold(
             backgroundColor: AppColors.bg,
             body: EmptyState(
               icon: Icons.error_outline,
@@ -478,14 +478,14 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   memCacheWidth: 400,
-                                  placeholder: (_, _) => const ColoredBox(
+                                  placeholder: (_, _) => ColoredBox(
                                     color: AppColors.surface2,
                                   ),
-                                  errorWidget: (_, _, _) => const ColoredBox(
+                                  errorWidget: (_, _, _) => ColoredBox(
                                     color: AppColors.surface2,
                                   ),
                                 )
-                              : const ColoredBox(color: AppColors.surface2),
+                              : ColoredBox(color: AppColors.surface2),
                         ),
                       ),
                     ),

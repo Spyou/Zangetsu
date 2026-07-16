@@ -136,7 +136,7 @@ class SettingsSectionLabel extends StatelessWidget {
           padding: EdgeInsets.fromLTRB(22, first ? 6 : 18, 22, 8),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 13,
               fontWeight: FontWeight.w600,

@@ -336,7 +336,7 @@ class _SearchViewState extends State<_SearchView> {
                               ),
                             ),
                             if (state.sort == opt)
-                              const Icon(
+                              Icon(
                                 Icons.check_rounded,
                                 size: 20,
                                 color: AppColors.accent,
@@ -1029,7 +1029,7 @@ class _SearchViewState extends State<_SearchView> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    const Icon(
+                    Icon(
                       Icons.chevron_right_rounded,
                       size: 18,
                       color: AppColors.accent,

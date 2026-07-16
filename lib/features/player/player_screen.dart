@@ -1954,7 +1954,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   if (!buffering || _controlsVisible) {
                     return const SizedBox.shrink();
                   }
-                  return const Center(
+                  return Center(
                     child: SizedBox(
                       width: 36,
                       height: 36,
@@ -2407,7 +2407,7 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                       children: [
                         Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.cast_connected,
                               color: AppColors.accent,
                               size: 18,
@@ -4350,11 +4350,11 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                               fit: BoxFit.cover,
                               memCacheWidth: 240,
                               placeholder: (c, u) =>
-                                  const ColoredBox(color: AppColors.surface2),
+                                  ColoredBox(color: AppColors.surface2),
                               errorWidget: (c, u, e) =>
-                                  const ColoredBox(color: AppColors.surface2),
+                                  ColoredBox(color: AppColors.surface2),
                             )
-                          : const ColoredBox(color: AppColors.surface2),
+                          : ColoredBox(color: AppColors.surface2),
                       if (cur)
                         const DecoratedBox(
                           decoration: BoxDecoration(color: Color(0x55000000)),
@@ -4848,7 +4848,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
 
   Widget _body() {
     if (_searching) {
-      return const Padding(
+      return Padding(
         padding: EdgeInsets.symmetric(vertical: 28),
         child: Center(
           child: SizedBox(
@@ -4899,7 +4899,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
           ],
         ),
         if (_downloading)
-          const Positioned.fill(
+          Positioned.fill(
             child: ColoredBox(
               color: Color(0x66000000),
               child: Center(
@@ -5466,7 +5466,7 @@ class _SheetRow extends StatelessWidget {
                 if (icon != null)
                   Icon(icon, color: AppColors.textSecondary, size: 20)
                 else if (active)
-                  const Icon(
+                  Icon(
                     Icons.check_circle_rounded,
                     color: AppColors.accent,
                     size: 20,

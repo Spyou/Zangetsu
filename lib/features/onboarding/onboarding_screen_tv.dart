@@ -217,7 +217,7 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                 if (_busy)
                   Column(
                     children: [
-                      const SizedBox(
+                      SizedBox(
                         width: 24,
                         height: 24,
                         child: CircularProgressIndicator(

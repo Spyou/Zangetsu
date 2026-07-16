@@ -311,7 +311,7 @@ class _HealthRow extends StatelessWidget {
             ),
           ),
           if (result.running)
-            const SizedBox(
+            SizedBox(
               width: 18,
               height: 18,
               child: CircularProgressIndicator(

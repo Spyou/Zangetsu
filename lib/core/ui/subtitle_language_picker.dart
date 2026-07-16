@@ -15,7 +15,7 @@ Future<String?> showSubtitleLanguagePicker(
         onTap: () => Navigator.pop(context, value),
         title: Text(label, style: AppText.body.copyWith(color: AppColors.textPrimary)),
         trailing: current == value
-            ? const Icon(Icons.check, color: AppColors.accent)
+            ? Icon(Icons.check, color: AppColors.accent)
             : null,
       );
   return showModalBottomSheet<String>(

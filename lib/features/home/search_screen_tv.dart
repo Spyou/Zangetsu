@@ -144,7 +144,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                             width: 1,
                           ),
                         ),
-                        focusedBorder: const UnderlineInputBorder(
+                        focusedBorder: UnderlineInputBorder(
                           borderSide: BorderSide(
                             color: AppColors.accent,
                             width: 2,

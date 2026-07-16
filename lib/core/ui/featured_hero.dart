@@ -156,7 +156,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
         fit: StackFit.expand,
         children: [
           // Plain page background.
-          const ColoredBox(color: AppColors.bg),
+          ColoredBox(color: AppColors.bg),
 
           // Soft ambient glow of the art's own colour bleeding OUTSIDE the card.
           // RADIAL so it fades to the page colour on every side — it dies out
@@ -212,7 +212,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
               gaplessPlayback: true,
             )
           else
-            const ColoredBox(color: AppColors.surface2),
+            ColoredBox(color: AppColors.surface2),
 
           // Colour-matched top gradient — pulled from the artwork.
           Positioned.fill(
@@ -237,7 +237,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
 
           // Bottom fade to the EXACT page colour, so the card bottom melts into
           // the page with no hard bottom edge/line.
-          const Positioned.fill(
+          Positioned.fill(
             child: IgnorePointer(
               child: DecoratedBox(
                 decoration: BoxDecoration(
@@ -377,7 +377,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: widget.onPlay,
-        child: const SizedBox(
+        child: SizedBox(
           width: 138,
           height: 44,
           child: Row(

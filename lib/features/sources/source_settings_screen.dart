@@ -215,7 +215,7 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
         future: _schemaFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
+            return Center(
               child: CircularProgressIndicator(color: AppColors.accent),
             );
           }
@@ -278,7 +278,7 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   /// Tile that opens the CloudStream plugin's OWN settings UI (native sheet).
   Widget _providerSettingsCard() => _card(
     child: ListTile(
-      leading: const Icon(Icons.tune_rounded, color: AppColors.accent),
+      leading: Icon(Icons.tune_rounded, color: AppColors.accent),
       title: Text('Provider settings', style: AppText.body),
       subtitle: Text(
         "Open this source's own settings (e.g. server, language)",

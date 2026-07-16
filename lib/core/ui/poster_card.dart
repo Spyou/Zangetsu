@@ -78,7 +78,7 @@ class _PosterCardState extends State<PosterCard> {
                     fit: StackFit.expand,
                     children: [
                       if (widget.imageUrl == null)
-                        const ColoredBox(color: AppColors.surface2)
+                        ColoredBox(color: AppColors.surface2)
                       else if (aniSrcId != null)
                         // Aniyomi path: fetch bytes through the source's own
                         // OkHttpClient (carries CF session cookies) instead of
@@ -92,9 +92,9 @@ class _PosterCardState extends State<PosterCard> {
                           loadingBuilder: (_, child, progress) =>
                               progress == null
                                   ? child
-                                  : const ColoredBox(color: AppColors.surface2),
+                                  : ColoredBox(color: AppColors.surface2),
                           errorBuilder: (context, error, stackTrace) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                         )
                       else
                         CachedNetworkImage(
@@ -104,9 +104,9 @@ class _PosterCardState extends State<PosterCard> {
                           fit: BoxFit.cover,
                           fadeInDuration: const Duration(milliseconds: 180),
                           placeholder: (context, url) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                           errorWidget: (context, url, err) =>
-                              const ColoredBox(color: AppColors.surface2),
+                              ColoredBox(color: AppColors.surface2),
                         ),
                       const DecoratedBox(
                         decoration: BoxDecoration(gradient: AppColors.scrim),

@@ -17,6 +17,7 @@ import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
@@ -72,14 +73,20 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
 
+  void _onThemeChanged() {
+    if (mounted) setState(() {}); // accent changed → rebuild so the app recolours
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    ThemeController.revision.addListener(_onThemeChanged);
   }
 
   @override
   void dispose() {
+    ThemeController.revision.removeListener(_onThemeChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -183,7 +190,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         // Dependencies ready — sl<> is resolvable from here on.
         final onboarded = _onboardedOverride ?? isOnboarded();
         final Widget home = onboarded
-            ? const RootShell()
+            ? RootShell() // not const: rebuilds to recolour on accent change
             : OnboardingScreen(
                 onDone: () => setState(() => _onboardedOverride = true),
               );

@@ -126,6 +126,7 @@ dependencies:
   # Read the device's supported ABIs so the updater downloads the matching
   # per-ABI APK (smaller/faster than the fat universal) instead of guessing.
   device_info_plus: ^12.4.0
+  flutter_colorpicker: ^1.1.0
 
 dev_dependencies:
   flutter_test:

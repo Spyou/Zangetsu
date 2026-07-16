@@ -257,7 +257,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               // .label → the bar matches the word width exactly (no padding
               // gap). Thin height.
               indicatorSize: TabBarIndicatorSize.label,
-              indicator: const UnderlineTabIndicator(
+              indicator: UnderlineTabIndicator(
                 borderSide: BorderSide(width: 3, color: AppColors.accent),
                 borderRadius: BorderRadius.all(Radius.circular(3)),
                 insets: EdgeInsets.only(bottom: 2),
@@ -527,7 +527,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
         child: Container(
           width: 32,
           height: 32,
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
               color: AppColors.surface, shape: BoxShape.circle),
           child: Icon(icon, size: 18, color: AppColors.textSecondary),
         ),
@@ -926,7 +926,7 @@ Widget _thumb(String? url, double w, double h) => ClipRRect(
         child: Stack(
           fit: StackFit.expand,
           children: [
-            const ColoredBox(color: AppColors.surface2),
+            ColoredBox(color: AppColors.surface2),
             if (url != null)
               Image.network(url, fit: BoxFit.cover,
                   errorBuilder: (_, _, _) => const SizedBox.shrink()),

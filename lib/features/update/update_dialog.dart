@@ -104,7 +104,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           children: [
             Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.system_update_rounded,
                   color: AppColors.accent,
                   size: 26,

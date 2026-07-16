@@ -287,7 +287,7 @@ class _AniyomiFilterSheetState extends State<_AniyomiFilterSheet> {
           enabledBorder: const UnderlineInputBorder(
             borderSide: BorderSide(color: AppColors.hairline),
           ),
-          focusedBorder: const UnderlineInputBorder(
+          focusedBorder: UnderlineInputBorder(
             borderSide: BorderSide(color: AppColors.accent),
           ),
           isDense: true,

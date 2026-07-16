@@ -188,7 +188,7 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
   Widget _fallbackAvatar() => Container(
     width: 52,
     height: 52,
-    decoration: const BoxDecoration(
+    decoration: BoxDecoration(
       color: AppColors.surface2,
       shape: BoxShape.circle,
     ),

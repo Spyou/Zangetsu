@@ -234,7 +234,7 @@ class _HubHeader extends StatelessWidget {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.download_rounded,
                       color: AppColors.accent,
                       size: 15,

@@ -39,7 +39,7 @@ class DonateScreen extends StatelessWidget {
                 borderRadius: BorderRadius.circular(24),
               ),
               alignment: Alignment.center,
-              child: const Icon(
+              child: Icon(
                 Icons.coffee_rounded,
                 color: AppColors.accent,
                 size: 42,

@@ -92,7 +92,7 @@ class _CommunitySheet extends StatelessWidget {
                     color: AppColors.accent.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.groups_rounded,
+                  child: Icon(Icons.groups_rounded,
                       color: AppColors.accent, size: 24),
                 ),
                 const SizedBox(width: 14),

@@ -109,12 +109,12 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
   Widget _body(ScheduleState state) {
     if (_tab == 1) {
       return state.loadingSoon
-          ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
+          ? Center(child: CircularProgressIndicator(color: AppColors.accent))
           : _MoviesRail(entries: state.comingSoon);
     }
     final byDay = _tab == 2 ? state.myListByDay : state.airingByDay;
     return state.loadingAiring
-        ? const Center(child: CircularProgressIndicator(color: AppColors.accent))
+        ? Center(child: CircularProgressIndicator(color: AppColors.accent))
         : _AiringRail(
             entries: byDay[_selectedDay] ?? const <AiringEntry>[],
             emptyMessage: _tab == 2
@@ -303,7 +303,7 @@ class _PosterTile extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    const DecoratedBox(
+                    DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
