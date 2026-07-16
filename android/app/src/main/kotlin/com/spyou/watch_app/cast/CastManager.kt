@@ -221,10 +221,26 @@ class CastManager(private val activity: Activity) : EventChannel.StreamHandler {
         else Log.w(TAG, "seek: no active session")
     }
 
+    /**
+     * "Stop casting" — DISCONNECT the session (return the TV to its input), not
+     * merely stop the current media. The old `client.stop()` only halted
+     * playback while leaving the session connected, so the phone stayed in cast
+     * mode and nothing appeared to happen. endCurrentSession(true) stops the
+     * receiver app; onSessionEnded then emits the disconnected state, which the
+     * player uses to leave cast mode and tear down the LAN proxy.
+     */
     fun stop() {
-        val client = currentSession?.remoteMediaClient
-        if (client != null) client.stop()
-        else Log.w(TAG, "stop: no active session")
+        val sm = castContext?.sessionManager
+        if (sm != null) {
+            try {
+                sm.endCurrentSession(true)
+            } catch (e: Exception) {
+                Log.w(TAG, "stop: endCurrentSession failed: ${e.message}")
+                currentSession?.remoteMediaClient?.stop() // best-effort fallback
+            }
+        } else {
+            currentSession?.remoteMediaClient?.stop()
+        }
     }
 
     /**

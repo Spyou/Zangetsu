@@ -185,25 +185,31 @@ class CastProxyServer {
     }
   }
 
-  /// The phone's LAN IPv4 — preferring a private (Wi-Fi) address the Chromecast
-  /// shares. Null if the device isn't on a reachable network.
+  /// The phone's LAN IPv4 the Chromecast can actually reach. Prefers the Wi-Fi
+  /// interface, skips VPN/virtual/cellular interfaces whose private IP the
+  /// Chromecast can't route to (a common cause of "cast connects but nothing
+  /// plays"). Null if the device isn't on a reachable network.
   Future<String?> _lanIp() async {
     try {
       final ifaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLoopback: false,
       );
+      // Pass 1: a real Wi-Fi interface with a private LAN IP.
       for (final i in ifaces) {
+        if (!isUsableCastInterface(i.name) || !_isWifiInterface(i.name)) continue;
         for (final a in i.addresses) {
-          final ip = a.address;
-          if (ip.startsWith('192.168.') ||
-              ip.startsWith('10.') ||
-              _is172Private(ip)) {
-            return ip;
-          }
+          if (isPrivateLanIp(a.address)) return a.address;
         }
       }
-      // Fall back to the first non-loopback IPv4.
+      // Pass 2: any usable (non-VPN/virtual) interface with a private LAN IP.
+      for (final i in ifaces) {
+        if (!isUsableCastInterface(i.name)) continue;
+        for (final a in i.addresses) {
+          if (isPrivateLanIp(a.address)) return a.address;
+        }
+      }
+      // Pass 3: last resort — first non-loopback IPv4.
       for (final i in ifaces) {
         for (final a in i.addresses) {
           if (!a.isLoopback) return a.address;
@@ -213,14 +219,33 @@ class CastProxyServer {
     return null;
   }
 
-  bool _is172Private(String ip) {
-    if (!ip.startsWith('172.')) return false;
-    final second = int.tryParse(ip.split('.')[1]) ?? 0;
-    return second >= 16 && second <= 31;
+  bool _isWifiInterface(String name) {
+    final n = name.toLowerCase();
+    return n.startsWith('wlan') || n.startsWith('ap') || n.startsWith('en');
   }
 
   String _randomToken() {
     final r = Random.secure();
     return List.generate(16, (_) => r.nextInt(16).toRadixString(16)).join();
   }
+}
+
+/// Whether [ip] is an RFC-1918 private LAN address (the range a Chromecast on
+/// the same Wi-Fi shares). Top-level + pure so it's unit-testable.
+bool isPrivateLanIp(String ip) {
+  if (ip.startsWith('192.168.') || ip.startsWith('10.')) return true;
+  if (ip.startsWith('172.')) {
+    final second = int.tryParse(ip.split('.')[1]) ?? 0;
+    return second >= 16 && second <= 31;
+  }
+  return false;
+}
+
+/// Whether a network interface should be used to advertise the cast proxy.
+/// Excludes VPN / virtual / cellular interfaces (tun/ppp/rmnet/wireguard/…)
+/// whose address a Chromecast on the LAN can't reach. Pure/unit-testable.
+bool isUsableCastInterface(String name) {
+  final n = name.toLowerCase();
+  const bad = ['tun', 'tap', 'ppp', 'rmnet', 'wg', 'utun', 'ipsec', 'vpn', 'pdp'];
+  return !bad.any(n.startsWith);
 }

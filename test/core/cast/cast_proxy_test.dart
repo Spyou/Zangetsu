@@ -90,4 +90,35 @@ seg0.ts
     expect(out, contains('#EXTM3U'));
     expect(out, contains('#EXT-X-VERSION:3'));
   });
+
+  group('isPrivateLanIp', () {
+    test('accepts RFC-1918 ranges', () {
+      expect(isPrivateLanIp('192.168.1.42'), isTrue);
+      expect(isPrivateLanIp('10.0.0.5'), isTrue);
+      expect(isPrivateLanIp('172.16.0.1'), isTrue);
+      expect(isPrivateLanIp('172.31.255.254'), isTrue);
+    });
+    test('rejects public + out-of-range 172', () {
+      expect(isPrivateLanIp('8.8.8.8'), isFalse);
+      expect(isPrivateLanIp('172.15.0.1'), isFalse); // below 16
+      expect(isPrivateLanIp('172.32.0.1'), isFalse); // above 31
+    });
+  });
+
+  group('isUsableCastInterface', () {
+    test('accepts real Wi-Fi / ethernet interfaces', () {
+      expect(isUsableCastInterface('wlan0'), isTrue);
+      expect(isUsableCastInterface('en0'), isTrue);
+      expect(isUsableCastInterface('ap0'), isTrue);
+    });
+    test('rejects VPN / virtual / cellular interfaces', () {
+      // The bug: a VPN/hotspot interface IP was advertised to the Chromecast,
+      // which can't route to it, so nothing played.
+      expect(isUsableCastInterface('tun0'), isFalse);
+      expect(isUsableCastInterface('ppp0'), isFalse);
+      expect(isUsableCastInterface('rmnet_data0'), isFalse);
+      expect(isUsableCastInterface('wg0'), isFalse);
+      expect(isUsableCastInterface('utun3'), isFalse);
+    });
+  });
 }
