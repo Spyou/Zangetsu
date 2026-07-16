@@ -25,6 +25,7 @@ import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
 import '../../core/models/person.dart';
+import '../home/search_screen.dart';
 import '../people/person_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
@@ -859,11 +860,21 @@ class _DetailViewState extends State<_DetailView>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    detail.title,
-                    style: AppText.largeTitle.copyWith(fontSize: 28),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  // Tapping the title opens the full search pre-filled with it
+                  // (current source + all sources, per Search's own scope toggle).
+                  GestureDetector(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            SearchScreen(initialQuery: detail.title),
+                      ),
+                    ),
+                    child: Text(
+                      detail.title,
+                      style: AppText.largeTitle.copyWith(fontSize: 28),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                   if (metaLine.isNotEmpty) ...[
                     const SizedBox(height: 8),
