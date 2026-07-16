@@ -24,6 +24,8 @@ import '../../core/models/media_detail.dart';
 import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
+import '../../core/models/person.dart';
+import '../people/person_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -328,11 +330,17 @@ class _DetailViewState extends State<_DetailView>
         sourceId: widget.item.sourceId,
       );
       if (!mounted) return;
-      if (results.isEmpty) {
+      final match = bestTitleMatch(
+        results,
+        r.title,
+        altTitle: r.romaji,
+        wantedMalId: r.malId,
+      );
+      if (match == null) {
         _snack('“${r.title}” isn’t on this source');
         return;
       }
-      Navigator.of(context).push(DetailScreen.route(results.first));
+      Navigator.of(context).push(DetailScreen.route(match));
     } catch (_) {
       if (mounted) _snack('Couldn’t open “${r.title}”');
     }
@@ -1056,6 +1064,9 @@ class _DetailViewState extends State<_DetailView>
             cast: state.cast.isNotEmpty
                 ? state.cast
                 : [for (final n in detail.cast) CastMember(name: n)],
+            onOpenPerson: (ref) => Navigator.of(context).push(
+              PersonPage.route(ref, sourceId: widget.item.sourceId),
+            ),
           ),
           // ── Relations ─────────────────────────────────────────────────────────
           _RelationsTab(relations: state.relations, onOpen: _openRelation),
@@ -3599,8 +3610,13 @@ Widget _emptyTab(IconData icon, String message) => LayoutBuilder(
 );
 
 class _CastTab extends StatelessWidget {
-  const _CastTab({required this.cast});
+  const _CastTab({required this.cast, this.onOpenPerson});
   final List<CastMember> cast;
+
+  /// Tapping a card with a resolved [CastMember.person] opens their page
+  /// (character/actor). Cards without a person id (source-supplied cast) stay
+  /// non-tappable.
+  final void Function(PersonRef)? onOpenPerson;
 
   @override
   Widget build(BuildContext context) {
@@ -3618,7 +3634,7 @@ class _CastTab extends StatelessWidget {
       itemCount: cast.length,
       itemBuilder: (_, i) {
         final m = cast[i];
-        return Column(
+        final card = Column(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -3658,6 +3674,13 @@ class _CastTab extends StatelessWidget {
                 ),
               ),
           ],
+        );
+        final ref = m.person;
+        if (ref == null || onOpenPerson == null) return card;
+        return GestureDetector(
+          onTap: () => onOpenPerson!(ref),
+          behavior: HitTestBehavior.opaque,
+          child: card,
         );
       },
     );

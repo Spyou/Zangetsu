@@ -160,8 +160,9 @@ class DetailCubit extends Cubit<DetailState> {
     }
 
     // Prefer id-based enrichment (AniList/TMDB) — it's richer: actor photos,
-    // more entries, properly-linked relations.
-    if (d.malId != null || d.tmdbId != null) {
+    // more entries, properly-linked relations. Id-less anime (Aniyomi, most
+    // CloudStream) also go through fetch(), which resolves extras by title.
+    if (d.malId != null || d.tmdbId != null || d.type == ProviderType.anime) {
       try {
         final extras = await sl<MetadataEnrichment>().fetch(d);
         if (isClosed) return;

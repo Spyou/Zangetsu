@@ -34,6 +34,7 @@ import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../metadata/metadata_enrichment.dart';
+import '../metadata/people_service.dart';
 import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
 import '../trailer/trailer_service.dart';
@@ -183,6 +184,10 @@ Future<void> initDependencies() async {
   // Detail-screen Cast + Relations enrichment (AniList for anime, TMDB for
   // movie/TV). Keys off the malId/tmdbId the providers already expose.
   sl.registerSingleton<MetadataEnrichment>(MetadataEnrichment(dio));
+
+  // Person pages (characters + voice actors/staff from AniList, movie/TV people
+  // from TMDB), opened from the Detail screen's Cast tab.
+  sl.registerSingleton<PeopleService>(PeopleService(dio));
 
   // TMDB title-logo lookup for the home hero (stylized title art; falls back to
   // text when absent). Cached per title (in-memory + a persisted Hive box, so

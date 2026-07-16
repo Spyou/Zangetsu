@@ -3,6 +3,8 @@ import 'package:dio/dio.dart';
 import '../anilist/anilist_api.dart';
 import '../models/media_detail.dart';
 import '../models/media_extras.dart';
+import '../models/person.dart';
+import '../models/provider_info.dart';
 
 /// Fetches Cast + Relations for a title from a metadata API — AniList for anime
 /// (keyed by MAL id), TMDB for movies/series (keyed by TMDB id, via the same
@@ -27,6 +29,12 @@ class MetadataEnrichment {
     try {
       if (d.malId != null) return await _anilist.mediaExtras(d.malId!);
       if (d.tmdbId != null) return await _tmdb(d.tmdbId!, d.tmdbIsTv);
+      // Id-less anime (Aniyomi, most CloudStream): AniList exposes no id, so
+      // resolve cast + relations by title search. Best-effort; a wrong title
+      // match just yields slightly-off extras (never a crash).
+      if (d.type == ProviderType.anime && d.title.trim().isNotEmpty) {
+        return await _anilist.mediaExtrasBySearch(d.title);
+      }
     } catch (_) {}
     return (cast: <CastMember>[], relations: <MediaRelation>[]);
   }
@@ -47,10 +55,20 @@ class MetadataEnrichment {
         final name = c['name'] as String?;
         if (name == null || name.isEmpty) continue;
         final pp = c['profile_path'] as String?;
+        final personId = (c['id'] as num?)?.toInt();
+        final photo = (pp != null && pp.isNotEmpty) ? '$_img/w185$pp' : null;
         cast.add(CastMember(
           name: name,
           role: c['character'] as String?,
-          photo: (pp != null && pp.isNotEmpty) ? '$_img/w185$pp' : null,
+          photo: photo,
+          person: personId == null
+              ? null
+              : PersonRef(
+                  id: personId,
+                  source: PersonSource.tmdb,
+                  name: name,
+                  photo: photo,
+                ),
         ));
       }
     }

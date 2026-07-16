@@ -97,3 +97,41 @@ class MediaItem extends Equatable {
     imdbId,
   ];
 }
+
+/// Pick the search result that best matches a tapped relation / work. Prefers a
+/// [MediaItem.malId] match (exact + unique), then an exact normalized match on
+/// EITHER the English [wanted] or the Romaji [altTitle] against the result's
+/// title/englishTitle, else the first result.
+///
+/// The alt title matters because metadata APIs return English titles while many
+/// sources index by Romaji — tapping "Mushoku Tensei: Jobless Reincarnation
+/// Season 2 Part 2" must still find the source's "Mushoku Tensei II: Isekai
+/// Ittara Honki Dasu Part 2". Returns null only when [results] is empty.
+MediaItem? bestTitleMatch(
+  List<MediaItem> results,
+  String wanted, {
+  String? altTitle,
+  int? wantedMalId,
+}) {
+  if (results.isEmpty) return null;
+  if (wantedMalId != null) {
+    for (final m in results) {
+      if (m.malId != null && m.malId == wantedMalId) return m;
+    }
+  }
+  final wants = <String>{
+    normalizeTitle(wanted),
+    if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
+  }..removeWhere((s) => s.isEmpty);
+  for (final m in results) {
+    if (wants.contains(normalizeTitle(m.title)) ||
+        (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)))) {
+      return m;
+    }
+  }
+  return results.first;
+}
+
+/// Lowercase + strip non-alphanumerics, for tolerant title comparison.
+String normalizeTitle(String s) =>
+    s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');

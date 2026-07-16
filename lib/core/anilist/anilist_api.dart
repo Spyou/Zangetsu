@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/media_extras.dart';
+import '../models/person.dart';
 
 /// The signed-in AniList user.
 class AniListViewer {
@@ -92,24 +93,70 @@ class AniListApi {
     return (id: (m['id'] as num).toInt(), episodes: (m['episodes'] as num?)?.toInt());
   }
 
+  /// The characters + relations selection, shared by the MAL-id and
+  /// title-search enrichment queries.
+  static const String _extrasSelection =
+      'characters(sort:[ROLE,RELEVANCE],perPage:24){ edges{ role '
+      'node{ id name{full} image{medium} } '
+      'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
+      'relations{ edges{ relationType '
+      'node{ idMal type format title{romaji english} coverImage{medium} } } }';
+
   /// Cast (characters + their Japanese voice actors) and related anime titles
   /// for an anime, by MAL id. Unauthenticated; returns empty lists on miss.
   Future<({List<CastMember> cast, List<MediaRelation> relations})> mediaExtras(
     int idMal,
   ) async {
-    const q =
-        'query(\$idMal:Int){ Media(idMal:\$idMal,type:ANIME){ '
-        'characters(sort:[ROLE,RELEVANCE],perPage:24){ edges{ role '
-        'node{ name{full} image{medium} } '
-        'voiceActors(language:JAPANESE,sort:[RELEVANCE]){ name{full} } } } '
-        'relations{ edges{ relationType '
-        'node{ idMal type format title{romaji english} coverImage{medium} } } } } }';
-    final d = await _gql(q, {'idMal': idMal});
+    final d = await _gql(
+      'query(\$idMal:Int){ Media(idMal:\$idMal,type:ANIME){ $_extrasSelection } }',
+      {'idMal': idMal},
+    );
     final media = d?['Media'];
     if (media is! Map) {
       return (cast: <CastMember>[], relations: <MediaRelation>[]);
     }
+    return _parseExtras(media);
+  }
 
+  /// Cast + relations for an anime resolved by TITLE search — the fallback for
+  /// id-less sources (Aniyomi, most CloudStream) that expose no MAL id. Tries
+  /// the raw title, then a cleaned variant (bracketed "(Dub)"/"(TV)"/
+  /// "[Uncensored]" suffixes break AniList's search). Best-effort, empty on miss.
+  Future<({List<CastMember> cast, List<MediaRelation> relations})>
+      mediaExtrasBySearch(String search) async {
+    var r = await _searchExtras(search);
+    if (r.cast.isEmpty && r.relations.isEmpty) {
+      final cleaned = _cleanSearchTitle(search);
+      if (cleaned.isNotEmpty && cleaned != search) {
+        r = await _searchExtras(cleaned);
+      }
+    }
+    return r;
+  }
+
+  Future<({List<CastMember> cast, List<MediaRelation> relations})>
+      _searchExtras(String search) async {
+    final d = await _gql(
+      'query(\$search:String){ Media(search:\$search,type:ANIME){ $_extrasSelection } }',
+      {'search': search},
+    );
+    final media = d?['Media'];
+    if (media is! Map) {
+      return (cast: <CastMember>[], relations: <MediaRelation>[]);
+    }
+    return _parseExtras(media);
+  }
+
+  /// Strip bracketed/parenthetical qualifiers a source appends — "(Dub)",
+  /// "(TV)", "[Uncensored]" — which break AniList's title search.
+  static String _cleanSearchTitle(String t) => t
+      .replaceAll(RegExp(r'[\(\[][^\)\]]*[\)\]]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  ({List<CastMember> cast, List<MediaRelation> relations}) _parseExtras(
+    Map media,
+  ) {
     final cast = <CastMember>[];
     final cEdges = media['characters'] is Map ? media['characters']['edges'] : null;
     if (cEdges is List) {
@@ -130,7 +177,20 @@ class AniListApi {
                 (vas.first as Map)['name'] is Map)
             ? (vas.first as Map)['name']['full'] as String?
             : null;
-        cast.add(CastMember(name: name, role: va, photo: img));
+        final charId = (node is Map) ? (node['id'] as num?)?.toInt() : null;
+        cast.add(CastMember(
+          name: name,
+          role: va,
+          photo: img,
+          person: charId == null
+              ? null
+              : PersonRef(
+                  id: charId,
+                  source: PersonSource.anilistCharacter,
+                  name: name,
+                  photo: img,
+                ),
+        ));
       }
     }
 
@@ -142,6 +202,7 @@ class AniListApi {
         final node = e['node'];
         if (node is! Map || node['type'] != 'ANIME') continue; // video app only
         final t = node['title'];
+        final romaji = (t is Map) ? t['romaji'] as String? : null;
         final title =
             (t is Map) ? (t['english'] ?? t['romaji']) as String? : null;
         if (title == null || title.isEmpty) continue;
@@ -150,6 +211,7 @@ class AniListApi {
             : null;
         relations.add(MediaRelation(
           title: title,
+          romaji: romaji,
           cover: cover,
           relation: _relationLabel(
             e['relationType'] as String?,
