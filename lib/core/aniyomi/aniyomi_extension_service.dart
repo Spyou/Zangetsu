@@ -194,13 +194,26 @@ class AniyomiExtensionService {
       receiveTimeout: _apkDownloadTimeout,
       sendTimeout: _apkDownloadTimeout,
     );
-    try {
-      await dio.download(url, savePath, options: opts);
-    } on DioException {
-      final mirror = jsdelivrMirror(url);
-      if (mirror == null) rethrow;
-      await dio.download(mirror, savePath, options: opts);
+    // Try the direct URL first, then every GitHub-raw mirror in turn. Some
+    // phones/ISPs block raw.githubusercontent.com but can reach the CDNs/proxies
+    // (confirmed: OnePlus/Android 16 blocks GitHub raw, reaches jsDelivr), and
+    // any single mirror can be missing a file (jsDelivr 404'd a salmanbappi apk
+    // that exists on GitHub), so we fall through the whole list.
+    final urls = <String>[url, ...githubMirrors(url)];
+    Object? lastError;
+    for (final u in urls) {
+      try {
+        await dio.download(u, savePath, options: opts);
+        return; // first success wins
+      } on DioException catch (e) {
+        lastError = e;
+        debugPrint(
+          '[aniyomi] download mirror failed '
+          '(${e.response?.statusCode ?? e.type}): $u',
+        );
+      }
     }
+    throw lastError ?? Exception('all download mirrors failed');
   }
 
   /// Read-only check: fetches [repoUrl]'s index and returns updates for every
@@ -254,4 +267,25 @@ String? jsdelivrMirror(String url) {
   final ref = segs[2];
   final path = segs.sublist(3).join('/');
   return 'https://cdn.jsdelivr.net/gh/$owner/$repo@$ref/$path';
+}
+
+/// GitHub-raw download mirrors, tried in order after the direct fetch fails
+/// (some phones/ISPs block raw.githubusercontent.com but reach these). Returns
+/// an empty list for non-GitHub-raw URLs. jsDelivr is a CDN mirror (can lag or
+/// miss files); gh-proxy and statically proxy the LIVE raw URL 1:1, so they
+/// serve anything GitHub raw has — the reliable fallback when jsDelivr 404s.
+List<String> githubMirrors(String url) {
+  final u = Uri.tryParse(url);
+  if (u == null || u.host != 'raw.githubusercontent.com') return const [];
+  final segs = u.pathSegments;
+  if (segs.length < 4) return const [];
+  final owner = segs[0];
+  final repo = segs[1];
+  final ref = segs[2];
+  final path = segs.sublist(3).join('/');
+  return [
+    'https://cdn.jsdelivr.net/gh/$owner/$repo@$ref/$path',
+    'https://gh-proxy.com/$url',
+    'https://cdn.statically.io/gh/$owner/$repo/$ref/$path',
+  ];
 }

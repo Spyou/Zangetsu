@@ -29,4 +29,21 @@ void main() {
   test('returns null when the path is too short to be a raw file', () {
     expect(jsdelivrMirror('https://raw.githubusercontent.com/o/r'), isNull);
   });
+
+  group('githubMirrors', () {
+    test('returns jsDelivr + gh-proxy + statically for a raw URL', () {
+      const url =
+          'https://raw.githubusercontent.com/salmanbappi/extensions-repo/main/apk/x.apk';
+      expect(githubMirrors(url), [
+        'https://cdn.jsdelivr.net/gh/salmanbappi/extensions-repo@main/apk/x.apk',
+        'https://gh-proxy.com/$url',
+        'https://cdn.statically.io/gh/salmanbappi/extensions-repo/main/apk/x.apk',
+      ]);
+    });
+
+    test('is empty for non-github-raw hosts', () {
+      expect(githubMirrors('https://example.com/apk/ext.apk'), isEmpty);
+      expect(githubMirrors('https://raw.githubusercontent.com/o/r'), isEmpty);
+    });
+  });
 }

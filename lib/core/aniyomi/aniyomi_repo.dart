@@ -42,7 +42,7 @@ class AniyomiRepoEntry {
     required this.nsfw,
     required this.sources,
     required String repoBaseUrl,
-  }) : apkUrl = '$repoBaseUrl/apk/$apk';
+  }) : apkUrl = '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk';
 
   final String name;
   final String pkg;
@@ -62,6 +62,28 @@ class AniyomiRepoEntry {
 
 /// Utilities for reading Aniyomi extension repository index files.
 class AniyomiRepo {
+  /// Normalises a repo base URL to the DIRECTORY that holds `index.min.json`
+  /// and the `apk/` folder. Users (and older saved repos) sometimes store the
+  /// full index URL (`.../main/index.min.json`) instead of the directory
+  /// (`.../main`); left as-is that produces a broken `.../index.min.json/apk/…`
+  /// download URL that 404s on every mirror. Strips a trailing
+  /// `/index.min.json` (or `/index.json`) and any trailing slash.
+  static String normalizeBase(String base) {
+    var b = base.trim();
+    while (b.endsWith('/')) {
+      b = b.substring(0, b.length - 1);
+    }
+    if (b.endsWith('/index.min.json')) {
+      b = b.substring(0, b.length - '/index.min.json'.length);
+    } else if (b.endsWith('/index.json')) {
+      b = b.substring(0, b.length - '/index.json'.length);
+    }
+    while (b.endsWith('/')) {
+      b = b.substring(0, b.length - 1);
+    }
+    return b;
+  }
+
   /// Parses an `index.min.json` JSON array string into a list of
   /// [AniyomiRepoEntry].
   ///
@@ -121,7 +143,8 @@ class AniyomiRepo {
   /// failure.
   static Future<List<AniyomiRepoEntry>> fetchIndex(String repoBaseUrl) async {
     final dio = GetIt.instance<Dio>();
-    final primaryUrl = '$repoBaseUrl/index.min.json';
+    final base = normalizeBase(repoBaseUrl);
+    final primaryUrl = '$base/index.min.json';
 
     String? jsDelivrUrl() {
       final uri = Uri.tryParse(primaryUrl);
@@ -161,6 +184,6 @@ class AniyomiRepo {
     }
 
     if (rawJson == null || rawJson.isEmpty) return [];
-    return parseIndex(rawJson, repoBaseUrl: repoBaseUrl);
+    return parseIndex(rawJson, repoBaseUrl: base);
   }
 }
