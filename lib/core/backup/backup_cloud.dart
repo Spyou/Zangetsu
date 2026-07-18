@@ -1,94 +1,67 @@
-// ignore_for_file: deprecated_member_use
 import 'dart:convert';
 
-import 'package:appwrite/appwrite.dart';
-import 'package:crypto/crypto.dart';
+import '../supabase/supabase_service.dart';
 
-import '../appwrite/appwrite_service.dart';
-import '../environment.dart';
+/// Thin transport seam over the `backups` Supabase table, injectable so
+/// [BackupCloud] is unit-testable without a live Supabase project.
+class BackupRemote {
+  BackupRemote(this._service);
 
-/// Appwrite cloud transport for full-app backups.
-///
-/// Each signed-in account gets exactly one document in the [backups] collection,
-/// identified by a deterministic sha256-based id. The [upload] method uses the
-/// same update-then-create upsert pattern as WatchHistory._pushToCloud.
-class BackupCloud {
-  BackupCloud(this._aw);
-  final AppwriteService _aw;
+  final SupabaseService _service;
 
-  /// Deterministic per-account document id: sha256("$userId::backup")[:32].
-  static String docId(String userId) =>
-      sha256.convert(utf8.encode('$userId::backup')).toString().substring(0, 32);
-
-  /// Upload (upsert) [payload] to the Appwrite backups collection.
-  ///
-  /// Tries to update the existing document first; if that fails (first write /
-  /// 404) it creates a new one with owner-only permissions. A create failure is
-  /// **not** swallowed — this is an explicit, user-initiated backup, so the
-  /// caller must be able to report when it didn't save (e.g. the backups
-  /// collection isn't set up yet, or the device is offline). Throws on failure.
-  Future<void> upload(String userId, Map<String, dynamic> payload) async {
-    final id = docId(userId);
-    final data = {
-      'userId': userId,
-      'payload': jsonEncode(payload),
-      'updatedAt': DateTime.now().toUtc().toIso8601String(),
-    };
-    try {
-      await _aw.databases.updateDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.backupsCollectionId,
-        documentId: id,
-        data: data,
-      );
-    } catch (_) {
-      // No document yet (first backup) or the update failed → create it. Let a
-      // create failure propagate so the UI reports the backup didn't save.
-      await _aw.databases.createDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.backupsCollectionId,
-        documentId: id,
-        data: data,
-        permissions: [
-          Permission.read(Role.user(userId)),
-          Permission.update(Role.user(userId)),
-          Permission.delete(Role.user(userId)),
-        ],
-      );
-    }
+  Future<void> upsertRow(Map<String, dynamic> row) async {
+    await _service.client.from('backups').upsert(row);
   }
 
-  /// Download the backup payload from Appwrite.
+  Future<Map<String, dynamic>?> getRow(String userKey) async {
+    final res = await _service.client
+        .from('backups')
+        .select()
+        .eq('user_key', userKey)
+        .maybeSingle();
+    return res;
+  }
+}
+
+/// Supabase cloud transport for full-app backups.
+///
+/// Each signed-in account gets exactly one row in the `backups` table, keyed
+/// by `user_key`. [upload] upserts it directly (no update-then-create dance —
+/// that was an Appwrite-ism; Postgres has native upsert).
+class BackupCloud {
+  BackupCloud(SupabaseService service, {BackupRemote? remote})
+      : _remote = remote ?? BackupRemote(service);
+
+  final BackupRemote _remote;
+
+  /// Upload (upsert) [payload] to the Supabase backups table.
   ///
-  /// Returns the decoded [Map] stored in the `payload` field, or `null` on
-  /// 404, network failure, or any other error.
+  /// This is an explicit, user-initiated backup, so a failure is **not**
+  /// swallowed — the caller must be able to report when it didn't save (e.g.
+  /// the device is offline). Throws on failure.
+  Future<void> upload(String userId, Map<String, dynamic> payload) async {
+    await _remote.upsertRow({
+      'user_key': userId,
+      'payload': jsonEncode(payload),
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    });
+  }
+
+  /// Download the backup payload from Supabase.
+  ///
+  /// Returns the decoded [Map] stored in the `payload` column, or `null` if
+  /// there is no row for [userId].
   Future<Map<String, dynamic>?> download(String userId) async {
-    try {
-      final doc = await _aw.databases.getDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.backupsCollectionId,
-        documentId: docId(userId),
-      );
-      final raw = doc.data['payload'];
-      if (raw is! String) return null;
-      return jsonDecode(raw) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
+    final row = await _remote.getRow(userId);
+    if (row == null) return null;
+    return jsonDecode(row['payload'] as String) as Map<String, dynamic>;
   }
 
   /// Returns the UTC timestamp of the last successful cloud backup, or `null`
-  /// if the document does not exist or any error occurs.
+  /// if no row exists for [userId] or `updated_at` doesn't parse.
   Future<DateTime?> lastBackupAt(String userId) async {
-    try {
-      final doc = await _aw.databases.getDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.backupsCollectionId,
-        documentId: docId(userId),
-      );
-      return DateTime.tryParse(doc.data['updatedAt'] as String? ?? '');
-    } catch (_) {
-      return null;
-    }
+    final row = await _remote.getRow(userId);
+    if (row == null) return null;
+    return DateTime.tryParse(row['updated_at'] as String? ?? '');
   }
 }
