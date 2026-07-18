@@ -2,29 +2,25 @@ import 'package:appwrite/appwrite.dart';
 
 import '../environment.dart';
 
-/// Thin holder for the shared Appwrite client + its service handles. The
-/// client persists the session (cookie/JWT) across launches automatically.
+/// Retained for ONE release: mints a short-lived Appwrite JWT so the
+/// migrate-account edge function can verify an already-signed-in user
+/// (Case 2). Removed once account migration dries up.
 class AppwriteService {
   AppwriteService() {
-    client = Client()
+    final client = Client()
         .setEndpoint(Environment.appwritePublicEndpoint)
         .setProject(Environment.appwriteProjectId);
-    account = Account(client);
-    databases = Databases(client);
-    storage = Storage(client);
-    realtime = Realtime(client);
+    _account = Account(client);
   }
+  late final Account _account;
 
-  late final Client client;
-  late final Account account;
-  late final Databases databases;
-  late final Storage storage;
-  late final Realtime realtime;
-
-  /// Public view URL for a file in the avatars bucket (read = Any), so it can
-  /// be shown with a plain image widget.
-  String avatarUrl(String fileId) =>
-      '${Environment.appwritePublicEndpoint}/storage/buckets/'
-      '${Environment.avatarsBucketId}/files/$fileId/view'
-      '?project=${Environment.appwriteProjectId}';
+  /// Null when there is no restorable Appwrite session.
+  Future<String?> mintJwt() async {
+    try {
+      final jwt = await _account.createJWT();
+      return jwt.jwt;
+    } catch (_) {
+      return null;
+    }
+  }
 }
