@@ -195,14 +195,27 @@ class PluginHost(private val context: Context) {
 
     fun loadAll(files: List<File>): Int = files.count { loadPlugin(it) }
 
-    // Resolve a source by EITHER its unique `.cs3` file id (`sourcePlugin`, e.g.
-    // "MovieBoxProvider@5") OR its display name. Preferring the file id lets two
-    // installed plugins that share a display name (e.g. two "MovieBox" forks from
-    // different repos) be addressed individually; the name match is the legacy
-    // fallback so existing callers that pass a bare name behave exactly as before.
-    private fun apiByName(key: String): MainAPI? =
-        APIHolder.allProviders.firstOrNull { it.sourcePlugin == key }
+    // Resolve a source from the key Dart sends. Three key shapes are handled:
+    //   1. "<fileId>\u0001<name>" — the bundle-safe key. One `.cs3` can register
+    //      MANY sources under ONE file id (e.g. CNC Verse → Netflix, Disney, …),
+    //      so the file id alone is ambiguous; match BOTH to land on the exact
+    //      source. Falls back to name-only, then file-id-only.
+    //   2. bare "<fileId>" — a unique file id (disambiguated same-named forks).
+    //   3. bare "<name>" — legacy callers; name match.
+    private fun apiByName(key: String): MainAPI? {
+        val sep = key.indexOf('\u0001')
+        if (sep >= 0) {
+            val sp = key.substring(0, sep)
+            val nm = key.substring(sep + 1)
+            return APIHolder.allProviders.firstOrNull {
+                it.sourcePlugin == sp && it.name == nm
+            }
+                ?: APIHolder.allProviders.firstOrNull { it.name == nm }
+                ?: APIHolder.allProviders.firstOrNull { it.sourcePlugin == sp }
+        }
+        return APIHolder.allProviders.firstOrNull { it.sourcePlugin == key }
             ?: APIHolder.allProviders.firstOrNull { it.name == key }
+    }
 
     /** The plugin that registered the source [apiName], if it's one we track. */
     private fun pluginFor(apiName: String): Plugin? {
