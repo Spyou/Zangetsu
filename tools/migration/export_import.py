@@ -22,6 +22,7 @@ Required env vars (SUPABASE_* only required unless --dry-run):
     SUPABASE_SERVICE_ROLE_KEY    (required unless --dry-run)
 """
 import argparse
+import json
 import os
 import sys
 
@@ -64,10 +65,15 @@ def fetch_appwrite_documents(endpoint, project_id, api_key, collection_id, limit
                 break
             page_limit = min(PAGE_SIZE, remaining)
 
+        # Appwrite 1.9.x REST wants queries as URL-encoded JSON strings
+        # ({"method":"limit","values":[n]}), NOT the legacy "limit(n)" form.
         resp = requests.get(
             url,
             headers=appwrite_headers(project_id, api_key),
-            params={"queries[0]": f"limit({page_limit})", "queries[1]": f"offset({offset})"},
+            params=[
+                ("queries[]", json.dumps({"method": "limit", "values": [page_limit]})),
+                ("queries[]", json.dumps({"method": "offset", "values": [offset]})),
+            ],
             timeout=30,
         )
         resp.raise_for_status()
@@ -144,7 +150,9 @@ def migrate_avatars(endpoint, project_id, api_key, supabase_client, dry_run, lim
         resp = requests.get(
             f"{endpoint}/storage/buckets/avatars/files",
             headers=appwrite_headers(project_id, api_key),
-            params={"queries[0]": f"limit({limit or PAGE_SIZE})"},
+            params=[
+                ("queries[]", json.dumps({"method": "limit", "values": [limit or PAGE_SIZE]})),
+            ],
             timeout=30,
         )
         resp.raise_for_status()
