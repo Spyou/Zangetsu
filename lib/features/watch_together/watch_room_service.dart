@@ -1,54 +1,95 @@
-// ignore_for_file: deprecated_member_use
-import 'package:appwrite/appwrite.dart';
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 
-import '../../core/appwrite/appwrite_service.dart';
-import '../../core/environment.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../core/supabase/supabase_service.dart';
 import 'model/room_state.dart';
 import 'sync_math.dart';
 
-/// Pure Appwrite data layer for Watch Together rooms.
-/// No UI or player knowledge; all Appwrite I/O is isolated here.
+/// Supabase data layer for Watch Together rooms.
+///
+/// Transport is Realtime Broadcast + Presence on one channel per room
+/// (`party:<code>`) — the 4s host beat, the participant roster, and chat are
+/// ALL channel messages with zero database writes. The `watch_rooms` row is
+/// written only on create / episode-change / pause-stop anchor / host
+/// transfer / end (see [updateRoom]). No UI or player knowledge lives here.
 class WatchRoomService {
-  WatchRoomService(this._aw);
-  final AppwriteService _aw;
+  WatchRoomService(this._sb);
+  final SupabaseService _sb;
 
-  Databases get _db => _aw.databases;
+  SupabaseClient get _c => _sb.client;
 
-  // ── Channel helpers ────────────────────────────────────────────────────────
+  static const _table = 'watch_rooms';
 
-  // Appwrite 1.7+ (TablesDB) fires realtime on `tablesdb.<db>.tables.<t>.rows.<r>`;
-  // older servers use `databases.<db>.collections.<c>.documents.<d>`. We subscribe
-  // to BOTH so realtime works regardless of server version (CRUD still uses the
-  // legacy Databases API, which the server keeps compatible). Without the
-  // tablesdb channel, a 1.9 server delivers no events and nothing syncs.
-  List<String> _docChannels(String col, String id) => [
-        'tablesdb.${Environment.databaseId}.tables.$col.rows.$id',
-        'databases.${Environment.databaseId}.collections.$col.documents.$id',
-      ];
+  // ── Channel bookkeeping ──────────────────────────────────────────────────
 
-  List<String> _colChannels(String col) => [
-        'tablesdb.${Environment.databaseId}.tables.$col.rows',
-        'databases.${Environment.databaseId}.collections.$col.documents',
-      ];
+  final Map<String, RealtimeChannel> _channels = {};
+  final Map<String, RoomState> _lastRoom = {};
+  final Set<String> _subscribed = {};
 
-  // ── Room CRUD ──────────────────────────────────────────────────────────────
+  /// Returns the shared channel for [code] (creating it on first use). Does
+  /// NOT subscribe — callers attach handlers first, then call [_ensureJoined].
+  RealtimeChannel _channelFor(String code) =>
+      _channels.putIfAbsent(code, () => _c.channel('party:$code'));
 
-  /// Creates a room, retrying with a new code on 409 collisions (up to 5x).
+  /// Joins the channel exactly once, regardless of how many of
+  /// watchRoom/watchParticipants/watchMessages/upsertParticipant race to
+  /// attach handlers first (RealtimeChannel.subscribe() throws if called
+  /// twice on the same instance).
+  void _ensureJoined(String code) {
+    if (!_subscribed.add(code)) return;
+    _channels[code]?.subscribe();
+  }
+
+  /// Removes and unsubscribes the channel for [code] (idempotent).
+  void closeChannel(String code) {
+    final ch = _channels.remove(code);
+    _lastRoom.remove(code);
+    _subscribed.remove(code);
+    if (ch != null) _c.removeChannel(ch);
+  }
+
+  // ── Room mapping ─────────────────────────────────────────────────────────
+
+  Map<String, dynamic> _toRow(RoomState s) => {
+        'code': s.code,
+        'host_key': s.hostId,
+        'status': s.status,
+        'content': s.toMap(),
+        'host_pos_ms': s.positionMs,
+        'host_rate': s.rate,
+        'host_playing': s.playing,
+      };
+
+  RoomState _fromRow(Map<String, dynamic> row) {
+    final content = row['content'];
+    final base = RoomState.fromMap({
+      if (content is Map) ...content.cast<String, dynamic>(),
+      'code': '${row['code'] ?? ''}',
+    });
+    return base.copyWith(
+      status: '${row['status'] ?? base.status}',
+      positionMs: (row['host_pos_ms'] as num?)?.toInt() ?? base.positionMs,
+      rate: (row['host_rate'] as num?)?.toDouble() ?? base.rate,
+      playing: row['host_playing'] as bool? ?? base.playing,
+      hostId: '${row['host_key'] ?? base.hostId}',
+    );
+  }
+
+  // ── Room CRUD ────────────────────────────────────────────────────────────
+
+  /// Creates a room, retrying with a new code on PK collisions (up to 5x).
   Future<RoomState> createRoom(RoomState initial) async {
     for (var attempt = 0; attempt < 5; attempt++) {
       final code = generateRoomCode(
           DateTime.now().millisecondsSinceEpoch + attempt * 7919);
+      final state = RoomState.fromMap({...initial.toMap(), 'code': code});
       try {
-        final doc = await _db.createDocument(
-          databaseId: Environment.databaseId,
-          collectionId: Environment.watchRoomsCollectionId,
-          documentId: code,
-          data: initial.copyWith().toMap()..['code'] = code,
-        );
-        return RoomState.fromMap(doc.data);
-      } on AppwriteException catch (e) {
-        if (e.code == 409) continue; // code taken — retry
+        await _c.from(_table).insert(_toRow(state));
+        _lastRoom[code] = state;
+        return state;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505') continue; // unique_violation on code — retry
         rethrow;
       }
     }
@@ -57,151 +98,179 @@ class WatchRoomService {
 
   /// Returns the room for [code], or null if it does not exist.
   Future<RoomState?> getRoom(String code) async {
-    try {
-      final doc = await _db.getDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.watchRoomsCollectionId,
-        documentId: code,
-      );
-      return RoomState.fromMap(doc.data);
-    } on AppwriteException catch (e) {
-      if (e.code == 404) return null;
-      rethrow;
-    }
+    final row =
+        await _c.from(_table).select().eq('code', code).maybeSingle();
+    if (row == null) return null;
+    final state = _fromRow(row);
+    _lastRoom[code] = state;
+    return state;
   }
 
-  /// Applies a partial [patch] to the room document (best-effort; errors swallowed
-  /// because the next heartbeat will retry).
+  /// Applies a partial [patch] to the room row (best-effort; errors swallowed
+  /// because the next heartbeat/action will retry). Used ONLY for episode
+  /// change / pause-stop anchor / host transfer / end — NOT the 4s beat.
   Future<void> updateRoom(String code, Map<String, dynamic> patch) async {
     try {
-      await _db.updateDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.watchRoomsCollectionId,
-        documentId: code,
-        data: patch,
-      );
-    } catch (_) {/* best-effort; next heartbeat retries */}
+      await _c.from(_table).update(patch).eq('code', code);
+    } catch (_) {/* best-effort; next write retries */}
   }
 
-  /// Emits a new [RoomState] whenever the Appwrite document for [code] changes.
+  /// The 4s host beat: broadcasts {pos, rate, playing} to room [code] with
+  /// ZERO database write. Not part of the original CRUD surface, but needed
+  /// so the controller's heartbeat never has to reach into channel internals.
+  Future<void> broadcastHostState(String code,
+      {required int posMs, required double rate, required bool playing}) async {
+    final ch = _channelFor(code);
+    _ensureJoined(code);
+    try {
+      await ch.sendBroadcastMessage(event: 'host_state', payload: {
+        'pos': posMs,
+        'rate': rate,
+        'playing': playing,
+        'at': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (_) {/* best-effort; next beat retries */}
+  }
+
+  /// Emits a new [RoomState] whenever the host broadcasts a `host_state`
+  /// tick or the `watch_rooms` row changes (episode/anchor/status updates).
+  /// Seeds with the current row via [getRoom] first.
   Stream<RoomState> watchRoom(String code) {
-    final sub = _aw.realtime.subscribe(
-        _docChannels(Environment.watchRoomsCollectionId, code));
-    return sub.stream
-        .where((e) => e.payload.isNotEmpty)
-        .map((e) => RoomState.fromMap(e.payload));
+    late final StreamController<RoomState> controller;
+
+    void emit(RoomState s) {
+      _lastRoom[code] = s;
+      if (!controller.isClosed) controller.add(s);
+    }
+
+    controller = StreamController<RoomState>.broadcast(
+      onListen: () async {
+        final seed = _lastRoom[code] ?? await getRoom(code);
+        if (seed != null) emit(seed);
+
+        _channelFor(code)
+          ..onBroadcast(
+            event: 'host_state',
+            callback: (payload) {
+              final cur = _lastRoom[code];
+              if (cur == null) return;
+              emit(cur.copyWith(
+                positionMs: (payload['pos'] as num?)?.toInt(),
+                playing: payload['playing'] as bool?,
+                rate: (payload['rate'] as num?)?.toDouble(),
+                updatedAt: (payload['at'] as num?)?.toInt(),
+              ));
+            },
+          )
+          ..onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: _table,
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'code',
+              value: code,
+            ),
+            callback: (payload) {
+              if (payload.newRecord.isEmpty) return;
+              emit(_fromRow(payload.newRecord));
+            },
+          );
+        _ensureJoined(code);
+      },
+    );
+    return controller.stream;
   }
 
-  // ── Participants ───────────────────────────────────────────────────────────
+  // ── Participants (Presence — no table) ──────────────────────────────────
 
-  String _pid(String code, String userId) => '$code-$userId';
-
-  /// Creates or updates the participant document for [p] in room [code].
+  /// Tracks [p] in room [code]'s Presence state (create-or-update).
   Future<void> upsertParticipant(String code, RoomParticipant p) async {
-    final data = p.toMap()..['roomId'] = code;
+    final ch = _channelFor(code);
+    _ensureJoined(code);
     try {
-      await _db.updateDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.roomParticipantsCollectionId,
-        documentId: _pid(code, p.userId),
-        data: data,
-      );
-    } on AppwriteException {
-      try {
-        await _db.createDocument(
-          databaseId: Environment.databaseId,
-          collectionId: Environment.roomParticipantsCollectionId,
-          documentId: _pid(code, p.userId),
-          data: data,
-        );
-      } catch (e) {
-        debugPrint('upsertParticipant create failed: $e');
-      }
-    }
+      await ch.track(p.toMap());
+    } catch (_) {/* best-effort; next beat/track retries */}
   }
 
-  /// Removes the participant document for [userId] from room [code].
+  /// Untracks [userId] from room [code]'s Presence state (self-removal only —
+  /// Presence has no notion of removing a peer).
   Future<void> removeParticipant(String code, String userId) async {
+    final ch = _channels[code];
+    if (ch == null) return;
     try {
-      await _db.deleteDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.roomParticipantsCollectionId,
-        documentId: _pid(code, userId),
-      );
+      await ch.untrack();
     } catch (_) {}
   }
 
-  /// Returns the current participant list for room [code] (up to 50).
+  /// Returns the current Presence roster for room [code].
   Future<List<RoomParticipant>> listParticipants(String code) async {
+    final ch = _channels[code];
+    if (ch == null) return const [];
     try {
-      final res = await _db.listDocuments(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.roomParticipantsCollectionId,
-        queries: [Query.equal('roomId', code), Query.limit(50)],
-      );
-      return res.documents
-          .map((d) => RoomParticipant.fromMap(d.data))
+      return ch
+          .presenceState()
+          .expand((s) => s.presences)
+          .map((p) => RoomParticipant.fromMap(p.payload))
           .toList();
     } catch (_) {
       return const [];
     }
   }
 
-  /// Emits a void tick whenever a participant document in room [code] changes.
-  /// Caller should re-call [listParticipants] on each tick.
+  /// Emits a void tick whenever the Presence roster for room [code] changes
+  /// (sync/join/leave). Caller should re-call [listParticipants] on each tick.
   Stream<void> watchParticipants(String code) {
-    final sub = _aw.realtime
-        .subscribe(_colChannels(Environment.roomParticipantsCollectionId));
-    return sub.stream
-        // Delete events arrive with an empty payload, so we can't match roomId on
-        // them — forward those too (a delete from another room just triggers a
-        // harmless redundant re-list, which the caller filters by roomId).
-        .where((e) => e.payload.isEmpty || '${e.payload['roomId']}' == code)
-        .map((_) {});
+    late final StreamController<void> controller;
+    controller = StreamController<void>.broadcast(
+      onListen: () {
+        final ch = _channelFor(code);
+        void tick() {
+          if (!controller.isClosed) controller.add(null);
+        }
+
+        ch
+          ..onPresenceSync((_) => tick())
+          ..onPresenceJoin((_) => tick())
+          ..onPresenceLeave((_) => tick());
+        _ensureJoined(code);
+      },
+    );
+    return controller.stream;
   }
 
-  // ── Messages ───────────────────────────────────────────────────────────────
+  // ── Messages (Broadcast — no table, live-only) ──────────────────────────
 
-  /// Sends a chat message [m] to room [code].
+  /// Broadcasts a chat message [m] to room [code]. No history is persisted.
   Future<void> sendMessage(String code, RoomMessage m) async {
+    final ch = _channelFor(code);
+    _ensureJoined(code);
     try {
-      await _db.createDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.roomMessagesCollectionId,
-        documentId: ID.unique(),
-        data: m.toMap()..['roomId'] = code,
-      );
+      await ch.sendBroadcastMessage(event: 'chat', payload: m.toMap());
     } catch (_) {}
   }
 
-  /// Returns the most recent [limit] messages for room [code], oldest-first.
-  Future<List<RoomMessage>> recentMessages(String code,
-      {int limit = 50}) async {
-    try {
-      final res = await _db.listDocuments(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.roomMessagesCollectionId,
-        queries: [
-          Query.equal('roomId', code),
-          Query.orderDesc('createdAt'),
-          Query.limit(limit),
-        ],
-      );
-      return res.documents.reversed
-          .map((d) => RoomMessage.fromMap(d.data))
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
+  /// Chat is live-only by design (Broadcast has no history) — always empty.
+  Future<List<RoomMessage>> recentMessages(String code, {int limit = 50}) =>
+      Future.value(const []);
 
-  /// Emits each new [RoomMessage] broadcast to room [code] in real time.
+  /// Emits each chat message broadcast to room [code] in real time.
   Stream<RoomMessage> watchMessages(String code) {
-    final sub = _aw.realtime
-        .subscribe(_colChannels(Environment.roomMessagesCollectionId));
-    return sub.stream
-        .where((e) =>
-            '${e.payload['roomId']}' == code && e.payload['text'] != null)
-        .map((e) => RoomMessage.fromMap(e.payload));
+    late final StreamController<RoomMessage> controller;
+    controller = StreamController<RoomMessage>.broadcast(
+      onListen: () {
+        final ch = _channelFor(code);
+        ch.onBroadcast(
+          event: 'chat',
+          callback: (payload) {
+            if (!controller.isClosed) {
+              controller.add(RoomMessage.fromMap(payload));
+            }
+          },
+        );
+        _ensureJoined(code);
+      },
+    );
+    return controller.stream;
   }
 }

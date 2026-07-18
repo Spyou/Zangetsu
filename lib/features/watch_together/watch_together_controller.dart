@@ -57,7 +57,7 @@ class WatchTogetherController extends ChangeNotifier {
   StreamSubscription<RoomState>? _roomSub;
   StreamSubscription<void>? _partSub;
   StreamSubscription<RoomMessage>? _msgSub;
-  Timer? _hostBeat, _presenceBeat;
+  Timer? _hostBeat;
   String? _lastEpisodeId;
   int? _joinedAt;
   bool _wantsControl = false;
@@ -67,7 +67,7 @@ class WatchTogetherController extends ChangeNotifier {
   String? _viewerStageKey;
   bool _viewerPlayerUp = false;
 
-  String get _uid => sl<AuthCubit>().state.user?.$id ?? '';
+  String get _uid => sl<AuthCubit>().state.user?.id ?? '';
   String get _uname => sl<AuthCubit>().state.user?.name ?? 'Guest';
   bool get isHost => role == RoomRole.host;
   bool get canControl => isHost;
@@ -101,9 +101,12 @@ class WatchTogetherController extends ChangeNotifier {
     _wantsControl = false;
     _hostBeat ??= Timer.periodic(const Duration(seconds: 4), (_) {
       final r = room;
+      final code = r?.code;
       final pos = localPosition?.call();
-      if (r != null && r.playing && pos != null) {
-        _writeHost(positionMs: pos.inMilliseconds);
+      if (r != null && code != null && r.playing && pos != null) {
+        // Zero-write heartbeat: Broadcast only, never updateRoom.
+        _svc.broadcastHostState(code,
+            posMs: pos.inMilliseconds, rate: r.rate, playing: r.playing);
       }
     });
   }
@@ -135,18 +138,16 @@ class WatchTogetherController extends ChangeNotifier {
 
   Future<void> _enter(String code) async {
     _joinedAt ??= _now;
+    // Presence: track once on enter. No re-upsert beat — Supabase Realtime
+    // maintains liveness automatically and drops us from the roster on
+    // socket disconnect (crash/close), which _refreshParticipants below then
+    // observes via watchParticipants ticks.
     await _svc.upsertParticipant(code, RoomParticipant(
         userId: _uid, name: _uname, avatar: '', state: 'watching',
         joinedAt: _joinedAt ?? _now, lastSeenAt: _now,
         wantsControl: _wantsControl));
     _subscribeRoom(code);
     _partSub = _svc.watchParticipants(code).listen((_) => _refreshParticipants(code));
-    _presenceBeat = Timer.periodic(const Duration(seconds: 10), (_) {
-      _svc.upsertParticipant(code, RoomParticipant(userId: _uid, name: _uname,
-          avatar: '', state: 'watching', joinedAt: _joinedAt ?? _now,
-          lastSeenAt: _now, wantsControl: _wantsControl));
-      _maybePromoteSelf(); // crash-failover check
-    });
     if (isHost) _startHostBeat();
     await _refreshParticipants(code);
     messages = await _svc.recentMessages(code);
@@ -159,6 +160,7 @@ class WatchTogetherController extends ChangeNotifier {
 
   Future<void> _refreshParticipants(String code) async {
     participants = await _svc.listParticipants(code);
+    _maybePromoteSelf(); // crash-failover check — driven by presence ticks now
     notifyListeners();
   }
 
@@ -206,22 +208,45 @@ class WatchTogetherController extends ChangeNotifier {
         'episodeUrl': episodeUrl, 'positionMs': 0});
   }
 
+  /// Play/pause/seek/episode/mode/host-transfer anchor writes — these are
+  /// discrete, user-driven events (not the 4s beat), so a `watch_rooms` row
+  /// update here is the "pause-stop anchor" the design calls for: late
+  /// joiners and reconnects seed off this row via getRoom/postgres_changes.
+  /// The row's `content` column mirrors the full RoomState.toMap(), so we
+  /// merge [extra] onto the current state's map wholesale (same shape [extra]
+  /// always had pre-migration) rather than threading every field through
+  /// copyWith — JSONB has no server-side partial merge without an RPC.
   void _writeHost({bool? playing, int? positionMs, Map<String, dynamic>? extra}) {
-    final code = room?.code; if (code == null) return;
-    final patch = <String, dynamic>{'updatedAt': _now, ...?extra};
-    if (playing != null) patch['playing'] = playing;
-    if (positionMs != null) patch['positionMs'] = positionMs;
-    room = room?.copyWith(
-        playing: playing, positionMs: positionMs,
-        updatedAt: patch['updatedAt'] as int);
-    _svc.updateRoom(code, patch);
+    final r = room;
+    final code = r?.code;
+    if (r == null || code == null) return;
+    final map = <String, dynamic>{...r.toMap(), ...?extra, 'updatedAt': _now};
+    if (playing != null) map['playing'] = playing;
+    if (positionMs != null) map['positionMs'] = positionMs;
+    final updated = RoomState.fromMap(map);
+    room = updated;
+    // Broadcast immediately for instant peer sync; the row write below is
+    // the anchor for late joiners/reconnects (postgres_changes latency is
+    // fine for that path — it's not what drives live playback sync).
+    _svc.broadcastHostState(code,
+        posMs: updated.positionMs, rate: updated.rate, playing: updated.playing);
+    _svc.updateRoom(code, {
+      'content': map,
+      'host_key': updated.hostId,
+      'host_pos_ms': updated.positionMs,
+      'host_rate': updated.rate,
+      'host_playing': updated.playing,
+      'status': updated.status,
+    });
   }
 
   // ---- migration ----
   void _maybePromoteSelf() {
     final r = room; if (r == null || isHost) return;
-    final hostStale = !participants.any((p) =>
-        p.userId == r.hostId && _now - p.lastSeenAt <= 30000);
+    // Presence (not a lastSeenAt beat) is now the liveness signal: a crashed
+    // or closed host is untracked by the Realtime socket and vanishes from
+    // the roster, so absence IS staleness — no periodic re-upsert needed.
+    final hostStale = !participants.any((p) => p.userId == r.hostId);
     if (!hostStale) return;
     final successor = electSuccessor(participants, leavingHostId: r.hostId, nowMs: _now);
     if (successor == _uid) {
@@ -320,13 +345,25 @@ class WatchTogetherController extends ChangeNotifier {
     final code = room?.code;
     if (code != null && isHost) {
       final successor = electSuccessor(participants, leavingHostId: _uid, nowMs: _now);
-      if (successor != null) {
-        await _svc.updateRoom(code, {'hostId': successor, 'updatedAt': _now});
+      final r = room;
+      if (successor != null && r != null) {
+        final updated = r.copyWith(hostId: successor);
+        await _svc.updateRoom(code, {
+          'content': updated.toMap(),
+          'host_key': successor,
+        });
       } else {
-        await _svc.updateRoom(code, {'status': 'ended', 'updatedAt': _now});
+        final updated = r?.copyWith(status: 'ended');
+        await _svc.updateRoom(code, {
+          if (updated != null) 'content': updated.toMap(),
+          'status': 'ended',
+        });
       }
     }
-    if (code != null) await _svc.removeParticipant(code, _uid);
+    if (code != null) {
+      await _svc.removeParticipant(code, _uid);
+      _svc.closeChannel(code);
+    }
     if (_viewerPlayerUp) {
       rootNavigatorKey.currentState?.pop();
       _viewerPlayerUp = false;
@@ -338,8 +375,8 @@ class WatchTogetherController extends ChangeNotifier {
   void _teardown() {
     _roomSub?.cancel(); _partSub?.cancel(); _msgSub?.cancel();
     _roomSub = _partSub = _msgSub = null;
-    _hostBeat?.cancel(); _presenceBeat?.cancel();
-    _hostBeat = _presenceBeat = null;
+    _hostBeat?.cancel();
+    _hostBeat = null;
     room = null; role = RoomRole.none; participants = const []; messages = const [];
     _joinedAt = null; _wantsControl = false;
     _viewerStageKey = null; _viewerPlayerUp = false;
