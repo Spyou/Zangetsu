@@ -17,14 +17,13 @@ class Environment {
           'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw');
 
   /// Where Appwrite sends the password-recovery link. Appwrite appends
-  /// `?userId=…&secret=…&expire=…`; the page there lets the user set a new
-  /// password (see `web_reset/index.html`). This URL's domain MUST be
-  /// registered as a Web platform in the Appwrite console or `createRecovery`
-  /// is rejected. Update it to wherever you host the reset page.
-  static const String passwordResetUrl = 'https://spyou.github.io/Zangetsu-Site/';
+  /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
+  /// which points at this same page); kept for reference. Not used by the
+  /// Supabase AuthCubit, which calls `resetPasswordForEmail`.
+  static const String passwordResetUrl = 'https://zangetsu.online/';
 
   /// Base of the Zangetsu website (landing + reset + the share "open" page).
-  static const String siteBaseUrl = 'https://spyou.github.io/Zangetsu-Site';
+  static const String siteBaseUrl = 'https://zangetsu.online';
 
   /// Share links point here. The page opens the app if installed (via the
   /// [openLinkScheme] scheme below), otherwise offers the download. Its domain
