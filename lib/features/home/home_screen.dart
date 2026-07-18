@@ -382,40 +382,39 @@ class _HomeViewState extends State<_HomeView> {
     // Built fresh inside the listenable's builder — a captured widget
     // instance would be canonical and the rebuild would be skipped.
     Widget bell() => GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-                builder: (_) => const SubscriptionsScreen()),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(
-                  Icons.notifications_none_rounded,
-                  size: 24,
-                  color: Colors.white,
-                ),
-                if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
-                    AnnouncementStore().unseenCount() > 0)
-                  Positioned(
-                    top: 1,
-                    right: 2,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: AppColors.accent,
-                        border: Border.all(color: AppColors.bg, width: 1.5),
-                      ),
-                    ),
-                  ),
-              ],
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SubscriptionsScreen()),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(4),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(
+              Icons.notifications_none_rounded,
+              size: 24,
+              color: Colors.white,
             ),
-          ),
-        );
+            if (Hive.isBoxOpen(AnnouncementStore.boxName) &&
+                AnnouncementStore().unseenCount() > 0)
+              Positioned(
+                top: 1,
+                right: 2,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.accent,
+                    border: Border.all(color: AppColors.bg, width: 1.5),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
     // Rebuild the dot when the announcements box changes (e.g. markAllSeen).
     if (!Hive.isBoxOpen(AnnouncementStore.boxName)) return bell();
     return ValueListenableBuilder(
@@ -484,9 +483,6 @@ class _HomeViewState extends State<_HomeView> {
     if (sl<AppMode>().isTv) return const HomeScreenTv();
     // Continue Watching is a logged-in feature; hide the row when signed out.
     final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
-    final history = loggedIn
-        ? sl<WatchHistory>().recent()
-        : const <HistoryEntry>[];
 
     return BlocListener<ActiveSourceCubit, String>(
       listenWhen: (prev, curr) => prev != curr,
@@ -574,35 +570,55 @@ class _HomeViewState extends State<_HomeView> {
                   ),
 
                   // ── Continue Watching (same poster footprint as the rows) ─
-                  if (history.isNotEmpty)
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: _animated(
-                          ContentRow(
-                            title: 'Continue Watching',
-                            itemWidth: 140,
-                            itemHeight: 236,
-                            onSeeAll: _openHistory,
-                            itemCount: history.length,
-                            itemBuilder: (c, i) {
-                              final e = history[i];
-                              return ContinueCard(
-                                title: e.showTitle,
-                                imageUrl: e.cover,
-                                headers: e.coverHeaders,
-                                progress: e.progress,
-                                cellWidth: 140,
-                                subtitle: e.episodeNumber != null
-                                    ? 'Episode ${e.episodeNumber!.toInt()}'
-                                    : null,
-                                onTap: () => _resume(e),
-                                onLongPress: () => _showContinueInfo(e),
-                              );
-                            },
+                  // Driven by the watch_history box's listenable, NOT a one-shot
+                  // read: the cloud pull writes history AFTER this build runs
+                  // (the login / boot-migration race), so reading recent() once
+                  // here would render blank until the next navigation. Reacting
+                  // to the box makes the row appear the instant the pull lands.
+                  // Login-gated, and guarded so a signed-out render (or the test
+                  // env) never touches the box — production opens it at boot.
+                  if (loggedIn && Hive.isBoxOpen(WatchHistory.boxName))
+                    ValueListenableBuilder(
+                      valueListenable: Hive.box<Map>(
+                        WatchHistory.boxName,
+                      ).listenable(),
+                      builder: (context, _, _) {
+                        final history = sl<WatchHistory>().recent();
+                        if (history.isEmpty) {
+                          return const SliverToBoxAdapter(
+                            child: SizedBox.shrink(),
+                          );
+                        }
+                        return SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: _animated(
+                              ContentRow(
+                                title: 'Continue Watching',
+                                itemWidth: 140,
+                                itemHeight: 236,
+                                onSeeAll: _openHistory,
+                                itemCount: history.length,
+                                itemBuilder: (c, i) {
+                                  final e = history[i];
+                                  return ContinueCard(
+                                    title: e.showTitle,
+                                    imageUrl: e.cover,
+                                    headers: e.coverHeaders,
+                                    progress: e.progress,
+                                    cellWidth: 140,
+                                    subtitle: e.episodeNumber != null
+                                        ? 'Episode ${e.episodeNumber!.toInt()}'
+                                        : null,
+                                    onTap: () => _resume(e),
+                                    onLongPress: () => _showContinueInfo(e),
+                                  );
+                                },
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     )
                   else
                     const SliverToBoxAdapter(child: SizedBox.shrink()),

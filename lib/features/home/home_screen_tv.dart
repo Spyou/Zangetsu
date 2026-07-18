@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -215,13 +216,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
 
     // Continue Watching — same login-gated local history the phone home uses.
     final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
-    final history = loggedIn
-        ? sl<WatchHistory>().recent()
-        : const <HistoryEntry>[];
 
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: CustomScrollView(
+    // The scroll view, parameterised by the current history so a single source
+    // drives both the Continue Watching rail and the rails' autofocus.
+    Widget buildScroll(List<HistoryEntry> history) {
+      return CustomScrollView(
         slivers: [
           // ── Hero banner ──────────────────────────────────────────────────
           // Uses the REAL phone FeaturedHero so the TV banner is visually
@@ -271,14 +270,29 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
                 onSeeAll: () => _openSeeAll(sections[i]),
                 // Autofocus the first rail's first card only when nothing above
                 // it (hero or Continue Watching) can take the initial focus.
-                firstAutofocus:
-                    heroItem == null && history.isEmpty && i == 0,
+                firstAutofocus: heroItem == null && history.isEmpty && i == 0,
               ),
             ),
 
           const SliverToBoxAdapter(child: SizedBox(height: 48)),
         ],
-      ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      // Continue Watching is login-gated; when signed in, rebuild on
+      // watch_history writes so the rail (and the rails' autofocus, which keys
+      // off history.isEmpty) reacts the instant the cloud pull lands — the pull
+      // finishes AFTER this build on login / boot-migration. The box is opened
+      // at boot; guard for a signed-out render and the test env where it isn't.
+      body: (loggedIn && Hive.isBoxOpen(WatchHistory.boxName))
+          ? ValueListenableBuilder(
+              valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
+              builder: (context, _, _) =>
+                  buildScroll(sl<WatchHistory>().recent()),
+            )
+          : buildScroll(const <HistoryEntry>[]),
     );
   }
 }
