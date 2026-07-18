@@ -18,7 +18,10 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
@@ -28,6 +31,44 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+
+/**
+ * [NextRenderersFactory] with the FFmpeg decoders restricted to AUDIO only.
+ *
+ * The stock factory also registers an FFmpeg software VIDEO decoder; with
+ * extension renderers enabled, streams whose video codec the device's
+ * MediaCodec rejects get routed into it — software frames that render BLACK
+ * into our Hybrid-Composition SurfaceView (audio keeps playing), and its
+ * teardown crashed the player on exit. We only ever wanted FFmpeg for the
+ * silent-audio fix (AC3/E-AC3/DTS), so force the video chain to the plain
+ * MediaCodec (hardware) path.
+ */
+@UnstableApi
+private class FfmpegAudioOnlyRenderersFactory(context: Context) :
+    NextRenderersFactory(context) {
+    override fun buildVideoRenderers(
+        context: Context,
+        extensionRendererMode: Int,
+        mediaCodecSelector: MediaCodecSelector,
+        enableDecoderFallback: Boolean,
+        eventHandler: Handler,
+        eventListener: VideoRendererEventListener,
+        allowedVideoJoiningTimeMs: Long,
+        out: ArrayList<Renderer>,
+    ) {
+        super.buildVideoRenderers(
+            context,
+            // Never add the FFmpeg VIDEO renderer:
+            DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+            mediaCodecSelector,
+            enableDecoderFallback,
+            eventHandler,
+            eventListener,
+            allowedVideoJoiningTimeMs,
+            out,
+        )
+    }
+}
 
 /**
  * A PlatformView hosting an ExoPlayer + [PlayerView] (SurfaceView → hardware
@@ -44,15 +85,20 @@ class ExoPlayerView(
 
     private val audioSessionId =
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
-    // NextRenderersFactory adds FFmpeg software decoders (audio: AC3/E-AC3/DTS/…)
-    // alongside the platform ones. EXTENSION_RENDERER_MODE_ON = try the device's
-    // hardware decoder first, fall back to FFmpeg only when it can't handle the
-    // codec — so hardware AAC still uses hardware, but Dolby/DTS tracks that were
-    // silent now decode in software and produce sound. TV-only (phone = mpv).
+    // FFmpeg software decoders for AUDIO ONLY (AC3/E-AC3/DTS/… — the silent-
+    // audio fix). EXTENSION_RENDERER_MODE_ON = device hardware decoder first,
+    // FFmpeg fallback only when it can't handle the codec. Video always stays
+    // on the plain MediaCodec (hardware) path — see
+    // [FfmpegAudioOnlyRenderersFactory] for why the FFmpeg VIDEO decoder must
+    // never be registered here. TV-only (phone = mpv).
     private val player = ExoPlayer.Builder(
         context,
-        NextRenderersFactory(context)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON),
+        FfmpegAudioOnlyRenderersFactory(context).apply {
+            // Mirror CloudStream's setup: if the first (hardware) decoder fails
+            // to initialise, fall back to the next one instead of erroring.
+            setEnableDecoderFallback(true)
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        },
     ).build().apply {
         setAudioSessionId(audioSessionId)
     }
