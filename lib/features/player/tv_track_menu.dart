@@ -76,17 +76,21 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
       child: FocusScope(
         node: _scope,
         onKeyEvent: (_, e) {
+          final k = e.logicalKey;
+          // Swallow EVERY phase of Back (down/repeat/up). Closing on the DOWN
+          // but letting the UP fall through hands the same press to the system
+          // as a route pop — which then eats the NEXT Back-ladder rung (the
+          // menu closed AND the controls vanished in one press).
+          if (k == LogicalKeyboardKey.goBack ||
+              k == LogicalKeyboardKey.escape) {
+            if (e is KeyDownEvent) widget.onClose();
+            return KeyEventResult.handled;
+          }
           if (e is! KeyDownEvent) return KeyEventResult.ignored;
           // Any key inside the menu counts as activity — resets the host's
           // inactivity auto-hide even when focus doesn't move (edge Up/Down,
           // Left/Right) so the menu never closes while the user is interacting.
           widget.onInteract?.call();
-          final k = e.logicalKey;
-          if (k == LogicalKeyboardKey.goBack ||
-              k == LogicalKeyboardKey.escape) {
-            widget.onClose();
-            return KeyEventResult.handled;
-          }
           // Swallow Left/Right so focus can't traverse out of the side panel;
           // Up/Down fall through to move between rows.
           if (k == LogicalKeyboardKey.arrowLeft ||

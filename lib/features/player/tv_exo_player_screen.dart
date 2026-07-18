@@ -149,6 +149,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Timer? _controlsHideTimer;
   bool _holdingSpeed = false; // D-pad RIGHT held → temporary 2× (YouTube-style)
 
+  // One remote Back press can arrive TWICE: the overlay's key handler closes
+  // it on key-DOWN, then the press still falls through as a route pop, whose
+  // ladder — seeing the overlay already closed — would eat the NEXT rung and
+  // hide the controls too (menu closes AND controls vanish in one press; with
+  // video black that reads as "the app went blank"). Stamp overlay closes and
+  // ignore the controls-hide rung briefly after one.
+  int _lastOverlayCloseMs = 0;
+
+  /// Whether the current Back press already did its one action on key-DOWN
+  /// (hide controls / overlay just closed). When false, the press's key-UP
+  /// performs the exit pop — see the goBack rung in [_onKey].
+  bool _backPressConsumed = true;
+
+  void _stampOverlayClose() =>
+      _lastOverlayCloseMs = DateTime.now().millisecondsSinceEpoch;
+
+  bool get _justClosedOverlay =>
+      DateTime.now().millisecondsSinceEpoch - _lastOverlayCloseMs < 400;
+
   @override
   void initState() {
     super.initState();
@@ -908,6 +927,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   void _closeMenu() {
     _menuHideTimer?.cancel();
+    _stampOverlayClose();
     setState(() => _menuOpen = false);
     _rootFocus.requestFocus(); // hand D-pad back to the player controls
   }
@@ -940,6 +960,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   void _closeEpisodes() {
     if (!_episodesOpen) return;
+    _stampOverlayClose();
     setState(() => _episodesOpen = false);
     _rootFocus.requestFocus();
   }
@@ -1101,6 +1122,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _cancelUpNext() {
     _upNextTimer?.cancel();
     _upNextTimer = null;
+    _stampOverlayClose();
     if (mounted) setState(() => _upNextCountdown = null);
     _rootFocus.requestFocus(); // hand D-pad back to the player
   }
@@ -1150,12 +1172,24 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // _bumpControls) so a Back delivered as a key event can't re-show the
     // controls and trap the user in the player — that was the "can't exit" bug.
     if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
-      if (e is! KeyDownEvent) return KeyEventResult.ignored;
-      if (_controlsVisible) {
-        _controlsHideTimer?.cancel();
-        setState(() => _controlsVisible = false);
-      } else if (mounted) {
-        Navigator.of(context).maybePop();
+      // One press = one action. Non-exit actions run on the DOWN; the EXIT pop
+      // is deferred to the UP — if the DOWN popped, the UP of the same press
+      // would land on the screen BELOW and pop that too (player + detail gone
+      // in one press). Every phase returns handled so nothing falls through to
+      // the system as a second (route-pop) back action.
+      if (e is KeyDownEvent) {
+        _backPressConsumed = true;
+        if (!_justClosedOverlay && _controlsVisible) {
+          _controlsHideTimer?.cancel();
+          setState(() => _controlsVisible = false);
+        } else if (!_justClosedOverlay) {
+          _backPressConsumed = false; // nothing to do now → exit on the UP
+        }
+        return KeyEventResult.handled;
+      }
+      if (e is KeyUpEvent && !_backPressConsumed) {
+        _backPressConsumed = true;
+        if (mounted) Navigator.of(context).maybePop();
       }
       return KeyEventResult.handled;
     }
@@ -1279,6 +1313,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_searchResults != null) {
+          _stampOverlayClose();
           setState(() => _searchResults = null);
           _rootFocus.requestFocus();
         } else if (_episodesOpen) {
@@ -1287,7 +1322,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           _closeMenu();
         } else if (_upNextCountdown != null) {
           _cancelUpNext();
-        } else if (_controlsVisible) {
+        } else if (_controlsVisible && !_justClosedOverlay) {
+          // (the guard: one Back press = one ladder rung, never two)
           _controlsHideTimer?.cancel();
           setState(() => _controlsVisible = false);
         }
