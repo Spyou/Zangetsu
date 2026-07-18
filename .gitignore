@@ -56,3 +56,9 @@ secrets.json
 
 # Aniyomi loader test fixture APK — on-device validated instead of committed
 android/app/src/test/resources/aniyomi/*.apk
+
+# Supabase local env (service_role key is secret — never commit)
+.env
+.env.*
+*.local
+supabase/.env
