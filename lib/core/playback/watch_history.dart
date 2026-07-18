@@ -1,12 +1,8 @@
-// ignore_for_file: deprecated_member_use
 import 'dart:convert';
 
-import 'package:appwrite/appwrite.dart';
-import 'package:crypto/crypto.dart';
 import 'package:hive/hive.dart';
 
-import '../appwrite/appwrite_service.dart';
-import '../environment.dart';
+import '../supabase/supabase_service.dart';
 
 class HistoryEntry {
   HistoryEntry({
@@ -37,7 +33,7 @@ class HistoryEntry {
   final double? episodeNumber;
 
   /// MyAnimeList id (anime), carried so a resume from Continue Watching can
-  /// still auto-scrobble to AniList. Local-only — not synced to Appwrite.
+  /// still auto-scrobble to AniList.
   final int? malId;
   final Duration position, duration;
   final int updatedAt;
@@ -49,22 +45,51 @@ class HistoryEntry {
       : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
 }
 
+/// Thin transport seam over the `history` Supabase table, injectable so
+/// [WatchHistory]'s throttle/flush logic is unit-testable without a live
+/// Supabase project.
+class HistoryRemote {
+  HistoryRemote(this._service);
+
+  final SupabaseService _service;
+
+  Future<void> upsert(Map<String, dynamic> row) async {
+    await _service.client
+        .from('history')
+        .upsert(row, onConflict: 'user_key,source_id,show_id');
+  }
+
+  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
+    await _service.client.from('history').delete().match({
+      'user_key': userKey,
+      'source_id': sourceId,
+      'show_id': showId,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> listFor(String userKey) async {
+    final res =
+        await _service.client.from('history').select().eq('user_key', userKey);
+    return (res as List).cast<Map<String, dynamic>>();
+  }
+}
+
 /// Continue Watching, backed by Hive for instant local reads and synced to
-/// Appwrite when signed in. Cloud writes are throttled per show (the player
+/// Supabase when signed in. Cloud writes are throttled per show (the player
 /// persists every ~5s) so we don't hammer the backend.
 class WatchHistory {
-  WatchHistory(this._aw, this._currentUserId);
+  WatchHistory(SupabaseService service, this._currentUserId, {HistoryRemote? remote})
+      : _remote = remote ?? HistoryRemote(service);
 
-  /// Null only in tests (logged-out paths never touch it).
-  final AppwriteService? _aw;
+  final HistoryRemote _remote;
   final String? Function() _currentUserId;
 
   static const String boxName = 'watch_history';
   // Cloud progress-sync throttle. The player calls [save] every ~1s during
   // playback, but each of those was a cloud write every 15s per show — ~96
-  // writes for one 24-min episode, which blows through the Appwrite free-tier
-  // database-writes quota fast. Local saves stay instant (resume is unaffected);
-  // the CLOUD push is throttled to 2 min, and forced on pause/stop/episode
+  // writes for one 24-min episode, which blows through free-tier database
+  // write quotas fast. Local saves stay instant (resume is unaffected); the
+  // CLOUD push is throttled to 2 min, and forced on pause/stop/episode
   // change/close (see [save]'s `flush`) so the resume point stays accurate.
   static const int _cloudThrottleMs = 120000;
 
@@ -85,8 +110,6 @@ class WatchHistory {
   Box<Map> get _box => Hive.box<Map>(boxName);
   String _key(String sourceId, String showId) => '$sourceId::$showId';
   final Map<String, int> _lastCloudPush = {};
-  String _docId(String uid, String key) =>
-      sha256.convert(utf8.encode('$uid::$key')).toString().substring(0, 32);
 
   /// Persist progress. The local write is ALWAYS immediate (instant resume);
   /// the cloud push is throttled unless [flush] is true, which forces it on the
@@ -117,9 +140,8 @@ class WatchHistory {
     }
   }
 
-  /// Throttled, best-effort cloud upsert (update-then-create on the
-  /// deterministic per-show doc id). [force] bypasses the throttle for the
-  /// flush moments (see [save]).
+  /// Throttled, best-effort cloud upsert. [force] bypasses the throttle for
+  /// the flush moments (see [save]).
   Future<void> _pushToCloud(String key, HistoryEntry e, {bool force = false}) async {
     final uid = _currentUserId();
     if (uid == null) return;
@@ -127,45 +149,26 @@ class WatchHistory {
     final last = _lastCloudPush[key] ?? 0;
     if (!force && now - last < _cloudThrottleMs) return;
     _lastCloudPush[key] = now;
-    final docId = _docId(uid, key);
-    final data = {
-      'userId': uid,
-      'sourceId': e.sourceId,
-      'showId': e.showId,
-      'showTitle': e.showTitle,
+    final row = {
+      'user_key': uid,
+      'source_id': e.sourceId,
+      'show_id': e.showId,
+      'show_title': e.showTitle,
       'cover': e.cover,
-      'coverHeaders': e.coverHeaders == null ? null : jsonEncode(e.coverHeaders),
-      'showUrl': e.showUrl,
+      'cover_headers': e.coverHeaders,
+      'show_url': e.showUrl,
       'category': e.category,
-      'episodeId': e.episodeId,
-      'episodeNumber': e.episodeNumber,
-      'episodeUrl': e.episodeUrl,
-      'position': e.position.inMilliseconds,
-      'duration': e.duration.inMilliseconds,
-      'updatedAt': e.updatedAt,
+      'episode_id': e.episodeId,
+      'episode_number': e.episodeNumber,
+      'episode_url': e.episodeUrl,
+      'position_ms': e.position.inMilliseconds,
+      'duration_ms': e.duration.inMilliseconds,
+      'updated_at': e.updatedAt,
+      'mal_id': e.malId?.toString(),
     };
     try {
-      await _aw!.databases.updateDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.historyCollectionId,
-        documentId: docId,
-        data: data,
-      );
-    } catch (_) {
-      try {
-        await _aw!.databases.createDocument(
-          databaseId: Environment.databaseId,
-          collectionId: Environment.historyCollectionId,
-          documentId: docId,
-          data: data,
-          permissions: [
-            Permission.read(Role.user(uid)),
-            Permission.update(Role.user(uid)),
-            Permission.delete(Role.user(uid)),
-          ],
-        );
-      } catch (_) {/* best-effort */}
-    }
+      await _remote.upsert(row);
+    } catch (_) {/* best-effort */}
   }
 
   HistoryEntry _fromMap(Map raw) {
@@ -204,36 +207,34 @@ class WatchHistory {
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
-  /// Replace the local cache with the signed-in user's cloud history. The
-  /// cloud doc stores ms ints (`position`/`duration`); map them to the Hive
-  /// shape used by [recent].
+  /// Replace the local cache with the signed-in user's cloud history.
   Future<void> pullFromCloud() async {
     final uid = _currentUserId();
     if (uid == null) return;
     try {
-      final res = await _aw!.databases.listDocuments(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.historyCollectionId,
-        queries: [Query.equal('userId', uid), Query.limit(200)],
-      );
+      final rows = await _remote.listFor(uid);
       await _box.clear();
-      for (final d in res.documents) {
-        final m = d.data;
-        final headers = m['coverHeaders'];
-        await _box.put('${m['sourceId']}::${m['showId']}', {
-          'sourceId': m['sourceId'],
-          'showId': m['showId'],
-          'showTitle': m['showTitle'],
+      for (final m in rows) {
+        final headers = m['cover_headers'];
+        await _box.put('${m['source_id']}::${m['show_id']}', {
+          'sourceId': m['source_id'],
+          'showId': m['show_id'],
+          'showTitle': m['show_title'],
           'cover': m['cover'],
-          'coverHeaders': headers is String ? jsonDecode(headers) : null,
-          'showUrl': m['showUrl'],
+          'coverHeaders': headers is String
+              ? jsonDecode(headers)
+              : headers is Map
+                  ? headers
+                  : null,
+          'showUrl': m['show_url'],
           'category': m['category'],
-          'episodeId': m['episodeId'],
-          'episodeNumber': m['episodeNumber'],
-          'episodeUrl': m['episodeUrl'],
-          'positionMs': m['position'],
-          'durationMs': m['duration'],
-          'updatedAt': m['updatedAt'],
+          'episodeId': m['episode_id'],
+          'episodeNumber': m['episode_number'],
+          'episodeUrl': m['episode_url'],
+          'positionMs': m['position_ms'],
+          'durationMs': m['duration_ms'],
+          'updatedAt': m['updated_at'],
+          'malId': int.tryParse('${m['mal_id']}'),
         });
       }
       _markPulled();
@@ -249,11 +250,7 @@ class WatchHistory {
     final uid = _currentUserId();
     if (uid == null) return;
     try {
-      await _aw!.databases.deleteDocument(
-        databaseId: Environment.databaseId,
-        collectionId: Environment.historyCollectionId,
-        documentId: _docId(uid, key),
-      );
+      await _remote.deleteRow(uid, sourceId, showId);
     } catch (_) {/* best-effort */}
   }
 
