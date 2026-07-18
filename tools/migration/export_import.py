@@ -116,82 +116,68 @@ def upsert_batches(supabase_client, table, rows, on_conflict, batch_size=UPSERT_
     return loaded
 
 
-def resolve_avatar_owner(file_obj):
-    """Best-effort owner id for an avatars-bucket file.
-
-    Appwrite Storage files carry a name and a $permissions list. This repo's
-    avatar uploads name the file after the owning user id (see app upload
-    code), so the name (sans extension) is the primary signal; a
-    user:<id> read permission is the fallback. Returns None if neither
-    yields anything usable.
-    """
-    name = file_obj.get("name", "")
-    stem = name.rsplit(".", 1)[0] if "." in name else name
-    if stem:
-        return stem
-
-    for perm in file_obj.get("$permissions", []):
-        # Appwrite permission strings look like: read("user:507f...")
-        if perm.startswith("read(\"user:") and perm.endswith("\")"):
-            return perm[len('read("user:'):-2]
-
-    return None
-
-
 def migrate_avatars(endpoint, project_id, api_key, supabase_client, dry_run, limit=None):
-    """List Storage avatars bucket, download each file, upload to Supabase
-    Storage avatars bucket at legacy/<ownerId>.<ext>. Never aborts the run.
+    """For each Appwrite USER with a prefs.avatarId, download that avatar file
+    and upload it to the Supabase avatars bucket at legacy/<userId>.jpg — the
+    exact path the migrate-account function's claimData points profiles at.
+
+    The app stores avatars under a RANDOM file id (ID.unique()) and links the
+    owner via account prefs['avatarId'] — the file is NOT named after the user.
+    So we must iterate users and resolve user -> avatarId; guessing the owner
+    from the filename produces junk that no profile ever resolves to.
+    Never aborts the run.
     """
     import requests
 
+    hdr = appwrite_headers(project_id, api_key)
     uploaded = 0
     skipped = 0
-    try:
-        resp = requests.get(
-            f"{endpoint}/storage/buckets/avatars/files",
-            headers=appwrite_headers(project_id, api_key),
-            params=[
-                ("queries[]", json.dumps({"method": "limit", "values": [limit or PAGE_SIZE]})),
-            ],
-            timeout=30,
-        )
-        resp.raise_for_status()
-        files = resp.json().get("files", [])
-    except Exception as exc:  # noqa: BLE001 - avatar listing must never abort the run
-        print(f"  [avatars] could not list bucket: {exc}")
-        return 0, 0
-
-    if limit is not None:
-        files = files[:limit]
-
-    for f in files:
-        file_id = f.get("$id")
-        owner = resolve_avatar_owner(f)
-        if not owner:
-            skipped += 1
-            continue
-
-        ext = f.get("name", "").rsplit(".", 1)[-1] if "." in f.get("name", "") else "jpg"
-        dest_path = f"legacy/{owner}.{ext}"
-
-        if dry_run:
-            uploaded += 1  # "would upload"
-            continue
-
+    offset = 0
+    while True:
+        q = [
+            ("queries[]", json.dumps({"method": "limit", "values": [PAGE_SIZE]})),
+            ("queries[]", json.dumps({"method": "offset", "values": [offset]})),
+        ]
         try:
-            dl = requests.get(
-                f"{endpoint}/storage/buckets/avatars/files/{file_id}/view",
-                headers=appwrite_headers(project_id, api_key),
-                timeout=60,
-            )
-            dl.raise_for_status()
-            supabase_client.storage.from_("avatars").upload(
-                dest_path, dl.content, {"upsert": "true"}
-            )
-            uploaded += 1
-        except Exception as exc:  # noqa: BLE001 - one bad avatar must not abort the run
-            print(f"  [avatars] skip {file_id} ({owner}): {exc}")
-            skipped += 1
+            page = requests.get(f"{endpoint}/users", headers=hdr, params=q, timeout=30).json()
+        except Exception as exc:  # noqa: BLE001 - listing must never abort the run
+            print(f"  [avatars] could not list users: {exc}")
+            break
+        users = page.get("users", [])
+        total = page.get("total", 0)
+        if not users:
+            break
+
+        for u in users:
+            uid = u.get("$id")
+            avatar_id = (u.get("prefs") or {}).get("avatarId")
+            if not avatar_id:
+                continue
+            if limit is not None and uploaded >= limit:
+                return uploaded, skipped
+            if dry_run:
+                uploaded += 1  # "would upload"
+                continue
+            try:
+                dl = requests.get(
+                    f"{endpoint}/storage/buckets/avatars/files/{avatar_id}/view",
+                    headers=hdr, timeout=60,
+                )
+                if dl.status_code != 200:
+                    skipped += 1
+                    continue
+                ct = dl.headers.get("content-type", "image/jpeg")
+                supabase_client.storage.from_("avatars").upload(
+                    f"legacy/{uid}.jpg", dl.content, {"content-type": ct, "upsert": "true"}
+                )
+                uploaded += 1
+            except Exception as exc:  # noqa: BLE001 - one bad avatar must not abort the run
+                print(f"  [avatars] skip user {uid}: {exc}")
+                skipped += 1
+
+        offset += len(users)
+        if offset >= total:
+            break
 
     return uploaded, skipped
 
