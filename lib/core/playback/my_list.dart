@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -38,14 +39,30 @@ class MyListRemote {
 /// the user is signed in. The local box is the read source (so the UI stays
 /// synchronous + offline-friendly); writes go through to Supabase best-effort.
 class MyListStore {
-  MyListStore(SupabaseService service, this._currentUserId, {MyListRemote? remote})
-      : _remote = remote ?? MyListRemote(service);
+  MyListStore(
+    SupabaseService service,
+    this._currentUserId, {
+    MyListRemote? remote,
+    String? Function(MediaItem)? statusOf,
+    void Function(String key, String? statusName)? onStatusPulled,
+  })  : _remote = remote ?? MyListRemote(service),
+        _statusOf = statusOf,
+        _onStatusPulled = onStatusPulled;
 
   final MyListRemote _remote;
 
   /// Returns the signed-in user id, or null when logged out. Injected so the
   /// store doesn't depend on the auth feature directly.
   final String? Function() _currentUserId;
+
+  /// Reads an item's current local watch-status name (or null). Injected so
+  /// the store can carry the status on its cloud row without importing the
+  /// (deliberately local) status store. See [ListStatusStore].
+  final String? Function(MediaItem)? _statusOf;
+
+  /// Hydrates the local status store from a pulled cloud row's status. Injected
+  /// for the same decoupling reason as [_statusOf].
+  final void Function(String key, String? statusName)? _onStatusPulled;
 
   /// Bumped whenever the contents change (toggle / cloud pull / clear) so
   /// listeners like MyListCubit can refresh — needed because a cloud pull
@@ -76,9 +93,25 @@ class MyListStore {
 
   bool contains(MediaItem m) => _box.containsKey(_key(m));
 
-  List<MediaItem> all() => _box.values
-      .map((raw) => MediaItem.fromJson(Map<String, dynamic>.from(raw)))
-      .toList();
+  List<MediaItem> all() => _box.values.map(_itemFromHive).toList();
+
+  /// Deserialise a stored [MediaItem]. Hive returns nested maps (here,
+  /// `coverHeaders`) as `Map<dynamic, dynamic>` on a cold read from disk, but
+  /// [MediaItem]'s generated `fromJson` casts `coverHeaders` to
+  /// `Map<String, dynamic>` — which throws on that runtime type. That crash
+  /// only surfaced AFTER an app restart (in-session, Hive returns the original
+  /// in-memory object with types intact), and rendered My List as a blank grey
+  /// error box. Normalise the nested map to string keys/values first so the
+  /// read can never throw. `coverHeaders` is the only nested field on
+  /// [MediaItem]; every other field is a scalar.
+  static MediaItem _itemFromHive(Map raw) {
+    final m = Map<String, dynamic>.from(raw);
+    final h = m['coverHeaders'];
+    if (h is Map) {
+      m['coverHeaders'] = h.map((k, v) => MapEntry('$k', '$v'));
+    }
+    return MediaItem.fromJson(m);
+  }
 
   /// Ensure [m] is in the list (no-op if already present). Used by the status
   /// sheet, where picking any status implies membership.
@@ -131,8 +164,24 @@ class MyListStore {
     'cover_headers': m.coverHeaders,
     'url': m.url,
     'type': m.type.name,
+    // Watch status (Watching/Completed/…) rides on the same row so it survives
+    // reinstalls + syncs across devices. Null when the item has no status. Every
+    // upsert carries the CURRENT local status so a re-sync never wipes it.
+    'status': _statusOf?.call(m),
     'added_at': DateTime.now().millisecondsSinceEpoch,
   };
+
+  /// Best-effort push of [m]'s current local watch status to its cloud row.
+  /// Called after the user changes a status (the row already exists locally, so
+  /// this just re-upserts it carrying the new status). Silent on failure — the
+  /// next full sync re-sends it.
+  Future<void> pushStatus(MediaItem m) async {
+    final uid = _currentUserId();
+    if (uid == null) return;
+    try {
+      await _remote.upsert(_cloudRow(uid, m));
+    } catch (_) {/* best-effort */}
+  }
 
   // ── pending-sync retry queue ───────────────────────────────────────────────
   // Keys of local adds whose cloud write failed (offline / quota). Persisted in
@@ -172,7 +221,7 @@ class MyListStore {
         _clearPending(k); // removed locally since — nothing to sync
         continue;
       }
-      final m = MediaItem.fromJson(Map<String, dynamic>.from(raw));
+      final m = _itemFromHive(raw);
       try {
         await _remote.upsert(_cloudRow(uid, m));
         _clearPending(k);
@@ -214,6 +263,16 @@ class MyListStore {
         final key = '${item.sourceId}::${item.id}';
         await _box.put(key, item.toJson());
         cloudKeys.add(key);
+        // Watch status: hydrate the local mirror from the cloud when the cloud
+        // knows one; otherwise back-fill the cloud from a local status set
+        // before status-sync existed. Never CLEAR a local status just because
+        // the cloud hasn't heard about it yet (cloudStatus == null).
+        final cloudStatus = row['status'] as String?;
+        if (cloudStatus != null) {
+          _onStatusPulled?.call(key, cloudStatus);
+        } else if (_statusOf?.call(item) != null) {
+          unawaited(pushStatus(item));
+        }
       }
       // A pending item that DID reach the cloud is no longer pending; the rest
       // are re-added locally so they survive the pull and stay queued.

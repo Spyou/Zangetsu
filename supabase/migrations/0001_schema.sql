@@ -21,6 +21,7 @@ create table if not exists public.mylist (
   cover_headers jsonb,
   url text,
   type text,
+  status text,
   added_at bigint not null default 0,
   primary key (user_key, source_id, item_id)
 );

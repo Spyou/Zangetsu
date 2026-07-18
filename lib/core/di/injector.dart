@@ -153,12 +153,21 @@ Future<void> initDependencies() async {
   sl.registerSingleton<WatchTogetherController>(
     WatchTogetherController(sl<WatchRoomService>()),
   );
-  await MyListStore.init();
-  sl.registerSingleton<MyListStore>(
-    MyListStore(sl<SupabaseService>(), currentUserId),
-  );
+  // ListStatusStore is registered BEFORE MyListStore so the latter can wire the
+  // status read/hydrate seams straight to it (keeps My List's cloud row + the
+  // deliberately-local status store in sync without either importing the other).
   await ListStatusStore.init();
   sl.registerSingleton<ListStatusStore>(ListStatusStore());
+  await MyListStore.init();
+  sl.registerSingleton<MyListStore>(
+    MyListStore(
+      sl<SupabaseService>(),
+      currentUserId,
+      statusOf: (m) => sl<ListStatusStore>().statusOf(m)?.name,
+      onStatusPulled: (key, name) =>
+          sl<ListStatusStore>().setStatusRaw(key, name),
+    ),
+  );
   await TitlePrefsStore.init();
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await PlaybackPrefs.init();

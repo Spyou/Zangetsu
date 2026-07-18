@@ -121,4 +121,106 @@ void main() {
     expect(all, containsAll(['synced', 'fromCloud', 'unsynced']));
     expect(store.pendingKeys(), contains('src::unsynced'));
   });
+
+  test(
+    'all() survives a row whose coverHeaders is Map<dynamic,dynamic> '
+    '(the After-restart My List grey-screen crash)',
+    () {
+      // On a cold read from disk Hive returns nested maps as
+      // Map<dynamic,dynamic>, which MediaItem.fromJson used to reject with a
+      // cast error — crashing the whole My List body into a grey error box.
+      // Reproduce that exact runtime type here.
+      Hive.box<Map>(MyListStore.boxName).put('src::withHeaders', <String, dynamic>{
+        'id': 'withHeaders',
+        'title': 'Renegade Immortal',
+        'cover': 'c.png',
+        'coverHeaders': <dynamic, dynamic>{
+          'Referer': 'https://anikototv.to/',
+          'User-Agent': 'Mozilla/5.0',
+        },
+        'url': 'https://x/withHeaders',
+        'type': 'anime',
+        'sourceId': 'src',
+      });
+
+      late List<MediaItem> items;
+      expect(() => items = store.all(), returnsNormally);
+      final item = items.firstWhere((m) => m.id == 'withHeaders');
+      expect(item.coverHeaders?['Referer'], 'https://anikototv.to/');
+      expect(item.coverHeaders?['User-Agent'], 'Mozilla/5.0');
+    },
+  );
+
+  // ── Watch-status cloud sync ───────────────────────────────────────────────
+
+  test('status sync: the cloud row carries the local watch status', () async {
+    final localStatus = <String, String?>{};
+    final store2 = MyListStore(
+      SupabaseService(),
+      () => 'user1',
+      remote: fake,
+      statusOf: (m) => localStatus['${m.sourceId}::${m.id}'],
+    );
+
+    await store2.add(_item(id: 'a')); // no status yet
+    expect(fake.rows.single['status'], isNull);
+
+    localStatus['src::a'] = 'completed'; // user marks it Completed
+    await store2.pushStatus(_item(id: 'a'));
+    expect(fake.rows.single['status'], 'completed');
+  });
+
+  test('status sync: pullFromCloud hydrates the local status from the cloud',
+      () async {
+    final hydrated = <String, String?>{};
+    final store2 = MyListStore(
+      SupabaseService(),
+      () => 'user1',
+      remote: fake,
+      onStatusPulled: (key, name) => hydrated[key] = name,
+    );
+    fake.rows.add({
+      'user_key': 'user1',
+      'source_id': 'src',
+      'item_id': 'c',
+      'title': 'T',
+      'cover': null,
+      'cover_headers': null,
+      'url': 'https://x/c',
+      'type': 'anime',
+      'status': 'watching',
+      'added_at': 0,
+    });
+
+    await store2.pullFromCloud();
+    expect(hydrated['src::c'], 'watching');
+  });
+
+  test('status sync: pullFromCloud back-fills a local status the cloud lacks',
+      () async {
+    final localStatus = <String, String?>{'src::d': 'completed'};
+    final store2 = MyListStore(
+      SupabaseService(),
+      () => 'user1',
+      remote: fake,
+      statusOf: (m) => localStatus['${m.sourceId}::${m.id}'],
+    );
+    fake.rows.add({
+      'user_key': 'user1',
+      'source_id': 'src',
+      'item_id': 'd',
+      'title': 'T',
+      'cover': null,
+      'cover_headers': null,
+      'url': 'https://x/d',
+      'type': 'anime',
+      'status': null, // cloud has no status yet
+      'added_at': 0,
+    });
+
+    await store2.pullFromCloud();
+    await Future<void>.delayed(const Duration(milliseconds: 10)); // let backfill run
+    final row = fake.rows.firstWhere((r) => r['item_id'] == 'd');
+    expect(row['status'], 'completed');
+  });
 }

@@ -43,4 +43,16 @@ class ListStatusStore {
     await _box.delete(keyOf(m));
     revision.value++;
   }
+
+  /// Hydrate the local mirror from a persisted status name (used when a cloud
+  /// pull carries a status). Does NOT bump [revision] — the pull triggers a
+  /// single My List refresh once it finishes, so per-item bumps would just
+  /// churn. A null name clears the entry.
+  Future<void> setStatusRaw(String key, String? name) async {
+    if (name == null) {
+      await _box.delete(key);
+    } else {
+      await _box.put(key, name);
+    }
+  }
 }
