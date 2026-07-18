@@ -8,6 +8,8 @@ plugins {
     // Version scoped here (not in root settings) so it can't clash with the
     // serialization plugin version a Flutter plugin module pins for itself.
     id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
+    // Firebase Analytics — consumes android/app/google-services.json.
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }

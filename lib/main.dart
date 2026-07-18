@@ -1,10 +1,12 @@
 import 'dart:async';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
+import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
@@ -48,6 +50,14 @@ Future<void> main() async {
     // baseline). On-screen images stay full quality; far-off-screen ones reload
     // from the disk cache.
     PaintingBinding.instance.imageCache.maximumSizeBytes = 80 << 20; // 80 MB
+    // Firebase Analytics. Guarded so a build without google-services.json (or a
+    // device without Play Services) still boots — analytics just stays off.
+    try {
+      await Firebase.initializeApp();
+      Analytics.enabled = true;
+    } catch (e, st) {
+      AppLogger.instance.logError(e, st);
+    }
     MediaKit.ensureInitialized();
     // Dependency init happens inside the boot gate so the splash shows
     // immediately instead of a blank screen.
@@ -218,6 +228,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               debugShowCheckedModeBanner: false,
               scaffoldMessengerKey: rootMessengerKey,
               navigatorKey: rootNavigatorKey,
+              navigatorObservers: [Analytics.observer],
               home: home,
               builder: (context, child) => Stack(
                 children: [
