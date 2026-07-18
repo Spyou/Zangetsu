@@ -12,3 +12,7 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Firebase config — keep the project id/key out of the public repo. Each build
+# machine needs its own copy from the Firebase console at android/app/.
+app/google-services.json
