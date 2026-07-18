@@ -16,11 +16,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
+import io.github.anilbeesetti.nextlib.media3ext.ffdecoder.NextRenderersFactory
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
@@ -42,13 +44,26 @@ class ExoPlayerView(
 
     private val audioSessionId =
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
-    private val player = ExoPlayer.Builder(context).build().apply {
+    // NextRenderersFactory adds FFmpeg software decoders (audio: AC3/E-AC3/DTS/…)
+    // alongside the platform ones. EXTENSION_RENDERER_MODE_ON = try the device's
+    // hardware decoder first, fall back to FFmpeg only when it can't handle the
+    // codec — so hardware AAC still uses hardware, but Dolby/DTS tracks that were
+    // silent now decode in software and produce sound. TV-only (phone = mpv).
+    private val player = ExoPlayer.Builder(
+        context,
+        NextRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON),
+    ).build().apply {
         setAudioSessionId(audioSessionId)
     }
     private var loudness: LoudnessEnhancer? = null
     private val playerView = PlayerView(context).apply {
         player = this@ExoPlayerView.player
         useController = false // Flutter draws the controls on top
+        // Belt-and-suspenders keep-awake: the Flutter wakelock sets the window
+        // flag, and this keeps the screen on while the video view is attached —
+        // together they stop aggressive Android TV daydream/screensaver.
+        keepScreenOn = true
     }
     private val channel = MethodChannel(messenger, "zangetsu/exoplayer_$id")
     private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")

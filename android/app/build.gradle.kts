@@ -198,13 +198,20 @@ dependencies {
 
     // TV hardware-overlay video spike (SP0). ExoPlayer renders to a SurfaceView
     // (hardware overlay) — unlike media_kit's Flutter texture, which lags at 4K.
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
+    // media_kit (phone) doesn't use ExoPlayer, so bumping these is TV-only.
+    implementation("androidx.media3:media3-exoplayer:1.7.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.7.1")
     // DASH + SmoothStreaming so streams in those containers play (e.g. some
     // CloudStream movie sources like MovieBox). Without the DASH module,
-    // DefaultMediaSourceFactory throws when it meets a .mpd stream. Additive —
-    // media_kit (phone) doesn't use ExoPlayer, so the phone is unaffected.
-    implementation("androidx.media3:media3-exoplayer-dash:1.4.1")
-    implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.4.1")
-    implementation("androidx.media3:media3-ui:1.4.1")
+    // DefaultMediaSourceFactory throws when it meets a .mpd stream.
+    implementation("androidx.media3:media3-exoplayer-dash:1.7.1")
+    implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.7.1")
+    implementation("androidx.media3:media3-ui:1.7.1")
+    // Prebuilt FFmpeg software decoders for ExoPlayer (NextRenderersFactory) so
+    // audio codecs the device can't decode in hardware — AC3 / E-AC3 (Dolby) /
+    // DTS / TrueHD, common on movie sources — still produce SOUND on TV. Without
+    // this, ExoPlayer plays video but stays silent on those tracks (the phone's
+    // mpv already bundles FFmpeg, which is why it's a TV-only gap). The version
+    // prefix MUST match the media3 version above (1.7.1). TV-only.
+    implementation("io.github.anilbeesetti:nextlib-media3ext:1.7.1-0.9.0")
 }
