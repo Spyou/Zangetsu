@@ -67,6 +67,12 @@ class HistoryRemote {
     });
   }
 
+  /// Delete EVERY history row for [userKey] — used by "Clear history" so it
+  /// can't sync back on the next pull.
+  Future<void> deleteAllFor(String userKey) async {
+    await _service.client.from('history').delete().eq('user_key', userKey);
+  }
+
   Future<List<Map<String, dynamic>>> listFor(String userKey) async {
     final res =
         await _service.client.from('history').select().eq('user_key', userKey);
@@ -279,7 +285,27 @@ class WatchHistory {
     }
   }
 
+  /// Drop the local cache only. Used on LOGOUT — the cloud copy is the user's
+  /// data and MUST survive, so this must never touch the cloud.
   Future<void> clearLocal() async {
+    await _box.clear();
+    if (Hive.isBoxOpen(syncMetaBox)) {
+      await Hive.box(syncMetaBox).delete(_syncMetaKey);
+    }
+  }
+
+  /// User-initiated "Clear history": wipe Continue Watching EVERYWHERE — local
+  /// AND the cloud — so a later pull can't restore it. (This is the difference
+  /// from [clearLocal], which deliberately keeps the cloud copy on logout.)
+  /// Deletes the cloud rows first so even a racing pull sees nothing.
+  Future<void> clearAll() async {
+    final uid = _currentUserId();
+    if (uid != null) {
+      try {
+        await _remote.deleteAllFor(uid);
+      } catch (_) {/* best-effort — local still clears */}
+    }
+    _lastCloudPush.clear();
     await _box.clear();
     if (Hive.isBoxOpen(syncMetaBox)) {
       await Hive.box(syncMetaBox).delete(_syncMetaKey);
