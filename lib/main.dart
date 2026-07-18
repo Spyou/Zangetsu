@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
 import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
+import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
@@ -58,6 +60,10 @@ Future<void> main() async {
     } catch (e, st) {
       AppLogger.instance.logError(e, st);
     }
+    await Supabase.initialize(
+      url: Environment.supabaseUrl,
+      anonKey: Environment.supabaseAnonKey,
+    );
     MediaKit.ensureInitialized();
     // Dependency init happens inside the boot gate so the splash shows
     // immediately instead of a blank screen.

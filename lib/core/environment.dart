@@ -6,6 +6,16 @@ class Environment {
   static const String appwriteProjectName = 'Zangetsu';
   static const String appwritePublicEndpoint = 'https://sgp.cloud.appwrite.io/v1';
 
+  // Supabase project URL + anon (public) key — safe to embed, same as the
+  // Appwrite project id/endpoint above. Override with --dart-define if a
+  // build needs a different project (e.g. staging).
+  static const String supabaseUrl = String.fromEnvironment(
+      'SUPABASE_URL', defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co');
+  static const String supabaseAnonKey = String.fromEnvironment(
+      'SUPABASE_ANON_KEY',
+      defaultValue:
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw');
+
   /// Where Appwrite sends the password-recovery link. Appwrite appends
   /// `?userId=…&secret=…&expire=…`; the page there lets the user set a new
   /// password (see `web_reset/index.html`). This URL's domain MUST be
