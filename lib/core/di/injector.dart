@@ -62,11 +62,14 @@ import '../discord/discord_rpc.dart';
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../../features/auth/auth_cubit.dart';
+import '../../features/auth/migration_bridge.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
 import '../../features/watch_together/watch_together_controller.dart';
 import '../cast/cast_controller.dart';
 import '../cast/cast_proxy.dart';
+import '../supabase/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
@@ -92,27 +95,67 @@ Future<void> initDependencies() async {
   await Hive.openBox(AuthCubit.cacheBoxName);
   await ProviderDownloader.init();
 
-  // Appwrite first (no network on construct) so the library stores can use it
-  // for cloud sync. Public project id/endpoint only — no server key.
+  // Appwrite first (no network on construct) — kept for mintJwt (the
+  // legacy-session-migration path in MigrationBridge/AuthCubit).
   sl.registerSingleton<AppwriteService>(AppwriteService());
-  // Resolved lazily at call time (AuthCubit registers further down); null when
-  // signed out so the stores stay local-only.
-  String? currentUserId() =>
-      sl.isRegistered<AuthCubit>() ? sl<AuthCubit>().state.user?.$id : null;
+  // Supabase is already Supabase.initialize()d in main.dart; this is just the
+  // thin client wrapper the stores/services depend on.
+  sl.registerSingleton<SupabaseService>(SupabaseService());
+  // Resolved lazily at call time; null when signed out so the stores stay
+  // local-only.
+  String? currentUserId() => sl<SupabaseService>().currentUserId();
+
+  // Client half of the invisible Appwrite→Supabase account migration. Wired
+  // with real closures here (not in migration_bridge.dart) so the bridge
+  // itself stays Supabase-type-free and unit-testable.
+  sl.registerSingleton<MigrationBridge>(
+    MigrationBridge(
+      invoke: (name, body) async {
+        final r = await sl<SupabaseService>()
+            .client
+            .functions
+            .invoke(name, body: body);
+        return (r.data as Map).cast<String, dynamic>();
+      },
+      signInPassword: (email, pw) async {
+        try {
+          await sl<SupabaseService>()
+              .client
+              .auth
+              .signInWithPassword(email: email, password: pw);
+          return sl<SupabaseService>().client.auth.currentUser != null;
+        } catch (_) {
+          return false;
+        }
+      },
+      verifyOtp: (email, token) async {
+        try {
+          await sl<SupabaseService>().client.auth.verifyOTP(
+                email: email,
+                token: token,
+                type: OtpType.email,
+              );
+          return sl<SupabaseService>().client.auth.currentUser != null;
+        } catch (_) {
+          return false;
+        }
+      },
+    ),
+  );
 
   await ResumeStore.init();
   sl.registerSingleton<ResumeStore>(ResumeStore());
   await WatchHistory.init();
   sl.registerSingleton<WatchHistory>(
-    WatchHistory(sl<AppwriteService>(), currentUserId),
+    WatchHistory(sl<SupabaseService>(), currentUserId),
   );
-  sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<AppwriteService>()));
+  sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<SupabaseService>()));
   sl.registerSingleton<WatchTogetherController>(
     WatchTogetherController(sl<WatchRoomService>()),
   );
   await MyListStore.init();
   sl.registerSingleton<MyListStore>(
-    MyListStore(sl<AppwriteService>(), currentUserId),
+    MyListStore(sl<SupabaseService>(), currentUserId),
   );
   await ListStatusStore.init();
   sl.registerSingleton<ListStatusStore>(ListStatusStore());
@@ -223,9 +266,12 @@ Future<void> initDependencies() async {
   // boot; navigation is deferred until the root Navigator exists.
   sl.registerSingleton<OpenLinkService>(OpenLinkService());
 
-  // AuthCubit is global so any widget can gate on login. AppwriteService is
-  // already registered above (the library stores depend on it).
-  sl.registerSingleton<AuthCubit>(AuthCubit(sl<AppwriteService>()));
+  // AuthCubit is global so any widget can gate on login. SupabaseService,
+  // AppwriteService (mintJwt for migration) and MigrationBridge are already
+  // registered above.
+  sl.registerSingleton<AuthCubit>(
+    AuthCubit(sl<SupabaseService>(), sl<AppwriteService>(), sl<MigrationBridge>()),
+  );
 
   final manager = ProviderManager(dio: dio);
   sl.registerSingleton<ProviderManager>(manager);
