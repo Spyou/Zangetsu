@@ -112,11 +112,20 @@ class CloudStreamProvider implements BaseProvider {
   /// (e.g. "MovieBox (cncverse)"). Null → fall back to the file tag.
   final String? repoLabel;
 
-  /// The key the native host resolves a call against. We prefer the unique
-  /// `.cs3` file id so same-named sources address their OWN plugin; the host
-  /// also accepts the bare name (legacy fallback), so older sources still work.
+  /// Delimiter joining the `.cs3` file id and the source name in [hostKey]. A
+  /// control char that can't appear in a plugin file id or a source name, so the
+  /// native host can split it back apart unambiguously.
+  static const String keySep = '\u0001';
+
+  /// The key the native host resolves a call against. A "bundle" plugin
+  /// registers SEVERAL sources under ONE `.cs3` file id, so the file id alone is
+  /// ambiguous — we send `"<fileId><name>"` and the host matches BOTH,
+  /// landing on the exact source. Sources with no file id (unique `cs:<name>`
+  /// sources) fall back to the bare name, which the host still accepts.
   String get hostKey =>
-      (sourcePlugin != null && sourcePlugin!.isNotEmpty) ? sourcePlugin! : name;
+      (sourcePlugin != null && sourcePlugin!.isNotEmpty)
+      ? '${sourcePlugin!}$keySep$name'
+      : name;
 
   @override
   String get sourceId =>
@@ -1361,7 +1370,15 @@ class CloudStreamManager extends ChangeNotifier {
       // raw tag when no persisted repo claims the file — a genuinely different
       // repo resolves to a different label and is kept separately.
       final repo = _repoLabelFor(sp) ?? tag;
-      final key = '$internal|$repo';
+      // Include the source NAME in the key. A "bundle" plugin registers MANY
+      // MainAPIs under ONE file id (e.g. CNC Verse → Netflix, Disney, Hotstar…);
+      // keying by (internalName, repo) alone collapsed all of them to a single
+      // entry. Keying by (internalName, repo, name) still collapses genuine
+      // stale-version twins (same plugin file left on disk twice registers the
+      // SAME names, so they still merge to the newest) while keeping a bundle's
+      // distinct sources apart.
+      final name = (m['name'] as String?) ?? '';
+      final key = '$internal|$repo|$name';
       final existing = byIdentity[key];
       if (existing == null) {
         byIdentity[key] = m;
