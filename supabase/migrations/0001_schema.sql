@@ -64,6 +64,7 @@ create table if not exists public.watch_rooms (
 create table if not exists public.tv_pairings (
   id uuid primary key default gen_random_uuid(),
   code text not null,
+  tv_secret text not null,                -- TV-generated; gates reads of app_secret via the pair-tv function
   status text not null default 'pending', -- pending | approved | consumed
   device_name text not null default '',
   app_user_id text,
