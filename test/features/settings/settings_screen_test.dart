@@ -14,10 +14,19 @@ import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 // ── Minimal stubs (mirrors settings_screen_tv_test.dart) ─────────────────────
 
@@ -78,6 +87,7 @@ void main() {
     Hive.init(_hiveDir.path);
     await Hive.openBox(DownloadPrefs.boxName);
     await Hive.openBox(TorrentPrefs.boxName);
+    await Hive.openBox(ThemeController.boxName);
     final sl = GetIt.instance;
     sl
       ..registerSingleton<AppMode>(AppMode(isTv: false))
@@ -105,7 +115,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1000, 3000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    final authCubit = AuthCubit(AppwriteService());
+    final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
     addTearDown(authCubit.close);
     GetIt.instance.registerSingleton<AuthCubit>(authCubit);
 
