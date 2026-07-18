@@ -30,6 +30,11 @@ class FakeHistoryRemote implements HistoryRemote {
   }
 
   @override
+  Future<void> deleteAllFor(String userKey) async {
+    rows.removeWhere((r) => r['user_key'] == userKey);
+  }
+
+  @override
   Future<List<Map<String, dynamic>>> listFor(String userKey) async {
     return rows.where((r) => r['user_key'] == userKey).toList();
   }
@@ -124,5 +129,33 @@ void main() {
 
     final ids = history.all().map((e) => e.showId).toSet();
     expect(ids, {'fromCloud'});
+  });
+
+  test('clearAll() wipes local AND cloud, so a later pull restores nothing '
+      '(the "cleared shows came back" bug)', () async {
+    await history.save(_entry(showId: 'a'), flush: true);
+    await history.save(_entry(showId: 'b'), flush: true);
+    expect(fake.rows.where((r) => r['user_key'] == 'user1'), hasLength(2));
+
+    await history.clearAll();
+
+    expect(history.all(), isEmpty); // local gone
+    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty); // cloud gone
+
+    // The regression: a pull after clearing must NOT bring them back.
+    await history.pullFromCloud();
+    expect(history.all(), isEmpty);
+  });
+
+  test('clearLocal() keeps the cloud (logout path) — a pull restores it',
+      () async {
+    await history.save(_entry(showId: 'a'), flush: true);
+
+    await history.clearLocal();
+    expect(history.all(), isEmpty); // local dropped
+
+    // Cloud still has it (that's the point on logout) — a pull brings it back.
+    await history.pullFromCloud();
+    expect(history.all().map((e) => e.showId), ['a']);
   });
 }

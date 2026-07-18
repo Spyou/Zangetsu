@@ -154,7 +154,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ),
     );
     if (ok != true) return;
-    await _history.clearLocal();
+    await _history.clearAll(); // local + cloud, so it can't sync back
     _reload();
   }
 
