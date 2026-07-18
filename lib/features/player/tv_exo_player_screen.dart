@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -24,11 +25,13 @@ import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/tv_track_helpers.dart';
+import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import 'tv_exo_controller.dart';
@@ -50,6 +53,7 @@ class TvExoPlayerScreen extends StatefulWidget {
     this.cover,
     this.coverHeaders,
     this.category = 'sub',
+    this.availableCategories = const [],
     this.malId,
     this.scrobbleTitle,
     this.tmdbId,
@@ -67,6 +71,11 @@ class TvExoPlayerScreen extends StatefulWidget {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final String category;
+
+  /// Categories the show actually offers ('sub'/'dub'), from the detail's
+  /// sub/dub counts. Drives the Version toggle even when the current stream
+  /// pool only resolved one kind (separate sub/dub episode lists).
+  final List<String> availableCategories;
   final int? malId;
   final String? scrobbleTitle;
   final int? tmdbId;
@@ -79,6 +88,9 @@ class TvExoPlayerScreen extends StatefulWidget {
 
 class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   TvExoController? _c;
+  // Mutable so a Sub/Dub switch can swap in the other category's episode list
+  // (providers that ship separate lists per language). Seeded from the widget.
+  late List<Episode> _episodes;
   int _index = 0;
   bool _resumeSeeked = false;
   String? _error;
@@ -99,6 +111,21 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   final _rootFocus = FocusNode(debugLabel: 'tvExoRoot');
   final _upNextFocus = FocusNode(debugLabel: 'tvExoUpNext');
   Timer? _menuHideTimer; // auto-hide the track menu after inactivity
+
+  // Netflix-style focusable control row (Episodes / Audio & Subs / Next). Nodes
+  // are persisted so ◀▶ moves deterministically and ▼ can drop focus into the
+  // row from the root; while a row button holds focus the 5s auto-hide is
+  // paused so the buttons can't vanish under the user.
+  final List<FocusNode> _rowFocusNodes = List.generate(
+    3,
+    (i) => FocusNode(debugLabel: 'tvExoRow$i'),
+  );
+  bool _controlRowFocused = false;
+  bool _episodesOpen = false; // the episode-picker overlay
+  // Its own scope so the picker can grab D-pad focus off the root (the root
+  // holds focus and a child's autofocus can't steal it — same reason the track
+  // menu uses a scope).
+  final _episodesScope = FocusScopeNode(debugLabel: 'tvExoEpisodes');
 
   bool _subApplied = false; // one-shot preferred-language per (re)load
   bool _subDownloadTried = false; // one auto-download attempt per episode
@@ -125,14 +152,18 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _index = widget.episodes.isEmpty
+    _episodes = widget.episodes;
+    _index = _episodes.isEmpty
         ? 0
-        : widget.startIndex.clamp(0, widget.episodes.length - 1);
+        : widget.startIndex.clamp(0, _episodes.length - 1);
     _category = widget.category;
+    // Keep the screen awake during playback (mirrors the phone player) so TV
+    // devices don't drop into a screensaver/daydream mid-episode. Gated by the
+    // same user pref; released in dispose().
+    if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
   }
 
-  Episode? get _ep =>
-      widget.episodes.isEmpty ? null : widget.episodes[_index];
+  Episode? get _ep => _episodes.isEmpty ? null : _episodes[_index];
 
   String get _resumeShowId => widget.showUrl ?? widget.sourceId;
 
@@ -162,6 +193,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       if (!mounted) return;
       if (_c?.playing.value == true &&
           !_menuOpen &&
+          !_episodesOpen &&
+          !_controlRowFocused &&
           _searchResults == null &&
           _upNextCountdown == null) {
         setState(() => _controlsVisible = false);
@@ -230,8 +263,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }
     _lastSavedMs = 0;
     try {
-      final sources =
-          await widget.resolveSources(tvEpisodeUrl(ep.url, _category));
+      final sources = await widget.resolveSources(
+        tvEpisodeUrl(ep.url, _category),
+      );
       final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) {
@@ -250,8 +284,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   /// one-shot seek to [seekToMs] once a real duration arrives. [keepDownloads]
   /// preserves in-playback downloaded subs + the applied-pref flag (used when
   /// re-opening to attach a just-downloaded subtitle).
-  Future<void> _open(VideoSource src,
-      {int seekToMs = 0, bool keepDownloads = false}) async {
+  Future<void> _open(
+    VideoSource src, {
+    int seekToMs = 0,
+    bool keepDownloads = false,
+  }) async {
     _activeSource = src;
     _resumeSeeked = false;
     _seekTargetMs = seekToMs > 0 ? seekToMs : null;
@@ -276,8 +313,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       playHeaders = const {};
     }
     final subs = _subtitleConfigs(src);
-    await _c?.setSource(playUrl, playHeaders,
-        subtitles: subs, mimeType: _mimeForSource(src));
+    await _c?.setSource(
+      playUrl,
+      playHeaders,
+      subtitles: subs,
+      mimeType: _mimeForSource(src),
+    );
     await _applyCaptionStyle();
     _applyPlaybackTuning();
     _loadQualities(src);
@@ -290,7 +331,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final sub = sl<TorrentService>().events().listen((e) {
       if (!mounted || gen != _loadGen) return;
       if (e.state == TorrentState.buffering) {
-        setState(() => _torrentPhase = 'Buffering ${(e.bufferPct * 100).round()}%');
+        setState(
+          () => _torrentPhase = 'Buffering ${(e.bufferPct * 100).round()}%',
+        );
       } else if (e.state == TorrentState.finding) {
         setState(() => _torrentPhase = 'Finding peers…');
       }
@@ -361,22 +404,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   void _applyPlaybackTuning() {
     _holdingSpeed = false; // a fresh load always starts at the chosen speed
-    final perTitle = sl<TitlePrefsStore>().speed(widget.sourceId, _resumeShowId);
+    final perTitle = sl<TitlePrefsStore>().speed(
+      widget.sourceId,
+      _resumeShowId,
+    );
     _speed = perTitle ?? sl<PlaybackPrefs>().defaultSpeed;
     _c?.setPlaybackSpeed(_speed);
     _c?.setVolumeBoost(sl<PlaybackPrefs>().volumeBoost);
   }
 
   List<TvSubtitleConfig> _subtitleConfigs(VideoSource src) => [
-        for (final s in src.subtitles)
-          TvSubtitleConfig(
-            url: s.url,
-            lang: s.lang,
-            label: s.label,
-            mime: subtitleMime(s.format, url: s.url),
-          ),
-        ..._subDownloads,
-      ];
+    for (final s in src.subtitles)
+      TvSubtitleConfig(
+        url: s.url,
+        lang: s.lang,
+        label: s.label,
+        mime: subtitleMime(s.format, url: s.url),
+      ),
+    ..._subDownloads,
+  ];
 
   void _maybeResumeSeek() {
     final c = _c;
@@ -397,7 +443,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _maybeFetchSkips() {
     final c = _c;
     final ep = _ep;
-    if (c == null || ep == null || _skipsFetched || c.duration.value <= 0) return;
+    if (c == null || ep == null || _skipsFetched || c.duration.value <= 0) {
+      return;
+    }
     _skipsFetched = true;
     if (!sl<PlaybackPrefs>().skipIntro) return;
     final title = widget.showTitle;
@@ -410,8 +458,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           duration: Duration(milliseconds: c.duration.value),
         )
         .then((s) {
-      if (mounted) setState(() => _skips = s);
-    }).catchError((_) {});
+          if (mounted) setState(() => _skips = s);
+        })
+        .catchError((_) {});
   }
 
   Future<void> _loadQualities(VideoSource src) async {
@@ -512,18 +561,48 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   void _switchCategory(String cat) {
     if (cat == _category) return;
-    // Re-resolve the current episode under the new category, keep position.
+    // Re-resolve the current episode under the new category, keeping position.
     final pos = _c?.position.value ?? 0;
     () async {
       final ep = _ep;
       if (ep == null) return;
       try {
-        final sources = await widget.resolveSources(tvEpisodeUrl(ep.url, cat));
+        // Two provider shapes: (1) the language is a URL segment (/sub/ ↔ /dub/)
+        // — tvEpisodeUrl rewrites in place and the same list works; (2) separate
+        // episode lists per language — the rewrite is a no-op, so re-fetch the
+        // other list and swap it in (mirrors the phone's switchCategory).
+        final rewritten = tvEpisodeUrl(ep.url, cat);
+        var epUrl = rewritten;
+        var newEpisodes = _episodes;
+        var newIndex = _index;
+        if (rewritten == ep.url && widget.showUrl != null) {
+          final other = await sl<SourceRepository>().episodes(
+            widget.showUrl!,
+            category: cat,
+            sourceId: widget.sourceId,
+          );
+          if (other.isNotEmpty) {
+            newEpisodes = other;
+            newIndex = _index < other.length ? _index : 0;
+            epUrl = other[newIndex].url;
+          }
+        }
+        final sources = await widget.resolveSources(epUrl);
         final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
         final src = pickDefault(sources, prefer: prefer);
         if (src == null) return;
         _sources = sources;
+        _episodes = newEpisodes;
+        _index = newIndex;
         _category = cat;
+        // Remember the choice for this title so the next open honours it.
+        if (widget.showUrl != null) {
+          sl<TitlePrefsStore>().setCategory(
+            widget.sourceId,
+            widget.showUrl!,
+            cat,
+          );
+        }
         await _open(src, seekToMs: pos);
         if (mounted) setState(() {});
       } catch (_) {}
@@ -537,46 +616,53 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // can switch when one is slow or dead (mirrors the phone player's Sources).
     final servers = sortByQuality(_qualityPool());
     if (servers.length > 1) {
-      sections.add(TvMenuSection(
-        title: 'Servers',
-        options: [
-          for (final s in servers)
-            TvMenuOption(
-              label: _serverLabel(s),
-              selected: s.url == _activeSource?.url,
-              onSelect: () => _open(s, seekToMs: c.position.value),
-            ),
-        ],
-      ));
+      sections.add(
+        TvMenuSection(
+          title: 'Servers',
+          options: [
+            for (final s in servers)
+              TvMenuOption(
+                label: _serverLabel(s),
+                selected: s.url == _activeSource?.url,
+                onSelect: () => _open(s, seekToMs: c.position.value),
+              ),
+          ],
+        ),
+      );
     }
 
     // Quality
     final qOptions = <TvMenuOption>[];
     if (_qualities.isNotEmpty) {
-      qOptions.add(TvMenuOption(
-        label: 'Auto',
-        selected: _activeQuality == null,
-        onSelect: () => _selectQuality(null),
-      ));
+      qOptions.add(
+        TvMenuOption(
+          label: 'Auto',
+          selected: _activeQuality == null,
+          onSelect: () => _selectQuality(null),
+        ),
+      );
       for (final v in _qualities) {
-        qOptions.add(TvMenuOption(
-          label: v.quality,
-          selected: _activeQuality?.url == v.url,
-          onSelect: () => _selectQuality(v),
-        ));
+        qOptions.add(
+          TvMenuOption(
+            label: v.quality,
+            selected: _activeQuality?.url == v.url,
+            onSelect: () => _selectQuality(v),
+          ),
+        );
       }
     } else {
       final labels = <String>{
         for (final s in _qualityPool())
           if ((s.quality ?? '').isNotEmpty) s.quality!,
-      }.toList()
-        ..sort((a, b) => qualityHeight(b).compareTo(qualityHeight(a)));
+      }.toList()..sort((a, b) => qualityHeight(b).compareTo(qualityHeight(a)));
       for (final label in labels) {
-        qOptions.add(TvMenuOption(
-          label: label,
-          selected: _activeSource?.quality == label,
-          onSelect: () => _selectSourceQuality(label),
-        ));
+        qOptions.add(
+          TvMenuOption(
+            label: label,
+            selected: _activeSource?.quality == label,
+            onSelect: () => _selectSourceQuality(label),
+          ),
+        );
       }
     }
     if (qOptions.isNotEmpty) {
@@ -586,38 +672,49 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // Audio
     final audio = c.audioTracks.value;
     if (audio.length > 1) {
-      sections.add(TvMenuSection(
-        title: 'Audio',
-        options: [
-          for (final t in audio)
-            TvMenuOption(
-              label: t.label ?? (t.language.isEmpty ? 'Track' : t.language),
-              selected: t.selected,
-              onSelect: () => _selectAudio(t),
-            ),
-        ],
-      ));
+      sections.add(
+        TvMenuSection(
+          title: 'Audio',
+          options: [
+            for (final t in audio)
+              TvMenuOption(
+                label: t.label ?? (t.language.isEmpty ? 'Track' : t.language),
+                selected: t.selected,
+                onSelect: () => _selectAudio(t),
+              ),
+          ],
+        ),
+      );
     }
 
-    // Version (sub/dub)
+    // Version (sub/dub). Show when the resolved pool carries both kinds OR the
+    // show advertises both via its detail counts — separate sub/dub episode
+    // lists only ever resolve one kind at a time, so the pool check alone would
+    // hide the toggle for most anime.
     final kinds = availableKinds(_sources);
-    final hasBoth = kinds.contains(AudioKind.sub) && kinds.contains(AudioKind.dub);
-    if (hasBoth) {
-      sections.add(TvMenuSection(
-        title: 'Version',
-        options: [
-          TvMenuOption(
-            label: 'Sub',
-            selected: _category == 'sub',
-            onSelect: () => _switchCategory('sub'),
-          ),
-          TvMenuOption(
-            label: 'Dub',
-            selected: _category == 'dub',
-            onSelect: () => _switchCategory('dub'),
-          ),
-        ],
-      ));
+    final poolHasBoth =
+        kinds.contains(AudioKind.sub) && kinds.contains(AudioKind.dub);
+    final showHasBoth =
+        widget.availableCategories.contains('sub') &&
+        widget.availableCategories.contains('dub');
+    if (poolHasBoth || showHasBoth) {
+      sections.add(
+        TvMenuSection(
+          title: 'Version',
+          options: [
+            TvMenuOption(
+              label: 'Sub',
+              selected: _category == 'sub',
+              onSelect: () => _switchCategory('sub'),
+            ),
+            TvMenuOption(
+              label: 'Dub',
+              selected: _category == 'dub',
+              onSelect: () => _switchCategory('dub'),
+            ),
+          ],
+        ),
+      );
     }
 
     // Subtitles
@@ -638,10 +735,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         label: 'Preferred language…',
         onSelect: _pickPreferredLanguage,
       ),
-      TvMenuOption(
-        label: 'Search online…',
-        onSelect: _openSubtitleSearch,
-      ),
+      TvMenuOption(label: 'Search online…', onSelect: _openSubtitleSearch),
       TvMenuOption(
         label: 'Subtitle size',
         trailing: _sizeLabel(sl<PlaybackPrefs>().subtitleScale),
@@ -656,32 +750,36 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     sections.add(TvMenuSection(title: 'Subtitles', options: subOptions));
 
     // Speed
-    sections.add(TvMenuSection(
-      title: 'Speed',
-      options: [
-        for (final s in kTvSpeeds)
-          TvMenuOption(
-            label: s == 1.0 ? 'Normal' : '${s}x',
-            selected: (_speed - s).abs() < 0.001,
-            onSelect: () => _setSpeed(s),
-          ),
-      ],
-    ));
+    sections.add(
+      TvMenuSection(
+        title: 'Speed',
+        options: [
+          for (final s in kTvSpeeds)
+            TvMenuOption(
+              label: s == 1.0 ? 'Normal' : '${s}x',
+              selected: (_speed - s).abs() < 0.001,
+              onSelect: () => _setSpeed(s),
+            ),
+        ],
+      ),
+    );
 
     // Volume boost
     const volSteps = [100, 125, 150, 175, 200];
     final vol = sl<PlaybackPrefs>().volumeBoost;
-    sections.add(TvMenuSection(
-      title: 'Volume',
-      options: [
-        for (final v in volSteps)
-          TvMenuOption(
-            label: v == 100 ? '100% (normal)' : '$v%',
-            selected: vol == v,
-            onSelect: () => _setVolume(v),
-          ),
-      ],
-    ));
+    sections.add(
+      TvMenuSection(
+        title: 'Volume',
+        options: [
+          for (final v in volSteps)
+            TvMenuOption(
+              label: v == 100 ? '100% (normal)' : '$v%',
+              selected: vol == v,
+              onSelect: () => _setVolume(v),
+            ),
+        ],
+      ),
+    );
 
     return sections;
   }
@@ -720,7 +818,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   Future<void> _pickPreferredLanguage() async {
     final picked = await showSubtitleLanguagePicker(
-        context, sl<PlaybackPrefs>().subtitlePreference);
+      context,
+      sl<PlaybackPrefs>().subtitlePreference,
+    );
     if (picked == null) return;
     await sl<PlaybackPrefs>().setSubtitlePreference(picked);
     _subApplied = false;
@@ -776,7 +876,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       _subDownloads.add(cfg);
       final src = _activeSource;
       if (src != null) {
-        await _open(src, seekToMs: _c?.position.value ?? 0, keepDownloads: true);
+        await _open(
+          src,
+          seekToMs: _c?.position.value ?? 0,
+          keepDownloads: true,
+        );
       }
     } catch (_) {
       _toast('Could not download subtitle.');
@@ -806,6 +910,50 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _menuHideTimer?.cancel();
     setState(() => _menuOpen = false);
     _rootFocus.requestFocus(); // hand D-pad back to the player controls
+  }
+
+  // ── Netflix control button row + episode picker ─────────────────────────────
+
+  /// Drop D-pad focus into the control button row (from the root). The row
+  /// stays visible while focused (see [_bumpControls]).
+  void _enterControlRow() {
+    _bumpControls();
+    setState(() => _controlRowFocused = true);
+    _rowFocusNodes.first.requestFocus();
+  }
+
+  /// Hand focus back to the player root — OK=play/pause, ◀▶=seek again.
+  void _exitControlRow() {
+    setState(() => _controlRowFocused = false);
+    _rootFocus.requestFocus();
+    _bumpControls();
+  }
+
+  void _openEpisodes() {
+    setState(() => _episodesOpen = true);
+    // Move focus into the picker once it's mounted (autofocus can't steal it
+    // from the root); the current episode is the autofocus target in the scope.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _episodesOpen) _episodesScope.requestFocus();
+    });
+  }
+
+  void _closeEpisodes() {
+    if (!_episodesOpen) return;
+    setState(() => _episodesOpen = false);
+    _rootFocus.requestFocus();
+  }
+
+  void _playEpisodeAt(int i) {
+    if (i < 0 || i >= _episodes.length) {
+      _closeEpisodes();
+      return;
+    }
+    if (i != _index) {
+      setState(() => _index = i);
+      _loadEpisode();
+    }
+    _closeEpisodes();
   }
 
   void _onTracksChanged() {
@@ -848,19 +996,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       );
       if (results.isEmpty || !mounted) return;
       final r = results.first;
-      _subDownloads.add(TvSubtitleConfig(
-        url: r.url,
-        lang: lang.iso1,
-        label: lang.name,
-        mime: subtitleMime(null, url: r.url),
-      ));
+      _subDownloads.add(
+        TvSubtitleConfig(
+          url: r.url,
+          lang: lang.iso1,
+          label: lang.name,
+          mime: subtitleMime(null, url: r.url),
+        ),
+      );
       // Re-open the current source with the added subtitle, keeping position
       // AND the download list (keepDownloads: true). Then re-arm the pref pass
       // so the now-present downloaded track gets selected on the next
       // onTracksChanged (the _subDownloadTried guard prevents a re-download loop).
       final src = _activeSource;
       if (src != null) {
-        await _open(src, seekToMs: _c?.position.value ?? 0, keepDownloads: true);
+        await _open(
+          src,
+          seekToMs: _c?.position.value ?? 0,
+          keepDownloads: true,
+        );
         _subApplied = false;
       }
     } catch (_) {}
@@ -915,7 +1069,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _onEnded() {
     if (_c?.ended.value != true) return;
     _maybeScrobble(force: true);
-    if (_index >= widget.episodes.length - 1) return;
+    if (_index >= _episodes.length - 1) return;
     if (sl<PlaybackPrefs>().autoplayNext) {
       _startUpNext();
     }
@@ -952,7 +1106,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _next() {
-    if (_index >= widget.episodes.length - 1) return;
+    if (_index >= _episodes.length - 1) return;
     setState(() => _index++);
     _loadEpisode();
   }
@@ -972,8 +1126,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _seekBy(int deltaMs) {
     final c = _c;
     if (c == null) return;
-    final target =
-        (c.position.value + deltaMs).clamp(0, c.duration.value == 0 ? 1 << 31 : c.duration.value);
+    final target = (c.position.value + deltaMs).clamp(
+      0,
+      c.duration.value == 0 ? 1 << 31 : c.duration.value,
+    );
     c.seek(target);
   }
 
@@ -981,8 +1137,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final k = e.logicalKey;
     // While an overlay (menu / online search / up-next) is up, it owns the
     // D-pad: let its focused widget + traversal handle keys, don't eat them.
-    if (_menuOpen || _searchResults != null || _upNextCountdown != null) {
-      if (_holdingSpeed) _endHoldSpeed(); // don't leave 2× stuck if a menu opens
+    if (_menuOpen ||
+        _episodesOpen ||
+        _searchResults != null ||
+        _upNextCountdown != null) {
+      if (_holdingSpeed) {
+        _endHoldSpeed(); // don't leave 2× stuck if a menu opens
+      }
       return KeyEventResult.ignored;
     }
     // Back / Escape: hide the controls first, then exit. Handled HERE (before any
@@ -1002,8 +1163,14 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // The toggle is deferred to key-up so holding speeds up instead of pausing;
     // a hold is detected by the key-repeat that only a held button emits.
     if (okKeys.contains(k)) {
-      if (e is KeyDownEvent) { _bumpControls(); return KeyEventResult.handled; }
-      if (e is KeyRepeatEvent) { _startHoldSpeed(); return KeyEventResult.handled; }
+      if (e is KeyDownEvent) {
+        _bumpControls();
+        return KeyEventResult.handled;
+      }
+      if (e is KeyRepeatEvent) {
+        _startHoldSpeed();
+        return KeyEventResult.handled;
+      }
       if (e is KeyUpEvent) {
         _holdingSpeed ? _endHoldSpeed() : _togglePlay();
         return KeyEventResult.handled;
@@ -1012,13 +1179,30 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }
     if (e is! KeyDownEvent) return KeyEventResult.ignored;
     _bumpControls(); // any input reveals the controls + resets the hide timer
-    if (k == LogicalKeyboardKey.arrowRight) { _seekBy(10000); return KeyEventResult.handled; }
-    if (k == LogicalKeyboardKey.arrowLeft) { _seekBy(-10000); return KeyEventResult.handled; }
-    if (k == LogicalKeyboardKey.mediaTrackNext) { _next(); return KeyEventResult.handled; }
-    if (k == LogicalKeyboardKey.mediaTrackPrevious) { _prev(); return KeyEventResult.handled; }
+    if (k == LogicalKeyboardKey.arrowRight) {
+      _seekBy(10000);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.arrowLeft) {
+      _seekBy(-10000);
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaTrackNext) {
+      _next();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.mediaTrackPrevious) {
+      _prev();
+      return KeyEventResult.handled;
+    }
+    // ▼ drops focus into the Netflix control button row; ▲ / context-menu jump
+    // straight to the Audio & Subtitles menu (quick access preserved).
+    if (k == LogicalKeyboardKey.arrowDown) {
+      _enterControlRow();
+      return KeyEventResult.handled;
+    }
     if (k == LogicalKeyboardKey.contextMenu ||
-        k == LogicalKeyboardKey.arrowUp ||
-        k == LogicalKeyboardKey.arrowDown) {
+        k == LogicalKeyboardKey.arrowUp) {
       _openMenu();
       return KeyEventResult.handled;
     }
@@ -1048,7 +1232,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _stopTorrent();
     _menuHideTimer?.cancel();
     _controlsHideTimer?.cancel();
-    _upNextTimer?.cancel(); // cancel directly — _cancelUpNext setStates/refocuses
+    _upNextTimer
+        ?.cancel(); // cancel directly — _cancelUpNext setStates/refocuses
     final c = _c;
     if (c != null) {
       // Persist final position before releasing.
@@ -1066,15 +1251,23 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       c.dispose();
     }
     _dio.close();
+    WakelockPlus.disable(); // release the keep-awake lock on exit
     _rootFocus.dispose();
     _upNextFocus.dispose();
+    for (final n in _rowFocusNodes) {
+      n.dispose();
+    }
+    _episodesScope.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final overlayOpen =
-        _menuOpen || _searchResults != null || _upNextCountdown != null;
+        _menuOpen ||
+        _episodesOpen ||
+        _searchResults != null ||
+        _upNextCountdown != null;
     return PopScope(
       // While an overlay is up, Back closes IT (the TV remote Back is a route
       // pop, not a key event, so this — not the menu's onKeyEvent — is what
@@ -1088,6 +1281,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         if (_searchResults != null) {
           setState(() => _searchResults = null);
           _rootFocus.requestFocus();
+        } else if (_episodesOpen) {
+          _closeEpisodes();
         } else if (_menuOpen) {
           _closeMenu();
         } else if (_upNextCountdown != null) {
@@ -1098,250 +1293,511 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         }
       },
       child: Scaffold(
-      backgroundColor: Colors.black,
-      body: Focus(
-        focusNode: _rootFocus,
-        autofocus: true,
-        onKeyEvent: _onKey,
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: PlatformViewLink(
-                viewType: 'zangetsu/exoplayer_view',
-                surfaceFactory: (context, controller) => AndroidViewSurface(
-                  controller: controller as AndroidViewController,
-                  gestureRecognizers:
-                      const <Factory<OneSequenceGestureRecognizer>>{},
-                  hitTestBehavior: PlatformViewHitTestBehavior.transparent,
-                ),
-                onCreatePlatformView: (params) {
-                  final controller = PlatformViewsService.initExpensiveAndroidView(
-                    id: params.id,
-                    viewType: 'zangetsu/exoplayer_view',
-                    layoutDirection: TextDirection.ltr,
-                    creationParams: const <String, dynamic>{},
-                    creationParamsCodec: const StandardMessageCodec(),
-                    onFocus: () => params.onFocusChanged(true),
-                  )
-                    ..addOnPlatformViewCreatedListener(params.onPlatformViewCreated)
-                    ..addOnPlatformViewCreatedListener(_onViewCreated)
-                    ..create();
-                  return controller;
-                },
-              ),
-            ),
-            if (_error != null)
-              Center(
-                child: Text(_error!,
-                    style: const TextStyle(color: Colors.white, fontSize: 18)),
-              ),
-            if (_torrentPhase != null)
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const CircularProgressIndicator(),
-                    const SizedBox(height: 16),
-                    Text(_torrentPhase!,
-                        style: const TextStyle(color: Colors.white, fontSize: 16)),
-                  ],
-                ),
-              ),
-            if (_c != null && _controlsVisible) _controlsOverlay(_c!),
-            if (_c != null)
-              Positioned(
-                right: 40,
-                bottom: 120,
-                child: ValueListenableBuilder<int>(
-                  valueListenable: _c!.position,
-                  builder: (_, pos, _) {
-                    final children = <Widget>[];
-                    final skip = sl<PlaybackPrefs>().skipIntro
-                        ? activeSkipInterval(_skips, pos)
-                        : null;
-                    if (skip != null) {
-                      children.add(_pillButton(
-                        skip.type == 'ed' ? 'Skip Ending' : 'Skip Opening',
-                        () => _c?.seek(skip.end.inMilliseconds),
-                      ));
-                    }
-                    // The manual "+Ns" jump pill rides with the controls — it
-                    // fades out on the same 5s timer instead of sitting on the
-                    // video the whole episode. (The AniSkip pill above still
-                    // shows for its interval, Netflix-style.)
-                    if (sl<PlaybackPrefs>().megaSkip && _controlsVisible) {
-                      final secs = sl<PlaybackPrefs>().megaSkipSeconds;
-                      children.add(_pillButton('+${secs}s', () {
-                        final c = _c;
-                        if (c != null) c.seek(c.position.value + secs * 1000);
-                      }));
-                    }
-                    if (children.isEmpty) return const SizedBox.shrink();
-                    return Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        for (final w in children) Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: w,
-                        ),
-                      ],
-                    );
+        backgroundColor: Colors.black,
+        body: Focus(
+          focusNode: _rootFocus,
+          autofocus: true,
+          onKeyEvent: _onKey,
+          onFocusChange: (f) {
+            // Root regained focus (e.g. ▲ out of the row, or an overlay closed) —
+            // clear the row flag so the auto-hide resumes.
+            if (f && _controlRowFocused) {
+              setState(() => _controlRowFocused = false);
+            }
+          },
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: PlatformViewLink(
+                  viewType: 'zangetsu/exoplayer_view',
+                  surfaceFactory: (context, controller) => AndroidViewSurface(
+                    controller: controller as AndroidViewController,
+                    gestureRecognizers:
+                        const <Factory<OneSequenceGestureRecognizer>>{},
+                    hitTestBehavior: PlatformViewHitTestBehavior.transparent,
+                  ),
+                  onCreatePlatformView: (params) {
+                    final controller =
+                        PlatformViewsService.initExpensiveAndroidView(
+                            id: params.id,
+                            viewType: 'zangetsu/exoplayer_view',
+                            layoutDirection: TextDirection.ltr,
+                            creationParams: const <String, dynamic>{},
+                            creationParamsCodec: const StandardMessageCodec(),
+                            onFocus: () => params.onFocusChanged(true),
+                          )
+                          ..addOnPlatformViewCreatedListener(
+                            params.onPlatformViewCreated,
+                          )
+                          ..addOnPlatformViewCreatedListener(_onViewCreated)
+                          ..create();
+                    return controller;
                   },
                 ),
               ),
-            if (_upNextCountdown != null && _index < widget.episodes.length - 1)
-              Positioned(
-                right: 40,
-                bottom: 160,
-                child: Focus(
-                  focusNode: _upNextFocus,
-                  onKeyEvent: (_, e) {
-                    if (e is! KeyDownEvent) return KeyEventResult.ignored;
-                    if (okKeys.contains(e.logicalKey)) {
-                      _cancelUpNext();
-                      _next();
-                      return KeyEventResult.handled;
-                    }
-                    if (e.logicalKey == LogicalKeyboardKey.goBack ||
-                        e.logicalKey == LogicalKeyboardKey.escape) {
-                      _cancelUpNext();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.85),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.accent, width: 2),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Up next: ${widget.episodes[_index + 1].title.isNotEmpty ? widget.episodes[_index + 1].title : 'Episode ${_index + 2}'}',
-                          style: const TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                        const SizedBox(height: 8),
-                        Text('Playing in $_upNextCountdown…  (OK to play now, Back to cancel)',
-                            style: const TextStyle(color: Colors.white70, fontSize: 13)),
-                      ],
-                    ),
+              if (_error != null)
+                Center(
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
                   ),
                 ),
-              ),
-            if (_menuOpen && _c != null)
-              TvTrackMenu(
-                sections: _buildSections(_c!),
-                onClose: _closeMenu,
-                onInteract: _bumpMenuHide,
-              ),
-            if (_searchResults != null)
-              TvTrackMenu(
-                onClose: () {
-                  setState(() => _searchResults = null);
-                  _rootFocus.requestFocus();
-                },
-                sections: [
-                  TvMenuSection(
-                    title: 'Online subtitles',
-                    options: [
-                      for (final r in _searchResults!)
-                        TvMenuOption(
-                          label: r.name,
-                          trailing: r.language,
-                          onSelect: () => _applySearchResult(r),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-          ],
-        ),
-      ),
-      ),
-    );
-  }
-
-  Widget _controlsOverlay(TvExoController c) {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(40, 24, 40, 28),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomCenter,
-            end: Alignment.topCenter,
-            colors: [Colors.black87, Colors.transparent],
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Scrubber
-            ValueListenableBuilder<int>(
-              valueListenable: c.position,
-              builder: (_, pos, _) => ValueListenableBuilder<int>(
-                valueListenable: c.duration,
-                builder: (_, dur, _) {
-                  final frac = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
-                  return Row(
+              if (_torrentPhase != null)
+                Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_fmt(pos),
-                          style: const TextStyle(color: Colors.white70)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: LinearProgressIndicator(
-                          value: frac,
-                          minHeight: 4,
-                          backgroundColor: Colors.white24,
-                          valueColor:
-                              AlwaysStoppedAnimation(AppColors.accent),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 16),
+                      Text(
+                        _torrentPhase!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Text(_fmt(dur),
-                          style: const TextStyle(color: Colors.white70)),
                     ],
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+                  ),
+                ),
+              // Centered buffering spinner — shown even when the controls are
+              // hidden, so a stall during playback always reads.
+              if (_c != null)
                 ValueListenableBuilder<bool>(
-                  valueListenable: c.buffering,
-                  builder: (_, buf, _) => buf
-                      ? const Padding(
-                          padding: EdgeInsets.only(right: 16),
+                  valueListenable: _c!.buffering,
+                  builder: (_, buf, _) => buf && _error == null
+                      ? const Center(
                           child: SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            width: 48,
+                            height: 48,
+                            child: CircularProgressIndicator(strokeWidth: 3),
                           ),
                         )
                       : const SizedBox.shrink(),
                 ),
-                ValueListenableBuilder<bool>(
-                  valueListenable: c.playing,
-                  builder: (_, playing, _) => Text(
-                    playing ? 'Playing — OK to pause' : 'Paused — OK to play',
-                    style: const TextStyle(color: Colors.white),
+              if (_c != null && _controlsVisible) _controlsOverlay(_c!),
+              if (_episodesOpen && _c != null) _episodesOverlay(),
+              if (_c != null)
+                Positioned(
+                  right: 40,
+                  bottom: 120,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _c!.position,
+                    builder: (_, pos, _) {
+                      final children = <Widget>[];
+                      final skip = sl<PlaybackPrefs>().skipIntro
+                          ? activeSkipInterval(_skips, pos)
+                          : null;
+                      if (skip != null) {
+                        children.add(
+                          _pillButton(
+                            skip.type == 'ed' ? 'Skip Ending' : 'Skip Opening',
+                            () => _c?.seek(skip.end.inMilliseconds),
+                          ),
+                        );
+                      }
+                      // The manual "+Ns" jump pill rides with the controls — it
+                      // fades out on the same 5s timer instead of sitting on the
+                      // video the whole episode. (The AniSkip pill above still
+                      // shows for its interval, Netflix-style.)
+                      if (sl<PlaybackPrefs>().megaSkip && _controlsVisible) {
+                        final secs = sl<PlaybackPrefs>().megaSkipSeconds;
+                        children.add(
+                          _pillButton('+${secs}s', () {
+                            final c = _c;
+                            if (c != null) {
+                              c.seek(c.position.value + secs * 1000);
+                            }
+                          }),
+                        );
+                      }
+                      if (children.isEmpty) return const SizedBox.shrink();
+                      return Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          for (final w in children)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: w,
+                            ),
+                        ],
+                      );
+                    },
                   ),
                 ),
-                const SizedBox(width: 18),
+              if (_upNextCountdown != null && _index < _episodes.length - 1)
+                Positioned(
+                  right: 40,
+                  bottom: 160,
+                  child: Focus(
+                    focusNode: _upNextFocus,
+                    onKeyEvent: (_, e) {
+                      if (e is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (okKeys.contains(e.logicalKey)) {
+                        _cancelUpNext();
+                        _next();
+                        return KeyEventResult.handled;
+                      }
+                      if (e.logicalKey == LogicalKeyboardKey.goBack ||
+                          e.logicalKey == LogicalKeyboardKey.escape) {
+                        _cancelUpNext();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.accent, width: 2),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Up next: ${_episodes[_index + 1].title.isNotEmpty ? _episodes[_index + 1].title : 'Episode ${_index + 2}'}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Playing in $_upNextCountdown…  (OK to play now, Back to cancel)',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              if (_menuOpen && _c != null)
+                TvTrackMenu(
+                  sections: _buildSections(_c!),
+                  onClose: _closeMenu,
+                  onInteract: _bumpMenuHide,
+                ),
+              if (_searchResults != null)
+                TvTrackMenu(
+                  onClose: () {
+                    setState(() => _searchResults = null);
+                    _rootFocus.requestFocus();
+                  },
+                  sections: [
+                    TvMenuSection(
+                      title: 'Online subtitles',
+                      options: [
+                        for (final r in _searchResults!)
+                          TvMenuOption(
+                            label: r.name,
+                            trailing: r.language,
+                            onSelect: () => _applySearchResult(r),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Netflix-style Hybrid controls: title + episode label under a top scrim,
+  /// and a polished scrubber + focusable button row under a bottom scrim. OK
+  /// still play/pauses and ◀▶ still seek from the root; ▼ drops into the row.
+  Widget _controlsOverlay(TvExoController c) {
+    final ep = _ep;
+    final epLabel = ep == null
+        ? null
+        : (ep.number != null
+              ? 'Episode ${ep.number!.toInt()}'
+              : 'Episode ${_index + 1}');
+    final buttons = <({IconData icon, String label, VoidCallback onTap})>[
+      (
+        icon: Icons.video_library_outlined,
+        label: 'Episodes',
+        onTap: _openEpisodes,
+      ),
+      (icon: Icons.subtitles_outlined, label: 'Audio & Subs', onTap: _openMenu),
+      if (_index < _episodes.length - 1)
+        (icon: Icons.skip_next_rounded, label: 'Next Episode', onTap: _next),
+    ];
+    return Positioned.fill(
+      child: Column(
+        children: [
+          // ── Top scrim + title / episode ────────────────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(48, 36, 48, 56),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.black87, Colors.transparent],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Text(
-                  '▲ / ▼  Subtitles & options',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+                  widget.showTitle ?? '',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (epLabel != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    epLabel,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const Spacer(),
+          // ── Bottom scrim + scrubber + button row ───────────────────────────
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(48, 44, 48, 34),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [Colors.black, Colors.transparent],
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ValueListenableBuilder<int>(
+                  valueListenable: c.position,
+                  builder: (_, pos, _) => ValueListenableBuilder<int>(
+                    valueListenable: c.duration,
+                    builder: (_, dur, _) {
+                      final frac = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
+                      return Row(
+                        children: [
+                          Text(
+                            _fmt(pos),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: LinearProgressIndicator(
+                                value: frac,
+                                minHeight: 6,
+                                backgroundColor: Colors.white24,
+                                valueColor: AlwaysStoppedAnimation(
+                                  AppColors.accent,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Text(
+                            _fmt(dur),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (var i = 0; i < buttons.length; i++)
+                      _controlRowButton(
+                        i,
+                        buttons.length,
+                        buttons[i].icon,
+                        buttons[i].label,
+                        buttons[i].onTap,
+                      ),
+                  ],
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A focusable pill in the control row. ◀▶ moves along the row, OK activates,
+  /// ▲/Back hands focus back to the player root. Returns `handled` for the
+  /// arrows so the root's seek handler never fires while the row is focused.
+  Widget _controlRowButton(
+    int index,
+    int total,
+    IconData icon,
+    String label,
+    VoidCallback onTap,
+  ) {
+    return Focus(
+      focusNode: _rowFocusNodes[index],
+      onKeyEvent: (n, e) {
+        if (e is! KeyDownEvent) return KeyEventResult.ignored;
+        final k = e.logicalKey;
+        if (okKeys.contains(k)) {
+          onTap();
+          return KeyEventResult.handled;
+        }
+        if (k == LogicalKeyboardKey.arrowLeft) {
+          if (index > 0) _rowFocusNodes[index - 1].requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (k == LogicalKeyboardKey.arrowRight) {
+          if (index < total - 1) _rowFocusNodes[index + 1].requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (k == LogicalKeyboardKey.arrowUp ||
+            k == LogicalKeyboardKey.goBack ||
+            k == LogicalKeyboardKey.escape) {
+          _exitControlRow();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final focused = Focus.of(context).hasFocus;
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            margin: const EdgeInsets.symmetric(horizontal: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+            decoration: BoxDecoration(
+              color: focused
+                  ? AppColors.accent
+                  : Colors.white.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 20, color: Colors.white),
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Full-screen episode picker (opened from the control row's Episodes button).
+  Widget _episodesOverlay() {
+    return Positioned.fill(
+      child: Container(
+        color: Colors.black.withValues(alpha: 0.9),
+        padding: const EdgeInsets.fromLTRB(48, 40, 48, 40),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Episodes',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 24,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: FocusScope(
+                node: _episodesScope,
+                child: ListView.builder(
+                  // Big cache so D-pad traversal can reach off-screen rows.
+                  cacheExtent: 2000,
+                  itemCount: _episodes.length,
+                  itemBuilder: (context, i) {
+                    final ep = _episodes[i];
+                    final title = ep.title.isNotEmpty
+                        ? ep.title
+                        : 'Episode ${i + 1}';
+                    final current = i == _index;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: TvFocusable(
+                        autofocus: current,
+                        scale: 1.0,
+                        onTap: () => _playEpisodeAt(i),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 14,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            children: [
+                              if (current) ...[
+                                const Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                              ],
+                              Expanded(
+                                child: Text(
+                                  '${i + 1}. $title',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: current
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ],
         ),
@@ -1365,25 +1821,29 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         }
         return KeyEventResult.ignored;
       },
-      child: Builder(builder: (context) {
-        final focused = Focus.of(context).hasFocus;
-        return GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: focused ? AppColors.accent : Colors.white38,
-                width: 2,
+      child: Builder(
+        builder: (context) {
+          final focused = Focus.of(context).hasFocus;
+          return GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: focused ? AppColors.accent : Colors.white38,
+                  width: 2,
+                ),
+              ),
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
               ),
             ),
-            child: Text(label,
-                style: const TextStyle(color: Colors.white, fontSize: 15)),
-          ),
-        );
-      }),
+          );
+        },
+      ),
     );
   }
 }

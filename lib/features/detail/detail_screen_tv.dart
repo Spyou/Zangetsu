@@ -157,6 +157,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           cover: detail.cover ?? widget.item.cover,
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           category: launchCategory,
+          availableCategories: availableCategories,
           malId: detail.malId ?? widget.item.malId,
           scrobbleTitle:
               detail.type == ProviderType.anime ? detail.title : null,

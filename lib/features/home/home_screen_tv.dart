@@ -85,6 +85,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           cover: item.cover,
           coverHeaders: item.coverHeaders,
           category: category,
+          availableCategories: [
+            if ((item.subCount ?? 0) > 0) 'sub',
+            if ((item.dubCount ?? 0) > 0) 'dub',
+          ],
           malId: item.malId,
           scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
         ),
