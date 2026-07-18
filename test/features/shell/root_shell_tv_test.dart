@@ -5,8 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
+import 'package:watch_app/core/announce/announcement.dart';
+import 'package:watch_app/core/announce/announcement_service.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
@@ -25,11 +28,20 @@ import 'package:watch_app/core/schedule/coming_soon_service.dart';
 import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 // ── Minimal fakes (no platform channels, no Hive) ──────────────────────────
 
@@ -228,6 +240,16 @@ class _FakeComingSoonService extends ComingSoonService {
       ];
 }
 
+/// [HomeScreen] (rendered inside RootShellTv's shared shell pages) fires a
+/// fire-and-forget announcement check on launch. Override to skip Dio + the
+/// Hive-backed [AnnouncementStore] entirely — these tests don't care about
+/// announcements.
+class _FakeAnnouncementService extends AnnouncementService {
+  _FakeAnnouncementService() : super(Dio(), AnnouncementStore());
+  @override
+  Future<List<Announcement>> check() async => const [];
+}
+
 // ── Test ───────────────────────────────────────────────────────────────────
 
 void main() {
@@ -253,10 +275,19 @@ void main() {
     // Reset GetIt in case a previous test left registrations.
     await sl.reset();
 
+    // Home's launch sequence shows a one-time community sheet backed by the
+    // 'app_flags' Hive box, and SettingsScreen (also rendered via the shared
+    // shell pages) reads the accent colour from 'theme_prefs'. Init Hive +
+    // mark the sheet seen so those paths no-op / read safe defaults.
+    Hive.init('/tmp/zangetsu_root_shell_tv_test_hive');
+    final flags = await Hive.openBox('app_flags');
+    await flags.put('communitySheetSeen', true);
+    await Hive.openBox(ThemeController.boxName);
+
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit(); // nullable box → no Hive
-    authCubit = AuthCubit(AppwriteService()); // cache box is nullable → no Hive
+    authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge()); // cache box is nullable → no Hive
 
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
@@ -275,6 +306,7 @@ void main() {
     sl.registerSingleton<DownloadPrefs>(_FakeDownloadPrefs());
     sl.registerSingleton<AiringService>(_FakeAiringService());
     sl.registerSingleton<ComingSoonService>(_FakeComingSoonService());
+    sl.registerSingleton<AnnouncementService>(_FakeAnnouncementService());
   });
 
   tearDown(() async {
@@ -287,6 +319,7 @@ void main() {
     await sl.reset();
     authCubit.close();
     activeSource.close();
+    await Hive.close();
   });
 
   testWidgets(

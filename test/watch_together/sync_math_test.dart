@@ -39,10 +39,19 @@ void main() {
     expect(electSuccessor(list, leavingHostId: 'host', nowMs: 1000), 'a');
   });
 
-  test('electSuccessor skips stale + left participants, null when none', () {
+  test('electSuccessor still picks a participant with a stale lastSeenAt '
+      '(presence roster membership means they are live)', () {
     final list = [
       _p('host', joinedAt: 0, lastSeenAt: 1000),
-      _p('stale', joinedAt: 10, lastSeenAt: 1), // nowMs-lastSeen > staleMs
+      _p('stale', joinedAt: 10, lastSeenAt: 1), // old lastSeenAt, but present -> still eligible
+      _p('left', joinedAt: 20, lastSeenAt: 1000, state: 'left'),
+    ];
+    expect(electSuccessor(list, leavingHostId: 'host', nowMs: 999999), 'stale');
+  });
+
+  test('electSuccessor excludes only leavingHost and state==left, null when none remain', () {
+    final list = [
+      _p('host', joinedAt: 0, lastSeenAt: 1000),
       _p('left', joinedAt: 20, lastSeenAt: 1000, state: 'left'),
     ];
     expect(electSuccessor(list, leavingHostId: 'host', nowMs: 999999), isNull);

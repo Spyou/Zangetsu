@@ -7,9 +7,17 @@ import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen_tv.dart';
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
 
@@ -94,7 +102,7 @@ void main() {
     (tester) async {
       // Mock path_provider before AppwriteService is created (Client async init).
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(AppwriteService());
+      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -131,7 +139,7 @@ void main() {
     'SettingsScreenTv shows Sign-in tile when unauthenticated',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(AppwriteService());
+      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(
@@ -150,7 +158,7 @@ void main() {
     'SettingsScreenTv only the first TvFocusable has autofocus=true',
     (tester) async {
       _mockPathProvider(tester);
-      final authCubit = AuthCubit(AppwriteService());
+      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
       addTearDown(authCubit.close);
 
       await tester.pumpWidget(

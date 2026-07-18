@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/auth_screens_tv.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 
 // ── Minimal fakes ─────────────────────────────────────────────────────────────
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 /// Extends [AuthCubit] with stub dependencies and a preset initial state.
 /// Overrides [login], [logout], and [signUp] so no network calls are made.
 class _FakeAuthCubit extends AuthCubit {
-  _FakeAuthCubit(AuthState preset) : super(AppwriteService()) {
+  _FakeAuthCubit(AuthState preset)
+      : super(SupabaseService(), AppwriteService(), _fakeBridge()) {
     emit(preset);
   }
 

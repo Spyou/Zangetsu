@@ -14,12 +14,16 @@ bool needsCorrection(Duration localPos, Duration expected,
         {Duration threshold = const Duration(milliseconds: 2500)}) =>
     (localPos - expected).abs() > threshold;
 
+// nowMs/staleMs are kept for API compatibility with existing callers, but no
+// longer used to filter candidates: with Supabase Presence, the participants
+// list IS the live roster (membership = currently connected), so a separate
+// lastSeenAt staleness check is redundant and was wrongly excluding every
+// live participant once they'd been present longer than staleMs.
 String? electSuccessor(List<RoomParticipant> participants,
     {required String leavingHostId, required int nowMs, int staleMs = 30000}) {
   final candidates = participants
       .where((p) => p.userId != leavingHostId)
       .where((p) => p.state != 'left')
-      .where((p) => nowMs - p.lastSeenAt <= staleMs)
       .toList()
     ..sort((a, b) {
       final j = a.joinedAt.compareTo(b.joinedAt);

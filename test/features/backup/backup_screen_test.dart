@@ -12,9 +12,17 @@ import 'package:watch_app/core/backup/sources_backup.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/backup/backup_screen.dart';
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
 
@@ -83,7 +91,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(1000, 2200));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      final auth = AuthCubit(sl<AppwriteService>());
+      final auth = AuthCubit(SupabaseService(), sl<AppwriteService>(), _fakeBridge());
       addTearDown(auth.close);
 
       await tester.pumpWidget(
@@ -113,7 +121,7 @@ void main() {
     _mockPathProvider(tester);
     await tester.binding.setSurfaceSize(const Size(1000, 2200));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final auth = AuthCubit(sl<AppwriteService>());
+    final auth = AuthCubit(SupabaseService(), sl<AppwriteService>(), _fakeBridge());
     addTearDown(auth.close);
     await tester.pumpWidget(
       MaterialApp(

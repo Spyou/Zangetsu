@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
-import '../../core/appwrite/appwrite_service.dart';
 import '../../core/backup/backup_cloud.dart';
 import '../../core/backup/backup_file.dart';
 import '../../core/backup/backup_payload.dart';
 import '../../core/backup/backup_service.dart';
 import '../../core/di/injector.dart';
+import '../../core/supabase/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -29,7 +29,7 @@ class _BackupScreenState extends State<BackupScreen> {
   bool _busy = false;
 
   BackupService get _service => sl<BackupService>();
-  BackupCloud _cloud() => BackupCloud(sl<AppwriteService>());
+  BackupCloud _cloud() => BackupCloud(sl<SupabaseService>());
 
   bool get _isTv => sl<AppMode>().isTv;
 
@@ -46,7 +46,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _backupToCloud() async {
     if (!requireLogin(context, action: 'back up to the cloud')) return;
-    final uid = context.read<AuthCubit>().state.user?.$id;
+    final uid = context.read<AuthCubit>().state.user?.id;
     if (uid == null) return;
     setState(() => _busy = true);
     try {
@@ -92,7 +92,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _restoreFromCloud() async {
     if (!requireLogin(context, action: 'restore from the cloud')) return;
-    final uid = context.read<AuthCubit>().state.user?.$id;
+    final uid = context.read<AuthCubit>().state.user?.id;
     if (uid == null) return;
     setState(() => _busy = true);
     try {
@@ -311,7 +311,7 @@ class _BackupScreenState extends State<BackupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final uid = context.watch<AuthCubit>().state.user?.$id;
+    final uid = context.watch<AuthCubit>().state.user?.id;
 
     return Scaffold(
       backgroundColor: AppColors.bg,

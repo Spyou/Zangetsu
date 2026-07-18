@@ -28,12 +28,21 @@ import 'package:watch_app/core/schedule/coming_soon_service.dart';
 import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
+import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
+
+MigrationBridge _fakeBridge() => MigrationBridge(
+      invoke: (_, __) async => const {'ok': false},
+      signInPassword: (_, __) async => false,
+      verifyOtp: (_, __) async => false,
+    );
 
 // ── Minimal fakes (same shape as root_shell_tv_test.dart's harness) ────────
 
@@ -255,11 +264,12 @@ void main() {
     Hive.init('/tmp/zangetsu_nav_test_hive');
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
+    await Hive.openBox(ThemeController.boxName);
 
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit();
-    authCubit = AuthCubit(AppwriteService());
+    authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
 
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<SourceRepository>(fakeRepo);

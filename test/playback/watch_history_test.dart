@@ -2,11 +2,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/playback/watch_history.dart';
+import 'package:watch_app/core/supabase/supabase_service.dart';
 
-// Null service + logged-out callback → save() never touches the network (cloud
-// push is skipped when the user id is null), so these stay pure local-Hive
-// tests.
-WatchHistory _store() => WatchHistory(null, () => null);
+// Logged-out callback → save() never touches the network (cloud push is
+// skipped when the user id is null), so these stay pure local-Hive tests.
+WatchHistory _store() => WatchHistory(SupabaseService(), () => null);
 
 void main() {
   late Directory dir;
