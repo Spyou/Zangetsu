@@ -32,6 +32,13 @@ import io.flutter.plugin.platform.PlatformView
  * overlay). Controlled from Dart via `zangetsu/exoplayer_<id>` (setSource /
  * play / pause / seekTo) and streams playback state on
  * `zangetsu/exoplayer_events_<id>`.
+ *
+ * Default renderers + default SurfaceView + Hybrid Composition (on the Dart
+ * side) — the exact combination that shipped WORKING in v1.7.0. FFmpeg software
+ * decoding and a TextureView were tried to fix silent Dolby/DTS audio but
+ * regressed VIDEO to black on some TVs, so they're reverted. The silent-audio
+ * fix belongs behind an opt-in setting (as CloudStream does), never in the
+ * default path.
  */
 @UnstableApi
 class ExoPlayerView(
@@ -49,6 +56,9 @@ class ExoPlayerView(
     private val playerView = PlayerView(context).apply {
         player = this@ExoPlayerView.player
         useController = false // Flutter draws the controls on top
+        // With the Flutter wakelock, keeps the screen on during playback so TVs
+        // don't drop into a screensaver mid-episode. Rendering-safe.
+        keepScreenOn = true
     }
     private val channel = MethodChannel(messenger, "zangetsu/exoplayer_$id")
     private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")

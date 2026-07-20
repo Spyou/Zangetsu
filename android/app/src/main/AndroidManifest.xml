@@ -92,6 +92,15 @@
             android:exported="false"
             android:theme="@style/Theme.AniyomiSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
+        <!-- Fully-native TV video player (TvPlayerActivity). Landscape, no title
+             bar; renders ExoPlayer's SurfaceView straight to the window so TVs
+             that black-screen the Flutter platform-view player show video. -->
+        <activity
+            android:name=".TvPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Google Cast Framework configuration. -->
         <meta-data
             android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"

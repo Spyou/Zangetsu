@@ -54,6 +54,13 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "SeekPreview"
         private const val EXT_PLAYER_REQUEST = 7001
+        private const val TV_PLAYER_REQUEST = 7002
+        // Bidirectional bridge to the native TV player: TvPlayerActivity invokes
+        // resolveEpisode / saveProgress on Dart through this. Same process + a
+        // live FlutterEngine (MainActivity is only paused while the player is up),
+        // so a static handle is safe. Cleared in onDestroy.
+        @JvmStatic
+        var tvBridge: MethodChannel? = null
 
         /** The foreground activity, so the CloudStream CloudflareKiller can
          * attach its solver WebView to a real window (JS only runs when the
@@ -87,6 +94,9 @@ class MainActivity : FlutterActivity() {
     // Dart side learns whether the player actually played anything (for the
     // auto-fallback to the built-in player).
     private var pendingPlayerResult: MethodChannel.Result? = null
+    // In-flight native TV-player launch, completed in onActivityResult with the
+    // final position so Dart saves resume + Continue Watching.
+    private var pendingTvResult: MethodChannel.Result? = null
 
     // Cached retriever so rapid scrubbing on one title doesn't re-open the
     // source for every frame (setDataSource is expensive, esp. over network).
@@ -177,6 +187,19 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     else -> result.notImplemented()
+                }
+            }
+
+        // Native TV-player channel (bidirectional). Dart→native: launch. The same
+        // channel is stored in tvBridge so TvPlayerActivity can call native→Dart
+        // (resolveEpisode / saveProgress).
+        tvBridge = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/tv_player")
+            .also { ch ->
+                ch.setMethodCallHandler { call, result ->
+                    when (call.method) {
+                        "launch" -> launchTvPlayer(call, result)
+                        else -> result.notImplemented()
+                    }
                 }
             }
 
@@ -881,6 +904,57 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun launchTvPlayer(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val url = call.argument<String>("url")
+            if (url.isNullOrEmpty()) { result.success(mapOf("launched" to false)); return }
+            val intent = Intent(this, TvPlayerActivity::class.java)
+            intent.putExtra(TvPlayerActivity.EXTRA_URL, url)
+            call.argument<String>("title")?.let { intent.putExtra(TvPlayerActivity.EXTRA_TITLE, it) }
+            call.argument<String>("episodeLabel")?.let { intent.putExtra(TvPlayerActivity.EXTRA_EP_LABEL, it) }
+            call.argument<String>("mimeType")?.let { intent.putExtra(TvPlayerActivity.EXTRA_MIME, it) }
+            call.argument<Number>("accentColor")?.let { intent.putExtra(TvPlayerActivity.EXTRA_ACCENT, it.toInt()) }
+            intent.putExtra(TvPlayerActivity.EXTRA_POSITION, (call.argument<Number>("positionMs") ?: 0).toLong())
+            intent.putExtra(TvPlayerActivity.EXTRA_SW_DECODE, call.argument<Boolean>("softwareDecoding") ?: false)
+            intent.putExtra(TvPlayerActivity.EXTRA_EP_COUNT, (call.argument<Number>("episodeCount") ?: 1).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_START_INDEX, (call.argument<Number>("startIndex") ?: 0).toInt())
+            call.argument<String>("category")?.let { intent.putExtra(TvPlayerActivity.EXTRA_CATEGORY, it) }
+            call.argument<List<String>>("episodeLabels")?.let {
+                intent.putExtra(TvPlayerActivity.EXTRA_EP_LABELS, it.toTypedArray())
+            }
+            call.argument<List<String>>("availableCategories")?.let {
+                intent.putExtra(TvPlayerActivity.EXTRA_AVAIL_CATS, it.toTypedArray())
+            }
+            intent.putExtra(TvPlayerActivity.EXTRA_SPEED, (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat())
+            intent.putExtra(TvPlayerActivity.EXTRA_VOLUME, (call.argument<Number>("volumeBoost") ?: 100).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_SUB_SCALE, (call.argument<Number>("subtitleScale") ?: 1.0).toFloat())
+            call.argument<String>("subtitleColor")?.let { intent.putExtra(TvPlayerActivity.EXTRA_SUB_COLOR, it) }
+            intent.putExtra(TvPlayerActivity.EXTRA_SUB_BG, (call.argument<Number>("subtitleBgOpacity") ?: 0.0).toFloat())
+
+            val headers = call.argument<Map<String, String>>("headers")
+            if (!headers.isNullOrEmpty()) {
+                val arr = ArrayList<String>()
+                for ((k, v) in headers) { arr.add(k); arr.add(v) }
+                intent.putExtra(TvPlayerActivity.EXTRA_HEADERS, arr.toTypedArray())
+            }
+            val subs = call.argument<List<Map<String, String>>>("subtitles")
+            if (!subs.isNullOrEmpty()) {
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_URLS, subs.mapNotNull { it["url"] }.toTypedArray())
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_LANGS, subs.map { it["lang"] ?: "" }.toTypedArray())
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_LABELS, subs.map { it["label"] ?: "" }.toTypedArray())
+            }
+
+            pendingTvResult?.let { try { it.success(mapOf("launched" to true, "positionMs" to 0L)) } catch (_: Exception) {} }
+            pendingTvResult = result
+            startActivityForResult(intent, TV_PLAYER_REQUEST)
+        } catch (e: Exception) {
+            Log.w(TAG, "launchTvPlayer failed: ${e.message}")
+            pendingTvResult = null
+            result.success(mapOf("launched" to false))
+        }
+    }
+
     // Reads a position/duration extra whether the player stored it as Long or Int.
     private fun longExtra(data: Intent, vararg keys: String): Long {
         for (k in keys) {
@@ -893,6 +967,25 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == TV_PLAYER_REQUEST) {
+            val pos = if (data != null) longExtra(data, TvPlayerActivity.RESULT_POSITION) else -1L
+            val dur = if (data != null) longExtra(data, TvPlayerActivity.RESULT_DURATION) else -1L
+            val epIndex = data?.getIntExtra(TvPlayerActivity.RESULT_EP_INDEX, 0) ?: 0
+            pendingTvResult?.let {
+                try {
+                    it.success(
+                        mapOf(
+                            "launched" to true,
+                            "positionMs" to (if (pos > 0) pos else 0L),
+                            "durationMs" to (if (dur > 0) dur else 0L),
+                            "episodeIndex" to epIndex,
+                        ),
+                    )
+                } catch (_: Exception) {}
+            }
+            pendingTvResult = null
+            return
+        }
         if (requestCode != EXT_PLAYER_REQUEST) return
         val pos = if (data != null) longExtra(data, "position", "extra_position") else -1L
         val dur = if (data != null) longExtra(data, "duration", "extra_duration") else -1L
@@ -997,6 +1090,7 @@ class MainActivity : FlutterActivity() {
         csExecutor.shutdown()
         csReadPool.shutdown()
         castManager?.release()
+        tvBridge = null
         super.onDestroy()
     }
 

@@ -1,6 +1,8 @@
 // lib/features/watch_together/ui/host_choosing_screen.dart
 import 'package:flutter/material.dart';
+import '../../../core/app_mode.dart';
 import '../../../core/di/injector.dart';
+import '../../../core/tv/tv_focusable.dart';
 import '../watch_together_controller.dart';
 import 'room_panel.dart';
 
@@ -148,6 +150,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                           icon: Icons.chat_bubble_outline_rounded,
                           label: 'Chat',
                           active: _chatOpen,
+                          autofocus: true,
                           onTap: () => setState(() => _chatOpen = !_chatOpen),
                         ),
                       ),
@@ -212,6 +215,7 @@ class _ActionButton extends StatelessWidget {
     required this.onTap,
     this.active = false,
     this.destructive = false,
+    this.autofocus = false,
   });
 
   final IconData icon;
@@ -219,6 +223,7 @@ class _ActionButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool active;
   final bool destructive;
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
@@ -231,37 +236,47 @@ class _ActionButton extends StatelessWidget {
         ? Colors.white.withValues(alpha: 0.12)
         : Colors.white.withValues(alpha: 0.06);
 
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: destructive
-                ? Colors.redAccent.withValues(alpha: 0.35)
-                : Colors.white.withValues(alpha: 0.1),
-            width: 0.5,
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 20, color: fg),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: fg,
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
+    final Widget visual = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: destructive
+              ? Colors.redAccent.withValues(alpha: 0.35)
+              : Colors.white.withValues(alpha: 0.1),
+          width: 0.5,
         ),
       ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 20, color: fg),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
+
+    // On TV a bare GestureDetector can't take D-pad focus, so these buttons were
+    // unreachable — you couldn't navigate to them or even Leave. Wrap in
+    // TvFocusable for the remote; phones keep the plain touch handler.
+    if (sl<AppMode>().isTv) {
+      return TvFocusable(
+        onTap: onTap,
+        autofocus: autofocus,
+        scale: 1.0,
+        child: visual,
+      );
+    }
+    return GestureDetector(onTap: onTap, child: visual);
   }
 }

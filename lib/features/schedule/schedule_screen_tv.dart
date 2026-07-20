@@ -255,9 +255,15 @@ class _Rail extends StatelessWidget {
         clipBehavior: Clip.none,
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
         itemCount: count,
+        // Top-align: a horizontal ListView forces each cell to the full rail
+        // height, so without this the focus box stretches down the whole column
+        // instead of hugging the card.
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(right: 16),
-          child: builder(context, i),
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: builder(context, i),
+          ),
         ),
       ),
     );
@@ -282,20 +288,23 @@ class _PosterTile extends StatelessWidget {
 
   static const double cardWidth = 134;
   static const double imageHeight = 190; // ~2:3
-  static const double cardHeight = imageHeight + 56; // + title (2 lines) + subtitle
+  static const double cardHeight = imageHeight + 30; // + air-time subtitle beneath
 
   @override
   Widget build(BuildContext context) {
+    // Match the Home rail exactly: only the fixed-size poster is the focusable,
+    // with the title as a Netflix-style chip on its bottom edge (focusLabel).
+    // The air-time subtitle sits below, outside the focus box.
     return SizedBox(
       width: cardWidth,
-      child: TvFocusable(
-        onTap: onTap,
-        focusLabel: title,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ClipRRect(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TvFocusable(
+            onTap: onTap,
+            focusLabel: title,
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: SizedBox(
                 width: cardWidth,
@@ -336,19 +345,13 @@ class _PosterTile extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.caption.copyWith(
-                    color: AppColors.textPrimary, fontWeight: FontWeight.w600, height: 1.2)),
-            const SizedBox(height: 2),
-            Text(subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.caption.copyWith(fontSize: 11)),
-          ],
-        ),
+          ),
+          const SizedBox(height: 6),
+          Text(subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(fontSize: 11)),
+        ],
       ),
     );
   }

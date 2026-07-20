@@ -32,6 +32,52 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   int _tab = 0;
   static const _tabLabels = ['Episodes', 'Cast', 'Relations', 'Details'];
 
+  // Episode search. The query is typed in a DIALOG (opened from the left-pane
+  // button) rather than an inline TextField: a focused TextField eats the
+  // D-pad arrows for cursor movement, so an inline field TRAPS focus — the
+  // tester literally needed a mouse to escape it. A dialog auto-opens the
+  // leanback keyboard, applies on Done/submit, and hands focus back cleanly.
+  String _epQuery = '';
+
+  Future<void> _openEpisodeSearch() async {
+    final ctrl = TextEditingController(text: _epQuery);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Search episodes'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: AppText.body,
+          cursorColor: AppColors.accent,
+          decoration: InputDecoration(
+            hintText: 'Title or episode number',
+            hintStyle: AppText.body.copyWith(color: AppColors.textSecondary),
+          ),
+          onSubmitted: (q) => Navigator.pop(ctx, q),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: const Text('Clear'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            style: TextButton.styleFrom(foregroundColor: AppColors.accent),
+            child: const Text('Search'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null || !mounted) return; // dismissed — keep current query
+    setState(() {
+      _epQuery = result.trim();
+      _tab = 0; // searching implies the Episodes tab
+    });
+  }
+
   // ── My List / status ──────────────────────────────────────────────────────
   final MyListStore _myList = sl<MyListStore>();
   final ListStatusStore _listStatus = sl<ListStatusStore>();
@@ -39,10 +85,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   late bool _inMyList;
 
   // ── Left ↔ Right focus bridge ─────────────────────────────────────────────
-  final FocusScopeNode _leftScope =
-      FocusScopeNode(debugLabel: 'tv-detail-left');
-  final FocusScopeNode _rightScope =
-      FocusScopeNode(debugLabel: 'tv-detail-right');
+  final FocusScopeNode _leftScope = FocusScopeNode(
+    debugLabel: 'tv-detail-left',
+  );
+  final FocusScopeNode _rightScope = FocusScopeNode(
+    debugLabel: 'tv-detail-right',
+  );
 
   @override
   void initState() {
@@ -89,8 +137,9 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final moved =
-          FocusManager.instance.primaryFocus
-              ?.focusInDirection(TraversalDirection.left) ??
+          FocusManager.instance.primaryFocus?.focusInDirection(
+            TraversalDirection.left,
+          ) ??
           false;
       if (!moved) _leftScope.requestFocus();
       return KeyEventResult.handled;
@@ -103,8 +152,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final store = sl<ResumeStore>();
     int? highestMarked;
     for (int j = 0; j < eps.length; j++) {
-      final mark =
-          store.get(widget.item.sourceId, widget.item.url, eps[j].id);
+      final mark = store.get(widget.item.sourceId, widget.item.url, eps[j].id);
       if (mark != null) highestMarked = j;
     }
     if (highestMarked == null) return 0;
@@ -131,14 +179,37 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     ];
     final availableCategories = available.isEmpty ? [category] : available;
     final preferred =
-        sl<TitlePrefsStore>().category(
-          widget.item.sourceId,
-          widget.item.url,
-        ) ??
+        sl<TitlePrefsStore>().category(widget.item.sourceId, widget.item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    final launchCategory =
-        availableCategories.contains(preferred) ? preferred : category;
-    // TV always uses the native ExoPlayer / SurfaceView player — smooth even at
+    final launchCategory = availableCategories.contains(preferred)
+        ? preferred
+        : category;
+    resolveSources(String u) => sl<SourceRepository>().sources(
+      u,
+      sourceId: widget.item.sourceId,
+      fast: true,
+    );
+    // Beta: fully-native TV player (real-window SurfaceView) for TVs that
+    // black-screen the Flutter platform-view player. Opt-in; phone unaffected.
+    if (sl<PlaybackPrefs>().nativeTvPlayer) {
+      TvNativePlayer.play(
+        sourceId: widget.item.sourceId,
+        episodes: episodes,
+        startIndex: index,
+        resume: sl<ResumeStore>(),
+        resolveSources: resolveSources,
+        showUrl: widget.item.url,
+        showTitle: detail.title,
+        cover: detail.cover ?? widget.item.cover,
+        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+        category: launchCategory,
+        availableCategories: availableCategories,
+        malId: detail.malId ?? widget.item.malId,
+        scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+      );
+      return;
+    }
+    // TV default: native ExoPlayer via a Flutter platform view — smooth even at
     // 4K where the media_kit texture player lags. media_kit stays phone-only.
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -147,19 +218,17 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           episodes: episodes,
           startIndex: index,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) => sl<SourceRepository>().sources(
-            u,
-            sourceId: widget.item.sourceId,
-            fast: true,
-          ),
+          resolveSources: resolveSources,
           showUrl: widget.item.url,
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
           coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
           category: launchCategory,
+          availableCategories: availableCategories,
           malId: detail.malId ?? widget.item.malId,
-          scrobbleTitle:
-              detail.type == ProviderType.anime ? detail.title : null,
+          scrobbleTitle: detail.type == ProviderType.anime
+              ? detail.title
+              : null,
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
@@ -192,8 +261,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     required Map<int, List<Episode>> episodesBySeason,
     required int initialSeason,
   }) async {
-    final total =
-        episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
+    final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
       _snack('No episodes to download');
       return;
@@ -210,30 +278,31 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       if ((detail.subCount ?? 0) > 0) 'sub',
       if ((detail.dubCount ?? 0) > 0) 'dub',
     ];
-    final res = await showModalBottomSheet<
-      ({String quality, String category, List<Episode> episodes})
-    >(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _DownloadSheet(
-        title: detail.title,
-        episodesBySeason: episodesBySeason,
-        initialSeason: initialSeason,
-        initialCategory: category,
-        availableCategories: availableCategories,
-        coverUrl: detail.cover ?? widget.item.cover ?? '',
-        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        resolve: (ep) => sl<SourceRepository>().sources(
-          ep.url,
-          sourceId: widget.item.sourceId,
-        ),
-        resolveEpisodes: _episodesByCategory,
-      ),
-    );
+    final res =
+        await showModalBottomSheet<
+          ({String quality, String category, List<Episode> episodes})
+        >(
+          context: context,
+          backgroundColor: AppColors.surface,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => _DownloadSheet(
+            title: detail.title,
+            episodesBySeason: episodesBySeason,
+            initialSeason: initialSeason,
+            initialCategory: category,
+            availableCategories: availableCategories,
+            coverUrl: detail.cover ?? widget.item.cover ?? '',
+            coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+            resolve: (ep) => sl<SourceRepository>().sources(
+              ep.url,
+              sourceId: widget.item.sourceId,
+            ),
+            resolveEpisodes: _episodesByCategory,
+          ),
+        );
     if (res == null || !mounted) return;
     _startDownload(detail, res.category, res.quality, res.episodes);
   }
@@ -258,23 +327,22 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     String category,
   ) async {
     final item = widget.item;
-    final res = await showModalBottomSheet<
-      ({VideoSource chosen, List<VideoSource> all})
-    >(
-      context: context,
-      backgroundColor: AppColors.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => _SourcePickerSheet(
-        title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-        resolve: () => sl<SourceRepository>().sources(
-          ep.url,
-          sourceId: item.sourceId,
-        ),
-      ),
-    );
+    final res =
+        await showModalBottomSheet<
+          ({VideoSource chosen, List<VideoSource> all})
+        >(
+          context: context,
+          backgroundColor: AppColors.surface,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          builder: (_) => _SourcePickerSheet(
+            title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
+            resolve: () =>
+                sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+          ),
+        );
     if (res == null || !mounted) return;
     unawaited(
       sl<DownloadManager>().enqueueSource(
@@ -398,8 +466,9 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
     // Resume / play label (mirrors _DetailViewState._buildBody).
     final resumeIdx = _resumeIndex(eps);
-    final hasAnyMark =
-        eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
+    final hasAnyMark = eps.any(
+      (e) => store.get(item.sourceId, item.url, e.id) != null,
+    );
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
@@ -456,246 +525,271 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── LEFT pane: poster + title + meta + action buttons ─────────
-            Focus(
-              focusNode: _leftScope,
-              onKeyEvent: _onLeftKey,
-              child: SizedBox(
-                width: 300,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Poster (2:3 aspect, fills available space)
-                    Expanded(
-                      flex: 5,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: coverUrl.isNotEmpty
-                              ? CachedNetworkImage(
-                                  imageUrl: coverUrl,
-                                  httpHeaders: coverHeaders,
-                                  fit: BoxFit.cover,
-                                  width: double.infinity,
-                                  memCacheWidth: 400,
-                                  placeholder: (_, _) => ColoredBox(
-                                    color: AppColors.surface2,
-                                  ),
-                                  errorWidget: (_, _, _) => ColoredBox(
-                                    color: AppColors.surface2,
-                                  ),
-                                )
-                              : ColoredBox(color: AppColors.surface2),
-                        ),
-                      ),
-                    ),
-                    // Title + meta + action buttons
-                    Expanded(
-                      flex: 4,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(20, 14, 12, 16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              detail.title,
-                              style: AppText.headline.copyWith(fontSize: 18),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            if (metaLine.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                metaLine,
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.textSecondary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            // Play button — autofocus: always the first focused
-                            // element when the detail screen opens on TV.
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-play'),
-                              autofocus: true,
-                              onTap: eps.isNotEmpty
-                                  ? () => _openPlayer(
-                                      eps,
-                                      resumeIdx,
-                                      detail,
-                                      category,
+                Focus(
+                  focusNode: _leftScope,
+                  onKeyEvent: _onLeftKey,
+                  child: SizedBox(
+                    width: 300,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Poster (2:3 aspect, fills available space)
+                        Expanded(
+                          flex: 5,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 12, 0),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: coverUrl.isNotEmpty
+                                  ? CachedNetworkImage(
+                                      imageUrl: coverUrl,
+                                      httpHeaders: coverHeaders,
+                                      fit: BoxFit.cover,
+                                      width: double.infinity,
+                                      memCacheWidth: 400,
+                                      placeholder: (_, _) =>
+                                          ColoredBox(color: AppColors.surface2),
+                                      errorWidget: (_, _, _) =>
+                                          ColoredBox(color: AppColors.surface2),
                                     )
-                                  : () {},
-                              child: _PlayButton(
-                                label: buttonLabel,
-                                onPressed: eps.isNotEmpty
-                                    ? () => _openPlayer(
-                                        eps,
-                                        resumeIdx,
-                                        detail,
-                                        category,
-                                      )
-                                    : null,
-                              ),
+                                  : ColoredBox(color: AppColors.surface2),
                             ),
-                            const SizedBox(height: 10),
-                            // Download button
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-download'),
-                              onTap: () => _openDownloadSheet(
-                                detail: detail,
-                                category: category,
-                                episodesBySeason: episodesBySeason,
-                                initialSeason: currentSeason,
-                              ),
-                              child: _DownloadButton(
-                                label: 'Download',
-                                onPressed: () => _openDownloadSheet(
-                                  detail: detail,
-                                  category: category,
-                                  episodesBySeason: episodesBySeason,
-                                  initialSeason: currentSeason,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            // My List button (same icon-over-label as phone)
-                            TvFocusable(
-                              key: const ValueKey('tv-detail-mylist'),
-                              onTap: () => _openListSheet(detail),
-                              child: _IconAction(
-                                icon: _inMyList
-                                    ? Icons.check_rounded
-                                    : Icons.add_rounded,
-                                active: _inMyList,
-                                label: _status?.shortLabel ?? 'My List',
-                                tooltip: _inMyList
-                                    ? 'Change status'
-                                    : 'Add to My List',
-                                onTap: () => _openListSheet(detail),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const VerticalDivider(width: 1, color: AppColors.hairline),
-            // ── RIGHT pane: focusable tab bar + content ────────────────────
-            Expanded(
-              child: Focus(
-                focusNode: _rightScope,
-                onKeyEvent: _onRightKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Tab bar — each label is a TvFocusable. Wrapped in a
-                    // horizontal scroll so it never overflows on narrow screens.
-                    SizedBox(
-                      height: 56,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-                        child: Row(
-                          children: [
-                            for (int i = 0; i < _tabLabels.length; i++)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 4),
-                                child: TvFocusable(
-                                key: ValueKey('tv-detail-tab-$i'),
-                                onTap: () => setState(() => _tab = i),
-                                scale: 1.04,
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                    vertical: 8,
+                        // Title + meta + action buttons
+                        Expanded(
+                          flex: 4,
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(20, 14, 12, 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  detail.title,
+                                  style: AppText.headline.copyWith(
+                                    fontSize: 18,
                                   ),
-                                  child: Text(
-                                    _tabLabels[i],
-                                    style: AppText.headline.copyWith(
-                                      fontSize: 15,
-                                      color: _tab == i
-                                          ? AppColors.accent
-                                          : AppColors.textSecondary,
-                                      fontWeight: _tab == i
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                if (metaLine.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    metaLine,
+                                    style: AppText.caption.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                // Play button — autofocus: always the first focused
+                                // element when the detail screen opens on TV.
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-play'),
+                                  autofocus: true,
+                                  onTap: eps.isNotEmpty
+                                      ? () => _openPlayer(
+                                          eps,
+                                          resumeIdx,
+                                          detail,
+                                          category,
+                                        )
+                                      : () {},
+                                  child: _PlayButton(
+                                    label: buttonLabel,
+                                    onPressed: eps.isNotEmpty
+                                        ? () => _openPlayer(
+                                            eps,
+                                            resumeIdx,
+                                            detail,
+                                            category,
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                // Download button
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-download'),
+                                  onTap: () => _openDownloadSheet(
+                                    detail: detail,
+                                    category: category,
+                                    episodesBySeason: episodesBySeason,
+                                    initialSeason: currentSeason,
+                                  ),
+                                  child: _DownloadButton(
+                                    label: 'Download',
+                                    onPressed: () => _openDownloadSheet(
+                                      detail: detail,
+                                      category: category,
+                                      episodesBySeason: episodesBySeason,
+                                      initialSeason: currentSeason,
                                     ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(height: 10),
+                                // Episode search — under Play/Download (tester
+                                // request). Opens the type-dialog; the active
+                                // query shows on the label so it's obvious a
+                                // filter is applied.
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-ep-search'),
+                                  onTap: _openEpisodeSearch,
+                                  child: _IconAction(
+                                    icon: _epQuery.isEmpty
+                                        ? Icons.search_rounded
+                                        : Icons.filter_alt_rounded,
+                                    active: _epQuery.isNotEmpty,
+                                    label: _epQuery.isEmpty
+                                        ? 'Search episodes'
+                                        : 'Search: $_epQuery',
+                                    tooltip: 'Search episodes',
+                                    onTap: _openEpisodeSearch,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                // My List button (same icon-over-label as phone)
+                                TvFocusable(
+                                  key: const ValueKey('tv-detail-mylist'),
+                                  onTap: () => _openListSheet(detail),
+                                  child: _IconAction(
+                                    icon: _inMyList
+                                        ? Icons.check_rounded
+                                        : Icons.add_rounded,
+                                    active: _inMyList,
+                                    label: _status?.shortLabel ?? 'My List',
+                                    tooltip: _inMyList
+                                        ? 'Change status'
+                                        : 'Add to My List',
+                                    onTap: () => _openListSheet(detail),
+                                  ),
+                                ),
+                              ],
                             ),
-                        ],
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                    const Divider(height: 1, color: AppColors.hairline),
-                    // Tab content
-                    Expanded(
-                      child: IndexedStack(
-                        index: _tab,
-                        children: [
-                          // ── Episodes ──────────────────────────────────────
-                          _TvEpisodeList(
-                            key: const ValueKey('tv-detail-episodes'),
-                            eps: eps,
-                            seasonEps: seasonEps,
-                            hasMultipleSeasons: hasMultipleSeasons,
-                            seasonSet: seasonSet,
-                            currentSeason: currentSeason,
-                            onSelectSeason:
-                                context.read<DetailCubit>().selectSeason,
-                            sourceId: item.sourceId,
-                            showId: item.id,
-                            showUrl: item.url,
-                            coverUrl: coverUrl,
-                            coverHeaders: coverHeaders,
-                            hasAnyMark: hasAnyMark,
-                            resumeIndex: _resumeIndex,
-                            onOpen: (i) =>
-                                _openPlayer(eps, i, detail, category),
-                            onDownload: (ep) =>
-                                _pickSourceAndDownload(ep, detail, category),
-                          ),
-                          // ── Cast ─────────────────────────────────────────
-                          _CastTab(
-                            cast: state.cast.isNotEmpty
-                                ? state.cast
-                                : [
-                                    for (final n in detail.cast)
-                                      CastMember(name: n),
-                                  ],
-                          ),
-                          // ── Relations ──────────────────────────────────
-                          _RelationsTab(
-                            relations: state.relations,
-                            onOpen: _openRelation,
-                            tvFocus: true,
-                          ),
-                          // ── Details ────────────────────────────────────
-                          _DetailsTab(
-                            sourceName: sourceName,
-                            statusStr: statusStr,
-                            genres: detail.genres,
-                            studios: detail.studios,
-                            episodeCount: eps.length,
-                            year: detail.year,
-                            description: detail.description,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
-              ),
+                const VerticalDivider(width: 1, color: AppColors.hairline),
+                // ── RIGHT pane: focusable tab bar + content ────────────────────
+                Expanded(
+                  child: Focus(
+                    focusNode: _rightScope,
+                    onKeyEvent: _onRightKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Tab bar — each label is a TvFocusable. Wrapped in a
+                        // horizontal scroll so it never overflows on narrow screens.
+                        SizedBox(
+                          height: 56,
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                            child: Row(
+                              children: [
+                                for (int i = 0; i < _tabLabels.length; i++)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 4),
+                                    child: TvFocusable(
+                                      key: ValueKey('tv-detail-tab-$i'),
+                                      onTap: () => setState(() => _tab = i),
+                                      scale: 1.04,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 8,
+                                        ),
+                                        child: Text(
+                                          _tabLabels[i],
+                                          style: AppText.headline.copyWith(
+                                            fontSize: 15,
+                                            color: _tab == i
+                                                ? AppColors.accent
+                                                : AppColors.textSecondary,
+                                            fontWeight: _tab == i
+                                                ? FontWeight.w700
+                                                : FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const Divider(height: 1, color: AppColors.hairline),
+                        // Tab content
+                        Expanded(
+                          child: IndexedStack(
+                            index: _tab,
+                            children: [
+                              // ── Episodes ──────────────────────────────────────
+                              _TvEpisodeList(
+                                key: const ValueKey('tv-detail-episodes'),
+                                eps: eps,
+                                seasonEps: seasonEps,
+                                query: _epQuery,
+                                hasMultipleSeasons: hasMultipleSeasons,
+                                seasonSet: seasonSet,
+                                currentSeason: currentSeason,
+                                onSelectSeason: context
+                                    .read<DetailCubit>()
+                                    .selectSeason,
+                                sourceId: item.sourceId,
+                                showId: item.id,
+                                showUrl: item.url,
+                                coverUrl: coverUrl,
+                                coverHeaders: coverHeaders,
+                                hasAnyMark: hasAnyMark,
+                                resumeIndex: _resumeIndex,
+                                onOpen: (i) =>
+                                    _openPlayer(eps, i, detail, category),
+                                onDownload: (ep) => _pickSourceAndDownload(
+                                  ep,
+                                  detail,
+                                  category,
+                                ),
+                              ),
+                              // ── Cast ─────────────────────────────────────────
+                              _CastTab(
+                                cast: state.cast.isNotEmpty
+                                    ? state.cast
+                                    : [
+                                        for (final n in detail.cast)
+                                          CastMember(name: n),
+                                      ],
+                              ),
+                              // ── Relations ──────────────────────────────────
+                              _RelationsTab(
+                                relations: state.relations,
+                                onOpen: _openRelation,
+                                tvFocus: true,
+                              ),
+                              // ── Details ────────────────────────────────────
+                              _DetailsTab(
+                                sourceName: sourceName,
+                                statusStr: statusStr,
+                                genres: detail.genres,
+                                studios: detail.studios,
+                                episodeCount: eps.length,
+                                year: detail.year,
+                                description: detail.description,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
           ), // SafeArea
           const Positioned(
             top: 8,
@@ -734,6 +828,7 @@ class _TvEpisodeList extends StatelessWidget {
     required this.resumeIndex,
     required this.onOpen,
     required this.onDownload,
+    this.query = '',
   });
 
   final List<Episode> eps;
@@ -752,79 +847,98 @@ class _TvEpisodeList extends StatelessWidget {
   final void Function(int fullIndex) onOpen;
   final void Function(Episode ep) onDownload;
 
+  /// Episode search query (typed in the left pane's dialog). Same matcher as
+  /// the phone: title substring or episode number.
+  final String query;
+
   @override
   Widget build(BuildContext context) {
-    if (seasonEps.isEmpty) {
+    final widget = this; // keep the body identical to the stateful version
+    final eps = widget.eps;
+    final seasonEps = filterEpisodes(widget.seasonEps, query);
+    if (widget.seasonEps.isEmpty) {
       return const EmptyState(
         icon: Icons.video_library_outlined,
         message: 'No episodes available from this source',
       );
     }
     final store = sl<ResumeStore>();
-    final listView = ListView.builder(
-      padding: const EdgeInsets.only(bottom: 32),
-      itemCount: seasonEps.length,
-      itemBuilder: (context, i) {
-        final ep = seasonEps[i];
-        final fullIndex = eps.indexOf(ep);
-        final mark = store.get(sourceId, showUrl, ep.id);
-        final inProgress =
-            mark != null &&
-            !mark.finished &&
-            mark.duration > Duration.zero;
-        final watched = mark != null && mark.finished;
-        final resume = hasAnyMark && fullIndex == resumeIndex(eps);
-        final fraction = inProgress
-            ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
-                  .clamp(0.0, 1.0)
-            : 0.0;
-        final epNum = ep.number?.toInt() ?? (i + 1);
-        // Show clean title (strip "S1 E3 -" prefix) for multi-season titles,
-        // matching the phone's _EpisodesTab behaviour.
-        final displayTitle =
-            hasMultipleSeasons ? cleanTitle(ep.title) : ep.title;
+    final Widget listView;
+    if (seasonEps.isEmpty) {
+      // Query matched nothing — keep the search field on screen (it's above),
+      // just swap the list for a hint.
+      listView = const EmptyState(
+        icon: Icons.search_off_rounded,
+        message: 'No episodes match your search',
+      );
+    } else {
+      listView = ListView.builder(
+        padding: const EdgeInsets.only(bottom: 32),
+        itemCount: seasonEps.length,
+        itemBuilder: (context, i) {
+          final ep = seasonEps[i];
+          final fullIndex = eps.indexOf(ep);
+          final mark = store.get(widget.sourceId, widget.showUrl, ep.id);
+          final inProgress =
+              mark != null && !mark.finished && mark.duration > Duration.zero;
+          final watched = mark != null && mark.finished;
+          final resume =
+              widget.hasAnyMark && fullIndex == widget.resumeIndex(eps);
+          final fraction = inProgress
+              ? (mark.position.inMilliseconds / mark.duration.inMilliseconds)
+                    .clamp(0.0, 1.0)
+              : 0.0;
+          // Fallback numbers key off the FULL list position, not the filtered
+          // one, so "Episode 7" stays "Episode 7" while a search narrows the list.
+          final epNum = ep.number?.toInt() ?? (fullIndex + 1);
+          // Show clean title (strip "S1 E3 -" prefix) for multi-season titles,
+          // matching the phone's _EpisodesTab behaviour.
+          final displayTitle = widget.hasMultipleSeasons
+              ? cleanTitle(ep.title)
+              : ep.title;
 
-        // Wrap the existing _EpisodeRow in TvFocusable so D-pad up/down +
-        // OK-select navigates + triggers playback. The inner InkWell (touch)
-        // still works; both paths fire the same callback.
-        return TvFocusable(
-          key: ValueKey('tv-ep-$i'),
-          onTap: () => onOpen(fullIndex),
-          // Full-width row: draw the highlight as a foreground frame (not a
-          // strip behind the content) and don't scale outward under the poster.
-          // Same treatment for series and movies.
-          scale: 1.0,
-          foregroundHighlight: true,
-          child: RepaintBoundary(
-            child: _EpisodeRow(
-              ep: ep,
-              epNum: epNum,
-              displayTitle: displayTitle,
-              coverUrl: coverUrl,
-              coverHeaders: coverHeaders,
-              isWatched: watched,
-              isInProgress: inProgress,
-              isResume: resume,
-              fraction: fraction,
-              onTap: () => onOpen(fullIndex),
-              onDownload: () => onDownload(ep),
-              sourceId: sourceId,
-              showId: showId,
+          // Wrap the existing _EpisodeRow in TvFocusable so D-pad up/down +
+          // OK-select navigates + triggers playback. The inner InkWell (touch)
+          // still works; both paths fire the same callback.
+          return TvFocusable(
+            key: ValueKey('tv-ep-$fullIndex'),
+            onTap: () => widget.onOpen(fullIndex),
+            // Full-width row: draw the highlight as a foreground frame (not a
+            // strip behind the content) and don't scale outward under the poster.
+            // Same treatment for series and movies.
+            scale: 1.0,
+            foregroundHighlight: true,
+            child: RepaintBoundary(
+              child: _EpisodeRow(
+                ep: ep,
+                epNum: epNum,
+                displayTitle: displayTitle,
+                coverUrl: widget.coverUrl,
+                coverHeaders: widget.coverHeaders,
+                isWatched: watched,
+                isInProgress: inProgress,
+                isResume: resume,
+                fraction: fraction,
+                onTap: () => widget.onOpen(fullIndex),
+                onDownload: () => widget.onDownload(ep),
+                sourceId: widget.sourceId,
+                showId: widget.showId,
+              ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    }
 
-    if (!hasMultipleSeasons) return listView;
+    if (!widget.hasMultipleSeasons) return listView;
 
     // Multi-season: show a D-pad-navigable season chip row above the list.
     return Column(
       children: [
         _TvSeasonChips(
-          seasons: seasonSet.toList()..sort(),
-          currentSeason: currentSeason,
-          onSelect: onSelectSeason,
+          seasons: widget.seasonSet.toList()..sort(),
+          currentSeason: widget.currentSeason,
+          onSelect: widget.onSelectSeason,
         ),
         Expanded(child: listView),
       ],
@@ -864,8 +978,7 @@ class _TvSeasonChips extends StatelessWidget {
             key: ValueKey('tv-season-$s'),
             onTap: () => onSelect(s),
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
                 color: selected ? AppColors.accent : AppColors.surface2,
                 borderRadius: BorderRadius.circular(20),

@@ -96,11 +96,18 @@ class _TvFocusableState extends State<TvFocusable> {
 
     // The focus "box": scale + accent outline around the child only, so the
     // highlight is always a clean box around the thumbnail/tile.
+    //
+    // Draw the outline OVER the child (foreground) when the caller opted out of
+    // the scale-up (scale == 1.0) — that's what full-width rows/buttons do, and
+    // their opaque background would otherwise hide a background-drawn border,
+    // leaving no focus feedback at all. Posters/tiles (scale > 1.0) keep the
+    // background box so their art isn't framed, since the scale already reads.
+    final bool useForeground = widget.foregroundHighlight || widget.scale == 1.0;
     final Widget box = AnimatedScale(
       scale: _focused ? widget.scale : 1.0,
       duration: const Duration(milliseconds: 120),
       child: DecoratedBox(
-        position: widget.foregroundHighlight
+        position: useForeground
             ? DecorationPosition.foreground
             : DecorationPosition.background,
         decoration: BoxDecoration(
