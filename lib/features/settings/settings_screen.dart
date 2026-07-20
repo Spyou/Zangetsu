@@ -1422,6 +1422,30 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              if (sl<AppMode>().isTv)
+                _toggleRow(
+                  icon: Icons.tv_outlined,
+                  title: 'Native TV player',
+                  subtitle: 'Recommended. Turn off only if you prefer the old '
+                      'player',
+                  value: _prefs.nativeTvPlayer,
+                  onChanged: (v) async {
+                    await _prefs.setNativeTvPlayer(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+              if (sl<AppMode>().isTv && _prefs.nativeTvPlayer)
+                _toggleRow(
+                  icon: Icons.surround_sound_outlined,
+                  title: 'Software audio (Dolby/DTS)',
+                  subtitle: 'Turn on only if Dolby/DTS audio is silent — may be '
+                      'unstable on some TVs',
+                  value: _prefs.tvSoftwareDecoding,
+                  onChanged: (v) async {
+                    await _prefs.setTvSoftwareDecoding(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
               _toggleRow(
                 icon: Icons.image_outlined,
                 title: 'Seek preview (online)',

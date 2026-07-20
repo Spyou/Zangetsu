@@ -50,6 +50,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import '../player/tv_exo_player_screen.dart';
+import '../player/tv_native_player.dart'; // used by the detail_screen_tv.dart part
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
@@ -1075,9 +1076,9 @@ class _DetailViewState extends State<_DetailView>
             cast: state.cast.isNotEmpty
                 ? state.cast
                 : [for (final n in detail.cast) CastMember(name: n)],
-            onOpenPerson: (ref) => Navigator.of(context).push(
-              PersonPage.route(ref, sourceId: widget.item.sourceId),
-            ),
+            onOpenPerson: (ref) => Navigator.of(
+              context,
+            ).push(PersonPage.route(ref, sourceId: widget.item.sourceId)),
           ),
           // ── Relations ─────────────────────────────────────────────────────────
           _RelationsTab(relations: state.relations, onOpen: _openRelation),
@@ -1137,9 +1138,8 @@ class _Hero extends StatelessWidget {
       return Image(
         image: AniyomiImage(int.parse(aniSrcId), coverUrl),
         fit: BoxFit.cover,
-        loadingBuilder: (_, child, progress) => progress == null
-            ? child
-            : ColoredBox(color: AppColors.surface2),
+        loadingBuilder: (_, child, progress) =>
+            progress == null ? child : ColoredBox(color: AppColors.surface2),
         errorBuilder: (context, error, stackTrace) =>
             ColoredBox(color: AppColors.surface2),
       );
@@ -2483,12 +2483,10 @@ class _EpisodeRow extends StatelessWidget {
                                   httpHeaders: coverHeaders,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 320,
-                                  placeholder: (c, u) => ColoredBox(
-                                    color: AppColors.surface2,
-                                  ),
-                                  errorWidget: (c, u, e) => ColoredBox(
-                                    color: AppColors.surface2,
-                                  ),
+                                  placeholder: (c, u) =>
+                                      ColoredBox(color: AppColors.surface2),
+                                  errorWidget: (c, u, e) =>
+                                      ColoredBox(color: AppColors.surface2),
                                 )
                               : ColoredBox(color: AppColors.surface2),
                           if (isWatched)
@@ -3128,8 +3126,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         'No episodes match',
-                        style: AppText.body
-                            .copyWith(color: AppColors.textTertiary),
+                        style: AppText.body.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                     )
                   : ListView.separated(
@@ -3229,13 +3228,19 @@ class _DownloadSheetState extends State<_DownloadSheet> {
         isDense: true,
         hintText: 'Search episodes',
         hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
-        prefixIcon: const Icon(Icons.search_rounded,
-            color: AppColors.textTertiary, size: 20),
+        prefixIcon: const Icon(
+          Icons.search_rounded,
+          color: AppColors.textTertiary,
+          size: 20,
+        ),
         suffixIcon: _query.isEmpty
             ? null
             : IconButton(
-                icon: const Icon(Icons.close_rounded,
-                    color: AppColors.textTertiary, size: 20),
+                icon: const Icon(
+                  Icons.close_rounded,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
                 onPressed: () {
                   _searchCtrl.clear();
                   setState(() => _query = '');

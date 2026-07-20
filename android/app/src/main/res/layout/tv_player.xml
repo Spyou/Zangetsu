@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fully-native TV player screen: an ExoPlayer PlayerView (SurfaceView, direct
+     to the window — no Flutter platform view) with a custom Netflix-style
+     control overlay the Activity drives. useController=false: we draw and key-
+     handle everything ourselves so OK=play/pause, ◀▶=seek, ▼=button row, and
+     hold-OK=2× behave exactly as designed. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/player_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:focusable="true"
+    android:focusableInTouchMode="true">
+
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/player_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:surface_type="surface_view"
+        app:resize_mode="fit"
+        app:use_controller="false" />
+
+    <!-- Buffering / episode-resolve spinner (accent-tinted in code). -->
+    <ProgressBar
+        android:id="@+id/loading"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="46dp"
+        android:layout_height="46dp"
+        android:layout_gravity="center"
+        android:indeterminate="true"
+        android:visibility="gone" />
+
+    <!-- Skip intro/ending pill (AniSkip). Shown during the interval; press OK to
+         jump to its end. Sits above the control row, independent of it. -->
+    <TextView
+        android:id="@+id/skip_button"
+        style="@style/TvPillButton"
+        android:layout_gravity="bottom|end"
+        android:layout_marginEnd="44dp"
+        android:layout_marginBottom="120dp"
+        android:drawableStart="@drawable/ic_tv_next"
+        android:text="Skip Intro"
+        android:visibility="gone"
+        tools:ignore="HardcodedText" />
+
+    <!-- Right-side options menu (Server / Quality / Audio / Sub-Dub / Subtitles /
+         Speed / Volume). Populated + driven by the Activity; native focus handles
+         D-pad while it's open. -->
+    <ScrollView
+        android:id="@+id/menu_panel"
+        android:layout_width="452dp"
+        android:layout_height="match_parent"
+        android:layout_gravity="end"
+        android:background="#F00C0C10"
+        android:paddingHorizontal="30dp"
+        android:paddingVertical="34dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/menu_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+    </ScrollView>
+
+    <!-- Controls overlay — toggled GONE/VISIBLE by the Activity, auto-hides. -->
+    <FrameLayout
+        android:id="@+id/controls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:visibility="gone">
+
+        <!-- Top scrim + title / episode label -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="150dp"
+            android:layout_gravity="top"
+            android:background="@drawable/tv_scrim_top" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_marginStart="44dp"
+            android:layout_marginTop="30dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxWidth="760dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:id="@+id/episode_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:textColor="#CCFFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <!-- Top-right header quick actions (JioHotstar-style small buttons) -->
+        <LinearLayout
+            android:id="@+id/top_row"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="44dp"
+            android:layout_marginTop="28dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btn_quality"
+                style="@style/TvPillButtonSmall"
+                android:drawableStart="@drawable/ic_tv_quality"
+                android:text="Quality"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:id="@+id/btn_sources"
+                style="@style/TvPillButtonSmall"
+                android:layout_marginStart="10dp"
+                android:drawableStart="@drawable/ic_tv_sources"
+                android:text="Sources"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:id="@+id/btn_audio_subs"
+                style="@style/TvPillButtonSmall"
+                android:layout_marginStart="10dp"
+                android:drawableStart="@drawable/ic_tv_captions"
+                android:text="Audio &amp; Subs"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
+
+        <!-- Center play/pause indicator (shown while paused) -->
+        <ImageView
+            android:id="@+id/center_icon"
+            android:layout_width="86dp"
+            android:layout_height="86dp"
+            android:layout_gravity="center"
+            android:background="@drawable/tv_center_circle"
+            android:padding="21dp"
+            android:src="@drawable/ic_tv_play"
+            android:visibility="gone"
+            tools:ignore="ContentDescription" />
+
+        <!-- Transient seek indicator (e.g. "+10s") -->
+        <TextView
+            android:id="@+id/seek_indicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="#99000000"
+            android:paddingHorizontal="18dp"
+            android:paddingVertical="10dp"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Speed badge shown while holding OK (2×) -->
+        <TextView
+            android:id="@+id/speed_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="40dp"
+            android:background="#CC000000"
+            android:paddingHorizontal="16dp"
+            android:paddingVertical="8dp"
+            android:text="2× speed"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            tools:ignore="HardcodedText" />
+
+        <!-- Bottom scrim -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:layout_gravity="bottom"
+            android:background="@drawable/tv_scrim_bottom" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:layout_marginHorizontal="44dp"
+            android:layout_marginBottom="34dp"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical">
+
+            <!-- Seek bar row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/position"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="66dp"
+                    android:text="0:00"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    tools:ignore="HardcodedText" />
+
+                <androidx.media3.ui.DefaultTimeBar
+                    android:id="@+id/time_bar"
+                    android:layout_width="0dp"
+                    android:layout_height="30dp"
+                    android:layout_weight="1"
+                    android:layout_marginHorizontal="16dp"
+                    app:bar_height="5dp"
+                    app:scrubber_enabled_size="17dp"
+                    app:scrubber_dragged_size="21dp"
+                    app:touch_target_height="30dp"
+                    app:unplayed_color="#40FFFFFF"
+                    app:buffered_color="#66FFFFFF" />
+
+                <TextView
+                    android:id="@+id/duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minWidth="66dp"
+                    android:gravity="end"
+                    android:text="0:00"
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="15sp"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
+
+            <!-- Bottom quick actions (small) -->
+            <LinearLayout
+                android:id="@+id/button_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_episodes"
+                    style="@style/TvPillButtonSmall"
+                    android:drawableStart="@drawable/ic_tv_episodes"
+                    android:text="Episodes"
+                    tools:ignore="HardcodedText" />
+
+                <TextView
+                    android:id="@+id/btn_next"
+                    style="@style/TvPillButtonSmall"
+                    android:layout_marginStart="10dp"
+                    android:drawableStart="@drawable/ic_tv_next"
+                    android:text="Next Episode"
+                    tools:ignore="HardcodedText" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

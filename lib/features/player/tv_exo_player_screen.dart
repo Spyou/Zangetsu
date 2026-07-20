@@ -1353,6 +1353,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     hitTestBehavior: PlatformViewHitTestBehavior.transparent,
                   ),
                   onCreatePlatformView: (params) {
+                    // initExpensiveAndroidView (Hybrid Composition) + the native
+                    // default SurfaceView PlayerView — the exact combination
+                    // that shipped WORKING in v1.7.0. TextureView + texture-layer
+                    // composition were tried and made video BLACK on some TVs,
+                    // so both are reverted.
                     final controller =
                         PlatformViewsService.initExpensiveAndroidView(
                             id: params.id,

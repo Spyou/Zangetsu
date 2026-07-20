@@ -106,6 +106,26 @@ class PlaybackPrefs {
   bool get autoPip => _box.get('autoPip', defaultValue: true) as bool;
   Future<void> setAutoPip(bool value) => _box.put('autoPip', value);
 
+  /// Route TV playback to the fully-native player (TvPlayerActivity, real-window
+  /// SurfaceView) instead of the Flutter platform-view player. Default ON on TV:
+  /// the platform-view surface black-screens on some TVs, and the native window
+  /// renders directly. Turning it OFF falls back to the old Flutter player.
+  /// Phone is unaffected (it never reads this).
+  bool get nativeTvPlayer =>
+      _box.get('nativeTvPlayer', defaultValue: true) as bool;
+  Future<void> setNativeTvPlayer(bool value) =>
+      _box.put('nativeTvPlayer', value);
+
+  /// Enable FFmpeg software audio decoding in the native TV player, so TVs that
+  /// lack hardware Dolby (AC3/E-AC3) or DTS play those tracks instead of going
+  /// silent. Off by default — CloudStream disables it on TV by default too
+  /// ("because of crashes"), so it's strictly opt-in. Hardware decoders stay
+  /// preferred (EXTENSION_RENDERER_MODE_ON); FFmpeg only fills the gap.
+  bool get tvSoftwareDecoding =>
+      _box.get('tvSoftwareDecoding', defaultValue: false) as bool;
+  Future<void> setTvSoftwareDecoding(bool value) =>
+      _box.put('tvSoftwareDecoding', value);
+
   /// Whether to resume a title from its saved position automatically.
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);

@@ -196,9 +196,13 @@ dependencies {
     // injekt-core is already on the implementation classpath and therefore
     // visible to testImplementation transitively — no extra declaration needed.
 
-    // TV hardware-overlay video spike (SP0). ExoPlayer renders to a SurfaceView
-    // (hardware overlay) — unlike media_kit's Flutter texture, which lags at 4K.
-    // media_kit (phone) doesn't use ExoPlayer, so bumping these is TV-only.
+    // ExoPlayer, powering both the fully-native TV player (TvPlayerActivity) and
+    // the legacy Flutter platform-view TV player (ExoPlayerView). 1.7.1 is the
+    // floor required by the prebuilt nextlib FFmpeg extension below; it's a stable
+    // release CloudStream ships even newer (1.9.x), and — unlike the earlier
+    // revert — the black screen it was blamed for is now known to be the Flutter
+    // platform-view compositing, not the media3 version. The phone player
+    // (media_kit/mpv) doesn't use media3 at all, so this never touches mobile.
     implementation("androidx.media3:media3-exoplayer:1.7.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.7.1")
     // DASH + SmoothStreaming so streams in those containers play (e.g. some
@@ -207,11 +211,13 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.7.1")
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:1.7.1")
     implementation("androidx.media3:media3-ui:1.7.1")
-    // Prebuilt FFmpeg software decoders for ExoPlayer (NextRenderersFactory) so
-    // audio codecs the device can't decode in hardware — AC3 / E-AC3 (Dolby) /
-    // DTS / TrueHD, common on movie sources — still produce SOUND on TV. Without
-    // this, ExoPlayer plays video but stays silent on those tracks (the phone's
-    // mpv already bundles FFmpeg, which is why it's a TV-only gap). The version
-    // prefix MUST match the media3 version above (1.7.1). TV-only.
+    // Prebuilt FFmpeg software AUDIO decoders (Dolby AC3/E-AC3, DTS) — the exact
+    // artifact CloudStream uses, straight off Maven Central (native .so bundled,
+    // no source build). Version pairs with media3 1.7.1; nextlib 0.9.0 predates
+    // the text-renderer crash later versions carry, so plain NextRenderersFactory
+    // works (no Fixed* patch needed). Consumed ONLY by TvPlayerActivity, and only
+    // when the user opts into software decoding (default off, like CloudStream —
+    // whose own code disables it on TV by default "because of crashes"). Never
+    // touches the phone player or the Flutter platform-view player.
     implementation("io.github.anilbeesetti:nextlib-media3ext:1.7.1-0.9.0")
 }
