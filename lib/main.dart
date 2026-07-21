@@ -15,6 +15,7 @@ import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
+import 'core/notify/push_service.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/my_list.dart';
@@ -168,6 +169,10 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         } catch (_) {}
       });
     }
+    // FCM broadcasts: subscribe every device to the `all` topic so we can push
+    // a custom notification to all users from the Firebase Console. Independent
+    // of onboarding + fire-and-forget so it never delays launch.
+    unawaited(PushService.instance.init());
     final elapsed = DateTime.now().difference(start);
     const minSplash = Duration(milliseconds: 2000);
     if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);

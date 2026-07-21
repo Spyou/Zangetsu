@@ -129,6 +129,17 @@ class _AnnouncementSheet extends StatelessWidget {
                           ),
                         ],
                       ),
+                      if (a.imageUrl != null && a.imageUrl!.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.network(
+                            a.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                          ),
+                        ),
+                      ],
                       if (a.body.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         Text(

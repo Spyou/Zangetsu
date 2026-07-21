@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -14,6 +15,7 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+  final Dio _dio = Dio();
   // Native (CS worker) notification taps come over this channel.
   static const MethodChannel _notifChannel =
       MethodChannel('zangetsu/notifications');
@@ -117,5 +119,65 @@ class NotificationService {
       count == 1 ? '1 source has an update' : '$count sources have updates',
       details,
     );
+  }
+
+  /// Show a general announcement / push message. Used for FCM foreground
+  /// messages, which Android does not display on its own (backgrounded ones the
+  /// system draws itself, image included). [imageUrl], when set and reachable,
+  /// renders as a big-picture notification; [payload] is optional tap data.
+  Future<void> showMessage({
+    required int id,
+    required String title,
+    required String body,
+    String? imageUrl,
+    String? payload,
+  }) async {
+    if (!Platform.isAndroid) return;
+    if (!_inited) await init();
+    StyleInformation? style;
+    if (imageUrl != null && imageUrl.isNotEmpty) {
+      final picture = await _downloadBitmap(imageUrl);
+      if (picture != null) {
+        style = BigPictureStyleInformation(
+          picture,
+          contentTitle: title,
+          summaryText: body,
+          hideExpandedLargeIcon: true,
+        );
+      }
+    }
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'announcements',
+        'Announcements',
+        channelDescription: 'News and updates from Zangetsu',
+        importance: Importance.high,
+        priority: Priority.high,
+        styleInformation: style,
+      ),
+    );
+    await _plugin.show(id, title, body, details, payload: payload);
+  }
+
+  /// Download a remote image into a temp file for a big-picture notification.
+  /// Returns null on any failure so the notification still shows as text.
+  Future<FilePathAndroidBitmap?> _downloadBitmap(String url) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 10),
+          sendTimeout: const Duration(seconds: 10),
+        ),
+      );
+      final bytes = res.data;
+      if (bytes == null || bytes.isEmpty) return null;
+      final file = File('${Directory.systemTemp.path}/notif_${url.hashCode}.img');
+      await file.writeAsBytes(bytes);
+      return FilePathAndroidBitmap(file.path);
+    } catch (_) {
+      return null;
+    }
   }
 }

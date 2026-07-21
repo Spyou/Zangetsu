@@ -134,14 +134,29 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
       'update' => (Icons.system_update_rounded, AppColors.accent),
       _ => (Icons.campaign_rounded, AppColors.accent),
     };
+    final iconAvatar = CircleAvatar(
+      radius: 20,
+      backgroundColor: tint.withValues(alpha: 0.14),
+      child: Icon(icon, color: tint, size: 20),
+    );
+    final hasImage = a.imageUrl != null && a.imageUrl!.isNotEmpty;
     return ListTile(
       // Re-open the full message (with its action button) in the sheet.
       onTap: () => showAnnouncementSheet(context, a),
-      leading: CircleAvatar(
-        radius: 20,
-        backgroundColor: tint.withValues(alpha: 0.14),
-        child: Icon(icon, color: tint, size: 20),
-      ),
+      leading: hasImage
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: CachedNetworkImage(
+                  imageUrl: a.imageUrl!,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, _, _) => iconAvatar,
+                ),
+              ),
+            )
+          : iconAvatar,
       title: Text(
         a.title,
         maxLines: 1,

@@ -14,6 +14,7 @@ class Announcement {
     this.actionLabel,
     this.actionUrl,
     this.date,
+    this.imageUrl,
   });
 
   /// Unique, stable id. Drives "show once" — never reuse an id for new content.
@@ -30,6 +31,9 @@ class Announcement {
 
   /// Publish date string from the JSON (display only).
   final String? date;
+
+  /// Optional image — shown full-width in the sheet and as the list thumbnail.
+  final String? imageUrl;
 
   /// Parse one entry from the fetched JSON. Returns null when it's missing the
   /// required id/title, or when the action is malformed (so bad data is skipped
@@ -52,6 +56,7 @@ class Announcement {
       }
     }
 
+    final img = (m['imageUrl'] ?? m['image'] ?? '').toString().trim();
     return Announcement(
       id: id,
       title: title,
@@ -60,6 +65,7 @@ class Announcement {
       actionLabel: label,
       actionUrl: url,
       date: (m['date'] as String?)?.trim(),
+      imageUrl: img.isEmpty ? null : img,
     );
   }
 
@@ -71,6 +77,7 @@ class Announcement {
     'actionLabel': actionLabel,
     'actionUrl': actionUrl,
     'date': date,
+    'imageUrl': imageUrl,
   };
 
   static Announcement fromMap(Map m) => Announcement(
@@ -81,6 +88,7 @@ class Announcement {
     actionLabel: m['actionLabel'] as String?,
     actionUrl: m['actionUrl'] as String?,
     date: m['date'] as String?,
+    imageUrl: m['imageUrl'] as String?,
   );
 }
 
