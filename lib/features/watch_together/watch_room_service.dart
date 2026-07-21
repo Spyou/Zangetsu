@@ -14,7 +14,18 @@ import 'sync_math.dart';
 /// written only on create / episode-change / pause-stop anchor / host
 /// transfer / end (see [updateRoom]). No UI or player knowledge lives here.
 class WatchRoomService {
-  WatchRoomService(this._sb);
+  WatchRoomService(this._sb) {
+    // Subscribing a channel before the websocket is connected leaves its join
+    // stuck (this SDK doesn't re-send it on open). So we queue subscribes made
+    // while disconnected and flush them here, once the socket is actually up.
+    _c.realtime.onOpen(() {
+      final pending = List<String>.from(_pendingSubscribe);
+      _pendingSubscribe.clear();
+      for (final code in pending) {
+        _doSubscribe(code);
+      }
+    });
+  }
   final SupabaseService _sb;
 
   SupabaseClient get _c => _sb.client;
@@ -26,19 +37,53 @@ class WatchRoomService {
   final Map<String, RealtimeChannel> _channels = {};
   final Map<String, RoomState> _lastRoom = {};
   final Set<String> _subscribed = {};
+  // Channels that have reached SUBSCRIBED, and the presence we want tracked
+  // once they do. track() sent before SUBSCRIBED is silently dropped, so the
+  // one-shot join track never registered → empty roster ("0 watching").
+  final Set<String> _joined = {};
+  final Map<String, Map<String, dynamic>> _pendingPresence = {};
+  // Channels asked to subscribe while the socket was still connecting — flushed
+  // on socket open (see constructor). Avoids the stuck-join described there.
+  final List<String> _pendingSubscribe = [];
 
   /// Returns the shared channel for [code] (creating it on first use). Does
   /// NOT subscribe — callers attach handlers first, then call [_ensureJoined].
   RealtimeChannel _channelFor(String code) =>
       _channels.putIfAbsent(code, () => _c.channel('party:$code'));
 
-  /// Joins the channel exactly once, regardless of how many of
-  /// watchRoom/watchParticipants/watchMessages/upsertParticipant race to
-  /// attach handlers first (RealtimeChannel.subscribe() throws if called
-  /// twice on the same instance).
+  /// Joins the channel exactly once. Subscribes with a status callback so we
+  /// track presence only AFTER the channel is SUBSCRIBED (and re-track on
+  /// reconnect); tracking earlier is dropped. Primes the socket with the
+  /// signed-in user's JWT first so RLS-filtered postgres_changes reach us.
   void _ensureJoined(String code) {
     if (!_subscribed.add(code)) return;
-    _channels[code]?.subscribe();
+    final ch = _channels[code];
+    if (ch == null) return;
+    final token = _c.auth.currentSession?.accessToken;
+    if (token != null && token.isNotEmpty) unawaited(_c.realtime.setAuth(token));
+    if (_c.realtime.isConnected) {
+      _doSubscribe(code);
+    } else {
+      // Socket still connecting → queue; the onOpen flush (constructor) will
+      // subscribe once it's actually up, so the join isn't sent into the void.
+      _pendingSubscribe.add(code);
+      // ignore: invalid_use_of_internal_member
+      _c.realtime.connect();
+    }
+  }
+
+  void _doSubscribe(String code) {
+    final ch = _channels[code];
+    if (ch == null) return;
+    ch.subscribe((status, _) {
+      if (status == RealtimeSubscribeStatus.subscribed) {
+        _joined.add(code);
+        final pending = _pendingPresence[code];
+        if (pending != null) ch.track(pending); // flush the join track
+      } else {
+        _joined.remove(code);
+      }
+    });
   }
 
   /// Removes and unsubscribes the channel for [code] (idempotent).
@@ -46,6 +91,9 @@ class WatchRoomService {
     final ch = _channels.remove(code);
     _lastRoom.remove(code);
     _subscribed.remove(code);
+    _joined.remove(code);
+    _pendingPresence.remove(code);
+    _pendingSubscribe.remove(code);
     if (ch != null) _c.removeChannel(ch);
   }
 
@@ -187,15 +235,19 @@ class WatchRoomService {
   /// Tracks [p] in room [code]'s Presence state (create-or-update).
   Future<void> upsertParticipant(String code, RoomParticipant p) async {
     final ch = _channelFor(code);
+    _pendingPresence[code] = p.toMap(); // flushed on SUBSCRIBED (see _ensureJoined)
     _ensureJoined(code);
-    try {
-      await ch.track(p.toMap());
-    } catch (_) {/* best-effort; next beat/track retries */}
+    if (_joined.contains(code)) {
+      try {
+        await ch.track(p.toMap());
+      } catch (_) {/* best-effort; next beat/track retries */}
+    }
   }
 
   /// Untracks [userId] from room [code]'s Presence state (self-removal only —
   /// Presence has no notion of removing a peer).
   Future<void> removeParticipant(String code, String userId) async {
+    _pendingPresence.remove(code);
     final ch = _channels[code];
     if (ch == null) return;
     try {
