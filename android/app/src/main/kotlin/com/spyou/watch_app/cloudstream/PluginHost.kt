@@ -6,6 +6,7 @@ import com.lagradost.cloudstream3.AnimeLoadResponse
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.Episode
+import com.lagradost.cloudstream3.LiveStreamLoadResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
@@ -660,6 +661,15 @@ class PluginHost(private val context: Context) {
                 chosen.map { it.toMap() }
             }
             is MovieLoadResponse -> listOf(
+                mapOf(
+                    "data" to this.dataUrl, "name" to name,
+                    "season" to 1, "episode" to 1, "posterUrl" to posterUrl,
+                ),
+            )
+            // Live TV (PlayzTV etc.) — a LiveStreamLoadResponse is a single
+            // live HLS behind dataUrl, structurally identical to a movie, so
+            // surface it as one playable item down the same loadLinks path.
+            is LiveStreamLoadResponse -> listOf(
                 mapOf(
                     "data" to this.dataUrl, "name" to name,
                     "season" to 1, "episode" to 1, "posterUrl" to posterUrl,
