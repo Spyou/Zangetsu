@@ -118,6 +118,8 @@ dependencies:
   # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
   # AniList account linking.
   app_links: ^6.3.2
+  # Render the QR on the TV device-pairing screen (pure Dart).
+  qr_flutter: ^4.1.0
   floating: ^6.0.0
   # In-app updates: read the running version + check GitHub Releases, then hand
   # the downloaded APK to the system installer.

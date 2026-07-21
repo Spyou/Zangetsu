@@ -41,10 +41,13 @@ Deno.serve(async (req) => {
       });
       if (linkErr) return json({ ok: false, error: "server_error" }, 500);
 
+      // Hand back the hashed_token (not the 6-digit email_otp): the TV is signed
+      // OUT and has no email, so it must verify via verifyOtp({ tokenHash }) which
+      // needs no email. The email_otp would require the address we don't send.
       await admin.from("tv_pairings").update({
         status: "approved",
         app_user_id: user.id,
-        app_secret: link?.properties?.email_otp ?? "",
+        app_secret: link?.properties?.hashed_token ?? "",
         tracker_blob: body.trackerBlob ?? null,
       }).eq("code", body.code);
       return json({ ok: true });

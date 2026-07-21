@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 
+import '../../features/auth/pair_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
@@ -30,9 +31,30 @@ class OpenLinkService {
   StreamSubscription<Uri>? _sub;
 
   void _onLink(Uri uri) {
+    // zangetsu://pair?code=CODE — a TV pairing QR scanned on the phone.
+    if (uri.host == 'pair') {
+      _openPair(uri.queryParameters['code']);
+      return;
+    }
     final item = ShareLink.parse(uri);
     if (item == null) return; // not an open-link (or another handler's link)
     _open(item);
+  }
+
+  /// Open the phone's "Pair a TV" screen prefilled with the scanned code.
+  /// Waits (cold-start safe) for the root Navigator, like [_open].
+  void _openPair(String? code, [int attempt = 0]) {
+    final nav = rootNavigatorKey.currentState;
+    if (nav == null) {
+      if (attempt < 20) {
+        Future.delayed(
+          const Duration(milliseconds: 250),
+          () => _openPair(code, attempt + 1),
+        );
+      }
+      return;
+    }
+    nav.push(PairTvScreen.route(code));
   }
 
   /// Waits (briefly, cold-start safe) for the root Navigator to exist, then

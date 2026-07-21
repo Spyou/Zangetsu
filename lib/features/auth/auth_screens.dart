@@ -12,6 +12,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
 import 'auth_cubit.dart';
 import 'auth_screens_tv.dart';
+import 'pair_tv_screen.dart';
 
 /// Returns true if logged in. Otherwise shows a "Sign in to {action}" snackbar
 /// with a Sign-in action and returns false — the gate for My List / history.
@@ -377,6 +378,16 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 4),
               Center(child: Text(state.user?.email ?? '', style: AppText.caption)),
               const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: SecondaryButton(
+                  label: 'Pair a TV',
+                  icon: Icons.tv_rounded,
+                  onPressed: () =>
+                      Navigator.of(context).push(PairTvScreen.route()),
+                ),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: SecondaryButton(

@@ -75,6 +75,8 @@
                 <!-- Shared-title deep link: zangetsu://open?d=…&t=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="open"/>
                 <data android:scheme="zangetsu" android:host="room"/>
+                <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
+                <data android:scheme="zangetsu" android:host="pair"/>
             </intent-filter>
         </activity>
         <!-- Hosts a CloudStream plugin's own settings UI (it casts the Context to

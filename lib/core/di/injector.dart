@@ -63,6 +63,7 @@ import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/auth/migration_bridge.dart';
+import '../../features/auth/tv_pairing_service.dart';
 import '../../features/home/cubit/home_cubit.dart';
 import '../../features/watch_together/watch_room_service.dart';
 import '../../features/watch_together/watch_together_controller.dart';
@@ -101,6 +102,9 @@ Future<void> initDependencies() async {
   // Supabase is already Supabase.initialize()d in main.dart; this is just the
   // thin client wrapper the stores/services depend on.
   sl.registerSingleton<SupabaseService>(SupabaseService());
+  sl.registerLazySingleton<TvPairingService>(
+    () => TvPairingService(sl<SupabaseService>()),
+  );
   // Resolved lazily at call time; null when signed out so the stores stay
   // local-only.
   String? currentUserId() => sl<SupabaseService>().currentUserId();

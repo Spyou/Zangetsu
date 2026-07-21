@@ -7,6 +7,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'auth_cubit.dart';
+import 'tv_pair_screen.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Login (TV)
@@ -162,7 +163,34 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                   },
                 ),
 
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
+                // Sign in without typing: pair with the already-signed-in phone.
+                TvFocusable(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const TvPairScreen()),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Text.rich(
+                      TextSpan(
+                        text: 'Typing is a pain?  ',
+                        style: AppText.caption,
+                        children: [
+                          TextSpan(
+                            text: 'Sign in with your phone',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 8),
                 TvFocusable(
                   onTap: () => Navigator.of(context).pushReplacement(
                     MaterialPageRoute(

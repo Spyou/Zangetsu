@@ -201,6 +201,11 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  /// A Supabase session was established outside the normal login flow — e.g. the
+  /// TV signed itself in via device pairing (`verifyOtp`). Adopt it and emit
+  /// authenticated, exactly like a password login would.
+  Future<bool> adoptCurrentSession() => _emitFromCurrentUser();
+
   Future<bool> _emitFromCurrentUser() async {
     final authUser = _sb.client.auth.currentUser;
     if (authUser == null) {
