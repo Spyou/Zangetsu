@@ -96,6 +96,18 @@ class VideoSource extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? proxyUrl;
 
+  /// ClearKey DRM key id + key (base64url, no padding — the exact JWK form
+  /// ExoPlayer wants), set only for encrypted CENC/DASH sources (e.g. CNC/PlayzTV
+  /// live channels). mpv can't decrypt DRM, so a source with these is routed to
+  /// the native ExoPlayer player instead. Not serialized (resolution-time only).
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? drmKid;
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? drmKey;
+
+  /// True when this is an encrypted source only ExoPlayer (not mpv) can play.
+  bool get isDrm => (drmKid?.isNotEmpty ?? false) && (drmKey?.isNotEmpty ?? false);
+
   const VideoSource({
     required this.url,
     this.quality,
@@ -106,6 +118,8 @@ class VideoSource extends Equatable {
     this.audioLang,
     this.subtitles = const [],
     this.proxyUrl,
+    this.drmKid,
+    this.drmKey,
   });
 
   factory VideoSource.fromJson(Map<String, dynamic> json) =>

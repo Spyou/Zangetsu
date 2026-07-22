@@ -417,6 +417,12 @@ class CloudStreamProvider implements BaseProvider {
         }
         if (referer.isNotEmpty) headers['Referer'] = referer;
 
+        // ClearKey DRM (CNC/PlayzTV live channels): mpv can't decrypt these, so
+        // carry the key id/key through and let the player route them to the
+        // native ExoPlayer. Empty/absent for every ordinary source.
+        final drmKid = (sm['drmKid'] as String?)?.trim();
+        final drmKey = (sm['drmKey'] as String?)?.trim();
+
         sources.add(
           VideoSource(
             url: streamUrl,
@@ -428,6 +434,8 @@ class CloudStreamProvider implements BaseProvider {
             // A magnet needs no HTTP headers.
             headers: (isTorrent || headers.isEmpty) ? null : headers,
             subtitles: subtitles,
+            drmKid: (drmKid?.isNotEmpty ?? false) ? drmKid : null,
+            drmKey: (drmKey?.isNotEmpty ?? false) ? drmKey : null,
           ),
         );
       }

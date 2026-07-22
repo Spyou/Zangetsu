@@ -616,6 +616,11 @@ class PluginHost(private val context: Context) {
         }
         return mapOf(
             "sources" to links.toList().map { el ->
+                // ClearKey-DRM sources (DrmExtractorLink — e.g. CNC/PlayzTV live
+                // channels' CENC/DASH streams) carry a key id + key. mpv can't
+                // decrypt DRM, so pass them through and let Dart route the source
+                // to the native ExoPlayer player (which does clearkey natively).
+                val drm = el as? com.lagradost.cloudstream3.utils.DrmExtractorLink
                 mapOf(
                     "url" to el.url,
                     "name" to el.name,
@@ -623,6 +628,8 @@ class PluginHost(private val context: Context) {
                     "quality" to el.quality,
                     "headers" to el.headers,
                     "isM3u8" to el.isM3u8,
+                    "drmKid" to drm?.kid,
+                    "drmKey" to drm?.key,
                 )
             },
             "subtitles" to subs.toList().map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },

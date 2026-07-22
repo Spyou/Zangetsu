@@ -91,12 +91,17 @@ class TvExoController {
     Map<String, String> headers, {
     List<TvSubtitleConfig> subtitles = const [],
     String? mimeType,
+    String? drmKid,
+    String? drmKey,
   }) =>
       _method.invokeMethod('setSource', {
         'url': url,
         'headers': headers,
         'subtitles': subtitles.map((s) => s.toMap()).toList(),
         'mimeType': mimeType, // null → native infers the container from the URL
+        // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH channels.
+        'drmKid': drmKid,
+        'drmKey': drmKey,
       });
   Future<void> play() => _method.invokeMethod('play');
   Future<void> pause() => _method.invokeMethod('pause');

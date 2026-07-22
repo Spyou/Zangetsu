@@ -17,6 +17,9 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
@@ -176,6 +179,10 @@ class ExoPlayerView(
                 // builds the correct MediaSource instead of guessing from the URL —
                 // needed for tokenized stream URLs with no file extension.
                 val mimeType = call.argument<String>("mimeType")
+                // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH sources
+                // (CNC/PlayzTV live channels). Absent for every ordinary stream.
+                val drmKid = call.argument<String>("drmKid")
+                val drmKey = call.argument<String>("drmKey")
                 if (url != null) {
                     try {
                         val httpFactory = DefaultHttpDataSource.Factory()
@@ -193,7 +200,24 @@ class ExoPlayerView(
                             .setUri(url)
                             .setSubtitleConfigurations(subConfigs)
                         if (!mimeType.isNullOrEmpty()) builder.setMimeType(mimeType)
-                        val mediaSource = DefaultMediaSourceFactory(httpFactory)
+                        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
+                        if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
+                            // Build a LOCAL clearkey session from the kid/key the
+                            // plugin resolved (already W3C clearkey JWK form) — no
+                            // license-server round-trip needed. mpv can't do this,
+                            // which is why DRM sources route to this ExoPlayer view.
+                            val json =
+                                "{\"keys\":[{\"kty\":\"oct\",\"k\":\"$drmKey\"," +
+                                    "\"kid\":\"$drmKid\"}],\"type\":\"temporary\"}"
+                            val drmManager = DefaultDrmSessionManager.Builder()
+                                .setUuidAndExoMediaDrmProvider(
+                                    C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER,
+                                )
+                                .setMultiSession(false)
+                                .build(LocalMediaDrmCallback(json.toByteArray(Charsets.UTF_8)))
+                            sourceFactory.setDrmSessionManagerProvider { drmManager }
+                        }
+                        val mediaSource = sourceFactory
                             .createMediaSource(builder.build())
                         player.setMediaSource(mediaSource)
                         player.prepare()

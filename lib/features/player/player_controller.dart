@@ -143,6 +143,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.imdbId,
     this.availableCategories = const [],
     this.initialResume = Duration.zero,
+    this.onDrmSource,
   }) : _resolveSources = resolveSources,
        _dio = dio,
        _activeCategory = category ?? 'sub',
@@ -181,6 +182,12 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Episode indices already scrobbled this session (fire once per episode).
   final Set<int> _scrobbled = {};
+
+  /// Called instead of opening a source in mpv when that source is DRM-encrypted
+  /// (clearkey CENC/DASH). mpv can't decrypt DRM, so the host screen hands off to
+  /// the ExoPlayer-backed [DrmPlayerScreen]. Null on screens with no handoff
+  /// (e.g. watch-together), where a DRM source just fails as before.
+  final void Function(VideoSource drm)? onDrmSource;
 
   /// The category (sub/dub) the session launched in. The LIVE category (which
   /// the user can flip mid-session) is [_activeCategory] — `category` is just
@@ -1417,6 +1424,14 @@ class PlayerCubit extends Cubit<PlayerState> {
     String? playUrlOverride,
   }) async {
     final g = gen ?? ++_gen;
+    // DRM (clearkey CENC/DASH) can't play in mpv — hand off to the native
+    // ExoPlayer player, which does clearkey natively. The handoff launches that
+    // player + closes this screen; if no handoff is wired, fall through (it'll
+    // just fail to start, exactly as before this feature).
+    if (s.isDrm && onDrmSource != null) {
+      onDrmSource!(s);
+      return;
+    }
     // Torrent sources stream through the native engine into a local http url,
     // which then opens exactly like any progressive file. This branch is the
     // ONLY torrent-specific code in the open path; direct urls skip it entirely.

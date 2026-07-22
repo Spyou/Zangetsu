@@ -43,6 +43,7 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
+import 'drm_player_screen.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
 /// overlay (auto-hiding), configurable double-tap seek, long-press 2x speed, a
@@ -586,6 +587,41 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   StreamSubscription<bool>? _completedSub;
 
+  // A DRM (clearkey CENC/DASH) source can't play in mpv, so the controller calls
+  // this instead of opening it: open the ExoPlayer-backed [DrmPlayerScreen] (which
+  // does clearkey natively) for this episode's sources, then leave this
+  // never-played mpv screen. mpv itself is untouched — it just never opens a DRM url.
+  bool _drmHandedOff = false;
+  Future<void> _handoffToNativeDrm(VideoSource drm) async {
+    if (_drmHandedOff) return; // _open can fire more than once (switch/failover)
+    _drmHandedOff = true;
+    await _c.player.pause(); // don't buffer the idle mpv player behind the DRM one
+    if (!mounted) return;
+    // push (NOT pushReplacement): keep this mpv screen alive underneath so its
+    // dispose() — which resets phones to portrait — doesn't run mid-DRM-playback
+    // and flip the DRM player out of landscape. It never opened media, so it's
+    // inert. When the DRM screen closes, leave this screen too (back to Home/Detail).
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DrmPlayerScreen(
+          sources: _c.state.sources,
+          initial: drm,
+          title: widget.showTitle,
+          subtitle: _episodeLabelOrNull(),
+        ),
+      ),
+    );
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
+  String? _episodeLabelOrNull() {
+    final eps = _c.episodes;
+    final i = _c.state.currentIndex;
+    if (i < 0 || i >= eps.length) return null;
+    final e = eps[i];
+    return e.title.isNotEmpty ? e.title : null;
+  }
+
   void _startSession(List<Episode> eps, int startIndex) {
     _c = PlayerCubit(
       sourceId: widget.sourceId,
@@ -606,6 +642,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       imdbId: widget.imdbId,
       availableCategories: widget.availableCategories,
       initialResume: widget.resumePosition,
+      onDrmSource: _handoffToNativeDrm,
     )..init(startIndex);
 
     _room.attachPlayer(
