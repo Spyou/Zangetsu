@@ -142,6 +142,67 @@ dev_dependencies:
   json_serializable: ^6.9.0
   flutter_launcher_icons: ^0.14.1
 
+# ── media_kit → Predidit performance fork (feat/mediakit-fork) ───────────────
+# Same media_kit Dart API (no code changes), but a newer native mpv 0.41 +
+# out-of-tree ffmpeg patches that play the malformed HLS/DASH streams scraped
+# sources serve — the reason AnymeX/Kazumi/Dartotsu run this fork. It's a
+# monorepo, so every package points at its subdir path. Pinned to AnymeX's
+# proven commit. To revert: delete this whole block and `flutter pub get`.
+dependency_overrides:
+  media_kit:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./media_kit
+  media_kit_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./media_kit_video
+  media_kit_libs_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/universal/media_kit_libs_video
+  media_kit_libs_android_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/android/media_kit_libs_android_video
+  media_kit_libs_ios_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/ios/media_kit_libs_ios_video
+  media_kit_libs_macos_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/macos/media_kit_libs_macos_video
+  media_kit_libs_windows_video:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/windows/media_kit_libs_windows_video
+  media_kit_libs_linux:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/linux/media_kit_libs_linux
+  media_kit_libs_ohos:
+    git:
+      url: https://github.com/Predidit/media-kit.git
+      ref: 11d02cb804b8faf944137834a1b0ac80880a4079
+      path: ./libs/ohos/media_kit_libs_ohos
+  # The fork's media_kit_video pins wakelock_plus 1.3.3; the rest of the app uses
+  # ^1.5.2. The WakelockPlus static API is unchanged across that bump, so force
+  # our newer one for everyone to let resolution succeed.
+  wakelock_plus: ^1.5.2
+  # The fork's media_kit needs js ^0.7.1; flutter_secure_storage's web shim pins
+  # js ^0.6.3. js is web-only interop (never compiled into the Android APK), so
+  # forcing 0.7.1 unblocks resolution without affecting the Android build.
+  js: ^0.7.1
+
 # App launcher icon (Zangetsu logo). Regenerate with:
 #   dart run flutter_launcher_icons
 flutter_launcher_icons:
