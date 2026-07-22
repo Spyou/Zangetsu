@@ -16,6 +16,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.spyou.watch_app.aniyomi.AniyomiBridge
 import com.spyou.watch_app.cast.CastManager
+import com.spyou.watch_app.cloudstream.CsPluginLoaderActivity
 import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
@@ -337,7 +338,16 @@ class MainActivity : FlutterActivity() {
                                 // Surface a genuine load failure instead of a
                                 // false "installed": some sources need a newer
                                 // CloudStream API than this build provides.
-                                if (host.loadPlugin(file)) {
+                                var ok = host.loadPlugin(file)
+                                // Plugins that cast the load context to an
+                                // AppCompatActivity hard-fail above (we're a
+                                // FlutterActivity). Retry them against a real
+                                // AppCompatActivity, then re-check registration.
+                                if (!ok) {
+                                    loadPluginsViaActivity(host.pendingActivityLoads())
+                                    ok = host.isLoaded(file)
+                                }
+                                if (ok) {
                                     runOnUiThread { result.success(host.installedApis()) }
                                 } else {
                                     runOnUiThread {
@@ -379,6 +389,13 @@ class MainActivity : FlutterActivity() {
                         csExecutor.execute {
                             try {
                                 host.loadAll(repo.cachedFiles())
+                                // Retry any that hard-failed on the AppCompatActivity
+                                // cast against a real activity, so they survive a
+                                // restart (loadAll runs every launch).
+                                loadPluginsViaActivity(host.pendingActivityLoads())
+                                // Plugins that defer registerMainAPI to
+                                // afterPluginsLoadedEvent register now.
+                                host.firePluginsLoaded()
                                 val apis = host.installedApis()
                                 runOnUiThread { result.success(apis) }
                             } catch (e: Exception) {
@@ -909,6 +926,29 @@ class MainActivity : FlutterActivity() {
             pendingPlayerResult = null
             result.success(mapOf("launched" to false))
         }
+    }
+
+    // Load CloudStream plugins that cast the load context to an AppCompatActivity
+    // (our host is a FlutterActivity) by handing them a real one:
+    // CsPluginLoaderActivity loads them against itself. Called from csExecutor
+    // (install / listSources); blocks that background thread until the loader
+    // finishes. No-op when [paths] is empty (the normal case → zero overhead).
+    private fun loadPluginsViaActivity(paths: List<String>) {
+        if (paths.isEmpty()) return
+        val latch = java.util.concurrent.CountDownLatch(1)
+        CsPluginLoaderActivity.onComplete = { latch.countDown() }
+        runOnUiThread {
+            try {
+                val intent = Intent(this, CsPluginLoaderActivity::class.java)
+                intent.putExtra(CsPluginLoaderActivity.EXTRA_PATHS, paths.toTypedArray())
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.w(TAG, "CsPluginLoaderActivity launch failed: ${e.message}")
+                latch.countDown()
+            }
+        }
+        runCatching { latch.await(25, java.util.concurrent.TimeUnit.SECONDS) }
+        CsPluginLoaderActivity.onComplete = null
     }
 
     @Suppress("UNCHECKED_CAST")

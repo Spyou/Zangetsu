@@ -109,7 +109,48 @@ class PluginHost(private val context: Context) {
     }
 
     /** PathClassLoader → manifest.json → instantiate → load(). Returns success. */
-    fun loadPlugin(file: File): Boolean {
+    // Files that hard-failed load ONLY because the plugin cast the load context to
+    // an AppCompatActivity (our host is a FlutterActivity). They can be retried
+    // against a real AppCompatActivity via CsPluginLoaderActivity — see
+    // [pendingActivityLoads]. Additive: the normal load path is unchanged.
+    private val needsActivityLoad =
+        java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    /** Paths that failed on the AppCompatActivity cast and can be retried against
+     *  a real activity. Returned + cleared (the caller drives the retry). */
+    fun pendingActivityLoads(): List<String> = synchronized(needsActivityLoad) {
+        needsActivityLoad.toList().also { needsActivityLoad.clear() }
+    }
+
+    /** True once [file]'s plugin has loaded (registered its source) — used to
+     *  confirm an activity-context retry actually took. */
+    fun isLoaded(file: File): Boolean = loaded.contains(file.absolutePath)
+
+    // Some plugins subscribe to MainActivity.afterPluginsLoadedEvent in load() and
+    // do their registerMainAPI in the callback (e.g. the Vietnamese repo). Real
+    // CloudStream fires these once after loading — so we must too, or those sources
+    // never register. Fired once per session (re-firing would re-run callbacks and
+    // duplicate sources).
+    @Volatile
+    private var pluginsLoadedFired = false
+
+    fun firePluginsLoaded() {
+        if (pluginsLoadedFired) return
+        pluginsLoadedFired = true
+        runCatching {
+            com.lagradost.cloudstream3.MainActivity.mainPluginsLoadedEvent(true)
+            com.lagradost.cloudstream3.MainActivity.afterPluginsLoadedEvent(true)
+            com.lagradost.cloudstream3.MainActivity.afterRepositoryLoadedEvent(true)
+        }
+    }
+
+    /**
+     * @param loadCtx the Context handed to the plugin's `load()`. Defaults to the
+     *   application context (the long-standing behaviour). CsPluginLoaderActivity
+     *   passes itself (an AppCompatActivity) to satisfy plugins that cast the load
+     *   context — the classloader parent stays the app either way.
+     */
+    fun loadPlugin(file: File, loadCtx: Context = context): Boolean {
         if (loaded.contains(file.absolutePath)) return true
         return try {
             // Android 8+ refuses to load a dex/.cs3 the app can WRITE to (W^X
@@ -122,6 +163,17 @@ class PluginHost(private val context: Context) {
             val manifest = JSONObject(manifestText)
             val className = manifest.optString("pluginClassName")
             if (className.isEmpty()) return false
+            // A CloudStream plugin that WRAPS Aniyomi (e.g. "AniyomiProvider",
+            // class recloudstream.AniyomiPlugin) boots Aniyomi's own DI on load,
+            // which collides with this app's native Aniyomi bridge and crashes the
+            // WHOLE app (NoSuchMethodError NetworkHelper.<init>). We already support
+            // Aniyomi natively, so these are redundant AND fatal — refuse them.
+            if (className.contains("aniyomi", ignoreCase = true) ||
+                manifest.optString("name").contains("aniyomi", ignoreCase = true)
+            ) {
+                Log.w(TAG, "Refusing Aniyomi-wrapper plugin '$className' — conflicts with the native Aniyomi bridge")
+                return false
+            }
             val instance = loader.loadClass(className)
                 .getDeclaredConstructor().newInstance() as BasePlugin
             // Stamp the plugin file id so every MainAPI it registers carries
@@ -146,7 +198,7 @@ class PluginHost(private val context: Context) {
             // (e.g. TorraStream, which throws on class resolution before load).
             val fileId = file.nameWithoutExtension
             val loadError = runCatching {
-                if (instance is Plugin) instance.load(context) else instance.load()
+                if (instance is Plugin) instance.load(loadCtx) else instance.load()
             }.exceptionOrNull()
             val registered = APIHolder.allProviders.any { it.sourcePlugin == fileId }
             if (loadError != null && !registered) throw loadError
@@ -173,6 +225,13 @@ class PluginHost(private val context: Context) {
             }
             true
         } catch (t: Throwable) {
+            // Plugin cast the load context to an AppCompatActivity (we passed the
+            // Application). Flag it for a retry against a real activity — but only
+            // when THIS was the default app-context load, so the retry itself (which
+            // passes an activity) doesn't re-flag on some later failure.
+            if (loadCtx === context && t.message?.contains("AppCompatActivity") == true) {
+                needsActivityLoad.add(file.absolutePath)
+            }
             Log.w(TAG, "loadPlugin failed for ${file.name}: ${t.message}")
             false
         }

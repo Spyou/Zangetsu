@@ -88,6 +88,17 @@
             android:taskAffinity=""
             android:theme="@style/Theme.CloudStreamSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
+        <!-- Invisible AppCompatActivity used only to (re)load CloudStream plugins
+             that cast their load context to AppCompatActivity (our main screen is a
+             FlutterActivity). Transparent, no history, hidden from recents. -->
+        <activity
+            android:name=".cloudstream.CsPluginLoaderActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.CloudStreamSettings"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Hosts an Aniyomi extension's ConfigurableAnimeSource settings UI via a
              PreferenceFragmentCompat. Launched by AniyomiBridge.openSourceSettings. -->
         <activity
