@@ -24,6 +24,9 @@ import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
+import androidx.media3.exoplayer.drm.FrameworkMediaDrm
+import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
@@ -59,6 +62,8 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_EP_LABEL = "episodeLabel"
         const val EXTRA_POSITION = "positionMs"    // start (resume) position
         const val EXTRA_MIME = "mimeType"
+        const val EXTRA_DRM_KID = "drmKid"          // clearkey key id (base64url)
+        const val EXTRA_DRM_KEY = "drmKey"          // clearkey key (base64url)
         const val EXTRA_SUB_URLS = "subUrls"
         const val EXTRA_SUB_LANGS = "subLangs"
         const val EXTRA_SUB_LABELS = "subLabels"
@@ -247,6 +252,8 @@ class TvPlayerActivity : Activity() {
             subtitleConfigs(),
             intent.getStringExtra(EXTRA_MIME),
             intent.getLongExtra(EXTRA_POSITION, 0L),
+            intent.getStringExtra(EXTRA_DRM_KID),
+            intent.getStringExtra(EXTRA_DRM_KEY),
         )
         fetchSources() // populate the Server picker for the current episode
 
@@ -262,6 +269,8 @@ class TvPlayerActivity : Activity() {
         subs: List<MediaItem.SubtitleConfiguration>?,
         mime: String?,
         positionMs: Long,
+        drmKid: String? = null,
+        drmKey: String? = null,
     ) {
         val p = player ?: return
         currentUrl = url
@@ -272,7 +281,20 @@ class TvPlayerActivity : Activity() {
         if (!mime.isNullOrEmpty()) builder.setMimeType(mime)
         if (subs != null) builder.setSubtitleConfigurations(subs)
         seekTarget = -1L
-        p.setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(builder.build()))
+        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
+        // ClearKey DRM (CENC/DASH — CNC/PlayzTV live channels). Non-DRM streams
+        // pass null keys → this block is skipped and playback is unchanged.
+        if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
+            val json =
+                "{\"keys\":[{\"kty\":\"oct\",\"k\":\"$drmKey\",\"kid\":\"$drmKid\"}]," +
+                    "\"type\":\"temporary\"}"
+            val drmManager = DefaultDrmSessionManager.Builder()
+                .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
+                .setMultiSession(false)
+                .build(LocalMediaDrmCallback(json.toByteArray(Charsets.UTF_8)))
+            sourceFactory.setDrmSessionManagerProvider { drmManager }
+        }
+        p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         if (positionMs > 0) p.seekTo(positionMs)
         p.prepare()
         p.playWhenReady = true
@@ -328,7 +350,10 @@ class TvPlayerActivity : Activity() {
         skipIntervals = emptyList()
         skipsFetchedFor = -1
         hideSkip()
-        loadStream(url, headers, subsFromMap(m["subtitles"]), mime, positionMs)
+        loadStream(
+            url, headers, subsFromMap(m["subtitles"]), mime, positionMs,
+            m["drmKid"] as? String, m["drmKey"] as? String,
+        )
         updateEpisodeUi()
         fetchSources() // refresh the Server picker for the new episode/category
         bumpControls()
@@ -451,7 +476,9 @@ class TvPlayerActivity : Activity() {
         val subs = subsFromMap(s["subtitles"])
         val mime = s["mimeType"] as? String
         val pos = player?.currentPosition ?: 0L
-        if (!isTorrentUrl(url)) { loadStream(url, headers, subs, mime, pos); return }
+        val kid = s["drmKid"] as? String
+        val key = s["drmKey"] as? String
+        if (!isTorrentUrl(url)) { loadStream(url, headers, subs, mime, pos, kid, key); return }
         loading.visibility = View.VISIBLE
         MainActivity.tvBridge?.invokeMethod(
             "resolveTorrent",

@@ -216,6 +216,10 @@ class TvNativePlayer {
         // The mobile Quality menu keys off per-source quality; carry it through so
         // the native Quality menu can list distinct resolutions.
         'quality': src.quality ?? '',
+        // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH channels; the
+        // native TV player builds an ExoPlayer clearkey session when present.
+        if (src.isDrm) 'drmKid': src.drmKid,
+        if (src.isDrm) 'drmKey': src.drmKey,
         'subtitles': [
           for (final s in src.subtitles)
             {'url': s.url, 'lang': s.lang, 'label': s.label ?? s.lang},

@@ -921,6 +921,8 @@ class MainActivity : FlutterActivity() {
             call.argument<String>("title")?.let { intent.putExtra(TvPlayerActivity.EXTRA_TITLE, it) }
             call.argument<String>("episodeLabel")?.let { intent.putExtra(TvPlayerActivity.EXTRA_EP_LABEL, it) }
             call.argument<String>("mimeType")?.let { intent.putExtra(TvPlayerActivity.EXTRA_MIME, it) }
+            call.argument<String>("drmKid")?.let { intent.putExtra(TvPlayerActivity.EXTRA_DRM_KID, it) }
+            call.argument<String>("drmKey")?.let { intent.putExtra(TvPlayerActivity.EXTRA_DRM_KEY, it) }
             call.argument<Number>("accentColor")?.let { intent.putExtra(TvPlayerActivity.EXTRA_ACCENT, it.toInt()) }
             intent.putExtra(TvPlayerActivity.EXTRA_POSITION, (call.argument<Number>("positionMs") ?: 0).toLong())
             intent.putExtra(TvPlayerActivity.EXTRA_SW_DECODE, call.argument<Boolean>("softwareDecoding") ?: false)

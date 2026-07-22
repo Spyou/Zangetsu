@@ -337,6 +337,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       playHeaders,
       subtitles: subs,
       mimeType: _mimeForSource(src),
+      // ClearKey DRM (null for every ordinary source → no clearkey session).
+      drmKid: src.drmKid,
+      drmKey: src.drmKey,
     );
     await _applyCaptionStyle();
     _applyPlaybackTuning();
