@@ -15,6 +15,7 @@ import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
+import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -858,11 +859,66 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
 
   int _cacheBytes = 0;
+  bool _shadersReady = ShaderPresets.downloaded;
+  bool _shaderDownloading = false;
+  double _shaderProgress = 0;
+
+  // One control = Off / Mid / High (the GPU tier). The filter itself
+  // (Sharpen/De-blur/Denoise) is chosen in the player's Enhance menu.
+  static const List<(String, String)> _shaderTierOptions = [
+    ('off', 'Off'),
+    ('mid', 'Mid-range GPU — light, smooth'),
+    ('high', 'High-end GPU — heavier, sharpest'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadCacheSize();
+    ShaderPresets.refreshDownloaded().then((v) {
+      if (mounted) setState(() => _shadersReady = v);
+    });
+  }
+
+  // ── Video enhancement (GLSL upscaling shaders, downloaded on demand) ────────
+  Future<void> _downloadShaders() async {
+    if (_shaderDownloading) return;
+    setState(() {
+      _shaderDownloading = true;
+      _shaderProgress = 0;
+    });
+    final ok = await ShaderPresets.download(
+      onProgress: (p) {
+        if (mounted) setState(() => _shaderProgress = p);
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _shaderDownloading = false;
+      _shadersReady = ok;
+    });
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shader download failed — check network')),
+      );
+    } else {
+      // Default to Mid so the download has an immediate, smooth effect.
+      if (_prefs.videoShaderLevel == 'off') {
+        await _prefs.setVideoShaderLevel('mid');
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _pickShaderLevel() async {
+    final picked = await _pick<String>(
+      title: 'Anime4K Enhancement',
+      options: _shaderTierOptions,
+      current: _prefs.videoShaderLevel,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoShaderLevel(picked);
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadCacheSize() async {
@@ -1336,6 +1392,27 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   'Hardware (default)',
                 ),
                 onTap: _pickDecoder,
+              ),
+              // Anime4K GLSL upscaling — downloaded on demand. One row = Off /
+              // Mid / High (GPU tier). Anime-tuned; may over-sharpen live action.
+              SettingsTile(
+                icon: Icons.auto_awesome_outlined,
+                title: 'Anime4K Enhancement',
+                subtitle: _shaderDownloading
+                    ? 'Downloading… ${(_shaderProgress * 100).round()}%'
+                    : (!_shadersReady
+                          ? 'Tap to download shaders (~0.6 MB)'
+                          : ShaderPresets.levelLabel(_prefs.videoShaderLevel)),
+                trailing: _shaderDownloading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : null,
+                onTap: _shaderDownloading
+                    ? null
+                    : (!_shadersReady ? _downloadShaders : _pickShaderLevel),
               ),
             ],
           ),

@@ -43,6 +43,7 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
+import 'shader_presets.dart';
 import 'drm_player_screen.dart';
 
 /// Netflix-style fullscreen player: a live [Video] with a tap-to-toggle
@@ -308,6 +309,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void initState() {
     super.initState();
+    // Refresh the "enhancement shaders downloaded?" flag so the in-player picker
+    // gates correctly (they're fetched on demand from Settings). Fire-and-forget.
+    unawaited(ShaderPresets.refreshDownloaded());
     // Default external player: hand the stream off to the chosen app and close
     // this screen instead of starting the in-app player. Falls back to in-app
     // if the launch can't be set up, so playback never silently dies.
@@ -1133,6 +1137,48 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _dismissUpNext() {
     _upNextTimer?.cancel();
     setState(() => _upNext = false);
+  }
+
+  // ── Anime4K enhancement (real-time GLSL upscaler) ─────────────────────────
+  void _openEnhanceSheet() {
+    // Shaders are downloaded on demand from Settings; if they aren't on disk
+    // yet, point the user there instead of showing an inert list.
+    if (!ShaderPresets.downloaded) {
+      _sheet<void>(
+        _SheetColumn(
+          header: 'Anime4K Enhancement',
+          children: [
+            _SheetRow(
+              label: 'Download in Settings',
+              subtitle: 'Get the Anime4K shaders (~0.6 MB), then turn it on',
+              active: false,
+              onTap: () => Navigator.pop(context),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+    final current = sl<PlaybackPrefs>().videoShaderLevel;
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Anime4K',
+        children: [
+          for (final l in ShaderPresets.levels)
+            _SheetRow(
+              label: ShaderPresets.levelLabel(l),
+              subtitle: ShaderPresets.levelDescription(l),
+              active: l == current,
+              onTap: () {
+                Navigator.pop(context);
+                _c.setShaderLevel(l);
+                if (mounted) setState(() {}); // refresh the More icon state
+                _bumpControls();
+              },
+            ),
+        ],
+      ),
+    );
   }
 
   // ── Episodes picker — slides in from the right (CloudStream-style) ─────────
@@ -2194,6 +2240,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       infoOpen: _infoPanelOpen,
                       showQuality: _alwaysShowQuality,
                       onScreenshot: _captureScreenshot,
+                      onEnhance: _openEnhanceSheet,
+                      enhanceActive:
+                          sl<PlaybackPrefs>().videoShaderLevel != 'off',
                     ),
                   ),
                 )
@@ -3048,6 +3097,8 @@ class _ControlsOverlay extends StatelessWidget {
     this.infoOpen = false,
     this.showQuality = false,
     required this.onScreenshot,
+    required this.onEnhance,
+    required this.enhanceActive,
   });
 
   final PlayerCubit controller;
@@ -3079,6 +3130,8 @@ class _ControlsOverlay extends StatelessWidget {
   final bool infoOpen; // whether the info panel is currently shown
   final bool showQuality; // plain quality text on the top-bar right (with controls)
   final VoidCallback onScreenshot; // grab the current frame → gallery
+  final VoidCallback onEnhance; // opens the video-enhancement (upscaler) picker
+  final bool enhanceActive; // an upscaling preset is currently on
 
   /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
   /// holds the occasional actions so the control bars stay clean.
@@ -3116,6 +3169,16 @@ class _ControlsOverlay extends StatelessWidget {
                       onTap: () {
                         Navigator.pop(ctx);
                         onDecoder();
+                      },
+                    ),
+                    _MoreRow(
+                      icon: enhanceActive
+                          ? Icons.auto_awesome_rounded
+                          : Icons.auto_awesome_outlined,
+                      label: 'Anime4K Enhancement',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onEnhance();
                       },
                     ),
                     _MoreRow(

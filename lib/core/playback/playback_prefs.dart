@@ -181,6 +181,15 @@ class PlaybackPrefs {
     }
   }
 
+  // ── Anime4K enhancement (GLSL upscaling) ───────────────────────────────────
+  // Real-time neural upscaling that sharpens low-res anime via mpv GLSL shaders.
+  // A single GPU tier: 'off' (default), 'mid' (light), 'high' (heavy). Applied
+  // via `glsl-shaders`, routed through the gpu-next renderer when not 'off'.
+  String get videoShaderLevel =>
+      _box.get('videoShaderLevel', defaultValue: 'off') as String;
+  Future<void> setVideoShaderLevel(String value) =>
+      _box.put('videoShaderLevel', value);
+
   // ── Video buffering (mpv cache) ────────────────────────────────────────────
   // Presets, NOT raw values, so a user can't set a footgun. 'default' returns
   // exactly today's hardcoded numbers, so a fresh install / untouched setting is

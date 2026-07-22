@@ -31,6 +31,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
+import 'shader_presets.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
@@ -228,6 +229,14 @@ class PlayerCubit extends Cubit<PlayerState> {
       // high-res playback + less battery/heat. media_kit auto-falls back to
       // software decode if the device can't hardware-decode a codec.
       enableHardwareAcceleration: true,
+      // Route video enhancement (GLSL upscaling) through mpv's gpu-next renderer,
+      // which maps to gpu-api=vulkan,opengl — far more efficient for shaders than
+      // the default gpu (OpenGL) path, so upscaling stays smooth. ONLY when
+      // enhancement is on (opt-in), so default playback is byte-identical. This
+      // is creation-time (mpv can't switch vo live), so it's read here per open.
+      vo: (!sl<AppMode>().isTv && sl<PlaybackPrefs>().videoShaderLevel != 'off')
+          ? 'gpu-next'
+          : null,
       // TV-ONLY: cap the video OUTPUT to 720p. On old TVs the frame is still
       // hardware-decoded, but the weak GPU chokes compositing a full 1080p/4K
       // texture every frame → visible playback lag. Capping the render size is
@@ -486,12 +495,42 @@ class PlayerCubit extends Cubit<PlayerState> {
         await p.setProperty('volume-max', '200');
         await p.setProperty('volume', sl<PlaybackPrefs>().volumeBoost.toString());
         await p.setProperty('af', _audioFilterChain());
+        // Keep voices natural (not chipmunk) when playing above 1× speed.
+        await p.setProperty('audio-pitch-correction', 'yes');
+        // Real-time GLSL upscaling (Video enhancement). 'off' → clears shaders.
+        await _applyShader(p);
       } catch (_) {}
       // Make the bundled subtitle fonts available to mpv/libass (which can't
       // read Flutter's asset bundle). Fire-and-forget so it never delays the
       // first open; the font picker just works once it's done.
       unawaited(_setupSubtitleFonts(p));
     }
+  }
+
+  /// Apply the saved Anime4K enhancement chain to mpv (best-effort).
+  Future<void> _applyShader(NativePlayer p) async {
+    try {
+      await p.setProperty(
+        'glsl-shaders',
+        await ShaderPresets.mpvValue(sl<PlaybackPrefs>().videoShaderLevel),
+      );
+    } catch (_) {}
+  }
+
+  /// Change the Anime4K level (off/mid/high) live and persist it. Note: the
+  /// gpu-next renderer is set at player creation, so enabling from 'off'
+  /// mid-playback runs the shader on the current renderer until the next open —
+  /// the shader itself applies immediately either way.
+  Future<void> setShaderLevel(String level) async {
+    await sl<PlaybackPrefs>().setVideoShaderLevel(level);
+    final p = player.platform;
+    if (p is NativePlayer) await _applyShader(p);
+    // Flash a confirmation so it's obvious the change took effect.
+    _toast(
+      level == 'off'
+          ? 'Anime4K Enhancement: Off'
+          : 'Anime4K Enhancement: ${ShaderPresets.levelLabel(level)}',
+    );
   }
 
   // Extract-once guard (static: shared across player instances this session).
