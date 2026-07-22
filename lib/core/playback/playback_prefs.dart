@@ -400,6 +400,20 @@ class PlaybackPrefs {
   Future<void> setSubtitlePreference(String value) =>
       _box.put('preferredSubtitleLang', value);
 
+  /// Target language (ISO-639-1) for subtitle translation — the in-player
+  /// picker's default and the auto-translate target. '' = none set yet.
+  String get translateSubtitleTo =>
+      _box.get('translateSubtitleTo', defaultValue: '') as String;
+  Future<void> setTranslateSubtitleTo(String value) =>
+      _box.put('translateSubtitleTo', value);
+
+  /// Auto-translate the subtitle into [translateSubtitleTo] on play, when the
+  /// source has no subtitle already in that language. Off by default.
+  bool get autoTranslateSubtitles =>
+      _box.get('autoTranslateSubtitles', defaultValue: false) as bool;
+  Future<void> setAutoTranslateSubtitles(bool value) =>
+      _box.put('autoTranslateSubtitles', value);
+
   /// The preference as a *language* code only: '' for Auto or Off, else the
   /// iso1. Callers that want a language (online-search default, Settings label)
   /// use this so the 'off' sentinel never leaks in as a language.

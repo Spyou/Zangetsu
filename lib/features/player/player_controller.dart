@@ -29,6 +29,7 @@ import '../../core/playback/source_selection.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
+import '../../core/playback/subtitle_translate_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
 import 'shader_presets.dart';
@@ -689,6 +690,8 @@ class PlayerCubit extends Cubit<PlayerState> {
           _subApplied = false;
           _tryApplySubPref();
         }
+        // Auto-translate the subtitle once the episode is ready (opt-in).
+        if (d > Duration.zero) _maybeAutoTranslate();
         // Fetch accurate OP/ED skip times once the episode length is known.
         if (d > Duration.zero && _skipsForIndex != state.currentIndex) {
           _skipsForIndex = state.currentIndex;
@@ -935,10 +938,121 @@ class PlayerCubit extends Cubit<PlayerState> {
     _wantedSubId = path;
   }
 
+  /// True when the active subtitle is an external one we can fetch + translate
+  /// (a source soft-sub or a loaded file — not an embedded/off/translated track).
+  bool get canTranslateSub {
+    final id = _wantedSubId;
+    if (id == null || id == 'no') return false;
+    if (id.contains('/translated_')) return false; // already a translation
+    return softSubs.any((s) => s.url == id) || File(id).existsSync();
+  }
+
+  /// Translate a subtitle to [targetIso] (ISO-639-1) and load the result as a
+  /// new track. Uses the active external subtitle; if none is selected, falls
+  /// back to the first source soft-sub (selecting it first). Best-effort; toasts
+  /// progress + result, and never disturbs the original subtitle on failure.
+  Future<void> translateCurrentSub(String targetIso) async {
+    final id = _wantedSubId;
+    String content;
+    try {
+      if (id != null && File(id).existsSync()) {
+        content = await File(id).readAsString();
+      } else {
+        // The active soft-sub, else the first available one.
+        Subtitle? target;
+        for (final s in softSubs) {
+          if (s.url == id) {
+            target = s;
+            break;
+          }
+        }
+        target ??= softSubs.isNotEmpty ? softSubs.first : null;
+        if (target == null) {
+          _toast('No external subtitle to translate');
+          return;
+        }
+        if (target.url != id) await setSoftSub(target); // select it first
+        final resp = await _dio.get<String>(
+          target.url,
+          options: Options(
+            responseType: ResponseType.plain,
+            headers: state.active?.headers,
+            validateStatus: (_) => true,
+          ),
+        );
+        content = resp.data ?? '';
+      }
+    } catch (_) {
+      _toast('Couldn\'t load the subtitle');
+      return;
+    }
+    if (content.trim().isEmpty) {
+      _toast('Subtitle is empty');
+      return;
+    }
+    _toast('Translating subtitles…');
+    try {
+      var lastPct = -1;
+      final srt = await SubtitleTranslateService.instance.translate(
+        content,
+        targetIso,
+        onProgress: (p) {
+          final pct = (p * 100).round();
+          if (pct != lastPct) {
+            lastPct = pct;
+            _toast('Translating subtitles… $pct%');
+          }
+        },
+      );
+      // Write to a real file and load by path: mpv reports a uri sub's id AS its
+      // path, so `_wantedSubId` matches it and the sub-preference watcher won't
+      // stomp it back to the original (a data: sub's id never matched). File subs
+      // also render more reliably on Android than in-memory data.
+      final dir = await getTemporaryDirectory();
+      final out = File(
+        '${dir.path}/translated_${targetIso}_${state.currentIndex}.srt',
+      );
+      await out.writeAsString(srt, flush: true);
+      await player.setSubtitleTrack(
+        SubtitleTrack.uri(out.path, title: 'Translated', language: targetIso),
+      );
+      _wantedSubId = out.path;
+      _subApplied = true;
+      _toast('Subtitles translated');
+    } catch (_) {
+      _toast('Couldn\'t translate subtitles');
+    }
+  }
+
   bool _subApplied = false; // remembered-subtitle restored for this episode
   bool _autoSubDlTried = false; // keyless auto-download fired at most once/episode
   String? _wantedSubId; // id/url of the subtitle we intend to keep selected
   bool _subReadyReapplied = false; // re-asserted the sub pref once at STATE_READY
+  bool _autoTranslateTried = false; // auto-translate fired at most once/episode
+
+  /// If auto-translate is on and a target language is set, translate the current
+  /// subtitle to it once per episode — unless the source already has a sub in
+  /// that language (then the normal preference picks it, no translation needed).
+  void _maybeAutoTranslate() {
+    if (_autoTranslateTried) return;
+    final prefs = sl<PlaybackPrefs>();
+    if (!prefs.autoTranslateSubtitles) return;
+    final target = prefs.translateSubtitleTo;
+    if (target.isEmpty) return;
+    if (softSubs.isEmpty && !canTranslateSub) return;
+    // Skip when the source already offers the target language.
+    final targetLang = languageByPref(target);
+    if (targetLang != null) {
+      for (final s in softSubs) {
+        if (matchesSourceLang(s.lang, targetLang) ||
+            matchesSourceLang(s.label ?? '', targetLang)) {
+          return;
+        }
+      }
+    }
+    _autoTranslateTried = true;
+    unawaited(translateCurrentSub(target));
+  }
 
   /// Restore the title's remembered subtitle once per episode. 'off' turns subs
   /// off; otherwise match a soft-sub or embedded track by language/label.
@@ -1076,6 +1190,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _autoSubDlTried = false; // re-arm keyless auto-download for the new episode
     _wantedSubId = null; // clear the intended-sub tracking for the new episode
     _subReadyReapplied = false; // re-arm the STATE_READY sub re-assert
+    _autoTranslateTried = false; // re-arm auto-translate for the new episode
     _audioApplied = false; // restore the remembered audio track too
     emit(
       state.copyWith(

@@ -1567,8 +1567,35 @@ class _PlayerScreenState extends State<PlayerScreen> {
               Navigator.pop(context);
               _openOnlineSubtitleSheet();
             },
+            onTranslate: () {
+              Navigator.pop(context);
+              _openTranslateSheet();
+            },
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Translate the active subtitle into a chosen language ──────────────────
+  void _openTranslateSheet() {
+    final pref = sl<PlaybackPrefs>().translateSubtitleTo;
+    _sheet<void>(
+      _SheetColumn(
+        header: 'Translate subtitles to',
+        children: [
+          for (final lang in kSubtitleLanguages)
+            _SheetRow(
+              label: lang.name,
+              active: lang.iso1 == pref,
+              onTap: () {
+                Navigator.pop(context);
+                sl<PlaybackPrefs>().setTranslateSubtitleTo(lang.iso1);
+                _c.translateCurrentSub(lang.iso1);
+                _bumpControls();
+              },
+            ),
+        ],
       ),
     );
   }
@@ -4514,11 +4541,13 @@ class _AudioSubsSheet extends StatefulWidget {
     required this.onInteract,
     required this.onLoadFile,
     required this.onSearchOnline,
+    required this.onTranslate,
   });
   final PlayerCubit controller;
   final VoidCallback onInteract;
   final VoidCallback onLoadFile;
   final VoidCallback onSearchOnline;
+  final VoidCallback onTranslate;
 
   @override
   State<_AudioSubsSheet> createState() => _AudioSubsSheetState();
@@ -4730,6 +4759,13 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 active: false,
                 onTap: widget.onLoadFile,
               ),
+              if (c.softSubs.isNotEmpty || c.canTranslateSub)
+                _SheetRow(
+                  label: 'Translate subtitles…',
+                  icon: Icons.translate_rounded,
+                  active: false,
+                  onTap: widget.onTranslate,
+                ),
             ],
           ),
         ),

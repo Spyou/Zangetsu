@@ -1699,11 +1699,43 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.translate_outlined,
+                title: 'Auto-translate subtitles',
+                subtitle:
+                    'Translate to your language on play (when the source has none)',
+                value: _prefs.autoTranslateSubtitles,
+                onChanged: (v) async {
+                  await _prefs.setAutoTranslateSubtitles(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              if (_prefs.autoTranslateSubtitles)
+                SettingsTile(
+                  icon: Icons.g_translate_outlined,
+                  title: 'Translate subtitles to',
+                  subtitle: _prefs.translateSubtitleTo.isEmpty
+                      ? 'Pick a language'
+                      : (languageByPref(_prefs.translateSubtitleTo)?.name ??
+                            _prefs.translateSubtitleTo.toUpperCase()),
+                  onTap: _pickTranslateLanguage,
+                ),
             ],
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _pickTranslateLanguage() async {
+    final picked = await _pick<String>(
+      title: 'Translate subtitles to',
+      options: [for (final l in kSubtitleLanguages) (l.iso1, l.name)],
+      current: _prefs.translateSubtitleTo,
+    );
+    if (picked == null) return;
+    await _prefs.setTranslateSubtitleTo(picked);
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickSubtitleLanguage() async {
