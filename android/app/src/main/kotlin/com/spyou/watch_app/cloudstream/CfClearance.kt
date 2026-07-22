@@ -19,8 +19,36 @@ import okhttp3.Response
  * exactly those requests, so non-Cloudflare traffic is untouched.
  */
 object CfClearance {
+    // cf_clearance is bound to the EXACT UA that solved it. The cookie persists on
+    // disk (WebView CookieManager) but the UA used to live only in memory — so
+    // after an app restart the cached cookie was replayed with the WRONG (default)
+    // UA and Cloudflare 403'd it → a full re-solve on the first play every launch.
+    // Persist the UA too, so a restart reuses the clearance instead of re-verifying.
+    private const val PREFS = "zangetsu_cf"
+    private const val KEY_UA = "cf_solving_ua"
+
     @Volatile
-    var userAgent: String? = null
+    private var uaCache: String? = null
+
+    var userAgent: String?
+        get() {
+            uaCache?.let { return it }
+            val restored = runCatching {
+                com.lagradost.cloudstream3.CloudStreamApp.getContext()
+                    ?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+                    ?.getString(KEY_UA, null)
+            }.getOrNull()
+            uaCache = restored
+            return restored
+        }
+        set(value) {
+            uaCache = value
+            runCatching {
+                com.lagradost.cloudstream3.CloudStreamApp.getContext()
+                    ?.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE)
+                    ?.edit()?.putString(KEY_UA, value)?.apply()
+            }
+        }
 
     /**
      * >0 while one or more provider SEARCHES are running. The WebView CF solver

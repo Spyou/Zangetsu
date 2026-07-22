@@ -31,15 +31,14 @@ class CloudflareKiller : Interceptor {
     // Kept for binary compat with plugins that read it; we manage cookies below.
     val savedCookies: MutableMap<String, Map<String, String>> = mutableMapOf()
 
+    // Per-instance: only carries a just-solved cookie into the retry within the
+    // SAME intercept() call. Cross-CALL cookie reuse is the shared WebView cookie
+    // store's job (WebkitCookieJar) + the persisted CfClearance.userAgent — not
+    // this map. Kept per-instance on purpose: a static cookie map would wedge a
+    // rotated/expired cf_clearance until app restart. The negative cache + per-host
+    // lock ARE shared (companion) — with a fresh instance per request, a
+    // per-instance backoff was lost, re-popping a 30s "verifying" on every click.
     private val cookieByHost = ConcurrentHashMap<String, String>()
-    // host -> epoch-ms until which we won't re-attempt a solve. A CF-gated host
-    // we can't clear (e.g. an interactive challenge) would otherwise pop the
-    // solver on EVERY request — this backs it off so it solves at most once.
-    private val failedUntil = ConcurrentHashMap<String, Long>()
-    private val locks = ConcurrentHashMap<String, Any>()
-
-    @Volatile
-    private var userAgent: String? = null
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -73,7 +72,7 @@ class CloudflareKiller : Interceptor {
                 }
                 failedUntil.remove(finalHost) // solved → clear any backoff
                 cookieByHost[finalHost] = solved.cookie
-                userAgent = solved.userAgent
+                com.spyou.watch_app.cloudstream.CfClearance.userAgent = solved.userAgent
             }
         }
         response.close()
@@ -85,23 +84,21 @@ class CloudflareKiller : Interceptor {
                     val existing = request.header("Cookie")
                     header("Cookie", if (existing.isNullOrBlank()) cookie else "$existing; $cookie")
                 }
-                userAgent?.let { header("User-Agent", it) }
+                com.spyou.watch_app.cloudstream.CfClearance.userAgent?.let { header("User-Agent", it) }
             }
             .build()
         return chain.proceed(retried)
     }
 
-    /** Attach the harvested clearance cookie + UA for [host], if we have them. */
+    /** Attach the harvested clearance cookie (+ the solving UA it's bound to) for
+     *  [host], if this instance solved it in-call. Only touches requests we have a
+     *  cookie for, so non-CF traffic keeps its own UA. */
     private fun applySaved(request: Request, host: String): Request {
-        val cookie = cookieByHost[host]
-        val ua = userAgent
-        if (cookie == null && ua == null) return request
+        val cookie = cookieByHost[host] ?: return request
         val b = request.newBuilder()
-        if (cookie != null) {
-            val existing = request.header("Cookie")
-            b.header("Cookie", if (existing.isNullOrBlank()) cookie else "$existing; $cookie")
-        }
-        if (ua != null) b.header("User-Agent", ua)
+        val existing = request.header("Cookie")
+        b.header("Cookie", if (existing.isNullOrBlank()) cookie else "$existing; $cookie")
+        com.spyou.watch_app.cloudstream.CfClearance.userAgent?.let { b.header("User-Agent", it) }
         return b.build()
     }
 
@@ -127,6 +124,16 @@ class CloudflareKiller : Interceptor {
             body.contains("_cf_chl_opt") ||
             body.contains("cf-browser-verification")
     }
+
+    companion object {
+        // Shared across every CloudflareKiller instance (plugins make a fresh one
+        // per request). host -> epoch-ms until which we won't re-attempt a solve:
+        // a CF host we can't clear (e.g. an interactive challenge) would otherwise
+        // pop a 30s "verifying" on EVERY request. The per-host lock is shared too so
+        // concurrent requests for one host don't each launch a solver.
+        private val failedUntil = ConcurrentHashMap<String, Long>()
+        private val locks = ConcurrentHashMap<String, Any>()
+    }
 }
 
 /** Loads a URL in a hidden WebView and waits for Cloudflare's `cf_clearance`
@@ -136,6 +143,7 @@ internal object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
     fun solve(url: String): Result? {
+        android.util.Log.i("CfSolver", "solve() host=${runCatching { android.net.Uri.parse(url).host }.getOrNull()}")
         // Prefer the foreground Activity: the solver WebView must be attached to
         // a real window and rendered, or Cloudflare's JS challenge never runs.
         val activity = com.spyou.watch_app.MainActivity.current?.get()
@@ -170,7 +178,7 @@ internal object CfWebViewSolver {
         val poll = object : Runnable {
             override fun run() {
                 captureIfReady()
-                if (ref.get() == null) main.postDelayed(this, 600)
+                if (ref.get() == null) main.postDelayed(this, 300)
             }
         }
 
@@ -227,7 +235,10 @@ internal object CfWebViewSolver {
                     }
                 }
                 wv.loadUrl(url)
-                main.postDelayed(poll, 2000) // CF sets the cookie after its JS runs
+                // Start polling early (CF often sets the cookie in well under a
+                // second on a cached/managed challenge); a slow challenge just
+                // keeps polling at 300ms up to the 30s latch, same as before.
+                main.postDelayed(poll, 400)
             } catch (_: Throwable) {
                 latch.countDown()
             }
