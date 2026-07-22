@@ -72,6 +72,13 @@ class MainActivity : FlutterActivity() {
     override fun onResume() {
         super.onResume()
         current = java.lang.ref.WeakReference(this)
+        // CloudStream plugins that store their own settings grab a per-plugin
+        // SharedPreferences via CommonActivity.getActivity().getSharedPreferences(name)
+        // at load time (e.g. PlayzTV/Crickyfy live-TV category). Register the host
+        // Activity here — before extensions load off the splash path — so that
+        // returns a real Activity instead of null; otherwise those prefs are never
+        // read back and the selection reverts on restart.
+        com.lagradost.cloudstream3.CommonActivity.setActivityInstance(this)
     }
 
     override fun onPause() {
@@ -1091,6 +1098,9 @@ class MainActivity : FlutterActivity() {
         csReadPool.shutdown()
         castManager?.release()
         tvBridge = null
+        if (com.lagradost.cloudstream3.CommonActivity.activity === this) {
+            com.lagradost.cloudstream3.CommonActivity.setActivityInstance(null)
+        }
         super.onDestroy()
     }
 
