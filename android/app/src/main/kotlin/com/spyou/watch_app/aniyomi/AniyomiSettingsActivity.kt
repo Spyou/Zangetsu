@@ -1,7 +1,14 @@
 package com.spyou.watch_app.aniyomi
 
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.Toolbar
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.preference.PreferenceFragmentCompat
 import eu.kanade.tachiyomi.animesource.ConfigurableAnimeSource
 
@@ -29,15 +36,53 @@ class AniyomiSettingsActivity : AppCompatActivity() {
         val source = AniyomiSourceManager.get(sourceId)
         if (source !is ConfigurableAnimeSource) { finish(); return }
 
+        // Header (Toolbar) ABOVE a fragment container, so the extension's
+        // preference list always sits BELOW the header. Previously the fragment
+        // filled android.R.id.content and the action bar overlaid its first row.
+        val toolbar = Toolbar(this).apply {
+            setBackgroundColor(themeColor(androidx.appcompat.R.attr.colorPrimary))
+        }
+        val container = FrameLayout(this).apply {
+            id = CONTAINER_ID
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(
+                toolbar,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ),
+            )
+            addView(container)
+        }
+        setContentView(root)
+
+        setSupportActionBar(toolbar)
         title = source.name
-        // Show an ActionBar Up arrow so onSupportNavigateUp() can close the screen.
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
+
+        // Android 15+/targetSdk 36 draws edge-to-edge by default: inset the whole
+        // screen by the system bars so the header sits below the status bar and
+        // the list stays above the nav bar.
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
 
         if (savedInstanceState == null) {
             supportFragmentManager.beginTransaction()
-                .replace(android.R.id.content, AniyomiPrefFragment.newInstance(sourceId))
+                .replace(CONTAINER_ID, AniyomiPrefFragment.newInstance(sourceId))
                 .commit()
         }
+    }
+
+    private fun themeColor(attr: Int): Int {
+        val tv = TypedValue()
+        theme.resolveAttribute(attr, tv, true)
+        return tv.data
     }
 
     override fun onSupportNavigateUp(): Boolean {
@@ -47,6 +92,7 @@ class AniyomiSettingsActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_SOURCE_ID = "sourceId"
+        private const val CONTAINER_ID = 0x00AA0001
     }
 
     /**

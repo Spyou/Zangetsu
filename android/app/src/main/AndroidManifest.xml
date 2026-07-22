@@ -85,6 +85,7 @@
         <activity
             android:name=".cloudstream.CloudStreamSettingsActivity"
             android:exported="false"
+            android:taskAffinity=""
             android:theme="@style/Theme.CloudStreamSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Hosts an Aniyomi extension's ConfigurableAnimeSource settings UI via a
@@ -92,6 +93,7 @@
         <activity
             android:name=".aniyomi.AniyomiSettingsActivity"
             android:exported="false"
+            android:taskAffinity=""
             android:theme="@style/Theme.AniyomiSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Fully-native TV video player (TvPlayerActivity). Landscape, no title

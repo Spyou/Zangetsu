@@ -27,9 +27,7 @@
     </style>
     <!-- Standard Material DayNight theme for AniyomiSettingsActivity: hosts a
          PreferenceFragmentCompat for an Aniyomi source's own settings. -->
-    <style name="Theme.AniyomiSettings" parent="Theme.MaterialComponents.DayNight">
-        <item name="android:windowActionBar">true</item>
-    </style>
+    <style name="Theme.AniyomiSettings" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
 
     <!-- Native TV player control-row button (Episodes / Audio & Subs / Next).
          The Activity handles focus highlight (accent tint + scale) in code so it
