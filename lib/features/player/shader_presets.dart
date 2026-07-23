@@ -24,8 +24,8 @@ class ShaderPresets {
   };
 
   static String levelDescription(String l) => switch (l) {
-    'mid' => 'Light — smooth on most phones',
-    'high' => 'Heavier — sharpest, needs a strong GPU',
+    'mid' => 'Light upscaler + deband — smooth on most phones',
+    'high' => 'Heavy upscaler + deband + HQ scaling — strong GPU',
     _ => 'No enhancement',
   };
 

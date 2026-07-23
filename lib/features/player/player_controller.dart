@@ -508,14 +508,31 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  /// Apply the saved Anime4K enhancement chain to mpv (best-effort).
+  /// Apply the saved Anime4K enhancement (upscaling shaders + render tuning) to
+  /// mpv (best-effort). Off resets everything to mpv defaults.
   Future<void> _applyShader(NativePlayer p) async {
     try {
-      await p.setProperty(
-        'glsl-shaders',
-        await ShaderPresets.mpvValue(sl<PlaybackPrefs>().videoShaderLevel),
-      );
+      final level = sl<PlaybackPrefs>().videoShaderLevel;
+      await p.setProperty('glsl-shaders', await ShaderPresets.mpvValue(level));
+      await _applyRenderQuality(p, level);
     } catch (_) {}
+  }
+
+  /// Render-quality mpv tuning that rides on the Anime4K level. Mid+High enable
+  /// deband (smooths colour banding in gradients — cheap, big win for anime);
+  /// High also switches to high-quality scaling (spline36/mitchell). Off resets
+  /// to mpv's defaults (deband off, bilinear), so it matches stock playback.
+  Future<void> _applyRenderQuality(NativePlayer p, String level) async {
+    final on = level != 'off';
+    final high = level == 'high';
+    await p.setProperty('deband', on ? 'yes' : 'no');
+    if (on) {
+      await p.setProperty('deband-iterations', '2');
+      await p.setProperty('deband-threshold', '48');
+    }
+    await p.setProperty('scale', high ? 'spline36' : 'bilinear');
+    await p.setProperty('cscale', high ? 'spline36' : 'bilinear');
+    await p.setProperty('dscale', high ? 'mitchell' : 'bilinear');
   }
 
   /// Change the Anime4K level (off/mid/high) live and persist it. Note: the
