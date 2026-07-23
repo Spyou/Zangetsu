@@ -32,6 +32,7 @@ import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_translate_service.dart';
 import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
+import 'color_profiles.dart';
 import 'shader_presets.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
@@ -500,6 +501,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         await p.setProperty('audio-pitch-correction', 'yes');
         // Real-time GLSL upscaling (Video enhancement). 'off' → clears shaders.
         await _applyShader(p);
+        // Named colour profile (brightness/contrast/…). 'natural' → neutral.
+        await _applyColorProfile(p);
       } catch (_) {}
       // Make the bundled subtitle fonts available to mpv/libass (which can't
       // read Flutter's asset bundle). Fire-and-forget so it never delays the
@@ -560,6 +563,63 @@ class PlayerCubit extends Cubit<PlayerState> {
     final p = player.platform;
     if (p is NativePlayer) await _applyShader(p);
   }
+
+  /// Apply the saved colour-adjustment values to mpv's equalizer (best-effort).
+  Future<void> _applyColorProfile(NativePlayer p) async {
+    try {
+      final prefs = sl<PlaybackPrefs>();
+      await p.setProperty('brightness', '${prefs.colorBrightness}');
+      await p.setProperty('contrast', '${prefs.colorContrast}');
+      await p.setProperty('saturation', '${prefs.colorSaturation}');
+      await p.setProperty('gamma', '${prefs.colorGamma}');
+      await p.setProperty('hue', '${prefs.colorHue}');
+    } catch (_) {}
+  }
+
+  /// Live preview of one colour value while a slider is dragged — sets the mpv
+  /// property WITHOUT persisting (fast, no Hive write per frame).
+  Future<void> previewColor(String mpvProp, int value) async {
+    final p = player.platform;
+    if (p is NativePlayer) {
+      try {
+        await p.setProperty(mpvProp, '$value');
+      } catch (_) {}
+    }
+  }
+
+  /// Commit one colour value: persist the pref + apply it.
+  Future<void> setColor(String mpvProp, int value) async {
+    final prefs = sl<PlaybackPrefs>();
+    switch (mpvProp) {
+      case 'brightness':
+        await prefs.setColorBrightness(value);
+      case 'contrast':
+        await prefs.setColorContrast(value);
+      case 'saturation':
+        await prefs.setColorSaturation(value);
+      case 'gamma':
+        await prefs.setColorGamma(value);
+      case 'hue':
+        await prefs.setColorHue(value);
+    }
+    await previewColor(mpvProp, value);
+  }
+
+  /// Apply a quick preset — sets all five values at once.
+  Future<void> applyColorPreset(ColorProfile c) async {
+    final prefs = sl<PlaybackPrefs>();
+    await prefs.setColorBrightness(c.brightness);
+    await prefs.setColorContrast(c.contrast);
+    await prefs.setColorSaturation(c.saturation);
+    await prefs.setColorGamma(c.gamma);
+    await prefs.setColorHue(c.hue);
+    final p = player.platform;
+    if (p is NativePlayer) await _applyColorProfile(p);
+  }
+
+  /// Reset all colour values to neutral (0).
+  Future<void> resetColor() =>
+      applyColorPreset(ColorProfiles.byId('natural'));
 
   // Extract-once guard (static: shared across player instances this session).
   static bool _subFontsExtracted = false;

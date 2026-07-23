@@ -937,6 +937,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+
   Future<void> _loadCacheSize() async {
     final n = await MediaCache.sizeBytes();
     if (mounted) setState(() => _cacheBytes = n);

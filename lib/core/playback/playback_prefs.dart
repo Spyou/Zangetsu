@@ -209,6 +209,24 @@ class PlaybackPrefs {
   Future<void> setVideoShaderTier(String value) =>
       _box.put('videoShaderTier', value);
 
+  // ── Colour adjustment (mpv video-equalizer, each -100..100, 0 = neutral) ────
+  // Individual sliders; all 0 (default) = no change = stock playback. A preset
+  // (see [ColorProfiles]) just sets these five at once.
+  int get colorBrightness =>
+      (_box.get('colorBrightness', defaultValue: 0) as num).toInt();
+  Future<void> setColorBrightness(int v) => _box.put('colorBrightness', v);
+  int get colorContrast =>
+      (_box.get('colorContrast', defaultValue: 0) as num).toInt();
+  Future<void> setColorContrast(int v) => _box.put('colorContrast', v);
+  int get colorSaturation =>
+      (_box.get('colorSaturation', defaultValue: 0) as num).toInt();
+  Future<void> setColorSaturation(int v) => _box.put('colorSaturation', v);
+  int get colorGamma =>
+      (_box.get('colorGamma', defaultValue: 0) as num).toInt();
+  Future<void> setColorGamma(int v) => _box.put('colorGamma', v);
+  int get colorHue => (_box.get('colorHue', defaultValue: 0) as num).toInt();
+  Future<void> setColorHue(int v) => _box.put('colorHue', v);
+
   // ── Video buffering (mpv cache) ────────────────────────────────────────────
   // Presets, NOT raw values, so a user can't set a footgun. 'default' returns
   // exactly today's hardcoded numbers, so a fresh install / untouched setting is

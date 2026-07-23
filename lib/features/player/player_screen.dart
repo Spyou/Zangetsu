@@ -43,6 +43,7 @@ import '../../core/app_mode.dart';
 import 'player_controller.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
+import 'color_profiles.dart';
 import 'shader_presets.dart';
 import 'drm_player_screen.dart';
 
@@ -1206,6 +1207,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  // ── Colour adjustment (mpv equalizer sliders + quick presets) ─────────────
+  void _openColorProfileSheet() {
+    _sheet<void>(_ColorSheet(controller: _c, onInteract: _bumpControls));
+  }
+
   // ── Episodes picker — slides in from the right (CloudStream-style) ─────────
   void _openEpisodesPanel() {
     showGeneralDialog<void>(
@@ -2295,6 +2301,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onEnhance: _openEnhanceSheet,
                       enhanceActive:
                           sl<PlaybackPrefs>().videoShaderStyle != 'off',
+                      onColorProfile: _openColorProfileSheet,
                     ),
                   ),
                 )
@@ -3151,6 +3158,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onScreenshot,
     required this.onEnhance,
     required this.enhanceActive,
+    required this.onColorProfile,
   });
 
   final PlayerCubit controller;
@@ -3184,6 +3192,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onScreenshot; // grab the current frame → gallery
   final VoidCallback onEnhance; // opens the video-enhancement (upscaler) picker
   final bool enhanceActive; // an upscaling preset is currently on
+  final VoidCallback onColorProfile; // opens the colour-profile picker
 
   /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
   /// holds the occasional actions so the control bars stay clean.
@@ -3231,6 +3240,14 @@ class _ControlsOverlay extends StatelessWidget {
                       onTap: () {
                         Navigator.pop(ctx);
                         onEnhance();
+                      },
+                    ),
+                    _MoreRow(
+                      icon: Icons.palette_outlined,
+                      label: 'Colour',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        onColorProfile();
                       },
                     ),
                     _MoreRow(
@@ -5507,6 +5524,179 @@ class _SheetSurface extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Colour-adjustment sheet: quick-preset chips + individual sliders for mpv's
+/// video equalizer (brightness/contrast/saturation/gamma/hue, -100..100). Live
+/// preview on drag; persists on release.
+class _ColorSheet extends StatefulWidget {
+  const _ColorSheet({required this.controller, required this.onInteract});
+  final PlayerCubit controller;
+  final VoidCallback onInteract;
+  @override
+  State<_ColorSheet> createState() => _ColorSheetState();
+}
+
+class _ColorSheetState extends State<_ColorSheet> {
+  late int _b, _c, _s, _g, _h;
+
+  static const _quick = [
+    'natural',
+    'anime',
+    'anime_vibrant',
+    'vivid',
+    'cinema',
+    'grayscale',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final p = sl<PlaybackPrefs>();
+    _b = p.colorBrightness;
+    _c = p.colorContrast;
+    _s = p.colorSaturation;
+    _g = p.colorGamma;
+    _h = p.colorHue;
+  }
+
+  void _applyPreset(ColorProfile prof) {
+    widget.controller.applyColorPreset(prof);
+    setState(() {
+      _b = prof.brightness;
+      _c = prof.contrast;
+      _s = prof.saturation;
+      _g = prof.gamma;
+      _h = prof.hue;
+    });
+    widget.onInteract();
+  }
+
+  Widget _slider(String label, String prop, int value, ValueChanged<int> set) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: AppText.body),
+              Text(
+                value > 0 ? '+$value' : '$value',
+                style: AppText.body.copyWith(
+                  color: value == 0 ? AppColors.textTertiary : AppColors.accent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: AppColors.accent,
+              thumbColor: AppColors.accent,
+              inactiveTrackColor: AppColors.textSecondary.withValues(alpha: 0.3),
+              overlayColor: AppColors.accent.withValues(alpha: 0.2),
+            ),
+            child: Slider(
+              min: -100,
+              max: 100,
+              divisions: 200,
+              value: value.toDouble(),
+              label: '$value',
+              onChanged: (v) {
+                set(v.round());
+                widget.controller.previewColor(prop, v.round());
+              },
+              onChangeEnd: (v) => widget.controller.setColor(prop, v.round()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: const SizedBox(width: 36, height: 4),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Colour', style: AppText.headline),
+              TextButton(
+                onPressed: () {
+                  widget.controller.resetColor();
+                  setState(() => _b = _c = _s = _g = _h = 0);
+                  widget.onInteract();
+                },
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 40,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+              for (final id in _quick)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: GestureDetector(
+                    onTap: () => _applyPreset(ColorProfiles.byId(id)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface2,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(
+                        ColorProfiles.byId(id).label,
+                        style: AppText.body,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Flexible(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+            children: [
+              _slider('Brightness', 'brightness', _b, (v) => setState(() => _b = v)),
+              _slider('Contrast', 'contrast', _c, (v) => setState(() => _c = v)),
+              _slider('Saturation', 'saturation', _s, (v) => setState(() => _s = v)),
+              _slider('Gamma', 'gamma', _g, (v) => setState(() => _g = v)),
+              _slider('Hue', 'hue', _h, (v) => setState(() => _h = v)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
