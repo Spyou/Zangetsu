@@ -1097,8 +1097,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   ];
 
   static const List<(String, String)> _decoderOptions = [
-    ('hw', 'Hardware (default)'),
-    ('hw+', 'Hardware+ (faster)'),
+    ('copy', 'Hardware+ (recommended)'),
+    ('direct', 'Hardware (faster)'),
     ('sw', 'Software (most compatible)'),
     ('auto', 'Auto'),
   ];
@@ -1405,7 +1405,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 subtitle: _labelFor(
                   _decoderOptions,
                   _prefs.videoDecoder,
-                  'Hardware (default)',
+                  'Hardware+ (recommended)',
                 ),
                 onTap: _pickDecoder,
               ),

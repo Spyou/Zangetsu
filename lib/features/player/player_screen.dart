@@ -1487,10 +1487,10 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Short label for the in-player decoder button.
   static String _shortDecoder(String mode) => switch (mode) {
-        'hw+' => 'HW+',
+        'direct' => 'HW',
         'sw' => 'SW',
         'auto' => 'AUTO',
-        _ => 'HW',
+        _ => 'HW+', // copy
       };
 
   /// In-player decoder switch (top-right). Applies LIVE — mpv re-inits the
@@ -1498,8 +1498,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// leaving the video.
   void _openDecoderSheet() {
     const modes = [
-      ('hw', 'Hardware (default)'),
-      ('hw+', 'Hardware+ (faster)'),
+      ('copy', 'Hardware+ (recommended)'),
+      ('direct', 'Hardware (faster)'),
       ('sw', 'Software (most compatible)'),
       ('auto', 'Auto'),
     ];
@@ -5971,10 +5971,10 @@ class _InfoOverlayState extends State<_InfoOverlay> {
   }
 
   String _decoderLabel(String mode) => switch (mode) {
-    'hw+' => 'Hardware+',
+    'direct' => 'Hardware',
     'sw' => 'Software',
     'auto' => 'Auto',
-    _ => 'Hardware',
+    _ => 'Hardware+', // copy
   };
 
   String _trackLabel(String id, String? title, String? language) {

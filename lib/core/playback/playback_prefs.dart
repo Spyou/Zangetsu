@@ -156,26 +156,37 @@ class PlaybackPrefs {
   Future<void> setAudioNormalize(bool value) =>
       _box.put('audioNormalize', value);
 
-  /// Video decoder mode. Default 'hw' = hardware (mpv `hwdec=mediacodec-copy`),
-  /// exactly today's behaviour. 'hw+' is the faster direct-output hardware path
-  /// (some filter limits); 'sw' is software decoding — slower / more battery but
-  /// plays codecs the hardware chokes on (fixes stutter / green / black video on
-  /// tricky streams); 'auto' lets mpv pick a safe decoder.
-  String get videoDecoder =>
-      _box.get('videoDecoder', defaultValue: 'hw') as String;
+  /// Video decoder mode (labels match the wider ecosystem now):
+  ///  • 'copy'   = Hardware+ — MediaCodec decoded into mpv's pipeline
+  ///    (`mediacodec-copy`): robust A/V sync, shaders/filters work. DEFAULT.
+  ///  • 'direct' = Hardware — MediaCodec straight to the surface (`mediacodec`):
+  ///    faster/lighter, but can drift after a stall + some filter limits.
+  ///  • 'sw'     = Software (`no`) — slower/more battery, plays anything.
+  ///  • 'auto'   = mpv picks a safe decoder (`auto-safe`).
+  /// Old stored values migrate on read: 'hw'→'copy', 'hw+'→'direct' (the MODE is
+  /// preserved — old 'hw' was copy, old 'hw+' was direct — only the label swaps).
+  String get videoDecoder {
+    final v = _box.get('videoDecoder', defaultValue: 'copy') as String;
+    return switch (v) {
+      'hw' => 'copy',
+      'hw+' => 'direct',
+      _ => v,
+    };
+  }
+
   Future<void> setVideoDecoder(String value) =>
       _box.put('videoDecoder', value);
 
   /// The mpv `hwdec` property value for the current [videoDecoder] choice.
   String get hwdecValue {
     switch (videoDecoder) {
-      case 'hw+':
+      case 'direct':
         return 'mediacodec';
       case 'sw':
         return 'no';
       case 'auto':
         return 'auto-safe';
-      case 'hw':
+      case 'copy':
       default:
         return 'mediacodec-copy';
     }
