@@ -235,7 +235,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       // the default gpu (OpenGL) path, so upscaling stays smooth. ONLY when
       // enhancement is on (opt-in), so default playback is byte-identical. This
       // is creation-time (mpv can't switch vo live), so it's read here per open.
-      vo: (!sl<AppMode>().isTv && sl<PlaybackPrefs>().videoShaderLevel != 'off')
+      vo: (!sl<AppMode>().isTv && sl<PlaybackPrefs>().videoShaderStyle != 'off')
           ? 'gpu-next'
           : null,
       // TV-ONLY: cap the video OUTPUT to 720p. On old TVs the frame is still
@@ -512,43 +512,53 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// mpv (best-effort). Off resets everything to mpv defaults.
   Future<void> _applyShader(NativePlayer p) async {
     try {
-      final level = sl<PlaybackPrefs>().videoShaderLevel;
-      await p.setProperty('glsl-shaders', await ShaderPresets.mpvValue(level));
-      await _applyRenderQuality(p, level);
+      final prefs = sl<PlaybackPrefs>();
+      final style = prefs.videoShaderStyle;
+      final tier = prefs.videoShaderTier;
+      await p.setProperty(
+        'glsl-shaders',
+        await ShaderPresets.mpvValue(tier, style),
+      );
+      await _applyRenderQuality(p, on: style != 'off', high: tier == 'high');
     } catch (_) {}
   }
 
-  /// Render-quality mpv tuning that rides on the Anime4K level. Mid+High enable
-  /// deband (smooths colour banding in gradients — cheap, big win for anime);
-  /// High also switches to high-quality scaling (spline36/mitchell). Off resets
+  /// Render-quality mpv tuning that rides on the Anime4K tier. Enabling deband
+  /// smooths colour banding in gradients (cheap, big win for anime); the High
+  /// tier also switches to high-quality scaling (spline36/mitchell). Off resets
   /// to mpv's defaults (deband off, bilinear), so it matches stock playback.
-  Future<void> _applyRenderQuality(NativePlayer p, String level) async {
-    final on = level != 'off';
-    final high = level == 'high';
+  Future<void> _applyRenderQuality(
+    NativePlayer p, {
+    required bool on,
+    required bool high,
+  }) async {
     await p.setProperty('deband', on ? 'yes' : 'no');
     if (on) {
       await p.setProperty('deband-iterations', '2');
       await p.setProperty('deband-threshold', '48');
     }
-    await p.setProperty('scale', high ? 'spline36' : 'bilinear');
-    await p.setProperty('cscale', high ? 'spline36' : 'bilinear');
-    await p.setProperty('dscale', high ? 'mitchell' : 'bilinear');
+    final hq = on && high;
+    await p.setProperty('scale', hq ? 'spline36' : 'bilinear');
+    await p.setProperty('cscale', hq ? 'spline36' : 'bilinear');
+    await p.setProperty('dscale', hq ? 'mitchell' : 'bilinear');
   }
 
-  /// Change the Anime4K level (off/mid/high) live and persist it. Note: the
+  /// Change the Anime4K style (off/a/b/c) live and persist it. Note: the
   /// gpu-next renderer is set at player creation, so enabling from 'off'
   /// mid-playback runs the shader on the current renderer until the next open —
   /// the shader itself applies immediately either way.
-  Future<void> setShaderLevel(String level) async {
-    await sl<PlaybackPrefs>().setVideoShaderLevel(level);
+  Future<void> setShaderStyle(String style) async {
+    await sl<PlaybackPrefs>().setVideoShaderStyle(style);
     final p = player.platform;
     if (p is NativePlayer) await _applyShader(p);
-    // Flash a confirmation so it's obvious the change took effect.
-    _toast(
-      level == 'off'
-          ? 'Anime4K Enhancement: Off'
-          : 'Anime4K Enhancement: ${ShaderPresets.levelLabel(level)}',
-    );
+    _toast('Anime4K Enhancement: ${ShaderPresets.styleById(style).label}');
+  }
+
+  /// Change the Anime4K GPU tier (mid/high) live and re-apply the current style.
+  Future<void> setShaderTier(String tier) async {
+    await sl<PlaybackPrefs>().setVideoShaderTier(tier);
+    final p = player.platform;
+    if (p is NativePlayer) await _applyShader(p);
   }
 
   // Extract-once guard (static: shared across player instances this session).

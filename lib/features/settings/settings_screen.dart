@@ -863,10 +863,15 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   bool _shaderDownloading = false;
   double _shaderProgress = 0;
 
-  // One control = Off / Mid / High (the GPU tier). The filter itself
-  // (Sharpen/De-blur/Denoise) is chosen in the player's Enhance menu.
-  static const List<(String, String)> _shaderTierOptions = [
+  // The main picker: Off + the three filters. The GPU tier (Mid/High) is a
+  // separate row below.
+  static const List<(String, String)> _shaderStyleOptions = [
     ('off', 'Off'),
+    ('a', 'Sharpen — clean 1080p sources'),
+    ('b', 'De-blur — blurry / soft sources'),
+    ('c', 'Denoise — grainy / compressed'),
+  ];
+  static const List<(String, String)> _shaderTierOptions = [
     ('mid', 'Mid-range GPU — light, smooth'),
     ('high', 'High-end GPU — heavier, sharpest'),
   ];
@@ -902,22 +907,33 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
         const SnackBar(content: Text('Shader download failed — check network')),
       );
     } else {
-      // Default to Mid so the download has an immediate, smooth effect.
-      if (_prefs.videoShaderLevel == 'off') {
-        await _prefs.setVideoShaderLevel('mid');
+      // Default to Sharpen so the download has an immediate, visible effect.
+      if (_prefs.videoShaderStyle == 'off') {
+        await _prefs.setVideoShaderStyle('a');
       }
       if (mounted) setState(() {});
     }
   }
 
-  Future<void> _pickShaderLevel() async {
+  Future<void> _pickShaderStyle() async {
     final picked = await _pick<String>(
       title: 'Anime4K Enhancement',
-      options: _shaderTierOptions,
-      current: _prefs.videoShaderLevel,
+      options: _shaderStyleOptions,
+      current: _prefs.videoShaderStyle,
     );
     if (picked == null) return;
-    await _prefs.setVideoShaderLevel(picked);
+    await _prefs.setVideoShaderStyle(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickShaderTier() async {
+    final picked = await _pick<String>(
+      title: 'Anime4K GPU tier',
+      options: _shaderTierOptions,
+      current: _prefs.videoShaderTier,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoShaderTier(picked);
     if (mounted) setState(() {});
   }
 
@@ -1401,8 +1417,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 subtitle: _shaderDownloading
                     ? 'Downloading… ${(_shaderProgress * 100).round()}%'
                     : (!_shadersReady
-                          ? 'Tap to download shaders (~0.6 MB)'
-                          : ShaderPresets.levelLabel(_prefs.videoShaderLevel)),
+                          ? 'Tap to download shaders (~0.8 MB)'
+                          : ShaderPresets.styleById(
+                              _prefs.videoShaderStyle,
+                            ).label),
                 trailing: _shaderDownloading
                     ? const SizedBox(
                         width: 18,
@@ -1412,8 +1430,15 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     : null,
                 onTap: _shaderDownloading
                     ? null
-                    : (!_shadersReady ? _downloadShaders : _pickShaderLevel),
+                    : (!_shadersReady ? _downloadShaders : _pickShaderStyle),
               ),
+              if (_shadersReady && _prefs.videoShaderStyle != 'off')
+                SettingsTile(
+                  icon: Icons.speed_outlined,
+                  title: 'Anime4K GPU tier',
+                  subtitle: ShaderPresets.tierLabel(_prefs.videoShaderTier),
+                  onTap: _pickShaderTier,
+                ),
             ],
           ),
 

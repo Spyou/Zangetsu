@@ -182,13 +182,19 @@ class PlaybackPrefs {
   }
 
   // ── Anime4K enhancement (GLSL upscaling) ───────────────────────────────────
-  // Real-time neural upscaling that sharpens low-res anime via mpv GLSL shaders.
-  // A single GPU tier: 'off' (default), 'mid' (light), 'high' (heavy). Applied
-  // via `glsl-shaders`, routed through the gpu-next renderer when not 'off'.
-  String get videoShaderLevel =>
-      _box.get('videoShaderLevel', defaultValue: 'off') as String;
-  Future<void> setVideoShaderLevel(String value) =>
-      _box.put('videoShaderLevel', value);
+  // Real-time neural upscaling for low-res anime. STYLE = the filter: 'off'
+  // (default), 'a' Sharpen, 'b' De-blur, 'c' Denoise. TIER = GPU cost: 'mid'
+  // (light) / 'high' (heavy). Applied via `glsl-shaders`; routed through the
+  // gpu-next renderer + deband/HQ-scaling render tuning when style != 'off'.
+  String get videoShaderStyle =>
+      _box.get('videoShaderStyle', defaultValue: 'off') as String;
+  Future<void> setVideoShaderStyle(String value) =>
+      _box.put('videoShaderStyle', value);
+
+  String get videoShaderTier =>
+      _box.get('videoShaderTier', defaultValue: 'mid') as String;
+  Future<void> setVideoShaderTier(String value) =>
+      _box.put('videoShaderTier', value);
 
   // ── Video buffering (mpv cache) ────────────────────────────────────────────
   // Presets, NOT raw values, so a user can't set a footgun. 'default' returns

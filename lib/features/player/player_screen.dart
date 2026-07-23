@@ -1159,19 +1159,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       return;
     }
-    final current = sl<PlaybackPrefs>().videoShaderLevel;
+    final current = sl<PlaybackPrefs>().videoShaderStyle;
     _sheet<void>(
       _SheetColumn(
-        header: 'Anime4K',
+        header: 'Anime4K Enhancement',
         children: [
-          for (final l in ShaderPresets.levels)
+          for (final s in ShaderPresets.styles)
             _SheetRow(
-              label: ShaderPresets.levelLabel(l),
-              subtitle: ShaderPresets.levelDescription(l),
-              active: l == current,
+              label: s.label,
+              subtitle: s.description,
+              active: s.id == current,
               onTap: () {
                 Navigator.pop(context);
-                _c.setShaderLevel(l);
+                _c.setShaderStyle(s.id);
                 if (mounted) setState(() {}); // refresh the More icon state
                 _bumpControls();
               },
@@ -2269,7 +2269,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onScreenshot: _captureScreenshot,
                       onEnhance: _openEnhanceSheet,
                       enhanceActive:
-                          sl<PlaybackPrefs>().videoShaderLevel != 'off',
+                          sl<PlaybackPrefs>().videoShaderStyle != 'off',
                     ),
                   ),
                 )
