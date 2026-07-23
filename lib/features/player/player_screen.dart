@@ -1159,7 +1159,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       );
       return;
     }
-    final current = sl<PlaybackPrefs>().videoShaderStyle;
+    final prefs = sl<PlaybackPrefs>();
+    final currentStyle = prefs.videoShaderStyle;
+    final currentTier = prefs.videoShaderTier;
     _sheet<void>(
       _SheetColumn(
         header: 'Anime4K Enhancement',
@@ -1168,11 +1170,34 @@ class _PlayerScreenState extends State<PlayerScreen> {
             _SheetRow(
               label: s.label,
               subtitle: s.description,
-              active: s.id == current,
+              active: s.id == currentStyle,
               onTap: () {
                 Navigator.pop(context);
                 _c.setShaderStyle(s.id);
                 if (mounted) setState(() {}); // refresh the More icon state
+                _bumpControls();
+              },
+            ),
+          // GPU tier — how heavy the upscaler runs. Shown with what each does.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+            child: Text(
+              'GPU TIER',
+              style: AppText.caption.copyWith(
+                color: AppColors.textTertiary,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+          for (final t in ShaderPresets.tiers)
+            _SheetRow(
+              label: ShaderPresets.tierLabel(t),
+              subtitle: ShaderPresets.tierDescription(t),
+              active: t == currentTier,
+              onTap: () {
+                Navigator.pop(context);
+                _c.setShaderTier(t);
+                if (mounted) setState(() {});
                 _bumpControls();
               },
             ),
