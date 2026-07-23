@@ -227,6 +227,12 @@ class PlaybackPrefs {
   int get colorHue => (_box.get('colorHue', defaultValue: 0) as num).toInt();
   Future<void> setColorHue(int v) => _box.put('colorHue', v);
 
+  /// Skip filler episodes on auto-advance (anime only; needs MAL/filler data).
+  /// Off by default.
+  bool get autoSkipFiller =>
+      _box.get('autoSkipFiller', defaultValue: false) as bool;
+  Future<void> setAutoSkipFiller(bool v) => _box.put('autoSkipFiller', v);
+
   // ── Video buffering (mpv cache) ────────────────────────────────────────────
   // Presets, NOT raw values, so a user can't set a footgun. 'default' returns
   // exactly today's hardcoded numbers, so a fresh install / untouched setting is

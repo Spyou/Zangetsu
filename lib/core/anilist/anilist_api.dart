@@ -134,6 +134,26 @@ class AniListApi {
     return r;
   }
 
+  /// Resolve a MAL id from a TITLE (for id-less sources) — tries the raw then
+  /// the cleaned title, like [mediaExtrasBySearch]. Best-effort, null on miss.
+  Future<int?> idMalByTitle(String title) async {
+    Future<int?> tryOne(String s) async {
+      final d = await _gql(
+        'query(\$search:String){ Media(search:\$search,type:ANIME){ idMal } }',
+        {'search': s},
+      );
+      final media = d?['Media'];
+      return media is Map ? (media['idMal'] as num?)?.toInt() : null;
+    }
+
+    var id = await tryOne(title);
+    if (id == null) {
+      final cleaned = _cleanSearchTitle(title);
+      if (cleaned.isNotEmpty && cleaned != title) id = await tryOne(cleaned);
+    }
+    return id;
+  }
+
   Future<({List<CastMember> cast, List<MediaRelation> relations})>
       _searchExtras(String search) async {
     final d = await _gql(

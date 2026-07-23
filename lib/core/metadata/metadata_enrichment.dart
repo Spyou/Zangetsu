@@ -23,6 +23,18 @@ class MetadataEnrichment {
   static const String _tmdbBase = 'https://api.themoviedb.org/3';
   static const String _img = 'https://image.tmdb.org/t/p';
 
+  /// Resolve a MAL id for an id-less ANIME from its title (AniList search).
+  /// Best-effort, null on miss / non-anime.
+  Future<int?> resolveMalId(MediaDetail d) async {
+    if (d.malId != null) return d.malId;
+    if (d.type != ProviderType.anime || d.title.trim().isEmpty) return null;
+    try {
+      return await _anilist.idMalByTitle(d.title);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(
     MediaDetail d,
   ) async {

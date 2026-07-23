@@ -30,6 +30,7 @@ import '../people/person_page.dart';
 import '../../core/models/video_source.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
+import '../../core/playback/filler_service.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/ui/list_status_sheet.dart';
@@ -186,6 +187,18 @@ class _DetailViewState extends State<_DetailView>
   // The episode url we've already kicked a background source-prefetch for, so we
   // don't re-fire it on every rebuild (see _maybePrefetch).
   String? _prefetchedEpUrl;
+
+  // Filler episode numbers (from Jikan by MAL id), for the "Filler" badge in the
+  // episode list. Fetched once per malId; empty for non-anime / unlisted shows.
+  Set<int> _fillerEps = const {};
+  int? _fillerForMal;
+  void _ensureFiller(int? malId) {
+    if (malId == null || malId == _fillerForMal) return;
+    _fillerForMal = malId;
+    FillerService.instance.fillerEpisodes(malId).then((s) {
+      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+    });
+  }
 
   // Outer scroll position (the hero/header viewport). We listen to THIS instead
   // of a NotificationListener: the listener also fires for the inner TabBarView
@@ -718,6 +731,8 @@ class _DetailViewState extends State<_DetailView>
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
+    // Kick the (cached, once-per-malId) filler lookup for the "Filler" badge.
+    _ensureFiller(detail.malId ?? item.malId);
 
     // Resume / play button logic. PRESERVED.
     final resumeIdx = _resumeIndex(eps);
@@ -1055,6 +1070,7 @@ class _DetailViewState extends State<_DetailView>
           _EpisodesTab(
             eps: eps,
             seasonEps: seasonEps,
+            fillerEps: _fillerEps,
             hasMultipleSeasons: hasMultipleSeasons,
             seasonSet: seasonSet,
             currentSeason: currentSeason,
@@ -1741,6 +1757,7 @@ class _EpisodesTab extends StatefulWidget {
   const _EpisodesTab({
     required this.eps,
     required this.seasonEps,
+    required this.fillerEps,
     required this.hasMultipleSeasons,
     required this.seasonSet,
     required this.currentSeason,
@@ -1759,6 +1776,7 @@ class _EpisodesTab extends StatefulWidget {
 
   final List<Episode> eps;
   final List<Episode> seasonEps;
+  final Set<int> fillerEps; // episode numbers that are filler
   final bool hasMultipleSeasons;
   final Set<int> seasonSet;
   final int currentSeason;
@@ -1938,6 +1956,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ep: ep,
             epNum: epNum,
             displayTitle: displayTitle,
+            filler: widget.fillerEps.contains(epNum),
             coverUrl: widget.coverUrl,
             coverHeaders: widget.coverHeaders,
             isWatched: st.watched,
@@ -2418,11 +2437,13 @@ class _EpisodeRow extends StatelessWidget {
     required this.onDownload,
     required this.sourceId,
     required this.showId,
+    this.filler = false,
   });
 
   final Episode ep;
   final int epNum;
   final String displayTitle;
+  final bool filler;
   final String coverUrl;
   final Map<String, String>? coverHeaders;
   final bool isWatched;
@@ -2562,13 +2583,13 @@ class _EpisodeRow extends StatelessWidget {
                           ),
                         ),
                       ],
-                      if (isResume || ep.filler) ...[
+                      if (isResume || filler) ...[
                         const SizedBox(height: 6),
                         Row(
                           children: [
                             if (isResume) const TagBadge(text: 'CONTINUE'),
-                            if (isResume && ep.filler) const SizedBox(width: 6),
-                            if (ep.filler)
+                            if (isResume && filler) const SizedBox(width: 6),
+                            if (filler)
                               const TagBadge(
                                 text: 'FILLER',
                                 color: AppColors.textTertiary,

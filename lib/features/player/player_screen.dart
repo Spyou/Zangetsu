@@ -1132,7 +1132,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _playUpNext() {
     _upNextTimer?.cancel();
     setState(() => _upNext = false);
-    _c.playNext();
+    _c.playNext(auto: true); // binge flow → honour "Auto-skip filler"
   }
 
   void _dismissUpNext() {

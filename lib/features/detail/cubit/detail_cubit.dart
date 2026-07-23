@@ -159,6 +159,20 @@ class DetailCubit extends Cubit<DetailState> {
       } catch (_) {/* keep going with what we have */}
     }
 
+    // Id-less anime (Aniyomi, most CloudStream): resolve the MAL id from title
+    // via AniList and store it, so the player, scrobbler AND the filler-episode
+    // lookup all key off a real id instead of nothing.
+    if (d.malId == null && d.type == ProviderType.anime) {
+      try {
+        final resolved = await sl<MetadataEnrichment>().resolveMalId(d);
+        if (isClosed) return;
+        if (resolved != null) {
+          d = d.copyWith(malId: resolved);
+          emit(state.copyWith(detail: d));
+        }
+      } catch (_) {/* keep going without it */}
+    }
+
     // Prefer id-based enrichment (AniList/TMDB) — it's richer: actor photos,
     // more entries, properly-linked relations. Id-less anime (Aniyomi, most
     // CloudStream) also go through fetch(), which resolves extras by title.

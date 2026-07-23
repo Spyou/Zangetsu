@@ -1486,6 +1486,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.fast_forward_outlined,
+                title: 'Auto-skip filler episodes',
+                subtitle: 'On autoplay, jump past filler (anime only)',
+                value: _prefs.autoSkipFiller,
+                onChanged: (v) async {
+                  await _prefs.setAutoSkipFiller(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.movie_outlined,
                 title: 'Autoplay trailer',
                 subtitle: 'Play a title\'s trailer on its detail page',

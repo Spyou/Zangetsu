@@ -19,6 +19,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/filler_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/torrent/torrent_prefs.dart';
@@ -668,6 +669,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     // Start mpv tuning now; [_open] awaits it before opening so the options
     // (HLS fake-extension relaxation, reconnect, …) are in effect for the file.
     unawaited(_mpvConfigured);
+    _ensureFiller(); // background filler lookup for auto-skip (anime only)
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -1962,10 +1964,32 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
-  Future<void> playNext() async {
-    if (state.currentIndex + 1 < episodes.length) {
-      await openEpisode(state.currentIndex + 1);
+  /// Filler episode NUMBERS for this show (from Jikan by malId); empty until
+  /// fetched / for non-anime. Drives auto-skip.
+  Set<int> _fillerEps = const {};
+  void _ensureFiller() {
+    final id = malId;
+    if (id == null) return;
+    FillerService.instance.fillerEpisodes(id).then((s) => _fillerEps = s);
+  }
+
+  /// Advance to the next episode. On an AUTO advance (up-next) with "Auto-skip
+  /// filler" on, jumps past consecutive filler episodes — but never strands the
+  /// user (if everything left is filler, it just plays the next one).
+  Future<void> playNext({bool auto = false}) async {
+    final immediate = state.currentIndex + 1;
+    if (immediate >= episodes.length) return;
+    var target = immediate;
+    if (auto &&
+        sl<PlaybackPrefs>().autoSkipFiller &&
+        _fillerEps.isNotEmpty) {
+      while (target < episodes.length &&
+          _fillerEps.contains(episodes[target].number?.toInt())) {
+        target++;
+      }
+      if (target >= episodes.length) target = immediate;
     }
+    await openEpisode(target);
   }
 
   Future<void> playPrevious() async {
