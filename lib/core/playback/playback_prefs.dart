@@ -163,13 +163,15 @@ class PlaybackPrefs {
   ///    faster/lighter, but can drift after a stall + some filter limits.
   ///  • 'sw'     = Software (`no`) — slower/more battery, plays anything.
   ///  • 'auto'   = mpv picks a safe decoder (`auto-safe`).
-  /// Old stored values migrate on read: 'hw'→'copy', 'hw+'→'direct' (the MODE is
-  /// preserved — old 'hw' was copy, old 'hw+' was direct — only the label swaps).
+  /// Old stored values migrate on read: both the old 'hw' (default) and 'hw+'
+  /// (the old "Hardware+" pick) resolve to 'copy' — i.e. the new **Hardware+**
+  /// (`mediacodec-copy`), the recommended robust mode. So anyone previously on
+  /// either hardware option lands on Hardware+; 'direct' is only reached by
+  /// newly picking "Hardware (faster)".
   String get videoDecoder {
     final v = _box.get('videoDecoder', defaultValue: 'copy') as String;
     return switch (v) {
-      'hw' => 'copy',
-      'hw+' => 'direct',
+      'hw' || 'hw+' => 'copy',
       _ => v,
     };
   }
