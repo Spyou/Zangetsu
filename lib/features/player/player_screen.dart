@@ -19,6 +19,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
+import 'subtitle_style.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -1532,11 +1533,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   /// Build the Flutter subtitle overlay style from the user's prefs. media_kit
   /// renders text subtitles via this [SubtitleViewConfiguration] (a Flutter
-  /// overlay), NOT libass — so font/colour/size/background/position all live
-  /// here. Bundled fonts work because Flutter resolves them from pubspec.
+  /// overlay), NOT libass — so font/colour/size/outline/position all live here.
+  /// The [TextStyle] comes from the shared [buildSubtitleTextStyle] so the live
+  /// preview in the style sheet matches exactly what renders on the video.
   SubtitleViewConfiguration _subtitleConfig() {
     final p = sl<PlaybackPrefs>();
-    final fam = p.subtitleFont.isEmpty ? null : p.subtitleFont;
     // position 0 (top) … 100 (bottom). Higher value → nearer the bottom (less
     // bottom padding); lower value lifts the text up the frame.
     final pos = p.subtitlePosition.clamp(0, 100);
@@ -1544,34 +1545,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return SubtitleViewConfiguration(
       textAlign: TextAlign.center,
       padding: EdgeInsets.fromLTRB(16, 0, 16, bottom),
-      style: TextStyle(
-        height: 1.4,
-        fontSize: 32.0 * p.subtitleScale,
-        fontFamily: fam,
-        fontWeight: FontWeight.w600,
-        color: _parseSubColor(p.subtitleColorHex),
-        backgroundColor: Color.fromRGBO(
-          0,
-          0,
-          0,
-          p.subtitleBgOpacity.clamp(0.0, 1.0),
-        ),
-        // A soft shadow keeps text legible when the background box is off.
-        shadows: const [Shadow(blurRadius: 4, color: Color(0xCC000000))],
-      ),
+      style: buildSubtitleTextStyle(p, fontSize: 32.0 * p.subtitleScale),
     );
-  }
-
-  /// Parse a `#RRGGBB` or `#RRGGBBAA` hex (the prefs format) into a [Color].
-  Color _parseSubColor(String hex) {
-    var h = hex.replaceFirst('#', '').toUpperCase();
-    if (h.length == 6) h = '${h}FF';
-    if (h.length != 8) return const Color(0xFFFFFFFF);
-    final r = int.tryParse(h.substring(0, 2), radix: 16) ?? 255;
-    final g = int.tryParse(h.substring(2, 4), radix: 16) ?? 255;
-    final b = int.tryParse(h.substring(4, 6), radix: 16) ?? 255;
-    final a = int.tryParse(h.substring(6, 8), radix: 16) ?? 255;
-    return Color.fromARGB(a, r, g, b);
   }
 
   /// Netflix-style combined Audio | Subtitles panel (two columns, live
@@ -5201,6 +5176,29 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
             child: Text('Subtitle style', style: AppText.headline),
           ),
+          // Live WYSIWYG preview — built with the SAME buildSubtitleTextStyle as
+          // the real overlay, so what you see here is what renders on the video.
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 6, 12, 4),
+            height: 92,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF33405E), Color(0xFF0E121B)],
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'The quick brown fox',
+                textAlign: TextAlign.center,
+                style: buildSubtitleTextStyle(_prefs, fontSize: 22.0 * size),
+              ),
+            ),
+          ),
           Flexible(
             child: ListView(
               shrinkWrap: true,
@@ -5238,6 +5236,54 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                         ),
                     ],
                   ),
+                ),
+                const _SheetSectionHeader('Text opacity'),
+                _SliderRow(
+                  value: _prefs.subtitleTextOpacity,
+                  min: 0.1,
+                  max: 1,
+                  divisions: 9,
+                  label: '${(_prefs.subtitleTextOpacity * 100).round()}%',
+                  onChanged: (v) =>
+                      _apply(() => _prefs.setSubtitleTextOpacity(v)),
+                ),
+                const _SheetSectionHeader('Outline style'),
+                for (final (id, name) in kSubtitleOutlineTypes)
+                  _SheetRow(
+                    label: name,
+                    active: _prefs.subtitleOutlineType == id,
+                    onTap: () =>
+                        _apply(() => _prefs.setSubtitleOutlineType(id)),
+                  ),
+                const _SheetSectionHeader('Outline colour'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final (hex, name) in _colors)
+                        _ColorSwatch(
+                          color: _colorFromHex(hex),
+                          label: name,
+                          active:
+                              _prefs.subtitleOutlineColorHex.toUpperCase() == hex,
+                          onTap: () => _apply(
+                            () => _prefs.setSubtitleOutlineColorHex(hex),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const _SheetSectionHeader('Outline width'),
+                _SliderRow(
+                  value: _prefs.subtitleOutlineWidth,
+                  min: 0,
+                  max: 8,
+                  divisions: 16,
+                  label: _prefs.subtitleOutlineWidth.toStringAsFixed(1),
+                  onChanged: (v) =>
+                      _apply(() => _prefs.setSubtitleOutlineWidth(v)),
                 ),
                 const _SheetSectionHeader('Background'),
                 _SliderRow(

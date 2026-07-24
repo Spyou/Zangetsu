@@ -426,6 +426,35 @@ class PlaybackPrefs {
   Future<void> setSubtitleBgOpacity(double value) =>
       _box.put('subtitleBgOpacity', value.clamp(0.0, 1.0));
 
+  /// Subtitle outline/border colour as `#RRGGBBAA` (default opaque black).
+  String get subtitleOutlineColorHex =>
+      _box.get('subtitleOutlineColorHex', defaultValue: '#000000FF') as String;
+  Future<void> setSubtitleOutlineColorHex(String value) =>
+      _box.put('subtitleOutlineColorHex', value);
+
+  /// Subtitle outline thickness (0–8). 0 = no outline.
+  double get subtitleOutlineWidth =>
+      (_box.get('subtitleOutlineWidth', defaultValue: 2.0) as num)
+          .toDouble()
+          .clamp(0.0, 8.0);
+  Future<void> setSubtitleOutlineWidth(double value) =>
+      _box.put('subtitleOutlineWidth', value.clamp(0.0, 8.0));
+
+  /// Subtitle outline-style preset id. Default 'soft' reproduces the legacy
+  /// soft-shadow look, so existing users see no change until they pick another.
+  String get subtitleOutlineType =>
+      _box.get('subtitleOutlineType', defaultValue: 'soft') as String;
+  Future<void> setSubtitleOutlineType(String value) =>
+      _box.put('subtitleOutlineType', value);
+
+  /// Subtitle text opacity (0.1–1.0), multiplied into the text colour's alpha.
+  double get subtitleTextOpacity =>
+      (_box.get('subtitleTextOpacity', defaultValue: 1.0) as num)
+          .toDouble()
+          .clamp(0.1, 1.0);
+  Future<void> setSubtitleTextOpacity(double value) =>
+      _box.put('subtitleTextOpacity', value.clamp(0.1, 1.0));
+
   /// OpenSubtitles REST API key (https://www.opensubtitles.com/consumers).
   /// Empty by default — the user pastes a free key in Settings to enable online
   /// subtitle search/download. Stored verbatim (trimmed at use sites).
