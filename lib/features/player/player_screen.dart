@@ -5136,6 +5136,9 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
   /// downloaded yet is fetched on tap. Populated in [initState].
   final Map<String, bool> _fontAvailable = {};
 
+  /// Fonts currently downloading — their row shows a spinner.
+  final Set<String> _downloading = {};
+
   @override
   void initState() {
     super.initState();
@@ -5148,16 +5151,20 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
     }();
   }
 
-  /// Apply a font — downloading it first if it isn't cached yet.
+  /// Apply a font — downloading it first (with a spinner on its row) if it
+  /// isn't cached yet.
   Future<void> _pickFont(String f) async {
     if (f.isNotEmpty && !(_fontAvailable[f] ?? true)) {
-      final messenger = ScaffoldMessenger.maybeOf(context);
-      messenger?.showSnackBar(SnackBar(content: Text('Downloading $f…')));
+      if (_downloading.contains(f)) return; // already fetching
+      setState(() => _downloading.add(f));
       final ok = await SubtitleFontService.instance.ensure(f);
       if (!mounted) return;
-      setState(() => _fontAvailable[f] = ok);
+      setState(() {
+        _downloading.remove(f);
+        _fontAvailable[f] = ok;
+      });
       if (!ok) {
-        messenger?.showSnackBar(
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text("Couldn't download $f")),
         );
         return;
@@ -5259,9 +5266,12 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                       for (final f in kBundledSubtitleFonts)
                         _SheetRow(
                           label: f.isEmpty ? 'Default' : f,
-                          subtitle: (_fontAvailable[f] ?? true)
-                              ? null
-                              : 'Tap to download',
+                          subtitle: _downloading.contains(f)
+                              ? 'Downloading…'
+                              : ((_fontAvailable[f] ?? true)
+                                    ? null
+                                    : 'Tap to download'),
+                          loading: _downloading.contains(f),
                           active: font == f,
                           onTap: () => _pickFont(f),
                         ),
@@ -5875,6 +5885,7 @@ class _SheetRow extends StatelessWidget {
     this.icon,
     this.subtitle,
     this.toggleValue,
+    this.loading = false,
   });
 
   final String label;
@@ -5891,6 +5902,9 @@ class _SheetRow extends StatelessWidget {
   /// When non-null, the row is a toggle: renders a trailing Switch reflecting
   /// this value (instead of the icon/check), and stays plain (no accent tint).
   final bool? toggleValue;
+
+  /// Show a trailing spinner (e.g. while a font downloads).
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -5943,7 +5957,16 @@ class _SheetRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                if (toggleValue != null)
+                if (loading)
+                  SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  )
+                else if (toggleValue != null)
                   Switch.adaptive(
                     value: toggleValue!,
                     onChanged: (_) => onTap(),
