@@ -20,6 +20,7 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
 import 'subtitle_style.dart';
+import 'subtitle_font_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
@@ -5131,6 +5132,40 @@ class _SubtitleStyleSheet extends StatefulWidget {
 class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
   PlaybackPrefs get _prefs => sl<PlaybackPrefs>();
 
+  /// Which fonts are usable now (Default/bundled/downloaded). A font that isn't
+  /// downloaded yet is fetched on tap. Populated in [initState].
+  final Map<String, bool> _fontAvailable = {};
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      for (final f in kBundledSubtitleFonts) {
+        if (f.isEmpty) continue;
+        _fontAvailable[f] = await SubtitleFontService.instance.isAvailable(f);
+      }
+      if (mounted) setState(() {});
+    }();
+  }
+
+  /// Apply a font — downloading it first if it isn't cached yet.
+  Future<void> _pickFont(String f) async {
+    if (f.isNotEmpty && !(_fontAvailable[f] ?? true)) {
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(SnackBar(content: Text('Downloading $f…')));
+      final ok = await SubtitleFontService.instance.ensure(f);
+      if (!mounted) return;
+      setState(() => _fontAvailable[f] = ok);
+      if (!ok) {
+        messenger?.showSnackBar(
+          SnackBar(content: Text("Couldn't download $f")),
+        );
+        return;
+      }
+    }
+    await _apply(() => _prefs.setSubtitleFont(f));
+  }
+
   // Text-colour swatches, stored as #RRGGBBAA (opaque).
   static const List<(String, String)> _colors = [
     ('#FFFFFFFF', 'White'),
@@ -5224,8 +5259,11 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                       for (final f in kBundledSubtitleFonts)
                         _SheetRow(
                           label: f.isEmpty ? 'Default' : f,
+                          subtitle: (_fontAvailable[f] ?? true)
+                              ? null
+                              : 'Tap to download',
                           active: font == f,
-                          onTap: () => _apply(() => _prefs.setSubtitleFont(f)),
+                          onTap: () => _pickFont(f),
                         ),
                     ],
                   ),

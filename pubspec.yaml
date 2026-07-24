@@ -236,31 +236,9 @@ flutter:
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter.ttf
-    # Bundled subtitle font families (player Subtitle-style picker).
-    - family: Poppins
-      fonts:
-        - asset: assets/fonts/Poppins-Regular.ttf
-    - family: Roboto
-      fonts:
-        - asset: assets/fonts/Roboto-Regular.ttf
-    - family: Open Sans
-      fonts:
-        - asset: assets/fonts/OpenSans-Regular.ttf
-    - family: Lato
-      fonts:
-        - asset: assets/fonts/Lato-Regular.ttf
-    - family: Montserrat
-      fonts:
-        - asset: assets/fonts/Montserrat-Regular.ttf
-    - family: Nunito
-      fonts:
-        - asset: assets/fonts/Nunito-Regular.ttf
-    - family: Rubik
-      fonts:
-        - asset: assets/fonts/Rubik-Regular.ttf
+    # Noto Sans stays bundled — the libass Android fallback + an offline-safe
+    # default subtitle font. The other subtitle fonts are download-on-demand
+    # (SubtitleFontService), so they don't add ~6MB to the APK.
     - family: Noto Sans
       fonts:
         - asset: assets/fonts/NotoSans-Regular.ttf
-    - family: Source Sans 3
-      fonts:
-        - asset: assets/fonts/SourceSans3-Regular.ttf

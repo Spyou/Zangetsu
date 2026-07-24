@@ -35,6 +35,7 @@ import '../../core/repository/source_repository.dart';
 import '../watch_together/model/room_state.dart';
 import 'color_profiles.dart';
 import 'shader_presets.dart';
+import 'subtitle_font_service.dart';
 
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
@@ -657,17 +658,11 @@ class PlayerCubit extends Cubit<PlayerState> {
       );
       if (!_subFontsExtracted) {
         if (!dir.existsSync()) dir.createSync(recursive: true);
+        // Only Inter (UI) + Noto Sans (libass fallback) ship in the APK; the
+        // other subtitle fonts are download-on-demand (SubtitleFontService).
         const fontAssets = <String>[
           'assets/fonts/Inter.ttf',
-          'assets/fonts/Poppins-Regular.ttf',
-          'assets/fonts/Roboto-Regular.ttf',
-          'assets/fonts/OpenSans-Regular.ttf',
-          'assets/fonts/Lato-Regular.ttf',
-          'assets/fonts/Montserrat-Regular.ttf',
-          'assets/fonts/Nunito-Regular.ttf',
-          'assets/fonts/Rubik-Regular.ttf',
           'assets/fonts/NotoSans-Regular.ttf',
-          'assets/fonts/SourceSans3-Regular.ttf',
         ];
         for (final a in fontAssets) {
           final out = File('${dir.path}/${a.split('/').last}');
@@ -678,6 +673,11 @@ class PlayerCubit extends Cubit<PlayerState> {
             } catch (_) {}
           }
         }
+        // Register any already-downloaded fonts so the Flutter overlay can use
+        // them right away, and pull the selected one if it isn't cached yet.
+        unawaited(SubtitleFontService.instance.registerCached());
+        final sel = sl<PlaybackPrefs>().subtitleFont;
+        if (sel.isNotEmpty) unawaited(SubtitleFontService.instance.ensure(sel));
         _subFontsExtracted = true;
       }
       // 'auto' → on Android (no fontconfig) libass uses the embedded provider,
