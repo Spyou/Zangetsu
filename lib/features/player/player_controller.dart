@@ -498,6 +498,15 @@ class PlayerCubit extends Cubit<PlayerState> {
         // Default 'hw' → 'mediacodec-copy' (unchanged); 'sw' → software decode
         // for streams the hardware decoder chokes on.
         await p.setProperty('hwdec', sl<PlaybackPrefs>().hwdecValue);
+        // Lighten the SOFTWARE (libavcodec) decode path so streams that fall
+        // back to CPU — odd scraped codecs, malformed HLS, or the 'Software'
+        // decoder setting — stutter less. Inert while hardware-decoding (the
+        // usual case), so it only helps the streams that actually struggle:
+        // multithread across cores, skip the loop filter on non-key frames
+        // (big CPU saving, near-invisible), and allow fast decode shortcuts.
+        await p.setProperty('vd-lavc-threads', '4');
+        await p.setProperty('vd-lavc-skiploopfilter', 'nonkey');
+        await p.setProperty('vd-lavc-fast', 'yes');
         // On a cache underrun, pause audio+video together and wait until a little
         // is rebuffered before resuming, so they restart in lock-step instead of
         // audio-ahead (mirrors ExoPlayer's buffer-for-playback-after-rebuffer).
