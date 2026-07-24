@@ -4679,6 +4679,18 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                     _openSubtitleStyleSheet(context, c, widget.onInteract);
                   },
                 ),
+                _SheetRow(
+                  label: 'Styled subtitles (libass)',
+                  subtitle: 'Real .ass styling — signs, karaoke. '
+                      'Reopen episode to apply.',
+                  toggleValue: c.styledSubtitlesOn,
+                  active: false,
+                  onTap: () {
+                    c.toggleStyledSubtitles();
+                    if (mounted) setState(() {});
+                    widget.onInteract();
+                  },
+                ),
               ],
             ),
           ),
@@ -5752,6 +5764,7 @@ class _SheetRow extends StatelessWidget {
     required this.onTap,
     this.icon,
     this.subtitle,
+    this.toggleValue,
   });
 
   final String label;
@@ -5765,6 +5778,10 @@ class _SheetRow extends StatelessWidget {
   /// (e.g. for jargon like "Audio normalization") so it's self-describing.
   final String? subtitle;
 
+  /// When non-null, the row is a toggle: renders a trailing Switch reflecting
+  /// this value (instead of the icon/check), and stays plain (no accent tint).
+  final bool? toggleValue;
+
   @override
   Widget build(BuildContext context) {
     // Netflix-style: the selected row is tinted + accent-bold with a trailing
@@ -5772,7 +5789,9 @@ class _SheetRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: Material(
-        color: active ? AppColors.accentSoft : Colors.transparent,
+        color: toggleValue == null && active
+            ? AppColors.accentSoft
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -5789,10 +5808,10 @@ class _SheetRow extends StatelessWidget {
                       Text(
                         label,
                         style: AppText.body.copyWith(
-                          color: active
+                          color: toggleValue == null && active
                               ? AppColors.accent
                               : AppColors.textPrimary,
-                          fontWeight: active
+                          fontWeight: toggleValue == null && active
                               ? FontWeight.w700
                               : FontWeight.w500,
                         ),
@@ -5814,7 +5833,14 @@ class _SheetRow extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                if (icon != null)
+                if (toggleValue != null)
+                  Switch.adaptive(
+                    value: toggleValue!,
+                    onChanged: (_) => onTap(),
+                    activeThumbColor: AppColors.accent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  )
+                else if (icon != null)
                   Icon(icon, color: AppColors.textSecondary, size: 20)
                 else if (active)
                   Icon(

@@ -233,8 +233,8 @@ class PlayerCubit extends Cubit<PlayerState> {
       // _setupSubtitleFonts / applySubtitleStyle refine sub-fonts-dir/sub-font
       // after open. Off → default Player() behaviour (Flutter text overlay).
       libass: sl<PlaybackPrefs>().styledSubtitles,
-      libassAndroidFont: 'assets/fonts/Roboto-Regular.ttf',
-      libassAndroidFontName: 'Roboto',
+      libassAndroidFont: 'assets/fonts/NotoSans-Regular.ttf',
+      libassAndroidFontName: 'Noto Sans',
     ),
   );
   late final VideoController videoController = VideoController(
@@ -273,10 +273,10 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// shows as a transient toast. Auto-clears after a couple of seconds.
   final ValueNotifier<String?> toast = ValueNotifier<String?>(null);
   Timer? _toastTimer;
-  void _toast(String msg) {
+  void _toast(String msg, {Duration duration = const Duration(seconds: 2)}) {
     toast.value = msg;
     _toastTimer?.cancel();
-    _toastTimer = Timer(const Duration(seconds: 2), () => toast.value = null);
+    _toastTimer = Timer(duration, () => toast.value = null);
   }
 
   /// One-shot mpv tuning, started on first access and awaited before every
@@ -338,6 +338,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   // an episode crosses the 92% scrobble threshold).
   bool _markedWatching = false;
   bool _defaultRateApplied = false; // default speed applied once per session
+  bool _libassNoticeShown = false; // libass "disable if no subs" hint shown once
 
   Episode get currentEpisode => episodes[state.currentIndex];
 
@@ -1020,15 +1021,30 @@ class PlayerCubit extends Cubit<PlayerState> {
     sl<PlaybackPrefs>().setSubtitlePreference('off');
   }
 
+  /// Whether styled (libass) subtitle rendering is on — read fresh from prefs
+  /// so the in-player Audio & subs toggle reflects the current value.
+  bool get styledSubtitlesOn => sl<PlaybackPrefs>().styledSubtitles;
+
+  /// Flip styled (libass) subtitles from the in-player sheet. libass is baked
+  /// into the Player at construction, so this applies from the next reopen, not
+  /// live — the toast says so, so it's never a silent no-op.
+  Future<void> toggleStyledSubtitles() async {
+    final next = !sl<PlaybackPrefs>().styledSubtitles;
+    await sl<PlaybackPrefs>().setStyledSubtitles(next);
+    _toast(
+      next
+          ? 'Styled subtitles (libass): On — reopen this episode to apply'
+          : 'Styled subtitles (libass): Off — reopen this episode to apply',
+      duration: const Duration(seconds: 4),
+    );
+  }
+
   /// External "soft" subtitles advertised by the active source.
   List<Subtitle> get softSubs => state.active?.subtitles ?? const [];
 
   /// Load one of the source's soft-subs by URL.
   Future<void> setSoftSub(Subtitle s) async {
-    await player.setSubtitleTrack(
-      SubtitleTrack.uri(s.url, title: s.label ?? s.lang, language: s.lang),
-    );
-    _wantedSubId = s.url;
+    await _setRemoteSub(s.url, title: s.label ?? s.lang, language: s.lang);
     final lang = languageOfSource(s.lang) ?? languageOfSource(s.label ?? '');
     if (lang != null) sl<PlaybackPrefs>().setSubtitlePreference(lang.iso1);
   }
@@ -1037,6 +1053,79 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> setSubtitleFromFile(String path) async {
     await player.setSubtitleTrack(SubtitleTrack.uri(path));
     _wantedSubId = path;
+  }
+
+  /// url → local temp path for a downloaded soft-sub, so re-applying the same
+  /// sub (the tracks-stream re-arm) doesn't re-download it. Cleared per episode.
+  final Map<String, String> _localSubCache = {};
+
+  /// Load an EXTERNAL subtitle [url]. With styled subtitles (libass) on, mpv
+  /// would fetch the URL itself and fail on Cloudflare-protected sub hosts (no
+  /// clearance cookie reaches mpv). So we download it in Dart WITH the source's
+  /// headers, write a temp file, and hand mpv the local path — libass then
+  /// renders it with no CF involvement. Off → the plain remote-uri path,
+  /// byte-identical to before. Best-effort: any download failure falls back to
+  /// the remote uri (no worse than today) and never throws.
+  ///
+  /// Owns `_wantedSubId` (the LOCAL path when downloaded, else the url) so the
+  /// sub-preference watcher matches the applied track's id and can't stomp it —
+  /// the same pitfall the translate path handles.
+  Future<void> _setRemoteSub(
+    String url, {
+    String? title,
+    String? language,
+  }) async {
+    Future<void> loadRemote() async {
+      await player.setSubtitleTrack(
+        SubtitleTrack.uri(url, title: title, language: language),
+      );
+      _wantedSubId = url;
+    }
+
+    if (!sl<PlaybackPrefs>().styledSubtitles) {
+      await loadRemote();
+      return;
+    }
+    try {
+      var local = _localSubCache[url];
+      if (local == null || !File(local).existsSync()) {
+        final resp = await _dio.get<List<int>>(
+          url,
+          options: Options(
+            responseType: ResponseType.bytes,
+            headers: state.active?.headers,
+            validateStatus: (_) => true,
+          ),
+        );
+        final bytes = resp.data;
+        if (bytes == null || bytes.isEmpty) {
+          await loadRemote(); // fetch failed → best-effort remote
+          return;
+        }
+        final dir = await getTemporaryDirectory();
+        // Keep the real extension so mpv picks the matching subtitle reader.
+        final out = File('${dir.path}/softsub_${url.hashCode}${_subExt(url)}');
+        await out.writeAsBytes(bytes, flush: true);
+        local = out.path;
+        _localSubCache[url] = local;
+      }
+      await player.setSubtitleTrack(
+        SubtitleTrack.uri(local, title: title, language: language),
+      );
+      _wantedSubId = local;
+    } catch (_) {
+      await loadRemote(); // any error → best-effort remote, never disturb playback
+    }
+  }
+
+  /// Subtitle file extension from a URL (default .srt), so the temp file keeps
+  /// .ass/.vtt/.ssa and mpv selects the matching subtitle demuxer.
+  String _subExt(String url) {
+    final path = Uri.tryParse(url)?.path.toLowerCase() ?? '';
+    for (final e in const ['.ass', '.ssa', '.vtt', '.srt', '.sub']) {
+      if (path.endsWith(e)) return e;
+    }
+    return '.srt';
   }
 
   /// True when the active subtitle is an external one we can fetch + translate
@@ -1184,10 +1273,13 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     final soft = pickPreferredSub(softSubs, prefLang);
     if (soft != null) {
-      player.setSubtitleTrack(
-        SubtitleTrack.uri(soft.url, title: soft.label ?? soft.lang, language: soft.lang),
+      unawaited(
+        _setRemoteSub(
+          soft.url,
+          title: soft.label ?? soft.lang,
+          language: soft.lang,
+        ),
       );
-      _wantedSubId = soft.url;
       _subApplied = true;
       return;
     }
@@ -1252,14 +1344,11 @@ class PlayerCubit extends Cubit<PlayerState> {
           // Discard if the user moved to a different episode or a track was
           // already matched by the time the response arrived.
           if (capturedGen != _gen || _subApplied || subs.isEmpty) return;
-          await player.setSubtitleTrack(
-            SubtitleTrack.uri(
-              subs.first.url,
-              title: lang.name,
-              language: lang.iso2,
-            ),
+          await _setRemoteSub(
+            subs.first.url,
+            title: lang.name,
+            language: lang.iso2,
           );
-          _wantedSubId = subs.first.url;
           _subApplied = true;
         } catch (_) {
           // Silently ignored — playback continues without subtitles.
@@ -1290,6 +1379,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subApplied = false; // restore the remembered subtitle for the new episode
     _autoSubDlTried = false; // re-arm keyless auto-download for the new episode
     _wantedSubId = null; // clear the intended-sub tracking for the new episode
+    _localSubCache.clear(); // drop the previous episode's downloaded soft-subs
     _subReadyReapplied = false; // re-arm the STATE_READY sub re-assert
     _autoTranslateTried = false; // re-arm auto-translate for the new episode
     _audioApplied = false; // restore the remembered audio track too
@@ -1808,6 +1898,17 @@ class PlayerCubit extends Cubit<PlayerState> {
       _verifyResume(start, g);
       _resumeWatchdog(g);
     }
+    // Styled subtitles (libass) can silently fail to render on some sources (a
+    // missing font glyph, an unfetchable sub) — tell the user how to recover,
+    // once per player session, only when the mode is actually on.
+    if (!_libassNoticeShown && sl<PlaybackPrefs>().styledSubtitles) {
+      _libassNoticeShown = true;
+      _toast(
+        "If subtitles don't show, turn off Styled subtitles (libass) in "
+        'Settings and reopen.',
+        duration: const Duration(seconds: 4),
+      );
+    }
     // Apply the preferred speed ONCE, now that a media is actually loaded
     // (setting it before any open doesn't stick). Mid-session overlay changes
     // are never clobbered afterwards.
@@ -1830,12 +1931,10 @@ class PlayerCubit extends Cubit<PlayerState> {
         (x) => x.isDefault,
         orElse: () => s.subtitles.first,
       );
-      await player.setSubtitleTrack(
-        SubtitleTrack.uri(
-          sub.url,
-          title: sub.label ?? sub.lang,
-          language: sub.lang,
-        ),
+      await _setRemoteSub(
+        sub.url,
+        title: sub.label ?? sub.lang,
+        language: sub.lang,
       );
     }
     _reapplySync(); // restore sub/audio delay (mpv clears it on a new file)
