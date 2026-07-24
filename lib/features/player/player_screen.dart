@@ -4651,7 +4651,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   active: false,
                   onTap: () {
                     widget.onInteract();
-                    _openSubtitleStyleSheet(context, c, widget.onInteract);
+                    openSubtitleStyleSheet(context, c, widget.onInteract);
                   },
                 ),
                 _SheetRow(
@@ -5086,9 +5086,12 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
 
 /// Opens the Subtitle-style sheet (font / colour / background / position /
 /// size). Lives over whatever opened it; changes apply live via the controller.
-void _openSubtitleStyleSheet(
+/// Opens the shared Subtitle-style sheet (live preview + all controls). Pass a
+/// [controller] from the player so changes apply to the video live; pass null
+/// from Settings, where there's no active player and it just persists prefs.
+void openSubtitleStyleSheet(
   BuildContext context,
-  PlayerCubit controller,
+  PlayerCubit? controller,
   VoidCallback onInteract,
 ) {
   showModalBottomSheet<void>(
@@ -5118,7 +5121,7 @@ class _SubtitleStyleSheet extends StatefulWidget {
     required this.controller,
     required this.onInteract,
   });
-  final PlayerCubit controller;
+  final PlayerCubit? controller;
   final VoidCallback onInteract;
 
   @override
@@ -5138,18 +5141,26 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
     ('#000000FF', 'Black'),
   ];
 
-  static const List<(double, String)> _sizes = [
-    (0.8, 'Small'),
-    (1.0, 'Medium'),
-    (1.3, 'Large'),
-  ];
 
   Future<void> _apply(Future<void> Function() mutate) async {
     await mutate();
-    await widget.controller.applySubtitleStyle();
+    await widget.controller?.applySubtitleStyle();
     if (mounted) setState(() {});
     widget.onInteract();
   }
+
+  /// Reset every subtitle-style pref to its default value.
+  Future<void> _resetToDefault() => _apply(() async {
+        await _prefs.setSubtitleFont('');
+        await _prefs.setSubtitleColorHex('#FFFFFFFF');
+        await _prefs.setSubtitleTextOpacity(1.0);
+        await _prefs.setSubtitleOutlineType('soft');
+        await _prefs.setSubtitleOutlineColorHex('#000000FF');
+        await _prefs.setSubtitleOutlineWidth(2.0);
+        await _prefs.setSubtitleBgOpacity(0.0);
+        await _prefs.setSubtitlePosition(95);
+        await _prefs.setSubtitleScale(1.0);
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -5306,12 +5317,27 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                       _apply(() => _prefs.setSubtitlePosition(v.round())),
                 ),
                 const _SheetSectionHeader('Size'),
-                for (final (s, name) in _sizes)
-                  _SheetRow(
-                    label: name,
-                    active: (size - s).abs() < 0.01,
-                    onTap: () => _apply(() => _prefs.setSubtitleScale(s)),
+                _SliderRow(
+                  value: size.clamp(0.6, 2.0),
+                  min: 0.6,
+                  max: 2.0,
+                  divisions: 14,
+                  label: '${(size * 100).round()}%',
+                  onChanged: (v) => _apply(() => _prefs.setSubtitleScale(v)),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: OutlinedButton.icon(
+                    onPressed: _resetToDefault,
+                    icon: const Icon(Icons.restart_alt_rounded, size: 19),
+                    label: const Text('Reset to default'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                      side: BorderSide(color: AppColors.hairline),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
                   ),
+                ),
               ],
             ),
           ),

@@ -15,6 +15,7 @@ import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
+import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
@@ -1685,34 +1686,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               SettingsTile(
-                icon: Icons.format_size_rounded,
-                title: 'Size',
-                subtitle: _labelFor(
-                  _subSizeOptions,
-                  _prefs.subtitleScale,
-                  'Medium',
+                icon: Icons.text_fields_rounded,
+                title: 'Subtitle style',
+                subtitle: 'Font, colour, outline, opacity, size, position — '
+                    'with live preview',
+                onTap: () => openSubtitleStyleSheet(
+                  context,
+                  null,
+                  () {
+                    if (mounted) setState(() {});
+                  },
                 ),
-                onTap: _pickSubSize,
-              ),
-              SettingsTile(
-                icon: Icons.palette_outlined,
-                title: 'Colour',
-                subtitle: _labelFor(
-                  _subColorOptions,
-                  _prefs.subtitleColor,
-                  'White',
-                ),
-                onTap: _pickSubColor,
-              ),
-              _toggleRow(
-                icon: Icons.subtitles_outlined,
-                title: 'Background',
-                subtitle: 'Draw a box behind the text',
-                value: _prefs.subtitleBackground,
-                onChanged: (v) async {
-                  await _prefs.setSubtitleBackground(v);
-                  if (mounted) setState(() {});
-                },
               ),
               SettingsTile(
                 icon: Icons.vpn_key_outlined,
@@ -1805,39 +1789,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
-  static const List<(double, String)> _subSizeOptions = [
-    (0.8, 'Small'),
-    (1.0, 'Medium'),
-    (1.3, 'Large'),
-  ];
-  static const List<(String, String)> _subColorOptions = [
-    ('white', 'White'),
-    ('yellow', 'Yellow'),
-  ];
-
-  Future<void> _pickSubSize() async {
-    final v = await _pick(
-      title: 'Subtitle size',
-      options: _subSizeOptions,
-      current: _prefs.subtitleScale,
-    );
-    if (v != null) {
-      await _prefs.setSubtitleScale(v);
-      if (mounted) setState(() {});
-    }
-  }
-
-  Future<void> _pickSubColor() async {
-    final v = await _pick(
-      title: 'Subtitle colour',
-      options: _subColorOptions,
-      current: _prefs.subtitleColor,
-    );
-    if (v != null) {
-      await _prefs.setSubtitleColor(v);
-      if (mounted) setState(() {});
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
