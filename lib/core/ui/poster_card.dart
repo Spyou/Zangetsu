@@ -84,9 +84,12 @@ class _PosterCardState extends State<PosterCard> {
                         // OkHttpClient (carries CF session cookies) instead of
                         // going through CachedNetworkImage which can't pass CF.
                         Image(
-                          image: AniyomiImage(
-                            aniSrcId,
-                            widget.imageUrl!,
+                          // Resize to the cell's pixel width so a big cover
+                          // doesn't sit full-res in the image cache (matches the
+                          // memCacheWidth the non-Aniyomi path already uses).
+                          image: ResizeImage(
+                            AniyomiImage(aniSrcId, widget.imageUrl!),
+                            width: memW,
                           ),
                           fit: BoxFit.cover,
                           loadingBuilder: (_, child, progress) =>

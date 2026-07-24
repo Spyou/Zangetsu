@@ -366,7 +366,12 @@ class _Cover extends StatelessWidget {
               ColoredBox(color: AppColors.surface2)
             else if (headers?['x-ani-src'] != null)
               Image(
-                image: AniyomiImage(int.parse(headers!['x-ani-src']!), url!),
+                // Resize to the 48×72 thumb's pixel width (matches the
+                // non-Aniyomi memCacheWidth) so it isn't cached full-res.
+                image: ResizeImage(
+                  AniyomiImage(int.parse(headers!['x-ani-src']!), url!),
+                  width: 144,
+                ),
                 fit: BoxFit.cover,
                 errorBuilder: (_, _, _) =>
                     ColoredBox(color: AppColors.surface2),

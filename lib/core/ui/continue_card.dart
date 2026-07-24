@@ -81,9 +81,14 @@ class _ContinueCardState extends State<ContinueCard> {
                         // Cloudflare-walled Aniyomi cover — load via the source's
                         // native client instead of CachedNetworkImage.
                         Image(
-                          image: AniyomiImage(
-                            int.parse(widget.headers!['x-ani-src']!),
-                            widget.imageUrl!,
+                          // Resize to the cell's pixel width so the cover isn't
+                          // cached full-res (matches the non-Aniyomi memCacheWidth).
+                          image: ResizeImage(
+                            AniyomiImage(
+                              int.parse(widget.headers!['x-ani-src']!),
+                              widget.imageUrl!,
+                            ),
+                            width: memW,
                           ),
                           fit: BoxFit.cover,
                           errorBuilder: (context, err, st) =>

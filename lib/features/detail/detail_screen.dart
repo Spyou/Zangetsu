@@ -1152,7 +1152,12 @@ class _Hero extends StatelessWidget {
     final aniSrcId = coverHeaders?['x-ani-src'];
     if (aniSrcId != null) {
       return Image(
-        image: AniyomiImage(int.parse(aniSrcId), coverUrl),
+        // Resize to the backdrop's memCacheWidth (matches the non-Aniyomi path)
+        // so a full-res cover doesn't sit in the image cache.
+        image: ResizeImage(
+          AniyomiImage(int.parse(aniSrcId), coverUrl),
+          width: 800,
+        ),
         fit: BoxFit.cover,
         loadingBuilder: (_, child, progress) =>
             progress == null ? child : ColoredBox(color: AppColors.surface2),
