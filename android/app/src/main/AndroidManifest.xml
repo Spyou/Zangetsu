@@ -125,6 +125,14 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Force Skia (OpenGL) over Impeller/Vulkan. Flutter 3.44 defaults to
+             Impeller-Vulkan on Android, which black-screens on some Adreno GPUs
+             (gralloc rejects RGBA16F offscreen buffers). Skia is the renderer
+             the app shipped with before; the mpv gpu-next video path is separate
+             and unaffected. -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
