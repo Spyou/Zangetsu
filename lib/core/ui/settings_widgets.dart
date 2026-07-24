@@ -15,11 +15,16 @@ class SettingsTile extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.destructive = false,
+    this.subtitleMaxLines = 1,
   });
 
   final IconData icon;
   final String title;
   final String? subtitle;
+
+  /// Max description lines before ellipsis. Default 1 (compact tile); pass null
+  /// to let a long description wrap fully (used by toggle rows).
+  final int? subtitleMaxLines;
 
   /// Rendered on the right. When null and [onTap] is set, a chevron is
   /// drawn instead.
@@ -76,8 +81,10 @@ class SettingsTile extends StatelessWidget {
                       style: AppText.caption.copyWith(
                         color: AppColors.textSecondary,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: subtitleMaxLines,
+                      overflow: subtitleMaxLines == null
+                          ? TextOverflow.clip
+                          : TextOverflow.ellipsis,
                     ),
                   ],
                 ],

@@ -1262,23 +1262,21 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     required ValueChanged<bool> onChanged,
     String? subtitle,
   }) {
-    return SwitchListTile.adaptive(
-      value: value,
-      onChanged: onChanged,
-      activeThumbColor: AppColors.accent,
-      contentPadding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      secondary: Icon(icon, color: AppColors.textSecondary, size: 22),
-      title: Text(
-        title,
-        style: AppText.headline.copyWith(
-          color: AppColors.textPrimary,
-          fontWeight: FontWeight.w500,
-          fontSize: 15,
-        ),
+    // A SettingsTile with a trailing Switch — identical geometry (icon inset,
+    // size, gap, right padding) to every other row, so icons and labels line up
+    // in one clean column. subtitleMaxLines:null lets long descriptions wrap.
+    return SettingsTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      subtitleMaxLines: null,
+      onTap: () => onChanged(!value),
+      trailing: Switch.adaptive(
+        value: value,
+        onChanged: onChanged,
+        activeThumbColor: AppColors.accent,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
-      subtitle: subtitle == null
-          ? null
-          : Text(subtitle, style: AppText.caption),
     );
   }
 
