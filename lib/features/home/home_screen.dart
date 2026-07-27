@@ -595,18 +595,21 @@ class _HomeViewState extends State<_HomeView> {
                             child: _animated(
                               ContentRow(
                                 title: 'Continue Watching',
-                                itemWidth: 140,
-                                itemHeight: 236,
+                                itemWidth: 230,
+                                itemHeight: 129, // 16:9 landscape card
                                 onSeeAll: _openHistory,
                                 itemCount: history.length,
                                 itemBuilder: (c, i) {
                                   final e = history[i];
                                   return ContinueCard(
                                     title: e.showTitle,
-                                    imageUrl: e.cover,
+                                    // Prefer the landscape episode thumbnail;
+                                    // fall back to the portrait cover (older
+                                    // entries / sources without thumbnails).
+                                    imageUrl: e.thumbnail ?? e.cover,
                                     headers: e.coverHeaders,
                                     progress: e.progress,
-                                    cellWidth: 140,
+                                    cellWidth: 230,
                                     subtitle: e.episodeNumber != null
                                         ? 'Episode ${e.episodeNumber!.toInt()}'
                                         : null,

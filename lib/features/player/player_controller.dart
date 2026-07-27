@@ -2395,6 +2395,7 @@ class PlayerCubit extends Cubit<PlayerState> {
           showTitle: title,
           cover: cover,
           coverHeaders: coverHeaders,
+          thumbnail: currentEpisode.thumbnail,
           showUrl: showUrl ?? '',
           category: _activeCategory,
           episodeId: currentEpisode.id,

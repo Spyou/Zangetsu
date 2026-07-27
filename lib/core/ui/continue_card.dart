@@ -4,12 +4,9 @@ import '../aniyomi/aniyomi_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
-/// Portrait "Continue Watching" poster.
-///
-/// Same footprint as [PosterCard] (so the row visually matches the other browse
-/// rows — no more oversized landscape cards), with three additions that mark it
-/// as a resume tile: a centred play affordance, a thin progress bar pinned to
-/// the base of the art, and an episode subtitle below.
+/// Landscape (16:9) "Continue Watching" card — the episode thumbnail with the
+/// title + episode label overlaid bottom-left on a scrim, and a resume progress
+/// bar pinned to the base. Used only in the home Continue Watching row.
 ///
 /// No [BackdropFilter]. Image decoded at display size via [memCacheWidth].
 class ContinueCard extends StatefulWidget {
@@ -65,122 +62,112 @@ class _ContinueCardState extends State<ContinueCard> {
           scale: _pressed ? 0.97 : 1.0,
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // ── Poster art (fills the cell, same as PosterCard) ───────────
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // ── Landscape art (fills the 16:9 cell) ─────────────────────
+                if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
+                  ColoredBox(color: AppColors.surface2)
+                else if (widget.headers?['x-ani-src'] != null)
+                  // Cloudflare-walled Aniyomi image — load via the source's
+                  // native client instead of CachedNetworkImage.
+                  Image(
+                    image: ResizeImage(
+                      AniyomiImage(
+                        int.parse(widget.headers!['x-ani-src']!),
+                        widget.imageUrl!,
+                      ),
+                      width: memW,
+                    ),
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, err, st) =>
+                        ColoredBox(color: AppColors.surface2),
+                  )
+                else
+                  CachedNetworkImage(
+                    imageUrl: widget.imageUrl!,
+                    httpHeaders: widget.headers,
+                    memCacheWidth: memW,
+                    fit: BoxFit.cover,
+                    fadeInDuration: const Duration(milliseconds: 180),
+                    placeholder: (context, url) =>
+                        ColoredBox(color: AppColors.surface2),
+                    errorWidget: (context, url, err) =>
+                        ColoredBox(color: AppColors.surface2),
+                  ),
+
+                // ── Bottom scrim so the title/episode stay legible ──────────
+                const DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.center,
+                      colors: [Color(0xD9000000), Color(0x00000000)],
+                    ),
+                  ),
+                ),
+
+                // ── Title + episode label, bottom-left (above the bar) ──────
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: 9,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (widget.subtitle != null &&
+                          widget.subtitle!.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        Text(
+                          widget.subtitle!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+
+                // ── Resume progress bar pinned to the base ──────────────────
+                // FractionallySizedBox (not Expanded/flex) so 0% and 100% both
+                // render without an assertion.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 4,
                   child: Stack(
                     fit: StackFit.expand,
                     children: [
-                      if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
-                        ColoredBox(color: AppColors.surface2)
-                      else if (widget.headers?['x-ani-src'] != null)
-                        // Cloudflare-walled Aniyomi cover — load via the source's
-                        // native client instead of CachedNetworkImage.
-                        Image(
-                          // Resize to the cell's pixel width so the cover isn't
-                          // cached full-res (matches the non-Aniyomi memCacheWidth).
-                          image: ResizeImage(
-                            AniyomiImage(
-                              int.parse(widget.headers!['x-ani-src']!),
-                              widget.imageUrl!,
-                            ),
-                            width: memW,
-                          ),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, err, st) =>
-                              ColoredBox(color: AppColors.surface2),
-                        )
-                      else
-                        CachedNetworkImage(
-                          imageUrl: widget.imageUrl!,
-                          httpHeaders: widget.headers,
-                          memCacheWidth: memW,
-                          fit: BoxFit.cover,
-                          fadeInDuration: const Duration(milliseconds: 180),
-                          placeholder: (context, url) =>
-                              ColoredBox(color: AppColors.surface2),
-                          errorWidget: (context, url, err) =>
-                              ColoredBox(color: AppColors.surface2),
-                        ),
-
-                      // Subtle scrim for the play affordance + progress contrast.
-                      const DecoratedBox(
-                        decoration: BoxDecoration(gradient: AppColors.scrim),
+                      ColoredBox(
+                        color: Colors.white.withValues(alpha: 0.25),
                       ),
-
-                      // Centre resume affordance.
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: const Color(0x73000000),
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              width: 1.5,
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.play_arrow_rounded,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-
-                      // Progress bar pinned to the base of the art.
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 3,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              flex: (p * 1000).round(),
-                              child: ColoredBox(color: AppColors.accent),
-                            ),
-                            Expanded(
-                              flex: ((1.0 - p) * 1000).round(),
-                              child: const ColoredBox(
-                                color: AppColors.hairline,
-                              ),
-                            ),
-                          ],
-                        ),
+                      FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: p,
+                        child: ColoredBox(color: AppColors.accent),
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 8),
-
-              // ── Title + episode subtitle ──────────────────────────────────
-              Text(
-                widget.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: AppText.caption.copyWith(color: AppColors.textPrimary),
-              ),
-              if (widget.subtitle != null && widget.subtitle!.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(
-                  widget.subtitle!,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.caption.copyWith(
-                    color: AppColors.textTertiary,
-                    fontSize: 11,
-                  ),
-                ),
               ],
-            ],
+            ),
           ),
         ),
       ),

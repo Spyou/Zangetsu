@@ -11,6 +11,7 @@ class HistoryEntry {
     required this.showTitle,
     this.cover,
     this.coverHeaders,
+    this.thumbnail,
     required this.showUrl,
     required this.category,
     required this.episodeId,
@@ -30,6 +31,11 @@ class HistoryEntry {
       episodeUrl;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Landscape episode thumbnail (16:9) for the Continue Watching card. Local
+  /// only (not cloud-synced) — a resumed entry from another device falls back
+  /// to [cover]. Null for older entries and sources without episode thumbnails.
+  final String? thumbnail;
   final double? episodeNumber;
 
   /// MyAnimeList id (anime), carried so a resume from Continue Watching can
@@ -129,6 +135,7 @@ class WatchHistory {
       'showTitle': e.showTitle,
       'cover': e.cover,
       'coverHeaders': e.coverHeaders,
+      'thumbnail': e.thumbnail,
       'showUrl': e.showUrl,
       'category': e.category,
       'episodeId': e.episodeId,
@@ -187,6 +194,7 @@ class WatchHistory {
       coverHeaders: (m['coverHeaders'] as Map?)?.map(
         (k, v) => MapEntry('$k', '$v'),
       ),
+      thumbnail: m['thumbnail'] as String?,
       showUrl: m['showUrl'] as String? ?? '',
       category: m['category'] as String? ?? 'sub',
       episodeId: m['episodeId'] as String? ?? '',
