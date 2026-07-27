@@ -9,7 +9,6 @@ import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/list_status_store.dart';
-import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
@@ -25,6 +24,7 @@ import '../settings/tracker_settings_screen.dart';
 import 'cubit/my_list_cubit.dart';
 import 'cubit/tracker_list_cubit.dart';
 import 'my_list_screen_tv.dart';
+import 'search_screen.dart';
 
 /// My List — one unified, status-organised library (the app's saved titles plus
 /// AniList-imported rows), filterable by status and by type.
@@ -393,56 +393,16 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  /// Open a tracker stub (no provider attached): search the app's sources by
-  /// title and open the first match's detail — mirrors detail's `_openRelation`.
-  /// Falls back to a snackbar when the title isn't on the user's sources.
-  Future<void> _openTrackerItem(BuildContext context, MediaItem stub) async {
-    _snack(context, 'Finding “${stub.title}”…');
-    final repo = sl<SourceRepository>();
-    // Prefer the active source, then sweep the rest until one returns a hit —
-    // the active source is usually the user's chosen anime provider; if it has
-    // no match (or isn't anime), the fan-out covers the installed providers.
-    final ordered = <String>[
-      repo.sourceId,
-      for (final s in repo.loadedSources)
-        if (s.id != repo.sourceId) s.id,
-    ];
-    try {
-      for (final id in ordered) {
-        List<MediaItem> results;
-        try {
-          results = await repo.search(stub.title, sourceId: id);
-        } catch (_) {
-          continue; // a broken source shouldn't stop the search
-        }
-        if (results.isNotEmpty) {
-          if (!context.mounted) return;
-          await Navigator.of(context).push(DetailScreen.route(results.first));
-          return;
-        }
-      }
-      if (context.mounted) {
-        _snack(context, '“${stub.title}” isn’t on your sources');
-      }
-    } catch (_) {
-      if (context.mounted) _snack(context, 'Couldn’t open “${stub.title}”');
-    }
-  }
-
-  void _snack(BuildContext context, String msg) {
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            msg,
-            style: AppText.caption.copyWith(color: Colors.white),
-          ),
-          backgroundColor: AppColors.surface2,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+  /// Open a tracker stub (no provider attached): drop into the app's global
+  /// search pre-filled with the title so the user picks the source/result.
+  /// The old single-source-first lookup dead-ended when the title wasn't on
+  /// the active source; the search screen sweeps every source instead.
+  void _openTrackerItem(BuildContext context, MediaItem stub) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SearchScreen(initialQuery: stub.title),
+      ),
+    );
   }
 
   // ── Filter bars ────────────────────────────────────────────────────────────
