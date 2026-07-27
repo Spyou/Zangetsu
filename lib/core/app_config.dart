@@ -32,6 +32,19 @@ const int kManifestSchemaVersion = 2;
 const String kAnnouncementsUrl =
     'https://raw.githubusercontent.com/Spyou/Zangetsu/main/announcements.json';
 
+/// Sealed-Manga easter egg. Manga isn't built yet — flipping the switch plays
+/// the "release" SFX and shows the unlock milestone (Telegram + GitHub goals).
+/// The SFX is downloaded on-demand and cached on-device (NEVER bundled), so it
+/// adds nothing to the APK. Drop the file at this URL to light it up; a 404
+/// just means the switch stays silent until it's uploaded.
+const String kSwitchSoundUrl =
+    'https://raw.githubusercontent.com/Spyou/zangetsu-providers/main/assets/switch-zangetsu.mp3';
+const int kMangaTelegramGoal = 666;
+const int kMangaStarGoal = 200;
+const String kZangetsuTelegramUrl = 'https://t.me/ZangetsuStream';
+const String kZangetsuGithubUrl = 'https://github.com/Spyou/Zangetsu';
+const String kZangetsuGithubApi = 'https://api.github.com/repos/Spyou/Zangetsu';
+
 /// TMDB API key for movie/TV trailer lookups (TrailerService). Anime trailers
 /// use AniList and need no key. Supply via `--dart-define=TMDB_API_KEY=...`,
 /// or paste a literal default below. When empty, movie/TV trailers are
