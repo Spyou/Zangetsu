@@ -37,6 +37,7 @@ import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
+import '../manga_seal/manga_seal_card.dart';
 import '../auth/auth_cubit.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
@@ -573,6 +574,14 @@ class _HomeViewState extends State<_HomeView> {
                           child: _buildHeader(),
                         );
                       },
+                    ),
+                  ),
+
+                  // ── Sealed-Manga switch (easter egg; opens the goal screen) ─
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: _animated(const MangaSealCard()),
                     ),
                   ),
 
