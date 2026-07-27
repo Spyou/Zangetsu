@@ -193,17 +193,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _attached = false; // true only after _wireRoom() runs
 
   bool _controlsVisible = true;
-  // When controls are visible we hide them on tap-DOWN (instant) instead of
-  // waiting for onTap's double-tap disambiguation (~300ms), so dismissing feels
-  // snappy like CloudStream. We record WHEN that happened so the trailing onTap
-  // (which fires ~300ms later) knows to swallow its toggle. A timestamp can't
-  // leak the way a bool would when a gesture fires onTapDown but never onTap.
-  int _hideOnTapDownMs = 0;
-  // We DON'T use Flutter's onDoubleTap — its recognizer delays every single tap
-  // ~300ms to disambiguate, which made tapping to reveal controls feel dead. We
-  // compare consecutive tap-down timestamps instead, so single taps are instant.
-  int _lastTapDownMs = 0; // previous tap-down (a "double" = within 300ms)
-  int _seekConsumedMs = 0; // a double-tap seek just fired → swallow the onTap
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
 
@@ -858,21 +847,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Gestures ────────────────────────────────────────────────────────────
 
-  void _onDoubleTapDown(TapDownDetails d) {
+  /// Double-tap a side zone to seek. [zoneLocal] is local to the tapped third,
+  /// so map it back to screen X for the splash ripple (which draws in the
+  /// full-screen Stack). dir −1 = left/rewind, +1 = right/forward.
+  void _seekZone(int dir, Offset zoneLocal) {
     final w = MediaQuery.of(context).size.width;
-    final x = d.localPosition.dx;
-    if (x < w / 3) {
-      _seekRipplePos = d.localPosition; // splash from where the finger landed
-      _seekRippleTick++;
-      _accumSeek(-1);
-    } else if (x > w * 2 / 3) {
-      _seekRipplePos = d.localPosition;
-      _seekRippleTick++;
-      _accumSeek(1);
-    } else {
-      _c.togglePlay();
-      _bumpControls();
-    }
+    final dx = dir < 0 ? zoneLocal.dx : (w * 2 / 3) + zoneLocal.dx;
+    _seekRipplePos = Offset(dx, zoneLocal.dy);
+    _seekRippleTick++;
+    _accumSeek(dir);
   }
 
   // Vertical swipe: left half adjusts screen brightness, right half adjusts
@@ -2005,65 +1988,81 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     },
                   ),
                 )
-              else
-                // Phone: tap toggles, double-tap seeks, long-press 2×,
-                // vertical = brightness/volume, horizontal = scrub.
-                // All disabled while locked (only tap-to-reveal-unlock stays).
+              else if (_locked)
+                // Locked: a single tap reveals the unlock button, nothing else.
                 Positioned.fill(
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    // Hide instantly on tap-down (no double-tap wait). Showing
-                    // still goes through onTap so the first tap of a double-tap
-                    // seek doesn't flash the controls.
-                    onTapDown: _locked
-                        ? null
-                        : (d) {
-                            final now =
-                                DateTime.now().millisecondsSinceEpoch;
-                            final second = now - _lastTapDownMs < 300;
-                            _lastTapDownMs = now;
-                            if (second) {
-                              // Second tap of a double → seek by zone. Rapid
-                              // taps keep firing this (accumulate −10/−20…).
-                              _seekConsumedMs = now;
-                              _onDoubleTapDown(d);
-                              return;
-                            }
-                            // First tap: hide instantly if controls are up
-                            // (snappy dismiss). Showing happens on tap-up so a
-                            // drag/second-tap doesn't falsely reveal controls.
-                            if (_controlsVisible) {
-                              _hideTimer?.cancel();
-                              setState(() => _controlsVisible = false);
-                              _hideOnTapDownMs = now;
-                            }
-                          },
-                    onTap: () {
-                      final now = DateTime.now().millisecondsSinceEpoch;
-                      // Swallow the trailing tap of a double-tap seek…
-                      if (now - _seekConsumedMs < 600) return;
-                      // …or the tap that just hid controls on tap-down.
-                      if (now - _hideOnTapDownMs < 600) return;
-                      _toggleControls(); // hidden → show, instantly.
-                    },
-                    onLongPressStart: (_locked || !_holdSpeedEnabled)
-                        ? null
-                        : (_) {
-                            _c.setRate(2.0);
-                            setState(() => _holding = true);
-                          },
-                    onLongPressEnd: (_locked || !_holdSpeedEnabled)
-                        ? null
-                        : (_) {
-                            _c.setRate(1.0);
-                            setState(() => _holding = false);
-                          },
-                    onVerticalDragStart: _locked ? null : _onVDragStart,
-                    onVerticalDragUpdate: _locked ? null : _onVDragUpdate,
-                    onVerticalDragEnd: _locked ? null : _onVDragEnd,
-                    onHorizontalDragStart: _locked ? null : _onHDragStart,
-                    onHorizontalDragUpdate: _locked ? null : _onHDragUpdate,
-                    onHorizontalDragEnd: _locked ? null : _onHDragEnd,
+                    onTap: _toggleControls,
+                  ),
+                )
+              else
+                // Phone: drags + long-press live on a bottom layer; taps live on
+                // three zones stacked ABOVE it. Keeping tap off the drag detector
+                // is the fix — a tap no longer competes with (and loses to) a pan
+                // in the gesture arena, so show/hide is instant and reliable. The
+                // centre zone is tap-only (instant toggle); the side zones add
+                // double-tap-to-seek. Vertical = brightness/volume, horizontal =
+                // scrub, long-press = 2× speed.
+                Positioned.fill(
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Drag + long-press layer (opaque, no tap handler).
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPressStart: _holdSpeedEnabled
+                            ? (_) {
+                                _c.setRate(2.0);
+                                setState(() => _holding = true);
+                              }
+                            : null,
+                        onLongPressEnd: _holdSpeedEnabled
+                            ? (_) {
+                                _c.setRate(1.0);
+                                setState(() => _holding = false);
+                              }
+                            : null,
+                        onVerticalDragStart: _onVDragStart,
+                        onVerticalDragUpdate: _onVDragUpdate,
+                        onVerticalDragEnd: _onVDragEnd,
+                        onHorizontalDragStart: _onHDragStart,
+                        onHorizontalDragUpdate: _onHDragUpdate,
+                        onHorizontalDragEnd: _onHDragEnd,
+                      ),
+                      // Tap zones — translucent so drags still reach the layer
+                      // below. Thirds match the old seek trigger areas. The
+                      // SizedBox.expand gives each zone a full-height hit area.
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: _toggleControls,
+                              onDoubleTapDown: (d) =>
+                                  _seekZone(-1, d.localPosition),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: _toggleControls,
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                          Expanded(
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.translucent,
+                              onTap: _toggleControls,
+                              onDoubleTapDown: (d) =>
+                                  _seekZone(1, d.localPosition),
+                              child: const SizedBox.expand(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
 
@@ -2225,12 +2224,15 @@ class _PlayerScreenState extends State<PlayerScreen> {
               if (!sl<AppMode>().isTv && !_locked)
                 AnimatedOpacity(
                   opacity: _controlsVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 220),
+                  // Snappy pop-in, gentle fade-out; eased so it reads as fast.
+                  duration: Duration(milliseconds: _controlsVisible ? 160 : 240),
+                  curve: Curves.easeOutCubic,
                   child: IgnorePointer(
                     ignoring: !_controlsVisible,
                     child: _ControlsOverlay(
                       controller: _c,
                       state: state,
+                      visible: _controlsVisible,
                       showTitle: widget.showTitle,
                       duration: _duration,
                       zoomLabel: _fits[_fitIndex].$2,
@@ -2288,7 +2290,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
               else if (!sl<AppMode>().isTv) // phone locked: show unlock button
                 AnimatedOpacity(
                   opacity: _controlsVisible ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
+                  duration: Duration(milliseconds: _controlsVisible ? 160 : 240),
+                  curve: Curves.easeOutCubic,
                   child: IgnorePointer(
                     ignoring: !_controlsVisible,
                     child: Center(
@@ -3139,6 +3142,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onEnhance,
     required this.enhanceActive,
     required this.onColorProfile,
+    this.visible = true,
   });
 
   final PlayerCubit controller;
@@ -3173,6 +3177,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onEnhance; // opens the video-enhancement (upscaler) picker
   final bool enhanceActive; // an upscaling preset is currently on
   final VoidCallback onColorProfile; // opens the colour-profile picker
+  final bool visible; // drives the bars' slide-in (top drops, bottom rises)
 
   /// Overflow panel that slides in from the RIGHT (like the episodes panel) —
   /// holds the occasional actions so the control bars stay clean.
@@ -3574,12 +3579,17 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         ),
 
-        // Bottom: seek row + button row.
+        // Bottom: seek row + buttons. Rises into place as it fades in — the
+        // motion reads as instant even when the tap resolves a beat later.
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
-          child: SafeArea(
+          child: AnimatedSlide(
+            offset: visible ? Offset.zero : const Offset(0, 0.14),
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            child: SafeArea(
             top: false,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -3667,6 +3677,7 @@ class _ControlsOverlay extends StatelessWidget {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ],
