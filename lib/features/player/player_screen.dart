@@ -196,12 +196,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
 
-  // Double-tap seek indicator (YouTube-style, accumulates on rapid taps).
+  // Double-tap seek indicator (accumulates on rapid taps, shows a running total).
   Timer? _seekLabelTimer;
   int _seekAccum = 0; // accumulated seconds in the current burst
   int _seekSide = 0; // -1 = left/rewind, +1 = right/forward, 0 = hidden
-  Offset? _seekRipplePos; // exact double-tap point for the ink-splash ripple
-  int _seekRippleTick = 0; // bumps each tap → restarts the ripple animation
+  int _seekTick = 0; // bumps each tap → re-keys the indicator so it replays
 
   // ── Pinch-to-zoom (continuous, CloudStream-style: 1×–4×, pan + snap-back) ──
   // Driven by a passive Listener watching raw pointers (NOT a scale recognizer),
@@ -828,10 +827,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Double-tap one side to seek; rapid taps accumulate (−10s, −20s, −30s…)
   /// and the indicator shows on that side, YouTube-style.
   void _accumSeek(int dir) {
+    HapticFeedback.lightImpact(); // tactile tick, like AnymeX
     _c.seekBy(Duration(seconds: dir * _seekSeconds));
     if (_seekSide != dir) _seekAccum = 0; // changed direction → restart
     _seekSide = dir;
     _seekAccum += _seekSeconds;
+    _seekTick++; // re-key the indicator so its slide/fade replays each tap
     _seekLabelTimer?.cancel();
     setState(() {});
     _seekLabelTimer = Timer(const Duration(milliseconds: 800), () {
@@ -847,16 +848,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Gestures ────────────────────────────────────────────────────────────
 
-  /// Double-tap a side zone to seek. [zoneLocal] is local to the tapped third,
-  /// so map it back to screen X for the splash ripple (which draws in the
-  /// full-screen Stack). dir −1 = left/rewind, +1 = right/forward.
-  void _seekZone(int dir, Offset zoneLocal) {
-    final w = MediaQuery.of(context).size.width;
-    final dx = dir < 0 ? zoneLocal.dx : (w * 2 / 3) + zoneLocal.dx;
-    _seekRipplePos = Offset(dx, zoneLocal.dy);
-    _seekRippleTick++;
-    _accumSeek(dir);
-  }
+  /// Double-tap a side zone to seek. dir −1 = left/rewind, +1 = right/forward.
+  void _seekZone(int dir) => _accumSeek(dir);
 
   // Vertical swipe: left half adjusts screen brightness, right half adjusts
   // volume (MX/Netflix-style). Each drag seeds from the current value, then
@@ -2039,8 +2032,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onTap: _toggleControls,
-                              onDoubleTapDown: (d) =>
-                                  _seekZone(-1, d.localPosition),
+                              onDoubleTapDown: (_) => _seekZone(-1),
                               child: const SizedBox.expand(),
                             ),
                           ),
@@ -2055,8 +2047,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
                               onTap: _toggleControls,
-                              onDoubleTapDown: (d) =>
-                                  _seekZone(1, d.localPosition),
+                              onDoubleTapDown: (_) => _seekZone(1),
                               child: const SizedBox.expand(),
                             ),
                           ),
@@ -2123,27 +2114,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-              // 3c. Ink-splash ripple from the exact double-tap point (drawn
-              // under the side badge). The tap-tick key recreates it each tap so
-              // every double-tap re-pulses, even mid-burst.
-              if (_seekSide != 0 && _seekRipplePos != null)
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: _SeekRipple(
-                      key: ValueKey(_seekRippleTick),
-                      position: _seekRipplePos!,
-                    ),
-                  ),
-                ),
-
-              // 4. Double-tap seek indicator — a ripple + animated chevrons +
-              // the accumulated amount (−10s, −20s… / +10s, +20s…), pinned to
-              // the tapped side and re-pulsing on each rapid tap (YouTube-style).
+              // 4. Double-tap seek indicator (AnymeX-style): an edge gradient
+              // wash on the tapped side + an icon disc + the running total,
+              // sliding/fading in. Re-keyed per tap so it replays each time.
               if (_seekSide != 0)
                 _SeekIndicator(
+                  key: ValueKey(_seekTick),
                   side: _seekSide,
-                  // The accumulated value doubles as an animation trigger: each
-                  // new tap bumps it, restarting the ripple via the widget key.
                   accumSeconds: _seekAccum,
                 ),
 
@@ -2895,211 +2872,104 @@ class _AdjustHud extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SeekIndicator extends StatefulWidget {
-  const _SeekIndicator({required this.side, required this.accumSeconds});
+  const _SeekIndicator({
+    super.key,
+    required this.side,
+    required this.accumSeconds,
+  });
 
   final int side; // -1 = rewind (left), +1 = forward (right)
-  final int accumSeconds; // total seconds this burst (drives the label + pulse)
+  final int accumSeconds; // running total this burst (shown in the pill)
 
   @override
   State<_SeekIndicator> createState() => _SeekIndicatorState();
 }
 
 class _SeekIndicatorState extends State<_SeekIndicator>
-    with TickerProviderStateMixin {
-  // One controller drives the ripple pulse; restarted on every tap.
-  late final AnimationController _pulse;
-  // A continuously looping controller animates the three chevrons in sequence.
-  late final AnimationController _chevrons;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 450),
-    )..forward();
-    _chevrons = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SeekIndicator old) {
-    super.didUpdateWidget(old);
-    // Each rapid tap bumps accumSeconds — restart the ripple to re-pulse.
-    if (old.accumSeconds != widget.accumSeconds) _pulse.forward(from: 0);
-  }
+    with SingleTickerProviderStateMixin {
+  // Re-keyed per tap by the parent, so a fresh state replays the slide/fade-in.
+  late final AnimationController _in = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  )..forward();
 
   @override
   void dispose() {
-    _pulse.dispose();
-    _chevrons.dispose();
+    _in.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final back = widget.side < 0;
-    return Align(
-      alignment: back ? const Alignment(-0.6, 0) : const Alignment(0.6, 0),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          // Expanding, fading ripple behind the badge.
-          AnimatedBuilder(
-            animation: _pulse,
-            builder: (context, _) {
-              final t = Curves.easeOut.transform(_pulse.value);
-              return Container(
-                width: 150 + 40 * t,
-                height: 150 + 40 * t,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.10 * (1 - t)),
-                ),
-              );
-            },
-          ),
-          // Static dark disc with the chevrons + amount.
-          DecoratedBox(
-            decoration: const BoxDecoration(
-              color: Color(0x73000000),
-              shape: BoxShape.circle,
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(22),
+    final left = widget.side < 0;
+    final curve = CurvedAnimation(parent: _in, curve: Curves.easeOutCubic);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Align(
+          alignment: left ? const Alignment(-0.55, 0) : const Alignment(0.55, 0),
+          child: FadeTransition(
+            opacity: curve,
+            child: SlideTransition(
+              // Settle in from the tapped edge.
+              position: Tween<Offset>(
+                begin: Offset(left ? -0.06 : 0.06, 0),
+                end: Offset.zero,
+              ).animate(curve),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _AnimatedChevrons(back: back, controller: _chevrons),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${back ? '−' : '+'}${widget.accumSeconds}s',
-                    style: AppText.body.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
+                  // Accent icon disc — surface2 chip + a soft coral glow, the
+                  // app's in-player signature (matches the 2× / volume chips).
+                  Container(
+                    width: 66,
+                    height: 66,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      // Semi-transparent so the video breathes through.
+                      color: AppColors.surface2.withValues(alpha: 0.78),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.accentSoft,
+                          blurRadius: 16,
+                          spreadRadius: 1,
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      left
+                          ? Icons.fast_rewind_rounded
+                          : Icons.fast_forward_rounded,
+                      color: AppColors.accent,
+                      size: 30,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Running-total pill (−/+ Ns) — same chip as the 2× hold pill.
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppColors.surface2.withValues(alpha: 0.78),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 7,
+                      ),
+                      child: Text(
+                        '${left ? '−' : '+'}${widget.accumSeconds}s',
+                        style: AppText.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-/// A circular ink-splash that expands and fades from the exact point the user
-/// double-tapped — YouTube-style feedback for the ±seek. Recreated (via a
-/// ValueKey on the tap counter) on every tap so each one re-pulses.
-class _SeekRipple extends StatefulWidget {
-  const _SeekRipple({super.key, required this.position});
-
-  final Offset position;
-
-  @override
-  State<_SeekRipple> createState() => _SeekRippleState();
-}
-
-class _SeekRippleState extends State<_SeekRipple>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 500),
-  )..forward();
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        final t = Curves.easeOut.transform(_c.value);
-        return CustomPaint(
-          size: Size.infinite,
-          painter: _SeekRipplePainter(
-            center: widget.position,
-            radius: 40 + 200 * t,
-            alpha: 0.18 * (1 - t),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _SeekRipplePainter extends CustomPainter {
-  _SeekRipplePainter({
-    required this.center,
-    required this.radius,
-    required this.alpha,
-  });
-
-  final Offset center;
-  final double radius;
-  final double alpha;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (alpha <= 0) return;
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()..color = Colors.white.withValues(alpha: alpha),
-    );
-  }
-
-  @override
-  bool shouldRepaint(_SeekRipplePainter old) =>
-      old.radius != radius || old.alpha != alpha || old.center != center;
-}
-
-/// Three chevrons that brighten in sequence (pointing back when rewinding,
-/// forward when seeking ahead), giving the badge a "moving" feel.
-class _AnimatedChevrons extends StatelessWidget {
-  const _AnimatedChevrons({required this.back, required this.controller});
-
-  final bool back;
-  final AnimationController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = back
-        ? Icons.keyboard_arrow_left_rounded
-        : Icons.keyboard_arrow_right_rounded;
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        // Three staggered phases (0,1,2) cycle so chevrons light up in order;
-        // when rewinding the order is reversed so motion reads right-to-left.
-        final phase = (controller.value * 3).floor() % 3;
-        Widget chev(int index) {
-          final logical = back ? 2 - index : index;
-          final active = logical == phase;
-          return Icon(
-            icon,
-            size: 26,
-            color: Colors.white.withValues(alpha: active ? 1.0 : 0.4),
-          );
-        }
-
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Overlap the chevrons slightly for a tight ">>>" cluster.
-            chev(0),
-            Transform.translate(offset: const Offset(-12, 0), child: chev(1)),
-            Transform.translate(offset: const Offset(-24, 0), child: chev(2)),
-          ],
-        );
-      },
     );
   }
 }
