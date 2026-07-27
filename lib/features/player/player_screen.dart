@@ -2057,21 +2057,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
 
-              // 3. Buffering spinner when controls are hidden.
+              // 3. Buffering spinner when controls are hidden. Faded in/out
+              // (not hard-popped) so a quick stall doesn't flash the spinner.
               StreamBuilder<bool>(
                 stream: _c.player.stream.buffering,
                 builder: (context, snap) {
-                  final buffering = snap.data ?? false;
-                  if (!buffering || _controlsVisible) {
-                    return const SizedBox.shrink();
-                  }
-                  return Center(
-                    child: SizedBox(
-                      width: 36,
-                      height: 36,
-                      child: CircularProgressIndicator(
-                        color: AppColors.accent,
-                        strokeWidth: 2.5,
+                  final show = (snap.data ?? false) && !_controlsVisible;
+                  return IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: show ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Center(
+                        child: SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: CircularProgressIndicator(
+                            color: AppColors.accent,
+                            strokeWidth: 2.5,
+                          ),
+                        ),
                       ),
                     ),
                   );

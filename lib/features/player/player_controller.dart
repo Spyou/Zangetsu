@@ -245,6 +245,10 @@ class PlayerCubit extends Cubit<PlayerState> {
       // high-res playback + less battery/heat. media_kit auto-falls back to
       // software decode if the device can't hardware-decode a codec.
       enableHardwareAcceleration: true,
+      // Attach the Android render surface only once the video's dimensions are
+      // known, so it isn't created then resized on the first frame — kills the
+      // black-frame/resize hitch at playback start.
+      androidAttachSurfaceAfterVideoParameters: true,
       // Route video enhancement (GLSL upscaling) through mpv's gpu-next renderer,
       // which maps to gpu-api=vulkan,opengl — far more efficient for shaders than
       // the default gpu (OpenGL) path, so upscaling stays smooth. ONLY when
