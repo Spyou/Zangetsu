@@ -385,13 +385,17 @@ class _DetailViewState extends State<_DetailView>
     if (!ok && mounted) _snack('Could not open the source site');
   }
 
-  /// Best-effort web URL for the title. Prefers an absolute item URL; else
-  /// the source's display name has no base here, so we surface the raw URL
-  /// only when it already looks like a link.
+  /// Best-effort web URL for the title. Absolute item URLs (CloudStream/JS)
+  /// pass through; Aniyomi items store a relative path, so join it onto the
+  /// source's base site (mirroring the native `baseUrl + anime.url`).
   String? _sourceWebUrl() {
     final u = widget.item.url.trim();
+    if (u.isEmpty) return null;
     if (u.startsWith('http://') || u.startsWith('https://')) return u;
-    return null;
+    final base = sl<SourceRepository>().baseUrlFor(widget.item.sourceId).trim();
+    if (base.isEmpty) return null;
+    if (base.endsWith('/') && u.startsWith('/')) return base + u.substring(1);
+    return base + u;
   }
 
   bool get _subscribed =>

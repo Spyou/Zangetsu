@@ -85,6 +85,15 @@ class SourceRepository {
         .map((p) => (id: p.sourceId, name: p.displayName)),
   ];
 
+  /// Base site URL for a source, used to turn a relative item URL into an
+  /// absolute web link. Aniyomi stores `SAnime.url` as a path (the native side
+  /// requests `baseUrl + anime.url`); CloudStream/JS items are already
+  /// absolute, so this returns '' for them.
+  String baseUrlFor(String sourceId) {
+    final p = _aniManager.get(sourceId);
+    return p is AniyomiProvider ? p.info.baseUrl : '';
+  }
+
   /// Human-friendly name for a source id (falls back to the id itself).
   String displayName(String sourceId) {
     if (_isCloudStream(sourceId)) {
