@@ -509,7 +509,14 @@ class _HomeViewState extends State<_HomeView> {
               // A source with only ONE section (e.g. SubsPlease's single "Latest"
               // feed) would otherwise show a hero and NO rows — keep that one
               // section as a row too so there's something to browse.
-              final rowSections = sections.length > 1
+              //
+              // Aniyomi sources expose exactly two sections (Popular + Latest);
+              // dropping the first would hide Popular entirely, so keep the full
+              // list as rows for them — the banner still spotlights Popular, and
+              // the row repeats it (like the Aniyomi app's Popular grid).
+              final firstIsAniyomi = sections.isNotEmpty &&
+                  (sections.first.more?.sourceId.startsWith('ani:') ?? false);
+              final rowSections = (sections.length > 1 && !firstIsAniyomi)
                   ? sections.sublist(1)
                   : sections;
               final showSkeletons = state.loading && sections.isEmpty;
