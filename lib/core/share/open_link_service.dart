@@ -7,8 +7,7 @@ import '../../features/auth/send_trackers_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
-import '../provider/cloudstream_provider.dart';
-import '../provider/provider_registry.dart';
+import '../repository/source_repository.dart';
 import '../ui/global_messenger.dart';
 import 'share_link.dart';
 
@@ -104,10 +103,11 @@ class OpenLinkService {
 
   bool _sourceInstalled(String sourceId) {
     try {
-      if (sourceId.startsWith('cs:')) {
-        return sl<CloudStreamManager>().get(sourceId) != null;
-      }
-      return sl<ProviderRegistry>().entryFor(sourceId) != null;
+      // Canonical check across cs:/ani:/JS ids (CS also matches a compatible
+      // repo/version). The old code only knew cs: + JS, so every Aniyomi
+      // (`ani:`) share fell through to the JS registry and wrongly reported
+      // "not installed".
+      return sl<SourceRepository>().hasSource(sourceId);
     } catch (_) {
       return false;
     }
