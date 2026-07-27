@@ -115,6 +115,17 @@ country.
 
 ---
 
+## 📜 License
+
+Copyright © 2026 Krishna Vishwakarma
+
+Zangetsu is licensed under the **[GNU GPL-3.0](LICENSE)**, and is built with
+**[CloudStream](https://github.com/recloudstream/cloudstream)** (GPL-3.0) and
+**[Aniyomi](https://github.com/aniyomiorg/aniyomi)** (Apache-2.0 —
+[text](LICENSE-Apache-2.0.txt)).
+
+---
+
 <div align="center">
 <br/>
 <b>Zangetsu</b> — made with ❤️ for anime &amp; movie fans.
