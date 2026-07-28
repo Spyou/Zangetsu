@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -92,6 +94,7 @@ class _PosterCardState extends State<PosterCard> {
                             width: memW,
                           ),
                           fit: BoxFit.cover,
+                          frameBuilder: imageFadeIn,
                           loadingBuilder: (_, child, progress) =>
                               progress == null
                                   ? child

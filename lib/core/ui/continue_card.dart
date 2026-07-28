@@ -1,5 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -82,6 +84,7 @@ class _ContinueCardState extends State<ContinueCard> {
                       width: memW,
                     ),
                     fit: BoxFit.cover,
+                    frameBuilder: imageFadeIn,
                     errorBuilder: (context, err, st) =>
                         ColoredBox(color: AppColors.surface2),
                   )

@@ -1,6 +1,8 @@
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'image_fade.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 import '../aniyomi/aniyomi_image_provider.dart';
@@ -205,6 +207,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
               // visible sharpness, a fraction of the memory + decode cost.
               image: ResizeImage(provider, width: memW),
               fit: BoxFit.cover,
+              frameBuilder: imageFadeIn,
               // Crop from the top so the poster's own printed title block (and
               // the thin rule above it) is pushed off the bottom and hidden by
               // the gradient — also removes the duplicate "ghosted" title.
