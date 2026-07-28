@@ -95,6 +95,56 @@ class MyListStore {
 
   List<MediaItem> all() => _box.values.map(_itemFromHive).toList();
 
+  static const String _seedFlagPrefix = 'mylist_seeded_';
+
+  /// Uploads local list items to the cloud under the CURRENT account,
+  /// absent-only: an item is pushed only when the cloud doesn't already have it,
+  /// so an existing cloud row (and its watch status) is never overwritten.
+  /// Additive — deletes nothing. Seeds a fresh device / backfills a list
+  /// orphaned by the Appwrite→Supabase move. Returns (pushed, failed): `failed`
+  /// counts upserts that errored (or a cloud read that failed) so the caller can
+  /// tell whether the push was complete.
+  Future<({int pushed, int failed})> pushAllLocalToCloud() async {
+    final uid = _currentUserId();
+    if (uid == null) return (pushed: 0, failed: 0);
+    final cloudKeys = <String>{};
+    var readOk = true;
+    try {
+      for (final r in await _remote.listFor(uid)) {
+        cloudKeys.add('${r['source_id']}::${r['item_id']}');
+      }
+    } catch (_) {
+      readOk = false;
+    }
+    var pushed = 0, failed = 0;
+    for (final m in all()) {
+      if (cloudKeys.contains(_key(m))) continue; // already in cloud — don't clobber
+      try {
+        await _remote.upsert(_cloudRow(uid, m));
+        pushed++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!readOk) failed++;
+    return (pushed: pushed, failed: failed);
+  }
+
+  /// One-time-per-account backfill: push the local list up BEFORE the first
+  /// (destructive) [pullFromCloud] can run, so a sparse/orphaned cloud can't
+  /// wipe a device's local My List. Guarded by a per-account flag in
+  /// [syncMetaBox]; the flag is only set once a push completes with no failures,
+  /// so an offline attempt retries next launch. No-op after it succeeds once.
+  Future<void> seedCloudIfNeeded() async {
+    final uid = _currentUserId();
+    if (uid == null || !Hive.isBoxOpen(syncMetaBox)) return;
+    final box = Hive.box(syncMetaBox);
+    final flag = '$_seedFlagPrefix$uid';
+    if (box.get(flag) == true) return;
+    final r = await pushAllLocalToCloud();
+    if (r.failed == 0) await box.put(flag, true);
+  }
+
   /// Deserialise a stored [MediaItem]. Hive returns nested maps (here,
   /// `coverHeaders`) as `Map<dynamic, dynamic>` on a cold read from disk, but
   /// [MediaItem]'s generated `fromJson` casts `coverHeaders` to
@@ -229,22 +279,17 @@ class MyListStore {
     }
   }
 
-  /// Replace the local cache with the signed-in user's cloud list. Called on
-  /// login. No-op when logged out.
+  /// Merge the signed-in user's cloud list into the local cache. NON-destructive
+  /// by design: local-only items (added on this device, maybe not yet pushed to
+  /// the cloud) are KEPT — an empty/sparse cloud can never wipe the list. Cloud
+  /// items are added/refreshed and their watch status hydrated. Deletions
+  /// propagate through [toggle] deleting the cloud row directly, not through a
+  /// pull observing an absence. Called on login/launch/resume.
   Future<void> pullFromCloud() async {
     final uid = _currentUserId();
     if (uid == null) return;
     try {
       final rows = await _remote.listFor(uid);
-      // Preserve local adds still awaiting a cloud write, so replacing the box
-      // with the cloud list can't wipe an item that failed to sync.
-      final pending = pendingKeys();
-      final preserved = <String, Map>{
-        for (final k in pending)
-          if (_box.get(k) != null) k: Map.from(_box.get(k)!),
-      };
-      await _box.clear();
-      final cloudKeys = <String>{};
       for (final row in rows) {
         final headers = row['cover_headers'];
         final item = MediaItem.fromJson({
@@ -262,7 +307,7 @@ class MyListStore {
         });
         final key = '${item.sourceId}::${item.id}';
         await _box.put(key, item.toJson());
-        cloudKeys.add(key);
+        _clearPending(key); // it's in the cloud now — no longer needs retrying
         // Watch status: hydrate the local mirror from the cloud when the cloud
         // knows one; otherwise back-fill the cloud from a local status set
         // before status-sync existed. Never CLEAR a local status just because
@@ -272,15 +317,6 @@ class MyListStore {
           _onStatusPulled?.call(key, cloudStatus);
         } else if (_statusOf?.call(item) != null) {
           unawaited(pushStatus(item));
-        }
-      }
-      // A pending item that DID reach the cloud is no longer pending; the rest
-      // are re-added locally so they survive the pull and stay queued.
-      for (final k in pending) {
-        if (cloudKeys.contains(k)) {
-          _clearPending(k);
-        } else if (preserved.containsKey(k)) {
-          await _box.put(k, preserved[k]!);
         }
       }
       revision.value++;

@@ -19,7 +19,10 @@ import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
+import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/playback/watch_history.dart';
+import '../auth/reconnect.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
@@ -451,6 +454,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const WatchPartyLobbyScreen()),
           );
+        },
+      ),
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.cloud_upload_outlined,
+        title: 'Sync library to cloud',
+        subtitle: 'Re-upload history & list to this account',
+        keywords:
+            'sync cloud upload library history continue watching list device '
+            'cross-device re-sync fix restore',
+        onTap: () async {
+          if (sl<AuthCubit>().state.user == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Sign in first')),
+            );
+            return;
+          }
+          // The session may have lapsed (logged-in from cache only). Get a live
+          // one first — otherwise every upsert silently no-ops ("Synced 0").
+          final live = await ensureLiveSession(context);
+          if (!context.mounted) return;
+          if (!live) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Reconnect to sync your library.')),
+            );
+            return;
+          }
+          final messenger = ScaffoldMessenger.of(context);
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              const SnackBar(content: Text('Syncing your library to cloud…')),
+            );
+          final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
+          final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
+          if (!context.mounted) return;
+          messenger
+            ..clearSnackBars()
+            ..showSnackBar(
+              SnackBar(
+                content: Text(
+                  h == 0 && l == 0
+                      ? 'Your library is already synced to this account.'
+                      : 'Synced $h history + $l list items to your account.',
+                ),
+              ),
+            );
         },
       ),
       _SettingsEntry(

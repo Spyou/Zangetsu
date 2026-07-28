@@ -11,6 +11,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
+import '../auth/reconnect.dart';
 import '../downloads/downloads_screen.dart';
 import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
@@ -400,9 +401,12 @@ class _RootShellTvState extends State<RootShellTv> {
       builder: (dialogCtx) => Align(
         alignment: const Alignment(-0.72, -0.42), // near the profile (top-left)
         child: TvLogoutSheet(
-          onConfirm: () {
+          onConfirm: () async {
             Navigator.of(dialogCtx).pop();
-            auth.logout();
+            // Back the library up first (if we have a live session) so the
+            // logout-time clearLocal can't lose an un-synced library.
+            await backupLibraryIfPossible();
+            await auth.logout();
           },
           onCancel: () => Navigator.of(dialogCtx).pop(),
         ),

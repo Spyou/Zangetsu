@@ -13,6 +13,7 @@ import '../../core/ui/buttons.dart';
 import 'auth_cubit.dart';
 import 'auth_screens_tv.dart';
 import 'pair_tv_screen.dart';
+import 'reconnect.dart';
 
 /// Returns true if logged in. Otherwise shows a "Sign in to {action}" snackbar
 /// with a Sign-in action and returns false — the gate for My List / history.
@@ -393,9 +394,10 @@ class ProfileScreen extends StatelessWidget {
                 child: SecondaryButton(
                   label: 'Log out',
                   icon: Icons.logout_rounded,
-                  onPressed: () {
-                    context.read<AuthCubit>().logout();
-                    Navigator.of(context).pop();
+                  onPressed: () async {
+                    // Backs up an un-synced library first / warns before wiping.
+                    final done = await safeLogout(context);
+                    if (done && context.mounted) Navigator.of(context).pop();
                   },
                 ),
               ),

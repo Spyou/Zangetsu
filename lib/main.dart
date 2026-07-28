@@ -100,6 +100,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
 
+  /// How stale the local library may be before a launch/resume re-pull. Short
+  /// enough that switching devices shows fresh data on open, long enough to
+  /// debounce app-switching so the DB isn't hammered.
+  static const Duration _syncFreshness = Duration(minutes: 2);
+
   void _onThemeChanged() {
     if (mounted) setState(() {}); // accent changed → rebuild so the app recolours
   }
@@ -120,13 +125,25 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (!sl.isRegistered<DiscordRpc>()) return;
+    final discord = sl.isRegistered<DiscordRpc>() ? sl<DiscordRpc>() : null;
     if (state == AppLifecycleState.resumed) {
-      sl<DiscordRpc>().onForeground();
+      discord?.onForeground();
+      _syncOnResume();
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      sl<DiscordRpc>().onBackground();
+      discord?.onBackground();
     }
+  }
+
+  /// Cross-device freshness: when the app returns to the foreground, re-pull the
+  /// library if it's older than [_syncFreshness] (debounced inside
+  /// [MyListStore.pullFromCloudIfStale], so rapid app-switching doesn't hammer
+  /// the DB). Also flushes any un-synced My List adds.
+  void _syncOnResume() {
+    if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) return;
+    unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness));
+    unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
+    unawaited(sl<MyListStore>().retryPending());
   }
 
   /// Init deps, then (for returning users) kick off the Home fetch so its rows
@@ -149,13 +166,21 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     try {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
-        // Launch path: only re-pull when the local cache is stale (>12h). The
-        // library is already cached locally and our own writes push to cloud
-        // live, so re-downloading it on every cold start just burns bandwidth.
-        // Login (below) and pull-to-refresh still force a full pull.
+        // One-time-per-account backfill: push local library up BEFORE the pull
+        // so a sparse/orphaned cloud (e.g. rows stranded under an old id by the
+        // Appwrite→Supabase move) can't wipe this device's local cache. No-op
+        // after it succeeds once.
         await Future.wait([
-          sl<MyListStore>().pullFromCloudIfStale(),
-          sl<WatchHistory>().pullFromCloudIfStale(),
+          sl<MyListStore>().seedCloudIfNeeded(),
+          sl<WatchHistory>().seedCloudIfNeeded(),
+        ]).timeout(const Duration(seconds: 8));
+        // Launch path: re-pull when the local cache is older than a couple of
+        // minutes so a device that was away picks up the other device's changes
+        // on open. Reads are tiny SELECTs (whole library is a few KB) and writes
+        // stay throttled, so this is cheap on the DB. Also pulled on resume.
+        await Future.wait([
+          sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
+          sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         ]).timeout(const Duration(seconds: 6));
         // Self-heal: push up any local My List adds that never reached the cloud
         // (e.g. a past write outage). No-op when nothing is pending, so it makes
@@ -196,6 +221,10 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// listener mounts, so no double pull).
   Future<void> _onAuthChange(BuildContext context, AuthState state) async {
     if (state.status == AuthStatus.authenticated) {
+      // Backfill local → cloud once (per account) before the destructive pull,
+      // so a sparse/orphaned cloud can't wipe this device's local library.
+      await sl<MyListStore>().seedCloudIfNeeded();
+      await sl<WatchHistory>().seedCloudIfNeeded();
       await sl<MyListStore>().pullFromCloud();
       await sl<WatchHistory>().pullFromCloud();
       unawaited(sl<MyListStore>().retryPending()); // flush any un-synced adds

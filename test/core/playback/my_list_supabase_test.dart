@@ -223,4 +223,61 @@ void main() {
     final row = fake.rows.firstWhere((r) => r['item_id'] == 'd');
     expect(row['status'], 'completed');
   });
+
+  // ── Backfill / cross-device seed ──────────────────────────────────────────
+
+  test('pushAllLocalToCloud() is absent-only: uploads missing items, never '
+      'clobbers a row the cloud already has', () async {
+    // Cloud already has "shared" with a status; local has a status-less copy
+    // plus a local-only item.
+    fake.rows.add({
+      'user_key': 'user1', 'source_id': 'src', 'item_id': 'shared',
+      'title': 'T', 'cover': null, 'cover_headers': null, 'url': 'u',
+      'type': 'anime', 'status': 'completed', 'added_at': 0,
+    });
+    final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
+    await loggedOut.add(_item(id: 'shared'));
+    await loggedOut.add(_item(id: 'localOnly'));
+
+    final r = await store.pushAllLocalToCloud();
+
+    expect(r.failed, 0);
+    expect(r.pushed, 1); // only localOnly
+    // "shared" untouched — its cloud status survives.
+    expect(fake.rows.firstWhere((r) => r['item_id'] == 'shared')['status'],
+        'completed');
+    expect(fake.rows.any((r) => r['item_id'] == 'localOnly'), isTrue);
+  });
+
+  test('pullFromCloud() with an EMPTY cloud does NOT wipe a local-only item',
+      () async {
+    // Add an item while logged-out so it never reaches the fake cloud, then pull
+    // against the empty cloud — a merge must keep it (replace used to wipe it).
+    final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
+    await loggedOut.add(_item(id: 'localOnly'));
+    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
+
+    await store.pullFromCloud();
+
+    expect(store.all().map((m) => m.id), contains('localOnly'));
+  });
+
+  test('seedCloudIfNeeded() backfills once, then a pull keeps everything',
+      () async {
+    final loggedOut = MyListStore(SupabaseService(), () => null, remote: fake);
+    await loggedOut.add(_item(id: 'a'));
+    await loggedOut.add(_item(id: 'b'));
+    expect(fake.rows.where((r) => r['user_key'] == 'user1'), isEmpty);
+
+    await store.seedCloudIfNeeded();
+    expect(fake.rows.where((r) => r['user_key'] == 'user1'), hasLength(2));
+
+    await store.pullFromCloud();
+    expect(store.all().map((m) => m.id).toSet(), {'a', 'b'});
+
+    // Runs once — a second call makes no new writes.
+    final before = fake.rows.length;
+    await store.seedCloudIfNeeded();
+    expect(fake.rows.length, before);
+  });
 }

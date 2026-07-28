@@ -22,6 +22,7 @@ import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
@@ -39,6 +40,7 @@ import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../auth/auth_cubit.dart';
+import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
@@ -510,11 +512,56 @@ class _HomeViewState extends State<_HomeView> {
     });
   }
 
+  /// Shown at the top of Home when the session lapsed — cloud sync is silently
+  /// off until the user reconnects. Tapping re-authenticates in place (no logout
+  /// / no wipe) and then refreshes Home to surface the freshly-synced rows.
+  Widget _reconnectBanner() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: AppColors.accentSoft,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            final ok = await showReconnectDialog(context) ?? false;
+            if (ok && mounted) context.read<HomeCubit>().load();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.sync_problem_rounded, color: AppColors.accent, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Reconnect to sync', style: AppText.body),
+                      Text(
+                        'Your session expired — tap to sign in and sync your library.',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const HomeScreenTv();
     // Continue Watching is a logged-in feature; hide the row when signed out.
-    final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
+    final authState = context.watch<AuthCubit>().state;
+    final loggedIn = authState.isLoggedIn;
+    // Session lapsed (logged-in from cache only) → cloud sync is silently off.
+    final needsReconnect = loggedIn && authState.needsReconnect;
 
     return BlocListener<ActiveSourceCubit, String>(
       listenWhen: (prev, curr) => prev != curr,
@@ -607,6 +654,10 @@ class _HomeViewState extends State<_HomeView> {
                       },
                     ),
                   ),
+
+                  // ── Reconnect banner (session lapsed → sync is off) ───────
+                  if (needsReconnect)
+                    SliverToBoxAdapter(child: _reconnectBanner()),
 
                   // ── Continue Watching (same poster footprint as the rows) ─
                   // Driven by the watch_history box's listenable, NOT a one-shot

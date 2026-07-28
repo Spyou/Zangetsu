@@ -157,6 +157,24 @@ class WatchHistory {
 
   /// Throttled, best-effort cloud upsert. [force] bypasses the throttle for
   /// the flush moments (see [save]).
+  Map<String, dynamic> _rowFor(String uid, HistoryEntry e) => {
+    'user_key': uid,
+    'source_id': e.sourceId,
+    'show_id': e.showId,
+    'show_title': e.showTitle,
+    'cover': e.cover,
+    'cover_headers': e.coverHeaders,
+    'show_url': e.showUrl,
+    'category': e.category,
+    'episode_id': e.episodeId,
+    'episode_number': e.episodeNumber,
+    'episode_url': e.episodeUrl,
+    'position_ms': e.position.inMilliseconds,
+    'duration_ms': e.duration.inMilliseconds,
+    'updated_at': e.updatedAt,
+    'mal_id': e.malId?.toString(),
+  };
+
   Future<void> _pushToCloud(String key, HistoryEntry e, {bool force = false}) async {
     final uid = _currentUserId();
     if (uid == null) return;
@@ -164,25 +182,8 @@ class WatchHistory {
     final last = _lastCloudPush[key] ?? 0;
     if (!force && now - last < _cloudThrottleMs) return;
     _lastCloudPush[key] = now;
-    final row = {
-      'user_key': uid,
-      'source_id': e.sourceId,
-      'show_id': e.showId,
-      'show_title': e.showTitle,
-      'cover': e.cover,
-      'cover_headers': e.coverHeaders,
-      'show_url': e.showUrl,
-      'category': e.category,
-      'episode_id': e.episodeId,
-      'episode_number': e.episodeNumber,
-      'episode_url': e.episodeUrl,
-      'position_ms': e.position.inMilliseconds,
-      'duration_ms': e.duration.inMilliseconds,
-      'updated_at': e.updatedAt,
-      'mal_id': e.malId?.toString(),
-    };
     try {
-      await _remote.upsert(row);
+      await _remote.upsert(_rowFor(uid, e));
     } catch (_) {/* best-effort */}
   }
 
@@ -223,16 +224,81 @@ class WatchHistory {
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
-  /// Replace the local cache with the signed-in user's cloud history.
+  static const String _seedFlagPrefix = 'history_seeded_';
+
+  /// Uploads local history to the cloud under the CURRENT account, newest-wins:
+  /// a row is pushed only when the cloud lacks it or the local copy is newer, so
+  /// this can never regress progress that another device saved more recently.
+  /// Additive — deletes nothing. Used to seed a fresh device or backfill a
+  /// library orphaned by the Appwrite→Supabase move (rows kept their old id, so
+  /// a new login couldn't read them). Returns (pushed, failed): `failed` counts
+  /// upserts that errored (or a cloud read that failed), so the caller can tell
+  /// whether the push was complete.
+  Future<({int pushed, int failed})> pushAllLocalToCloud() async {
+    final uid = _currentUserId();
+    if (uid == null) return (pushed: 0, failed: 0);
+    // What the cloud already has, and how fresh — so we don't clobber newer.
+    final cloudTimes = <String, int>{};
+    var readOk = true;
+    try {
+      for (final m in await _remote.listFor(uid)) {
+        cloudTimes['${m['source_id']}::${m['show_id']}'] =
+            (m['updated_at'] as num?)?.toInt() ?? 0;
+      }
+    } catch (_) {
+      readOk = false; // couldn't read cloud — treat as incomplete below
+    }
+    var pushed = 0, failed = 0;
+    for (final e in all()) {
+      final key = _key(e.sourceId, e.showId);
+      final cloudT = cloudTimes[key];
+      if (cloudT != null && cloudT >= e.updatedAt) continue; // cloud same/newer
+      try {
+        await _remote.upsert(_rowFor(uid, e));
+        pushed++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!readOk) failed++;
+    return (pushed: pushed, failed: failed);
+  }
+
+  /// One-time-per-account backfill: push the local history up BEFORE the first
+  /// (destructive) [pullFromCloud] can run, so a sparse/orphaned cloud can't
+  /// wipe a device's local Continue Watching. Guarded by a per-account flag in
+  /// [syncMetaBox]; the flag is only set once a push completes with no failures,
+  /// so an offline attempt retries next launch. No-op after it succeeds once.
+  Future<void> seedCloudIfNeeded() async {
+    final uid = _currentUserId();
+    if (uid == null || !Hive.isBoxOpen(syncMetaBox)) return;
+    final box = Hive.box(syncMetaBox);
+    final flag = '$_seedFlagPrefix$uid';
+    if (box.get(flag) == true) return;
+    final r = await pushAllLocalToCloud();
+    if (r.failed == 0) await box.put(flag, true);
+  }
+
+  /// Merge the signed-in user's cloud history into the local cache, newest-wins.
+  /// NON-destructive by design: a local-only row (not yet pushed to the cloud) is
+  /// kept, and a cloud row only overwrites a local one when it's strictly newer.
+  /// This is deliberately a MERGE, not a replace — an empty/sparse cloud (a fresh
+  /// device, a not-yet-seeded library, a session that goes live mid-boot) must
+  /// NEVER be able to wipe a device's Continue Watching. Deletions propagate
+  /// through [remove]/[clearAll] deleting the cloud row directly, not through a
+  /// pull observing an absence.
   Future<void> pullFromCloud() async {
     final uid = _currentUserId();
     if (uid == null) return;
     try {
       final rows = await _remote.listFor(uid);
-      await _box.clear();
       for (final m in rows) {
+        final key = '${m['source_id']}::${m['show_id']}';
+        final cloudUpdated = (m['updated_at'] as num?)?.toInt() ?? 0;
+        final localUpdated = (_box.get(key)?['updatedAt'] as num?)?.toInt() ?? -1;
+        if (cloudUpdated <= localUpdated) continue; // local is same/newer — keep it
         final headers = m['cover_headers'];
-        await _box.put('${m['source_id']}::${m['show_id']}', {
+        await _box.put(key, {
           'sourceId': m['source_id'],
           'showId': m['show_id'],
           'showTitle': m['show_title'],
