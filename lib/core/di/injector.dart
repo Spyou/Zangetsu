@@ -12,6 +12,7 @@ import '../announce/announcement_service.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
+import '../playback/pinned_sources.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
 import '../playback/search_source_prefs.dart';
@@ -191,6 +192,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SearchHistory>(SearchHistory());
   await AnimationPrefs.init(); // list/grid reveal toggle (phone/iOS only)
   await IncognitoMode.init(); // privacy: pause history/tracking/RPC when on
+  await PinnedSources.init(); // favourite sources pinned atop the source picker
   await SearchSourcePrefs.init();
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
   await SearchPrefs.init();

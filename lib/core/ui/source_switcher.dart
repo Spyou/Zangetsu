@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
 import '../di/injector.dart';
+import '../playback/pinned_sources.dart';
 import '../models/provider_info.dart';
 import '../playback/playback_prefs.dart';
 import '../provider/cloudstream_provider.dart';
@@ -308,7 +309,12 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         label: src.label,
         repo: src.repo,
         isActive: src.id == widget.currentId,
+        isPinned: PinnedSources.isPinned(src.id),
         onTap: () => widget.onChoose(src.id),
+        onLongPress: () async {
+          await PinnedSources.toggle(src.id);
+          if (mounted) setState(() {});
+        },
       );
 
   Widget _empty(String message) => Center(
@@ -324,10 +330,15 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     if (rows.isEmpty) {
       return _empty(_query.trim().isEmpty ? 'No sources here' : 'No matches');
     }
+    // Pinned sources float to the top of the tab.
+    final sorted = [
+      ...rows.where((s) => PinnedSources.isPinned(s.id)),
+      ...rows.where((s) => !PinnedSources.isPinned(s.id)),
+    ];
     return ListView(
       shrinkWrap: true,
       padding: EdgeInsets.zero,
-      children: [for (final s in rows) _rowFor(s)],
+      children: [for (final s in sorted) _rowFor(s)],
     );
   }
 
@@ -341,10 +352,23 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
             style: AppText.overline.copyWith(color: AppColors.textTertiary),
           ),
         );
-    final anime = _filter(b.anime);
-    final movies = _filter(b.movies);
-    final nsfw = _filter(b.nsfw);
+    // Pinned first (in pin order, from any bucket); drop them from the category
+    // groups below so they aren't listed twice.
+    final pinnedIds = PinnedSources.notifier.value;
+    final allRows = [...b.anime, ...b.movies, ...b.nsfw];
+    final pinned = _filter([
+      for (final id in pinnedIds) ...allRows.where((s) => s.id == id),
+    ]);
+    bool unpinned(({String id, String label, String? repo}) s) =>
+        !pinnedIds.contains(s.id);
+    final anime = _filter(b.anime.where(unpinned).toList());
+    final movies = _filter(b.movies.where(unpinned).toList());
+    final nsfw = _filter(b.nsfw.where(unpinned).toList());
     final children = <Widget>[];
+    if (pinned.isNotEmpty) {
+      children.add(header('Pinned'));
+      children.addAll(pinned.map(_rowFor));
+    }
     if (anime.isNotEmpty) {
       children.add(header('Anime'));
       children.addAll(anime.map(_rowFor));
@@ -415,6 +439,26 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
               Expanded(
                 child: TabBarView(children: [for (final t in tabs) t.body()]),
               ),
+              // One-time nudge — hidden the moment the user pins anything.
+              if (PinnedSources.notifier.value.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.push_pin_outlined,
+                        size: 13,
+                        color: AppColors.textTertiary,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Long-press a source to pin it to the top',
+                        style: AppText.caption,
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -477,6 +521,8 @@ class _SourceRow extends StatelessWidget {
     required this.isActive,
     required this.onTap,
     this.repo,
+    this.isPinned = false,
+    this.onLongPress,
   });
 
   final String label;
@@ -484,13 +530,16 @@ class _SourceRow extends StatelessWidget {
   /// Origin repo, shown small + dim under the name. Null/empty → not shown.
   final String? repo;
   final bool isActive;
+  final bool isPinned;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
     final hasRepo = repo != null && repo!.isNotEmpty;
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
       child: Padding(
@@ -518,6 +567,15 @@ class _SourceRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (isPinned)
+              Padding(
+                padding: EdgeInsets.only(right: isActive ? 10 : 0),
+                child: Icon(
+                  Icons.push_pin,
+                  size: 15,
+                  color: AppColors.textTertiary,
+                ),
+              ),
             if (isActive)
               Icon(Icons.check, color: AppColors.accent, size: 20),
           ],
