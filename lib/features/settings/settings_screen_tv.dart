@@ -26,7 +26,6 @@ import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../sources/tv_recommended_cs_repos.dart';
 import '../update/update_dialog.dart';
-import '../watch_together/ui/watch_party_lobby_screen.dart';
 import 'connections_screen_tv.dart';
 import 'developers_screen.dart';
 import 'discord_settings_screen.dart';
@@ -261,32 +260,12 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Account ─────────────────────────────────────────────
                   _accountCard(context),
 
-                  // ── Watch Party ─────────────────────────────────────────
+                  // ── Backup & Restore ────────────────────────────────────
+                  // Watch Party is intentionally phone-only: on TV a party
+                  // forces the mobile Flutter player, which the native TV player
+                  // exists to replace, and chat needs a keyboard.
                   SettingsCard(
                     children: [
-                      TvFocusable(scale: 1.0, 
-                        onTap: () {
-                          if (sl<AuthCubit>().state.user == null) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Sign in to watch together'),
-                              ),
-                            );
-                            return;
-                          }
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const WatchPartyLobbyScreen(),
-                            ),
-                          );
-                        },
-                        child: const SettingsTile(
-                          icon: Icons.groups_2_outlined,
-                          title: 'Watch Party',
-                          subtitle: 'Create or join a watch party with friends',
-                          trailing: _kChevron,
-                        ),
-                      ),
                       TvFocusable(scale: 1.0,
                         onTap: () => _push(const BackupScreen()),
                         child: const SettingsTile(
