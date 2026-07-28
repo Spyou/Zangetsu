@@ -19,6 +19,7 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/announce/announcement.dart';
@@ -320,7 +321,7 @@ class _HomeViewState extends State<_HomeView> {
     if (mounted) setState(() {});
   }
 
-  /// Row entrance is now handled per-item by [RevealItem] (the Dantotsu-style
+  /// Row entrance is now handled per-item by [RevealItem] (the cascade
   /// cascade). This wrapper used to fade the whole row in, which MASKED that
   /// cascade — so it's now a passthrough, kept only so its call sites are
   /// untouched. Returns [child] unchanged.
@@ -344,6 +345,48 @@ class _HomeViewState extends State<_HomeView> {
                   fit: BoxFit.contain,
                 ),
               ),
+            ),
+            // Incognito indicator — visible only while on; tap to exit.
+            ValueListenableBuilder<bool>(
+              valueListenable: IncognitoMode.notifier,
+              builder: (_, on, _) => on
+                  ? GestureDetector(
+                      onTap: () => IncognitoMode.set(false),
+                      behavior: HitTestBehavior.opaque,
+                      child: Container(
+                        margin: const EdgeInsets.only(right: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surface2,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.hairline),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.visibility_off_rounded,
+                              size: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                            SizedBox(width: 5),
+                            Text(
+                              'Incognito',
+                              style: TextStyle(
+                                fontFamily: 'Inter',
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink(),
             ),
             // Header bell is parked for now (design TBD) — re-add
             // `_notificationBell(context)` here once one is chosen.

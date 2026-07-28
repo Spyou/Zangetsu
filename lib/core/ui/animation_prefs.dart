@@ -1,13 +1,14 @@
 import 'package:hive/hive.dart';
 
-/// One toggle: whether list/grid items animate in (the Dantotsu-style cascade).
+/// One toggle: whether list/grid items animate in (the cascade reveal).
 /// Kept as an in-memory bool so [RevealItem] can read it per-item for free; the
 /// Hive box is only touched at init and when the user flips the switch.
 class AnimationPrefs {
   static const String boxName = 'ui_prefs';
   static const String _key = 'listAnimations';
 
-  /// Live value read by every reveal. Defaults on; loaded from Hive at startup.
+  /// Live value read by every reveal. On by default (a subtle fade + slide);
+  /// users can turn it off in Settings → Appearance → Motion.
   static bool listAnimations = true;
 
   static Future<void> init() async {

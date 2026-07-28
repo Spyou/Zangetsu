@@ -20,6 +20,7 @@ import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/playback_prefs.dart';
+import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
@@ -2189,6 +2190,31 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.visibility_off_outlined,
+                title: 'Incognito mode',
+                subtitle: 'Pause history, tracking & Discord presence',
+                trailing: ValueListenableBuilder<bool>(
+                  valueListenable: IncognitoMode.notifier,
+                  builder: (_, on, _) => Switch.adaptive(
+                    value: on,
+                    activeThumbColor: AppColors.accent,
+                    onChanged: (v) => IncognitoMode.set(v),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
+            child: Text(
+              'While on, searches, watch history, tracker scrobbling and Discord '
+              'presence are paused — nothing is recorded until you turn it off.',
+              style: AppText.caption,
+            ),
+          ),
           SettingsCard(
             children: [
               SettingsTile(

@@ -1,4 +1,5 @@
 import '../models/watch_status.dart';
+import '../privacy/incognito_mode.dart';
 import 'tracker.dart';
 
 /// Fans every list/progress write out to all connected trackers at once
@@ -19,15 +20,18 @@ class TrackerHub {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
-  }) => _fan(
-    (t) => t.markWatching(
-      malId: malId,
-      title: title,
-      tmdbId: tmdbId,
-      tmdbIsTv: tmdbIsTv,
-      imdbId: imdbId,
-    ),
-  );
+  }) async {
+    if (IncognitoMode.on) return; // incognito: pause auto-tracking
+    await _fan(
+      (t) => t.markWatching(
+        malId: malId,
+        title: title,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
+      ),
+    );
+  }
 
   Future<void> scrobble({
     int? malId,
@@ -36,16 +40,19 @@ class TrackerHub {
     bool tmdbIsTv = false,
     String? imdbId,
     required int episode,
-  }) => _fan(
-    (t) => t.scrobble(
-      malId: malId,
-      title: title,
-      tmdbId: tmdbId,
-      tmdbIsTv: tmdbIsTv,
-      imdbId: imdbId,
-      episode: episode,
-    ),
-  );
+  }) async {
+    if (IncognitoMode.on) return; // incognito: pause auto-scrobble
+    await _fan(
+      (t) => t.scrobble(
+        malId: malId,
+        title: title,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
+        episode: episode,
+      ),
+    );
+  }
 
   Future<void> setStatus({
     int? malId,

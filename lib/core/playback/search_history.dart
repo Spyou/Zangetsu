@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import '../privacy/incognito_mode.dart';
+
 /// Recent search terms, newest-first, stored locally. Lightweight and
 /// device-only (no cloud sync needed for search history).
 class SearchHistory {
@@ -24,6 +26,7 @@ class SearchHistory {
   }
 
   Future<void> add(String query) async {
+    if (IncognitoMode.on) return; // incognito: don't record searches
     final q = query.trim();
     if (q.isEmpty) return;
     // recent() can return a `const []` (unmodifiable) when there's no history

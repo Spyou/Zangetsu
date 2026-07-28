@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:hive/hive.dart';
 
+import '../privacy/incognito_mode.dart';
 import '../supabase/supabase_service.dart';
 
 class HistoryEntry {
@@ -128,6 +129,7 @@ class WatchHistory {
   /// moments that matter for an accurate cross-device resume — pause, stop,
   /// episode change, and player close.
   Future<void> save(HistoryEntry e, {bool flush = false}) async {
+    if (IncognitoMode.on) return; // incognito: don't record what's watched
     final key = _key(e.sourceId, e.showId);
     await _box.put(key, {
       'sourceId': e.sourceId,

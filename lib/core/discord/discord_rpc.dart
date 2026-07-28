@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:hive/hive.dart';
 
+import '../privacy/incognito_mode.dart';
 import 'discord_config.dart';
 import 'discord_gateway.dart';
 import 'discord_presence.dart';
@@ -32,13 +33,27 @@ class DiscordRpc {
   bool get loggedIn => _token != null && _token!.isNotEmpty;
 
   bool get _canRun =>
-      _enabled && loggedIn && DiscordConfig.configured && _foreground;
+      _enabled &&
+      loggedIn &&
+      DiscordConfig.configured &&
+      _foreground &&
+      !IncognitoMode.on;
 
   /// Load persisted state + connect if everything's ready. Call at startup.
   Future<void> start() async {
     _enabled = _box.get('enabled', defaultValue: false) as bool;
     _token = await DiscordTokenStore.read();
+    // Incognito pauses presence: flipping it on drops the connection, off resumes.
+    IncognitoMode.notifier.addListener(_onIncognitoChanged);
     if (_canRun) _connect();
+  }
+
+  void _onIncognitoChanged() {
+    if (_canRun) {
+      _connect();
+    } else {
+      _disconnect();
+    }
   }
 
   Future<void> setEnabled(bool value) async {

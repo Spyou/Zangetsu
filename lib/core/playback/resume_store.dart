@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import '../privacy/incognito_mode.dart';
+
 /// A saved playback position for one episode.
 class ResumeMark {
   ResumeMark({required this.position, required this.duration});
@@ -37,6 +39,7 @@ class ResumeStore {
     Duration position,
     Duration duration,
   ) async {
+    if (IncognitoMode.on) return; // incognito: don't remember playback position
     await _box.put(_key(sourceId, showId, episodeId), {
       'positionMs': position.inMilliseconds,
       'durationMs': duration.inMilliseconds,

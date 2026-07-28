@@ -167,7 +167,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
   }
 
-  /// Toggle for the Dantotsu-style list/grid reveal. Phone/iOS only — the reveal
+  /// Toggle for the list/grid reveal. Phone/iOS only — the reveal
   /// self-disables on TV regardless, so this switch simply governs touch devices.
   Widget _listAnimTile() {
     final on = AnimationPrefs.listAnimations;

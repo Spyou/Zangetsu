@@ -18,6 +18,7 @@ import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
+import '../privacy/incognito_mode.dart';
 import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
 import '../playback/skip_service.dart';
@@ -189,6 +190,7 @@ Future<void> initDependencies() async {
   await SearchHistory.init();
   sl.registerSingleton<SearchHistory>(SearchHistory());
   await AnimationPrefs.init(); // list/grid reveal toggle (phone/iOS only)
+  await IncognitoMode.init(); // privacy: pause history/tracking/RPC when on
   await SearchSourcePrefs.init();
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
   await SearchPrefs.init();
