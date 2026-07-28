@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:visibility_detector/visibility_detector.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
@@ -56,6 +57,12 @@ Future<void> main() async {
     // Cap the count too — the byte ceiling alone lets lots of small images
     // (cast photos, credits) pile up. 300 is plenty for the visible screens.
     PaintingBinding.instance.imageCache.maximumSize = 300;
+    // Fire the list-reveal animations promptly as items scroll in — the
+    // detector defaults to a 500ms batch interval, which would blank-flash each
+    // card before it reveals.
+    VisibilityDetectorController.instance.updateInterval = const Duration(
+      milliseconds: 80,
+    );
     // Firebase Analytics. Guarded so a build without google-services.json (or a
     // device without Play Services) still boots — analytics just stays off.
     try {

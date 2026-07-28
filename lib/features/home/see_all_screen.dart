@@ -6,6 +6,7 @@ import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/reveal_item.dart';
 import 'see_all_screen_tv.dart';
 
 /// Full-grid view of a single home row ("See All"). Reuses the home's tap /
@@ -145,16 +146,19 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         itemCount: _items.length,
         itemBuilder: (context, i) {
           final item = _items[i];
-          return PosterCard(
-            title: item.title,
-            imageUrl: item.cover,
-            headers: item.coverHeaders,
-            tags: widget.tagsFor?.call(item) ?? const [],
-            cellWidth: cellW,
-            onTap: () => widget.onTap(item),
-            onLongPress: widget.onLongPress == null
-                ? null
-                : () => widget.onLongPress!(item),
+          return RevealItem(
+            index: i,
+            child: PosterCard(
+              title: item.title,
+              imageUrl: item.cover,
+              headers: item.coverHeaders,
+              tags: widget.tagsFor?.call(item) ?? const [],
+              cellWidth: cellW,
+              onTap: () => widget.onTap(item),
+              onLongPress: widget.onLongPress == null
+                  ? null
+                  : () => widget.onLongPress!(item),
+            ),
           );
         },
       ),

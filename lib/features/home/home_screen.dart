@@ -320,22 +320,11 @@ class _HomeViewState extends State<_HomeView> {
     if (mounted) setState(() {});
   }
 
-  /// Wraps [child] in a subtle fade + upward slide entrance on first build.
-  Widget _animated(Widget child) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 420),
-      curve: Curves.easeOut,
-      builder: (context, t, innerChild) => Opacity(
-        opacity: t,
-        child: Transform.translate(
-          offset: Offset(0, (1 - t) * 16),
-          child: innerChild,
-        ),
-      ),
-      child: child,
-    );
-  }
+  /// Row entrance is now handled per-item by [RevealItem] (the Dantotsu-style
+  /// cascade). This wrapper used to fade the whole row in, which MASKED that
+  /// cascade — so it's now a passthrough, kept only so its call sites are
+  /// untouched. Returns [child] unchanged.
+  Widget _animated(Widget child) => child;
 
   /// Floating brand header — always positioned on top of the hero or bg.
   Widget _buildHeader() {

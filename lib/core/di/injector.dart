@@ -19,6 +19,7 @@ import '../playback/source_health_store.dart';
 import '../schedule/airing_service.dart';
 import '../schedule/coming_soon_service.dart';
 import '../search/title_suggestion_service.dart';
+import '../ui/animation_prefs.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../playback/title_prefs.dart';
@@ -187,6 +188,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<TorrentDownloadService>(TorrentDownloadService());
   await SearchHistory.init();
   sl.registerSingleton<SearchHistory>(SearchHistory());
+  await AnimationPrefs.init(); // list/grid reveal toggle (phone/iOS only)
   await SearchSourcePrefs.init();
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
   await SearchPrefs.init();

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'reveal_item.dart';
 
 /// An edge-bleed horizontal content row with an optional header and "See All" link.
 ///
@@ -45,7 +46,12 @@ class ContentRow extends StatelessWidget {
               padding: const EdgeInsets.only(right: 12),
               child: SizedBox(
                 width: itemWidth,
-                child: RepaintBoundary(child: itemBuilder(context, index)),
+                child: RepaintBoundary(
+                  child: RevealItem(
+                    index: index,
+                    child: itemBuilder(context, index),
+                  ),
+                ),
               ),
             ),
           ),

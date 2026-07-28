@@ -23,6 +23,7 @@ import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/reveal_item.dart';
 import '../../core/ui/states.dart';
 import '../../core/aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_filter_sheet.dart';
@@ -1081,14 +1082,17 @@ class _SearchViewState extends State<_SearchView> {
                 child: SizedBox(
                   width: itemW,
                   child: RepaintBoundary(
-                    child: PosterCard(
-                      title: item.title,
-                      imageUrl: item.cover,
-                      headers: item.coverHeaders,
-                      tags: _tagsFor(item),
-                      cellWidth: itemW,
-                      onTap: () => _openDetail(item),
-                      onLongPress: () => _showInfo(item),
+                    child: RevealItem(
+                      index: i,
+                      child: PosterCard(
+                        title: item.title,
+                        imageUrl: item.cover,
+                        headers: item.coverHeaders,
+                        tags: _tagsFor(item),
+                        cellWidth: itemW,
+                        onTap: () => _openDetail(item),
+                        onLongPress: () => _showInfo(item),
+                      ),
                     ),
                   ),
                 ),
@@ -1135,14 +1139,17 @@ class _SearchViewState extends State<_SearchView> {
           itemCount: preview.length,
           itemBuilder: (context, i) {
             final item = preview[i];
-            return PosterCard(
-              title: item.title,
-              imageUrl: item.cover,
-              headers: item.coverHeaders,
-              tags: _tagsFor(item),
-              cellWidth: cellW,
-              onTap: () => _openDetail(item),
-              onLongPress: () => _showInfo(item),
+            return RevealItem(
+              index: i,
+              child: PosterCard(
+                title: item.title,
+                imageUrl: item.cover,
+                headers: item.coverHeaders,
+                tags: _tagsFor(item),
+                cellWidth: cellW,
+                onTap: () => _openDetail(item),
+                onLongPress: () => _showInfo(item),
+              ),
             );
           },
         ),

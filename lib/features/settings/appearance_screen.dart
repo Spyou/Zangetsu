@@ -4,6 +4,7 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/ui/animation_prefs.dart';
 
 /// Dedicated Appearance page (Aniyomi-style): accent colour as preview cards
 /// (+ a Custom colour picker), a pure-black AMOLED toggle, and the Home banner
@@ -115,6 +116,12 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           _label('BACKGROUND'),
           const SizedBox(height: 12),
           _amoledTile(),
+
+          const SizedBox(height: 28),
+          // ── Motion ────────────────────────────────────────────────────────
+          _label('MOTION'),
+          const SizedBox(height: 12),
+          _listAnimTile(),
         ],
       ),
     );
@@ -160,6 +167,48 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
   }
 
+  /// Toggle for the Dantotsu-style list/grid reveal. Phone/iOS only — the reveal
+  /// self-disables on TV regardless, so this switch simply governs touch devices.
+  Widget _listAnimTile() {
+    final on = AnimationPrefs.listAnimations;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.auto_awesome_motion_outlined,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Animate lists', style: AppText.headline),
+                const SizedBox(height: 2),
+                Text(
+                  'Cards fade and slide in as they scroll into view.',
+                  style: AppText.caption,
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: on,
+            activeThumbColor: AppColors.accent,
+            onChanged: (v) async {
+              await AnimationPrefs.setListAnimations(v);
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// A single accent option, rendered as a mini app preview in that colour.
