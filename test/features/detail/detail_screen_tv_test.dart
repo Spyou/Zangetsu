@@ -552,14 +552,12 @@ void main() {
     },
   );
 
-  // ── TalkBack gate: _onLeftKey ─────────────────────────────────────────────
+  // ── TalkBack gate: _onLeftKey / _onRightKey ────────────────────────────────
   //
-  // A screen reader does its own arrow-key traversal, so _onLeftKey must fall
-  // through (ignored) instead of fighting it once it's on. Sighted users
-  // (accessibleNavigation: false, the default) get the exact original
-  // left ↔ right bridging. (_onRightKey/_onFieldKey aren't unit-tested here —
-  // they're covered by the flag-off regression suite above, which still
-  // renders/exercises them.)
+  // A screen reader does its own arrow-key traversal, so both handlers must
+  // fall through (ignored) instead of fighting it once it's on. Sighted
+  // users (accessibleNavigation: false, the default) get the exact original
+  // left ↔ right bridging.
 
   testWidgets(
     'DetailScreenTv _onLeftKey: arrowRight bridges left → right when a '
@@ -616,6 +614,91 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(tester.binding.focusManager.primaryFocus, same(playFocus));
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv _onRightKey: arrowLeft bridges right → left when a '
+    'screen reader is OFF (sighted user, original behaviour)',
+    (tester) async {
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: false),
+              child: DetailScreenTv(item: _testItem),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final playFocus = tester.binding.focusManager.primaryFocus;
+      expect(playFocus, isNotNull);
+
+      // Get into the right pane first (via the already-tested _onLeftKey).
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-detail-right',
+      );
+
+      // arrowLeft at the right pane's left edge (nothing further left to
+      // traverse to intra-pane) → _onRightKey crosses back to the left pane,
+      // restoring the previously-focused Play button (ORIGINAL behaviour).
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(playFocus));
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv _onRightKey: arrowLeft is ignored (TalkBack owns '
+    'traversal) when a screen reader is ON',
+    (tester) async {
+      // Phase 1 (screen reader off): land in the right pane the only way a
+      // real remote could — via the (separately-tested, working) OFF-path
+      // _onLeftKey.
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: false),
+              child: DetailScreenTv(item: _testItem),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      final rightFocus = tester.binding.focusManager.primaryFocus;
+      expect(rightFocus?.nearestScope?.debugLabel, 'tv-detail-right');
+
+      // Phase 2: flip the screen reader on. This rebuilds the SAME element
+      // (same widget type/position under the same BlocProvider), so
+      // _leftScope/_rightScope and the current focus survive the rebuild.
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: true),
+              child: DetailScreenTv(item: _testItem),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(tester.binding.focusManager.primaryFocus, same(rightFocus));
+
+      // arrowLeft must now be a no-op — TalkBack owns it.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(rightFocus));
     },
   );
 }

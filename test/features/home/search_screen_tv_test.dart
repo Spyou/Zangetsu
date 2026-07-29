@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/home_section.dart';
@@ -231,6 +232,84 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('No results for'), findsOneWidget);
+    },
+  );
+
+  // ── TalkBack gate: _onFieldKey ────────────────────────────────────────────
+  //
+  // A screen reader does its own arrow-key traversal, so _onFieldKey must
+  // fall through (ignored) instead of bouncing focus out of the field once
+  // it's on. Sighted users (accessibleNavigation: false, the default) get
+  // the exact original down-and-out behaviour. The scope chips ("All
+  // sources"/"Current source") render unconditionally below the field, so
+  // they're always a valid down-traversal target regardless of search state.
+
+  testWidgets(
+    'SearchScreenTv _onFieldKey: arrowDown moves focus out of the field when '
+    'a screen reader is OFF (sighted user, original behaviour)',
+    (tester) async {
+      final bloc = _FakeSearchBloc(const SearchState());
+      addTearDown(bloc.close);
+
+      await tester.pumpWidget(
+        BlocProvider<SearchBloc>.value(
+          value: bloc,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: false),
+              child: const SearchScreenTv(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final fieldNode =
+          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+      fieldNode.requestFocus();
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.binding.focusManager.primaryFocus,
+        isNot(same(fieldNode)),
+      );
+    },
+  );
+
+  testWidgets(
+    'SearchScreenTv _onFieldKey: arrowDown is ignored (TalkBack owns '
+    'traversal) when a screen reader is ON',
+    (tester) async {
+      final bloc = _FakeSearchBloc(const SearchState());
+      addTearDown(bloc.close);
+
+      await tester.pumpWidget(
+        BlocProvider<SearchBloc>.value(
+          value: bloc,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: true),
+              child: const SearchScreenTv(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final fieldNode =
+          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+      fieldNode.requestFocus();
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+      await tester.pumpAndSettle();
+
+      expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
     },
   );
 }
