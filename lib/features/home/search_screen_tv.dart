@@ -48,6 +48,11 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   late final FocusNode _fieldFocus = FocusNode(onKeyEvent: _onFieldKey);
 
   KeyEventResult _onFieldKey(FocusNode node, KeyEvent event) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack own D-pad traversal instead of us
+      // bouncing focus out of the field here.
+      return KeyEventResult.ignored;
+    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowDown) {
       if (node.focusInDirection(TraversalDirection.down)) {

@@ -551,4 +551,71 @@ void main() {
       handle.dispose();
     },
   );
+
+  // ── TalkBack gate: _onLeftKey ─────────────────────────────────────────────
+  //
+  // A screen reader does its own arrow-key traversal, so _onLeftKey must fall
+  // through (ignored) instead of fighting it once it's on. Sighted users
+  // (accessibleNavigation: false, the default) get the exact original
+  // left ↔ right bridging. (_onRightKey/_onFieldKey aren't unit-tested here —
+  // they're covered by the flag-off regression suite above, which still
+  // renders/exercises them.)
+
+  testWidgets(
+    'DetailScreenTv _onLeftKey: arrowRight bridges left → right when a '
+    'screen reader is OFF (sighted user, original behaviour)',
+    (tester) async {
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: false),
+              child: DetailScreenTv(item: _testItem),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final playFocus = tester.binding.focusManager.primaryFocus;
+      expect(playFocus, isNotNull);
+      expect(playFocus?.nearestScope?.debugLabel, 'tv-detail-left');
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-detail-right',
+      );
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv _onLeftKey: arrowRight is ignored (TalkBack owns '
+    'traversal) when a screen reader is ON',
+    (tester) async {
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: true),
+              child: DetailScreenTv(item: _testItem),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final playFocus = tester.binding.focusManager.primaryFocus;
+      expect(playFocus, isNotNull);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+
+      expect(tester.binding.focusManager.primaryFocus, same(playFocus));
+    },
+  );
 }

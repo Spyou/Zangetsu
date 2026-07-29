@@ -99,6 +99,11 @@ class _RootShellTvState extends State<RootShellTv> {
   }
 
   KeyEventResult _onRailKey(FocusNode _, KeyEvent event) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack own D-pad traversal instead of us
+      // bridging rail ↔ content here.
+      return KeyEventResult.ignored;
+    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowRight) {
       final lastFocused = _contentScope.focusedChild;
@@ -116,6 +121,11 @@ class _RootShellTvState extends State<RootShellTv> {
   }
 
   KeyEventResult _onContentKey(FocusNode _, KeyEvent event) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack own D-pad traversal instead of us
+      // bridging rail ↔ content here.
+      return KeyEventResult.ignored;
+    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final moved = FocusManager.instance.primaryFocus
@@ -576,7 +586,13 @@ class _RootShellTvState extends State<RootShellTv> {
                       index: _index,
                       children: [
                         for (var i = 0; i < pages.length; i++)
-                          ExcludeFocus(excluding: i != _index, child: pages[i]),
+                          ExcludeFocus(
+                            excluding: i != _index,
+                            child: ExcludeSemantics(
+                              excluding: i != _index,
+                              child: pages[i],
+                            ),
+                          ),
                       ],
                     ),
                   ),

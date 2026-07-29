@@ -510,4 +510,115 @@ void main() {
       handle.dispose();
     },
   );
+
+  // ── TalkBack gate: rail/content D-pad bridge handlers ─────────────────────
+  //
+  // A screen reader does its own arrow-key traversal, so _onRailKey and
+  // _onContentKey must fall through (ignored) instead of fighting it once
+  // it's on. Sighted users (accessibleNavigation: false, the default) get
+  // the exact original rail ↔ content bridging.
+
+  testWidgets(
+    'RootShellTv rail/content handlers: arrows bridge rail ↔ content when '
+    'a screen reader is OFF (sighted user, original behaviour)',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: false),
+              child: const RootShellTv(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Search — its field always autofocuses regardless of data,
+      // giving content a reliable focus target (Home's content is empty in
+      // this fixture since the fake repo throws).
+      tester
+          .widget<TvFocusable>(
+            find.ancestor(
+              of: find.text('Search'),
+              matching: find.byType(TvFocusable),
+            ),
+          )
+          .onTap();
+      await tester.pumpAndSettle();
+
+      final fieldFocus = tester.binding.focusManager.primaryFocus;
+      expect(fieldFocus, isNotNull);
+      expect(fieldFocus?.nearestScope?.debugLabel, 'tv-content-scope');
+
+      // arrowLeft → _onContentKey drops back onto the current page's rail
+      // item once intra-content traversal is exhausted (ORIGINAL behaviour).
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-rail-scope',
+      );
+
+      // arrowRight → _onRailKey hands focus back to the last-focused content
+      // child (ORIGINAL behaviour).
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(fieldFocus));
+    },
+  );
+
+  testWidgets(
+    'RootShellTv rail/content handlers: arrows are ignored (TalkBack owns '
+    'traversal) when a screen reader is ON',
+    (tester) async {
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: MaterialApp(
+            home: MediaQuery(
+              data: const MediaQueryData(accessibleNavigation: true),
+              child: const RootShellTv(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final searchNavFocusable = tester.widget<TvFocusable>(
+        find.ancestor(
+          of: find.text('Search'),
+          matching: find.byType(TvFocusable),
+        ),
+      );
+      searchNavFocusable.onTap();
+      await tester.pumpAndSettle();
+
+      final fieldFocus = tester.binding.focusManager.primaryFocus;
+      expect(fieldFocus, isNotNull);
+
+      // _onContentKey must be a no-op — TalkBack owns arrowLeft now.
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(fieldFocus));
+
+      // Move focus to the rail directly (the gated _onContentKey can't do
+      // that anymore) to prove _onRailKey is ALSO a no-op.
+      final railNode = searchNavFocusable.focusNode!;
+      railNode.requestFocus();
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(railNode));
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(tester.binding.focusManager.primaryFocus, same(railNode));
+    },
+  );
 }
