@@ -34,6 +34,8 @@ class TvFocusable extends StatefulWidget {
     this.foregroundHighlight = false,
     this.variant = TvFocusVariant.box,
     this.focusNode,
+    this.semanticLabel,
+    this.isButton = true,
   }) : assert(
           child != null || builder != null,
           'TvFocusable needs either child or builder',
@@ -62,6 +64,14 @@ class TvFocusable extends StatefulWidget {
   final String? focusLabel;
 
   final TvFocusVariant variant;
+
+  /// Accessible name for TalkBack. Null means no name yet (fine — call sites
+  /// add these incrementally).
+  final String? semanticLabel;
+
+  /// Whether this reads as a "button" to TalkBack. Almost everything wrapped
+  /// in TvFocusable is tap-to-activate, so this defaults on.
+  final bool isButton;
 
   @override
   State<TvFocusable> createState() => _TvFocusableState();
@@ -211,21 +221,31 @@ class _TvFocusableState extends State<TvFocusable> {
         );
     }
 
-    return Focus(
-      focusNode: widget.focusNode,
-      autofocus: widget.autofocus,
-      onKeyEvent: _onKey,
-      onFocusChange: (f) {
-        setState(() => _focused = f);
-        if (f) {
-          Scrollable.ensureVisible(
-            context,
-            alignment: 0.5,
-            duration: const Duration(milliseconds: 200),
-          );
-        }
-      },
-      child: box,
+    // container: true makes this the one semantics node for the whole
+    // focusable (Focus adds its own focusable/focused bits below us, and
+    // those merge up into this node instead of forming a second one).
+    return Semantics(
+      container: true,
+      label: widget.semanticLabel,
+      button: widget.isButton,
+      focused: _focused,
+      onTap: widget.onTap,
+      child: Focus(
+        focusNode: widget.focusNode,
+        autofocus: widget.autofocus,
+        onKeyEvent: _onKey,
+        onFocusChange: (f) {
+          setState(() => _focused = f);
+          if (f) {
+            Scrollable.ensureVisible(
+              context,
+              alignment: 0.5,
+              duration: const Duration(milliseconds: 200),
+            );
+          }
+        },
+        child: box,
+      ),
     );
   }
 }
