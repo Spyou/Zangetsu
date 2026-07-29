@@ -81,6 +81,11 @@ class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack activate via the Semantics onTap
+      // below instead of us swallowing the D-pad OK press here.
+      return KeyEventResult.ignored;
+    }
     if (event is KeyDownEvent && okKeys.contains(event.logicalKey)) {
       widget.onTap();
       return KeyEventResult.handled;
