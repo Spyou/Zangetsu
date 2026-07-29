@@ -1638,12 +1638,19 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                           Expanded(
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: frac,
-                                minHeight: 6,
-                                backgroundColor: Colors.white24,
-                                valueColor: AlwaysStoppedAnimation(
-                                  AppColors.accent,
+                              // Read-only label+value — NOT slider:true, so
+                              // this stays a display node, not a focusable
+                              // seek control.
+                              child: Semantics(
+                                label: 'Seek bar',
+                                value: '${_fmt(pos)} of ${_fmt(dur)}',
+                                child: LinearProgressIndicator(
+                                  value: frac,
+                                  minHeight: 6,
+                                  backgroundColor: Colors.white24,
+                                  valueColor: AlwaysStoppedAnimation(
+                                    AppColors.accent,
+                                  ),
                                 ),
                               ),
                             ),

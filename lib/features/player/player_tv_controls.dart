@@ -93,7 +93,8 @@ class PlayerTvControls extends StatefulWidget {
 
   /// Returns skip-button metadata for the given position, or null when no
   /// AniSkip interval is active. Mirrors [_PlayerScreenState._skipButtonFor].
-  final ({String label, VoidCallback onSkip})? Function(Duration pos) skipInfoFor;
+  final ({String label, VoidCallback onSkip})? Function(Duration pos)
+  skipInfoFor;
 
   @override
   State<PlayerTvControls> createState() => _PlayerTvControlsState();
@@ -227,6 +228,7 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
   Widget _barButton(IconData icon, String label, VoidCallback onTap) {
     return TvFocusable(
       onTap: onTap,
+      semanticLabel: label,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         child: Column(
@@ -234,9 +236,13 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
           children: [
             Icon(icon, color: Colors.white, size: 26),
             const SizedBox(height: 4),
-            Text(
-              label,
-              style: AppText.caption.copyWith(color: Colors.white),
+            // The focusable above already announces the label — exclude
+            // this sibling so TalkBack doesn't say it twice.
+            ExcludeSemantics(
+              child: Text(
+                label,
+                style: AppText.caption.copyWith(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -306,8 +312,8 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                                       final pos = posSnap.data ?? Duration.zero;
                                       final progress = dur.inMilliseconds > 0
                                           ? (pos.inMilliseconds /
-                                                  dur.inMilliseconds)
-                                              .clamp(0.0, 1.0)
+                                                    dur.inMilliseconds)
+                                                .clamp(0.0, 1.0)
                                           : 0.0;
                                       return Row(
                                         children: [
@@ -322,14 +328,24 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                                             child: ClipRRect(
                                               borderRadius:
                                                   BorderRadius.circular(2),
-                                              child: LinearProgressIndicator(
-                                                value: progress,
-                                                backgroundColor: Colors.white24,
-                                                valueColor:
-                                                    AlwaysStoppedAnimation(
-                                                  AppColors.accent,
+                                              // Read-only label+value — NOT
+                                              // slider:true, so this stays a
+                                              // display node, not a focusable
+                                              // seek control.
+                                              child: Semantics(
+                                                label: 'Seek bar',
+                                                value:
+                                                    '${_fmtDur(pos)} of ${_fmtDur(dur)}',
+                                                child: LinearProgressIndicator(
+                                                  value: progress,
+                                                  backgroundColor:
+                                                      Colors.white24,
+                                                  valueColor:
+                                                      AlwaysStoppedAnimation(
+                                                        AppColors.accent,
+                                                      ),
+                                                  minHeight: 4,
                                                 ),
-                                                minHeight: 4,
                                               ),
                                             ),
                                           ),

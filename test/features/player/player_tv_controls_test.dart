@@ -213,7 +213,9 @@ void main() {
       expect(backNotifier.value, isTrue);
     });
 
-    testWidgets('bar buttons are shown when barVisible is true', (tester) async {
+    testWidgets('bar buttons are shown when barVisible is true', (
+      tester,
+    ) async {
       barNotifier.value = true;
       await _pumpControls(
         tester,
@@ -245,7 +247,9 @@ void main() {
       expect(find.text('Next'), findsNothing);
     });
 
-    testWidgets('onNext button appears when onNext is provided', (tester) async {
+    testWidgets('onNext button appears when onNext is provided', (
+      tester,
+    ) async {
       barNotifier.value = true;
       tester.view.physicalSize = const Size(1280, 720);
       tester.view.devicePixelRatio = 1.0;
@@ -285,25 +289,81 @@ void main() {
       expect(find.text('Next'), findsOneWidget);
     });
 
-    testWidgets('seek bar shows formatted position and duration when bar is visible',
-        (tester) async {
-      const testPosition = Duration(minutes: 5, seconds: 30);
-      const testDuration = Duration(minutes: 45);
+    testWidgets(
+      'seek bar shows formatted position and duration when bar is visible',
+      (tester) async {
+        const testPosition = Duration(minutes: 5, seconds: 30);
+        const testDuration = Duration(minutes: 45);
 
-      barNotifier.value = true;
-      await _pumpControls(
-        tester,
-        controller: controller,
-        barVisible: true,
-        barNotifier: barNotifier,
-        backNotifier: backNotifier,
-        initialPosition: testPosition,
-        initialDuration: testDuration,
-      );
+        barNotifier.value = true;
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barVisible: true,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          initialPosition: testPosition,
+          initialDuration: testDuration,
+        );
 
-      // Position 5 m 30 s → '05:30', duration 45 m → '45:00'
-      expect(find.text('05:30'), findsOneWidget);
-      expect(find.text('45:00'), findsOneWidget);
-    });
+        // Position 5 m 30 s → '05:30', duration 45 m → '45:00'
+        expect(find.text('05:30'), findsOneWidget);
+        expect(find.text('45:00'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'seek bar announces a read-only label + value (not a focusable slider)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        const testPosition = Duration(minutes: 5, seconds: 30);
+        const testDuration = Duration(minutes: 45);
+
+        barNotifier.value = true;
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barVisible: true,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          initialPosition: testPosition,
+          initialDuration: testDuration,
+        );
+
+        final node = tester.getSemantics(find.bySemanticsLabel('Seek bar'));
+        // All flag/action params default to false — this also proves the
+        // node ISN'T a slider and ISN'T focusable (seeking stays the root
+        // arrow handler's job, not TalkBack's).
+        expect(
+          node,
+          matchesSemantics(label: 'Seek bar', value: '05:30 of 45:00'),
+        );
+
+        handle.dispose();
+      },
+    );
+
+    testWidgets(
+      'bar button caption is exposed once via semantics (no double-announce)',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        barNotifier.value = true;
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barVisible: true,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+        );
+
+        // The caption Text is still visible for sighted users...
+        expect(find.text('Speed'), findsOneWidget);
+        // ...but only the TvFocusable's semantics node carries the label —
+        // the inner caption Text is ExcludeSemantics'd.
+        expect(find.bySemanticsLabel('Speed'), findsOneWidget);
+
+        handle.dispose();
+      },
+    );
   });
 }
