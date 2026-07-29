@@ -27,40 +27,48 @@ Future<void> _pumpControls(
   required ValueNotifier<bool> backNotifier,
   Duration initialPosition = Duration.zero,
   Duration initialDuration = Duration.zero,
+  // Null = don't override (matches the test host's default, which is
+  // already `false`). Pass explicitly to prove the TalkBack gate's two
+  // paths, mirroring how the other Layer-2 gate tests wrap their subject.
+  bool? accessibleNavigation,
 }) async {
   // Player controls always render on a wide TV screen — size the test surface
   // accordingly so the bottom control row isn't cramped into an overflow.
   tester.view.physicalSize = const Size(1280, 720);
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
+  Widget body = ValueListenableBuilder<bool>(
+    valueListenable: barNotifier,
+    builder: (_, visible, _) => PlayerTvControls(
+      onTogglePlay: controller.togglePlay,
+      onSeekBy: controller.seekBy,
+      onSpeed: () {},
+      onAudioSubs: () {},
+      onQuality: () {},
+      onSources: () {},
+      onFit: () {},
+      onBack: () => backNotifier.value = true,
+      onNext: null,
+      playingStream: const Stream<bool>.empty(),
+      initialPlaying: false,
+      barVisible: visible,
+      onBarChange: (v) => barNotifier.value = v,
+      positionStream: const Stream<Duration>.empty(),
+      durationStream: const Stream<Duration>.empty(),
+      initialPosition: initialPosition,
+      initialDuration: initialDuration,
+      skipInfoFor: (_) => null,
+    ),
+  );
+  if (accessibleNavigation != null) {
+    body = MediaQuery(
+      data: MediaQueryData(accessibleNavigation: accessibleNavigation),
+      child: body,
+    );
+  }
   await tester.pumpWidget(
     MaterialApp(
-      home: Scaffold(
-        backgroundColor: Colors.black,
-        body: ValueListenableBuilder<bool>(
-          valueListenable: barNotifier,
-          builder: (_, visible, _) => PlayerTvControls(
-            onTogglePlay: controller.togglePlay,
-            onSeekBy: controller.seekBy,
-            onSpeed: () {},
-            onAudioSubs: () {},
-            onQuality: () {},
-            onSources: () {},
-            onFit: () {},
-            onBack: () => backNotifier.value = true,
-            onNext: null,
-            playingStream: const Stream<bool>.empty(),
-            initialPlaying: false,
-            barVisible: visible,
-            onBarChange: (v) => barNotifier.value = v,
-            positionStream: const Stream<Duration>.empty(),
-            durationStream: const Stream<Duration>.empty(),
-            initialPosition: initialPosition,
-            initialDuration: initialDuration,
-            skipInfoFor: (_) => null,
-          ),
-        ),
-      ),
+      home: Scaffold(backgroundColor: Colors.black, body: body),
     ),
   );
   await tester.pumpAndSettle();
@@ -363,6 +371,91 @@ void main() {
         expect(find.bySemanticsLabel('Speed'), findsOneWidget);
 
         handle.dispose();
+      },
+    );
+
+    // ── TalkBack gate: root Focus key handler (_handleKey) ──────────────────
+    //
+    // A screen reader does its own D-pad activation/traversal, so _handleKey
+    // must fall through (ignored) instead of also toggling play or seeking
+    // once it's on. Sighted users (accessibleNavigation: false, the default)
+    // keep the exact original OK/seek behaviour.
+
+    testWidgets(
+      'accessibleNavigation OFF: select still calls togglePlay (sighted '
+      'user, original behaviour)',
+      (tester) async {
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          accessibleNavigation: false,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(controller.togglePlayCalls, 1);
+      },
+    );
+
+    testWidgets(
+      'accessibleNavigation OFF: arrowRight still seeks (sighted user, '
+      'original behaviour)',
+      (tester) async {
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          accessibleNavigation: false,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(
+          controller.seekByCalls,
+          contains(const Duration(seconds: 10)),
+        );
+      },
+    );
+
+    testWidgets(
+      'accessibleNavigation ON: select is ignored (TalkBack owns D-pad '
+      'activation) — togglePlay does NOT fire',
+      (tester) async {
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          accessibleNavigation: true,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.select);
+        await tester.pumpAndSettle();
+        expect(controller.togglePlayCalls, 0);
+        // The guard returns ignored before _showBar() ever runs.
+        expect(barNotifier.value, isFalse);
+      },
+    );
+
+    testWidgets(
+      'accessibleNavigation ON: arrowRight is ignored (TalkBack owns D-pad '
+      'activation) — seekBy does NOT fire',
+      (tester) async {
+        await _pumpControls(
+          tester,
+          controller: controller,
+          barNotifier: barNotifier,
+          backNotifier: backNotifier,
+          accessibleNavigation: true,
+        );
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+        await tester.pumpAndSettle();
+        expect(controller.seekByCalls, isEmpty);
+        expect(barNotifier.value, isFalse);
       },
     );
   });

@@ -1148,6 +1148,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack own D-pad traversal instead of us
+      // handling play/pause/seek/menu directly here.
+      return KeyEventResult.ignored;
+    }
     final k = e.logicalKey;
     // While an overlay (menu / online search / up-next) is up, it owns the
     // D-pad: let its focused widget + traversal handle keys, don't eat them.
@@ -1701,61 +1706,78 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     String label,
     VoidCallback onTap,
   ) {
-    return Focus(
-      focusNode: _rowFocusNodes[index],
-      onKeyEvent: (n, e) {
-        if (e is! KeyDownEvent) return KeyEventResult.ignored;
-        final k = e.logicalKey;
-        if (okKeys.contains(k)) {
-          onTap();
-          return KeyEventResult.handled;
-        }
-        if (k == LogicalKeyboardKey.arrowLeft) {
-          if (index > 0) _rowFocusNodes[index - 1].requestFocus();
-          return KeyEventResult.handled;
-        }
-        if (k == LogicalKeyboardKey.arrowRight) {
-          if (index < total - 1) _rowFocusNodes[index + 1].requestFocus();
-          return KeyEventResult.handled;
-        }
-        if (k == LogicalKeyboardKey.arrowUp ||
-            k == LogicalKeyboardKey.goBack ||
-            k == LogicalKeyboardKey.escape) {
-          _exitControlRow();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: Builder(
-        builder: (context) {
-          final focused = Focus.of(context).hasFocus;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
-            margin: const EdgeInsets.symmetric(horizontal: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-            decoration: BoxDecoration(
-              color: focused
-                  ? AppColors.accent
-                  : Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 20, color: Colors.white),
-                const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          );
+    // container: true makes this the one semantics node for the whole
+    // button (mirrors TvFocusable's own Semantics wrap) — the Focus below
+    // adds its own focusable/focused bits which merge up into this node
+    // instead of forming a second one.
+    return Semantics(
+      container: true,
+      label: label,
+      button: true,
+      onTap: onTap,
+      child: Focus(
+        focusNode: _rowFocusNodes[index],
+        onKeyEvent: (n, e) {
+          if (e is! KeyDownEvent) return KeyEventResult.ignored;
+          final k = e.logicalKey;
+          if (okKeys.contains(k)) {
+            onTap();
+            return KeyEventResult.handled;
+          }
+          if (k == LogicalKeyboardKey.arrowLeft) {
+            if (index > 0) _rowFocusNodes[index - 1].requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (k == LogicalKeyboardKey.arrowRight) {
+            if (index < total - 1) _rowFocusNodes[index + 1].requestFocus();
+            return KeyEventResult.handled;
+          }
+          if (k == LogicalKeyboardKey.arrowUp ||
+              k == LogicalKeyboardKey.goBack ||
+              k == LogicalKeyboardKey.escape) {
+            _exitControlRow();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
         },
+        child: Builder(
+          builder: (context) {
+            final focused = Focus.of(context).hasFocus;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              margin: const EdgeInsets.symmetric(horizontal: 6),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 11,
+              ),
+              decoration: BoxDecoration(
+                color: focused
+                    ? AppColors.accent
+                    : Colors.white.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 20, color: Colors.white),
+                  const SizedBox(width: 8),
+                  // The Semantics above already announces the label —
+                  // exclude this sibling so TalkBack doesn't say it twice.
+                  ExcludeSemantics(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

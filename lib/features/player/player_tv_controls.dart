@@ -164,6 +164,11 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
   // those events when a bar button is selected.
 
   KeyEventResult _handleKey(FocusNode _, KeyEvent event) {
+    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
+      // Screen reader is on — let TalkBack own D-pad traversal instead of us
+      // handling play/pause/seek/bar-focus directly here.
+      return KeyEventResult.ignored;
+    }
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final k = event.logicalKey;
 
