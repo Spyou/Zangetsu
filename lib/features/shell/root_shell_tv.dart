@@ -373,15 +373,21 @@ class _RootShellTvState extends State<RootShellTv> {
                 child: AnimatedOpacity(
                   opacity: _navOpen ? 1 : 0,
                   duration: const Duration(milliseconds: 160),
-                  child: Text(
-                    item.label,
-                    maxLines: 1,
-                    softWrap: false,
-                    overflow: TextOverflow.clip,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: 18,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  // The TvFocusable's semanticLabel already announces this
+                  // item — exclude the label Text so TalkBack doesn't say it
+                  // twice (same pattern as TvPosterTile).
+                  child: ExcludeSemantics(
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      softWrap: false,
+                      overflow: TextOverflow.clip,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 18,
+                        fontWeight:
+                            selected ? FontWeight.w700 : FontWeight.w500,
+                      ),
                     ),
                   ),
                 ),

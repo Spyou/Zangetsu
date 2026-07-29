@@ -503,6 +503,9 @@ void main() {
           hasTapAction: true,
         ),
       );
+      // ...and only ONE node in the tree carries 'Home' — the label Text
+      // inside the item must be excluded, or TalkBack announces it twice.
+      expect(find.bySemanticsLabel('Home'), findsOneWidget);
 
       handle.dispose();
     },
