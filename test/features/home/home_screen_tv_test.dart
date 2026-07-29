@@ -112,4 +112,55 @@ void main() {
       expect(focusables.first.autofocus, isTrue);
     },
   );
+
+  testWidgets(
+    'HomeScreenTv exposes semantics labels for hero buttons, See all and '
+    'poster rail items — with no duplicate-text nodes',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<HomeCubit>.value(value: cubit),
+            BlocProvider<AuthCubit>.value(value: _FakeAuthCubit()),
+          ],
+          child: const MaterialApp(home: HomeScreenTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Hero Play / My List / Info buttons each carry their visible label,
+      // and read as a focusable button with a tap action. Play autofocuses.
+      for (final label in ['Play', 'My List', 'Info']) {
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(label)),
+          matchesSemantics(
+            label: label,
+            isButton: true,
+            isFocusable: true,
+            isFocused: label == 'Play',
+            hasTapAction: true,
+          ),
+        );
+      }
+
+      // Rail poster: the focusable announces the title, and the sibling
+      // title Text below it is excluded — only ONE node carries 'Anime Two'
+      // (it doesn't collide with the hero's title, which shows 'Anime One').
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Anime Two')),
+        matchesSemantics(
+          label: 'Anime Two',
+          isButton: true,
+          isFocusable: true,
+          hasTapAction: true,
+        ),
+      );
+
+      // Trailing "See all" card.
+      expect(find.bySemanticsLabel('See all'), findsOneWidget);
+
+      handle.dispose();
+    },
+  );
 }

@@ -2848,16 +2848,21 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
       return TvFocusable(
         autofocus: i == 0,
         onTap: onTap,
-        child: ListTile(
-          contentPadding: const EdgeInsets.only(right: 8),
-          leading: Icon(Icons.download_rounded, color: AppColors.accent),
-          title: Text(
-            label,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+        semanticLabel: '$label, $sub',
+        // This ListTile is only built on this TV branch — exclude its own
+        // title/subtitle so TalkBack doesn't hear them twice.
+        child: ExcludeSemantics(
+          child: ListTile(
+            contentPadding: const EdgeInsets.only(right: 8),
+            leading: Icon(Icons.download_rounded, color: AppColors.accent),
+            title: Text(
+              label,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(sub, style: AppText.caption),
           ),
-          subtitle: Text(sub, style: AppText.caption),
         ),
       );
     }
@@ -3187,6 +3192,9 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                         category: _category,
                         episodes: _selectedEpisodes,
                       )),
+                semanticLabel: count == 0
+                    ? 'Select episodes'
+                    : 'Download $count episode${count == 1 ? '' : 's'}',
                 child: Material(
                   color: count == 0 ? AppColors.surface2 : AppColors.accent,
                   borderRadius: BorderRadius.circular(10),
@@ -3195,14 +3203,18 @@ class _DownloadSheetState extends State<_DownloadSheet> {
                     height: 50,
                     width: double.infinity,
                     child: Center(
-                      child: Text(
-                        count == 0
-                            ? 'Select episodes'
-                            : 'Download $count episode${count == 1 ? '' : 's'}',
-                        style: AppText.button.copyWith(
-                          color: count == 0
-                              ? AppColors.textTertiary
-                              : Colors.white,
+                      // Excluded — semanticLabel above already announces
+                      // this same text.
+                      child: ExcludeSemantics(
+                        child: Text(
+                          count == 0
+                              ? 'Select episodes'
+                              : 'Download $count episode${count == 1 ? '' : 's'}',
+                          style: AppText.button.copyWith(
+                            color: count == 0
+                                ? AppColors.textTertiary
+                                : Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -3302,11 +3314,14 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     if (sl<AppMode>().isTv) {
       return TvFocusable(
         onTap: () => _setCategory(c),
+        semanticLabel: c == 'dub' ? 'Dub' : 'Sub',
         child: Material(
           color: selected ? AppColors.accent : AppColors.surface2,
           borderRadius: BorderRadius.circular(8),
           clipBehavior: Clip.antiAlias,
-          child: label,
+          // label is shared with the phone branch below — exclude it here
+          // instead of touching it, so semanticLabel is the only announcement.
+          child: ExcludeSemantics(child: label),
         ),
       );
     }
@@ -3400,13 +3415,16 @@ class _DownloadSheetState extends State<_DownloadSheet> {
         child: TvFocusable(
           scale: 1.0, // full-width row — scaling overflows the sheet edges
           onTap: onTap,
+          semanticLabel: hasQuality ? '$label, ${s.quality!.trim()}' : label,
           child: Material(
             color: sel ? AppColors.accentSoft : AppColors.surface2,
             borderRadius: BorderRadius.circular(10),
             clipBehavior: Clip.antiAlias,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: content,
+              // content is shared with the phone branch below — exclude it
+              // here instead of touching it.
+              child: ExcludeSemantics(child: content),
             ),
           ),
         ),
@@ -3467,11 +3485,14 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     if (sl<AppMode>().isTv) {
       return TvFocusable(
         onTap: openPicker,
+        semanticLabel: 'Season $_season',
         child: Material(
           color: AppColors.surface2,
           borderRadius: BorderRadius.circular(10),
           clipBehavior: Clip.antiAlias,
-          child: visual,
+          // visual is shared with the phone branch below — exclude it here
+          // instead of touching it.
+          child: ExcludeSemantics(child: visual),
         ),
       );
     }
@@ -3576,7 +3597,13 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       ),
     );
     if (sl<AppMode>().isTv) {
-      return TvFocusable(onTap: onTap, child: card);
+      return TvFocusable(
+        onTap: onTap,
+        semanticLabel: hasTitle ? 'Episode $epNum, $title' : 'Episode $epNum',
+        // card is shared with the phone branch below — exclude it here
+        // instead of touching it.
+        child: ExcludeSemantics(child: card),
+      );
     }
     return GestureDetector(onTap: onTap, child: card);
   }
@@ -3585,13 +3612,17 @@ class _DownloadSheetState extends State<_DownloadSheet> {
     if (sl<AppMode>().isTv) {
       return TvFocusable(
         onTap: onTap,
+        semanticLabel: label,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          child: Text(
-            label,
-            style: AppText.caption.copyWith(
-              color: AppColors.accent,
-              fontWeight: FontWeight.w700,
+          // Excluded — semanticLabel above already announces this text.
+          child: ExcludeSemantics(
+            child: Text(
+              label,
+              style: AppText.caption.copyWith(
+                color: AppColors.accent,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -3825,10 +3856,14 @@ class _RelationsTab extends StatelessWidget {
         );
         // TV path: D-pad-navigable TvFocusable wrapper.
         if (tvFocus) {
+          final hasRelationTag = r.relation != null && r.relation!.isNotEmpty;
           return TvFocusable(
             key: ValueKey('tv-rel-$i'),
             onTap: () => onOpen(r),
-            child: visual,
+            semanticLabel: hasRelationTag ? '${r.relation}, ${r.title}' : r.title,
+            // visual is shared with the phone branch below — exclude it here
+            // instead of touching it.
+            child: ExcludeSemantics(child: visual),
           );
         }
         // Phone path: original GestureDetector — byte-identical to the old code.

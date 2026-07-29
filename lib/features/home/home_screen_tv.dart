@@ -251,13 +251,17 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     Widget child,
     VoidCallback onTap, {
     bool autofocus = false,
+    String? semanticLabel,
   }) {
     return TvFocusable(
       autofocus: autofocus,
       variant: TvFocusVariant.float,
       scale: 1.06,
       onTap: onTap,
-      child: child,
+      semanticLabel: semanticLabel,
+      // The button's own label Text is baked into child — exclude it so
+      // TalkBack only hears it once (from semanticLabel above).
+      child: semanticLabel == null ? child : ExcludeSemantics(child: child),
     );
   }
 
@@ -424,6 +428,7 @@ class TvRail extends StatelessWidget {
                           onTap: onSeeAll!,
                           variant: TvFocusVariant.float,
                           scale: 1.10,
+                          semanticLabel: 'See all',
                           child: Container(
                             decoration: BoxDecoration(
                               color: AppColors.surface2,
@@ -439,12 +444,16 @@ class TvRail extends StatelessWidget {
                                   size: 28,
                                 ),
                                 SizedBox(height: 8),
-                                Text(
-                                  'See all',
-                                  style: TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
+                                // Excluded — the focusable above already
+                                // announces 'See all' via semanticLabel.
+                                ExcludeSemantics(
+                                  child: Text(
+                                    'See all',
+                                    style: TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -471,6 +480,7 @@ class TvRail extends StatelessWidget {
                           variant: TvFocusVariant.float,
                           scale: 1.06,
                           onTap: () => onTap(item),
+                          semanticLabel: item.title,
                           child: SizedBox(
                             width: _cardWidth,
                             height: _cardHeight,
@@ -486,14 +496,18 @@ class TvRail extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                        // The focusable above already announces the title —
+                        // exclude this sibling so TalkBack doesn't say it twice.
+                        ExcludeSemantics(
+                          child: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],
@@ -615,6 +629,7 @@ class _TvContinueCard extends StatelessWidget {
             variant: TvFocusVariant.float,
             scale: 1.05,
             onTap: onResume,
+            semanticLabel: '${e.showTitle}, $sub',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
               child: AspectRatio(
@@ -655,22 +670,31 @@ class _TvContinueCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          Text(
-            e.showTitle,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 15,
-              fontWeight: FontWeight.w700,
+          // Both excluded — the focusable above already announces title + sub
+          // together via semanticLabel.
+          ExcludeSemantics(
+            child: Text(
+              e.showTitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            sub,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
+          ExcludeSemantics(
+            child: Text(
+              sub,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 13,
+              ),
+            ),
           ),
         ],
       ),
@@ -702,8 +726,13 @@ class _TvHero extends StatefulWidget {
   final void Function(MediaItem) onPlay;
   final void Function(MediaItem) onInfo;
   final void Function(MediaItem) onToggleList;
-  final Widget Function(Widget child, VoidCallback onTap, {bool autofocus})
-      wrapButton;
+  final Widget Function(
+    Widget child,
+    VoidCallback onTap, {
+    bool autofocus,
+    String? semanticLabel,
+  })
+  wrapButton;
 
   @override
   State<_TvHero> createState() => _TvHeroState();
@@ -856,8 +885,12 @@ class _TvHeroState extends State<_TvHero> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    widget.wrapButton(_playBtn(), () => widget.onPlay(item),
-                        autofocus: true),
+                    widget.wrapButton(
+                      _playBtn(),
+                      () => widget.onPlay(item),
+                      autofocus: true,
+                      semanticLabel: 'Play',
+                    ),
                     const SizedBox(width: 14),
                     widget.wrapButton(
                       _glassBtn(
@@ -866,11 +899,13 @@ class _TvHeroState extends State<_TvHero> {
                         active: inList,
                       ),
                       () => widget.onToggleList(item),
+                      semanticLabel: 'My List',
                     ),
                     const SizedBox(width: 14),
                     widget.wrapButton(
                       _glassBtn(Icons.info_outline_rounded, 'Info'),
                       () => widget.onInfo(item),
+                      semanticLabel: 'Info',
                     ),
                   ],
                 ),

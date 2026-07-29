@@ -445,4 +445,110 @@ void main() {
       expect(rel1, isA<TvFocusable>());
     },
   );
+
+  // ── Semantics labels (TalkBack) ────────────────────────────────────────
+
+  testWidgets(
+    'DetailScreenTv exposes semantics labels for Play/Download/My List and '
+    'episode rows — with no duplicate-text nodes',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(home: DetailScreenTv(item: _testItem)),
+        ),
+      );
+      await tester.pump();
+
+      // Play button — autofocused, label is the visible button text ('Play',
+      // no watch history in this fixture).
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('tv-detail-play'))),
+        matchesSemantics(
+          label: 'Play',
+          isButton: true,
+          isFocusable: true,
+          isFocused: true,
+          hasTapAction: true,
+        ),
+      );
+
+      // Download / My List buttons.
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('tv-detail-download'))),
+        matchesSemantics(
+          label: 'Download',
+          isButton: true,
+          isFocusable: true,
+          hasTapAction: true,
+        ),
+      );
+      expect(
+        tester.getSemantics(find.byKey(const ValueKey('tv-detail-mylist'))),
+        matchesSemantics(
+          label: 'My List',
+          isButton: true,
+          isFocusable: true,
+          hasTapAction: true,
+        ),
+      );
+
+      // Episode rows announce "N. Title" (or "Episode N" when titleless) —
+      // the fixture's episodes are literally titled 'Episode 1'/'2'/'3', and
+      // only ONE node in the tree carries each (the shared _EpisodeRow's own
+      // heading Text is excluded, so it isn't announced twice).
+      for (final label in ['1. Episode 1', '2. Episode 2', '3. Episode 3']) {
+        expect(find.bySemanticsLabel(label), findsOneWidget);
+      }
+
+      // Tab bar — each tab announces its own name.
+      expect(find.bySemanticsLabel('Episodes'), findsOneWidget);
+      expect(find.bySemanticsLabel('Cast'), findsOneWidget);
+      expect(find.bySemanticsLabel('Relations'), findsOneWidget);
+      expect(find.bySemanticsLabel('Details'), findsOneWidget);
+
+      handle.dispose();
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv season chips expose "Season N" as their semantics label',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      final seasonCubit = DetailCubit(
+        repo: _StubSourceRepository(_testDetailMultiSeason),
+        url: _testDetailMultiSeason.url,
+        sourceId: _testDetailMultiSeason.sourceId,
+        prefs: _FakeTitlePrefs(),
+      );
+      await seasonCubit.load();
+      addTearDown(seasonCubit.close);
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: seasonCubit,
+          child: const MaterialApp(
+            home: DetailScreenTv(
+              item: MediaItem(
+                id: 'ms-show',
+                title: 'Multi Season Anime',
+                url: 'http://test/ms',
+                type: ProviderType.anime,
+                sourceId: 'test',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Only ONE node carries each season label — the chip's own "Season N"
+      // Text is excluded so semanticLabel is the sole announcement.
+      expect(find.bySemanticsLabel('Season 1'), findsOneWidget);
+      expect(find.bySemanticsLabel('Season 2'), findsOneWidget);
+
+      handle.dispose();
+    },
+  );
 }

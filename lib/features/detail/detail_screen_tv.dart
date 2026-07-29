@@ -597,16 +597,23 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                           category,
                                         )
                                       : () {},
-                                  child: _PlayButton(
-                                    label: buttonLabel,
-                                    onPressed: eps.isNotEmpty
-                                        ? () => _openPlayer(
-                                            eps,
-                                            resumeIdx,
-                                            detail,
-                                            category,
-                                          )
-                                        : null,
+                                  semanticLabel: buttonLabel,
+                                  // _PlayButton is shared with the phone view —
+                                  // exclude its own label Text here instead of
+                                  // touching the widget, so semanticLabel above
+                                  // is the only thing TalkBack hears.
+                                  child: ExcludeSemantics(
+                                    child: _PlayButton(
+                                      label: buttonLabel,
+                                      onPressed: eps.isNotEmpty
+                                          ? () => _openPlayer(
+                                              eps,
+                                              resumeIdx,
+                                              detail,
+                                              category,
+                                            )
+                                          : null,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 10),
@@ -619,13 +626,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     episodesBySeason: episodesBySeason,
                                     initialSeason: currentSeason,
                                   ),
-                                  child: _DownloadButton(
-                                    label: 'Download',
-                                    onPressed: () => _openDownloadSheet(
-                                      detail: detail,
-                                      category: category,
-                                      episodesBySeason: episodesBySeason,
-                                      initialSeason: currentSeason,
+                                  semanticLabel: 'Download',
+                                  // _DownloadButton is shared with the phone
+                                  // view — exclude its Text, same as Play above.
+                                  child: ExcludeSemantics(
+                                    child: _DownloadButton(
+                                      label: 'Download',
+                                      onPressed: () => _openDownloadSheet(
+                                        detail: detail,
+                                        category: category,
+                                        episodesBySeason: episodesBySeason,
+                                        initialSeason: currentSeason,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -637,16 +649,23 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-ep-search'),
                                   onTap: _openEpisodeSearch,
-                                  child: _IconAction(
-                                    icon: _epQuery.isEmpty
-                                        ? Icons.search_rounded
-                                        : Icons.filter_alt_rounded,
-                                    active: _epQuery.isNotEmpty,
-                                    label: _epQuery.isEmpty
-                                        ? 'Search episodes'
-                                        : 'Search: $_epQuery',
-                                    tooltip: 'Search episodes',
-                                    onTap: _openEpisodeSearch,
+                                  semanticLabel: _epQuery.isEmpty
+                                      ? 'Search episodes'
+                                      : 'Search: $_epQuery',
+                                  // _IconAction is shared with the phone view —
+                                  // exclude its own label, same as Play above.
+                                  child: ExcludeSemantics(
+                                    child: _IconAction(
+                                      icon: _epQuery.isEmpty
+                                          ? Icons.search_rounded
+                                          : Icons.filter_alt_rounded,
+                                      active: _epQuery.isNotEmpty,
+                                      label: _epQuery.isEmpty
+                                          ? 'Search episodes'
+                                          : 'Search: $_epQuery',
+                                      tooltip: 'Search episodes',
+                                      onTap: _openEpisodeSearch,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(height: 10),
@@ -654,16 +673,22 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-mylist'),
                                   onTap: () => _openListSheet(detail),
-                                  child: _IconAction(
-                                    icon: _inMyList
-                                        ? Icons.check_rounded
-                                        : Icons.add_rounded,
-                                    active: _inMyList,
-                                    label: _status?.shortLabel ?? 'My List',
-                                    tooltip: _inMyList
-                                        ? 'Change status'
-                                        : 'Add to My List',
-                                    onTap: () => _openListSheet(detail),
+                                  semanticLabel:
+                                      _status?.shortLabel ?? 'My List',
+                                  // _IconAction is shared with the phone view —
+                                  // exclude its own label, same as Play above.
+                                  child: ExcludeSemantics(
+                                    child: _IconAction(
+                                      icon: _inMyList
+                                          ? Icons.check_rounded
+                                          : Icons.add_rounded,
+                                      active: _inMyList,
+                                      label: _status?.shortLabel ?? 'My List',
+                                      tooltip: _inMyList
+                                          ? 'Change status'
+                                          : 'Add to My List',
+                                      onTap: () => _openListSheet(detail),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -699,25 +724,31 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                       key: ValueKey('tv-detail-tab-$i'),
                                       variant: TvFocusVariant.pill,
                                       onTap: () => setState(() => _tab = i),
+                                      semanticLabel: _tabLabels[i],
                                       builder: (focused) => Padding(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 14,
                                           vertical: 8,
                                         ),
-                                        child: Text(
-                                          _tabLabels[i],
-                                          style: AppText.headline.copyWith(
-                                            fontSize: 15,
-                                            // Active tab reads from bright white
-                                            // + bold, not a red tint.
-                                            color: focused
-                                                ? Colors.black
-                                                : (_tab == i
-                                                    ? AppColors.textPrimary
-                                                    : AppColors.textSecondary),
-                                            fontWeight: _tab == i
-                                                ? FontWeight.w700
-                                                : FontWeight.w500,
+                                        // Excluded — semanticLabel above
+                                        // already announces the tab name.
+                                        child: ExcludeSemantics(
+                                          child: Text(
+                                            _tabLabels[i],
+                                            style: AppText.headline.copyWith(
+                                              fontSize: 15,
+                                              // Active tab reads from bright
+                                              // white + bold, not a red tint.
+                                              color: focused
+                                                  ? Colors.black
+                                                  : (_tab == i
+                                                        ? AppColors.textPrimary
+                                                        : AppColors
+                                                              .textSecondary),
+                                              fontWeight: _tab == i
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -904,6 +935,13 @@ class _TvEpisodeList extends StatelessWidget {
           // Wrap the existing _EpisodeRow in TvFocusable so D-pad up/down +
           // OK-select navigates + triggers playback. The inner InkWell (touch)
           // still works; both paths fire the same callback.
+          //
+          // Same heading _EpisodeRow builds internally ("N. Title" or
+          // "Episode N") — used as the TalkBack label since _EpisodeRow is
+          // shared with the phone view and isn't touched here.
+          final heading = displayTitle.isNotEmpty
+              ? '$epNum. $displayTitle'
+              : 'Episode $epNum';
           return TvFocusable(
             key: ValueKey('tv-ep-$fullIndex'),
             onTap: () => widget.onOpen(fullIndex),
@@ -912,21 +950,24 @@ class _TvEpisodeList extends StatelessWidget {
             // Same treatment for series and movies.
             scale: 1.0,
             foregroundHighlight: true,
-            child: RepaintBoundary(
-              child: _EpisodeRow(
-                ep: ep,
-                epNum: epNum,
-                displayTitle: displayTitle,
-                coverUrl: widget.coverUrl,
-                coverHeaders: widget.coverHeaders,
-                isWatched: watched,
-                isInProgress: inProgress,
-                isResume: resume,
-                fraction: fraction,
-                onTap: () => widget.onOpen(fullIndex),
-                onDownload: () => widget.onDownload(ep),
-                sourceId: widget.sourceId,
-                showId: widget.showId,
+            semanticLabel: heading,
+            child: ExcludeSemantics(
+              child: RepaintBoundary(
+                child: _EpisodeRow(
+                  ep: ep,
+                  epNum: epNum,
+                  displayTitle: displayTitle,
+                  coverUrl: widget.coverUrl,
+                  coverHeaders: widget.coverHeaders,
+                  isWatched: watched,
+                  isInProgress: inProgress,
+                  isResume: resume,
+                  fraction: fraction,
+                  onTap: () => widget.onOpen(fullIndex),
+                  onDownload: () => widget.onDownload(ep),
+                  sourceId: widget.sourceId,
+                  showId: widget.showId,
+                ),
               ),
             ),
           );
@@ -982,6 +1023,7 @@ class _TvSeasonChips extends StatelessWidget {
             key: ValueKey('tv-season-$s'),
             variant: TvFocusVariant.pill,
             onTap: () => onSelect(s),
+            semanticLabel: 'Season $s',
             builder: (focused) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
               decoration: BoxDecoration(
@@ -992,13 +1034,16 @@ class _TvSeasonChips extends StatelessWidget {
                     : (selected ? Colors.white : AppColors.surface2),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Text(
-                'Season $s',
-                style: AppText.caption.copyWith(
-                  color: focused
-                      ? Colors.black
-                      : (selected ? Colors.black : AppColors.textPrimary),
-                  fontWeight: FontWeight.w600,
+              // Excluded — semanticLabel above already announces the season.
+              child: ExcludeSemantics(
+                child: Text(
+                  'Season $s',
+                  style: AppText.caption.copyWith(
+                    color: focused
+                        ? Colors.black
+                        : (selected ? Colors.black : AppColors.textPrimary),
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ),
