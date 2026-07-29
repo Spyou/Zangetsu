@@ -32,6 +32,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
+import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
@@ -472,4 +473,38 @@ void main() {
     },
   );
 
+  testWidgets(
+    'RootShellTv nav items expose their visible label as the semantics label',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: const MaterialApp(home: RootShellTv()),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Home's nav item wraps the 'Home' Text — its TvFocusable ancestor
+      // should carry 'Home' as the TalkBack name.
+      final homeFocusable = find.ancestor(
+        of: find.text('Home'),
+        matching: find.byType(TvFocusable),
+      );
+      expect(
+        tester.getSemantics(homeFocusable),
+        matchesSemantics(
+          label: 'Home',
+          isButton: true,
+          isFocusable: true,
+          hasTapAction: true,
+        ),
+      );
+
+      handle.dispose();
+    },
+  );
 }

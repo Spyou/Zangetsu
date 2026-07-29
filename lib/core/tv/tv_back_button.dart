@@ -31,6 +31,7 @@ class TvBackButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return TvFocusable(
       autofocus: autofocus,
+      semanticLabel: 'Back',
       onTap: () => Navigator.of(context).maybePop(),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

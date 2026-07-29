@@ -345,6 +345,7 @@ class _RootShellTvState extends State<RootShellTv> {
     return TvFocusable(
       focusNode: _navNodes[i],
       variant: TvFocusVariant.pill,
+      semanticLabel: item.label,
       onTap: () => _onItemSelected(i),
       builder: (focused) {
         final Color fg = focused

@@ -118,4 +118,26 @@ void main() {
       expect(secondRouteActive, isFalse); // sentinel
     },
   );
+
+  testWidgets(
+    'TvBackButton exposes a "Back" semantics label for TalkBack',
+    (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(const MaterialApp(home: TvBackButton()));
+      await tester.pumpAndSettle();
+
+      final node = tester.getSemantics(find.byType(TvFocusable));
+      expect(
+        node,
+        matchesSemantics(
+          label: 'Back',
+          isButton: true,
+          isFocusable: true,
+          hasTapAction: true,
+        ),
+      );
+
+      handle.dispose();
+    },
+  );
 }

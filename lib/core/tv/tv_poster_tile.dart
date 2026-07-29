@@ -38,6 +38,7 @@ class TvPosterTile extends StatelessWidget {
             variant: TvFocusVariant.float,
             scale: 1.04,
             onTap: onTap,
+            semanticLabel: title,
             child: PosterCard(
               title: title,
               imageUrl: imageUrl,
@@ -51,14 +52,18 @@ class TvPosterTile extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        // The focusable above already announces the title via semanticLabel —
+        // exclude this sibling so TalkBack doesn't say it twice.
+        ExcludeSemantics(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
