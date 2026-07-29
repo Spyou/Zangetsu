@@ -180,37 +180,42 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
               : '?';
           return SettingsCard(
             children: [
-              TvFocusable(scale: 1.0, 
+              TvFocusable(scale: 1.0,
                 autofocus: true,
                 onTap: () => _push(const ProfileScreen()),
-                child: ListTile(
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                  leading: CircleAvatar(
-                    radius: 22,
-                    backgroundColor: AppColors.surface2,
-                    backgroundImage: auth.avatarUrl != null
-                        ? CachedNetworkImageProvider(auth.avatarUrl!)
-                        : null,
-                    child: auth.avatarUrl == null
-                        ? Text(initial, style: AppText.headline)
-                        : null,
+                semanticLabel: auth.displayName,
+                // Whole tile is excluded — semanticLabel above is the one
+                // announcement (name only, not the email subtitle).
+                child: ExcludeSemantics(
+                  child: ListTile(
+                    contentPadding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    leading: CircleAvatar(
+                      radius: 22,
+                      backgroundColor: AppColors.surface2,
+                      backgroundImage: auth.avatarUrl != null
+                          ? CachedNetworkImageProvider(auth.avatarUrl!)
+                          : null,
+                      child: auth.avatarUrl == null
+                          ? Text(initial, style: AppText.headline)
+                          : null,
+                    ),
+                    title: Text(
+                      auth.displayName,
+                      style: AppText.headline.copyWith(fontSize: 15),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      auth.user?.email ?? '',
+                      style: AppText.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: _kChevron,
+                    // Touch-disabled on TV; TvFocusable handles OK-key activation.
+                    onTap: null,
                   ),
-                  title: Text(
-                    auth.displayName,
-                    style: AppText.headline.copyWith(fontSize: 15),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    auth.user?.email ?? '',
-                    style: AppText.caption,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  trailing: _kChevron,
-                  // Touch-disabled on TV; TvFocusable handles OK-key activation.
-                  onTap: null,
                 ),
               ),
             ],
@@ -219,14 +224,17 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
         // Guest state
         return SettingsCard(
           children: [
-            TvFocusable(scale: 1.0, 
+            TvFocusable(scale: 1.0,
               autofocus: true,
               onTap: () => _push(const LoginScreen()),
-              child: const SettingsTile(
-                icon: Icons.person_outline_rounded,
-                title: 'Sign in',
-                subtitle: 'Sync your list & continue watching',
-                trailing: _kChevron,
+              semanticLabel: 'Sign in',
+              child: const ExcludeSemantics(
+                child: SettingsTile(
+                  icon: Icons.person_outline_rounded,
+                  title: 'Sign in',
+                  subtitle: 'Sync your list & continue watching',
+                  trailing: _kChevron,
+                ),
               ),
             ),
           ],
@@ -268,11 +276,14 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       TvFocusable(scale: 1.0,
                         onTap: () => _push(const BackupScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.cloud_sync_outlined,
-                          title: 'Backup & Restore',
-                          subtitle: 'Save your sources, list & settings',
-                          trailing: _kChevron,
+                        semanticLabel: 'Backup & Restore',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.cloud_sync_outlined,
+                            title: 'Backup & Restore',
+                            subtitle: 'Save your sources, list & settings',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
                     ],
@@ -281,55 +292,70 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Sources ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () async {
                           await _push(const SourcesScreen());
                           if (mounted) setState(() {});
                         },
-                        child: SettingsTile(
-                          icon: Icons.dns_rounded,
-                          title: 'Providers',
-                          subtitle: '$enabledCount enabled',
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0, 
-                        onTap: _pickActiveSourceTv,
-                        child: SettingsTile(
-                          icon: Icons.swap_horiz_rounded,
-                          title: 'Active source',
-                          subtitle: _activeLabel(activeId),
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0, 
-                        onTap: () => _push(const SourceHealthScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.health_and_safety_outlined,
-                          title: 'Source health',
-                          subtitle: 'Test which sources are working',
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      if (Platform.isAndroid) ...[
-                        TvFocusable(scale: 1.0, 
-                          onTap: _addCloudStreamRepo,
-                          child: const SettingsTile(
-                            icon: Icons.extension_outlined,
-                            title: 'Add CloudStream repository',
-                            subtitle: 'Install CloudStream sources',
+                        semanticLabel: 'Providers',
+                        child: ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.dns_rounded,
+                            title: 'Providers',
+                            subtitle: '$enabledCount enabled',
                             trailing: _kChevron,
                           ),
                         ),
-                        TvFocusable(scale: 1.0, 
-                          onTap: _pickDnsTv,
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: _pickActiveSourceTv,
+                        semanticLabel: 'Active source',
+                        child: ExcludeSemantics(
                           child: SettingsTile(
-                            icon: Icons.vpn_lock_outlined,
-                            title: 'DNS',
-                            subtitle: _dnsChoice == CsDns.off
-                                ? 'Off · bypass ISP blocks on CS sources'
-                                : CsDns.labelFor(_dnsChoice),
+                            icon: Icons.swap_horiz_rounded,
+                            title: 'Active source',
+                            subtitle: _activeLabel(activeId),
                             trailing: _kChevron,
+                          ),
+                        ),
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: () => _push(const SourceHealthScreen()),
+                        semanticLabel: 'Source health',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.health_and_safety_outlined,
+                            title: 'Source health',
+                            subtitle: 'Test which sources are working',
+                            trailing: _kChevron,
+                          ),
+                        ),
+                      ),
+                      if (Platform.isAndroid) ...[
+                        TvFocusable(scale: 1.0,
+                          onTap: _addCloudStreamRepo,
+                          semanticLabel: 'Add CloudStream repository',
+                          child: const ExcludeSemantics(
+                            child: SettingsTile(
+                              icon: Icons.extension_outlined,
+                              title: 'Add CloudStream repository',
+                              subtitle: 'Install CloudStream sources',
+                              trailing: _kChevron,
+                            ),
+                          ),
+                        ),
+                        TvFocusable(scale: 1.0,
+                          onTap: _pickDnsTv,
+                          semanticLabel: 'DNS',
+                          child: ExcludeSemantics(
+                            child: SettingsTile(
+                              icon: Icons.vpn_lock_outlined,
+                              title: 'DNS',
+                              subtitle: _dnsChoice == CsDns.off
+                                  ? 'Off · bypass ISP blocks on CS sources'
+                                  : CsDns.labelFor(_dnsChoice),
+                              trailing: _kChevron,
+                            ),
                           ),
                         ),
                       ],
@@ -339,72 +365,93 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── App ─────────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () => _push(const HowItWorksScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.help_outline_rounded,
-                          title: 'How it works',
-                          subtitle: 'New here? A quick guide',
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0, 
-                        onTap: () => _push(const PlaybackSettingsScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.play_circle_outline,
-                          title: 'Playback',
-                          subtitle: 'Quality, autoplay, speed',
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0, 
-                        onTap: () => _push(const DownloadsScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.download_outlined,
-                          title: 'Downloads',
-                          subtitle: 'Watch offline',
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0, 
-                        onTap: _pickSearchLayoutTv,
-                        child: SettingsTile(
-                          icon: Icons.search_rounded,
-                          title: 'Search layout',
-                          subtitle: sl<SearchPrefs>().layout.label,
-                          trailing: _kChevron,
-                        ),
-                      ),
-                      if (Platform.isAndroid) ...[
-                        TvFocusable(scale: 1.0, 
-                          onTap: () => _push(const SubscriptionsScreen()),
-                          child: const SettingsTile(
-                            icon: Icons.notifications_none_rounded,
-                            title: 'Notifications',
-                            subtitle: 'New-episode alerts for subscribed shows',
+                        semanticLabel: 'How it works',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.help_outline_rounded,
+                            title: 'How it works',
+                            subtitle: 'New here? A quick guide',
                             trailing: _kChevron,
                           ),
                         ),
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: () => _push(const PlaybackSettingsScreen()),
+                        semanticLabel: 'Playback',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.play_circle_outline,
+                            title: 'Playback',
+                            subtitle: 'Quality, autoplay, speed',
+                            trailing: _kChevron,
+                          ),
+                        ),
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: () => _push(const DownloadsScreen()),
+                        semanticLabel: 'Downloads',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.download_outlined,
+                            title: 'Downloads',
+                            subtitle: 'Watch offline',
+                            trailing: _kChevron,
+                          ),
+                        ),
+                      ),
+                      TvFocusable(scale: 1.0,
+                        onTap: _pickSearchLayoutTv,
+                        semanticLabel: 'Search layout',
+                        child: ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.search_rounded,
+                            title: 'Search layout',
+                            subtitle: sl<SearchPrefs>().layout.label,
+                            trailing: _kChevron,
+                          ),
+                        ),
+                      ),
+                      if (Platform.isAndroid) ...[
+                        TvFocusable(scale: 1.0,
+                          onTap: () => _push(const SubscriptionsScreen()),
+                          semanticLabel: 'Notifications',
+                          child: const ExcludeSemantics(
+                            child: SettingsTile(
+                              icon: Icons.notifications_none_rounded,
+                              title: 'Notifications',
+                              subtitle: 'New-episode alerts for subscribed shows',
+                              trailing: _kChevron,
+                            ),
+                          ),
+                        ),
                         // Toggle: OK flips the setting; Switch shows current state.
-                        TvFocusable(scale: 1.0, 
+                        TvFocusable(scale: 1.0,
                           onTap: () async {
                             final cm = sl<CloudStreamManager>();
                             await cm.setNotifyUpdates(!cm.notifyUpdates);
                             if (mounted) setState(() {});
                           },
-                          child: SettingsTile(
-                            icon: Icons.update_rounded,
-                            title: 'Source updates',
-                            subtitle:
-                                'Notify when installed sources have updates',
-                            // onTap null so InkWell is disabled; TvFocusable owns OK.
-                            trailing: Switch.adaptive(
-                              value: sl<CloudStreamManager>().notifyUpdates,
-                              activeThumbColor: AppColors.accent,
-                              onChanged: (v) async {
-                                await sl<CloudStreamManager>().setNotifyUpdates(v);
-                                if (mounted) setState(() {});
-                              },
+                          semanticLabel: 'Source updates, '
+                              '${sl<CloudStreamManager>().notifyUpdates ? 'on' : 'off'}',
+                          // Whole tile excluded, including the Switch — its
+                          // on/off state is already in semanticLabel above.
+                          child: ExcludeSemantics(
+                            child: SettingsTile(
+                              icon: Icons.update_rounded,
+                              title: 'Source updates',
+                              subtitle:
+                                  'Notify when installed sources have updates',
+                              // onTap null so InkWell is disabled; TvFocusable owns OK.
+                              trailing: Switch.adaptive(
+                                value: sl<CloudStreamManager>().notifyUpdates,
+                                activeThumbColor: AppColors.accent,
+                                onChanged: (v) async {
+                                  await sl<CloudStreamManager>().setNotifyUpdates(v);
+                                  if (mounted) setState(() {});
+                                },
+                              ),
                             ),
                           ),
                         ),
@@ -415,12 +462,15 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Storage ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () => _push(const StorageSettingsScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.sd_storage_outlined,
-                          title: 'Storage',
-                          trailing: _kChevron,
+                        semanticLabel: 'Storage',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.sd_storage_outlined,
+                            title: 'Storage',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
                     ],
@@ -434,35 +484,44 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           await _push(const ConnectionsScreenTv());
                           if (mounted) setState(() {});
                         },
-                        child: const SettingsTile(
-                          icon: Icons.sync_alt_rounded,
-                          title: 'Connections',
-                          subtitle: 'AniList, MyAnimeList, Simkl',
-                          trailing: _kChevron,
+                        semanticLabel: 'Connections',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.sync_alt_rounded,
+                            title: 'Connections',
+                            subtitle: 'AniList, MyAnimeList, Simkl',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () async {
                           await _push(const DiscordSettingsScreen());
                           if (mounted) setState(() {});
                         },
-                        child: const SettingsTile(
-                          icon: Icons.gamepad_outlined,
-                          title: 'Discord',
-                          subtitle: 'Rich Presence — show your status',
-                          trailing: _kChevron,
+                        semanticLabel: 'Discord',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.gamepad_outlined,
+                            title: 'Discord',
+                            subtitle: 'Rich Presence — show your status',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () async {
                           await _push(const PrivacySettingsScreen());
                           if (mounted) setState(() {});
                         },
-                        child: const SettingsTile(
-                          icon: Icons.shield_outlined,
-                          title: 'Privacy',
-                          subtitle: 'NSFW sources',
-                          trailing: _kChevron,
+                        semanticLabel: 'Privacy',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.shield_outlined,
+                            title: 'Privacy',
+                            subtitle: 'NSFW sources',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
                     ],
@@ -471,24 +530,30 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                   // ── Support ─────────────────────────────────────────────
                   SettingsCard(
                     children: [
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () => _push(const DonateScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.coffee_rounded,
-                          title: 'Support the app',
-                          subtitle: 'Buy me a coffee',
-                          trailing: _kChevron,
+                        semanticLabel: 'Support the app',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.coffee_rounded,
+                            title: 'Support the app',
+                            subtitle: 'Buy me a coffee',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () => _push(const DevelopersScreen()),
-                        child: const SettingsTile(
-                          icon: Icons.people_outline_rounded,
-                          title: 'Developers',
-                          trailing: _kChevron,
+                        semanticLabel: 'Developers',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.people_outline_rounded,
+                            title: 'Developers',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
-                      TvFocusable(scale: 1.0, 
+                      TvFocusable(scale: 1.0,
                         onTap: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
@@ -497,30 +562,39 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           );
                           maybeShowUpdateDialog(context, manual: true);
                         },
-                        child: const SettingsTile(
-                          icon: Icons.system_update_rounded,
-                          title: 'Check for updates',
-                          subtitle: 'Get the latest version from GitHub',
-                          trailing: _kChevron,
+                        semanticLabel: 'Check for updates',
+                        child: const ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.system_update_rounded,
+                            title: 'Check for updates',
+                            subtitle: 'Get the latest version from GitHub',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
                       if (kExoSpikeEnabled)
                         TvFocusable(
                           scale: 1.0,
                           onTap: () => _push(const TvExoSpikeScreen()),
-                          child: const SettingsTile(
-                            icon: Icons.speed_rounded,
-                            title: 'ExoPlayer spike (dev)',
-                            subtitle: 'SP0 — test SurfaceView playback smoothness',
+                          semanticLabel: 'ExoPlayer spike (dev)',
+                          child: const ExcludeSemantics(
+                            child: SettingsTile(
+                              icon: Icons.speed_rounded,
+                              title: 'ExoPlayer spike (dev)',
+                              subtitle: 'SP0 — test SurfaceView playback smoothness',
+                            ),
                           ),
                         ),
                       TvFocusable(scale: 1.0,
                         onTap: () => _push(const AboutSettingsScreen()),
-                        child: SettingsTile(
-                          icon: Icons.info_outline_rounded,
-                          title: 'About',
-                          subtitle: 'v$kAppVersion',
-                          trailing: _kChevron,
+                        semanticLabel: 'About',
+                        child: ExcludeSemantics(
+                          child: SettingsTile(
+                            icon: Icons.info_outline_rounded,
+                            title: 'About',
+                            subtitle: 'v$kAppVersion',
+                            trailing: _kChevron,
+                          ),
                         ),
                       ),
                     ],
@@ -582,25 +656,28 @@ class _TvOptionPicker<T> extends StatelessWidget {
             const Divider(height: 1, color: AppColors.hairline),
             // ── Option rows
             for (int i = 0; i < options.length; i++)
-              TvFocusable(scale: 1.0, 
+              TvFocusable(scale: 1.0,
                 // Autofocus on the current value so D-pad lands there on open.
                 autofocus: options[i].$1 == current,
                 onTap: () => Navigator.of(context).pop(options[i].$1),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(options[i].$2, style: AppText.headline),
-                      ),
-                      if (options[i].$1 == current)
-                        Icon(
-                          Icons.check,
-                          color: AppColors.accent,
-                          size: 20,
+                semanticLabel: options[i].$2,
+                child: ExcludeSemantics(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(options[i].$2, style: AppText.headline),
                         ),
-                    ],
+                        if (options[i].$1 == current)
+                          Icon(
+                            Icons.check,
+                            color: AppColors.accent,
+                            size: 20,
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -668,25 +745,31 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
         ),
       ),
       actions: [
-        TvFocusable(scale: 1.0, 
+        TvFocusable(scale: 1.0,
           onTap: () => Navigator.pop(context),
-          child: TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
+          semanticLabel: 'Cancel',
+          child: ExcludeSemantics(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
+              ),
             ),
           ),
         ),
-        TvFocusable(scale: 1.0, 
+        TvFocusable(scale: 1.0,
           onTap: () => Navigator.pop(context, _controller.text.trim()),
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
+          semanticLabel: 'Add',
+          child: ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, _controller.text.trim()),
+              child: const Text('Add'),
             ),
-            onPressed: () => Navigator.pop(context, _controller.text.trim()),
-            child: const Text('Add'),
           ),
         ),
       ],

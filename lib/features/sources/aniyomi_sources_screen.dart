@@ -702,31 +702,34 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                               child: TvFocusable(
                                 scale: 1.0,
                                 onTap: widget.onAddRepo,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.add,
-                                        color: AppColors.accent,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Add Aniyomi repo',
-                                        style: AppText.headline.copyWith(
+                                semanticLabel: 'Add Aniyomi repo',
+                                child: ExcludeSemantics(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.add,
                                           color: AppColors.accent,
+                                          size: 18,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Add Aniyomi repo',
+                                          style: AppText.headline.copyWith(
+                                            color: AppColors.accent,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -772,22 +775,26 @@ class _AniTvTabChip extends StatelessWidget {
       scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.18)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.accent : Colors.transparent,
-            width: 2,
+      semanticLabel: title,
+      // Excluded — semanticLabel above already announces the tab name.
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.18)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.accent : Colors.transparent,
+              width: 2,
+            ),
           ),
-        ),
-        child: Text(
-          title,
-          style: AppText.headline.copyWith(
-            color: selected ? AppColors.accent : AppColors.textSecondary,
+          child: Text(
+            title,
+            style: AppText.headline.copyWith(
+              color: selected ? AppColors.accent : AppColors.textSecondary,
+            ),
           ),
         ),
       ),
@@ -907,6 +914,9 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
                     content: Text('Active source: ${source.displayName}')),
               );
         },
+        semanticLabel: active
+            ? '${source.displayName}, active'
+            : '${source.displayName}, set active source',
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
@@ -915,32 +925,39 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
           ),
           child: Row(
             children: [
+              // Excluded — semanticLabel above already announces the name;
+              // the settings gear below is its own separate focusable and
+              // keeps its own semantics.
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      source.displayName,
-                      style: AppText.headline.copyWith(
-                        color:
-                            active ? AppColors.accent : AppColors.textPrimary,
-                        fontWeight: active ? FontWeight.w600 : null,
-                      ),
-                    ),
-                    if (lang.isNotEmpty) ...[
-                      const SizedBox(height: 2),
+                child: ExcludeSemantics(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        'aniyomi • $lang',
-                        style: AppText.caption,
+                        source.displayName,
+                        style: AppText.headline.copyWith(
+                          color: active
+                              ? AppColors.accent
+                              : AppColors.textPrimary,
+                          fontWeight: active ? FontWeight.w600 : null,
+                        ),
                       ),
+                      if (lang.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'aniyomi • $lang',
+                          style: AppText.caption,
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
               if (_hasSettings)
                 TvFocusable(
                   scale: 1.0,
                   onTap: _openSettings,
+                  semanticLabel: '${source.displayName}, settings',
                   child: const Padding(
                     padding: EdgeInsets.all(8),
                     child: Icon(Icons.tune_rounded,
@@ -1112,6 +1129,8 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
           TvFocusable(
             scale: 1.0,
             onTap: () => setState(() => _expanded = !_expanded),
+            semanticLabel: '$_repoDisplayName, '
+                '${_fetching ? 'loading' : _fetchError != null ? 'error' : '${entries.length} extensions'}',
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               decoration: BoxDecoration(
@@ -1130,26 +1149,33 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // Excluded — semanticLabel above already announces the
+                  // repo name and status.
                   Expanded(
-                    child: Text(
-                      _repoDisplayName,
-                      style: AppText.headline,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: ExcludeSemantics(
+                      child: Text(
+                        _repoDisplayName,
+                        style: AppText.headline,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
-                  Text(
-                    _fetching
-                        ? 'Loading…'
-                        : _fetchError != null
-                        ? 'Error'
-                        : '${entries.length} ext.',
-                    style: AppText.caption,
+                  ExcludeSemantics(
+                    child: Text(
+                      _fetching
+                          ? 'Loading…'
+                          : _fetchError != null
+                          ? 'Error'
+                          : '${entries.length} ext.',
+                      style: AppText.caption,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
                     scale: 1.0,
                     onTap: widget.onRemove,
+                    semanticLabel: '$_repoDisplayName, remove repo',
                     child: const Icon(
                       Icons.delete_outline,
                       color: AppColors.textSecondary,
@@ -1266,61 +1292,65 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
       child: TvFocusable(
         scale: 1.0,
         onTap: installed ? _uninstall : _install,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            entry.name,
-                            style: AppText.headline.copyWith(fontSize: 15),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+        semanticLabel: '${entry.name}, ${installed ? 'uninstall' : 'install'}',
+        child: ExcludeSemantics(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              entry.name,
+                              style: AppText.headline.copyWith(fontSize: 15),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
-                        if (entry.nsfw) ...[
-                          const SizedBox(width: 8),
-                          const _AniScreenNsfwBadge(),
+                          if (entry.nsfw) ...[
+                            const SizedBox(width: 8),
+                            const _AniScreenNsfwBadge(),
+                          ],
                         ],
+                      ),
+                      if (entry.lang.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(entry.lang, style: AppText.caption),
                       ],
-                    ),
-                    if (entry.lang.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(entry.lang, style: AppText.caption),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              if (_busy)
-                SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.accent,
-                  ),
-                )
-              else
-                Text(
-                  installed ? 'Installed' : 'Install',
-                  style: AppText.caption.copyWith(
-                    color:
-                        installed ? AppColors.textSecondary : AppColors.accent,
-                    fontWeight: FontWeight.w700,
                   ),
                 ),
-            ],
+                const SizedBox(width: 12),
+                if (_busy)
+                  SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.accent,
+                    ),
+                  )
+                else
+                  Text(
+                    installed ? 'Installed' : 'Install',
+                    style: AppText.caption.copyWith(
+                      color: installed
+                          ? AppColors.textSecondary
+                          : AppColors.accent,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1407,13 +1437,16 @@ Future<bool> _aniScreenTvConfirm(
                     scale: 1.0,
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        'Cancel',
-                        style: AppText.body.copyWith(
-                            color: AppColors.textSecondary),
+                    semanticLabel: 'Cancel',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          'Cancel',
+                          style: AppText.body.copyWith(
+                              color: AppColors.textSecondary),
+                        ),
                       ),
                     ),
                   ),
@@ -1422,13 +1455,16 @@ Future<bool> _aniScreenTvConfirm(
                   TvFocusable(
                     scale: 1.0,
                     onTap: () => Navigator.pop(ctx, true),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        confirmLabel,
-                        style: AppText.body
-                            .copyWith(color: AppColors.accent),
+                    semanticLabel: confirmLabel,
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          confirmLabel,
+                          style: AppText.body
+                              .copyWith(color: AppColors.accent),
+                        ),
                       ),
                     ),
                   ),
@@ -1508,24 +1544,30 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
         TvFocusable(
           scale: 1.0,
           onTap: () => Navigator.of(context).pop(),
-          child: TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
+          semanticLabel: 'Cancel',
+          child: ExcludeSemantics(
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
+              ),
             ),
           ),
         ),
         TvFocusable(
           scale: 1.0,
           onTap: _submit,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
+          semanticLabel: 'Add',
+          child: ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _submit,
+              child: const Text('Add'),
             ),
-            onPressed: _submit,
-            child: const Text('Add'),
           ),
         ),
       ],

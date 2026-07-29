@@ -182,4 +182,49 @@ void main() {
       }
     },
   );
+
+  testWidgets(
+    'SettingsScreenTv exposes semantics labels for its tiles — with no '
+    'duplicate-text nodes',
+    (tester) async {
+      _mockPathProvider(tester);
+      final authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+      addTearDown(authCubit.close);
+      final handle = tester.ensureSemantics();
+
+      await tester.pumpWidget(
+        _buildUnderTest(authCubit: authCubit, activeCubit: activeCubit),
+      );
+      await tester.pumpAndSettle();
+
+      // Guest state: the Sign-in tile is first and carries autofocus. Its
+      // ListTile/SettingsTile content is excluded, so this is the only node.
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('Sign in')),
+        matchesSemantics(
+          label: 'Sign in',
+          isButton: true,
+          isFocusable: true,
+          isFocused: true,
+          hasTapAction: true,
+        ),
+      );
+
+      // A few more tiles visible in the default test viewport, each a
+      // single announced node (no separate title/subtitle Text nodes).
+      for (final label in ['Providers', 'Active source', 'Source health']) {
+        expect(
+          tester.getSemantics(find.bySemanticsLabel(label)),
+          matchesSemantics(
+            label: label,
+            isButton: true,
+            isFocusable: true,
+            hasTapAction: true,
+          ),
+        );
+      }
+
+      handle.dispose();
+    },
+  );
 }

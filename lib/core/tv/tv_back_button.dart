@@ -33,22 +33,27 @@ class TvBackButton extends StatelessWidget {
       autofocus: autofocus,
       semanticLabel: 'Back',
       onTap: () => Navigator.of(context).maybePop(),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.arrow_back_rounded,
-              color: AppColors.textPrimary,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Back',
-              style: AppText.body.copyWith(color: AppColors.textPrimary),
-            ),
-          ],
+      // Excluded — semanticLabel above already announces "Back"; without
+      // this the nested Text was a second sibling node and TalkBack read
+      // it twice.
+      child: ExcludeSemantics(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.arrow_back_rounded,
+                color: AppColors.textPrimary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Back',
+                style: AppText.body.copyWith(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
         ),
       ),
     );

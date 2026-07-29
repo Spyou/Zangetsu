@@ -1130,33 +1130,36 @@ class _ZTvViewState extends State<_ZTvView> {
                                 child: TvFocusable(
                                   scale: 1.0,
                                   onTap: _showAddRepoDialog,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20,
-                                      vertical: 14,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: AppColors.surface,
-                                      borderRadius:
-                                          BorderRadius.circular(10),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.add,
-                                          color: AppColors.accent,
-                                          size: 18,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          'Add repo',
-                                          style: AppText.headline
-                                              .copyWith(
+                                  semanticLabel: 'Add repo',
+                                  child: ExcludeSemantics(
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 14,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.surface,
+                                        borderRadius:
+                                            BorderRadius.circular(10),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.add,
                                             color: AppColors.accent,
+                                            size: 18,
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Add repo',
+                                            style: AppText.headline
+                                                .copyWith(
+                                              color: AppColors.accent,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1203,22 +1206,26 @@ class _ZTvTabChip extends StatelessWidget {
       scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.18)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.accent : Colors.transparent,
-            width: 2,
+      semanticLabel: title,
+      // Excluded — semanticLabel above already announces the tab name.
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.18)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.accent : Colors.transparent,
+              width: 2,
+            ),
           ),
-        ),
-        child: Text(
-          title,
-          style: AppText.headline.copyWith(
-            color: selected ? AppColors.accent : AppColors.textSecondary,
+          child: Text(
+            title,
+            style: AppText.headline.copyWith(
+              color: selected ? AppColors.accent : AppColors.textSecondary,
+            ),
           ),
         ),
       ),
@@ -1340,37 +1347,40 @@ class _ZTvInstalledGroupState extends State<_ZTvInstalledGroup> {
         TvFocusable(
           scale: 1.0,
           onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  turns: _expanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(
-                    Icons.expand_more,
-                    color: AppColors.textTertiary,
-                    size: 20,
+          semanticLabel: '${widget.title}, ${entries.length} installed',
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+              child: Row(
+                children: [
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : -0.25,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(
+                      Icons.expand_more,
+                      color: AppColors.textTertiary,
+                      size: 20,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    widget.title.toUpperCase(),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      widget.title.toUpperCase(),
+                      style: AppText.overline.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${entries.length}',
                     style: AppText.overline.copyWith(
                       color: AppColors.textTertiary,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  '${entries.length}',
-                  style: AppText.overline.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1483,6 +1493,7 @@ class _ZTvInstalledRow extends StatelessWidget {
                 scale: 1.0,
                 onTap: () =>
                     context.read<SourcesBloc>().add(SourceUpdated(_key)),
+                semanticLabel: '$name, update to v$newVersion',
                 child: Tooltip(
                   message: 'Update to v$newVersion',
                   child: Padding(
@@ -1501,11 +1512,16 @@ class _ZTvInstalledRow extends StatelessWidget {
               onTap: () => context.read<SourcesBloc>().add(
                 SourceEnabledToggled(_key, enabled: !entry.enabled),
               ),
-              child: Switch.adaptive(
-                value: entry.enabled,
-                activeThumbColor: AppColors.accent,
-                onChanged: (v) => context.read<SourcesBloc>().add(
-                  SourceEnabledToggled(_key, enabled: v),
+              semanticLabel: '$name, ${entry.enabled ? 'on' : 'off'}',
+              // Excluded — the Switch's own "toggled" semantics would
+              // otherwise double-announce the on/off state above.
+              child: ExcludeSemantics(
+                child: Switch.adaptive(
+                  value: entry.enabled,
+                  activeThumbColor: AppColors.accent,
+                  onChanged: (v) => context.read<SourcesBloc>().add(
+                    SourceEnabledToggled(_key, enabled: v),
+                  ),
                 ),
               ),
             ),
@@ -1521,6 +1537,7 @@ class _ZTvInstalledRow extends StatelessWidget {
                   ),
                 ),
               ),
+              semanticLabel: '$name, settings',
               child: const Padding(
                 padding: EdgeInsets.all(8),
                 child: Icon(
@@ -1535,6 +1552,7 @@ class _ZTvInstalledRow extends StatelessWidget {
               TvFocusable(
                 scale: 1.0,
                 onTap: () => _confirmRemove(context),
+                semanticLabel: '$name, remove',
                 child: const Padding(
                   padding: EdgeInsets.all(8),
                   child: Icon(
@@ -1714,43 +1732,47 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                 TvFocusable(
                   scale: 1.0,
                   onTap: () => setState(() => _expanded = !_expanded),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedRotation(
-                        turns: _expanded ? 0 : -0.25,
-                        duration: const Duration(milliseconds: 200),
-                        child: const Icon(
-                          Icons.expand_more,
-                          color: AppColors.textSecondary,
-                          size: 22,
+                  semanticLabel:
+                      '${repo.displayName}, ${repo.sources.length} sources',
+                  child: ExcludeSemantics(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedRotation(
+                          turns: _expanded ? 0 : -0.25,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(
+                            Icons.expand_more,
+                            color: AppColors.textSecondary,
+                            size: 22,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            repo.displayName,
-                            style: AppText.headline,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            updateCount > 0
-                                ? '${repo.sources.length} sources · '
-                                      '$updateCount update${updateCount == 1 ? '' : 's'}'
-                                : '${repo.sources.length} sources',
-                            style: AppText.caption.copyWith(
-                              color: updateCount > 0
-                                  ? AppColors.accent
-                                  : AppColors.textTertiary,
+                        const SizedBox(width: 6),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              repo.displayName,
+                              style: AppText.headline,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const SizedBox(height: 2),
+                            Text(
+                              updateCount > 0
+                                  ? '${repo.sources.length} sources · '
+                                        '$updateCount update${updateCount == 1 ? '' : 's'}'
+                                  : '${repo.sources.length} sources',
+                              style: AppText.caption.copyWith(
+                                color: updateCount > 0
+                                    ? AppColors.accent
+                                    : AppColors.textTertiary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 // "Refresh" action.
@@ -1759,13 +1781,16 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                   onTap: () => context
                       .read<SourcesBloc>()
                       .add(RepoRefreshed(repo.url)),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    child: Text(
-                      'Refresh',
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textSecondary,
+                  semanticLabel: '${repo.displayName}, refresh',
+                  child: ExcludeSemantics(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      child: Text(
+                        'Refresh',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
                     ),
                   ),
@@ -1777,14 +1802,18 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                     onTap: () => context
                         .read<SourcesBloc>()
                         .add(RepoUpdated(repo.url)),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      child: Text(
-                        'Update all ($updateCount)',
-                        style: AppText.caption.copyWith(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w600,
+                    semanticLabel:
+                        '${repo.displayName}, update all ($updateCount)',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Text(
+                          'Update all ($updateCount)',
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -1793,13 +1822,16 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                 TvFocusable(
                   scale: 1.0,
                   onTap: () => _removeRepo(context),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 6),
-                    child: Text(
-                      'Remove',
-                      style:
-                          AppText.caption.copyWith(color: AppColors.textSecondary),
+                  semanticLabel: '${repo.displayName}, remove',
+                  child: ExcludeSemantics(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
+                      child: Text(
+                        'Remove',
+                        style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary),
+                      ),
                     ),
                   ),
                 ),
@@ -1941,27 +1973,30 @@ class _ZTvRepoSourceRow extends StatelessWidget {
               autofocus: autofocus,
               onTap: () =>
                   context.read<SourcesBloc>().add(SourceUpdated(_key)),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.download_rounded,
-                        size: 16, color: Colors.white),
-                    const SizedBox(width: 4),
-                    Text(
-                      'Update',
-                      style: AppText.caption.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+              semanticLabel: '${source.name}, update',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.download_rounded,
+                          size: 16, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Update',
+                        style: AppText.caption.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             )
@@ -1970,19 +2005,22 @@ class _ZTvRepoSourceRow extends StatelessWidget {
               scale: 1.0,
               autofocus: autofocus,
               onTap: () => _uninstall(context),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppColors.textSecondary.withValues(alpha: 0.4),
+              semanticLabel: '${source.name}, uninstall',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.textSecondary.withValues(alpha: 0.4),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Installed',
-                  style: AppText.caption.copyWith(
-                    color: AppColors.textSecondary,
+                  child: Text(
+                    'Installed',
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ),
               ),
@@ -1994,18 +2032,21 @@ class _ZTvRepoSourceRow extends StatelessWidget {
               onTap: () => context.read<SourcesBloc>().add(
                 SourceInstalled(repo: repo, source: source),
               ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Install',
-                  style: AppText.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              semanticLabel: '${source.name}, install',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Install',
+                    style: AppText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -2066,13 +2107,16 @@ Future<bool> _zTvConfirm(
                     scale: 1.0,
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        'Cancel',
-                        style: AppText.body.copyWith(
-                            color: AppColors.textSecondary),
+                    semanticLabel: 'Cancel',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          'Cancel',
+                          style: AppText.body.copyWith(
+                              color: AppColors.textSecondary),
+                        ),
                       ),
                     ),
                   ),
@@ -2081,13 +2125,16 @@ Future<bool> _zTvConfirm(
                   TvFocusable(
                     scale: 1.0,
                     onTap: () => Navigator.pop(ctx, true),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        confirmLabel,
-                        style: AppText.body
-                            .copyWith(color: AppColors.accent),
+                    semanticLabel: confirmLabel,
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          confirmLabel,
+                          style: AppText.body
+                              .copyWith(color: AppColors.accent),
+                        ),
                       ),
                     ),
                   ),
@@ -2215,33 +2262,39 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
         TvFocusable(
           scale: 1.0,
           onTap: _loading ? () {} : () => Navigator.of(context).pop(),
-          child: TextButton(
-            onPressed: _loading ? null : () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
+          semanticLabel: 'Cancel',
+          child: ExcludeSemantics(
+            child: TextButton(
+              onPressed: _loading ? null : () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
+              ),
             ),
           ),
         ),
         TvFocusable(
           scale: 1.0,
           onTap: _loading ? () {} : _submit,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
+          semanticLabel: 'Add',
+          child: ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _loading ? null : _submit,
+              child: _loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Add'),
             ),
-            onPressed: _loading ? null : _submit,
-            child: _loading
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Add'),
           ),
         ),
       ],

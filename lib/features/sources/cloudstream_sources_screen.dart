@@ -1335,31 +1335,34 @@ class _CsTvViewState extends State<_CsTvView> {
                               child: TvFocusable(
                                 scale: 1.0,
                                 onTap: _showAddCsRepoDialog,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 14,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.surface,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.add,
-                                        color: AppColors.accent,
-                                        size: 18,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        'Add CS repo',
-                                        style: AppText.headline.copyWith(
+                                semanticLabel: 'Add CS repo',
+                                child: ExcludeSemantics(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.surface,
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.add,
                                           color: AppColors.accent,
+                                          size: 18,
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Add CS repo',
+                                          style: AppText.headline.copyWith(
+                                            color: AppColors.accent,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -1405,22 +1408,26 @@ class _CsTvTabChip extends StatelessWidget {
       scale: 1.04,
       autofocus: autofocus,
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.18)
-              : AppColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected ? AppColors.accent : Colors.transparent,
-            width: 2,
+      semanticLabel: title,
+      // Excluded — semanticLabel above already announces the tab name.
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.accent.withValues(alpha: 0.18)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? AppColors.accent : Colors.transparent,
+              width: 2,
+            ),
           ),
-        ),
-        child: Text(
-          title,
-          style: AppText.headline.copyWith(
-            color: selected ? AppColors.accent : AppColors.textSecondary,
+          child: Text(
+            title,
+            style: AppText.headline.copyWith(
+              color: selected ? AppColors.accent : AppColors.textSecondary,
+            ),
           ),
         ),
       ),
@@ -1507,37 +1514,40 @@ class _CsScreenTvInstalledGroupState
         TvFocusable(
           scale: 1.0,
           onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
-            child: Row(
-              children: [
-                AnimatedRotation(
-                  turns: _expanded ? 0 : -0.25,
-                  duration: const Duration(milliseconds: 200),
-                  child: const Icon(
-                    Icons.expand_more,
-                    color: AppColors.textTertiary,
-                    size: 20,
+          semanticLabel: '$title, ${sources.length} installed',
+          child: ExcludeSemantics(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 8, 8),
+              child: Row(
+                children: [
+                  AnimatedRotation(
+                    turns: _expanded ? 0 : -0.25,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(
+                      Icons.expand_more,
+                      color: AppColors.textTertiary,
+                      size: 20,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    title.toUpperCase(),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      title.toUpperCase(),
+                      style: AppText.overline.copyWith(
+                        color: AppColors.textTertiary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    '${sources.length}',
                     style: AppText.overline.copyWith(
                       color: AppColors.textTertiary,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                Text(
-                  '${sources.length}',
-                  style: AppText.overline.copyWith(
-                    color: AppColors.textTertiary,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -1617,24 +1627,29 @@ class _CsScreenTvSourceRow extends StatelessWidget {
                     ),
                   );
               },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      source.displayName,
-                      style: AppText.headline.copyWith(
-                        fontSize: 15,
-                        color: nameColor,
-                        fontWeight: active ? FontWeight.w600 : null,
+              semanticLabel: active
+                  ? '${source.displayName}, active'
+                  : '${source.displayName}, set active source',
+              child: ExcludeSemantics(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(0, 4, 8, 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        source.displayName,
+                        style: AppText.headline.copyWith(
+                          fontSize: 15,
+                          color: nameColor,
+                          fontWeight: active ? FontWeight.w600 : null,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text('cloudstream', style: AppText.caption),
-                  ],
+                      const SizedBox(height: 2),
+                      Text('cloudstream', style: AppText.caption),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1643,10 +1658,16 @@ class _CsScreenTvSourceRow extends StatelessWidget {
           TvFocusable(
             scale: 1.0,
             onTap: () => manager.setEnabled(source.sourceId, !enabled),
-            child: Switch.adaptive(
-              value: enabled,
-              activeThumbColor: AppColors.accent,
-              onChanged: (v) => manager.setEnabled(source.sourceId, v),
+            semanticLabel:
+                '${source.displayName}, ${enabled ? 'on' : 'off'}',
+            // Excluded — the Switch's own "toggled" semantics would
+            // otherwise double-announce the on/off state above.
+            child: ExcludeSemantics(
+              child: Switch.adaptive(
+                value: enabled,
+                activeThumbColor: AppColors.accent,
+                onChanged: (v) => manager.setEnabled(source.sourceId, v),
+              ),
             ),
           ),
           // Settings gear.
@@ -1661,6 +1682,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
                 ),
               ),
             ),
+            semanticLabel: '${source.displayName}, settings',
             child: const Padding(
               padding: EdgeInsets.all(8),
               child: Icon(
@@ -1898,35 +1920,38 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                 TvFocusable(
                   scale: 1.0,
                   onTap: () => setState(() => _expanded = !_expanded),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AnimatedRotation(
-                        turns: _expanded ? 0 : -0.25,
-                        duration: const Duration(milliseconds: 200),
-                        child: const Icon(
-                          Icons.expand_more,
-                          color: AppColors.textSecondary,
-                          size: 22,
+                  semanticLabel: '$title, $subtitle',
+                  child: ExcludeSemantics(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedRotation(
+                          turns: _expanded ? 0 : -0.25,
+                          duration: const Duration(milliseconds: 200),
+                          child: const Icon(
+                            Icons.expand_more,
+                            color: AppColors.textSecondary,
+                            size: 22,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(title,
-                              style: AppText.headline,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                          const SizedBox(height: 2),
-                          Text(subtitle,
-                              style: AppText.caption.copyWith(
-                                  color: AppColors.textTertiary),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                        ],
-                      ),
-                    ],
+                        const SizedBox(width: 6),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title,
+                                style: AppText.headline,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                            const SizedBox(height: 2),
+                            Text(subtitle,
+                                style: AppText.caption.copyWith(
+                                    color: AppColors.textTertiary),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 // Update pill — apply all updates for this repo.
@@ -1934,20 +1959,23 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                   TvFocusable(
                     scale: 1.0,
                     onTap: _applyUpdates,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        updates.length == 1
-                            ? '1 update'
-                            : '${updates.length} updates',
-                        style: AppText.caption.copyWith(
-                          color: AppColors.accent,
-                          fontWeight: FontWeight.w600,
+                    semanticLabel: '$title, apply ${updates.length == 1 ? '1 update' : '${updates.length} updates'}',
+                    child: ExcludeSemantics(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          updates.length == 1
+                              ? '1 update'
+                              : '${updates.length} updates',
+                          style: AppText.caption.copyWith(
+                            color: AppColors.accent,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
@@ -1957,12 +1985,15 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                   TvFocusable(
                     scale: 1.0,
                     onTap: _checkUpdates,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      child: Text('Check updates',
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary)),
+                    semanticLabel: '$title, check updates',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Text('Check updates',
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textSecondary)),
+                      ),
                     ),
                   ),
                 // "Remove repo" — real repos only.
@@ -1970,12 +2001,15 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                   TvFocusable(
                     scale: 1.0,
                     onTap: _removeRepo,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 6),
-                      child: Text('Remove',
-                          style: AppText.caption
-                              .copyWith(color: AppColors.textSecondary)),
+                    semanticLabel: '$title, remove repo',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        child: Text('Remove',
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textSecondary)),
+                      ),
                     ),
                   ),
               ],
@@ -2199,18 +2233,22 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
               scale: 1.0,
               autofocus: widget.autofocus,
               onTap: _update,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Update → v${widget.update!.onlineVersion}',
-                  style: AppText.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              semanticLabel:
+                  '${widget.plugin.name}, update to v${widget.update!.onlineVersion}',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Update → v${widget.update!.onlineVersion}',
+                    style: AppText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -2220,19 +2258,22 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
               scale: 1.0,
               autofocus: widget.autofocus,
               onTap: _uninstall,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: AppColors.textSecondary.withValues(alpha: 0.4),
+              semanticLabel: '${widget.plugin.name}, uninstall',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: AppColors.textSecondary.withValues(alpha: 0.4),
+                    ),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Installed',
-                  style: AppText.caption.copyWith(
-                      color: AppColors.textSecondary),
+                  child: Text(
+                    'Installed',
+                    style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary),
+                  ),
                 ),
               ),
             )
@@ -2241,18 +2282,21 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
               scale: 1.0,
               autofocus: widget.autofocus,
               onTap: _install,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                decoration: BoxDecoration(
-                  color: AppColors.accent,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Install',
-                  style: AppText.caption.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
+              semanticLabel: '${widget.plugin.name}, install',
+              child: ExcludeSemantics(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: AppColors.accent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Install',
+                    style: AppText.caption.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -2313,13 +2357,16 @@ Future<bool> _csScreenTvConfirm(
                     scale: 1.0,
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        'Cancel',
-                        style: AppText.body.copyWith(
-                            color: AppColors.textSecondary),
+                    semanticLabel: 'Cancel',
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          'Cancel',
+                          style: AppText.body.copyWith(
+                              color: AppColors.textSecondary),
+                        ),
                       ),
                     ),
                   ),
@@ -2328,13 +2375,16 @@ Future<bool> _csScreenTvConfirm(
                   TvFocusable(
                     scale: 1.0,
                     onTap: () => Navigator.pop(ctx, true),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12),
-                      child: Text(
-                        confirmLabel,
-                        style: AppText.body
-                            .copyWith(color: AppColors.accent),
+                    semanticLabel: confirmLabel,
+                    child: ExcludeSemantics(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 20, vertical: 12),
+                        child: Text(
+                          confirmLabel,
+                          style: AppText.body
+                              .copyWith(color: AppColors.accent),
+                        ),
                       ),
                     ),
                   ),
@@ -2416,24 +2466,30 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
         TvFocusable(
           scale: 1.0,
           onTap: () => Navigator.of(context).pop(),
-          child: TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(
-              'Cancel',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
+          semanticLabel: 'Cancel',
+          child: ExcludeSemantics(
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: AppText.body.copyWith(color: AppColors.textSecondary),
+              ),
             ),
           ),
         ),
         TvFocusable(
           scale: 1.0,
           onTap: _submit,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
+          semanticLabel: 'Add',
+          child: ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: _submit,
+              child: const Text('Add'),
             ),
-            onPressed: _submit,
-            child: const Text('Add'),
           ),
         ),
       ],
