@@ -155,10 +155,17 @@ SourceBuckets categorizedSources() {
   if (sl.isRegistered<MihonManager>()) {
     for (final p in sl<MihonManager>().all) {
       if (p.info.nsfw && !nsfwEnabled) continue;
+      // Carry the language in the subtitle. Multi-language extensions are a
+      // SourceFactory that yields one source PER LANGUAGE — MANGA Plus alone
+      // installs five — and they all share a display name, so without this
+      // they render as five identical rows that look like a duplicate install.
+      // Matches the `mihon • <lang>` the Mihon sources screen already shows,
+      // and feeds the picker's search (which matches on this field too).
+      final lang = p.info.lang;
       manga.add((
         id: p.sourceId,
         label: 'Mihon · ${p.displayName}',
-        repo: 'Mihon',
+        repo: lang.isNotEmpty ? 'Mihon · $lang' : 'Mihon',
       ));
     }
   }
