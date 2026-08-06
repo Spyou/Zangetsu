@@ -434,4 +434,181 @@ void main() {
       expect(pushedWidget, isA<PlayerScreen>());
     },
   );
+
+  // ── Chapter row (reading-only minimal design) ──────────────────────────────
+  //
+  // The reading list swaps _EpisodeRow for _ChapterRow. Both are private, so
+  // these assert what's actually rendered: the portrait cover's key + size,
+  // the absence of the play overlay, and the unprefixed title.
+
+  /// The key _ChapterRow puts on its 44×62 portrait cover — the marker that
+  /// separates a chapter row from an episode row.
+  const chapterCover = Key('chapterCover');
+
+  MediaDetail novelWithDates(String? date) => MediaDetail(
+    id: 'test-novel',
+    title: 'Test Novel',
+    url: 'http://test/novel',
+    type: ProviderType.novel,
+    sourceId: 'test',
+    episodes: [
+      Episode(id: 'c1', title: 'Chapter 1', url: '/c1', number: 1, date: date),
+      Episode(id: 'c2', title: 'Chapter 2', url: '/c2', number: 2, date: date),
+    ],
+  );
+
+  testWidgets(
+    'reading mode renders the minimal chapter row: 44×62 portrait cover, no '
+    'play overlay, no "1." title prefix, and a relative date',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      // Just past the 2-day boundary so the bucket can't flake either way.
+      final twoDaysAgo = DateTime.now()
+          .subtract(const Duration(days: 2, hours: 1))
+          .toIso8601String();
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(novelWithDates(twoDaysAgo)),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // One portrait cover per chapter, at the agreed size.
+      expect(find.byKey(chapterCover), findsNWidgets(2));
+      expect(tester.getSize(find.byKey(chapterCover).first), const Size(44, 62));
+
+      // No ▶ anywhere on a reading page — not in the row, and the hero button
+      // uses the book glyph.
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
+
+      // Title as the source gave it; the number is already in it.
+      expect(find.text('Chapter 1'), findsOneWidget);
+      expect(find.text('1. Chapter 1'), findsNothing);
+
+      // Line 2 is the relative date.
+      expect(find.text('2 days ago'), findsNWidgets(2));
+
+      // And the episode row's 116px landscape thumb is nowhere to be seen.
+      expect(
+        find.byWidgetPredicate((w) => w is SizedBox && w.width == 116),
+        findsNothing,
+      );
+    },
+  );
+
+  testWidgets(
+    'the chapter row drops its meta line when the source has no date',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(novelWithDates(null)),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Row still renders; the second line simply isn't there.
+      expect(find.byKey(chapterCover), findsNWidgets(2));
+      expect(find.text('Chapter 1'), findsOneWidget);
+      expect(find.textContaining('ago'), findsNothing);
+      expect(find.textContaining('Today'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'read chapters dim their cover and a part-read one gets the accent bar '
+    '(state comes from ReadStore, not the video ResumeStore)',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(novelWithDates(null)),
+      );
+      sl.unregister<ReadStore>();
+      sl.registerSingleton<ReadStore>(
+        _FakeReadStore({
+          'c1': (pos: 19, total: 20), // finished → read
+          'c2': (pos: 5, total: 10), // halfway → in progress
+        }),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      Opacity coverOpacity(int i) => tester.widget<Opacity>(
+        find.descendant(
+          of: find.byKey(chapterCover).at(i),
+          matching: find.byType(Opacity),
+        ),
+      );
+      expect(coverOpacity(0).opacity, 0.45); // chapter 1 is read
+      expect(coverOpacity(1).opacity, 1.0); // chapter 2 isn't
+
+      final bar = tester.widget<FractionallySizedBox>(
+        find.byType(FractionallySizedBox),
+      );
+      expect(bar.widthFactor, 0.5); // 5 of 10 pages
+      expect(tester.getSize(find.byType(FractionallySizedBox)).height, 2);
+    },
+  );
+
+  testWidgets(
+    'HARD CONSTRAINT: the anime episode row is untouched — 116×16:9 thumb '
+    'with the play overlay, numbered title, and no chapter cover',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(_animeDetail),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _animeItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The reading row must never appear on an anime title.
+      expect(find.byKey(chapterCover), findsNothing);
+
+      // The landscape thumbnail, still 116 wide at 16:9, one per episode.
+      final thumb = find.byWidgetPredicate(
+        (w) => w is SizedBox && w.width == 116,
+      );
+      expect(thumb, findsNWidgets(2));
+      expect(tester.getSize(thumb.first), const Size(116, 116 * 9 / 16));
+
+      // …with the play-circle still centred on it.
+      expect(
+        find.descendant(
+          of: thumb.first,
+          matching: find.byIcon(Icons.play_arrow_rounded),
+        ),
+        findsOneWidget,
+      );
+
+      // …and the numbered heading the episode row has always rendered.
+      expect(find.text('1. Episode 1'), findsOneWidget);
+      expect(find.text('2. Episode 2'), findsOneWidget);
+    },
+  );
 }

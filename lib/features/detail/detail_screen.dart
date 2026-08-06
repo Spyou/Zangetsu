@@ -24,6 +24,7 @@ import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
+import 'chapter_meta.dart';
 import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
@@ -2170,11 +2171,32 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   String _numLabel(Episode e, int fallback) =>
       (e.number?.toInt() ?? fallback).toString();
 
+  /// Reading progress lives in [ReadStore] (page index / scroll permille),
+  /// keyed by showId — the video [ResumeStore] never holds a mark for a
+  /// chapter, so without this a read chapter could never dim.
+  ({bool watched, bool inProgress, bool resume, double fraction}) _readStateFor(
+    Episode ep,
+  ) {
+    final store = sl<ReadStore>();
+    final mark = store.get(widget.sourceId, widget.showId, ep.id);
+    final done = store.finished(widget.sourceId, widget.showId, ep.id);
+    final inProgress = mark != null && !done && mark.total > 0;
+    return (
+      watched: done,
+      inProgress: inProgress,
+      // No CONTINUE badge in the reading row, and the resume index we're
+      // handed is the video one — so never claim a resume here.
+      resume: false,
+      fraction: inProgress ? (mark.pos / mark.total).clamp(0.0, 1.0) : 0.0,
+    );
+  }
+
   ({bool watched, bool inProgress, bool resume, double fraction}) _stateFor(
     ResumeStore store,
     Episode ep,
     int fullIndex,
   ) {
+    if (widget.isReading) return _readStateFor(ep);
     final mark = store.get(widget.sourceId, widget.showUrl, ep.id);
     final inProgress =
         mark != null && !mark.finished && mark.duration > Duration.zero;
@@ -2290,6 +2312,25 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         final displayTitle = widget.hasMultipleSeasons
             ? cleanTitle(ep.title)
             : ep.title;
+        if (widget.isReading) {
+          return RepaintBoundary(
+            child: _ChapterRow(
+              ep: ep,
+              number: epNum,
+              displayTitle: displayTitle,
+              coverUrl: widget.coverUrl,
+              coverHeaders: widget.coverHeaders,
+              isRead: st.watched,
+              isInProgress: st.inProgress,
+              fraction: st.fraction,
+              onTap: () => widget.onOpen(fullIndex),
+              onDownload: () => widget.onDownload(ep),
+              sourceId: widget.sourceId,
+              showId: widget.showId,
+              showDownload: widget.showDownload,
+            ),
+          );
+        }
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -2770,6 +2811,162 @@ class _JumpDialogState extends State<_JumpDialog> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Reading (manga/novel) chapter row — the minimal counterpart to _EpisodeRow.
+// A 44×62 portrait cover (the series art, dimmed once read), the chapter title
+// with no "14." prefix (sources put the number in the title already), a muted
+// meta line, and a hairline accent bar while a chapter is part-read. No play
+// glyph, no tick, no badges — none of that means anything for a chapter.
+//
+// Deliberately a separate widget rather than a flag inside _EpisodeRow: it
+// needs a third of _EpisodeRow's inputs, and this way the streaming row's code
+// is untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ChapterRow extends StatelessWidget {
+  const _ChapterRow({
+    required this.ep,
+    required this.number,
+    required this.displayTitle,
+    required this.coverUrl,
+    required this.coverHeaders,
+    required this.isRead,
+    required this.isInProgress,
+    required this.fraction,
+    required this.onTap,
+    required this.onDownload,
+    required this.sourceId,
+    required this.showId,
+    this.showDownload = true,
+  });
+
+  /// Key on the portrait cover — the one structural marker that tells a
+  /// chapter row apart from an episode row (see chapter row tests).
+  static const coverKey = Key('chapterCover');
+
+  final Episode ep;
+  final int number;
+  final String displayTitle;
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
+  final bool isRead;
+  final bool isInProgress;
+  final double fraction;
+  final VoidCallback onTap;
+  final VoidCallback onDownload;
+  final bool showDownload;
+  final String sourceId;
+  final String showId;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = displayTitle.trim().isNotEmpty
+        ? displayTitle.trim()
+        : 'Chapter $number';
+    final meta = chapterMetaLine(ep);
+    final art = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+        ? ep.thumbnail!
+        : coverUrl;
+
+    return InkWell(
+      onTap: onTap,
+      splashColor: AppColors.accentSoft,
+      highlightColor: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(
+          children: [
+            SizedBox(
+              key: coverKey,
+              width: 44,
+              height: 62,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Opacity(
+                  opacity: isRead ? 0.45 : 1,
+                  child: art.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: art,
+                          httpHeaders: coverHeaders,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 140,
+                          placeholder: (c, u) =>
+                              ColoredBox(color: AppColors.surface2),
+                          errorWidget: (c, u, e) =>
+                              ColoredBox(color: AppColors.surface2),
+                        )
+                      : ColoredBox(color: AppColors.surface2),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: AppText.body.copyWith(
+                      color: isRead
+                          ? AppColors.textTertiary
+                          : AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Dropped entirely when the source gives us nothing to put
+                  // here, so the row shrinks instead of holding blank space.
+                  if (meta != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      meta,
+                      style: AppText.caption.copyWith(
+                        color: isRead
+                            ? AppColors.textTertiary
+                            : AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (isInProgress && fraction > 0) ...[
+                    const SizedBox(height: 6),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.0, 1.0),
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Same rule as the episode row: hidden on TV, and hidden whenever
+            // the caller says there's nothing downloadable (which is every
+            // reading source today).
+            if (!sl<AppMode>().isTv && showDownload) ...[
+              const SizedBox(width: 8),
+              _EpisodeDownloadIcon(
+                sourceId: sourceId,
+                showId: showId,
+                episodeId: ep.id,
+                onTap: onDownload,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
