@@ -54,10 +54,11 @@ MihonSourceInfo _mihonInfo({
   int id = 42,
   String name = 'MangaDex',
   bool nsfw = false,
+  String lang = 'en',
 }) => MihonSourceInfo(
   id: id,
   name: name,
-  lang: 'en',
+  lang: lang,
   baseUrl: 'https://md.test',
   pkg: 'com.test.manga',
   nsfw: nsfw,
@@ -135,7 +136,45 @@ void main() {
       final rows = b.manga.where((r) => r.id == 'mihon:42').toList();
       expect(rows, hasLength(1));
       expect(rows.single.label, 'Mihon · MangaDex');
-      expect(rows.single.repo, 'Mihon');
+      // The language rides in the repo/subtitle field. Multi-language
+      // extensions (MANGA Plus and friends) are a SourceFactory yielding one
+      // source per language, all sharing a display name — without this they
+      // render as N identical rows that read as a duplicate install.
+      expect(rows.single.repo, 'Mihon · en');
+    });
+
+    test('same-name sources from a multi-language extension are distinguishable',
+        () {
+      // The reported bug: installing MANGA Plus looked like five duplicate
+      // installs. It is one SourceFactory yielding one source PER LANGUAGE —
+      // distinct ids, identical display names. The rows must differ somewhere
+      // a user can see, or they read as duplicates.
+      mihonMgr
+        ..register(MihonProvider(
+            info: _mihonInfo(id: 501, name: 'MANGA Plus', lang: 'en')))
+        ..register(MihonProvider(
+            info: _mihonInfo(id: 502, name: 'MANGA Plus', lang: 'es')));
+
+      final rows = categorizedSources()
+          .manga
+          .where((r) => r.label == 'Mihon · MANGA Plus')
+          .toList();
+
+      expect(rows, hasLength(2), reason: 'both language variants present');
+      expect(
+        rows.map((r) => r.repo).toSet(),
+        {'Mihon · en', 'Mihon · es'},
+        reason: 'identical labels must be told apart by the language subtitle',
+      );
+    });
+
+    test('a Mihon source with no language falls back to the plain tag', () {
+      mihonMgr.register(
+          MihonProvider(info: _mihonInfo(id: 503, name: 'NoLang', lang: '')));
+      final row = categorizedSources()
+          .manga
+          .firstWhere((r) => r.id == 'mihon:503');
+      expect(row.repo, 'Mihon');
     });
 
     test('a Mihon source appears in NO anime/movies/nsfw/novel bucket', () {
