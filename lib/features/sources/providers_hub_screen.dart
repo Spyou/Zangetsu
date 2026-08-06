@@ -137,15 +137,9 @@ class _HubPhoneView extends StatelessWidget {
     // re-deriving a manga/novel check here.
     bool isReadingType(ProviderType t) =>
         t == ProviderType.manga || t == ProviderType.novel;
-    final readingEntries = sl<ProviderRegistry>()
-        .getAll()
-        .where((e) => isReadingType(sourceTypeOf(e.name)))
-        .toList();
-    final readingCount = readingEntries.length;
-    final readingUpdates = SourcesState(
-      installed: readingEntries,
-      repos: sl<ProviderReposRegistry>().getAll(),
-    ).updatableKeys.length;
+    // Still needed after the Zangetsu reading row was dropped: a JS reading
+    // source can still be installed and active, and the Zangetsu STREAMING row
+    // must not light up as ACTIVE when it is.
     final activeIsReading =
         activeIsZangetsu && isReadingType(sourceTypeOf(activeId));
 
@@ -206,24 +200,18 @@ class _HubPhoneView extends StatelessWidget {
               onTap: () => open(const AniyomiSourcesScreen()),
             ),
           ],
-          const SizedBox(height: 28),
           // Reading ecosystems live under their own header so a manga/novel
-          // source never reads as a streaming one. Mihon is manga-only; the
-          // Zangetsu row is what carries novel sources, which is why the
-          // header says "Manga & Novel" and not just "Manga".
-          const _SectionLabel('MANGA & NOVEL'),
-          const SizedBox(height: 12),
-          _EcoRow(
-            icon: Icons.auto_stories_rounded,
-            title: 'Zangetsu Manga',
-            desc: 'Built-in reading providers',
-            info: '$readingCount sources',
-            active: activeIsReading,
-            updateCount: readingUpdates,
-            onTap: () =>
-                open(const ZangetsuSourcesScreen(scopeToReading: true)),
-          ),
+          // source never reads as a streaming one. Mihon is the only one for
+          // now — the Zangetsu reading row was dropped because those JS
+          // sources are search-only (no popular/latest), which left Home with
+          // nothing to render. Novel support is planned as its own extension
+          // path, so the header keeps its name and the section can grow.
+          //
+          // Guarded on showMihon: Mihon is Android-only, so off-Android the
+          // whole section would otherwise render as a header with no rows.
           if (showMihon) ...[
+            const SizedBox(height: 28),
+            const _SectionLabel('MANGA & NOVEL'),
             const SizedBox(height: 12),
             _EcoRow(
               icon: Icons.menu_book_outlined,

@@ -1,12 +1,17 @@
-// Task E3: manga/novel sources get their own entry, separate from the three
-// streaming ecosystem rows (Zangetsu / CloudStream / Aniyomi).
+// Task E3 originally gave manga/novel sources their own "Zangetsu Manga" hub
+// row, in addition to the "Manga & Novel" Settings entry. Only the hub row
+// (and the Sozo Read recommended-repo suggestion, tested elsewhere) was
+// dropped: that Zangetsu JS reading-source row duplicated the still-live
+// Settings entry, and those JS sources are search-only (no popular/latest),
+// so selecting one left Home with nothing to render. The Settings entry
+// itself is unaffected and still opens the same scoped Zangetsu screen.
 //
-// Two things under test:
-//  - ProvidersHubScreen (phone view) grows a "Zangetsu Manga" row under a MANGA & NOVEL header that
-//    opens the Zangetsu JS providers screen — while the existing three rows
-//    stay exactly as they are today.
-//  - Settings → Sources grows a matching entry, in the same section, without
-//    disturbing the order of the entries already there.
+// What's under test now:
+//  - ProvidersHubScreen (phone view) has no "Zangetsu Manga" row / section —
+//    the existing three streaming rows stay exactly as they are today, and
+//    the ACTIVE-badge exclusivity rule (a reading source must not badge the
+//    Zangetsu streaming row) still holds even with the dedicated row gone.
+//  - Settings → Sources still has its "Manga & Novel" entry, unchanged.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -133,23 +138,18 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('shows a dedicated Zangetsu Manga entry, counting only reading sources',
+    // The dedicated "Zangetsu Manga" hub row and its MANGA & NOVEL section
+    // are gone — those JS reading sources are search-only, so selecting one
+    // left Home with nothing to render. Reading sources are still reachable
+    // through Settings → Manga & Novel (unaffected, tested elsewhere), just
+    // not from this hub. Inverse assertion so the row can't silently
+    // reappear.
+    testWidgets('has no Zangetsu Manga row or MANGA & NOVEL section',
         (tester) async {
       await pump(tester);
 
-      expect(find.text('Zangetsu Manga'), findsOneWidget);
-      // Only manga1 + novel1 — the video-only anime1 is excluded.
-      expect(find.text('2 sources'), findsOneWidget);
-    });
-
-    testWidgets('tapping Zangetsu Manga opens the Zangetsu JS providers screen',
-        (tester) async {
-      await pump(tester);
-
-      await tester.tap(find.text('Zangetsu Manga'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(ZangetsuSourcesScreen), findsOneWidget);
+      expect(find.text('Zangetsu Manga'), findsNothing);
+      expect(find.text('MANGA & NOVEL'), findsNothing);
     });
 
     testWidgets(
@@ -177,7 +177,7 @@ void main() {
 
     // ── Fix round 1, finding 1: ACTIVE badge must be exclusive ────────────
     testWidgets(
-      'an anime active source badges only the Zangetsu row (unchanged today)',
+      'an anime active source badges the Zangetsu row (unchanged today)',
       (tester) async {
         sl.unregister<ActiveSourceCubit>();
         sl.registerSingleton<ActiveSourceCubit>(
@@ -185,16 +185,23 @@ void main() {
         );
         await pump(tester);
 
+        // Only row on screen in this (non-Android) test host is Zangetsu —
+        // CS/Aniyomi/Mihon are all Android-gated — so a single ACTIVE badge
+        // sitting right on Zangetsu's line is what "badges the Zangetsu row"
+        // reduces to here.
         expect(find.text('ACTIVE'), findsOneWidget);
         final activeY = tester.getTopLeft(find.text('ACTIVE')).dy;
         final zangetsuY = tester.getTopLeft(find.text('Zangetsu')).dy;
-        final mangaY = tester.getTopLeft(find.text('Zangetsu Manga')).dy;
-        expect((activeY - zangetsuY).abs(), lessThan((activeY - mangaY).abs()));
+        expect((activeY - zangetsuY).abs(), lessThan(30));
       },
     );
 
+    // The Zangetsu Manga row this used to compare against is gone, but the
+    // rule it guarded is still live: a reading source active under the
+    // Zangetsu ecosystem must not badge the Zangetsu *streaming* row.
+    // (activeIsReading in providers_hub_screen.dart.)
     testWidgets(
-      'a manga active source badges only the Zangetsu Manga row, not Zangetsu',
+      'a manga active source does not badge the Zangetsu streaming row',
       (tester) async {
         sl.unregister<ActiveSourceCubit>();
         sl.registerSingleton<ActiveSourceCubit>(
@@ -202,22 +209,26 @@ void main() {
         );
         await pump(tester);
 
-        expect(find.text('ACTIVE'), findsOneWidget);
-        final activeY = tester.getTopLeft(find.text('ACTIVE')).dy;
-        final zangetsuY = tester.getTopLeft(find.text('Zangetsu')).dy;
-        final mangaY = tester.getTopLeft(find.text('Zangetsu Manga')).dy;
-        expect((activeY - mangaY).abs(), lessThan((activeY - zangetsuY).abs()));
+        // No dedicated reading row exists any more to carry the badge
+        // instead, so with the exclusion working, nothing should show
+        // ACTIVE at all.
+        expect(find.text('ACTIVE'), findsNothing);
       },
     );
 
-    // ── Fix round 1, finding 2: tapping through actually separates content ─
+    // scopeToReading is still live production behavior of
+    // ZangetsuSourcesScreen — just no longer reachable from this hub. It's
+    // still reachable from Settings → Manga & Novel (untouched), so this
+    // pins the behavior directly rather than losing coverage of it.
     testWidgets(
-      'tapping Zangetsu Manga scopes the Installed tab to reading providers, '
-      'with a Show all escape hatch back to everything',
+      'ZangetsuSourcesScreen(scopeToReading: true) scopes the Installed tab '
+      'to reading providers, with a Show all escape hatch back to everything',
       (tester) async {
-        await pump(tester);
-
-        await tester.tap(find.text('Zangetsu Manga'));
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: ZangetsuSourcesScreen(scopeToReading: true),
+          ),
+        );
         await tester.pumpAndSettle();
 
         expect(find.text('Manga One'), findsOneWidget);

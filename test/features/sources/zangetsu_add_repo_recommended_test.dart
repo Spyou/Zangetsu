@@ -12,15 +12,19 @@ import 'package:watch_app/core/provider/provider_downloader.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
-import 'package:watch_app/features/sources/bloc/sources_bloc.dart';
 import 'package:watch_app/features/sources/zangetsu_recommended_repos.dart';
 import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
 
-// Task E4 / Part B: the Zangetsu (JS-provider) "Add repo" dialog should
-// offer the Sozo Read pack as a *recommended* source — an opt-in suggestion
-// inside the dialog, never pre-installed. This is the PHONE view only
-// (isTv: false); the TV variant (_ZTvAddRepoDialog / _ZTvView) is untouched
-// by Task E4 and is not exercised here.
+// The Zangetsu (JS-provider) "Add repo" dialog used to offer the Sozo Read
+// pack as a recommended suggestion. That pack was dropped along with the
+// Zangetsu reading-source entry points — those JS sources are search-only
+// (no popular/latest), so selecting one left Home with nothing to render.
+// Manga is served by Mihon extensions instead; novel support is planned as
+// its own extension path. kRecommendedZangetsuRepos is now empty by design,
+// and the dialog's RECOMMENDED section is gated on it being non-empty — this
+// checks the dialog still renders cleanly with no stray section left behind.
+// PHONE view only (isTv: false); the TV variant (_ZTvAddRepoDialog /
+// _ZTvView) is untouched and not exercised here.
 
 /// No-op runtime loader — no source is actually installed in these tests.
 class _FakeManager implements ProviderRuntimeLoader {
@@ -138,56 +142,27 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
   }
 
-  testWidgets('Add repo dialog renders the recommended Sozo Read pack', (
-    tester,
-  ) async {
-    await openAddRepoDialog(tester);
+  testWidgets(
+    'kRecommendedZangetsuRepos is empty, and the add-repo dialog renders '
+    'with no stray RECOMMENDED section',
+    (tester) async {
+      expect(kRecommendedZangetsuRepos, isEmpty);
 
-    final rec = kRecommendedZangetsuRepos.single;
-    expect(find.text(rec.name), findsOneWidget);
-    expect(find.text(rec.desc), findsOneWidget);
-    // Callers must be able to tell this is manga/novel, not another anime
-    // repo.
-    expect(rec.desc.toLowerCase(), contains('manga'));
-    expect(rec.desc.toLowerCase(), contains('novel'));
-  });
+      await openAddRepoDialog(tester);
 
-  testWidgets('tapping the recommended tile fills in the manifest URL field', (
-    tester,
-  ) async {
-    await openAddRepoDialog(tester);
-
-    final rec = kRecommendedZangetsuRepos.single;
-    await tester.tap(find.text('Use'));
-    await tester.pump();
-
-    final urlField = tester.widget<TextField>(
-      find.widgetWithText(TextField, rec.url),
-    );
-    expect(urlField.controller!.text, rec.url);
-  });
-
-  // "Submitting the recommended repo adds it" is exercised at the bloc
-  // level rather than by driving the full dialog: _submit() is a thin
-  // wrapper around bloc.addRepo() (see zangetsu_sources_screen.dart), and
-  // the "Use" tile filling in the URL field is already covered by the
-  // widget test above. Going through the widget tree here would mean
-  // pumping past the manifest-URL TextField's autofocus + blinking cursor
-  // again while the submit spinner (an indeterminate — i.e. perpetually
-  // animating — CircularProgressIndicator) is up, which is exactly the
-  // combination pumpAndSettle() can never settle through. Testing the
-  // bloc call directly proves the same behavior without fighting that.
-  test('SourcesBloc.addRepo persists the recommended Sozo repo', () async {
-    final bloc = SourcesBloc(
-      registry: GetIt.instance<ProviderRegistry>(),
-      repos: GetIt.instance<ProviderReposRegistry>(),
-    );
-    addTearDown(bloc.close);
-
-    final rec = kRecommendedZangetsuRepos.single;
-    final error = await bloc.addRepo(rec.url);
-
-    expect(error, isNull);
-    expect(GetIt.instance<ProviderReposRegistry>().has(rec.url), isTrue);
-  });
+      expect(find.text('Add repo'), findsOneWidget);
+      expect(find.text('RECOMMENDED'), findsNothing);
+      // The dialog's own two fields (name + manifest URL) still render
+      // normally — an empty suggestion list doesn't take the rest of the
+      // dialog down with it. Scoped to the AlertDialog itself since the
+      // screen underneath has its own search TextField in the tree too.
+      expect(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextField),
+        ),
+        findsNWidgets(2),
+      );
+    },
+  );
 }

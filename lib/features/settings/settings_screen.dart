@@ -28,6 +28,7 @@ import '../../core/playback/search_prefs.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/mihon/mihon_manager.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_manager.dart';
@@ -57,7 +58,6 @@ import '../auth/auth_screens.dart';
 import '../onboarding/how_it_works.dart';
 import '../notify/subscriptions_screen.dart';
 import 'tracker_settings_screen.dart';
-import '../../core/models/provider_info.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
@@ -497,10 +497,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const SettingsScreenTv();
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
-    // Manga/novel sources are Zangetsu JS providers too, but get their own
-    // Sources row (Task E3) so reading sources are reachable without going
-    // through the streaming-flavored "Providers" entry. sourceTypeOf is the
-    // app's one ProviderType resolver — reused rather than re-deriving this.
+    // Reading sources keep their own Sources row so they're reachable without
+    // going through the streaming-flavored "Providers" entry. sourceTypeOf is
+    // the app's one ProviderType resolver — reused rather than re-derived.
     final readingCount = _registry.getAll().where((e) {
       final t = sourceTypeOf(e.name);
       return t == ProviderType.manga || t == ProviderType.novel;
