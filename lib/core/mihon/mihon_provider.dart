@@ -122,7 +122,17 @@ class MihonProvider implements BaseProvider, ReadingProvider {
           more: BrowseMore(sourceId: sourceId, kind: 'mihon_latest'),
         ),
     ];
-    return sections.isEmpty ? null : sections;
+    // Return the (possibly empty) list rather than null. `null` is
+    // SourceRepository.home()'s signal for "this provider has no home page",
+    // which makes it fall back to calling popular() three times at dateRange
+    // 1/30/0 — and [popular] here ignores dateRange entirely, so those are
+    // three byte-identical requests to a source that just failed twice.
+    // Measured: a failed load cost 5 requests instead of 2.
+    //
+    // Empty vs null is invisible to the user: home() filters empty sections
+    // out either way, so the screen shows the same "source isn't responding"
+    // state — it just gets there without hammering the source.
+    return sections;
   }
 
   /// Returns the source's popular manga page.
