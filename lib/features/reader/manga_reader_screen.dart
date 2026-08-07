@@ -229,15 +229,19 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   /// `ReadHistory.save` both already start with `if (IncognitoMode.on)
   /// return;` internally, so no extra guard belongs here — adding one would
   /// duplicate that check for no behavioral change.
-  void _saveProgress({required bool flush}) {
+  /// [complete] forces the mark to the last page regardless of where the user
+  /// actually scrolled — used when they explicitly move ON to the next chapter,
+  /// which is a "done with this one" signal even if they skipped the tail.
+  void _saveProgress({required bool flush, bool complete = false}) {
     final pages = _pages;
     if (pages == null || pages.isEmpty) return; // nothing loaded yet
     final ep = _chapter;
+    final pos = complete ? pages.length - 1 : _pageIndex;
     sl<ReadStore>().save(
       widget.sourceId,
       widget.showId,
       ep.id,
-      pos: _pageIndex,
+      pos: pos,
       total: pages.length,
     );
     sl<ReadHistory>().save(
@@ -249,7 +253,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         chapterId: ep.id,
         chapterNumber: ep.number,
         chapterUrl: ep.url,
-        pos: _pageIndex,
+        pos: pos,
         total: pages.length,
         updatedMs: DateTime.now().millisecondsSinceEpoch,
         type: ProviderType.manga,
@@ -284,7 +288,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   void _goToChapter(int newIndex) {
     if (newIndex < 0 || newIndex >= widget.chapters.length) return;
     if (newIndex == _index) return;
-    _flushProgress(); // chapter change: push the chapter we're leaving now
+    // Moving ON to a later chapter means the user is done with this one — mark
+    // it read and let it scrobble even if they never scrolled the tail (the
+    // "Next chapter →" footer button is the common path). Going BACKWARDS is
+    // not completion, so it just saves the real position.
+    _saveProgress(flush: true, complete: newIndex > _index);
     for (final c in _zoomControllers.values) {
       c.dispose();
     }
