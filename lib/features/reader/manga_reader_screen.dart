@@ -892,6 +892,13 @@ int clampPageIndex(int index, int pageCount) {
 int estimateIndexFromScroll(double pixels, double maxExtent, int pageCount) {
   if (pageCount <= 0) return 0;
   if (maxExtent <= 0) return pageCount - 1; // whole chapter fits on screen
+  // Scrolled to the bottom => the LAST page, deterministically. The
+  // proportional estimate below assumes uniform page heights; webtoon pages
+  // vary enormously and the reader appends a next-chapter footer, so it tops
+  // out short of the final index — measured 95 of 99 at the visible end of a
+  // chapter. Without this snap a chapter can never be marked read, which also
+  // means it never scrobbles to AniList/MAL.
+  if (pixels >= maxExtent - 8) return pageCount - 1;
   final raw = (pixels / maxExtent * (pageCount - 1)).round();
   return raw.clamp(0, pageCount - 1);
 }

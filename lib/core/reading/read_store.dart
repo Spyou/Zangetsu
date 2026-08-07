@@ -55,7 +55,17 @@ class ReadStore {
   bool finished(String sourceId, String showId, String chapterId) {
     final mark = get(sourceId, showId, chapterId);
     if (mark == null || mark.total <= 0) return false;
-    if (mark.total == 1000) return mark.pos >= 950;
-    return mark.pos >= mark.total - 1;
+    if (mark.total == 1000) return mark.pos >= 950; // novel: 95% of permille
+    // Manga: 95% of the way through, not the literal last page. Vertical
+    // (webtoon) position is estimated proportionally from scroll pixels, which
+    // assumes uniform page heights — manhwa pages vary wildly and the reader
+    // adds a next-chapter footer, so the estimate tops out short of the final
+    // index. Measured on a 99-page chapter: scrolling to the visible end
+    // ("To be continued") reported pos=95, so `pos >= total - 1` was
+    // unreachable and the chapter could never be marked read — which also
+    // meant it never scrobbled. 95% matches the novel rule above and the
+    // player's 92%.
+    final last = mark.total - 1;
+    return mark.pos >= last || mark.pos >= last * 0.95;
   }
 }
