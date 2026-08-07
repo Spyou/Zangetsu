@@ -200,10 +200,18 @@ class MihonBridge(
                         return@setMethodCallHandler
                     }
                     scope.runReporting(result, "SEARCH") {
-                        val fl = if (!filtersJson.isNullOrBlank()) {
-                            src.getFilterList().also { MihonFilterJson.applySelectionJson(it, filtersJson) }
-                        } else {
-                            FilterList()
+                        // No user selection still means the source's OWN defaults,
+                        // never an empty list. Extensions routinely index into
+                        // their filters — `filters.first { it is SortFilter }` and
+                        // friends — so an empty FilterList throws
+                        // NoSuchElementException("Collection contains no element
+                        // matching the predicate") from inside the extension and
+                        // search returns nothing. Observed on MangaTaro; upstream
+                        // Mihon always passes getFilterList() here too.
+                        val fl = src.getFilterList().also {
+                            if (!filtersJson.isNullOrBlank()) {
+                                MihonFilterJson.applySelectionJson(it, filtersJson)
+                            }
                         }
                         MihonJson.mangasToJson(src.getSearchManga(page, query, fl).mangas)
                     }
