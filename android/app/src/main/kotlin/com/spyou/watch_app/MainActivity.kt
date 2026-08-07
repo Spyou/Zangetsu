@@ -1,7 +1,9 @@
 package com.spyou.watch_app
 
 import android.app.PictureInPictureParams
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -52,6 +54,52 @@ class MainActivity : FlutterActivity() {
     private val csReadPool = Executors.newFixedThreadPool(8)
     private val repo: RepoManager by lazy { RepoManager(applicationContext) }
     private val host: PluginHost by lazy { PluginHost(applicationContext) }
+
+    /// Icon id (as Dart knows it) → the activity-alias that carries that icon.
+    /// Keys are persisted in prefs and the alias names appear on users' home
+    /// screens, so neither side may be renamed once shipped.
+    private val ICON_ALIASES = linkedMapOf(
+        "default" to "com.spyou.watch_app.MainActivityDefault",
+        "classic" to "com.spyou.watch_app.MainActivityClassic",
+    )
+
+    /// The enabled alias, or "default" when nothing has been set. A component
+    /// left at COMPONENT_ENABLED_STATE_DEFAULT takes the manifest's
+    /// android:enabled, which is true only for the default alias.
+    private fun currentIconAlias(): String {
+        val pm = packageManager
+        for ((id, cls) in ICON_ALIASES) {
+            val state = pm.getComponentEnabledSetting(ComponentName(this, cls))
+            if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return id
+        }
+        return "default"
+    }
+
+    /// Enables [id]'s alias and disables the others.
+    ///
+    /// Order matters: enable first, then disable. Disabling the live launcher
+    /// component before another exists can leave the app with no launcher entry
+    /// at all if the process is killed in between — which Android often does
+    /// right here, since removing the running component tears down the task.
+    /// DONT_KILL_APP asks it not to; launchers vary in whether they honour it,
+    /// so the UI warns that the app may close.
+    private fun applyIconAlias(id: String) {
+        val pm = packageManager
+        val target = ICON_ALIASES[id] ?: return
+        pm.setComponentEnabledSetting(
+            ComponentName(this, target),
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            PackageManager.DONT_KILL_APP,
+        )
+        for ((other, cls) in ICON_ALIASES) {
+            if (other == id) continue
+            pm.setComponentEnabledSetting(
+                ComponentName(this, cls),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.DONT_KILL_APP,
+            )
+        }
+    }
 
     companion object {
         private const val TAG = "SeekPreview"
@@ -237,6 +285,29 @@ class MainActivity : FlutterActivity() {
         }
 
         // PiP channel: Dart arms/disarms auto-PiP while the player is on screen.
+        // Home-screen icon picker. Each choice is an <activity-alias> in the
+        // manifest; switching means enabling one and disabling the rest.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/app_icon")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "current" -> result.success(currentIconAlias())
+                    "set" -> {
+                        val id = call.argument<String>("id")
+                        if (id == null || !ICON_ALIASES.containsKey(id)) {
+                            result.error("BAD_ARGS", "unknown icon id: $id", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            applyIconAlias(id)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("ICON", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

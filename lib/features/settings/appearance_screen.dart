@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
+import '../../core/app_icon/app_icon_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
@@ -119,12 +120,82 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           _label('MOTION'),
           const SizedBox(height: 12),
           _listAnimTile(),
+
+          // ── App icon ──────────────────────────────────────────────────────
+          // Android-only: iOS has an unrelated API and TV has no icon picker.
+          if (_icons.supported) ...[
+            const SizedBox(height: 28),
+            _label('APP ICON'),
+            const SizedBox(height: 6),
+            Text(
+              'The icon on your home screen. Zangetsu closes when you change '
+              'it — Android has to swap the launcher entry.',
+              style: AppText.caption,
+            ),
+            const SizedBox(height: 16),
+            _iconPicker(),
+          ],
         ],
       ),
     );
   }
 
   Widget _label(String text) => Text(text, style: AppText.overline);
+
+  final _icons = AppIconService();
+
+  /// Row of selectable launcher icons. Confirms before switching, because
+  /// Android tears the task down when the live launcher component is disabled.
+  Widget _iconPicker() {
+    final current = _icons.selectedId;
+    return SizedBox(
+      height: 116,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.zero,
+        clipBehavior: Clip.none,
+        itemCount: AppIconService.options.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final o = AppIconService.options[i];
+          return _AppIconCard(
+            option: o,
+            selected: o.id == current,
+            onTap: o.id == current ? null : () => _pickIcon(o),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _pickIcon(AppIconOption o) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Use the ${o.label} icon?', style: AppText.title),
+        content: const Text(
+          'Zangetsu will close so Android can apply the new icon. Open it '
+          'again from your home screen afterwards.\n\nIf you have Zangetsu in '
+          'a folder or dock, you may need to add it again.',
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Change', style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _icons.select(o.id);
+    if (mounted) setState(() {});
+  }
 
   Widget _amoledTile() {
     final on = ThemeController.amoled;
@@ -422,3 +493,58 @@ Widget _preview(Color color, bool selected) => Stack(
           ),
       ],
     );
+
+/// A launcher-icon choice: preview, name, and a tick when it's the active one.
+/// Mirrors [_AccentCard]'s shape so the two pickers read as one screen.
+class _AppIconCard extends StatelessWidget {
+  const _AppIconCard({
+    required this.option,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppIconOption option;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: 92,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: selected ? AppColors.accent : AppColors.hairline,
+                  width: selected ? 2 : 1,
+                ),
+              ),
+              padding: const EdgeInsets.all(3),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Image.asset(option.asset, fit: BoxFit.cover),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              option.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(
+                color: selected ? AppColors.accent : AppColors.textSecondary,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

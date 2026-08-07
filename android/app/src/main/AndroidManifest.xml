@@ -62,10 +62,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
+            <!-- The phone LAUNCHER entry lives on the activity-aliases below, so
+                 the user can switch the home-screen icon (Settings → Appearance).
+                 It is deliberately NOT here: an activity and its alias would both
+                 appear in the launcher.
+
+                 LEANBACK stays on the activity itself. TV has no icon picker and
+                 uses android:banner, and moving this would risk the app losing
+                 its home entry on a TV entirely. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
@@ -86,6 +90,42 @@
                 <data android:scheme="zangetsu" android:host="pair"/>
             </intent-filter>
         </activity>
+
+        <!-- Home-screen icon choices. Each alias is the same MainActivity behind a
+             different icon; exactly ONE is ever enabled, and AppIconService flips
+             them via PackageManager.setComponentEnabledSetting.
+
+             Aliases (rather than swapping a drawable) are the only way Android
+             allows this: the launcher icon is baked into the manifest at install
+             time and cannot be changed at runtime.
+
+             Renaming or removing an alias orphans it on users' home screens, so
+             these names are permanent once shipped. -->
+        <activity-alias
+            android:name=".MainActivityDefault"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="Zangetsu">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".MainActivityClassic"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:enabled="false"
+            android:icon="@mipmap/ic_launcher_classic"
+            android:label="Zangetsu">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <!-- Hosts a CloudStream plugin's own settings UI (it casts the Context to
              AppCompatActivity and shows a BottomSheetDialogFragment). Transparent
              Material theme; finishes when the sheet is dismissed. -->

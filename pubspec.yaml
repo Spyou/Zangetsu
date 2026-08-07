@@ -245,6 +245,10 @@ flutter:
     - assets/icon/wordmark.png
     # Square app icon — shown on the About screen.
     - assets/icon/app_icon.png
+    # Launcher-icon previews for the Appearance picker (mipmaps are not
+    # reachable from Dart, so the choices are bundled as normal assets).
+    - assets/icon/preview_default.png
+    - assets/icon/preview_classic.png
 
   fonts:
     - family: Inter

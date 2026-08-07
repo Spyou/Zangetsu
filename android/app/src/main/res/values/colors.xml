@@ -4,4 +4,5 @@
          launch window so there's no white/black flash before the Flutter splash
          paints — the launch screen matches the app's dark UI. -->
     <color name="launch_bg">#FF0B0B0F</color>
+    <color name="ic_launcher_bg">#000000</color>
 </resources>

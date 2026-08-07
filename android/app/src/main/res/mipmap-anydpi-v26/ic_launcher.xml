@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- New Zangetsu logo. The foreground sits at 66% of the 108dp canvas so the
+     katana's handle and tip survive the circular / squircle masks launchers
+     apply; the background is the same black as the artwork's own, so the two
+     blend and the icon reads as one image. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_bg" />
+    <foreground android:drawable="@mipmap/ic_launcher_fg" />
+</adaptive-icon>
