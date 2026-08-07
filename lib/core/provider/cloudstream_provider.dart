@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -723,7 +724,7 @@ class CloudStreamManager extends ChangeNotifier {
   /// calls are Android-gated). Must be called before constructing the manager.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

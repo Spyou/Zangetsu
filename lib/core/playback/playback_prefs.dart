@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Subtitle font families bundled in the app (registered in pubspec's
 /// `flutter: fonts:`). Used by the player's Subtitle-style font picker; the
@@ -66,7 +67,7 @@ class PlaybackPrefs {
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

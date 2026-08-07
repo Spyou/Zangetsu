@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -21,7 +22,7 @@ Future<void> maybeShowCommunitySheet(BuildContext context) async {
   try {
     final box = Hive.isBoxOpen(_flagsBox)
         ? Hive.box(_flagsBox)
-        : await Hive.openBox(_flagsBox);
+        : await openBoxSafely(_flagsBox);
     if (box.get(_seenKey) == true) return;
     if (!context.mounted) return;
     await showCommunitySheet(context);

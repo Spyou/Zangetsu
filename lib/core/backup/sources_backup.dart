@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_repo.dart';
@@ -140,7 +141,7 @@ class SourcesBackup {
       try {
         final box = Hive.isBoxOpen(_aniReposBoxName)
             ? Hive.box<String>(_aniReposBoxName)
-            : await Hive.openBox<String>(_aniReposBoxName);
+            : await openBoxSafely<String>(_aniReposBoxName);
         for (final url in aniRepoUrls) {
           if (box.values.contains(url)) continue;
           await box.add(url);
@@ -157,7 +158,7 @@ class SourcesBackup {
       // installFromRepo persists pkg → apk path only when this box is open.
       if (!Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
         try {
-          await Hive.openBox<dynamic>(AniyomiExtensionService.installedBoxName);
+          await openBoxSafely<dynamic>(AniyomiExtensionService.installedBoxName);
         } catch (_) {}
       }
       final installedPkgs = _readAniyomiPkgs().toSet();

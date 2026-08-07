@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Local persistence for the AniList integration: the implicit-grant access
 /// token + the signed-in viewer, the auto-sync preference, the MAL→AniList id
@@ -8,7 +9,7 @@ class AniListStore {
   static const String boxName = 'anilist';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

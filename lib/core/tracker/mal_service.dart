@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:math';
 
 import 'package:app_links/app_links.dart';
@@ -35,7 +36,7 @@ class MalService extends ChangeNotifier implements Tracker {
   static const String _api = 'https://api.myanimelist.net/v2';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

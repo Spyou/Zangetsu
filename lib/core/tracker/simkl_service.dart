@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:app_links/app_links.dart';
 import 'package:dio/dio.dart';
@@ -33,7 +34,7 @@ class SimklService extends ChangeNotifier implements Tracker {
   static const String _api = 'https://api.simkl.com';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

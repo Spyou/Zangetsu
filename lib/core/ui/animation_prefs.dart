@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// One toggle: whether list/grid items animate in (the cascade reveal).
 /// Kept as an in-memory bool so [RevealItem] can read it per-item for free; the
@@ -14,7 +15,7 @@ class AnimationPrefs {
   static Future<void> init() async {
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     listAnimations = box.get(_key, defaultValue: true) as bool;
   }
 
@@ -22,7 +23,7 @@ class AnimationPrefs {
     listAnimations = value;
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     await box.put(_key, value);
   }
 }

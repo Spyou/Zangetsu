@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// A subscribed show — we re-check its source for new episodes (CloudStream-
 /// style). [lastCount] is the episode count seen at the last check; a higher
@@ -59,7 +60,7 @@ class SubscriptionStore {
   static const String boxName = 'subscriptions';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

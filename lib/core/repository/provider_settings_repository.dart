@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Persists per-source user-chosen settings.
 ///
@@ -13,7 +14,7 @@ class ProviderSettingsRepository {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
   }
 

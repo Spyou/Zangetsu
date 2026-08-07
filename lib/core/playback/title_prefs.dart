@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Remembers per-title user choices (currently the sub/dub category), keyed by
 /// `"<sourceId>::<showUrl>"`. Netflix-style "remember my choice for this title".
@@ -6,7 +7,7 @@ class TitlePrefsStore {
   static const String boxName = 'title_prefs';
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// A developer announcement fetched from the app's public announcements.json.
 ///
@@ -99,7 +100,7 @@ class AnnouncementStore {
   static const String boxName = 'announcements';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

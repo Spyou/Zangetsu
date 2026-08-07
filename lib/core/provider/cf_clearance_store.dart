@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Persists solved Cloudflare clearances (the cf_clearance cookie + the exact
 /// User-Agent that solved it) per host, so a JS source that was cleared once
@@ -25,7 +26,7 @@ class CfClearanceStore {
   /// issues any `browser: true` fetch.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

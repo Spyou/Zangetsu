@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 import '../error/exceptions.dart';
@@ -133,7 +134,7 @@ class ProviderRegistry {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
   }
 

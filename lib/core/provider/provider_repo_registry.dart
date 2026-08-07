@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -142,7 +143,7 @@ class ProviderReposRegistry {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
   }
 

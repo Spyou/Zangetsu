@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 /// Holds the id of the currently-active content source (e.g. 'allanime',
@@ -24,7 +25,7 @@ class ActiveSourceCubit extends Cubit<String> {
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

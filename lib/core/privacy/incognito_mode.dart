@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 /// Global "pause recording me" switch. While on, the app stops writing anything
@@ -20,7 +21,7 @@ abstract final class IncognitoMode {
   static Future<void> init() async {
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     notifier.value = box.get(_key, defaultValue: false) as bool;
   }
 
@@ -29,7 +30,7 @@ abstract final class IncognitoMode {
     notifier.value = value;
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     await box.put(_key, value);
   }
 }

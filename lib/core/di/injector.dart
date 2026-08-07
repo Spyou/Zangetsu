@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -99,7 +100,7 @@ Future<void> initDependencies() async {
   await Hive.initFlutter();
   // Cache of the signed-in user so the logged-in UI appears INSTANTLY on boot
   // (AuthCubit reads it before the network session check). See AuthCubit.restore.
-  await Hive.openBox(AuthCubit.cacheBoxName);
+  await openBoxSafely(AuthCubit.cacheBoxName);
   await ProviderDownloader.init();
 
   // Appwrite first (no network on construct) — kept for mintJwt (the
@@ -414,11 +415,11 @@ Future<void> initDependencies() async {
   Future.microtask(() async {
     try {
       if (!Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)) {
-        await Hive.openBox<dynamic>(AniyomiExtensionService.installedBoxName);
+        await openBoxSafely<dynamic>(AniyomiExtensionService.installedBoxName);
       }
       // Repo-URL box too, so Backup's sync build() can read it any time.
       if (!Hive.isBoxOpen('aniyomi_repos')) {
-        await Hive.openBox<String>('aniyomi_repos');
+        await openBoxSafely<String>('aniyomi_repos');
       }
       final box = Hive.box<dynamic>(AniyomiExtensionService.installedBoxName);
       if (box.isEmpty) {

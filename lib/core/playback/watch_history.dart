@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:hive/hive.dart';
 
@@ -113,10 +114,10 @@ class WatchHistory {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
     if (!Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.openBox(syncMetaBox);
+      await openBoxSafely(syncMetaBox);
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -80,10 +81,10 @@ class MyListStore {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
     if (!Hive.isBoxOpen(syncMetaBox)) {
-      await Hive.openBox(syncMetaBox);
+      await openBoxSafely(syncMetaBox);
     }
   }
 
