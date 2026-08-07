@@ -68,6 +68,14 @@ jobs:
           cd repo-mirror
           git remote set-url origin "https://codeberg.org/${CB_USER}/${CB_REPO}.git"
 
+          # Drop GitHub's per-PR refs before pushing. `git clone --mirror` pulls
+          # down refs/pull/*, which Codeberg refuses ("deny updating a hidden
+          # ref") because Forgejo owns that namespace itself. The branches and
+          # tags still pushed fine, but git exits non-zero on the partial
+          # rejection, so the whole job went red from the day the first PR was
+          # opened. Nothing downstream needs these mirrored.
+          git for-each-ref --format='delete %(refname)' refs/pull | git update-ref --stdin
+
           attempt=1
           max_attempts=3
           until git push --mirror origin; do
