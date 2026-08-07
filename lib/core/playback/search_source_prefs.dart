@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 /// Which sources are turned OFF for search. Default: none — every source is
@@ -14,7 +15,7 @@ class SearchSourcePrefs extends ChangeNotifier {
   /// Opens the box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

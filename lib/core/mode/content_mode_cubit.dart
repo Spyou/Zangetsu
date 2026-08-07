@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -19,7 +20,7 @@ class ContentModeCubit extends Cubit<ContentMode> {
   final ActiveSourceCubit _active;
 
   static Future<ContentModeCubit> create(ActiveSourceCubit active) async {
-    final box = await Hive.openBox('content_mode');
+    final box = await openBoxSafely('content_mode');
     return ContentModeCubit._(box, active, _restore(box));
   }
 

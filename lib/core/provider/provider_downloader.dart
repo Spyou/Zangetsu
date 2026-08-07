@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 import '../error/exceptions.dart';
@@ -54,7 +55,7 @@ class ProviderDownloader implements ProviderJsFetcher {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox<Map>(boxName);
+      await openBoxSafely<Map>(boxName);
     }
   }
 

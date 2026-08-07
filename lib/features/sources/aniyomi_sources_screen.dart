@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -55,7 +56,7 @@ class _AniyomiSourcesScreenState extends State<AniyomiSourcesScreen> {
 
   Future<void> _loadAniyomiRepos() async {
     if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
-      await Hive.openBox<String>(kAniyomiReposBoxName);
+      await openBoxSafely<String>(kAniyomiReposBoxName);
     }
     final box = Hive.box<String>(kAniyomiReposBoxName);
     if (mounted) setState(() => _aniyomiRepoUrls = box.values.toList());
@@ -63,7 +64,7 @@ class _AniyomiSourcesScreenState extends State<AniyomiSourcesScreen> {
 
   Future<void> _addAniyomiRepo(String url) async {
     if (!Hive.isBoxOpen(kAniyomiReposBoxName)) {
-      await Hive.openBox<String>(kAniyomiReposBoxName);
+      await openBoxSafely<String>(kAniyomiReposBoxName);
     }
     final box = Hive.box<String>(kAniyomiReposBoxName);
     if (box.values.contains(url)) return;

@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Persists torrent behavior prefs. `allowMobileData` defaults to false =
 /// torrents only run on Wi-Fi (protects mobile data).
@@ -7,7 +8,7 @@ class TorrentPrefs {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

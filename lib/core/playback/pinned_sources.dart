@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 /// Source IDs the user pinned to the top of the source picker. Device-local,
@@ -12,7 +13,7 @@ abstract final class PinnedSources {
   static Future<void> init() async {
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     final raw = box.get(_key);
     notifier.value = raw is List
         ? raw.map((e) => '$e').where((e) => e.isNotEmpty).toList()
@@ -27,7 +28,7 @@ abstract final class PinnedSources {
     notifier.value = list;
     final box = Hive.isBoxOpen(boxName)
         ? Hive.box(boxName)
-        : await Hive.openBox(boxName);
+        : await openBoxSafely(boxName);
     await box.put(_key, list);
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -48,7 +49,7 @@ class _MihonSourcesScreenState extends State<MihonSourcesScreen> {
 
   Future<void> _loadMihonRepos() async {
     if (!Hive.isBoxOpen(kMihonReposBoxName)) {
-      await Hive.openBox<String>(kMihonReposBoxName);
+      await openBoxSafely<String>(kMihonReposBoxName);
     }
     final box = Hive.box<String>(kMihonReposBoxName);
     if (mounted) setState(() => _mihonRepoUrls = box.values.toList());
@@ -56,7 +57,7 @@ class _MihonSourcesScreenState extends State<MihonSourcesScreen> {
 
   Future<void> _addMihonRepo(String url) async {
     if (!Hive.isBoxOpen(kMihonReposBoxName)) {
-      await Hive.openBox<String>(kMihonReposBoxName);
+      await openBoxSafely<String>(kMihonReposBoxName);
     }
     final box = Hive.box<String>(kMihonReposBoxName);
     if (box.values.contains(url)) return;

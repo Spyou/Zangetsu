@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 /// How cross-source search results are laid out.
@@ -32,7 +33,7 @@ class SearchPrefs extends ChangeNotifier {
   /// Opens the box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

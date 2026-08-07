@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:dio/dio.dart';
@@ -210,7 +211,7 @@ class UpdateService {
 
   Future<Box> _box() async => Hive.isBoxOpen(_boxName)
       ? Hive.box(_boxName)
-      : await Hive.openBox(_boxName);
+      : await openBoxSafely(_boxName);
 
   /// This device's supported ABIs, best-first (e.g. ["arm64-v8a","armeabi-v7a"]).
   /// Empty on non-Android or any error — callers fall back to the universal APK.

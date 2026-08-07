@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/media_item.dart';
@@ -33,14 +34,14 @@ class TitleLogoService {
   /// from disk and reopen fresh instead of blocking boot.
   static Future<void> init() async {
     try {
-      await Hive.openBox<String>(_boxName)
+      await openBoxSafely<String>(_boxName)
           .timeout(const Duration(seconds: 6));
     } catch (_) {
       try {
         await Hive.deleteBoxFromDisk(_boxName);
       } catch (_) {}
       try {
-        await Hive.openBox<String>(_boxName);
+        await openBoxSafely<String>(_boxName);
       } catch (_) {}
     }
   }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 import '../privacy/incognito_mode.dart';
@@ -17,7 +18,7 @@ class DiscordRpc {
   static const String boxName = 'discord';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

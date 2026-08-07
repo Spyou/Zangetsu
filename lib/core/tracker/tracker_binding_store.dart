@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Persists the user's manual "this show = that tracker entry" corrections
 /// (the match-fixer), keyed by `sourceId|showUrl`. The value maps each
@@ -10,7 +11,7 @@ class TrackerBindingStore {
   static const String boxName = 'tracker_bindings';
 
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
   }
 
   Box get _box => Hive.box(boxName);

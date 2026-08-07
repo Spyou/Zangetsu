@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Persistent reader settings — the manga/novel analogue of PlaybackPrefs.
 /// Backed by a tiny untyped Hive box read anywhere via `sl<ReaderPrefs>()`.
@@ -11,7 +12,7 @@ class ReaderPrefs {
   /// Opens the prefs box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

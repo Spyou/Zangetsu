@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 import 'package:dio/dio.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -140,7 +141,7 @@ class EpisodeMetadataService {
     try {
       return Hive.isBoxOpen(boxName)
           ? Hive.box(boxName)
-          : await Hive.openBox(boxName);
+          : await openBoxSafely(boxName);
     } catch (_) {
       return null;
     }

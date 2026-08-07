@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 
 /// Whether a stored download path is a SAF content:// URI (vs a plain file
 /// path). Used to route delete through UriUtils instead of dart:io File.
@@ -11,7 +12,7 @@ class DownloadPrefs {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) {
-      await Hive.openBox(boxName);
+      await openBoxSafely(boxName);
     }
   }
 

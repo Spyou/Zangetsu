@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
 
 import 'app_colors.dart';
@@ -39,7 +40,7 @@ class ThemeController {
   /// Opens the box and applies the saved accent + AMOLED choice. Call once
   /// during bootstrap, BEFORE the first frame, so the first paint uses them.
   static Future<void> init() async {
-    if (!Hive.isBoxOpen(boxName)) await Hive.openBox(boxName);
+    if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
     AppColors.accent = accent;
     _applyAmoled(amoled);
   }
