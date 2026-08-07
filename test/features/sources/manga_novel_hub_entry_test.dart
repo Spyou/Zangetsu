@@ -1,5 +1,5 @@
 // Task E3 originally gave manga/novel sources their own "Zangetsu Manga" hub
-// row, in addition to the "Manga & Novel" Settings entry. Only the hub row
+// row and a "Manga & Novel" Settings entry. BOTH were later removed —
 // (and the Sozo Read recommended-repo suggestion, tested elsewhere) was
 // dropped: that Zangetsu JS reading-source row duplicated the still-live
 // Settings entry, and those JS sources are search-only (no popular/latest),
@@ -11,7 +11,7 @@
 //    the existing three streaming rows stay exactly as they are today, and
 //    the ACTIVE-badge exclusivity rule (a reading source must not badge the
 //    Zangetsu streaming row) still holds even with the dedicated row gone.
-//  - Settings → Sources still has its "Manga & Novel" entry, unchanged.
+//  - Settings → Sources no longer has a "Manga & Novel" entry.
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -329,17 +329,21 @@ void main() {
     }
 
     testWidgets(
-      'lists Manga & Novel alongside the existing Sources entries, right '
-      'after Providers',
+      'the Sources section keeps its entries and has NO Manga & Novel row',
       (tester) async {
         await pumpSettings(tester);
 
         await tester.tap(find.text('Sources'));
         await tester.pumpAndSettle();
 
+        // The reading entry was dropped along with the providers-hub row —
+        // those JS sources are search-only, so Home had nothing to render.
+        // Manga lives under Providers -> Mihon. Asserting its ABSENCE stops it
+        // silently returning.
+        expect(find.text('Manga & Novel'), findsNothing);
+
         for (final t in const [
           'Providers',
-          'Manga & Novel',
           'Active source',
           'Source health',
           'Auto-update extensions',
@@ -347,25 +351,23 @@ void main() {
           expect(find.text(t), findsOneWidget, reason: 'tile: $t');
         }
 
-        // Order: unchanged entries keep their relative order, the new entry
-        // slots in right after Providers (mirrors it, per the task).
+        // The surviving entries keep their original relative order.
         final providersY = tester.getTopLeft(find.text('Providers')).dy;
-        final mangaY = tester.getTopLeft(find.text('Manga & Novel')).dy;
         final activeSourceY = tester.getTopLeft(find.text('Active source')).dy;
         final healthY = tester.getTopLeft(find.text('Source health')).dy;
-        expect(providersY, lessThan(mangaY));
-        expect(mangaY, lessThan(activeSourceY));
+        expect(providersY, lessThan(activeSourceY));
         expect(activeSourceY, lessThan(healthY));
       },
     );
 
-    testWidgets('Manga & Novel is reachable from search too', (tester) async {
+    testWidgets('searching "manga" surfaces no reading Settings entry',
+        (tester) async {
       await pumpSettings(tester);
 
       await tester.enterText(find.byType(TextField), 'manga');
       await tester.pumpAndSettle();
 
-      expect(find.text('Manga & Novel'), findsOneWidget);
+      expect(find.text('Manga & Novel'), findsNothing);
     });
   });
 }
