@@ -32,3 +32,22 @@ Aniyomi / Tachiyomi
 
 Other dependencies (Flutter/Dart packages and Android libraries) are used under
 their respective open-source licenses; refer to each package for details.
+
+────────────────────────────────────────────────────────────────────────────
+Keeping this file current
+────────────────────────────────────────────────────────────────────────────
+
+Any pull request that adds a new third-party dependency, incorporates code
+derived from another project, or bundles another project's assets must update
+this file in the same PR — see CONTRIBUTING.md. This file is treated as the
+authoritative record of what's bundled and under what terms; if it's out of
+date, that's considered a bug, not a formality.
+
+────────────────────────────────────────────────────────────────────────────
+Reporting a concern
+────────────────────────────────────────────────────────────────────────────
+
+If you believe this project incorporates third-party code, assets, or content
+without proper attribution or in violation of its license, please open an
+issue or contact Spyou directly (https://github.com/Spyou) so it can be
+corrected or removed.
