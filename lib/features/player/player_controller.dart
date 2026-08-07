@@ -37,6 +37,22 @@ import 'color_profiles.dart';
 import 'shader_presets.dart';
 import 'subtitle_font_service.dart';
 
+/// The mpv video output (renderer) to create the player with, from the user's
+/// Video renderer setting.
+///
+/// 'auto' is the default and reproduces the expression this replaced exactly —
+/// gpu-next only while Anime4K is on, otherwise null so media_kit picks its own
+/// default (gpu). So an install that never touches the setting behaves as
+/// before. TV returns null either way; it plays through ExoPlayer, not mpv.
+///
+/// mpv can't switch `vo` on a live player, so this is read once per open — a
+/// change only takes effect the next time the player is opened.
+String? _resolveVideoOutput() => resolveVideoOutput(
+  isTv: sl<AppMode>().isTv,
+  choice: sl<PlaybackPrefs>().videoOutput,
+  shaderStyle: sl<PlaybackPrefs>().videoShaderStyle,
+);
+
 /// Immutable view-state for the player screen: exactly the fields the UI
 /// rebuilds on. These used to drive `notifyListeners()` on the old
 /// `ChangeNotifier`; they are now emitted by [PlayerCubit].
@@ -254,9 +270,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       // the default gpu (OpenGL) path, so upscaling stays smooth. ONLY when
       // enhancement is on (opt-in), so default playback is byte-identical. This
       // is creation-time (mpv can't switch vo live), so it's read here per open.
-      vo: (!sl<AppMode>().isTv && sl<PlaybackPrefs>().videoShaderStyle != 'off')
-          ? 'gpu-next'
-          : null,
+      vo: _resolveVideoOutput(),
       // TV-ONLY: cap the video OUTPUT to 720p. On old TVs the frame is still
       // hardware-decoded, but the weak GPU chokes compositing a full 1080p/4K
       // texture every frame → visible playback lag. Capping the render size is

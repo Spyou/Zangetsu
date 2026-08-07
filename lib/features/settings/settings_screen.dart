@@ -1464,6 +1464,18 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     ('auto', 'Auto'),
   ];
 
+  // How mpv paints the video. Only worth changing when the video is black but
+  // the audio and controls work — that's the GPU renderer failing on a device
+  // whose driver can't run it, and no source or decoder change will help.
+  // MediaCodec Embed skips that renderer entirely (the decoder draws straight
+  // to the surface), at the cost of Anime4K and burned-in subtitle styling.
+  static const List<(String, String)> _rendererOptions = [
+    ('auto', 'Auto (recommended)'),
+    ('gpu', 'GPU — standard renderer'),
+    ('gpu-next', 'GPU Next — Vulkan, experimental'),
+    ('mediacodec_embed', 'MediaCodec Embed — fixes black video'),
+  ];
+
   static const List<(String, String)> _closeConfirmOptions = [
     ('double_back', 'Double back — press back twice to exit'),
     ('confirm', 'Close confirmation — ask before leaving'),
@@ -1567,6 +1579,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     );
     if (picked == null) return;
     await _prefs.setVideoDecoder(picked);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _pickRenderer() async {
+    final picked = await _pick<String>(
+      title: 'Video renderer',
+      options: _rendererOptions,
+      current: _prefs.videoOutput,
+    );
+    if (picked == null) return;
+    await _prefs.setVideoOutput(picked);
     if (mounted) setState(() {});
   }
 
@@ -1826,6 +1849,20 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     'Hardware+ (recommended)',
                   ),
                   onTap: _pickDecoder,
+                ),
+              // Escape hatch for black video with working audio — see
+              // _rendererOptions. Takes effect on the next player open (mpv
+              // can't swap its video output on a live player).
+              if (!sl<AppMode>().isTv)
+                SettingsTile(
+                  icon: Icons.display_settings_outlined,
+                  title: 'Video renderer',
+                  subtitle: _labelFor(
+                    _rendererOptions,
+                    _prefs.videoOutput,
+                    'Auto (recommended)',
+                  ),
+                  onTap: _pickRenderer,
                 ),
               // Anime4K GLSL upscaling — downloaded on demand. One row = Off /
               // Mid / High (GPU tier). Anime-tuned; may over-sharpen live action.

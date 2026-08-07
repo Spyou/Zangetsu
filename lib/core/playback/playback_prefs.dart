@@ -38,6 +38,23 @@ const List<(String, String)> kPlayerInfoFields = [
   ('af', 'Audio boost'),
 ];
 
+/// The mpv video output (renderer) for a given user [choice].
+///
+/// 'auto' reproduces the behaviour from before the Video renderer setting
+/// existed — gpu-next only while Anime4K is on, otherwise null so media_kit
+/// picks its own default (gpu). TV never uses mpv, so it always gets null.
+///
+/// Pure so the "auto changes nothing" guarantee is testable.
+String? resolveVideoOutput({
+  required bool isTv,
+  required String choice,
+  required String shaderStyle,
+}) {
+  if (isTv) return null;
+  if (choice != 'auto') return choice;
+  return shaderStyle != 'off' ? 'gpu-next' : null;
+}
+
 /// Persistent, app-wide playback preferences (default quality, sub/dub
 /// category, autoplay, speed, seek step, keep-screen-on, auto-resume). Backed
 /// by a tiny untyped Hive box read anywhere via `sl<PlaybackPrefs>()`. Values
@@ -223,8 +240,25 @@ class PlaybackPrefs {
   Future<void> setVideoDecoder(String value) =>
       _box.put('videoDecoder', value);
 
+  /// mpv video output (renderer) for the phone player: 'auto' (default), 'gpu',
+  /// 'gpu-next' or 'mediacodec_embed'. 'auto' reproduces the behaviour from
+  /// before this setting existed, so an untouched install is unchanged.
+  ///
+  /// The reason this is exposed at all is `mediacodec_embed`: MediaCodec draws
+  /// straight onto the Android surface, so mpv's GL renderer is never used. On
+  /// devices whose GPU driver can't run that renderer the video is black while
+  /// audio and controls work fine, and no source or decoder change helps —
+  /// this is the only knob that does. TV is unaffected (it doesn't use mpv).
+  String get videoOutput =>
+      _box.get('videoOutput', defaultValue: 'auto') as String;
+  Future<void> setVideoOutput(String value) => _box.put('videoOutput', value);
+
   /// The mpv `hwdec` property value for the current [videoDecoder] choice.
   String get hwdecValue {
+    // mediacodec_embed keeps the frame on the surface, which only works with
+    // the non-copy mediacodec decoder — every other choice renders nothing at
+    // all, so the renderer pick wins over the decoder pick here.
+    if (videoOutput == 'mediacodec_embed') return 'mediacodec';
     switch (videoDecoder) {
       case 'direct':
         return 'mediacodec';
