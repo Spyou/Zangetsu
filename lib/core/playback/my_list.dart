@@ -93,7 +93,8 @@ class MyListStore {
 
   bool contains(MediaItem m) => _box.containsKey(_key(m));
 
-  List<MediaItem> all() => _box.values.map(_itemFromHive).toList();
+  List<MediaItem> all() =>
+      _box.values.map(_itemFromHive).whereType<MediaItem>().toList();
 
   static const String _seedFlagPrefix = 'mylist_seeded_';
 
@@ -154,13 +155,27 @@ class MyListStore {
   /// error box. Normalise the nested map to string keys/values first so the
   /// read can never throw. `coverHeaders` is the only nested field on
   /// [MediaItem]; every other field is a scalar.
-  static MediaItem _itemFromHive(Map raw) {
-    final m = Map<String, dynamic>.from(raw);
-    final h = m['coverHeaders'];
-    if (h is Map) {
-      m['coverHeaders'] = h.map((k, v) => MapEntry('$k', '$v'));
+  ///
+  /// Returns null for a record this build can't read, rather than throwing.
+  /// Records outlive the schema that wrote them: a list saved by a build with
+  /// extra `ProviderType` values (e.g. `manga`) decodes to an ArgumentError
+  /// here, and because [all] maps over the whole box, one such row used to take
+  /// down the entire screen and both directions of cloud sync with it. Skipping
+  /// costs that one row; throwing costs the list.
+  ///
+  /// Deliberately NOT deleted — if a later build understands the value again,
+  /// the row decodes and syncs as normal. Dropping it would be silent data loss.
+  static MediaItem? _itemFromHive(Map raw) {
+    try {
+      final m = Map<String, dynamic>.from(raw);
+      final h = m['coverHeaders'];
+      if (h is Map) {
+        m['coverHeaders'] = h.map((k, v) => MapEntry('$k', '$v'));
+      }
+      return MediaItem.fromJson(m);
+    } catch (_) {
+      return null;
     }
-    return MediaItem.fromJson(m);
   }
 
   /// Ensure [m] is in the list (no-op if already present). Used by the status
@@ -272,6 +287,9 @@ class MyListStore {
         continue;
       }
       final m = _itemFromHive(raw);
+      // Unreadable on this build — can't build a cloud row for it. Left pending
+      // rather than cleared, so it still syncs if a later build can decode it.
+      if (m == null) continue;
       try {
         await _remote.upsert(_cloudRow(uid, m));
         _clearPending(k);
@@ -292,19 +310,27 @@ class MyListStore {
       final rows = await _remote.listFor(uid);
       for (final row in rows) {
         final headers = row['cover_headers'];
-        final item = MediaItem.fromJson({
-          'id': row['item_id'],
-          'title': row['title'],
-          'cover': row['cover'],
-          'coverHeaders': headers is String
-              ? jsonDecode(headers)
-              : headers is Map
-                  ? headers
-                  : null,
-          'url': row['url'],
-          'type': row['type'],
-          'sourceId': row['source_id'],
-        });
+        // A row this build can't decode (e.g. a `manga` type saved by a build
+        // that had it) must skip, not abort — throwing here stopped the pull
+        // dead and every later row went unmerged.
+        MediaItem item;
+        try {
+          item = MediaItem.fromJson({
+            'id': row['item_id'],
+            'title': row['title'],
+            'cover': row['cover'],
+            'coverHeaders': headers is String
+                ? jsonDecode(headers)
+                : headers is Map
+                ? headers
+                : null,
+            'url': row['url'],
+            'type': row['type'],
+            'sourceId': row['source_id'],
+          });
+        } catch (_) {
+          continue;
+        }
         final key = '${item.sourceId}::${item.id}';
         await _box.put(key, item.toJson());
         _clearPending(key); // it's in the cloud now — no longer needs retrying

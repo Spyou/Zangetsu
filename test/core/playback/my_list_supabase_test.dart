@@ -280,4 +280,98 @@ void main() {
     await store.seedCloudIfNeeded();
     expect(fake.rows.length, before);
   });
+
+  // A list written by a build with extra ProviderType values (the manga branch
+  // adds `manga` and `novel`) must not take down the whole screen on a build
+  // that only knows anime/movie. Records outlive the schema that wrote them.
+  group('records this build cannot decode', () {
+    /// Writes a raw row straight into the box, bypassing MediaItem so an
+    /// unknown enum value can be stored the way the manga build left it.
+    Future<void> putRaw(String key, Map<String, dynamic> row) =>
+        Hive.box<Map>(MyListStore.boxName).put(key, row);
+
+    test('all() skips an unreadable row and still returns the good ones',
+        () async {
+      await store.add(_item(id: 'good1'));
+      await store.add(_item(id: 'good2'));
+      await putRaw('src::mangaone', {
+        'id': 'mangaone',
+        'sourceId': 'src',
+        'title': 'Blue Lock',
+        'cover': 'c.png',
+        'url': 'https://x/mangaone',
+        'type': 'manga', // not a ProviderType on this build
+      });
+
+      final all = store.all();
+
+      expect(
+        all.map((i) => i.id),
+        containsAll(['good1', 'good2']),
+        reason: 'valid rows must survive an undecodable neighbour',
+      );
+      expect(all.map((i) => i.id), isNot(contains('mangaone')));
+      expect(all, hasLength(2));
+    });
+
+    test('the unreadable row is kept on disk, not deleted', () async {
+      await putRaw('src::mangaone', {
+        'id': 'mangaone',
+        'sourceId': 'src',
+        'title': 'Blue Lock',
+        'url': 'https://x/mangaone',
+        'type': 'manga',
+      });
+
+      store.all(); // read it — must not prune
+
+      expect(
+        Hive.box<Map>(MyListStore.boxName).containsKey('src::mangaone'),
+        isTrue,
+        reason: 'a build that understands manga should still find the row',
+      );
+    });
+
+    test('pullFromCloud skips a bad row and merges the rest', () async {
+      fake.rows.addAll([
+        {
+          'user_key': 'user1',
+          'source_id': 'src',
+          'item_id': 'bad',
+          'title': 'Manga Title',
+          'cover': null,
+          'cover_headers': null,
+          'url': 'https://x/bad',
+          'type': 'manga', // undecodable here
+        },
+        {
+          'user_key': 'user1',
+          'source_id': 'src',
+          'item_id': 'good',
+          'title': 'Anime Title',
+          'cover': null,
+          'cover_headers': null,
+          'url': 'https://x/good',
+          'type': 'anime',
+        },
+      ]);
+
+      await store.pullFromCloud();
+
+      expect(
+        store.all().map((i) => i.id),
+        contains('good'),
+        reason: 'a bad row must not abort the rest of the pull',
+      );
+      expect(store.all().map((i) => i.id), isNot(contains('bad')));
+    });
+
+    test('a list with no bad rows is unaffected', () async {
+      await store.add(_item(id: 'a'));
+      await store.add(_item(id: 'b'));
+
+      expect(store.all().map((i) => i.id), containsAll(['a', 'b']));
+      expect(store.all(), hasLength(2));
+    });
+  });
 }
