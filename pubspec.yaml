@@ -245,6 +245,8 @@ flutter:
     - assets/icon/wordmark.png
     # Square app icon — shown on the About screen.
     - assets/icon/app_icon.png
+    # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.
+    - assets/icon/logo_mark.png
 
   fonts:
     - family: Inter
