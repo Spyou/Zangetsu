@@ -162,7 +162,15 @@ Episode episodeFromSChapter(Map<String, dynamic> j) {
   final url = (j['url'] as String?) ?? '';
   final rawNum = (j['chapter_number'] as num?)?.toDouble();
   // Mihon uses -1.0 as the "no chapter number" sentinel, same as Aniyomi.
-  final chapterNum = (rawNum != null && rawNum >= 0) ? rawNum : null;
+  // Plenty of sources never populate it and put the number in the name instead
+  // ("Chapter 1: Dream"), so fall back to reading it out of the title — the
+  // same thing Mihon's own ChapterRecognition does. Measured on device: with
+  // this null, a finished chapter could never scrobble (the tracker guard
+  // needs a positive whole number) and chapter ordering fell back to reversing
+  // the list.
+  final chapterNum = (rawNum != null && rawNum >= 0)
+      ? rawNum
+      : parseChapterNumber((j['name'] as String?) ?? '');
   final scanlator = (j['scanlator'] as String?)?.trim();
 
   // Derive a stable id: prefer chapter-number key so reading-history survives
@@ -239,4 +247,34 @@ List<PageImage> pagesFromJson(dynamic raw) {
     if (page != null) result.add(page);
   }
   return result;
+}
+
+/// Best-effort chapter number pulled out of a chapter's display name, for
+/// sources that leave `chapter_number` at the -1 sentinel. Mirrors the intent
+/// of Mihon's `ChapterRecognition`: find the number that follows a chapter
+/// marker, else a lone number in the name. Returns null when nothing sensible
+/// is there (title-only specials, "Extra", "Oneshot"), which keeps the
+/// existing "unnumbered" behaviour for those.
+double? parseChapterNumber(String name) {
+  final n = name.toLowerCase();
+  // "chapter 12", "chapter 12.5", "ch. 12", "ch 12", "c12"
+  final marked = RegExp(r'(?:chapter|chap|ch)\.?\s*(\d+(?:\.\d+)?)').firstMatch(n);
+  if (marked != null) {
+    final v = double.tryParse(marked.group(1)!);
+    if (v != null && v >= 0) return v;
+  }
+  // "#12"
+  final hash = RegExp(r'#\s*(\d+(?:\.\d+)?)').firstMatch(n);
+  if (hash != null) {
+    final v = double.tryParse(hash.group(1)!);
+    if (v != null && v >= 0) return v;
+  }
+  // A lone number anywhere else ("12 - Dream", "Dream 12"). Deliberately last
+  // so a volume/season prefix doesn't win over an explicit chapter marker.
+  final bare = RegExp(r'(?<![\d.])(\d+(?:\.\d+)?)(?![\d.])').firstMatch(n);
+  if (bare != null) {
+    final v = double.tryParse(bare.group(1)!);
+    if (v != null && v >= 0) return v;
+  }
+  return null;
 }

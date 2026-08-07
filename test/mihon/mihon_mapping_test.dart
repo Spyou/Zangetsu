@@ -4,6 +4,7 @@ import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 
 void main() {
+  _chapterNumberFallbackTests();
   // ── mediaItemFromSManga ─────────────────────────────────────────────────────
   group('mediaItemFromSManga', () {
     test('basic mapping, fully populated', () {
@@ -360,6 +361,54 @@ void main() {
 
     test('empty list produces empty result', () {
       expect(pagesFromJson(<dynamic>[]), isEmpty);
+    });
+  });
+}
+
+// ── chapter-number fallback (device-found: sources that leave the sentinel) ──
+void _chapterNumberFallbackTests() {
+  group('parseChapterNumber — fallback when chapter_number is unset', () {
+    test('reads the number out of a "Chapter N: title" name', () {
+      expect(parseChapterNumber('Chapter 1: Dream'), 1.0);
+      expect(parseChapterNumber('Chapter 14'), 14.0);
+    });
+
+    test('handles decimals and short markers', () {
+      expect(parseChapterNumber('Chapter 14.1'), 14.1);
+      expect(parseChapterNumber('Ch. 7'), 7.0);
+      expect(parseChapterNumber('Ch 7 - Foundation'), 7.0);
+      expect(parseChapterNumber('#22'), 22.0);
+    });
+
+    test('falls back to a lone number, and gives up on title-only specials', () {
+      expect(parseChapterNumber('12 - Dream'), 12.0);
+      expect(parseChapterNumber('Oneshot'), isNull);
+      expect(parseChapterNumber('Extra'), isNull);
+      expect(parseChapterNumber(''), isNull);
+    });
+
+    test(
+      'episodeFromSChapter uses the parsed number when the sentinel is set — '
+      'this is exactly what blocked scrobbling on device',
+      () {
+        final ep = episodeFromSChapter(const {
+          'url': '/c1',
+          'name': 'Chapter 1: Dream',
+          'chapter_number': -1.0,
+          'date_upload': 0,
+        });
+        expect(ep.number, 1.0, reason: 'null here means no tracking, ever');
+      },
+    );
+
+    test('a real chapter_number still wins over the name', () {
+      final ep = episodeFromSChapter(const {
+        'url': '/c9',
+        'name': 'Chapter 1: mislabelled',
+        'chapter_number': 9.0,
+        'date_upload': 0,
+      });
+      expect(ep.number, 9.0);
     });
   });
 }
