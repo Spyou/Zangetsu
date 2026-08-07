@@ -204,6 +204,37 @@ class SearchState extends Equatable {
   /// Only populated for `ani:` sources; non-Aniyomi ids are never present.
   final Map<String, String> aniFiltersBySource;
 
+  /// Results of a filters-only browse — source filters applied with an empty
+  /// search box. Aniyomi treats "no query + filters" as a normal search request
+  /// and extensions implement it that way (a source's Sort/Genre/Year filters
+  /// exist precisely for browsing), so this is how those filters reach a source
+  /// at all: the idle screen's "Top picks" comes from `home()`, which has no
+  /// filter argument.
+  ///
+  /// Empty means no filtered browse is active and the idle view renders exactly
+  /// as it always has.
+  final List<MediaItem> filteredBrowse;
+
+  /// Source the [filteredBrowse] results came from; '' when inactive. Kept so
+  /// the idle view can name the source and offer to clear it.
+  final String filteredBrowseSourceId;
+
+  /// Last page fetched for [filteredBrowse]; paging appends from here.
+  final int filteredBrowsePage;
+
+  /// A next page is in flight — stops the scroll listener firing repeatedly.
+  final bool filteredBrowseLoadingMore;
+
+  /// The source returned nothing more, so paging stops asking.
+  final bool filteredBrowseAtEnd;
+
+  /// Whether a filters-only browse is currently showing.
+  bool get hasFilteredBrowse => filteredBrowse.isNotEmpty;
+
+  /// Whether another page is worth requesting.
+  bool get canLoadMoreFilteredBrowse =>
+      hasFilteredBrowse && !filteredBrowseLoadingMore && !filteredBrowseAtEnd;
+
   const SearchState({
     this.status = SearchStatus.idle,
     this.query = '',
@@ -219,6 +250,11 @@ class SearchState extends Equatable {
     this.trending = const [],
     this.suggestions = const [],
     this.aniFiltersBySource = const {},
+    this.filteredBrowse = const [],
+    this.filteredBrowseSourceId = '',
+    this.filteredBrowsePage = 1,
+    this.filteredBrowseLoadingMore = false,
+    this.filteredBrowseAtEnd = false,
   });
 
   /// True when any client-side filter narrows the results (drives the active
@@ -463,6 +499,11 @@ class SearchState extends Equatable {
     List<MediaItem>? trending,
     List<String>? suggestions,
     Map<String, String>? aniFiltersBySource,
+    List<MediaItem>? filteredBrowse,
+    String? filteredBrowseSourceId,
+    int? filteredBrowsePage,
+    bool? filteredBrowseLoadingMore,
+    bool? filteredBrowseAtEnd,
   }) => SearchState(
     status: status ?? this.status,
     query: query ?? this.query,
@@ -480,6 +521,13 @@ class SearchState extends Equatable {
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
     aniFiltersBySource: aniFiltersBySource ?? this.aniFiltersBySource,
+    filteredBrowse: filteredBrowse ?? this.filteredBrowse,
+    filteredBrowseSourceId:
+        filteredBrowseSourceId ?? this.filteredBrowseSourceId,
+    filteredBrowsePage: filteredBrowsePage ?? this.filteredBrowsePage,
+    filteredBrowseLoadingMore:
+        filteredBrowseLoadingMore ?? this.filteredBrowseLoadingMore,
+    filteredBrowseAtEnd: filteredBrowseAtEnd ?? this.filteredBrowseAtEnd,
   );
 
   @override
@@ -498,5 +546,10 @@ class SearchState extends Equatable {
     trending,
     suggestions,
     aniFiltersBySource,
+    filteredBrowse,
+    filteredBrowseSourceId,
+    filteredBrowsePage,
+    filteredBrowseLoadingMore,
+    filteredBrowseAtEnd,
   ];
 }

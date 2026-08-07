@@ -101,29 +101,38 @@ class _AniyomiFilterSheetState extends State<_AniyomiFilterSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildDragHandle(),
-            _buildHeader(),
-            const Divider(color: AppColors.hairline, height: 1),
-            Flexible(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                children: [
-                  for (final f in widget.filters) _buildControl(f),
-                ],
+    final media = MediaQuery.of(context);
+    // Size against what's actually free, not the whole screen. With
+    // isScrollControlled the route shrinks by the keyboard inset, so asking for
+    // 85% of the full height while a keyboard is up crushed the list and the
+    // Apply row down to nothing. Padding by the same inset keeps the buttons
+    // reachable above the keyboard instead of behind it.
+    final keyboard = media.viewInsets.bottom;
+    final available = media.size.height - keyboard;
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboard),
+      child: SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: available * 0.85),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildDragHandle(),
+              _buildHeader(),
+              const Divider(color: AppColors.hairline, height: 1),
+              Flexible(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                  children: [
+                    for (final f in widget.filters) _buildControl(f),
+                  ],
+                ),
               ),
-            ),
-            const Divider(color: AppColors.hairline, height: 1),
-            _buildActions(context),
-          ],
+              const Divider(color: AppColors.hairline, height: 1),
+              _buildActions(context),
+            ],
+          ),
         ),
       ),
     );

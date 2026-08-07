@@ -220,6 +220,10 @@ class _SearchViewState extends State<_SearchView> {
       );
       return;
     }
+    // Drop focus first. The search field autofocuses on open and keeps focus
+    // behind the modal, so the keyboard can reappear over the sheet — which
+    // shrinks it to a sliver and then dismisses it, losing the selection.
+    FocusScope.of(context).unfocus();
     final result = await showAniyomiFilterSheet(context, filters);
     if (result == null || !mounted) return;
     context.read<SearchBloc>().add(
@@ -965,7 +969,9 @@ class _SearchViewState extends State<_SearchView> {
 
     return ListView(
       padding: EdgeInsets.only(
-          top: 6, bottom: 24 + MediaQuery.paddingOf(context).bottom),
+        top: 6,
+        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+      ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
         for (final g in groups) ...[
@@ -1245,7 +1251,11 @@ class _SearchViewState extends State<_SearchView> {
   Widget _resultsGrid(List<MediaItem> items, double cellW) {
     return GridView.builder(
       padding: EdgeInsets.fromLTRB(
-          16, 6, 16, 24 + MediaQuery.paddingOf(context).bottom),
+        16,
+        6,
+        16,
+        24 + MediaQuery.paddingOf(context).bottom,
+      ),
       cacheExtent: 800,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1272,8 +1282,17 @@ class _SearchViewState extends State<_SearchView> {
 
   // ── Idle view: recent searches + trending ─────────────────────────────────
   Widget _idleView(SearchState state) {
-    final recent = _history.recent();
-    final trending = state.trending;
+    // Recent searches are hidden during a filtered browse — the screen is
+    // showing filter results, not a search landing page, and the chips would
+    // push them below the fold.
+    final recent = state.hasFilteredBrowse
+        ? const <String>[]
+        : _history.recent();
+    // A filters-only browse (source filters set with an empty search box)
+    // replaces "Top picks" — those results ARE what the filters asked for.
+    // Falls back to trending the moment the filters are cleared.
+    final browsing = state.hasFilteredBrowse;
+    final trending = browsing ? state.filteredBrowse : state.trending;
 
     if (recent.isEmpty && trending.isEmpty) {
       return const Center(
@@ -1293,63 +1312,129 @@ class _SearchViewState extends State<_SearchView> {
     }
 
     final cellW = (MediaQuery.of(context).size.width - 40 - 24) / 3;
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-          16, 4, 16, 24 + MediaQuery.paddingOf(context).bottom),
-      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-      children: [
-        if (recent.isNotEmpty) ...[
-          Row(
-            children: [
-              Expanded(child: Text('Recent searches', style: AppText.overline)),
-              GestureDetector(
-                onTap: () async {
-                  await _history.clear();
-                  if (mounted) setState(() {});
-                },
-                child: Text(
-                  'Clear',
-                  style: AppText.caption.copyWith(color: AppColors.accent),
+    return NotificationListener<ScrollNotification>(
+      // Infinite scroll for a filtered browse, the way Aniyomi keeps paging one.
+      // The bloc ignores the event unless a browse is active and idle, so this
+      // costs nothing on the normal idle screen.
+      onNotification: (n) {
+        if (browsing &&
+            state.canLoadMoreFilteredBrowse &&
+            n.metrics.axis == Axis.vertical &&
+            n.metrics.pixels >= n.metrics.maxScrollExtent - 600) {
+          context.read<SearchBloc>().add(const SearchFilteredBrowseMore());
+        }
+        return false;
+      },
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          4,
+          16,
+          24 + MediaQuery.paddingOf(context).bottom,
+        ),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        children: [
+          if (recent.isNotEmpty) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Recent searches', style: AppText.overline),
+                ),
+                GestureDetector(
+                  onTap: () async {
+                    await _history.clear();
+                    if (mounted) setState(() {});
+                  },
+                  child: Text(
+                    'Clear',
+                    style: AppText.caption.copyWith(color: AppColors.accent),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final q in recent) _recentChip(q)],
+            ),
+            const SizedBox(height: 24),
+          ],
+          if (trending.isNotEmpty) ...[
+            if (browsing)
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Filtered · ${_repo.displayName(state.filteredBrowseSourceId)}',
+                      style: AppText.overline,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => context.read<SearchBloc>().add(
+                      SearchSourceFiltersApplied(
+                        state.filteredBrowseSourceId,
+                        '',
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 2,
+                      ),
+                      child: Text(
+                        'Clear',
+                        style: TextStyle(
+                          color: AppColors.accent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              const Text('Top picks', style: AppText.overline),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                childAspectRatio: 0.62,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 16,
+              ),
+              itemCount: trending.length,
+              itemBuilder: (context, i) {
+                final item = trending[i];
+                return PosterCard(
+                  title: item.title,
+                  imageUrl: item.cover,
+                  headers: item.coverHeaders,
+                  tags: _tagsFor(item),
+                  cellWidth: cellW,
+                  onTap: () => _openDetail(item),
+                  onLongPress: () => _showInfo(item),
+                );
+              },
+            ),
+            if (browsing && state.filteredBrowseLoadingMore)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [for (final q in recent) _recentChip(q)],
-          ),
-          const SizedBox(height: 24),
+          ],
         ],
-        if (trending.isNotEmpty) ...[
-          const Text('Top picks', style: AppText.overline),
-          const SizedBox(height: 12),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              childAspectRatio: 0.62,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 16,
-            ),
-            itemCount: trending.length,
-            itemBuilder: (context, i) {
-              final item = trending[i];
-              return PosterCard(
-                title: item.title,
-                imageUrl: item.cover,
-                headers: item.coverHeaders,
-                tags: _tagsFor(item),
-                cellWidth: cellW,
-                onTap: () => _openDetail(item),
-                onLongPress: () => _showInfo(item),
-              );
-            },
-          ),
-        ],
-      ],
+      ),
     );
   }
 
@@ -1358,7 +1443,9 @@ class _SearchViewState extends State<_SearchView> {
     final history = _history.recent().map((e) => e.toLowerCase()).toSet();
     return ListView.builder(
       padding: EdgeInsets.only(
-          top: 4, bottom: 24 + MediaQuery.paddingOf(context).bottom),
+        top: 4,
+        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+      ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: suggestions.length,
       itemBuilder: (context, i) {

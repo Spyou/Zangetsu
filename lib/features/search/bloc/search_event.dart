@@ -122,3 +122,13 @@ class SearchSourceFiltersApplied extends SearchEvent {
   @override
   List<Object?> get props => [sourceId, selectionJson];
 }
+
+/// Requests the next page of a filters-only browse (infinite scroll), matching
+/// how Aniyomi keeps paging a filtered browse as you scroll. Ignored when no
+/// browse is active, one is already in flight, or the source ran out of pages.
+class SearchFilteredBrowseMore extends SearchEvent {
+  const SearchFilteredBrowseMore();
+
+  @override
+  List<Object?> get props => [];
+}

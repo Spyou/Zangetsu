@@ -76,7 +76,9 @@ class SourceRepository {
     String query,
     String category,
     String? filtersJson,
-  ) => '$sourceId|${query.trim().toLowerCase()}|$category|${filtersJson ?? ''}';
+    int page,
+  ) => '$sourceId|${query.trim().toLowerCase()}|$category|'
+      '${filtersJson ?? ''}|$page';
 
   /// Drop the search cache when the set of loaded sources changed since the last
   /// call (a source was added, removed, or enabled/disabled) — so cached results
@@ -285,6 +287,7 @@ class SourceRepository {
     String? sourceId,
     String? filtersJson,
     bool cache = false,
+    int page = 1,
   }) {
     final resolved = sourceId ?? _active.state;
     if (!cache) {
@@ -293,9 +296,10 @@ class SourceRepository {
         category: category,
         sourceId: resolved,
         filtersJson: filtersJson,
+        page: page,
       );
     }
-    final key = _searchKey(resolved, query, category, filtersJson);
+    final key = _searchKey(resolved, query, category, filtersJson, page);
     final hit = _searchCache[key];
     if (hit != null && DateTime.now().difference(hit.at) < _searchTtl) {
       return Future.value((items: hit.items, outcome: hit.outcome));
@@ -307,6 +311,7 @@ class SourceRepository {
       category: category,
       sourceId: resolved,
       filtersJson: filtersJson,
+      page: page,
     ).then((res) {
       // Cache only successful outcomes so a transient failure isn't remembered.
       if (res.outcome == SourceOutcome.ok ||
@@ -325,6 +330,7 @@ class SourceRepository {
     String category = 'sub',
     String? sourceId,
     String? filtersJson,
+    int page = 1,
   }) async {
     final resolved = sourceId ?? _active.state;
     try {
@@ -346,11 +352,11 @@ class SourceRepository {
       final items = (_isAniyomi(resolved) && provider is AniyomiProvider)
           ? await provider.search(
               query,
-              1,
+              page,
               category: category,
               filtersJson: filtersJson,
             )
-          : await provider.search(query, 1, category: category);
+          : await provider.search(query, page, category: category);
       return (
         items: items,
         outcome: items.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,

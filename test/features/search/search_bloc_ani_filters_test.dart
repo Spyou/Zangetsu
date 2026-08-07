@@ -75,6 +75,20 @@ class _FakeRepo implements SourceRepository {
   /// Captured args from the most recent `searchStatus` call.
   String? capturedSourceId;
   String? capturedFiltersJson;
+  String? capturedQuery;
+  int? capturedPage;
+
+  /// Per-page canned results, consumed as each page is requested. Anything not
+  /// listed falls back to [searchItems].
+  Map<int, List<MediaItem>> pagedItems = {};
+
+  /// How many times `searchStatus` has been called — lets a test assert that a
+  /// path issues NO request at all, which an args check can't distinguish from
+  /// a request that happened to carry the same args as the previous one.
+  int searchCalls = 0;
+
+  /// When set, `searchStatus` throws it instead of returning.
+  Object? throwOnSearch;
 
   // ── Members used by the handler under test ─────────────────────────────────
 
@@ -85,9 +99,16 @@ class _FakeRepo implements SourceRepository {
     String? sourceId,
     String? filtersJson,
     bool cache = false,
+    int page = 1,
   }) async {
+    searchCalls++;
     capturedSourceId = sourceId;
     capturedFiltersJson = filtersJson;
+    capturedQuery = query;
+    capturedPage = page;
+    final queued = pagedItems.remove(page);
+    if (queued != null) searchItems = queued;
+    if (throwOnSearch != null) throw throwOnSearch!;
     return (
       items: searchItems,
       outcome: searchItems.isEmpty ? SourceOutcome.empty : SourceOutcome.ok,
@@ -175,10 +196,13 @@ class _FakeRepo implements SourceRepository {
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// A distinct item per (sourceId, title). The url has to vary with the title:
+/// paging dedupes by url, so a fixed url would make every page look like a
+/// repeat of the first.
 MediaItem _fakeItem(String sourceId, {String title = 'Naruto'}) => MediaItem(
-  id: 'id-$sourceId',
+  id: 'id-$sourceId-$title',
   title: title,
-  url: 'https://example.com/$sourceId',
+  url: 'https://example.com/$sourceId/${title.toLowerCase()}',
   type: ProviderType.anime,
   sourceId: sourceId,
 );
@@ -357,5 +381,213 @@ void main() {
         );
       },
     );
+  });
+
+  // Filters set with an EMPTY search box. This used to store the selection and
+  // return without fetching anything, so a source's Sort/Genre/Year filters —
+  // which exist for browsing, not searching — appeared to do nothing at all.
+  group('SearchBloc._onSourceFiltersApplied with no query (filtered browse)', () {
+    test('searches with an empty query and the filters, and shows the results',
+        () async {
+      expect(bloc.state.query, isEmpty, reason: 'no query seeded');
+      repo.searchItems = [_fakeItem('ani:1', title: 'Action Anime')];
+
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["genre:action"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        repo.searchCalls,
+        1,
+        reason: 'an empty search box must still issue a filtered request',
+      );
+      expect(repo.capturedQuery, '');
+      expect(repo.capturedFiltersJson, '["genre:action"]');
+      expect(repo.capturedSourceId, 'ani:1');
+      expect(bloc.state.filteredBrowse.first.title, 'Action Anime');
+      expect(bloc.state.filteredBrowseSourceId, 'ani:1');
+      expect(bloc.state.hasFilteredBrowse, isTrue);
+    });
+
+    test('leaves the normal search groups alone', () async {
+      repo.searchItems = [_fakeItem('ani:1')];
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        bloc.state.groups,
+        isEmpty,
+        reason: 'a filters-only browse is not a search result group',
+      );
+    });
+
+    test('clearing the filters drops the browse without issuing a request',
+        () async {
+      repo.searchItems = [_fakeItem('ani:1')];
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(bloc.state.hasFilteredBrowse, isTrue);
+
+      final callsBefore = repo.searchCalls;
+      bloc.add(const SearchSourceFiltersApplied('ani:1', ''));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowse, isEmpty);
+      expect(bloc.state.filteredBrowseSourceId, isEmpty);
+      expect(
+        repo.searchCalls,
+        callsBefore,
+        reason: 'clearing must not fire an unfiltered empty-query search',
+      );
+    });
+
+    test('no results leaves the browse inactive so Top picks stays', () async {
+      repo.searchItems = [];
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowse, isEmpty);
+      expect(bloc.state.filteredBrowseSourceId, isEmpty);
+      expect(bloc.state.hasFilteredBrowse, isFalse);
+    });
+
+    test('a failing source falls back to the idle view instead of erroring',
+        () async {
+      repo.throwOnSearch = StateError('source rejected empty query');
+
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.hasFilteredBrowse, isFalse);
+      expect(
+        bloc.state.aniFiltersBySource['ani:1'],
+        '["s"]',
+        reason: 'the selection is still remembered even if the fetch failed',
+      );
+    });
+
+    test('a query still takes the normal grouped path, not the browse path',
+        () async {
+      await _seedQuery(bloc, 'naruto');
+      repo.searchItems = [_fakeItem('ani:1')];
+
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(repo.capturedQuery, 'naruto');
+      expect(bloc.state.groups, hasLength(1));
+      expect(
+        bloc.state.hasFilteredBrowse,
+        isFalse,
+        reason: 'browse is for the empty-query case only',
+      );
+    });
+  });
+
+  group('SearchFilteredBrowseMore (infinite scroll)', () {
+    /// Starts a browse whose first page is [first].
+    Future<void> startBrowse(List<MediaItem> first) async {
+      repo.searchItems = first;
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["s"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+
+    test('appends the next page and advances the page counter', () async {
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+      expect(bloc.state.filteredBrowsePage, 1);
+
+      repo.searchItems = [_fakeItem('ani:1', title: 'Two')];
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(repo.capturedPage, 2, reason: 'must ask the source for page 2');
+      expect(repo.capturedQuery, '', reason: 'still a filters-only browse');
+      expect(repo.capturedFiltersJson, '["s"]');
+      expect(
+        bloc.state.filteredBrowse.map((i) => i.title),
+        ['One', 'Two'],
+        reason: 'page 2 appends, it does not replace',
+      );
+      expect(bloc.state.filteredBrowsePage, 2);
+      expect(bloc.state.filteredBrowseLoadingMore, isFalse);
+      expect(bloc.state.filteredBrowseAtEnd, isFalse);
+    });
+
+    test('an empty page ends paging', () async {
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+
+      repo.searchItems = [];
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowseAtEnd, isTrue);
+      expect(bloc.state.canLoadMoreFilteredBrowse, isFalse);
+      expect(bloc.state.filteredBrowse, hasLength(1));
+    });
+
+    test('a source that repeats page 1 forever ends paging instead of looping',
+        () async {
+      final page1 = [_fakeItem('ani:1', title: 'One')];
+      await startBrowse(page1);
+
+      // Same item back again — some sources ignore the page param entirely.
+      repo.searchItems = page1;
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(
+        bloc.state.filteredBrowse,
+        hasLength(1),
+        reason: 'duplicates must not be appended',
+      );
+      expect(
+        bloc.state.filteredBrowseAtEnd,
+        isTrue,
+        reason: 'nothing new means the source is out of pages',
+      );
+    });
+
+    test('does nothing when no browse is active', () async {
+      expect(bloc.state.hasFilteredBrowse, isFalse);
+      final before = repo.searchCalls;
+
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(repo.searchCalls, before);
+    });
+
+    test('stops paging when a page fails rather than retrying every scroll',
+        () async {
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+
+      repo.throwOnSearch = StateError('boom');
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowseAtEnd, isTrue);
+      expect(bloc.state.filteredBrowseLoadingMore, isFalse);
+      expect(
+        bloc.state.filteredBrowse,
+        hasLength(1),
+        reason: 'existing results survive a failed page',
+      );
+    });
+
+    test('re-applying filters resets paging to page 1', () async {
+      await startBrowse([_fakeItem('ani:1', title: 'One')]);
+      repo.searchItems = [_fakeItem('ani:1', title: 'Two')];
+      bloc.add(const SearchFilteredBrowseMore());
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(bloc.state.filteredBrowsePage, 2);
+
+      // New selection → fresh browse from the top.
+      repo.searchItems = [_fakeItem('ani:1', title: 'Fresh')];
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '["other"]'));
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+
+      expect(bloc.state.filteredBrowsePage, 1);
+      expect(bloc.state.filteredBrowseAtEnd, isFalse);
+      expect(bloc.state.filteredBrowse.map((i) => i.title), ['Fresh']);
+    });
   });
 }

@@ -38,6 +38,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchRunRequested>(_onRunRequested);
     on<SearchSubmitted>(_onSubmitted);
     on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
+    on<SearchFilteredBrowseMore>(_onFilteredBrowseMore);
   }
 
   final SourceRepository _repo;
@@ -447,7 +448,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
     emit(state.copyWith(aniFiltersBySource: map));
     final q = state.query.trim();
-    if (q.isEmpty) return;
+    if (q.isEmpty) {
+      // Filters with an empty search box = browse. The idle screen's "Top
+      // picks" comes from home(), which takes no filters, so without this the
+      // selection was stored and then silently ignored — exactly what a source's
+      // Sort/Genre/Year filters are for. Aniyomi treats no-query-plus-filters as
+      // an ordinary search and extensions implement it that way, so we ask for
+      // the same thing.
+      await _browseWithFilters(event.sourceId, map[event.sourceId], emit);
+      return;
+    }
     final res = await _repo.searchStatus(
       q,
       sourceId: event.sourceId,
@@ -473,6 +483,93 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       }
     }
     emit(state.copyWith(groups: groups));
+  }
+
+  /// Runs an empty-query search carrying only [filtersJson] and parks the
+  /// results in `filteredBrowse`, which the idle screen shows in place of "Top
+  /// picks". A cleared selection (null/empty) drops straight back to the normal
+  /// idle view instead of issuing a pointless unfiltered search.
+  ///
+  /// Failures clear the browse rather than surfacing an error: this runs off a
+  /// filter tap on the idle screen, and a source that rejects empty queries
+  /// should leave the user on "Top picks", not on an error page.
+  Future<void> _browseWithFilters(
+    String sourceId,
+    String? filtersJson,
+    Emitter<SearchState> emit,
+  ) async {
+    if (filtersJson == null || filtersJson.isEmpty) {
+      emit(state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''));
+      return;
+    }
+    try {
+      final res = await _repo.searchStatus(
+        '',
+        sourceId: sourceId,
+        filtersJson: filtersJson,
+      );
+      if (isClosed || state.query.trim().isNotEmpty) return;
+      emit(
+        state.copyWith(
+          filteredBrowse: res.items,
+          filteredBrowseSourceId: res.items.isEmpty ? '' : sourceId,
+          filteredBrowsePage: 1,
+          filteredBrowseLoadingMore: false,
+          filteredBrowseAtEnd: false,
+        ),
+      );
+    } catch (_) {
+      if (isClosed) return;
+      emit(state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''));
+    }
+  }
+
+  /// Appends the next page of a filters-only browse (infinite scroll).
+  ///
+  /// A source that returns nothing, or only titles already on screen, is out of
+  /// pages — some sources repeat the first page forever rather than 404ing, so
+  /// the dedupe result decides, not just an empty list.
+  Future<void> _onFilteredBrowseMore(
+    SearchFilteredBrowseMore event,
+    Emitter<SearchState> emit,
+  ) async {
+    if (!state.canLoadMoreFilteredBrowse) return;
+    final sourceId = state.filteredBrowseSourceId;
+    final filtersJson = state.aniFiltersBySource[sourceId];
+    if (sourceId.isEmpty || filtersJson == null || filtersJson.isEmpty) return;
+
+    final nextPage = state.filteredBrowsePage + 1;
+    emit(state.copyWith(filteredBrowseLoadingMore: true));
+    try {
+      final res = await _repo.searchStatus(
+        '',
+        sourceId: sourceId,
+        filtersJson: filtersJson,
+        page: nextPage,
+      );
+      if (isClosed) return;
+      final seen = {for (final i in state.filteredBrowse) i.url};
+      final fresh = res.items.where((i) => !seen.contains(i.url)).toList();
+      emit(
+        state.copyWith(
+          filteredBrowse: fresh.isEmpty
+              ? state.filteredBrowse
+              : [...state.filteredBrowse, ...fresh],
+          filteredBrowsePage: nextPage,
+          filteredBrowseLoadingMore: false,
+          filteredBrowseAtEnd: fresh.isEmpty,
+        ),
+      );
+    } catch (_) {
+      if (isClosed) return;
+      // Stop paging on failure rather than retrying on every scroll tick.
+      emit(
+        state.copyWith(
+          filteredBrowseLoadingMore: false,
+          filteredBrowseAtEnd: true,
+        ),
+      );
+    }
   }
 
   @override
