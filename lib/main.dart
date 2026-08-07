@@ -27,6 +27,7 @@ import 'core/theme/theme_controller.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
+import 'features/onboarding/boot_error_screen.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/shell/root_shell.dart';
 import 'features/watch_together/ui/party_bar.dart';
@@ -159,7 +160,26 @@ class WatchApp extends StatefulWidget {
 }
 
 class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
-  late final Future<void> _boot = _run();
+  /// Startup, with a watchdog. NOT `late final` — Try again reassigns it.
+  ///
+  /// The timeout matters as much as the try/catch: a boot step that HANGS
+  /// (a network read with no deadline, a wedged plugin) never throws, so
+  /// without a deadline the splash stays up forever exactly as if it had
+  /// crashed. 45s is far beyond a normal cold start on slow hardware.
+  late Future<void> _boot = _startBoot();
+
+  Future<void> _startBoot() => _run().timeout(const Duration(seconds: 45));
+
+  /// Re-runs startup after a failure. GetIt must be cleared first — every
+  /// registerSingleton in initDependencies throws if the type is already
+  /// registered, so a bare retry over a partly-built container would fail for
+  /// a second, misleading reason.
+  Future<void> _retryBoot() async {
+    try {
+      await sl.reset();
+    } catch (_) {/* nothing registered yet — fine */}
+    if (mounted) setState(() => _boot = _startBoot());
+  }
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
 
@@ -303,9 +323,28 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     return FutureBuilder<void>(
       future: _boot,
       builder: (context, snap) {
-        // Still initializing (or init failed) → keep the splash up. No cubits
-        // are needed yet, so a bare MaterialApp is enough.
-        if (snap.connectionState != ConnectionState.done || snap.hasError) {
+        // Startup failed (threw, or the watchdog fired). This used to fall into
+        // the splash branch below and sit there forever — no message, nothing
+        // to tap, reinstall the only way out. Show what happened and offer a
+        // way back instead.
+        if (snap.hasError) {
+          AppLogger.instance.logError(
+            snap.error ?? 'startup failed',
+            snap.stackTrace,
+          );
+          return MaterialApp(
+            title: kAppName,
+            theme: buildAppTheme(),
+            debugShowCheckedModeBanner: false,
+            home: BootErrorScreen(
+              details: '${snap.error}\n\n${snap.stackTrace ?? ''}'.trim(),
+              onRetry: _retryBoot,
+            ),
+          );
+        }
+        // Still initializing → splash. No cubits are needed yet, so a bare
+        // MaterialApp is enough.
+        if (snap.connectionState != ConnectionState.done) {
           return MaterialApp(
             title: kAppName,
             theme: buildAppTheme(),
