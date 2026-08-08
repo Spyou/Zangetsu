@@ -104,7 +104,11 @@ Future<void> _syncToTrackers(
       isTv = d.tmdbIsTv;
     } catch (_) {/* leave ids null — title fallback still covers anime */}
   }
-  final title = isAnime ? item.title : null;
+  // Manga/novel sources (Mihon) don't carry a malId, so — exactly like anime —
+  // fall back to a title search on the tracker. Without this, reading titles
+  // never reached the tracker (all ids null + no title = nothing to match).
+  // Movies/TV stay null: they resolve by tmdbId/imdbId, not a title search.
+  final title = (isAnime || reading) ? item.title : null;
   final kind = reading ? MediaKind.manga : MediaKind.anime;
   if (remove) {
     await hub.removeFromList(
