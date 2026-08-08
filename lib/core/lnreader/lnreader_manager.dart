@@ -6,27 +6,24 @@ import 'lnreader_extension_service.dart';
 import 'lnreader_provider.dart';
 import 'lnreader_runtime.dart';
 
-/// Owns the shared QuickJS runtime + loaded novel-source providers — the
-/// novel twin of `MihonManager` (`lib/core/mihon/mihon_manager.dart`).
-/// Deliberately duplicated rather than shared, same rationale as every other
-/// *Reader/*Mihon twin in this codebase.
+/// Owns the shared QuickJS runtime + installed-plugin metadata — the novel
+/// twin of `MihonManager` (`lib/core/mihon/mihon_manager.dart`). Deliberately
+/// duplicated rather than shared, same rationale as every other *Reader/
+/// *Mihon twin in this codebase.
 ///
-/// The laziness invariant this class exists to enforce: [init] only opens the
-/// `lnreader_plugins` Hive box — it must NEVER build the runtime or load a
-/// plugin, so a cold boot pays zero LNReader cost when the user has no novel
-/// sources open. The runtime is built, and every installed plugin loaded,
-/// only the first time [all] is read.
+/// The laziness invariant this class exists to enforce: neither [init] nor
+/// [installedSources] nor [get] nor [metaFor] may build the runtime or load a
+/// plugin — they only ever read stored [LnReaderPluginMeta]. A cold boot (or
+/// registering a `LnReaderProvider` per installed source, the way
+/// `SourceRepository` does for every other provider type) must pay zero
+/// LNReader runtime cost when the user never opens a novel source.
 ///
-/// [all] is `Future`-typed, unlike `MihonManager.all` (a plain synchronous
-/// getter over already-registered sources). Building the runtime and loading
-/// a plugin both go through `LnReaderRuntime.loadPlugin`, which genuinely
-/// awaits asset loads (the cheerio + harness JS bundles) — a real Dart
-/// `await`, even against Flutter's `SynchronousFuture` test asset loader,
-/// always defers past the current synchronous call, so nothing here could
-/// resolve inside a plain synchronous getter body. `runtimeBuilt` still flips
-/// true synchronously the moment [all] is first evaluated (the shared
-/// `LnReaderRuntime` is constructed before the first `await` inside
-/// [_build]), so the laziness invariant is observable without awaiting.
+/// The runtime is built, and a given plugin's JS loaded, only the first time
+/// [ensureLoaded] (or [callPlugin], which calls it) runs for that plugin —
+/// i.e. only once a `LnReaderProvider` data method is actually invoked.
+/// `runtimeBuilt` flips true synchronously the moment [ensureLoaded]
+/// constructs the shared [LnReaderRuntime], before its first `await`, so the
+/// laziness invariant is observable without awaiting the load to finish.
 class LnReaderManager {
   LnReaderManager({required this.service, required this.fetch});
 
@@ -34,10 +31,12 @@ class LnReaderManager {
   final Future<LnReaderHttpResponse> Function(String url, Map init) fetch;
 
   LnReaderRuntime? _runtime;
-  Future<List<LnReaderProvider>>? _allFuture;
+  final Set<String> _loadedPluginIds = {};
+  final Map<String, LnReaderProvider> _providerCache = {};
 
   /// True once the shared runtime has been constructed — a test seam for the
-  /// laziness invariant (must stay false until [all] is first read).
+  /// laziness invariant (must stay false until [ensureLoaded] is first
+  /// called).
   @visibleForTesting
   bool get runtimeBuilt => _runtime != null;
 
@@ -49,39 +48,66 @@ class LnReaderManager {
     }
   }
 
-  /// One [LnReaderProvider] per installed plugin, building the shared
-  /// runtime and loading each plugin's JS on first read. Cached after
-  /// that — re-reading returns the same providers without reloading.
-  ///
-  /// A plugin whose JS fails to load is skipped (logged), not fatal to the
-  /// rest — same "one bad extension can't sink the batch" rule
-  /// `ProviderRegistry.loadAll` follows.
-  Future<List<LnReaderProvider>> get all => _allFuture ??= _build();
+  /// One `(id, name)` pair per installed plugin, straight from stored meta —
+  /// what `SourceRepository` walks to register a provider per novel source.
+  /// SYNC and never touches the runtime.
+  List<({String id, String name})> get installedSources => [
+    for (final m in service.installed()) (id: 'lnr:${m.id}', name: m.name),
+  ];
+
+  /// Looks up a [LnReaderProvider] by its `'lnr:<pluginId>'` [sourceId].
+  /// SYNC — constructs (and caches) the provider straight from stored meta;
+  /// never builds the runtime or loads the plugin. Returns null when the
+  /// plugin isn't installed.
+  LnReaderProvider? get(String sourceId) {
+    final pluginId = sourceId.startsWith('lnr:') ? sourceId.substring(4) : sourceId;
+    final meta = metaFor(pluginId);
+    if (meta == null) return null;
+    return _providerCache[pluginId] ??= LnReaderProvider(manager: this, meta: meta);
+  }
+
+  /// The stored metadata for an installed plugin, or null. SYNC.
+  LnReaderPluginMeta? metaFor(String pluginId) {
+    for (final m in service.installed()) {
+      if (m.id == pluginId) return m;
+    }
+    return null;
+  }
 
   /// Placeholder — LNReader has no update-check mechanism yet. Mirrors
   /// `MihonManager.updateCount`'s shape so a future update feature slots in
   /// without changing this getter's name/type.
   int get updateCount => 0;
 
-  Future<List<LnReaderProvider>> _build() async {
-    final runtime = _runtime ??= LnReaderRuntime(fetch: fetch);
-    final providers = <LnReaderProvider>[];
-    for (final meta in service.installed()) {
-      final js = service.jsFor(meta.id);
-      if (js == null) continue;
-      try {
-        await runtime.loadPlugin(meta.id, js);
-        providers.add(
-          LnReaderProvider(
-            runtime: runtime,
-            pluginId: meta.id,
-            info: runtime.pluginInfo(meta.id),
-          ),
-        );
-      } catch (e) {
-        debugPrint('[lnreader] failed to load plugin ${meta.id}: $e');
-      }
+  /// Builds the shared runtime (first call only) and loads [pluginId]'s JS
+  /// into it (first call per plugin only) — the ONLY place besides
+  /// [callPlugin] that does either. Every `LnReaderProvider` data method
+  /// awaits this before touching the plugin.
+  Future<void> ensureLoaded(String pluginId) async {
+    if (_loadedPluginIds.contains(pluginId)) return;
+    final js = service.jsFor(pluginId);
+    if (js == null) {
+      throw StateError('lnreader plugin "$pluginId" is not installed');
     }
-    return providers;
+    final runtime = _runtime ??= LnReaderRuntime(fetch: fetch);
+    await runtime.loadPlugin(pluginId, js);
+    _loadedPluginIds.add(pluginId);
+  }
+
+  /// Ensures [pluginId] is loaded, then calls `plugin[method](...args)`.
+  Future<dynamic> callPlugin(String pluginId, String method, List<Object?> args) async {
+    await ensureLoaded(pluginId);
+    return _runtime!.call(pluginId, method, args);
+  }
+
+  /// The plugin's own filter schema (`pluginInfo()['filters']`), forwarded
+  /// verbatim into `popularNovels` as its default `filters` argument —
+  /// confirmed required by the Phase-0 spike (`proven_harness.js`), not
+  /// optional the way it is for e.g. Mihon search. Only valid after
+  /// [ensureLoaded] has resolved for [pluginId]; returns `{}` if the plugin
+  /// carries no filter schema.
+  Map<String, dynamic> filtersFor(String pluginId) {
+    final filters = _runtime?.pluginInfo(pluginId)['filters'];
+    return filters is Map ? Map<String, dynamic>.from(filters) : {};
   }
 }

@@ -9,7 +9,8 @@ import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import '../provider/base_provider.dart';
 import '../provider/reading_provider.dart';
-import 'lnreader_runtime.dart';
+import 'lnreader_extension_service.dart';
+import 'lnreader_manager.dart';
 
 /// A single LNReader plugin wrapped as a [BaseProvider] + [ReadingProvider].
 ///
@@ -18,57 +19,54 @@ import 'lnreader_runtime.dart';
 /// of the Aniyomi one. Identified by `'lnr:<pluginId>'` so it lives alongside
 /// `mihon:`, `ani:`, `cs:` and JS providers without collisions.
 ///
-/// Every data method forwards to [runtime].call(pluginId, ...) — there is no
-/// native channel here, LNReader plugins run entirely inside the QuickJS
-/// runtime built in Task 2. This is a reading source, not a video one:
-/// [getVideoSources] always returns `[]` and [getPages] always throws —
-/// LNReader is novel-only, manga stays on the Mihon path.
+/// Built from stored [LnReaderPluginMeta] alone — constructing one must NEVER
+/// build the ~450KB QuickJS runtime or load the plugin's JS. That only
+/// happens lazily, inside a data method, via [LnReaderManager.ensureLoaded] /
+/// [LnReaderManager.callPlugin]. This is what lets `SourceRepository`
+/// register a provider for every installed novel source at startup without
+/// paying any LNReader runtime cost until one is actually opened.
+///
+/// This is a reading source, not a video one: [getVideoSources] always
+/// returns `[]` and [getPages] always throws — LNReader is novel-only, manga
+/// stays on the Mihon path.
 class LnReaderProvider implements BaseProvider, ReadingProvider {
-  LnReaderProvider({
-    required this.runtime,
-    required this.pluginId,
-    required this.info,
-  });
+  LnReaderProvider({required this.manager, required this.meta});
 
-  final LnReaderRuntime runtime;
-  final String pluginId;
-
-  /// `{name, site, version, filters}`, as returned by
-  /// [LnReaderRuntime.pluginInfo].
-  final Map<String, dynamic> info;
+  final LnReaderManager manager;
+  final LnReaderPluginMeta meta;
 
   @override
-  String get sourceId => 'lnr:$pluginId';
+  String get sourceId => 'lnr:${meta.id}';
 
   @override
-  String get displayName => (info['name'] as String?) ?? pluginId;
+  String get displayName => meta.name;
 
-  /// Plugin base URL — relative `path`/`cover` values are resolved against it.
-  String get site => (info['site'] as String?) ?? '';
-
-  /// The plugin's own filter schema, forwarded verbatim to `popularNovels` as
-  /// its default `filters` argument — confirmed required by the Phase-0 spike
-  /// (`proven_harness.js`), not optional the way it is for e.g. Mihon search.
-  dynamic get _filters => info['filters'];
+  /// Plugin base URL — relative `path`/`cover` values are resolved against
+  /// it. Comes straight from the stored index entry, not a runtime read.
+  String get site => meta.site;
 
   // ── BaseProvider ────────────────────────────────────────────────────────────
 
+  /// Built entirely from [meta] — no runtime involved, so calling this alone
+  /// never triggers a plugin load.
   @override
   Future<ProviderInfo> getInfo() async => ProviderInfo(
-    name: displayName,
-    // ponytail: pluginInfo() never carries a lang field (verified against
-    // lnreader_harness.js's __pluginInfo) — LNReader's plugin catalog skews
-    // English, so default to 'en' rather than plumbing a new field through
-    // the runtime for a value nothing reads yet.
-    lang: (info['lang'] as String?) ?? 'en',
-    baseUrl: site,
+    name: meta.name,
+    // ponytail: the plugin index never carries a lang field beyond the
+    // top-level one already on meta — fall back to 'en' the same way the
+    // pre-refactor runtime-backed getInfo() did when it was absent.
+    lang: meta.lang.isEmpty ? 'en' : meta.lang,
+    baseUrl: meta.site,
     type: ProviderType.novel,
-    version: info['version'] as String?,
+    version: meta.version.isEmpty ? null : meta.version,
   );
 
   /// A single "Popular" row, or null when the plugin returned nothing —
   /// there's no separate "latest" concept surfaced here (unlike Mihon's two
   /// rows), so this stays a one-call mirror rather than fetching twice.
+  ///
+  /// Delegates to [popular], which is what actually triggers the lazy
+  /// runtime build — no direct plugin call needed here.
   @override
   Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
     final items = await popular();
@@ -82,17 +80,23 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
     String category = 'sub',
     int dateRange = 7,
     int page = 1,
-  }) => _fetchNovelList('popularNovels', [
-    page,
-    {'showLatestNovels': false, 'filters': _filters},
-  ]);
+  }) async {
+    await manager.ensureLoaded(meta.id);
+    final filters = manager.filtersFor(meta.id);
+    return _fetchNovelList('popularNovels', [
+      page,
+      {'showLatestNovels': false, 'filters': filters},
+    ]);
+  }
 
   /// [category] is unused. `searchNovels(term, page)` takes no filters
   /// argument (unlike `popularNovels`) — verified against the design spec's
   /// plugin-interface mapping.
   @override
-  Future<List<MediaItem>> search(String query, int page, {String category = ''}) =>
-      _fetchNovelList('searchNovels', [query, page]);
+  Future<List<MediaItem>> search(String query, int page, {String category = ''}) async {
+    await manager.ensureLoaded(meta.id);
+    return _fetchNovelList('searchNovels', [query, page]);
+  }
 
   @override
   Future<MediaDetail> getDetail(String url, {String category = 'sub'}) async {
@@ -103,6 +107,7 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
       type: ProviderType.novel,
       sourceId: sourceId,
     );
+    await manager.ensureLoaded(meta.id);
     final raw = await _safeCall('parseNovel', [url]);
     if (raw is! Map) return fallback;
     final j = Map<String, dynamic>.from(raw);
@@ -127,12 +132,14 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
 
   @override
   Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) async {
+    await manager.ensureLoaded(meta.id);
     final raw = await _safeCall('parseNovel', [url]);
     if (raw is! Map) return const [];
     return _chaptersFromNovel(Map<String, dynamic>.from(raw));
   }
 
   /// LNReader is a reading source, not a video one — no playable streams.
+  /// Doesn't touch the runtime at all.
   @override
   Future<List<VideoSource>> getVideoSources(String episodeUrl, {bool fast = false}) async =>
       const [];
@@ -150,19 +157,21 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
 
   @override
   Future<ChapterText> getText(String chapterUrl) async {
+    await manager.ensureLoaded(meta.id);
     final raw = await _safeCall('parseChapter', [chapterUrl]);
     return ChapterText(html: raw is String ? raw : '');
   }
 
   // ── private helpers ─────────────────────────────────────────────────────────
 
-  /// Invokes [method] on the runtime, catching any JS/timeout failure so
-  /// callers degrade cleanly (same role as MihonProvider's `_safeInvoke`).
+  /// Invokes [method] on the plugin through the manager, catching any
+  /// JS/timeout failure so callers degrade cleanly (same role as
+  /// MihonProvider's `_safeInvoke`).
   Future<dynamic> _safeCall(String method, List<Object?> args) async {
     try {
-      return await runtime.call(pluginId, method, args);
+      return await manager.callPlugin(meta.id, method, args);
     } catch (e) {
-      debugPrint('[lnreader] $method($pluginId) failed: $e');
+      debugPrint('[lnreader] $method(${meta.id}) failed: $e');
       return null;
     }
   }

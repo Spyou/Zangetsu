@@ -12,12 +12,16 @@ const _indexJson = '''
 ]
 ''';
 
+/// `plugin-a`'s filter schema — non-empty, so `filtersFor()` tests have
+/// something real to assert against (`plugin-b` stays `{}` for contrast).
+const _sortFiltersJs = "{sort:{type:'Picker',label:'Sort'}}";
+
 /// A minimal CommonJS fake plugin — same shape `test/core/lnreader/lnreader_provider_test.dart`
 /// uses — exporting `default` with `name`/`site`/`filters` plus stub methods
 /// so `pluginInfo()` and a real `loadPlugin()` round trip succeed.
-String _pluginJs(String name, String site) => '''
+String _pluginJs(String name, String site, {String filtersJs = '{}'}) => '''
 module.exports.default = {
-  name: '$name', site: '$site', version: '1.0.0', filters: {},
+  name: '$name', site: '$site', version: '1.0.0', filters: $filtersJs,
   popularNovels: function (p, o) { return Promise.resolve([]); },
   searchNovels: function (t, p) { return Promise.resolve([]); },
   parseNovel: function (x) { return Promise.resolve({name: 'N', chapters: []}); },
@@ -57,7 +61,9 @@ void main() {
     service = LnReaderExtensionService(
       httpGet: (url) async {
         if (url == LnReaderExtensionService.indexUrl) return _indexJson;
-        if (url == _metaA.url) return _pluginJs('Plugin A', _metaA.site);
+        if (url == _metaA.url) {
+          return _pluginJs('Plugin A', _metaA.site, filtersJs: _sortFiltersJs);
+        }
         if (url == _metaB.url) return _pluginJs('Plugin B', _metaB.site);
         throw StateError('unexpected httpGet($url)');
       },
@@ -99,7 +105,10 @@ void main() {
     expect(list.single.name, 'Plugin A');
     expect(list.single.version, '1.0.0');
 
-    expect(service.jsFor('plugin-a'), _pluginJs('Plugin A', _metaA.site));
+    expect(
+      service.jsFor('plugin-a'),
+      _pluginJs('Plugin A', _metaA.site, filtersJs: _sortFiltersJs),
+    );
     expect(service.jsFor('nope'), isNull);
   });
 
@@ -109,31 +118,100 @@ void main() {
   });
 
   test(
-    'reading .all lazily builds the runtime and returns one provider per '
-    'installed plugin',
+    'installedSources lists every installed plugin as lnr:<id>/name pairs, without building the runtime',
     () async {
       await manager.init();
       await service.install(_metaA);
       await service.install(_metaB);
 
       expect(manager.runtimeBuilt, isFalse);
+      final sources = manager.installedSources;
+      expect(manager.runtimeBuilt, isFalse);
 
-      final providers = await manager.all;
-
-      expect(manager.runtimeBuilt, isTrue);
-      expect(providers, hasLength(2));
-      expect(providers.map((p) => p.sourceId).toSet(), {
-        'lnr:plugin-a',
-        'lnr:plugin-b',
-      });
-      expect(providers.map((p) => p.displayName).toSet(), {
-        'Plugin A',
-        'Plugin B',
-      });
-
-      // Cached: reading again doesn't rebuild or reload.
-      final again = await manager.all;
-      expect(again, providers);
+      expect(sources.map((s) => s.id).toSet(), {'lnr:plugin-a', 'lnr:plugin-b'});
+      expect(sources.map((s) => s.name).toSet(), {'Plugin A', 'Plugin B'});
     },
   );
+
+  test('metaFor() returns the stored meta, or null when not installed', () async {
+    await manager.init();
+    await service.install(_metaA);
+
+    expect(manager.metaFor('plugin-a')?.name, 'Plugin A');
+    expect(manager.metaFor('nope'), isNull);
+  });
+
+  test(
+    'get() returns a provider built from stored meta alone, without building the runtime',
+    () async {
+      await manager.init();
+      await service.install(_metaA);
+
+      expect(manager.runtimeBuilt, isFalse);
+      final provider = manager.get('lnr:plugin-a');
+      expect(manager.runtimeBuilt, isFalse);
+
+      expect(provider, isNotNull);
+      expect(provider!.sourceId, 'lnr:plugin-a');
+      expect(provider.displayName, 'Plugin A');
+
+      // Cached: the same instance comes back on a second lookup.
+      expect(manager.get('lnr:plugin-a'), same(provider));
+    },
+  );
+
+  test('get() returns null for a plugin id that was never installed', () async {
+    await manager.init();
+    expect(manager.get('lnr:nope'), isNull);
+  });
+
+  test(
+    'ensureLoaded() lazily builds the runtime once and tolerates a repeat call',
+    () async {
+      await manager.init();
+      await service.install(_metaA);
+
+      expect(manager.runtimeBuilt, isFalse);
+      await manager.ensureLoaded('plugin-a');
+      expect(manager.runtimeBuilt, isTrue);
+
+      // Idempotent — a second call for the same plugin doesn't throw or
+      // rebuild anything.
+      await manager.ensureLoaded('plugin-a');
+      expect(manager.runtimeBuilt, isTrue);
+    },
+  );
+
+  test(
+    'ensureLoaded() throws for a plugin id that was never installed, without building the runtime',
+    () async {
+      await manager.init();
+      await expectLater(manager.ensureLoaded('nope'), throwsStateError);
+      expect(manager.runtimeBuilt, isFalse);
+    },
+  );
+
+  test('callPlugin() lazily loads the plugin, then invokes the method', () async {
+    await manager.init();
+    await service.install(_metaA);
+
+    expect(manager.runtimeBuilt, isFalse);
+    final result = await manager.callPlugin('plugin-a', 'popularNovels', [1, {}]);
+    expect(manager.runtimeBuilt, isTrue);
+    expect(result, isEmpty);
+  });
+
+  test("filtersFor() reads a loaded plugin's filter schema (empty when absent)", () async {
+    await manager.init();
+    await service.install(_metaA);
+    await service.install(_metaB);
+
+    await manager.ensureLoaded('plugin-a');
+    await manager.ensureLoaded('plugin-b');
+
+    expect(manager.filtersFor('plugin-a'), {
+      'sort': {'type': 'Picker', 'label': 'Sort'},
+    });
+    expect(manager.filtersFor('plugin-b'), <String, dynamic>{});
+  });
 }
