@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/mode/content_mode.dart';
+import '../../../core/mode/content_mode_cubit.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/playback/search_history.dart';
 import '../../../core/playback/search_prefs.dart';
@@ -11,6 +13,9 @@ import '../../../core/playback/source_health_store.dart';
 import '../../../core/repository/source_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
 import '../../../core/state/active_source_cubit.dart';
+// sourceTypeOf lives with the source picker; search_screen.dart reaches for it
+// the same way for its own mode narrowing.
+import '../../../core/ui/source_switcher.dart';
 import 'search_event.dart';
 import 'search_state.dart';
 
@@ -45,6 +50,28 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
+
+  /// [SourceRepository.loadedSources] narrowed to the active content mode, so an
+  /// all-sources search only fans out over sources that mode can actually show —
+  /// a manga search shouldn't query novel (or anime) sources, and vice versa.
+  ///
+  /// Mirrors `_modeSources` in `search_screen.dart`, which already narrows the
+  /// source *list* the UI offers; without the same narrowing here the bloc
+  /// searched everything regardless of mode, so the picker and the results
+  /// disagreed.
+  ///
+  /// Anime short-circuits to the unfiltered list exactly as the screen does, so
+  /// anime/movie search is byte-identical to before. TV has no mode switcher and
+  /// is therefore always anime mode, so TV is unaffected too.
+  List<({String id, String name})> _modeSources() {
+    final mode = sl<ContentModeCubit>().state;
+    if (mode == ContentMode.anime) return _repo.loadedSources;
+    return filterSourcesForMode(
+      {for (final s in _repo.loadedSources) s.id: s},
+      mode,
+      (s) => sourceTypeOf(s.id),
+    ).values.toList();
+  }
 
   /// Seeds the bloc with the user's remembered filter/sort choices so they
   /// persist across screen opens.
@@ -301,7 +328,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       sources = [(id: activeId, name: _repo.displayName(activeId))];
     } else {
       final prefs = sl<SearchSourcePrefs>();
-      sources = _repo.loadedSources
+      sources = _modeSources()
           .where((s) => prefs.isIncluded(s.id))
           .toList();
     }

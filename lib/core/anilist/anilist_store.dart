@@ -1,6 +1,8 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
+import '../tracker/tracker.dart' show MediaKind, mediaKindFromName;
+
 /// Local persistence for the AniList integration: the implicit-grant access
 /// token + the signed-in viewer, the auto-sync preference, the MAL→AniList id
 /// cache (so the scrobbler resolves a media id once), and the offline scrobble
@@ -29,12 +31,19 @@ class AniListStore {
   String? get viewerName => _box.get('viewerName') as String?;
   String? get viewerAvatar => _box.get('viewerAvatar') as String?;
 
-  Future<void> saveSession({required String token, required int expiresAt}) async {
+  Future<void> saveSession({
+    required String token,
+    required int expiresAt,
+  }) async {
     await _box.put('accessToken', token);
     await _box.put('expiresAt', expiresAt);
   }
 
-  Future<void> saveViewer({required int id, required String name, String? avatar}) async {
+  Future<void> saveViewer({
+    required int id,
+    required String name,
+    String? avatar,
+  }) async {
     await _box.put('viewerId', id);
     await _box.put('viewerName', name);
     await _box.put('viewerAvatar', avatar);
@@ -85,42 +94,70 @@ class AniListStore {
   Future<void> setLastSync(String info) async => _box.put('lastSync', info);
 
   // ── MAL → AniList media id cache ──────────────────────────────────────────
-  int? cachedMediaId(int malId) {
-    final m = _box.get('mal2al') as Map?;
+  // Namespaced by [MediaKind]: MAL's anime and manga id spaces overlap (the
+  // same numeric malId can name an unrelated anime AND an unrelated manga),
+  // so a shared cache could return a stale cross-kind AniList id. `anime`
+  // keeps the ORIGINAL box key ('mal2al' etc.) so every entry cached before
+  // this parameter existed keeps working unchanged — manga gets its own key,
+  // nothing is migrated or dropped.
+  String _malMapKey(MediaKind kind) =>
+      kind == MediaKind.manga ? 'mal2al_manga' : 'mal2al';
+  String _titleMapKey(MediaKind kind) =>
+      kind == MediaKind.manga ? 'title2al_manga' : 'title2al';
+  String _epsMapKey(MediaKind kind) =>
+      kind == MediaKind.manga ? 'mediaEps_manga' : 'mediaEps';
+
+  int? cachedMediaId(int malId, [MediaKind kind = MediaKind.anime]) {
+    final m = _box.get(_malMapKey(kind)) as Map?;
     final v = m?['$malId'];
     return v is int ? v : null;
   }
 
-  Future<void> cacheMediaId(int malId, int mediaId) async {
-    final m = Map<String, dynamic>.from((_box.get('mal2al') as Map?) ?? {});
+  Future<void> cacheMediaId(
+    int malId,
+    int mediaId, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
+    final key = _malMapKey(kind);
+    final m = Map<String, dynamic>.from((_box.get(key) as Map?) ?? {});
     m['$malId'] = mediaId;
-    await _box.put('mal2al', m);
+    await _box.put(key, m);
   }
 
   // ── Title → AniList media id cache (fallback when no MAL id) ────────────────
-  int? cachedMediaIdByTitle(String key) {
-    final m = _box.get('title2al') as Map?;
+  int? cachedMediaIdByTitle(String key, [MediaKind kind = MediaKind.anime]) {
+    final m = _box.get(_titleMapKey(kind)) as Map?;
     final v = m?[key];
     return v is int ? v : null;
   }
 
-  Future<void> cacheMediaIdByTitle(String key, int mediaId) async {
-    final m = Map<String, dynamic>.from((_box.get('title2al') as Map?) ?? {});
+  Future<void> cacheMediaIdByTitle(
+    String key,
+    int mediaId, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
+    final boxKey = _titleMapKey(kind);
+    final m = Map<String, dynamic>.from((_box.get(boxKey) as Map?) ?? {});
     m[key] = mediaId;
-    await _box.put('title2al', m);
+    await _box.put(boxKey, m);
   }
 
-  // ── Total episodes per AniList media id (to decide COMPLETED) ──────────────
-  int? cachedEpisodes(int mediaId) {
-    final m = _box.get('mediaEps') as Map?;
+  // ── Total episodes/chapters per AniList media id (to decide COMPLETED) ─────
+  int? cachedEpisodes(int mediaId, [MediaKind kind = MediaKind.anime]) {
+    final m = _box.get(_epsMapKey(kind)) as Map?;
     final v = m?['$mediaId'];
     return v is int ? v : null;
   }
 
-  Future<void> cacheEpisodes(int mediaId, int episodes) async {
-    final m = Map<String, dynamic>.from((_box.get('mediaEps') as Map?) ?? {});
+  Future<void> cacheEpisodes(
+    int mediaId,
+    int episodes, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
+    final key = _epsMapKey(kind);
+    final m = Map<String, dynamic>.from((_box.get(key) as Map?) ?? {});
     m['$mediaId'] = episodes;
-    await _box.put('mediaEps', m);
+    await _box.put(key, m);
   }
 
   // ── Scrobble high-water mark (never push progress backwards / twice) ───────
@@ -139,27 +176,48 @@ class AniListStore {
   // ── Offline scrobble queue (failed pushes, retried on reconnect/launch) ────
   List<Map<String, dynamic>> get pendingScrobbles {
     final l = _box.get('pending') as List?;
-    if (l == null) return const [];
+    // A growable list, not `const []` — `queueScrobble` calls `.add()` on
+    // this when nothing's queued yet (the very first offline scrobble),
+    // which throws against an unmodifiable literal.
+    if (l == null) return <Map<String, dynamic>>[];
     return l.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
   }
 
   Future<void> _writePending(List<Map<String, dynamic>> list) async =>
       _box.put('pending', list);
 
-  // Identity for a queued scrobble: the MAL id when known, else the title.
-  static String _pendingKey(int? malId, String? title) =>
-      malId != null ? 'mal:$malId' : 'title:${(title ?? '').toLowerCase()}';
+  // Identity for a queued scrobble: the MAL id when known, else the title —
+  // plus [kind], since MAL's anime/manga id spaces overlap (the same malId
+  // can legitimately be queued for both at once). A row written before
+  // [kind] existed has no 'kind' field; [mediaKindFromName] reads that as
+  // anime, matching what it always implicitly meant.
+  static String _pendingKey(int? malId, String? title, MediaKind kind) =>
+      '${kind.name}:${malId != null ? 'mal:$malId' : 'title:${(title ?? '').toLowerCase()}'}';
 
-  /// Add or update a queued scrobble (keyed by malId/title — newest ep wins).
+  static MediaKind _rowKind(Map<String, dynamic> e) =>
+      mediaKindFromName(e['kind'] as String?);
+
+  /// Add or update a queued scrobble (keyed by malId/title/kind — newest ep
+  /// wins).
   Future<void> queueScrobble({
     int? malId,
     String? title,
     required int episode,
+    MediaKind kind = MediaKind.anime,
   }) async {
-    final key = _pendingKey(malId, title);
+    final key = _pendingKey(malId, title, kind);
     final list = pendingScrobbles;
-    final i = list.indexWhere((e) => _pendingKey(e['malId'] as int?, e['title'] as String?) == key);
-    final entry = {'malId': malId, 'title': title, 'episode': episode};
+    final i = list.indexWhere(
+      (e) =>
+          _pendingKey(e['malId'] as int?, e['title'] as String?, _rowKind(e)) ==
+          key,
+    );
+    final entry = {
+      'malId': malId,
+      'title': title,
+      'episode': episode,
+      'kind': kind.name,
+    };
     if (i >= 0) {
       if ((list[i]['episode'] as int? ?? 0) >= episode) return;
       list[i] = entry;
@@ -169,11 +227,21 @@ class AniListStore {
     await _writePending(list);
   }
 
-  Future<void> removePending({int? malId, String? title}) async {
-    final key = _pendingKey(malId, title);
+  Future<void> removePending({
+    int? malId,
+    String? title,
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    final key = _pendingKey(malId, title, kind);
     final list = pendingScrobbles
       ..removeWhere(
-        (e) => _pendingKey(e['malId'] as int?, e['title'] as String?) == key,
+        (e) =>
+            _pendingKey(
+              e['malId'] as int?,
+              e['title'] as String?,
+              _rowKind(e),
+            ) ==
+            key,
       );
     await _writePending(list);
   }

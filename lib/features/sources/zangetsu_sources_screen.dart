@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/provider/provider_repo_registry.dart';
@@ -10,12 +11,14 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/ui/source_switcher.dart';
 import '../../core/ui/states.dart';
 import 'bloc/sources_bloc.dart';
 import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
 import 'sources_search_field.dart';
+import 'zangetsu_recommended_repos.dart';
 
 /// Dedicated Zangetsu (JS provider) ecosystem screen — Installed and
 /// Repositories as two tabs. Self-contained: creates its own [SourcesBloc]
@@ -25,7 +28,25 @@ import 'sources_search_field.dart';
 /// widget below is copied byte-identical from `sources_screen.dart` /
 /// `sources_screen_tv.dart` — only the host screen around them is new.
 class ZangetsuSourcesScreen extends StatelessWidget {
-  const ZangetsuSourcesScreen({super.key});
+  const ZangetsuSourcesScreen({
+    super.key,
+    this.openToRepos = false,
+    this.scopeToReading = false,
+  });
+
+  /// Opens straight to the Repositories tab (phone only — TV keeps its own
+  /// default) — used by the reading-mode source picker's install CTA, which
+  /// has nothing to show on Installed anyway.
+  final bool openToRepos;
+
+  /// When true, the phone Installed tab leads with manga/novel providers
+  /// instead of the full unfiltered list, with a "Show all" toggle back to
+  /// everything (Task E3 fix round 1 — a tile that opens an identical
+  /// unfiltered screen doesn't read as "different from streaming mode").
+  /// Defaults to false so every other call site (the existing Zangetsu row,
+  /// Settings → Providers) is untouched. TV never reads this — [_ZTvView]
+  /// doesn't take it, so TV is unaffected regardless of the caller.
+  final bool scopeToReading;
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +57,10 @@ class ZangetsuSourcesScreen extends StatelessWidget {
       ),
       child: sl<AppMode>().isTv
           ? const _ZTvView()
-          : const _ZPhoneView(),
+          : _ZPhoneView(
+              openToRepos: openToRepos,
+              scopeToReading: scopeToReading,
+            ),
     );
   }
 }
@@ -46,7 +70,13 @@ class ZangetsuSourcesScreen extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _ZPhoneView extends StatefulWidget {
-  const _ZPhoneView();
+  const _ZPhoneView({this.openToRepos = false, this.scopeToReading = false});
+
+  /// See [ZangetsuSourcesScreen.openToRepos].
+  final bool openToRepos;
+
+  /// See [ZangetsuSourcesScreen.scopeToReading].
+  final bool scopeToReading;
 
   @override
   State<_ZPhoneView> createState() => _ZPhoneViewState();
@@ -56,6 +86,11 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  /// User-toggled escape hatch out of the reading-only scope. Only consulted
+  /// when [ZangetsuSourcesScreen.scopeToReading] is true; irrelevant (and
+  /// never surfaced) otherwise.
+  bool _showAll = false;
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -64,6 +99,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
 
   @override
   Widget build(BuildContext context) {
+    final readingOnly = widget.scopeToReading && !_showAll;
     return BlocListener<SourcesBloc, SourcesState>(
       listenWhen: (a, b) =>
           b.notice != null &&
@@ -75,10 +111,16 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
       },
       child: DefaultTabController(
         length: 2,
+        initialIndex: widget.openToRepos ? 1 : 0,
         child: Scaffold(
           backgroundColor: AppColors.bg,
           appBar: AppBar(
-            title: Text('Zangetsu providers', style: AppText.barTitle),
+            title: Text(
+              widget.scopeToReading
+                  ? 'Manga & Novel providers'
+                  : 'Zangetsu providers',
+              style: AppText.barTitle,
+            ),
             bottom: TabBar(
               indicatorColor: AppColors.accent,
               indicatorSize: TabBarIndicatorSize.label,
@@ -112,12 +154,37 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
                   onChanged: (q) => setState(() => _query = q),
                 ),
               ),
+              // Scoped-entry affordance (Task E3 fix round 1): only shown
+              // when opened from the Manga & Novel row. Guarantees the user
+              // can always reach every installed source, scoped or not.
+              if (widget.scopeToReading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _showAll
+                              ? 'Showing every installed provider'
+                              : 'Showing manga & novel providers',
+                          style: AppText.caption,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () => setState(() => _showAll = !_showAll),
+                        child: Text(_showAll ? 'Manga & Novel only' : 'Show all'),
+                      ),
+                    ],
+                  ),
+                ),
               Expanded(
                 child: TabBarView(
                   children: [
                     ListView(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                      children: [_ZInstalledSection(query: _query)],
+                      children: [
+                        _ZInstalledSection(query: _query, readingOnly: readingOnly),
+                      ],
                     ),
                     ListView(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
@@ -145,9 +212,14 @@ Future<void> _showAddRepoDialog(BuildContext context) {
 /// Installed zone body for phone — the JS provider groups by origin repo.
 /// Hides when empty with an empty-state line + hint.
 class _ZInstalledSection extends StatelessWidget {
-  const _ZInstalledSection({this.query = ''});
+  const _ZInstalledSection({this.query = '', this.readingOnly = false});
 
   final String query;
+
+  /// Task E3 fix round 1: when true, only manga/novel entries are shown
+  /// (the Manga & Novel hub row's scoped view). Default false is today's
+  /// unfiltered behavior, unchanged.
+  final bool readingOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -157,12 +229,15 @@ class _ZInstalledSection extends StatelessWidget {
         final entries = state.installed
             .where((e) => sourceSearchMatches(
                 query, e.displayName.isNotEmpty ? e.displayName : e.name))
+            .where((e) => !readingOnly || _isReadingEntry(e))
             .toList();
         if (entries.isEmpty) {
           return EmptyState(
             icon: Icons.dns_rounded,
             message: query.trim().isEmpty
-                ? 'No providers installed.'
+                ? (readingOnly
+                    ? 'No manga/novel providers installed.'
+                    : 'No providers installed.')
                 : 'No installed providers match "${query.trim()}".',
           );
         }
@@ -217,6 +292,13 @@ class _ZInstalledSection extends StatelessWidget {
       },
     );
   }
+}
+
+/// sourceTypeOf is the app's one ProviderType resolver — reused here for the
+/// Manga & Novel scoped view rather than re-derived.
+bool _isReadingEntry(ProviderRegistryEntry e) {
+  final t = sourceTypeOf(e.name);
+  return t == ProviderType.manga || t == ProviderType.novel;
 }
 
 /// Repositories zone body for phone — repo rows with browse/install.
@@ -955,53 +1037,123 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
     });
   }
 
+  /// Fills the manifest URL field from a recommended entry — the user still
+  /// presses "Add" themselves, same as pasting a URL in by hand. Never
+  /// submits on its own.
+  void _useRecommended(({String name, String desc, String url}) repo) {
+    setState(() {
+      _urlCtrl.text = repo.url;
+      _error = null;
+    });
+  }
+
+  Widget _recommendedTile(({String name, String desc, String url}) repo) {
+    final added = widget.bloc.state.repos.any((r) => r.url == repo.url);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  repo.name,
+                  style: AppText.body.copyWith(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(repo.desc, style: AppText.caption),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          if (added)
+            Text(
+              'Added',
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            )
+          else
+            OutlinedButton(
+              onPressed: _loading ? null : () => _useRecommended(repo),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.accent,
+                side: BorderSide(color: AppColors.accent.withValues(alpha: 0.6)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Use'),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
       title: Text('Add repo', style: AppText.headline),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _nameCtrl,
-            enabled: !_loading,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Custom name (optional)',
-              hintText: "Leave blank to use the repo's own name",
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              enabled: !_loading,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Custom name (optional)',
+                hintText: "Leave blank to use the repo's own name",
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _urlCtrl,
-            enabled: !_loading,
-            autofocus: true,
-            keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-              labelText: 'Manifest URL',
-              hintText: 'https://.../index.json',
+            const SizedBox(height: 12),
+            TextField(
+              controller: _urlCtrl,
+              enabled: !_loading,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Manifest URL',
+                hintText: 'https://.../index.json',
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            "Paste the repo's index.json URL — the JSON file that lists "
-            'every source in the repo, not a single provider .js URL.',
-            style: AppText.caption,
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
-              _error!,
-              style: AppText.caption.copyWith(color: AppColors.accent),
+              "Paste the repo's index.json URL — the JSON file that lists "
+              'every source in the repo, not a single provider .js URL.',
+              style: AppText.caption,
             ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: AppText.caption.copyWith(color: AppColors.accent),
+              ),
+            ],
+            if (kRecommendedZangetsuRepos.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text(
+                'RECOMMENDED',
+                style: AppText.caption.copyWith(
+                  color: AppColors.textSecondary,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                ),
+              ),
+              const SizedBox(height: 4),
+              for (final r in kRecommendedZangetsuRepos) _recommendedTile(r),
+            ],
           ],
-        ],
+        ),
       ),
       actions: [
         TextButton(

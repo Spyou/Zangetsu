@@ -3,13 +3,17 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'provider_info.g.dart';
 
-/// Content kind a provider serves. `anime` ships now; `movie` is reserved
-/// so the catalog can grow without a model change.
+/// Content kind a provider serves. `anime`/`movie` are the existing video
+/// types; `manga`/`novel` are reading types (see `ContentMode`).
 enum ProviderType {
   @JsonValue('anime')
   anime,
   @JsonValue('movie')
   movie,
+  @JsonValue('manga')
+  manga,
+  @JsonValue('novel')
+  novel,
 }
 
 @JsonSerializable()

@@ -23,6 +23,7 @@ import com.spyou.watch_app.cloudstream.CsPluginLoaderActivity
 import com.spyou.watch_app.cloudstream.PluginHost
 import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
+import com.spyou.watch_app.mihon.MihonBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import io.flutter.embedding.android.FlutterActivity
@@ -794,6 +795,12 @@ class MainActivity : FlutterActivity() {
         // CloudStream channel registration style above.
         val aniyomiChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/aniyomi")
         AniyomiBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(aniyomiChannel)
+
+        // Mihon channel: same idea for manga — load Mihon manga-extension APKs,
+        // register sources, and expose them for browse/search/read. Separate
+        // bridge and separate source registry from Aniyomi's; nothing shared.
+        val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/mihon")
+        MihonBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(mihonChannel)
 
         // Device-class detection: lets Dart know if the app is running on an
         // Android TV / Leanback device. Returns false on phones/tablets so every

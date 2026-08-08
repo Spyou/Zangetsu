@@ -2,6 +2,61 @@ import 'package:dio/dio.dart';
 
 import '../models/media_extras.dart';
 import '../models/person.dart';
+import '../tracker/tracker.dart' show MediaKind;
+
+/// AniList's `type:` enum value for [kind].
+String _anilistType(MediaKind kind) =>
+    kind == MediaKind.manga ? 'MANGA' : 'ANIME';
+
+/// AniList's total-count field(s) for [kind] — episodes for anime, chapters
+/// + volumes for manga/novel (novels are filed under MANGA on AniList).
+String _totalCountFields(MediaKind kind) =>
+    kind == MediaKind.manga ? 'chapters volumes' : 'episodes';
+
+/// Query text for [AniListApi.mediaByMalId]. Pure + exposed so a test can pin
+/// the anime text byte-for-byte and assert the manga branch on its own.
+String mediaByMalIdQuery(MediaKind kind) {
+  return 'query(\$idMal:Int){ Media(idMal:\$idMal, type:${_anilistType(kind)}){ '
+      'id ${_totalCountFields(kind)} } }';
+}
+
+/// Query text for [AniListApi.mediaBySearch].
+String mediaBySearchQuery(MediaKind kind) {
+  return 'query(\$search:String){ Media(search:\$search, type:${_anilistType(kind)}){ '
+      'id ${_totalCountFields(kind)} } }';
+}
+
+/// Query text for [AniListApi.mediaEntry]. No `type:` filter — a lookup by
+/// AniList's own [mediaId] is unambiguous across anime/manga, unlike idMal.
+String mediaEntryQuery(MediaKind kind) {
+  return 'query(\$id:Int){ Media(id:\$id){ ${_totalCountFields(kind)} '
+      'nextAiringEpisode{ episode airingAt } '
+      'mediaListEntry{ status score(format:POINT_10) progress } } }';
+}
+
+/// Query text for [AniListApi.searchMedia]. [novelFormat] narrows a manga
+/// search to light novels (`format_in: [NOVEL]`); ignored for anime.
+String searchMediaQuery(MediaKind kind, {bool novelFormat = false}) {
+  final formatArg = (kind == MediaKind.manga && novelFormat)
+      ? ',format_in:[NOVEL]'
+      : '';
+  return 'query(\$q:String,\$n:Int){ Page(perPage:\$n){ media(search:\$q,type:${_anilistType(kind)}$formatArg){ '
+      'id idMal ${_totalCountFields(kind)} format seasonYear '
+      'title{ romaji english } coverImage{ medium } } } }';
+}
+
+/// Query text for the library read-back ([AniListService.fetchList]).
+///
+/// The manga variant also selects `format` — that's the ONLY way to tell a
+/// light novel from a manga, since AniList files both under `type: MANGA`
+/// (see [_anilistType]). Anime doesn't select it, so the anime request stays
+/// byte-identical to the pre-manga text.
+String mediaListCollectionQuery(MediaKind kind) {
+  final formatField = kind == MediaKind.manga ? ' format' : '';
+  return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
+      'lists { status entries { status progress score(format:POINT_10) '
+      'media { idMal title { romaji english }$formatField coverImage { large } } } } } }';
+}
 
 /// The signed-in AniList user.
 class AniListViewer {
@@ -76,28 +131,31 @@ class AniListApi {
     );
   }
 
-  /// Resolve an AniList media id (+ total episodes) from a MAL id. Returns
-  /// `(id, episodes)` or null when unmatched.
-  Future<({int id, int? episodes})?> mediaByMalId(int malId) async {
-    final d = await _gql(
-      'query(\$idMal:Int){ Media(idMal:\$idMal, type:ANIME){ id episodes } }',
-      {'idMal': malId},
-    );
+  /// Resolve an AniList media id (+ total episodes, or chapters for
+  /// [MediaKind.manga]) from a MAL id. Returns `(id, episodes)` or null when
+  /// unmatched.
+  Future<({int id, int? episodes})?> mediaByMalId(
+    int malId, {
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    final d = await _gql(mediaByMalIdQuery(kind), {'idMal': malId});
     final m = d?['Media'];
     if (m is! Map || m['id'] == null) return null;
-    return (id: (m['id'] as num).toInt(), episodes: (m['episodes'] as num?)?.toInt());
+    final total = kind == MediaKind.manga ? m['chapters'] : m['episodes'];
+    return (id: (m['id'] as num).toInt(), episodes: (total as num?)?.toInt());
   }
 
-  /// Resolve an AniList media id (+ total episodes) by anime title search.
+  /// Resolve an AniList media id (+ total episodes/chapters) by title search.
   /// Fallback for when no MAL id is available. Null when unmatched.
-  Future<({int id, int? episodes})?> mediaBySearch(String search) async {
-    final d = await _gql(
-      'query(\$search:String){ Media(search:\$search, type:ANIME){ id episodes } }',
-      {'search': search},
-    );
+  Future<({int id, int? episodes})?> mediaBySearch(
+    String search, {
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    final d = await _gql(mediaBySearchQuery(kind), {'search': search});
     final m = d?['Media'];
     if (m is! Map || m['id'] == null) return null;
-    return (id: (m['id'] as num).toInt(), episodes: (m['episodes'] as num?)?.toInt());
+    final total = kind == MediaKind.manga ? m['chapters'] : m['episodes'];
+    return (id: (m['id'] as num).toInt(), episodes: (total as num?)?.toInt());
   }
 
   /// The characters + relations selection, shared by the MAL-id and
@@ -307,17 +365,15 @@ class AniListApi {
     return (r?['DeleteMediaListEntry'] as Map?)?['deleted'] == true;
   }
 
-  /// The user's list entry for [mediaId] plus the media's episode + next-airing
-  /// meta, for the sync sheet. `mediaListEntry` is null when the title isn't on
-  /// the user's list. Returns null on error. Score is read on the 0–10 scale.
-  Future<Map<String, dynamic>?> mediaEntry(int mediaId) async {
-    final d = await _gql(
-      'query(\$id:Int){ Media(id:\$id){ episodes '
-      'nextAiringEpisode{ episode airingAt } '
-      'mediaListEntry{ status score(format:POINT_10) progress } } }',
-      {'id': mediaId},
-      auth: true,
-    );
+  /// The user's list entry for [mediaId] plus the media's episode/chapter +
+  /// next-airing meta, for the sync sheet. `mediaListEntry` is null when the
+  /// title isn't on the user's list. Returns null on error. Score is read on
+  /// the 0–10 scale.
+  Future<Map<String, dynamic>?> mediaEntry(
+    int mediaId, {
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    final d = await _gql(mediaEntryQuery(kind), {'id': mediaId}, auth: true);
     final m = d?['Media'];
     if (m is! Map) return null;
     return Map<String, dynamic>.from(m);
@@ -359,19 +415,20 @@ class AniListApi {
     return d?['SaveMediaListEntry'] is Map;
   }
 
-  /// Search anime for candidate matches (the match-fixer). Returns up to
-  /// [perPage] raw media maps ({id, idMal, title, coverImage, episodes, format,
-  /// seasonYear}). Unauthenticated; empty on error.
+  /// Search anime (or manga/novel) for candidate matches (the match-fixer).
+  /// Returns up to [perPage] raw media maps ({id, idMal, title, coverImage,
+  /// episodes|chapters+volumes, format, seasonYear}). [novelFormat] narrows a
+  /// manga search to light novels only. Unauthenticated; empty on error.
   Future<List<Map<String, dynamic>>> searchMedia(
     String query, {
     int perPage = 12,
+    MediaKind kind = MediaKind.anime,
+    bool novelFormat = false,
   }) async {
-    final d = await _gql(
-      'query(\$q:String,\$n:Int){ Page(perPage:\$n){ media(search:\$q,type:ANIME){ '
-      'id idMal episodes format seasonYear '
-      'title{ romaji english } coverImage{ medium } } } }',
-      {'q': query, 'n': perPage},
-    );
+    final d = await _gql(searchMediaQuery(kind, novelFormat: novelFormat), {
+      'q': query,
+      'n': perPage,
+    });
     final page = d?['Page'];
     final media = (page is Map) ? page['media'] : null;
     if (media is! List) return const [];

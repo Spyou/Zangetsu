@@ -28,6 +28,10 @@
     <!-- Standard Material DayNight theme for AniyomiSettingsActivity: hosts a
          PreferenceFragmentCompat for an Aniyomi source's own settings. -->
     <style name="Theme.AniyomiSettings" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
+    <!-- Same, for MihonSettingsActivity: hosts a PreferenceFragmentCompat for a
+         Mihon manga source's own settings. Separate style so the anime theme
+         can be restyled without touching manga (and vice versa). -->
+    <style name="Theme.MihonSettings" parent="Theme.MaterialComponents.DayNight.NoActionBar" />
 
     <!-- Native TV player control-row button (Episodes / Audio & Subs / Next).
          The Activity handles focus highlight (accent tint + scale) in code so it

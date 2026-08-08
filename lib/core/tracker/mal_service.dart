@@ -14,6 +14,140 @@ import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import 'tracker.dart';
 
+/// MAL's list-endpoint root for [kind] — `anime` or `manga` (novels are
+/// filed under manga on MAL; there's no separate novel list).
+String malRoot(MediaKind kind) => kind == MediaKind.manga ? 'manga' : 'anime';
+
+/// MAL's total-count field for [kind].
+String malTotalField(MediaKind kind) =>
+    kind == MediaKind.manga ? 'num_chapters' : 'num_episodes';
+
+/// MAL's `my_list_status` progress WRITE field for [kind] (the PATCH body
+/// key). For manga this is also the read name; for anime it is NOT — MAL's
+/// anime API is asymmetric (see [malProgressReadField]).
+String malProgressField(MediaKind kind) =>
+    kind == MediaKind.manga ? 'num_chapters_read' : 'num_watched_episodes';
+
+/// MAL's `my_list_status` progress READ field for [kind] (the field name in
+/// a GET response). Manga shares the write name (`num_chapters_read`); anime
+/// does NOT — the response uses `num_episodes_watched`, not
+/// `num_watched_episodes`. Collapsing these into one builder is exactly the
+/// bug that regressed anime progress reads.
+String malProgressReadField(MediaKind kind) =>
+    kind == MediaKind.manga ? 'num_chapters_read' : 'num_episodes_watched';
+
+/// Path (relative to `_api`) for the title-search a resolver hits
+/// (`_resolve`/`_resolveManga`). Pure + exposed so a test can pin the anime
+/// text byte-for-byte — same golden-string technique Task 15 used for
+/// AniList's queries.
+String malSearchPath(MediaKind kind, String title) =>
+    '${malRoot(kind)}?q=${Uri.encodeComponent(title)}&limit=1&fields=${malTotalField(kind)}';
+
+/// Path for the by-id total-count lookup (`_totalEpisodes`/`_totalChapters`).
+String malTotalPath(MediaKind kind, int id) =>
+    '${malRoot(kind)}/$id?fields=${malTotalField(kind)}';
+
+/// Path for the single-entry read ([MalService.fetchEntry]).
+String malEntryPath(MediaKind kind, int id) =>
+    '${malRoot(kind)}/$id?fields=${malTotalField(kind)},my_list_status';
+
+/// Path for the match-fixer search ([MalService.searchEntries]).
+String malSearchEntriesPath(MediaKind kind, String query) =>
+    '${malRoot(kind)}?q=${Uri.encodeComponent(query)}&limit=12'
+    '&fields=${malTotalField(kind)},media_type,start_season,main_picture';
+
+/// Path for a write/delete against `my_list_status` (`_patch`/`removeFromList`).
+String malListStatusPath(MediaKind kind, int id) =>
+    '${malRoot(kind)}/$id/my_list_status';
+
+/// Path for the whole-library read-back ([MalService.fetchList]) — MAL's
+/// `animelist`/`mangalist` user endpoints. Same envelope for both
+/// (`data[].node` + `data[].list_status` + `paging.next`); what differs is
+/// the total-count field ([malTotalField]) and, for manga only, `media_type`
+/// — the field that tells a light novel apart from a manga. Anime doesn't
+/// select `media_type`, so its request stays byte-identical.
+String malUserListPath(MediaKind kind) =>
+    'users/@me/${malRoot(kind)}list'
+    '?fields=list_status,${malTotalField(kind)},main_picture'
+    '${kind == MediaKind.manga ? ',media_type' : ''}&limit=1000&nsfw=true';
+
+/// Map a MAL `list_status.status` to our [WatchStatus] (null → skip). Handles
+/// both the anime strings (`watching`/`plan_to_watch`) and the manga ones
+/// (`reading`/`plan_to_read`) — the shared values (`completed`/`on_hold`/
+/// `dropped`) are spelled the same on both lists.
+WatchStatus? malWatchStatus(String? status) => switch (status) {
+  'watching' || 'reading' => WatchStatus.watching,
+  'plan_to_watch' || 'plan_to_read' => WatchStatus.planning,
+  'completed' => WatchStatus.completed,
+  'on_hold' => WatchStatus.paused,
+  'dropped' => WatchStatus.dropped,
+  _ => null,
+};
+
+/// Which [ProviderType] a MAL manga-list node with this `media_type` belongs
+/// to. MAL has no novel list — light novels sit on the manga list and are only
+/// distinguishable by `media_type`, so without this split novel mode is empty.
+/// Anything else (`manga`, `manhwa`, `one_shot`, an unknown value, or a null
+/// when the field wasn't selected) is treated as manga: a wrong-but-visible
+/// bucket beats a silently dropped entry.
+ProviderType malProviderType(MediaKind kind, String? mediaType) {
+  if (kind != MediaKind.manga) return ProviderType.anime;
+  return (mediaType == 'novel' || mediaType == 'light_novel')
+      ? ProviderType.novel
+      : ProviderType.manga;
+}
+
+/// Parse ONE page of a MAL user-list response into library stubs. Pure +
+/// top-level so a test can feed it a recorded response without a live API.
+///
+/// Progress is read with [malProgressReadField], NOT [malProgressField] — for
+/// anime MAL answers with `num_episodes_watched` while accepting
+/// `num_watched_episodes` on a write, and reading with the write name silently
+/// nulls every user's progress.
+List<TrackerListItem> parseMalListPage(Object? body, MediaKind kind) {
+  if (body is! Map) return const [];
+  final data = body['data'];
+  if (data is! List) return const [];
+  final progressField = malProgressReadField(kind);
+  final out = <TrackerListItem>[];
+  for (final e in data) {
+    if (e is! Map) continue;
+    final node = e['node'] as Map?;
+    final ls = e['list_status'] as Map?;
+    if (node == null || ls == null) continue;
+    final id = (node['id'] as num?)?.toInt();
+    if (id == null) continue;
+    final status = malWatchStatus(ls['status'] as String?);
+    if (status == null) continue;
+    final pic = node['main_picture'] as Map?;
+    final cover = (pic?['large'] as String?) ?? (pic?['medium'] as String?);
+    final score = (ls['score'] as num?)?.toDouble();
+    out.add(
+      TrackerListItem(
+        item: MediaItem(
+          // Reading kinds get their own id namespace — MAL's anime and manga
+          // id spaces overlap, so `tracker:mal:21` would otherwise name two
+          // different titles.
+          id: kind == MediaKind.manga
+              ? 'tracker:mal:manga:$id'
+              : 'tracker:mal:$id',
+          title: '${node['title'] ?? ''}',
+          cover: cover,
+          type: malProviderType(kind, node['media_type'] as String?),
+          malId: id,
+          url: '',
+          sourceId: '',
+        ),
+        status: status,
+        // Chapters read for manga/novel, episodes watched for anime.
+        progress: (ls[progressField] as num?)?.toInt(),
+        score: (score != null && score > 0) ? score : null,
+      ),
+    );
+  }
+  return out;
+}
+
 /// MyAnimeList tracker. OAuth2 with PKCE (plain method, no client secret).
 /// Access tokens expire (~31 days) so we persist the refresh token and renew
 /// on demand. Anime is identified by its MAL id directly (or a title search
@@ -21,9 +155,12 @@ import 'tracker.dart';
 class MalService extends ChangeNotifier implements Tracker {
   MalService(this._dio) {
     _linkSub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
-    _appLinks.getInitialLink().then((uri) {
-      if (uri != null) _onLink(uri);
-    }).catchError((_) {});
+    _appLinks
+        .getInitialLink()
+        .then((uri) {
+          if (uri != null) _onLink(uri);
+        })
+        .catchError((_) {});
   }
 
   final Dio _dio;
@@ -43,6 +180,9 @@ class MalService extends ChangeNotifier implements Tracker {
 
   @override
   String get displayName => 'MyAnimeList';
+
+  @override
+  bool get supportsReading => true; // MAL has a manga list (incl. light novels)
 
   @override
   bool get isConnected =>
@@ -187,7 +327,9 @@ class MalService extends ChangeNotifier implements Tracker {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      if (await _storeToken(res.data)) return _box.get('accessToken') as String?;
+      if (await _storeToken(res.data)) {
+        return _box.get('accessToken') as String?;
+      }
     } catch (_) {}
     return null;
   }
@@ -238,7 +380,9 @@ class MalService extends ChangeNotifier implements Tracker {
     if (title == null || title.trim().isEmpty) return null;
     final key = title.trim().toLowerCase();
     final cached = (_box.get('title2mal') as Map?)?[key];
-    if (cached is int) return (id: cached, total: await _totalEpisodes(cached, token));
+    if (cached is int) {
+      return (id: cached, total: await _totalEpisodes(cached, token));
+    }
     try {
       final res = await _dio.get<dynamic>(
         '$_api/anime?q=${Uri.encodeComponent(title)}&limit=1&fields=num_episodes',
@@ -253,7 +397,9 @@ class MalService extends ChangeNotifier implements Tracker {
           : null;
       final id = (node?['id'] as num?)?.toInt();
       if (id == null) return null;
-      final m = Map<String, dynamic>.from((_box.get('title2mal') as Map?) ?? {});
+      final m = Map<String, dynamic>.from(
+        (_box.get('title2mal') as Map?) ?? {},
+      );
       m[key] = id;
       await _box.put('title2mal', m);
       final total = (node?['num_episodes'] as num?)?.toInt();
@@ -291,23 +437,119 @@ class MalService extends ChangeNotifier implements Tracker {
     await _box.put('eps', m);
   }
 
-  int _scrobbled(int id) {
-    final v = (_box.get('scrobbled') as Map?)?['$id'];
+  // ── Manga/novel resolution — a SEPARATE id-resolver cache. MAL's anime and
+  // manga id spaces overlap (a manga malId can equal an unrelated anime's
+  // malId), so this must not share `_resolve`'s `title2mal`/`eps` maps — a
+  // shared cache could return a stale cross-kind id/total for the same
+  // numeric malId. Same shape as `_resolve`/`_totalEpisodes`, hitting the
+  // `/v2/manga` root instead. ─────────────────────────────────────────────
+
+  /// Returns `(id, total chapters)` for the manga/novel, or null.
+  Future<({int id, int? total})?> _resolveManga(
+    int? malId,
+    String? title,
+  ) async {
+    final token = await _validToken();
+    if (token == null) return null;
+    if (malId != null) {
+      return (id: malId, total: await _totalChapters(malId, token));
+    }
+    if (title == null || title.trim().isEmpty) return null;
+    final key = title.trim().toLowerCase();
+    final cached = (_box.get('title2mal_manga') as Map?)?[key];
+    if (cached is int) {
+      return (id: cached, total: await _totalChapters(cached, token));
+    }
+    try {
+      final res = await _dio.get<dynamic>(
+        '$_api/${malSearchPath(MediaKind.manga, title)}',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final list = (res.data is Map) ? (res.data['data'] as List?) : null;
+      final node = (list != null && list.isNotEmpty)
+          ? (list.first as Map)['node'] as Map?
+          : null;
+      final id = (node?['id'] as num?)?.toInt();
+      if (id == null) return null;
+      final m = Map<String, dynamic>.from(
+        (_box.get('title2mal_manga') as Map?) ?? {},
+      );
+      m[key] = id;
+      await _box.put('title2mal_manga', m);
+      final total = (node?['num_chapters'] as num?)?.toInt();
+      if (total != null && total > 0) await _cacheChapters(id, total);
+      return (id: id, total: total);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int?> _totalChapters(int id, String token) async {
+    final cached = (_box.get('eps_manga') as Map?)?['$id'];
+    if (cached is int) return cached;
+    try {
+      final res = await _dio.get<dynamic>(
+        '$_api/${malTotalPath(MediaKind.manga, id)}',
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          validateStatus: (s) => s != null && s < 500,
+        ),
+      );
+      final n = (res.data is Map)
+          ? (res.data['num_chapters'] as num?)?.toInt()
+          : null;
+      if (n != null && n > 0) await _cacheChapters(id, n);
+      return (n != null && n > 0) ? n : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _cacheChapters(int id, int total) async {
+    final m = Map<String, dynamic>.from((_box.get('eps_manga') as Map?) ?? {});
+    m['$id'] = total;
+    await _box.put('eps_manga', m);
+  }
+
+  /// [malId]/[title] resolution for [kind] — routes to the anime or manga
+  /// resolver (and its own cache). Anime is [_resolve], unchanged.
+  Future<({int id, int? total})?> _resolveFor(
+    MediaKind kind,
+    int? malId,
+    String? title,
+  ) => kind == MediaKind.manga
+      ? _resolveManga(malId, title)
+      : _resolve(malId, title);
+
+  // ── Scrobble high-water mark + writes — kind-namespaced for the same
+  // overlapping-id-space reason as the resolver cache above. ───────────────
+
+  int _scrobbled(int id, MediaKind kind) {
+    final box = kind == MediaKind.manga ? 'scrobbled_manga' : 'scrobbled';
+    final v = (_box.get(box) as Map?)?['$id'];
     return v is int ? v : 0;
   }
 
-  Future<void> _setScrobbled(int id, int progress) async {
-    final m = Map<String, dynamic>.from((_box.get('scrobbled') as Map?) ?? {});
+  Future<void> _setScrobbled(int id, MediaKind kind, int progress) async {
+    final box = kind == MediaKind.manga ? 'scrobbled_manga' : 'scrobbled';
+    final m = Map<String, dynamic>.from((_box.get(box) as Map?) ?? {});
     m['$id'] = progress;
-    await _box.put('scrobbled', m);
+    await _box.put(box, m);
   }
 
-  Future<bool> _patch(int id, Map<String, dynamic> fields) async {
+  Future<bool> _patch(
+    int id,
+    MediaKind kind,
+    Map<String, dynamic> fields,
+  ) async {
     final token = await _validToken();
     if (token == null) return false;
     try {
       final res = await _dio.patch<dynamic>(
-        '$_api/anime/$id/my_list_status',
+        '$_api/${malListStatusPath(kind, id)}',
         data: fields,
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
@@ -330,12 +572,20 @@ class MalService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected || !autoSync) return;
-    final a = await _resolve(malId, title);
+    final a = await _resolveFor(kind, malId, title);
     if (a == null) return;
-    if (a.total != null && a.total! > 0 && _scrobbled(a.id) >= a.total!) return;
-    await _patch(a.id, {'status': 'watching'});
+    if (a.total != null && a.total! > 0 && _scrobbled(a.id, kind) >= a.total!) {
+      return;
+    }
+    await _patch(a.id, kind, {
+      'status': malStatusFor(
+        WatchStatus.watching,
+        reading: kind == MediaKind.manga,
+      ),
+    });
   }
 
   @override
@@ -346,21 +596,24 @@ class MalService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required int episode,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
-    final a = await _resolve(malId, title);
+    final a = await _resolveFor(kind, malId, title);
     if (a == null) return;
-    if (episode <= _scrobbled(a.id)) return; // never go backwards / repeat
+    if (episode <= _scrobbled(a.id, kind)) {
+      return; // never go backwards / repeat
+    }
     var ep = episode;
     if (a.total != null && a.total! > 0 && ep > a.total!) ep = a.total!;
     final status = (a.total != null && a.total! > 0 && ep >= a.total!)
         ? 'completed'
-        : 'watching';
-    final ok = await _patch(a.id, {
+        : malStatusFor(WatchStatus.watching, reading: kind == MediaKind.manga);
+    final ok = await _patch(a.id, kind, {
       'status': status,
-      'num_watched_episodes': ep,
+      malProgressField(kind): ep,
     });
-    if (ok) await _setScrobbled(a.id, ep);
+    if (ok) await _setScrobbled(a.id, kind, ep);
   }
 
   @override
@@ -371,16 +624,19 @@ class MalService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required WatchStatus status,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final a = await _resolve(malId, title);
+    final a = await _resolveFor(kind, malId, title);
     if (a == null) return;
-    final fields = <String, dynamic>{'status': status.mal};
+    final fields = <String, dynamic>{
+      'status': malStatusFor(status, reading: kind == MediaKind.manga),
+    };
     if (status == WatchStatus.completed && a.total != null && a.total! > 0) {
-      fields['num_watched_episodes'] = a.total;
-      await _setScrobbled(a.id, a.total!);
+      fields[malProgressField(kind)] = a.total;
+      await _setScrobbled(a.id, kind, a.total!);
     }
-    await _patch(a.id, fields);
+    await _patch(a.id, kind, fields);
   }
 
   @override
@@ -390,46 +646,51 @@ class MalService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final a = await _resolve(malId, title);
+    final a = await _resolveFor(kind, malId, title);
     if (a == null) return;
     final token = await _validToken();
     if (token == null) return;
     try {
       await _dio.delete<dynamic>(
-        '$_api/anime/${a.id}/my_list_status',
+        '$_api/${malListStatusPath(kind, a.id)}',
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      await _setScrobbled(a.id, 0);
+      await _setScrobbled(a.id, kind, 0);
     } catch (_) {}
   }
 
   // ── Tracker reads ───────────────────────────────────────────────────────────
 
-  /// Map a MAL `list_status.status` to our [WatchStatus] (null → skip).
-  WatchStatus? _statusFromMal(String? status) => switch (status) {
-    'watching' => WatchStatus.watching,
-    'plan_to_watch' => WatchStatus.planning,
-    'completed' => WatchStatus.completed,
-    'on_hold' => WatchStatus.paused,
-    'dropped' => WatchStatus.dropped,
-    _ => null,
-  };
-
+  /// Read the connected user's full MAL library — the anime list AND the manga
+  /// list (which is where MAL keeps light novels too; [parseMalListPage]
+  /// splits them back out). Best-effort: `[]` on any error, never throws.
   @override
   Future<List<TrackerListItem>> fetchList() async {
     if (!isConnected) return const [];
     final token = await _validToken();
     if (token == null) return const [];
+    // Each list is fetched + caught independently, so a failing manga read
+    // can't take the anime list down with it.
+    final both = await Future.wait([
+      _fetchListOf(MediaKind.anime, token),
+      _fetchListOf(MediaKind.manga, token),
+    ]);
+    return [...both[0], ...both[1]];
+  }
+
+  Future<List<TrackerListItem>> _fetchListOf(
+    MediaKind kind,
+    String token,
+  ) async {
     try {
       final items = <TrackerListItem>[];
-      var url =
-          '$_api/users/@me/animelist'
-          '?fields=list_status,num_episodes,main_picture&limit=1000&nsfw=true';
+      var url = '$_api/${malUserListPath(kind)}';
       for (var page = 0; page < 5; page++) {
         final res = await _dio.get<dynamic>(
           url,
@@ -439,41 +700,10 @@ class MalService extends ChangeNotifier implements Tracker {
           ),
         );
         final body = res.data;
-        if (body is! Map) break;
-        final data = body['data'] as List?;
-        if (data == null) break;
-        for (final e in data) {
-          if (e is! Map) continue;
-          final node = e['node'] as Map?;
-          final ls = e['list_status'] as Map?;
-          if (node == null || ls == null) continue;
-          final id = (node['id'] as num?)?.toInt();
-          if (id == null) continue;
-          final status = _statusFromMal(ls['status'] as String?);
-          if (status == null) continue;
-          final pic = node['main_picture'] as Map?;
-          final cover =
-              (pic?['large'] as String?) ?? (pic?['medium'] as String?);
-          final score = (ls['score'] as num?)?.toDouble();
-          items.add(
-            TrackerListItem(
-              item: MediaItem(
-                id: 'tracker:mal:$id',
-                title: '${node['title'] ?? ''}',
-                cover: cover,
-                type: ProviderType.anime,
-                malId: id,
-                url: '',
-                sourceId: '',
-              ),
-              status: status,
-              progress: (ls['num_episodes_watched'] as num?)?.toInt(),
-              score: (score != null && score > 0) ? score : null,
-            ),
-          );
-        }
-        final next = (body['paging'] as Map?)?['next'] as String?;
-        if (next == null || next.isEmpty) break;
+        items.addAll(parseMalListPage(body, kind));
+        final paging = (body is Map) ? body['paging'] : null;
+        final next = (paging is Map) ? paging['next'] : null;
+        if (next is! String || next.isEmpty) break;
         url = next;
       }
       return items;
@@ -492,16 +722,17 @@ class MalService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     String? pinnedId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return null;
     final token = await _validToken();
     if (token == null) return null;
-    final id =
-        int.tryParse(pinnedId ?? '') ?? (await _resolve(malId, title))?.id;
+    final pinned = int.tryParse(pinnedId ?? '');
+    final id = pinned ?? (await _resolveFor(kind, malId, title))?.id;
     if (id == null) return null;
     try {
       final res = await _dio.get<dynamic>(
-        '$_api/anime/$id?fields=num_episodes,my_list_status',
+        '$_api/${malEntryPath(kind, id)}',
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
           validateStatus: (s) => s != null && s < 500,
@@ -510,15 +741,18 @@ class MalService extends ChangeNotifier implements Tracker {
       final d = res.data;
       if (d is! Map) return null;
       final ls = d['my_list_status'] as Map?;
-      final total = (d['num_episodes'] as num?)?.toInt();
+      final total = (d[malTotalField(kind)] as num?)?.toInt();
       final score = (ls?['score'] as num?)?.toDouble();
+      final reading = kind == MediaKind.manga;
+      final totalOrNull = (total != null && total > 0) ? total : null;
       return TrackerEntry(
         trackerName: displayName,
         onList: ls != null,
-        status: _statusFromMal(ls?['status'] as String?),
+        status: malWatchStatus(ls?['status'] as String?),
         score: (score == null || score == 0) ? null : score,
-        progress: (ls?['num_episodes_watched'] as num?)?.toInt(),
-        maxEpisodes: (total != null && total > 0) ? total : null,
+        progress: (ls?[malProgressReadField(kind)] as num?)?.toInt(),
+        maxEpisodes: reading ? null : totalOrNull,
+        chapters: reading ? totalOrNull : null,
       );
     } catch (_) {
       return null;
@@ -536,29 +770,34 @@ class MalService extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final id =
-        int.tryParse(pinnedId ?? '') ?? (await _resolve(malId, title))?.id;
+    final pinned = int.tryParse(pinnedId ?? '');
+    final id = pinned ?? (await _resolveFor(kind, malId, title))?.id;
     if (id == null) return;
     final fields = <String, dynamic>{};
-    if (status != null) fields['status'] = status.mal;
-    if (progress != null) fields['num_watched_episodes'] = progress;
+    if (status != null) {
+      fields['status'] = malStatusFor(status, reading: kind == MediaKind.manga);
+    }
+    if (progress != null) fields[malProgressField(kind)] = progress;
     if (score != null) fields['score'] = score.round().clamp(0, 10);
     if (fields.isEmpty) return;
-    final ok = await _patch(id, fields);
-    if (ok && progress != null) await _setScrobbled(id, progress);
+    final ok = await _patch(id, kind, fields);
+    if (ok && progress != null) await _setScrobbled(id, kind, progress);
   }
 
   @override
-  Future<List<TrackerSearchResult>> searchEntries(String query) async {
+  Future<List<TrackerSearchResult>> searchEntries(
+    String query, {
+    MediaKind kind = MediaKind.anime,
+  }) async {
     if (query.trim().isEmpty) return const [];
     final token = await _validToken();
     if (token == null) return const [];
     try {
       final res = await _dio.get<dynamic>(
-        '$_api/anime?q=${Uri.encodeComponent(query)}&limit=12'
-        '&fields=num_episodes,media_type,start_season,main_picture',
+        '$_api/${malSearchEntriesPath(kind, query)}',
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
           validateStatus: (s) => s != null && s < 500,
@@ -572,15 +811,17 @@ class MalService extends ChangeNotifier implements Tracker {
         final id = (node?['id'] as num?)?.toInt();
         if (node == null || id == null) continue;
         final pic = node['main_picture'] as Map?;
-        final total = (node['num_episodes'] as num?)?.toInt();
-        out.add(TrackerSearchResult(
-          trackerName: displayName,
-          id: '$id',
-          title: '${node['title'] ?? 'Unknown'}',
-          cover: (pic?['medium'] as String?) ?? (pic?['large'] as String?),
-          subtitle: _searchSubtitle(node),
-          maxEpisodes: (total != null && total > 0) ? total : null,
-        ));
+        final total = (node[malTotalField(kind)] as num?)?.toInt();
+        out.add(
+          TrackerSearchResult(
+            trackerName: displayName,
+            id: '$id',
+            title: '${node['title'] ?? 'Unknown'}',
+            cover: (pic?['medium'] as String?) ?? (pic?['large'] as String?),
+            subtitle: _searchSubtitle(node),
+            maxEpisodes: (total != null && total > 0) ? total : null,
+          ),
+        );
       }
       return out;
     } catch (_) {

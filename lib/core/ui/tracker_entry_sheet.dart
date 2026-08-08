@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
+import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
@@ -70,6 +71,19 @@ class _TrackerEntrySheet extends StatefulWidget {
 }
 
 class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
+  /// Which tracker list this card lives on, taken from the item itself. Manga
+  /// and novel entries (imported by `fetchList`) must write to the tracker's
+  /// MANGA list — MAL/AniList reuse ids across their anime and manga id
+  /// spaces, so an anime-kind write here would edit a completely unrelated
+  /// show. Anime/movie items keep [MediaKind.anime], which is what every one
+  /// of these calls already defaulted to.
+  MediaKind get _kind => switch (widget.item.type) {
+    ProviderType.manga || ProviderType.novel => MediaKind.manga,
+    ProviderType.anime || ProviderType.movie => MediaKind.anime,
+  };
+
+  bool get _reading => _kind == MediaKind.manga;
+
   late WatchStatus? _status = widget.status;
   late int _progress = widget.progress ?? 0;
   late int _score = (widget.score ?? 0).round().clamp(0, 10);
@@ -98,6 +112,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
       status: statusChanged ? _status : null,
       score: scoreChanged ? _score.toDouble() : null,
       progress: progressChanged ? _progress : null,
+      kind: _kind,
     );
     widget.onChanged?.call();
     if (mounted) Navigator.pop(context);
@@ -112,6 +127,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
       imdbId: widget.item.imdbId,
       title: widget.item.title,
       tmdbIsTv: widget.tmdbIsTv,
+      kind: _kind,
     );
     widget.onChanged?.call();
     if (mounted) Navigator.pop(context);
@@ -145,7 +161,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
             _statusChips(),
             const SizedBox(height: 20),
             _stepperRow(
-              'Episodes',
+              _reading ? 'Chapters' : 'Episodes',
               _progress.toString(),
               onMinus: _progress > 0
                   ? () => setState(() => _progress--)

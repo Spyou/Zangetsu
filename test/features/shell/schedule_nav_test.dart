@@ -14,10 +14,13 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
+import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
@@ -32,6 +35,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
@@ -39,10 +43,10 @@ import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
-      invoke: (_, __) async => const {'ok': false},
-      signInPassword: (_, __) async => false,
-      verifyOtp: (_, __) async => false,
-    );
+  invoke: (_, __) async => const {'ok': false},
+  signInPassword: (_, __) async => false,
+  verifyOtp: (_, __) async => false,
+);
 
 // ── Minimal fakes (same shape as root_shell_tv_test.dart's harness) ────────
 
@@ -51,7 +55,10 @@ class _FakeSourceRepository implements SourceRepository {
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 
   @override
-  Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) async =>
+  Future<List<HomeSection>> home({
+    String category = 'sub',
+    String? sourceId,
+  }) async =>
       throw UnimplementedError('_FakeSourceRepository.home — caught upstream');
 
   @override
@@ -112,7 +119,8 @@ class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
   bool get currentSourceOnly => true;
 }
 
-class _FakeSearchSourcePrefs extends ChangeNotifier implements SearchSourcePrefs {
+class _FakeSearchSourcePrefs extends ChangeNotifier
+    implements SearchSourcePrefs {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
 
@@ -205,29 +213,29 @@ class _FakeAiringService extends AiringService {
   _FakeAiringService() : super(Dio());
   @override
   Future<List<AiringEntry>> weekAiring({DateTime? now}) async => [
-        AiringEntry(
-          malId: 1,
-          title: 'x',
-          coverUrl: null,
-          episode: 1,
-          airsAtLocal: DateTime(2026),
-          format: 'TV',
-        ),
-      ];
+    AiringEntry(
+      malId: 1,
+      title: 'x',
+      coverUrl: null,
+      episode: 1,
+      airsAtLocal: DateTime(2026),
+      format: 'TV',
+    ),
+  ];
 }
 
 class _FakeComingSoonService extends ComingSoonService {
   _FakeComingSoonService() : super(Dio());
   @override
   Future<List<ComingSoonEntry>> upcoming() async => const [
-        ComingSoonEntry(
-          tmdbId: 1,
-          isTv: false,
-          title: 'x',
-          posterUrl: null,
-          releaseDate: null,
-        ),
-      ];
+    ComingSoonEntry(
+      tmdbId: 1,
+      isTv: false,
+      title: 'x',
+      posterUrl: null,
+      releaseDate: null,
+    ),
+  ];
 }
 
 /// [HomeScreen] fires a fire-and-forget announcement check on launch (see
@@ -244,6 +252,7 @@ class _FakeAnnouncementService extends AnnouncementService {
 void main() {
   late ActiveSourceCubit activeSource;
   late AuthCubit authCubit;
+  late ContentModeCubit contentMode;
 
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
@@ -252,9 +261,9 @@ void main() {
   setUp(() async {
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (call) async => '/tmp',
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => '/tmp',
+        );
 
     await sl.reset();
 
@@ -265,13 +274,27 @@ void main() {
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
     await Hive.openBox(ThemeController.boxName);
+    // Home's initState fires a delayed (4s) source-update check that reads
+    // PlaybackPrefs — pumpAndSettle fast-forwards fake time straight through
+    // that delay, so it needs to be registered even though this test never
+    // waits on it directly. MyListScreen's header similarly needs a TrackerHub
+    // (IndexedStack builds every tab eagerly, TrackerHub included).
+    await Hive.openBox(PlaybackPrefs.boxName);
 
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
     activeSource = ActiveSourceCubit();
     authCubit = AuthCubit(SupabaseService(), AppwriteService(), _fakeBridge());
+    // This suite reuses a fixed on-disk Hive dir (not a fresh temp dir) across
+    // runs, so a mode persisted by an earlier run would otherwise leak in here
+    // and start tests in the wrong mode.
+    await Hive.deleteBoxFromDisk('content_mode');
+    contentMode = await ContentModeCubit.create(activeSource);
 
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
+    sl.registerSingleton<ContentModeCubit>(contentMode);
+    sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+    sl.registerSingleton<TrackerHub>(TrackerHub(const []));
     sl.registerSingleton<SourceRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<SearchHistory>(_FakeSearchHistory());
@@ -293,25 +316,27 @@ void main() {
   tearDown(() async {
     TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      null,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
     await sl.reset();
     authCubit.close();
     activeSource.close();
+    await contentMode.close();
     await Hive.close();
   });
 
   Widget wrap(Widget child) => MultiBlocProvider(
-        providers: [
-          BlocProvider<ActiveSourceCubit>.value(value: activeSource),
-          BlocProvider<AuthCubit>.value(value: authCubit),
-        ],
-        child: MaterialApp(home: child),
-      );
+    providers: [
+      BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+      BlocProvider<AuthCubit>.value(value: authCubit),
+    ],
+    child: MaterialApp(home: child),
+  );
 
-  testWidgets('phone shell shows a Schedule destination and no Downloads',
-      (tester) async {
+  testWidgets('phone shell shows a Schedule destination and no Downloads', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
@@ -320,13 +345,50 @@ void main() {
     expect(find.text('Downloads'), findsNothing);
   });
 
-  testWidgets('TV shell keeps Downloads and gains a Schedule rail item',
-      (tester) async {
+  testWidgets('TV shell keeps Downloads and gains a Schedule rail item', (
+    tester,
+  ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: true));
     await tester.pumpWidget(wrap(const RootShellTv()));
     await tester.pumpAndSettle();
 
     expect(find.text('Downloads'), findsOneWidget);
     expect(find.text('Schedule'), findsOneWidget);
+  });
+
+  testWidgets('reading mode hides the Schedule dock item', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+    expect(find.text('Schedule'), findsOneWidget);
+
+    // setMode emits synchronously now, but its Hive writes are still real,
+    // fire-and-forget I/O — FakeAsync (which testWidgets runs in) never
+    // drains that on its own, and a dangling write hangs tearDown's
+    // Hive.close(). runAsync gives it a real event loop turn to finish.
+    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Schedule'), findsNothing);
+  });
+
+  testWidgets('switching to a reading mode while on Schedule bounces to Home', (
+    tester,
+  ) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Schedule'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
+
+    // See the runAsync note above — setMode's fire-and-forget Hive writes
+    // need a real event loop turn or tearDown's Hive.close() hangs.
+    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+    await tester.pumpAndSettle();
+
+    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
+    expect(find.text('Schedule'), findsNothing);
   });
 }

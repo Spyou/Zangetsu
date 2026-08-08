@@ -69,14 +69,27 @@ class _SkeletonGridState extends State<SkeletonGrid>
   }
 }
 
-/// Centered empty-state placeholder.
+/// Centered empty-state placeholder. Optionally shows a button below the
+/// message — only when BOTH [actionLabel] and [onAction] are supplied, so
+/// every existing call site (icon + message only) renders unchanged.
 class EmptyState extends StatelessWidget {
-  const EmptyState({super.key, required this.icon, required this.message});
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
   final IconData icon;
   final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
+    final label = actionLabel;
+    final action = onAction;
+    final hasAction = label != null && action != null;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -84,6 +97,17 @@ class EmptyState extends StatelessWidget {
           Icon(icon, size: 48, color: AppColors.textTertiary),
           const SizedBox(height: 12),
           Text(message, textAlign: TextAlign.center, style: AppText.body),
+          if (hasAction) ...[
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: action,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(label, style: AppText.button.copyWith(color: Colors.white)),
+            ),
+          ],
         ],
       ),
     );

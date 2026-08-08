@@ -19,10 +19,16 @@ import 'global_messenger.dart';
 ///
 /// Returns the episode progress the user applied (so the detail screen can grey
 /// out watched episodes immediately), or null if nothing was applied.
+///
+/// [reading] targets manga/novel (chapters, not episodes) — it defaults to
+/// `false`, reproducing today's anime/movie behaviour exactly for every
+/// existing caller (including the TV detail screen, which never shows a
+/// reading title and must never change).
 Future<int?> showTrackerSyncSheet(
   BuildContext context, {
   required String title,
   required bool isAnime,
+  bool reading = false,
   int? malId,
   int? tmdbId,
   bool tmdbIsTv = false,
@@ -39,6 +45,7 @@ Future<int?> showTrackerSyncSheet(
     builder: (_) => TrackerSyncSheet(
       title: title,
       isAnime: isAnime,
+      reading: reading,
       malId: malId,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
@@ -53,6 +60,7 @@ class TrackerSyncSheet extends StatefulWidget {
     super.key,
     required this.title,
     required this.isAnime,
+    this.reading = false,
     this.malId,
     this.tmdbId,
     this.tmdbIsTv = false,
@@ -62,6 +70,11 @@ class TrackerSyncSheet extends StatefulWidget {
 
   final String title;
   final bool isAnime;
+
+  /// Manga/novel item — chapters, not episodes. Defaults to `false`, so every
+  /// call site that doesn't pass it (including the TV detail screen) behaves
+  /// exactly as before.
+  final bool reading;
   final int? malId;
   final int? tmdbId;
   final bool tmdbIsTv;
@@ -101,7 +114,10 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
   int _initProgress = 0;
 
   bool get _showEpisodes =>
-      widget.isAnime && (_maxEpisodes == null || _maxEpisodes! != 1);
+      (widget.isAnime || widget.reading) &&
+      (_maxEpisodes == null || _maxEpisodes! != 1);
+
+  MediaKind get _kind => widget.reading ? MediaKind.manga : MediaKind.anime;
 
   @override
   void initState() {
@@ -116,18 +132,19 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
   Future<void> _load() async {
     final entry = await _hub.fetchEntry(
       malId: widget.malId,
-      title: widget.isAnime ? widget.title : null,
+      title: (widget.isAnime || widget.reading) ? widget.title : null,
       tmdbId: widget.tmdbId,
       tmdbIsTv: widget.tmdbIsTv,
       imdbId: widget.imdbId,
       pinnedIds: _pinnedIds,
+      kind: _kind,
     );
     if (!mounted) return;
     setState(() {
       _status = entry?.status;
       _score = (entry?.score ?? 0).round().clamp(0, 10);
       _progress = entry?.progress ?? 0;
-      _maxEpisodes = entry?.maxEpisodes;
+      _maxEpisodes = widget.reading ? entry?.chapters : entry?.maxEpisodes;
       _nextEp = entry?.nextAiringEpisode;
       _nextAt = entry?.nextAiringAt;
       _initStatus = _status;
@@ -148,7 +165,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
     setState(() => _saving = true);
     await _hub.updateEntry(
       malId: widget.malId,
-      title: widget.isAnime ? widget.title : null,
+      title: (widget.isAnime || widget.reading) ? widget.title : null,
       tmdbId: widget.tmdbId,
       tmdbIsTv: widget.tmdbIsTv,
       imdbId: widget.imdbId,
@@ -156,6 +173,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       status: statusChanged ? _status : null,
       score: scoreChanged ? _score.toDouble() : null,
       progress: progressChanged ? _progress : null,
+      kind: _kind,
     );
     if (!mounted) return;
     final names = _hub.connected.map((t) => t.displayName).join(', ');
@@ -166,8 +184,10 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
   /// Fix a wrong auto-match: search the trackers, let the user pick the right
   /// entry, pin it (persisted via the binding store), and reload the sheet.
   Future<void> _changeMatch() async {
-    final picked =
-        await showTrackerMatchPicker(context, initialQuery: widget.title);
+    final picked = await showTrackerMatchPicker(
+      context,
+      initialQuery: widget.title,
+    );
     if (picked == null || !mounted) return;
     setState(() {
       _pinnedIds = {..._pinnedIds, picked.trackerName: picked.id};
@@ -203,10 +223,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
               const SizedBox(height: 16),
               Text('Tracking', style: AppText.headline),
               const SizedBox(height: 2),
-              Text(
-                _hub.connected.map((t) => t.displayName).join('  ·  '),
-                style: AppText.caption,
-              ),
+              _connectedLine(),
               const SizedBox(height: 18),
               if (_loading)
                 const Padding(
@@ -250,7 +267,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       ),
       if (_showEpisodes) ...[
         const SizedBox(height: 20),
-        _sectionLabel('EPISODES WATCHED'),
+        _sectionLabel(widget.reading ? 'CHAPTERS READ' : 'EPISODES WATCHED'),
         const SizedBox(height: 8),
         _stepperRow(
           value: '$_progress / ${_maxEpisodes ?? '?'}',
@@ -266,11 +283,16 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
         const SizedBox(height: 14),
         Row(
           children: [
-            Icon(Icons.schedule_rounded,
-                size: 15, color: AppColors.textTertiary),
+            Icon(
+              Icons.schedule_rounded,
+              size: 15,
+              color: AppColors.textTertiary,
+            ),
             const SizedBox(width: 6),
-            Text('Ep $_nextEp airs in ${_airsIn(_nextAt!)}',
-                style: AppText.caption),
+            Text(
+              'Ep $_nextEp airs in ${_airsIn(_nextAt!)}',
+              style: AppText.caption,
+            ),
           ],
         ),
       ],
@@ -293,6 +315,35 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
         ),
       ],
     ];
+  }
+
+  /// The "AniList · MyAnimeList · Simkl" caption under the title. For a
+  /// reading item, Simkl (no manga/novel API) gets a dimmed "(no manga)" note
+  /// instead of being silently dropped — the same reduced-emphasis text color
+  /// the rest of the app already uses for an unavailable/disabled affordance
+  /// (e.g. source_health_screen.dart's "Not searched" caption), not a new
+  /// pattern. Non-reading items keep the original plain joined-name Text.
+  Widget _connectedLine() {
+    final names = _hub.connected.map((t) => t.displayName).toList();
+    if (!widget.reading) {
+      return Text(names.join('  ·  '), style: AppText.caption);
+    }
+    return Text.rich(
+      TextSpan(
+        style: AppText.caption,
+        children: [
+          for (var i = 0; i < names.length; i++)
+            TextSpan(
+              text:
+                  '${i > 0 ? '  ·  ' : ''}${names[i]}'
+                  '${names[i] == 'Simkl' ? ' (no manga)' : ''}',
+              style: names[i] == 'Simkl'
+                  ? TextStyle(color: AppColors.textTertiary)
+                  : null,
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _sectionLabel(String s) => Text(s, style: AppText.overline);
@@ -382,10 +433,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
                 valueColor: AlwaysStoppedAnimation(Colors.white),
               ),
             )
-          : Text(
-              'Apply',
-              style: AppText.button.copyWith(color: Colors.white),
-            ),
+          : Text('Apply', style: AppText.button.copyWith(color: Colors.white)),
     );
     return _focusable(
       onTap: _saving ? () {} : _apply,
@@ -462,8 +510,9 @@ class _TrackerMatchPicker extends StatefulWidget {
 class _TrackerMatchPickerState extends State<_TrackerMatchPicker> {
   final _hub = sl<TrackerHub>();
   late final bool _isTv = sl<AppMode>().isTv;
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initialQuery);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initialQuery,
+  );
 
   bool _searching = true;
   List<TrackerSearchResult> _results = const [];
@@ -496,7 +545,9 @@ class _TrackerMatchPickerState extends State<_TrackerMatchPicker> {
   Widget build(BuildContext context) {
     final maxH = MediaQuery.of(context).size.height * 0.72;
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
       child: SafeArea(
         child: ConstrainedBox(
           constraints: BoxConstraints(maxHeight: maxH),
@@ -522,8 +573,9 @@ class _TrackerMatchPickerState extends State<_TrackerMatchPicker> {
                       child: TextField(
                         controller: _controller,
                         autofocus: !_isTv,
-                        style:
-                            AppText.body.copyWith(color: AppColors.textPrimary),
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
                         textInputAction: TextInputAction.search,
                         onSubmitted: (_) => _search(),
                         decoration: InputDecoration(
@@ -532,7 +584,9 @@ class _TrackerMatchPickerState extends State<_TrackerMatchPicker> {
                           filled: true,
                           fillColor: AppColors.surface2,
                           contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 12),
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,

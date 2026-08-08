@@ -28,4 +28,6 @@ Map<String, dynamic> _$ProviderInfoToJson(ProviderInfo instance) =>
 const _$ProviderTypeEnumMap = {
   ProviderType.anime: 'anime',
   ProviderType.movie: 'movie',
+  ProviderType.manga: 'manga',
+  ProviderType.novel: 'novel',
 };

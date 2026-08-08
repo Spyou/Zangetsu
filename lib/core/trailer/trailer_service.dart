@@ -41,6 +41,10 @@ class TrailerService {
           englishTitle: englishTitle,
           year: year,
         );
+      case ProviderType.manga:
+      case ProviderType.novel:
+        // No trailer source for reading types.
+        return null;
     }
   }
 

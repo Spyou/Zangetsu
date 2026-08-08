@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -107,7 +109,9 @@ class _MyListViewState extends State<_MyListView> {
       // Rebuild when a tracker connects/disconnects.
       animation: Listenable.merge(hub.trackers),
       builder: (context, _) {
-        final n = hub.connected.length;
+        final n = hub
+            .connectedForMode(sl<ContentModeCubit>().state)
+            .length;
         final subtitle = n == 0
             ? 'Your saved titles'
             : 'My List + $n tracker${n == 1 ? '' : 's'}';
@@ -216,7 +220,8 @@ class _MyListViewState extends State<_MyListView> {
   // ── Accounts button (connected avatars + ＋, else "Connect") ───────────────
 
   Widget _accountsButton(BuildContext context, TrackerHub hub) {
-    final connected = hub.connected.toList();
+    final connected =
+        hub.connectedForMode(sl<ContentModeCubit>().state).toList();
     if (connected.isEmpty) {
       return GestureDetector(
         onTap: () => _openAccountsSheet(context),
@@ -334,7 +339,7 @@ class _MyListViewState extends State<_MyListView> {
                 child: Text('Trackers', style: AppText.headline),
               ),
             ),
-            for (final t in hub.trackers)
+            for (final t in hub.forMode(sl<ContentModeCubit>().state))
               ListTile(
                 leading: SizedBox(
                   width: 34,
@@ -397,7 +402,8 @@ class _MyListViewState extends State<_MyListView> {
     return AnimatedBuilder(
       animation: Listenable.merge(hub.trackers),
       builder: (context, _) {
-        final connected = hub.connected.toList();
+        final connected =
+            hub.connectedForMode(sl<ContentModeCubit>().state).toList();
         final segments = <({
           String label,
           IconData? icon,
@@ -707,11 +713,22 @@ class _MyListViewState extends State<_MyListView> {
       WatchStatus.paused,
       WatchStatus.dropped,
     ];
+    // Reading modes (manga/novel) see only their own items; anime mode's
+    // matchesProvider covers BOTH anime + movie types, so this is a no-op
+    // there — today's anime My List is unaffected.
+    //
+    // Narrow by mode FIRST: the status tabs' counts and which tabs even appear
+    // are both derived from this, so counting raw `entries` showed anime totals
+    // (and anime-only status tabs) while in manga/novel mode.
+    final mode = sl<ContentModeCubit>().state;
+    final modeEntries =
+        entries.where((e) => mode.matchesProvider(e.item.type)).toList();
+
     final presentStatuses = tabOrder
-        .where((s) => entries.any((e) => e.status == s))
+        .where((s) => modeEntries.any((e) => e.status == s))
         .toList();
 
-    final filtered = entries.where((e) {
+    final filtered = modeEntries.where((e) {
       if (_statusFilter != null && e.status != _statusFilter) return false;
       if (_typeFilter != null && e.item.type != _typeFilter) return false;
       return true;
@@ -720,13 +737,13 @@ class _MyListViewState extends State<_MyListView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _statusTabs(entries, presentStatuses),
+        _statusTabs(modeEntries, presentStatuses),
         const SizedBox(height: 8),
         Expanded(
           child: filtered.isEmpty
-              ? const EmptyState(
+              ? EmptyState(
                   icon: Icons.filter_list_off_rounded,
-                  message: 'Nothing here in this filter',
+                  message: myListFilteredEmptyMessage(mode),
                 )
               : GridView.builder(
                   // Bottom: clear the floating dock (its height arrives as
@@ -831,7 +848,11 @@ class _MyListViewState extends State<_MyListView> {
             tab('All', _statusFilter == null, countOf(null),
                 () => setState(() => _statusFilter = null)),
             for (final s in present)
-              tab(s.shortLabel, _statusFilter == s, countOf(s),
+              tab(
+                  shortLabelFor(s,
+                      reading: sl<ContentModeCubit>().state.isReading),
+                  _statusFilter == s,
+                  countOf(s),
                   () => setState(() => _statusFilter = s)),
           ],
         ),
@@ -873,9 +894,27 @@ class _MyListViewState extends State<_MyListView> {
         ),
       );
     }
-    return const EmptyState(
+    return EmptyState(
       icon: Icons.bookmark_outline,
-      message: 'Titles you add appear here',
+      message: myListEmptyMessage(sl<ContentModeCubit>().state),
     );
   }
 }
+
+/// EmptyState message for My List's per-status/type filter turning up
+/// nothing (the mode filter itself is applied before this — see [_grid]).
+/// Anime mode's wording is unchanged; a reading mode names its own content
+/// type instead of the generic "Nothing".
+String myListFilteredEmptyMessage(ContentMode mode) => switch (mode) {
+  ContentMode.anime => 'Nothing here in this filter',
+  ContentMode.manga => 'No manga here in this filter',
+  ContentMode.novel => 'No novels here in this filter',
+};
+
+/// EmptyState message for a genuinely empty My List (nothing saved yet, of
+/// ANY type). Anime mode's wording is unchanged.
+String myListEmptyMessage(ContentMode mode) => switch (mode) {
+  ContentMode.anime => 'Titles you add appear here',
+  ContentMode.manga => 'Manga you add appear here',
+  ContentMode.novel => 'Novels you add appear here',
+};

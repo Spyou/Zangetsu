@@ -300,7 +300,7 @@ void main() {
         'title': 'Blue Lock',
         'cover': 'c.png',
         'url': 'https://x/mangaone',
-        'type': 'manga', // not a ProviderType on this build
+        'type': 'unknownfuturetype', // not a ProviderType on this build
       });
 
       final all = store.all();
@@ -320,7 +320,7 @@ void main() {
         'sourceId': 'src',
         'title': 'Blue Lock',
         'url': 'https://x/mangaone',
-        'type': 'manga',
+        'type': 'unknownfuturetype',
       });
 
       store.all(); // read it — must not prune
@@ -342,7 +342,7 @@ void main() {
           'cover': null,
           'cover_headers': null,
           'url': 'https://x/bad',
-          'type': 'manga', // undecodable here
+          'type': 'unknownfuturetype', // undecodable here
         },
         {
           'user_key': 'user1',

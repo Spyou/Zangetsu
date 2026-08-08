@@ -160,10 +160,16 @@ class DetailCubit extends Cubit<DetailState> {
     // can't track on Simkl and can't be id-enriched. Resolve a TMDB id from
     // title (+ year) so it gains BOTH — then re-emit the detail so the player
     // scrobbles by the resolved id.
+    //
+    // Gated to `== movie` explicitly, NOT `!= anime` — this is a TMDB (video
+    // metadata) lookup, and `!= anime` silently let manga/novel through once
+    // Task 1 added those to ProviderType. Manga often shares its anime
+    // adaptation's title, so that resolved a real TMDB id and displayed the
+    // ANIME's Cast/Relations on the manga's own detail page.
     if (d.malId == null &&
         d.tmdbId == null &&
         (d.imdbId == null || d.imdbId!.isEmpty) &&
-        d.type != ProviderType.anime) {
+        d.type == ProviderType.movie) {
       try {
         final id = await sl<MetadataEnrichment>().resolveTmdbId(
           d.title,

@@ -9,6 +9,7 @@ import '../playback/my_list.dart';
 import '../repository/source_repository.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tracker/tracker.dart';
 import '../tracker/tracker_hub.dart';
 
 /// Sentinel popped by [ListStatusSheet] for the "Remove from list" row.
@@ -34,13 +35,21 @@ Future<void> showListStatusSheet(
   final current = statusStore.statusOf(item);
   final inList = current != null || myList.contains(item);
 
+  // Single source of truth for "is this a reading title" — derived from the
+  // ITEM, not the global content mode. The label (below) and the tracker
+  // kind (in _syncToTrackers) both read this same value, so they can never
+  // disagree with each other again.
+  final reading =
+      item.type == ProviderType.manga || item.type == ProviderType.novel;
+
   final picked = await showModalBottomSheet<Object?>(
     context: context,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => ListStatusSheet(current: current, inList: inList),
+    builder: (_) =>
+        ListStatusSheet(current: current, inList: inList, reading: reading),
   );
   if (picked == null) return;
 
@@ -51,7 +60,7 @@ Future<void> showListStatusSheet(
     await statusStore.remove(item);
     onChanged?.call();
     _syncToTrackers(item, null, malId, tmdbId, tmdbIsTv, imdbId, isAnime,
-        remove: true);
+        reading: reading, remove: true);
     return;
   }
 
@@ -60,7 +69,8 @@ Future<void> showListStatusSheet(
   await statusStore.setStatus(item, status);
   await myList.pushStatus(item); // sync the watch status to the cloud row
   onChanged?.call();
-  _syncToTrackers(item, status, malId, tmdbId, tmdbIsTv, imdbId, isAnime);
+  _syncToTrackers(item, status, malId, tmdbId, tmdbIsTv, imdbId, isAnime,
+      reading: reading);
 }
 
 /// Best-effort tracker push. Resolves the MAL/TMDB id from the detail when the
@@ -73,6 +83,7 @@ Future<void> _syncToTrackers(
   bool tmdbIsTv,
   String? imdbId,
   bool isAnime, {
+  required bool reading,
   bool remove = false,
 }) async {
   final hub = sl<TrackerHub>();
@@ -93,7 +104,12 @@ Future<void> _syncToTrackers(
       isTv = d.tmdbIsTv;
     } catch (_) {/* leave ids null — title fallback still covers anime */}
   }
-  final title = isAnime ? item.title : null;
+  // Manga/novel sources (Mihon) don't carry a malId, so — exactly like anime —
+  // fall back to a title search on the tracker. Without this, reading titles
+  // never reached the tracker (all ids null + no title = nothing to match).
+  // Movies/TV stay null: they resolve by tmdbId/imdbId, not a title search.
+  final title = (isAnime || reading) ? item.title : null;
+  final kind = reading ? MediaKind.manga : MediaKind.anime;
   if (remove) {
     await hub.removeFromList(
       malId: mal,
@@ -101,6 +117,7 @@ Future<void> _syncToTrackers(
       tmdbId: tmdb,
       tmdbIsTv: isTv,
       imdbId: imdb,
+      kind: kind,
     );
   } else if (status != null) {
     await hub.setStatus(
@@ -110,6 +127,7 @@ Future<void> _syncToTrackers(
       tmdbIsTv: isTv,
       imdbId: imdb,
       status: status,
+      kind: kind,
     );
   }
 }
@@ -117,10 +135,22 @@ Future<void> _syncToTrackers(
 /// "Add to your list" status picker. Pops a [WatchStatus], the remove sentinel,
 /// or null on dismiss.
 class ListStatusSheet extends StatelessWidget {
-  const ListStatusSheet({super.key, required this.current, required this.inList});
+  const ListStatusSheet({
+    super.key,
+    required this.current,
+    required this.inList,
+    required this.reading,
+  });
 
   final WatchStatus? current;
   final bool inList;
+
+  /// Whether [current]'s owning item is manga/novel — derived by the caller
+  /// from `item.type` (NOT the global content mode: this sheet is reachable
+  /// from My List / History rows whose type can differ from whatever mode
+  /// the user happens to be browsing in). Drives the Watching/Reading and
+  /// Plan to Watch/Read labels below.
+  final bool reading;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +181,7 @@ class ListStatusSheet extends StatelessWidget {
                 color: current == s ? AppColors.accent : AppColors.textSecondary,
               ),
               title: Text(
-                s.label,
+                labelFor(s, reading: reading),
                 style: AppText.body.copyWith(
                   color: current == s ? AppColors.accent : AppColors.textPrimary,
                   fontWeight: current == s ? FontWeight.w600 : FontWeight.w400,

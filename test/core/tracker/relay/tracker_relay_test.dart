@@ -5,6 +5,9 @@ import 'package:watch_app/core/tracker/relay/tracker_relay.dart';
 import 'package:watch_app/core/tracker/tracker.dart';
 
 class _FakeTracker extends ChangeNotifier implements Tracker {
+  @override
+  bool get supportsReading => true;
+
   _FakeTracker(this._session);
   Map<String, dynamic>? _session;
   Map<String, dynamic>? get written => _written;

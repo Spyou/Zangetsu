@@ -1,0 +1,674 @@
+import 'package:flutter/material.dart';
+
+import '../../core/di/injector.dart';
+import '../../core/models/episode.dart';
+import '../../core/models/page_content.dart';
+import '../../core/models/provider_info.dart';
+import '../../core/reading/read_history.dart';
+import '../../core/reading/read_store.dart';
+import '../../core/reading/reader_prefs.dart';
+import '../../core/repository/source_repository.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
+import '../../core/tracker/tracker.dart';
+import '../../core/tracker/tracker_hub.dart';
+
+/// Text reader for manga/novel chapters — the reading counterpart of the
+/// video player. Phone-only (no TV twin, no TV focus handling needed).
+///
+/// Nothing routes here yet; Task 11 wires the Detail screen to push it.
+class NovelReaderScreen extends StatefulWidget {
+  const NovelReaderScreen({
+    super.key,
+    required this.sourceId,
+    required this.showId,
+    required this.showTitle,
+    required this.cover,
+    required this.chapters, // sorted ascending
+    required this.startIndex,
+    this.malId,
+  });
+
+  final String sourceId;
+  final String showId;
+  final String showTitle;
+  final String? cover;
+  final List<Episode> chapters;
+  final int startIndex;
+
+  /// MAL id, when known — identifies the title for tracker chapter scrobble
+  /// (AniList/MAL manga list). Falls back to [showTitle] when null/unmatched.
+  final int? malId;
+
+  @override
+  State<NovelReaderScreen> createState() => _NovelReaderScreenState();
+}
+
+class _NovelReaderScreenState extends State<NovelReaderScreen> {
+  late int _index;
+  late final ScrollController _scrollController;
+
+  bool _loading = true;
+  String? _error;
+  ChapterText? _text;
+  bool _chromeVisible = false;
+  bool _atEnd = false;
+  int _lastScrollSaveMs = 0;
+
+  // Chapter ids already scrobbled this session — dedupes a repeated
+  // "finished" save (throttled scroll ticks + the flush on chapter
+  // change/dispose can all observe the same finished chapter).
+  final Set<String> _scrobbled = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.startIndex;
+    _scrollController = ScrollController()..addListener(_onScroll);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _flushProgress(); // reader close: don't lose the last-read position
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Episode get _chapter => widget.chapters[_index];
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final text = await sl<SourceRepository>().chapterText(
+        _chapter.url,
+        sourceId: widget.sourceId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _text = text;
+        _loading = false;
+      });
+      _restoreScrollPosition();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = "Couldn't load this chapter.";
+        _loading = false;
+      });
+    }
+  }
+
+  /// Jumps to the chapter's saved scroll permille once the fresh content has
+  /// laid out. No-op for a never-read chapter (nothing saved, or saved 0).
+  void _restoreScrollPosition() {
+    final saved = sl<ReadStore>().get(
+      widget.sourceId,
+      widget.showId,
+      _chapter.id,
+    );
+    if (saved == null || saved.pos <= 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      final max = _scrollController.position.maxScrollExtent;
+      if (max <= 0) return;
+      _scrollController.jumpTo((saved.pos / 1000) * max);
+    });
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final atEnd =
+        pos.maxScrollExtent <= 0 || pos.pixels >= pos.maxScrollExtent - 4;
+    if (atEnd != _atEnd) setState(() => _atEnd = atEnd);
+
+    // Throttle routine in-chapter saves to ~once/second.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastScrollSaveMs < 1000) return;
+    _lastScrollSaveMs = now;
+    _saveProgress(flush: false);
+  }
+
+  int _currentPermille() {
+    if (!_scrollController.hasClients) return 0;
+    final pos = _scrollController.position;
+    if (pos.maxScrollExtent <= 0) return 1000; // whole chapter fits on screen
+    final raw = (pos.pixels / pos.maxScrollExtent * 1000).round();
+    if (raw < 0) return 0;
+    if (raw > 1000) return 1000;
+    return raw;
+  }
+
+  /// Persists the current chapter's position. `ReadStore.save`/
+  /// `ReadHistory.save` both already start with `if (IncognitoMode.on)
+  /// return;` internally, so no extra guard belongs here — adding one would
+  /// duplicate that check for no behavioral change.
+  ///
+  /// Fire-and-forget by design: page turns and dispose must not block on
+  /// disk/network I/O, and both call sites (`dispose`, chapter change) are
+  /// sync anyway.
+  void _saveProgress({required bool flush}) {
+    if (_text == null) return; // nothing loaded for this chapter yet
+    final ep = _chapter;
+    final permille = _currentPermille();
+    sl<ReadStore>().save(
+      widget.sourceId,
+      widget.showId,
+      ep.id,
+      pos: permille,
+      total: 1000,
+    );
+    sl<ReadHistory>().save(
+      ReadEntry(
+        sourceId: widget.sourceId,
+        showId: widget.showId,
+        title: widget.showTitle,
+        cover: widget.cover,
+        chapterId: ep.id,
+        chapterNumber: ep.number,
+        chapterUrl: ep.url,
+        pos: permille,
+        total: 1000,
+        updatedMs: DateTime.now().millisecondsSinceEpoch,
+        type: ProviderType.novel,
+      ),
+      flush: flush,
+    );
+    if (sl<ReadStore>().finished(widget.sourceId, widget.showId, ep.id)) {
+      _maybeScrobble(ep);
+    }
+  }
+
+  /// Chapter scrobble on completion — mirrors player_controller.dart's
+  /// _maybeScrobble guard structure exactly (TrackerHub registration check,
+  /// a dedupe set, then TrackerHub.scrobble). TrackerHub already gates
+  /// incognito internally, so no extra check belongs here.
+  void _maybeScrobble(Episode ep) {
+    if (_scrobbled.contains(ep.id)) return;
+    final n = ep.number;
+    if (n == null || n <= 0 || n != n.truncateToDouble()) return;
+    if (!sl.isRegistered<TrackerHub>()) return;
+    _scrobbled.add(ep.id);
+    sl<TrackerHub>().scrobble(
+      malId: widget.malId,
+      title: widget.showTitle,
+      episode: n.toInt(),
+      kind: MediaKind.manga,
+    );
+  }
+
+  void _flushProgress() => _saveProgress(flush: true);
+
+  void _goToChapter(int newIndex) {
+    if (newIndex < 0 || newIndex >= widget.chapters.length) return;
+    if (newIndex == _index) return;
+    _flushProgress(); // chapter change: push the chapter we're leaving now
+    setState(() {
+      _index = newIndex;
+      _text = null;
+      _error = null;
+      _atEnd = false;
+      _lastScrollSaveMs = 0;
+    });
+    _load();
+  }
+
+  void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = sl<ReaderPrefs>();
+    final theme = _readerTheme(prefs.theme);
+    return Scaffold(
+      backgroundColor: theme.bg,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _toggleChrome,
+              child: _buildBody(theme, prefs),
+            ),
+          ),
+          if (_chromeVisible) _buildTopBar(theme),
+          if (_chromeVisible) _buildBottomBar(theme),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody(_ReaderTheme theme, ReaderPrefs prefs) {
+    if (_loading) {
+      return Center(
+        child: CircularProgressIndicator(
+          color: theme.text.withValues(alpha: 0.6),
+        ),
+      );
+    }
+    if (_error != null) return _buildError(theme);
+    final text = _text;
+    if (text == null) return const SizedBox.shrink();
+
+    final base = TextStyle(
+      fontSize: prefs.fontSize,
+      height: prefs.lineHeight,
+      color: theme.text,
+    );
+    final spans = novelSpans(text.html, base);
+    final hasNext = _index < widget.chapters.length - 1;
+
+    return SafeArea(
+      child: SingleChildScrollView(
+        controller: _scrollController,
+        padding: EdgeInsets.symmetric(
+          horizontal: prefs.marginWidth,
+          vertical: 32,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text.rich(TextSpan(style: base, children: spans)),
+            if (_atEnd && hasNext)
+              Padding(
+                padding: const EdgeInsets.only(top: 28),
+                child: Center(
+                  child: TextButton(
+                    onPressed: () => _goToChapter(_index + 1),
+                    child: Text(
+                      'Next chapter →',
+                      style: AppText.body.copyWith(color: AppColors.accent),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(_ReaderTheme theme) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 40,
+              color: AppColors.textTertiary,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: AppText.body.copyWith(color: theme.text),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            TextButton(
+              onPressed: _load,
+              child: Text(
+                'Retry',
+                style: AppText.body.copyWith(color: AppColors.accent),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopBar(_ReaderTheme theme) {
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        bottom: false,
+        child: Container(
+          color: theme.bg.withValues(alpha: 0.94),
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          child: Row(
+            children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back_rounded, color: theme.text),
+                onPressed: () => Navigator.of(context).maybePop(),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      widget.showTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body.copyWith(color: theme.text),
+                    ),
+                    Text(
+                      'Chapter ${_index + 1} / ${widget.chapters.length}',
+                      style: AppText.caption,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(_ReaderTheme theme) {
+    final hasPrev = _index > 0;
+    final hasNext = _index < widget.chapters.length - 1;
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          color: theme.bg.withValues(alpha: 0.94),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                icon: Icon(Icons.skip_previous_rounded, color: theme.text),
+                onPressed: hasPrev ? () => _goToChapter(_index - 1) : null,
+              ),
+              IconButton(
+                icon: Icon(Icons.tune_rounded, color: theme.text),
+                onPressed: _openSettingsSheet,
+              ),
+              IconButton(
+                icon: Icon(Icons.skip_next_rounded, color: theme.text),
+                onPressed: hasNext ? () => _goToChapter(_index + 1) : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The four novel prefs, live-applied: each change writes straight to
+  /// [ReaderPrefs] and calls `setState` on both the sheet and the reader
+  /// body so the text underneath re-styles immediately.
+  void _openSettingsSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final prefs = sl<ReaderPrefs>();
+          void apply(VoidCallback change) {
+            change();
+            setSheetState(() {});
+            if (mounted) setState(() {});
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 16),
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.textTertiary.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text('Reader settings', style: AppText.headline),
+                  const SizedBox(height: 12),
+                  _prefSlider(
+                    'Font size',
+                    prefs.fontSize,
+                    12,
+                    28,
+                    (v) => apply(() => prefs.setFontSize(v)),
+                  ),
+                  _prefSlider(
+                    'Line height',
+                    prefs.lineHeight,
+                    1.2,
+                    2.4,
+                    (v) => apply(() => prefs.setLineHeight(v)),
+                  ),
+                  _prefSlider(
+                    'Margin',
+                    prefs.marginWidth,
+                    0,
+                    48,
+                    (v) => apply(() => prefs.setMarginWidth(v)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text('Theme', style: AppText.caption),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      for (final t in const ['dark', 'black', 'sepia'])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: _themeSwatch(
+                            t,
+                            prefs.theme == t,
+                            () => apply(() => prefs.setTheme(t)),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _prefSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+  ) {
+    return Row(
+      children: [
+        SizedBox(width: 88, child: Text(label, style: AppText.body)),
+        Expanded(
+          child: Slider(
+            value: value.clamp(min, max),
+            min: min,
+            max: max,
+            activeColor: AppColors.accent,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _themeSwatch(String id, bool selected, VoidCallback onTap) {
+    final theme = _readerTheme(id);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: theme.bg,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: selected
+                ? AppColors.accent
+                : Colors.white.withValues(alpha: 0.16),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Center(
+          child: Text(
+            'A',
+            style: TextStyle(color: theme.text, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ReaderTheme {
+  const _ReaderTheme(this.bg, this.text);
+  final Color bg;
+  final Color text;
+}
+
+_ReaderTheme _readerTheme(String theme) {
+  switch (theme) {
+    case 'black':
+      return const _ReaderTheme(Colors.black, Color(0xFFDDDDDD));
+    case 'sepia':
+      return const _ReaderTheme(Color(0xFFF0E6D2), Color(0xFF4A3B2A));
+    default: // 'dark'
+      return _ReaderTheme(AppColors.bg, AppColors.textPrimary);
+  }
+}
+
+/// HTML → styled spans for the novel body. Pure and top-level so it's
+/// unit-testable without pumping a widget.
+///
+/// `<p>`/`<br>` become paragraph/line breaks, `<b>`/`<strong>` and
+/// `<i>`/`<em>` become bold/italic spans, everything else (including
+/// `<script>`/`<style>` and their contents) is stripped.
+List<TextSpan> novelSpans(String html, TextStyle base) {
+  // `(?:</\1>|$)` (not just `</\1>`) so an unclosed <script>/<style> tag
+  // still gets its raw content stripped through end-of-string instead of
+  // leaking into the rendered chapter.
+  final cleaned = html.replaceAll(
+    RegExp(
+      r'<(script|style)[^>]*>.*?(?:</\1>|$)',
+      caseSensitive: false,
+      dotAll: true,
+    ),
+    '',
+  );
+
+  final spans = <TextSpan>[];
+  final buffer = StringBuffer();
+  var bold = false;
+  var italic = false;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    spans.add(
+      TextSpan(
+        text: buffer.toString(),
+        style: base.copyWith(
+          fontWeight: bold ? FontWeight.bold : null,
+          fontStyle: italic ? FontStyle.italic : null,
+        ),
+      ),
+    );
+    buffer.clear();
+  }
+
+  final tagRe = RegExp(r'<[^>]*>');
+  var last = 0;
+  for (final m in tagRe.allMatches(cleaned)) {
+    if (m.start > last) {
+      buffer.write(_unescapeHtml(cleaned.substring(last, m.start)));
+    }
+    final tag = cleaned.substring(m.start, m.end).toLowerCase();
+    if (tag.startsWith('</p') || tag.startsWith('<br')) {
+      flush();
+      spans.add(const TextSpan(text: '\n'));
+    } else if (tag.startsWith('<b') || tag.startsWith('<strong')) {
+      flush();
+      bold = true;
+    } else if (tag.startsWith('</b') || tag.startsWith('</strong')) {
+      flush();
+      bold = false;
+    } else if (tag.startsWith('<i') || tag.startsWith('<em')) {
+      flush();
+      italic = true;
+    } else if (tag.startsWith('</i') || tag.startsWith('</em')) {
+      flush();
+      italic = false;
+    }
+    // everything else (<p>, <div>, <span>, ...): stripped, no-op
+    last = m.end;
+  }
+  if (last < cleaned.length) {
+    buffer.write(_unescapeHtml(cleaned.substring(last)));
+  }
+  flush();
+  return spans;
+}
+
+const Map<String, String> _htmlEntities = {
+  'amp': '&',
+  'lt': '<',
+  'gt': '>',
+  'quot': '"',
+  'apos': "'",
+  'nbsp': ' ',
+  'mdash': '—',
+  'ndash': '–',
+  'hellip': '…',
+  'lsquo': '‘',
+  'rsquo': '’',
+  'ldquo': '“',
+  'rdquo': '”',
+};
+
+/// Decodes the handful of HTML entities real scraped chapter text actually
+/// contains (named + numeric). Anything unrecognised — including a numeric
+/// reference outside the valid Unicode code point range (`&#99999999;`,
+/// which a source with odd markup can genuinely contain) — is left as-is
+/// rather than crashing: [String.fromCharCode] throws a [RangeError] outside
+/// 0..0x10FFFF, and this runs synchronously from `build()`, well outside the
+/// try/catch that only guards the network fetch in `_load()`.
+///
+/// Lone UTF-16 surrogates (0xD800-0xDFFF) are deliberately NOT special-cased:
+/// `String.fromCharCode` doesn't throw for them (confirmed), it just renders
+/// as tofu — a display quirk, not a crash, so out of scope for this guard.
+String _unescapeHtml(String s) {
+  if (!s.contains('&')) return s;
+  return s.replaceAllMapped(RegExp(r'&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);'), (
+    m,
+  ) {
+    final ref = m.group(1)!;
+    if (ref.startsWith('#x')) {
+      final code = int.tryParse(ref.substring(2), radix: 16);
+      return _charOrRaw(code, m.group(0)!);
+    }
+    if (ref.startsWith('#')) {
+      final code = int.tryParse(ref.substring(1));
+      return _charOrRaw(code, m.group(0)!);
+    }
+    return _htmlEntities[ref] ?? m.group(0)!;
+  });
+}
+
+String _charOrRaw(int? code, String raw) {
+  if (code == null || code < 0 || code > 0x10FFFF) return raw;
+  return String.fromCharCode(code);
+}

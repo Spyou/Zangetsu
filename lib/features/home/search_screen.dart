@@ -4,6 +4,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -30,6 +32,7 @@ import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
+import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
 import '../search/bloc/search_bloc.dart';
@@ -111,6 +114,22 @@ class _SearchViewState extends State<_SearchView> {
   final _myList = sl<MyListStore>();
   final _history = sl<SearchHistory>();
   final _searchPrefs = sl<SearchPrefs>();
+
+  /// [_repo.loadedSources] narrowed to the active content mode — a no-op in
+  /// anime mode (anime+movie sources both pass), so search shows exactly the
+  /// same sources it does today there. Anime is short-circuited to skip the
+  /// filter entirely (no per-source ProviderRegistry lookup), since this is a
+  /// hot path — called from inside BlocBuilders that rebuild on every search
+  /// state emission.
+  List<({String id, String name})> get _modeSources {
+    final mode = sl<ContentModeCubit>().state;
+    if (mode == ContentMode.anime) return _repo.loadedSources;
+    return filterSourcesForMode(
+      {for (final s in _repo.loadedSources) s.id: s},
+      mode,
+      (s) => sourceTypeOf(s.id),
+    ).values.toList();
+  }
 
   @override
   void initState() {
@@ -387,6 +406,9 @@ class _SearchViewState extends State<_SearchView> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.of(context);
     final cellW = (mq.size.width - 40 - 24) / 3;
+    // Computed once per outer build, not once per BlocBuilder rebuild below
+    // (each fires on every search state emission during a live fan-out).
+    final modeSources = _modeSources;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -418,7 +440,7 @@ class _SearchViewState extends State<_SearchView> {
                     state.status != SearchStatus.success &&
                     state.suggestions.isNotEmpty;
                 final tabs = ecosystemTabsFor(
-                  _repo.loadedSources.map((s) => s.id),
+                  modeSources.map((s) => s.id),
                 );
                 if (state.currentSourceOnly ||
                     showingSuggestions ||
@@ -487,7 +509,7 @@ class _SearchViewState extends State<_SearchView> {
                         message: 'Search failed — try again',
                       );
                     case SearchStatus.success:
-                      return _resultsBody(state, cellW);
+                      return _resultsBody(state, cellW, modeSources);
                   }
                 },
               ),
@@ -922,7 +944,11 @@ class _SearchViewState extends State<_SearchView> {
   }
 
   // ── Results body (grouped per source, layout-aware) ─────────────────────────
-  Widget _resultsBody(SearchState state, double cellW) {
+  Widget _resultsBody(
+    SearchState state,
+    double cellW,
+    List<({String id, String name})> modeSources,
+  ) {
     final groups = state.sortedVisibleGroups;
 
     // Sources still loading: those switched on for search that haven't returned
@@ -938,7 +964,7 @@ class _SearchViewState extends State<_SearchView> {
     final pending =
         (state.currentSourceOnly || state.sourceFilter != kAllSources)
         ? const <({String id, String name})>[]
-        : _repo.loadedSources
+        : modeSources
               .where(
                 (s) =>
                     prefs.isIncluded(s.id) &&
@@ -1545,6 +1571,64 @@ class _SearchViewState extends State<_SearchView> {
   }
 }
 
+/// The filter sheet's "search in these sources" category list. Anime mode's
+/// three categories (in this exact order) are the original hardcoded
+/// literal, untouched; a reading mode gets its own single category (Manga or
+/// Novel) instead of Anime/Movies & Series/NSFW, which are always empty for
+/// it anyway. Mirrors `_SourcePickerSheetState._grouped()`'s categories in
+/// source_switcher.dart. A top-level function (not inlined in
+/// [_SearchFilterSheet]) so it's unit-testable without a real [SearchBloc].
+List<({String title, List<({String id, String label, String? repo})> rows})>
+searchFilterSections(SourceBuckets buckets, ContentMode mode) {
+  final readingBucket = mode == ContentMode.manga ? buckets.manga : buckets.novel;
+  return [
+    if (!mode.isReading && buckets.anime.isNotEmpty)
+      (title: 'Anime', rows: buckets.anime),
+    if (!mode.isReading && buckets.movies.isNotEmpty)
+      (title: 'Movies & Series', rows: buckets.movies),
+    if (!mode.isReading && buckets.nsfw.isNotEmpty)
+      (title: 'NSFW', rows: buckets.nsfw),
+    if (mode.isReading && readingBucket.isNotEmpty)
+      (title: mode.label, rows: readingBucket),
+  ];
+}
+
+/// The filter sheet's "no sources" state. Anime mode's wording (a bare,
+/// button-less line) is unchanged; a reading mode gets a reading-specific
+/// message and an install CTA — same wording/route as the source picker's
+/// install CTA and Home's [HomeLoadedEmptyView].
+class SearchSourcesEmptyView extends StatelessWidget {
+  const SearchSourcesEmptyView({
+    super.key,
+    required this.mode,
+    required this.onInstallSources,
+  });
+
+  final ContentMode mode;
+  final VoidCallback onInstallSources;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!mode.isReading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text('No sources installed', style: AppText.body),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 28),
+      child: EmptyState(
+        icon: Icons.source_outlined,
+        message: 'No ${mode.label} sources yet',
+        actionLabel: 'Browse repositories',
+        onAction: onInstallSources,
+      ),
+    );
+  }
+}
+
 /// CloudStream-style filter sheet: content type + genre + decade selectors on
 /// top of the categorised "search in these sources" list. Content type filters
 /// results live (via the bloc); genre/decade are best-effort (see [SearchMeta]).
@@ -1555,17 +1639,10 @@ class _SearchFilterSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final buckets = categorizedSources();
+    final mode = sl<ContentModeCubit>().state;
+    final buckets = filterBucketsForMode(categorizedSources(), mode);
     final prefs = sl<SearchSourcePrefs>();
-    final sections =
-        <
-          ({String title, List<({String id, String label, String? repo})> rows})
-        >[
-          if (buckets.anime.isNotEmpty) (title: 'Anime', rows: buckets.anime),
-          if (buckets.movies.isNotEmpty)
-            (title: 'Movies & Series', rows: buckets.movies),
-          if (buckets.nsfw.isNotEmpty) (title: 'NSFW', rows: buckets.nsfw),
-        ];
+    final sections = searchFilterSections(buckets, mode);
     final allIds = [for (final s in sections) ...s.rows.map((r) => r.id)];
 
     return SafeArea(
@@ -1650,14 +1727,18 @@ class _SearchFilterSheet extends StatelessWidget {
                     // is just one source, so it's hidden.
                     if (!context.read<SearchBloc>().state.currentSourceOnly)
                       if (sections.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 28),
-                          child: Center(
-                            child: Text(
-                              'No sources installed',
-                              style: AppText.body,
-                            ),
-                          ),
+                        SearchSourcesEmptyView(
+                          mode: mode,
+                          onInstallSources: () {
+                            Navigator.of(context).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const ZangetsuSourcesScreen(
+                                  openToRepos: true,
+                                ),
+                              ),
+                            );
+                          },
                         )
                       else ...[
                         Padding(

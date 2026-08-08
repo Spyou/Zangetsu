@@ -1,15 +1,21 @@
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
+import '../lnreader/lnreader_manager.dart';
+import '../mihon/mihon_filters.dart';
+import '../mihon/mihon_manager.dart';
+import '../mihon/mihon_provider.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
+import '../models/page_content.dart';
 import '../models/video_source.dart';
 import '../playback/playback_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
+import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
 
 /// Facade over the active provider runtime for the UI layer.
@@ -22,15 +28,33 @@ class SourceRepository {
     required AniyomiManager aniManager,
     required ActiveSourceCubit activeSource,
     required PlaybackPrefs prefs,
+    MihonManager? mihonManager,
+    LnReaderManager? lnrManager,
   }) : _manager = manager,
        _csManager = csManager,
        _aniManager = aniManager,
        _active = activeSource,
-       _prefs = prefs;
+       _prefs = prefs,
+       // Optional (not `required`) purely so adding manga wiring changes no
+       // existing call site — omitting it yields an EMPTY registry, which is
+       // exactly the right behaviour anywhere Mihon isn't wired (tests,
+       // non-Android): `mihon:` ids simply never resolve, same as any other
+       // unknown id. The injector always passes the real one.
+       _mihonManager = mihonManager ?? MihonManager(),
+       // Novel twin of the above, kept nullable rather than defaulted:
+       // LnReaderManager has no cheap no-arg default the way MihonManager
+       // does (it's a thin read-through over a Hive box that [init] must
+       // open first), so every `_lnrManager` use below is `?.`-guarded
+       // instead. Omitting it yields the same "EMPTY registry" behaviour —
+       // `lnr:` ids simply never resolve. The injector always passes the
+       // real one.
+       _lnrManager = lnrManager;
 
   final ProviderManager _manager;
   final CloudStreamManager _csManager;
   final AniyomiManager _aniManager;
+  final MihonManager _mihonManager;
+  final LnReaderManager? _lnrManager;
   final ActiveSourceCubit _active;
   final PlaybackPrefs _prefs;
 
@@ -99,6 +123,16 @@ class SourceRepository {
   /// True for Aniyomi source ids (`ani:<sourceId>`).
   static bool _isAniyomi(String id) => id.startsWith('ani:');
 
+  /// True for Mihon manga source ids (`mihon:<sourceId>`). A separate prefix
+  /// from `ani:` on purpose (spec Decision 1) — `sourceTypeOf` hardcodes
+  /// `ani:` to anime, so reusing it would type every manga source as anime.
+  static bool _isMihon(String id) => id.startsWith('mihon:');
+
+  /// True for LNReader novel source ids (`lnr:<pluginId>`). Novel twin of
+  /// [_isMihon] — its own prefix so `sourceTypeOf` can type it novel without
+  /// disturbing the `mihon:`/`ani:` lines.
+  static bool _isLnReader(String id) => id.startsWith('lnr:');
+
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
@@ -119,6 +153,16 @@ class SourceRepository {
           (p) => aniyomiNsfwVisible(p, showNsfwAniyomi: _prefs.showNsfwAniyomi),
         )
         .map((p) => (id: p.sourceId, name: p.displayName)),
+    // Mihon manga sources. There is no Mihon-specific NSFW pref, so these
+    // reuse the general "show NSFW sources" toggle rather than inventing a
+    // third one — same default (off), so an 18+ manga source stays hidden
+    // until the user opts in, exactly like every other NSFW source.
+    ..._mihonManager.all
+        .where((p) => !p.info.nsfw || _prefs.nsfwSources)
+        .map((p) => (id: p.sourceId, name: p.displayName)),
+    // LNReader novel sources — already `{id, name}` shaped, straight from
+    // stored plugin meta (no NSFW concept for these yet).
+    if (_lnrManager != null) ..._lnrManager.installedSources,
   ];
 
   /// Base site URL for a source, used to turn a relative item URL into an
@@ -126,6 +170,15 @@ class SourceRepository {
   /// requests `baseUrl + anime.url`); CloudStream/JS items are already
   /// absolute, so this returns '' for them.
   String baseUrlFor(String sourceId) {
+    // Mihon stores `SManga.url` as a path for the same reason Aniyomi does
+    // (the native side requests `baseUrl + manga.url`), so a manga item needs
+    // the same relative→absolute treatment before it can be shared/opened.
+    final m = _mihonManager.get(sourceId);
+    if (m != null) return m.info.baseUrl;
+    // LNReader chapter urls are paths too (resolved against the plugin's
+    // `site`), same rationale as Mihon above.
+    final l = _lnrManager?.get(sourceId);
+    if (l != null) return l.site;
     final p = _aniManager.get(sourceId);
     return p is AniyomiProvider ? p.info.baseUrl : '';
   }
@@ -137,6 +190,12 @@ class SourceRepository {
     }
     if (_isAniyomi(sourceId)) {
       return _aniManager.get(sourceId)?.displayName ?? sourceId;
+    }
+    if (_isMihon(sourceId)) {
+      return _mihonManager.get(sourceId)?.displayName ?? sourceId;
+    }
+    if (_isLnReader(sourceId)) {
+      return _lnrManager?.get(sourceId)?.displayName ?? sourceId;
     }
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
@@ -151,6 +210,12 @@ class SourceRepository {
     }
     if (_isAniyomi(sourceId)) {
       return _aniManager.get(sourceId) != null;
+    }
+    if (_isMihon(sourceId)) {
+      return _mihonManager.get(sourceId) != null;
+    }
+    if (_isLnReader(sourceId)) {
+      return _lnrManager?.get(sourceId) != null;
     }
     return _manager.get(sourceId) != null;
   }
@@ -172,6 +237,10 @@ class SourceRepository {
       p = _csManager.resolveCompatible(resolved);
     } else if (_isAniyomi(resolved)) {
       p = _aniManager.get(resolved);
+    } else if (_isMihon(resolved)) {
+      p = _mihonManager.get(resolved);
+    } else if (_isLnReader(resolved)) {
+      p = _lnrManager?.get(resolved);
     } else {
       p = _manager.get(resolved);
     }
@@ -230,6 +299,8 @@ class SourceRepository {
   /// infinite scroll), routing on [BrowseMore.kind]:
   ///   * `ani_popular` → the Aniyomi/JS provider's `popular(page:)`
   ///   * `ani_latest`  → the Aniyomi provider's `latest(page:)`
+  ///   * `mihon_popular` → the Mihon manga provider's `popular(page:)`
+  ///   * `mihon_latest`  → the Mihon manga provider's `latest(page:)`
   ///   * `cs_mainpage` → the CloudStream provider's `browseMainPage(id, page)`
   ///
   /// Never throws — any failure (unknown kind, wrong provider type, provider
@@ -242,6 +313,10 @@ class SourceRepository {
           return p.popular(page: page);
         case 'ani_latest':
           return p is AniyomiProvider ? p.latest(page: page) : const [];
+        case 'mihon_popular':
+          return p.popular(page: page);
+        case 'mihon_latest':
+          return p is MihonProvider ? p.latest(page: page) : const [];
         case 'cs_mainpage':
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)
@@ -274,6 +349,8 @@ class SourceRepository {
   ///  - For Aniyomi sources, [filtersJson] (when non-null) is forwarded to the
   ///    provider so the native bridge can apply the user's filter selection.
   ///    CloudStream and JS paths never receive it.
+  ///  - Mihon manga sources forward [filtersJson] the same way (their bridge
+  ///    takes the identical `filters` argument).
   ///
   /// CF suppression is reused automatically: JS search goes through the
   /// provider-manager `search` path (suppresses the solver) and CS search goes
@@ -356,6 +433,13 @@ class SourceRepository {
               category: category,
               filtersJson: filtersJson,
             )
+          : (_isMihon(resolved) && provider is MihonProvider)
+          ? await provider.search(
+              query,
+              page,
+              category: category,
+              filtersJson: filtersJson,
+            )
           : await provider.search(query, page, category: category);
       return (
         items: items,
@@ -372,6 +456,16 @@ class SourceRepository {
     if (!_isAniyomi(sourceId)) return const [];
     final p = _providerFor(sourceId);
     return p is AniyomiProvider ? p.getFilters() : const [];
+  }
+
+  /// Mihon twin of [aniFilters] — the typed manga filter schema for [sourceId],
+  /// or an empty list for non-Mihon sources / sources with no filters. Separate
+  /// method (and a separate `MihonFilter` type) rather than a shared one, per
+  /// spec Decision 3: the anime path never changes for a manga change.
+  Future<List<MihonFilter>> mihonFilters(String sourceId) async {
+    if (!_isMihon(sourceId)) return const [];
+    final p = _providerFor(sourceId);
+    return p is MihonProvider ? p.getFilters() : const [];
   }
 
   /// Classifies a failure message into a [SourceOutcome]. Timeouts and CF/WAF
@@ -445,6 +539,31 @@ class SourceRepository {
       return fresh;
     }
     return _providerFor(sourceId).getVideoSources(episodeUrl, fast: fast);
+  }
+
+  /// Manga leaf — ordered page images for [chapterUrl]. No expiry cache here:
+  /// unlike stream links, page image URLs don't rot within a session, so this
+  /// never touches [_prefetch]/[_resolved]. Throws [UnsupportedError] if the
+  /// resolved source isn't a [ReadingProvider] (e.g. CloudStream/Aniyomi) —
+  /// unreachable through mode-filtered UI, but a hard guard regardless.
+  Future<List<PageImage>> pages(String chapterUrl, {String? sourceId}) {
+    final p = _providerFor(sourceId);
+    if (p is! ReadingProvider) {
+      throw UnsupportedError('${p.sourceId} does not support reading content');
+    }
+    // ReadingProvider is deliberately unrelated to BaseProvider (Task 3), so
+    // the `is!` check above doesn't statically promote — cast explicitly.
+    return (p as ReadingProvider).getPages(chapterUrl);
+  }
+
+  /// Novel leaf — chapter text for [chapterUrl]. Same no-cache rationale and
+  /// [ReadingProvider] guard as [pages].
+  Future<ChapterText> chapterText(String chapterUrl, {String? sourceId}) {
+    final p = _providerFor(sourceId);
+    if (p is! ReadingProvider) {
+      throw UnsupportedError('${p.sourceId} does not support reading content');
+    }
+    return (p as ReadingProvider).getText(chapterUrl);
   }
 
   /// Drop the cached fast-resolution for an episode so the next [sources] call

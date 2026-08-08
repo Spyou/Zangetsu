@@ -17,6 +17,87 @@ import 'anilist_store.dart';
 /// Outcome of a single scrobble attempt.
 enum _Scrobble { synced, skipped, unmatched, failed }
 
+/// Which [ProviderType] an AniList media of [kind] with this `format` belongs
+/// to. AniList has no novel *type* — light novels live on the MANGA list and
+/// are only distinguishable by `format: NOVEL`, so without this split every
+/// novel would land in manga mode and novel mode would look empty.
+///
+/// Anything else on the manga list (`MANGA`, `ONE_SHOT`, a format we don't
+/// know, or a null when the field wasn't selected) is treated as manga — a
+/// wrong-but-visible bucket beats a silently dropped entry.
+ProviderType aniListProviderType(MediaKind kind, String? format) {
+  if (kind != MediaKind.manga) return ProviderType.anime;
+  return format == 'NOVEL' ? ProviderType.novel : ProviderType.manga;
+}
+
+/// Parse a `MediaListCollection` response into library stubs. Pure + top-level
+/// so a test can feed it a recorded response without a live API.
+///
+/// The malId dedupe set is per-call ON PURPOSE: MAL's anime and manga id
+/// spaces overlap (anime 21 and manga 21 are different titles), so sharing one
+/// set across kinds would silently swallow manga entries.
+List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
+  final collection = (data is Map && data['data'] is Map)
+      ? (data['data'] as Map)['MediaListCollection']
+      : null;
+  final lists = (collection is Map) ? collection['lists'] : null;
+  if (lists is! List) return const [];
+
+  final out = <TrackerListItem>[];
+  final seen = <int>{}; // dedupe by malId
+  var idx = 0;
+  for (final list in lists) {
+    final entries = (list is Map) ? list['entries'] : null;
+    if (entries is! List) continue;
+    for (final e in entries) {
+      if (e is! Map) continue;
+      final status = watchStatusFromAniList(e['status'] as String?);
+      if (status == null) continue;
+      final media = e['media'];
+      if (media is! Map) continue;
+      final malId = (media['idMal'] as num?)?.toInt();
+      if (malId != null && !seen.add(malId)) continue; // already have it
+
+      final t = media['title'];
+      final english = (t is Map) ? t['english'] as String? : null;
+      final romaji = (t is Map) ? t['romaji'] as String? : null;
+      final title = (english?.isNotEmpty == true)
+          ? english!
+          : (romaji ?? 'Unknown');
+      final cover = (media['coverImage'] is Map)
+          ? (media['coverImage'] as Map)['large'] as String?
+          : null;
+
+      final rawScore = (e['score'] as num?)?.toDouble();
+      final score = (rawScore == null || rawScore == 0) ? null : rawScore;
+
+      // Reading kinds get their own id namespace for the same id-space-overlap
+      // reason as `seen`; anime keeps the original, unprefixed id.
+      final key = malId ?? idx;
+      out.add(TrackerListItem(
+        item: MediaItem(
+          id: kind == MediaKind.manga
+              ? 'tracker:anilist:manga:$key'
+              : 'tracker:anilist:$key',
+          title: title,
+          cover: cover,
+          url: '',
+          type: aniListProviderType(kind, media['format'] as String?),
+          sourceId: '',
+          malId: malId,
+        ),
+        status: status,
+        // Chapters read for a reading kind, episodes watched for anime —
+        // AniList uses the one `progress` field for both.
+        progress: (e['progress'] as num?)?.toInt(),
+        score: score,
+      ));
+      idx++;
+    }
+  }
+  return out;
+}
+
 /// Facade for the AniList integration. Owns the OAuth connect flow (browser +
 /// deep-link capture), the persisted session, and the auto-scrobbler. A
 /// [ChangeNotifier] so the settings UI rebuilds on connect/disconnect.
@@ -43,6 +124,9 @@ class AniListService extends ChangeNotifier implements Tracker {
 
   @override
   String get displayName => 'AniList';
+
+  @override
+  bool get supportsReading => true; // AniList has manga + light novels
 
   @override
   bool get isConnected => _store.hasValidToken && _store.viewerId != null;
@@ -136,44 +220,57 @@ class AniListService extends ChangeNotifier implements Tracker {
 
   // ── Media resolution (MAL id, else title search) ────────────────────────────
 
-  /// Resolve an AniList `(mediaId, total episodes)` from a MAL id (cached).
-  Future<({int id, int? total})?> _resolveByMal(int malId) async {
-    final cached = _store.cachedMediaId(malId);
+  /// Resolve an AniList `(mediaId, total episodes/chapters)` from a MAL id
+  /// (cached). The id cache is namespaced by [kind] — MAL's anime and manga
+  /// id spaces overlap, so a malId that collided between the two would
+  /// otherwise return a stale cross-kind hit.
+  Future<({int id, int? total})?> _resolveByMal(
+    int malId, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
+    final cached = _store.cachedMediaId(malId, kind);
     if (cached != null) {
-      return (id: cached, total: _store.cachedEpisodes(cached));
+      return (id: cached, total: _store.cachedEpisodes(cached, kind));
     }
-    final m = await _api.mediaByMalId(malId);
+    final m = await _api.mediaByMalId(malId, kind: kind);
     if (m == null) return null;
-    await _store.cacheMediaId(malId, m.id);
-    if (m.episodes != null) await _store.cacheEpisodes(m.id, m.episodes!);
+    await _store.cacheMediaId(malId, m.id, kind);
+    if (m.episodes != null) await _store.cacheEpisodes(m.id, m.episodes!, kind);
     return (id: m.id, total: m.episodes);
   }
 
-  /// Resolve by anime title via AniList search (cached). Used when the provider
+  /// Resolve by title via AniList search (cached). Used when the provider
   /// didn't supply a MAL id (old provider / AllAnime), so scrobbling never
   /// depends on a provider update.
-  Future<({int id, int? total})?> _resolveByTitle(String title) async {
+  Future<({int id, int? total})?> _resolveByTitle(
+    String title, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
     final key = title.trim().toLowerCase();
     if (key.isEmpty) return null;
-    final cached = _store.cachedMediaIdByTitle(key);
+    final cached = _store.cachedMediaIdByTitle(key, kind);
     if (cached != null) {
-      return (id: cached, total: _store.cachedEpisodes(cached));
+      return (id: cached, total: _store.cachedEpisodes(cached, kind));
     }
-    final m = await _api.mediaBySearch(title);
+    final m = await _api.mediaBySearch(title, kind: kind);
     if (m == null) return null;
-    await _store.cacheMediaIdByTitle(key, m.id);
-    if (m.episodes != null) await _store.cacheEpisodes(m.id, m.episodes!);
+    await _store.cacheMediaIdByTitle(key, m.id, kind);
+    if (m.episodes != null) await _store.cacheEpisodes(m.id, m.episodes!, kind);
     return (id: m.id, total: m.episodes);
   }
 
   /// MAL id first (exact), then title search (fallback).
-  Future<({int id, int? total})?> _resolveMedia(int? malId, String? title) async {
+  Future<({int id, int? total})?> _resolveMedia(
+    int? malId,
+    String? title, [
+    MediaKind kind = MediaKind.anime,
+  ]) async {
     if (malId != null) {
-      final m = await _resolveByMal(malId);
+      final m = await _resolveByMal(malId, kind);
       if (m != null) return m;
     }
     if (title != null && title.trim().isNotEmpty) {
-      return _resolveByTitle(title);
+      return _resolveByTitle(title, kind);
     }
     return null;
   }
@@ -192,10 +289,16 @@ class AniListService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required int episode,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
     if (malId == null && (title == null || title.trim().isEmpty)) return;
-    final r = await _scrobbleResolved(malId: malId, title: title, episode: episode);
+    final r = await _scrobbleResolved(
+      malId: malId,
+      title: title,
+      episode: episode,
+      kind: kind,
+    );
     debugPrint('[AniList] scrobble ep$episode (mal=$malId title="$title") -> $r');
     // Stay silent on success — only surface a real failure (so a sync can't
     // break unnoticed). Unmatched/skipped are quiet too.
@@ -208,8 +311,9 @@ class AniListService extends ChangeNotifier implements Tracker {
     int? malId,
     String? title,
     required int episode,
+    MediaKind kind = MediaKind.anime,
   }) async {
-    final media = await _resolveMedia(malId, title);
+    final media = await _resolveMedia(malId, title, kind);
     if (media == null) {
       debugPrint('[AniList] no AniList match for mal=$malId title="$title"');
       return _Scrobble.unmatched;
@@ -232,14 +336,22 @@ class AniListService extends ChangeNotifier implements Tracker {
     );
     if (ok) {
       await _store.setScrobbledProgress(mediaId, progress);
-      await _store.removePending(malId: malId, title: title);
+      await _store.removePending(malId: malId, title: title, kind: kind);
       return _Scrobble.synced;
     }
-    await _store.queueScrobble(malId: malId, title: title, episode: episode);
+    await _store.queueScrobble(
+      malId: malId,
+      title: title,
+      episode: episode,
+      kind: kind,
+    );
     return _Scrobble.failed;
   }
 
   /// Retry any queued scrobbles (called on launch + after connect). Silent.
+  /// Replays each row against ITS OWN [MediaKind] (a manga scrobble that
+  /// failed offline must replay as manga, not silently default to anime —
+  /// [mediaKindFromName] reads a pre-kind-field row as anime, same as before).
   Future<void> flushPending() async {
     if (!isConnected) return;
     for (final p in _store.pendingScrobbles) {
@@ -249,6 +361,7 @@ class AniListService extends ChangeNotifier implements Tracker {
         malId: p['malId'] as int?,
         title: p['title'] as String?,
         episode: episode,
+        kind: mediaKindFromName(p['kind'] as String?),
       );
       if (r == _Scrobble.failed) break; // still offline — retry next time
     }
@@ -266,9 +379,10 @@ class AniListService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     required WatchStatus status,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final media = await _resolveMedia(malId, title);
+    final media = await _resolveMedia(malId, title, kind);
     if (media == null) return;
     if (status == WatchStatus.completed &&
         media.total != null &&
@@ -295,10 +409,11 @@ class AniListService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected || !autoSync) return;
     if (malId == null && (title == null || title.trim().isEmpty)) return;
-    final media = await _resolveMedia(malId, title);
+    final media = await _resolveMedia(malId, title, kind);
     if (media == null) return;
     final total = media.total;
     if (total != null && total > 0 &&
@@ -311,21 +426,29 @@ class AniListService extends ChangeNotifier implements Tracker {
 
   // ── Library read-back (for the My List tracker switcher) ────────────────────
 
-  /// Read the connected user's full AniList anime library as metadata stubs +
-  /// status. Best-effort: `[]` when disconnected or on ANY error (never throws).
+  /// Read the connected user's full AniList library as metadata stubs +
+  /// status — the anime list AND the manga list (which is where AniList keeps
+  /// light novels too; [parseAniListCollection] splits them back out).
+  /// Best-effort: `[]` when disconnected or on ANY error (never throws).
   @override
   Future<List<TrackerListItem>> fetchList() async {
     final user = _store.viewerName;
     if (!isConnected || user == null || user.isEmpty) return const [];
+    // Each kind is fetched + caught independently, so a failing manga read
+    // can't take the anime list down with it.
+    final both = await Future.wait([
+      _fetchListOf(MediaKind.anime, user),
+      _fetchListOf(MediaKind.manga, user),
+    ]);
+    return [...both[0], ...both[1]];
+  }
+
+  Future<List<TrackerListItem>> _fetchListOf(MediaKind kind, String user) async {
     try {
-      const query =
-          'query(\$u:String){ MediaListCollection(userName:\$u, type:ANIME){ '
-          'lists { status entries { status progress score(format:POINT_10) '
-          'media { idMal title { romaji english } coverImage { large } } } } } }';
       final res = await _dio.post<dynamic>(
         'https://graphql.anilist.co',
         data: {
-          'query': query,
+          'query': mediaListCollectionQuery(kind),
           'variables': {'u': user},
         },
         options: Options(
@@ -337,59 +460,7 @@ class AniListService extends ChangeNotifier implements Tracker {
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      final data = res.data;
-      final collection = (data is Map && data['data'] is Map)
-          ? (data['data'] as Map)['MediaListCollection']
-          : null;
-      final lists = (collection is Map) ? collection['lists'] : null;
-      if (lists is! List) return const [];
-
-      final out = <TrackerListItem>[];
-      final seen = <int>{}; // dedupe by malId
-      var idx = 0;
-      for (final list in lists) {
-        final entries = (list is Map) ? list['entries'] : null;
-        if (entries is! List) continue;
-        for (final e in entries) {
-          if (e is! Map) continue;
-          final status = watchStatusFromAniList(e['status'] as String?);
-          if (status == null) continue;
-          final media = e['media'];
-          if (media is! Map) continue;
-          final malId = (media['idMal'] as num?)?.toInt();
-          if (malId != null && !seen.add(malId)) continue; // already have it
-
-          final t = media['title'];
-          final english = (t is Map) ? t['english'] as String? : null;
-          final romaji = (t is Map) ? t['romaji'] as String? : null;
-          final title = (english?.isNotEmpty == true)
-              ? english!
-              : (romaji ?? 'Unknown');
-          final cover = (media['coverImage'] is Map)
-              ? (media['coverImage'] as Map)['large'] as String?
-              : null;
-
-          final rawScore = (e['score'] as num?)?.toDouble();
-          final score = (rawScore == null || rawScore == 0) ? null : rawScore;
-
-          out.add(TrackerListItem(
-            item: MediaItem(
-              id: 'tracker:anilist:${malId ?? idx}',
-              title: title,
-              cover: cover,
-              url: '',
-              type: ProviderType.anime,
-              sourceId: '',
-              malId: malId,
-            ),
-            status: status,
-            progress: (e['progress'] as num?)?.toInt(),
-            score: score,
-          ));
-          idx++;
-        }
-      }
-      return out;
+      return parseAniListCollection(res.data, kind);
     } catch (_) {
       return const [];
     }
@@ -403,9 +474,10 @@ class AniListService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final media = await _resolveMedia(malId, title);
+    final media = await _resolveMedia(malId, title, kind);
     if (media == null) return;
     await _api.deleteEntry(media.id);
     await _store.setScrobbledProgress(media.id, 0);
@@ -421,12 +493,14 @@ class AniListService extends ChangeNotifier implements Tracker {
     bool tmdbIsTv = false,
     String? imdbId,
     String? pinnedId,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return null;
     final mediaId =
-        int.tryParse(pinnedId ?? '') ?? (await _resolveMedia(malId, title))?.id;
+        int.tryParse(pinnedId ?? '') ??
+        (await _resolveMedia(malId, title, kind))?.id;
     if (mediaId == null) return null;
-    final m = await _api.mediaEntry(mediaId);
+    final m = await _api.mediaEntry(mediaId, kind: kind);
     if (m == null) return null;
     final entry = m['mediaListEntry'];
     final na = m['nextAiringEpisode'];
@@ -441,7 +515,10 @@ class AniListService extends ChangeNotifier implements Tracker {
           : null,
       score: (rawScore == null || rawScore == 0) ? null : rawScore,
       progress: (entry is Map) ? (entry['progress'] as num?)?.toInt() : null,
+      // Only one of these two is ever selected by the query per [kind], so
+      // the field that wasn't asked for is simply absent from the response.
       maxEpisodes: (m['episodes'] as num?)?.toInt(),
+      chapters: (m['chapters'] as num?)?.toInt(),
       nextAiringEpisode: (na is Map) ? (na['episode'] as num?)?.toInt() : null,
       nextAiringAt: airAt == null
           ? null
@@ -460,10 +537,12 @@ class AniListService extends ChangeNotifier implements Tracker {
     WatchStatus? status,
     double? score,
     int? progress,
+    MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
     final mediaId =
-        int.tryParse(pinnedId ?? '') ?? (await _resolveMedia(malId, title))?.id;
+        int.tryParse(pinnedId ?? '') ??
+        (await _resolveMedia(malId, title, kind))?.id;
     if (mediaId == null) return;
     final ok = await _api.saveEntry(
       mediaId: mediaId,
@@ -478,10 +557,22 @@ class AniListService extends ChangeNotifier implements Tracker {
     }
   }
 
+  /// [novelFormat] narrows a [MediaKind.manga] search to light novels only
+  /// (`format_in: [NOVEL]`) — not part of the [Tracker] interface, so it's
+  /// only reachable by callers holding a concrete [AniListService]. Ignored
+  /// for anime.
   @override
-  Future<List<TrackerSearchResult>> searchEntries(String query) async {
+  Future<List<TrackerSearchResult>> searchEntries(
+    String query, {
+    MediaKind kind = MediaKind.anime,
+    bool novelFormat = false,
+  }) async {
     if (query.trim().isEmpty) return const [];
-    final results = await _api.searchMedia(query);
+    final results = await _api.searchMedia(
+      query,
+      kind: kind,
+      novelFormat: novelFormat,
+    );
     return [
       for (final m in results)
         TrackerSearchResult(

@@ -241,6 +241,10 @@ flutter:
     - extractors/mp4upload.js
     - extractors/streamlare.js
     - extractors/doodstream.js
+    # Cheerio + htmlparser2 bundle for LNReader-style novel source scripts.
+    - assets/js/lnreader_cheerio.js
+    # require()/fetch shims + plugin loader that runs LNReader plugins on top.
+    - assets/js/lnreader_harness.js
     # Brand wordmark extracted from the logo (exact lettering) for header/splash.
     - assets/icon/wordmark.png
     # Square app icon — shown on the About screen.
@@ -249,6 +253,8 @@ flutter:
     # reachable from Dart, so the choices are bundled as normal assets).
     - assets/icon/preview_default.png
     - assets/icon/preview_classic.png
+    # New Zangetsu mark (black bg keyed out) — for the mode-switch transition.
+    - assets/icon/logo_mark.png
 
   fonts:
     - family: Inter

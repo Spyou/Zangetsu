@@ -38,6 +38,7 @@ class FeaturedCarousel extends StatefulWidget {
     required this.onToggleList,
     this.meta,
     this.style = HeroTransition.parallax,
+    this.reading = false,
   });
 
   final List<MediaItem> items;
@@ -52,6 +53,11 @@ class FeaturedCarousel extends StatefulWidget {
 
   /// Which transition style to use (A = cinematic, B = parallax).
   final HeroTransition style;
+
+  /// Manga/novel mode — forwarded to [FeaturedHero] so the primary action
+  /// reads "Read" instead of "Play". Defaults to false; existing callers are
+  /// unchanged.
+  final bool reading;
 
   @override
   State<FeaturedCarousel> createState() => _FeaturedCarouselState();
@@ -155,6 +161,7 @@ class _FeaturedCarouselState extends State<FeaturedCarousel> {
         metaFuture: widget.meta?.call(it),
         parallax: parallax,
         kenBurns: kenBurns,
+        reading: widget.reading,
       );
 
   /// The pager — cinematic cross-fade (A) or parallax slide (B).

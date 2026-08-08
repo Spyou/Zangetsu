@@ -38,6 +38,8 @@ class BrowseMore {
   /// Which paging endpoint to call:
   ///   * `ani_popular`  — Aniyomi popular feed
   ///   * `ani_latest`   — Aniyomi latest feed
+  ///   * `mihon_popular` — Mihon manga popular feed
+  ///   * `mihon_latest`  — Mihon manga latest feed
   ///   * `cs_mainpage`  — a CloudStream `mainPage` category
   final String kind;
 

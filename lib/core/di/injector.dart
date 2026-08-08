@@ -25,6 +25,9 @@ import '../search/title_suggestion_service.dart';
 import '../ui/animation_prefs.dart';
 import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
+import '../reading/read_history.dart';
+import '../reading/read_store.dart';
+import '../reading/reader_prefs.dart';
 import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
 import '../provider/cf_clearance_store.dart';
@@ -43,6 +46,7 @@ import '../metadata/metadata_enrichment.dart';
 import '../metadata/people_service.dart';
 import '../metadata/tmdb.dart';
 import '../metadata/title_logo_service.dart';
+import '../mode/content_mode_cubit.dart';
 import '../trailer/trailer_service.dart';
 import '../anilist/anilist_service.dart';
 import '../anilist/anilist_store.dart';
@@ -68,6 +72,12 @@ import '../notify/subscription_checker.dart';
 import '../discord/discord_rpc.dart';
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
+import '../lnreader/lnreader_extension_service.dart';
+import '../lnreader/lnreader_manager.dart';
+import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
+import '../mihon/mihon_extension_service.dart';
+import '../mihon/mihon_manager.dart';
+import '../mihon/mihon_provider.dart';
 import '../../features/auth/auth_cubit.dart';
 import '../../features/auth/migration_bridge.dart';
 import '../../features/auth/tv_pairing_service.dart';
@@ -156,9 +166,15 @@ Future<void> initDependencies() async {
 
   await ResumeStore.init();
   sl.registerSingleton<ResumeStore>(ResumeStore());
+  await ReadStore.init();
+  sl.registerSingleton<ReadStore>(ReadStore());
   await WatchHistory.init();
   sl.registerSingleton<WatchHistory>(
     WatchHistory(sl<SupabaseService>(), currentUserId),
+  );
+  await ReadHistory.init();
+  sl.registerSingleton<ReadHistory>(
+    ReadHistory(sl<SupabaseService>(), currentUserId),
   );
   sl.registerSingleton<WatchRoomService>(WatchRoomService(sl<SupabaseService>()));
   sl.registerSingleton<WatchTogetherController>(
@@ -183,6 +199,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<TitlePrefsStore>(TitlePrefsStore());
   await PlaybackPrefs.init();
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+  await ReaderPrefs.init();
+  sl.registerSingleton<ReaderPrefs>(ReaderPrefs());
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
   await DownloadPrefs.init();
@@ -335,6 +353,68 @@ Future<void> initDependencies() async {
   final aniyomiManager = AniyomiManager();
   sl.registerSingleton<AniyomiManager>(aniyomiManager);
 
+  // Mihon manga-extension registry — the manga twin of AniyomiManager above,
+  // populated by the guarded boot step further down.
+  //
+  // The singleton itself is registered on EVERY platform: it's an in-memory
+  // map that touches no channel, so registering it unconditionally means
+  // `sl<MihonManager>()` can never throw and no caller needs an isRegistered
+  // dance. The Android gate lives on the boot step instead (see below) — the
+  // only place BOOT constructs a MihonProvider. One check there covers
+  // everything downstream: nothing loads, so nothing registers, so the source
+  // picker lists nothing, and every `mihon:` data call fails to resolve.
+  // (MihonExtensionService.installFromRepo also constructs providers and is
+  // deliberately NOT gated — like the anime path, its native call throws first
+  // off-Android and its own try/catch degrades that to `[]`.)
+  final mihonManager = MihonManager();
+  sl.registerSingleton<MihonManager>(mihonManager);
+
+  // LNReader novel-extension registry — the novel twin of MihonManager above.
+  // Unlike Mihon, LNReader plugins are plain JS (no native APK/DEX), so there's
+  // no Platform.isAndroid gate here — same reasoning as the JS provider path.
+  // `lnrManager.init()` only opens the `lnreader_plugins` Hive box; it deliberately
+  // never builds the ~450KB QuickJS runtime (see LnReaderManager's doc comment)
+  // — that only happens lazily the first time a `lnr:` source's data method runs.
+  // httpGet/fetch reuse the app's shared `dio` (8s timeout + browser UA already
+  // set above) rather than standing up a second HTTP client.
+  final lnrService = LnReaderExtensionService(
+    httpGet: (url) async {
+      final res = await dio.get<String>(
+        url,
+        options: Options(responseType: ResponseType.plain),
+      );
+      return res.data ?? '';
+    },
+  );
+  final lnrManager = LnReaderManager(
+    service: lnrService,
+    fetch: (url, init) async {
+      final res = await dio.request<String>(
+        url,
+        data: init['body'],
+        options: Options(
+          method: (init['method'] as String?)?.toUpperCase() ?? 'GET',
+          headers: init['headers'] is Map
+              ? Map<String, dynamic>.from(init['headers'] as Map)
+              : null,
+          responseType: ResponseType.plain,
+          // fetch() never throws on a non-2xx status — it resolves with the
+          // response so the plugin can inspect it. Without this Dio would
+          // throw on e.g. a 404, which the plugin never gets a chance to see.
+          validateStatus: (_) => true,
+        ),
+      );
+      return LnReaderHttpResponse(
+        status: res.statusCode ?? 0,
+        body: res.data ?? '',
+        url: res.realUri.toString(),
+      );
+    },
+  );
+  sl.registerSingleton<LnReaderExtensionService>(lnrService);
+  sl.registerSingleton<LnReaderManager>(lnrManager);
+  await lnrManager.init();
+
   // --- Provider registry data layer ---------------------------------
   await ProviderReposRegistry.init();
   await ProviderRegistry.init();
@@ -455,6 +535,63 @@ Future<void> initDependencies() async {
     }
   });
 
+  // Guarded Mihon boot step — the manga twin of the Aniyomi step above.
+  // Same shape: its own microtask so it never blocks startup, and a try/catch
+  // so any failure is logged and never propagates.
+  //
+  // Two things this step is load-bearing for beyond reloading extensions:
+  //
+  //  1. It OPENS the `mihon_installed` box. MihonExtensionService.installFromRepo
+  //     only persists `pkg -> apkPath` when that box is open, so without this
+  //     an install would "succeed" and then silently vanish on the next launch
+  //     — no error anywhere. The box is opened BEFORE the isEmpty early-return
+  //     so a first-ever install still has somewhere to write.
+  //  2. It is the single Platform.isAndroid gate for the whole Mihon stack.
+  //     MihonProvider deliberately carries no in-provider guards (the anime
+  //     twin's are dead code — a missing channel already degrades to empty),
+  //     so the check lives here, where it covers boot-reload, the source
+  //     picker's listing, and every data call in one place: on iOS nothing is
+  //     ever loaded, so no MihonProvider is ever constructed.
+  Future.microtask(() async {
+    if (!Platform.isAndroid) return; // Mihon extensions are Android-only (DEX)
+    try {
+      if (!Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
+        await openBoxSafely<dynamic>(MihonExtensionService.installedBoxName);
+      }
+      final box = Hive.box<dynamic>(MihonExtensionService.installedBoxName);
+      if (box.isEmpty) {
+        return; // nothing installed yet
+      }
+      final support = await getApplicationSupportDirectory();
+      final mihonDir = Directory('${support.path}/mihon');
+      final service = MihonExtensionService();
+      await service.loadInstalled(mihonDir.path);
+      final sources = await service.listSources();
+      final providers = sources.map((s) => MihonProvider(info: s)).toList();
+      mihonManager.registerAll(providers);
+      // Honor a saved `mihon:` active source (the user quit while in manga
+      // mode) that wasn't loaded yet at boot. reapplySaved only swaps when the
+      // saved id is now valid and never resets an already-restored source, so
+      // this composes cleanly with the Aniyomi and CloudStream steps.
+      if (sl.isRegistered<ActiveSourceCubit>()) {
+        final showNsfw = sl.isRegistered<PlaybackPrefs>()
+            ? sl<PlaybackPrefs>().nsfwSources
+            : false;
+        final changed = sl<ActiveSourceCubit>().reapplySaved((id) {
+          final p = mihonManager.get(id);
+          if (p == null) return false;
+          if (p.info.nsfw && !showNsfw) return false;
+          return true;
+        });
+        if (changed && sl.isRegistered<HomeCubit>()) {
+          sl<HomeCubit>().load(); // reload Home for the restored source
+        }
+      }
+    } catch (e, st) {
+      debugPrint('[mihon] boot step failed (non-fatal): $e\n$st');
+    }
+  });
+
   // Global cubit so any widget can read/write the active source id and
   // descendants can react via BlocBuilder/BlocListener. Persists the pick to a
   // Hive box and restores it on launch, validated against the providers that
@@ -473,11 +610,21 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // App-wide content mode (anime/manga/novel), persisted, with a separate
+  // remembered active source per mode so switching modes never disturbs the
+  // anime source pick. Registered right after ActiveSourceCubit since it
+  // wraps it.
+  sl.registerSingleton<ContentModeCubit>(
+    await ContentModeCubit.create(sl<ActiveSourceCubit>()),
+  );
+
   sl.registerSingleton<SourceRepository>(
     SourceRepository(
       manager: manager,
       csManager: csManager,
       aniManager: aniyomiManager,
+      mihonManager: mihonManager,
+      lnrManager: lnrManager,
       activeSource: sl<ActiveSourceCubit>(),
       prefs: sl<PlaybackPrefs>(),
     ),

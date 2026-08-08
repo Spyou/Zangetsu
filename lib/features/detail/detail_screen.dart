@@ -24,6 +24,7 @@ import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
+import 'chapter_meta.dart';
 import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
@@ -39,6 +40,7 @@ import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/tracker_sync_sheet.dart';
+import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_binding_store.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -47,6 +49,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_registry.dart';
+import '../../core/reading/read_store.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -59,6 +62,8 @@ import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import '../player/tv_exo_player_screen.dart';
 import '../player/tv_native_player.dart'; // used by the detail_screen_tv.dart part
+import '../reader/manga_reader_screen.dart';
+import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
 
@@ -357,16 +362,19 @@ class _DetailViewState extends State<_DetailView>
     final hub = sl<TrackerHub>();
     if (!hub.anyConnected) return;
     final isAnime = detail.type == ProviderType.anime;
+    final reading =
+        detail.type == ProviderType.manga || detail.type == ProviderType.novel;
     final pins = sl<TrackerBindingStore>()
         .get(TrackerBindingStore.keyOf(widget.item.sourceId, widget.item.url));
     hub
         .fetchEntry(
           malId: detail.malId ?? widget.item.malId,
-          title: isAnime ? detail.title : null,
+          title: (isAnime || reading) ? detail.title : null,
           tmdbId: detail.tmdbId ?? widget.item.tmdbId,
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
           pinnedIds: pins.isEmpty ? null : pins,
+          kind: reading ? MediaKind.manga : MediaKind.anime,
         )
         .then((e) {
       final p = e?.progress;
@@ -376,28 +384,37 @@ class _DetailViewState extends State<_DetailView>
   }
 
   /// Whether the Tracking button should show for [detail]. Only when a tracker
-  /// is connected AND it can actually track this title: anime → always (AniList/
-  /// MAL/Simkl); movies & live-action TV → only Simkl, and only with a tmdb/imdb
-  /// id to key on. Keeps the button out of the way for everyone else.
+  /// is connected AND it can actually track this title: anime/manga/novel →
+  /// always (AniList/MAL resolve by malId or title regardless); movies &
+  /// live-action TV → only Simkl, and only with a tmdb/imdb id to key on.
+  /// Keeps the button out of the way for everyone else.
   bool _trackingAvailable(MediaDetail detail) {
     final hub = sl<TrackerHub>();
     if (!hub.anyConnected) return false;
-    if (detail.type == ProviderType.anime) return true;
+    if (detail.type == ProviderType.anime ||
+        detail.type == ProviderType.manga ||
+        detail.type == ProviderType.novel) {
+      return true;
+    }
     final simklOn = hub.connected.any((t) => t.displayName == 'Simkl');
     final hasId = (detail.tmdbId ?? widget.item.tmdbId) != null ||
         ((detail.imdbId ?? widget.item.imdbId)?.isNotEmpty ?? false);
     return simklOn && hasId;
   }
 
-  /// Open the tracker sync sheet — status, score and episode
+  /// Open the tracker sync sheet — status, score and episode/chapter
   /// progress in one place, applied to every connected tracker at once. Anime
-  /// resolves by MAL id or title; movies/TV via Simkl's tmdb/imdb id. The sheet
-  /// returns the applied episode progress so grey-out can update immediately.
+  /// resolves by MAL id or title; movies/TV via Simkl's tmdb/imdb id; manga/
+  /// novel resolves by malId or title too (AniList/MAL manga lists). The
+  /// sheet returns the applied progress so grey-out can update immediately.
   Future<void> _openTrackingSheet(MediaDetail detail) async {
+    final reading = detail.type == ProviderType.manga ||
+        detail.type == ProviderType.novel;
     final applied = await showTrackerSyncSheet(
       context,
       title: detail.title,
       isAnime: detail.type == ProviderType.anime,
+      reading: reading,
       malId: detail.malId ?? widget.item.malId,
       tmdbId: detail.tmdbId ?? widget.item.tmdbId,
       tmdbIsTv: detail.tmdbIsTv,
@@ -531,6 +548,23 @@ class _DetailViewState extends State<_DetailView>
     MediaDetail detail,
     String category,
   ) async {
+    // Reading types never touch the player — route to the reader instead.
+    // Both tap paths (Play button + episode-row onTap) call this same
+    // function, so gating it here covers both in one place. Safety-critical:
+    // a manga/novel title must never try to resolve video sources. Checks
+    // BOTH the loaded detail's type and the search-result item's type —
+    // provider JSON isn't normalized, so a source that disagrees between the
+    // two still can't reach the player.
+    final t = detail.type;
+    final it = widget.item.type;
+    if (t == ProviderType.novel ||
+        t == ProviderType.manga ||
+        it == ProviderType.novel ||
+        it == ProviderType.manga) {
+      _openReader(episodes, index, detail);
+      return;
+    }
+
     // Auto-add this title to My List (as Watching) on play, if the user opted
     // in — mirrors the tracker auto-scrobble. Skipped in incognito and when it's
     // already listed; fire-and-forget so it never delays playback.
@@ -608,6 +642,54 @@ class _DetailViewState extends State<_DetailView>
     );
   }
 
+  /// Routes a reading-type title (manga/novel) to its reader instead of the
+  /// player. [chapters] mirrors [_openPlayer]'s `episodes` list; [index] is
+  /// the tapped/resume chapter. Prefers `detail.type`; falls back to
+  /// `widget.item.type` for the disagreeing-provider-JSON case the guard
+  /// above also covers, so a mismatch still lands on the right reader
+  /// instead of silently doing nothing.
+  void _openReader(List<Episode> chapters, int index, MediaDetail detail) {
+    final readingType =
+        (detail.type == ProviderType.novel || detail.type == ProviderType.manga)
+        ? detail.type
+        : widget.item.type;
+    switch (readingType) {
+      case ProviderType.novel:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => NovelReaderScreen(
+              sourceId: widget.item.sourceId,
+              showId: widget.item.id,
+              showTitle: detail.title,
+              cover: detail.cover ?? widget.item.cover,
+              chapters: chapters,
+              startIndex: index,
+              malId: detail.malId ?? widget.item.malId,
+            ),
+          ),
+        );
+        return;
+      case ProviderType.manga:
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MangaReaderScreen(
+              sourceId: widget.item.sourceId,
+              showId: widget.item.id,
+              showTitle: detail.title,
+              cover: detail.cover ?? widget.item.cover,
+              chapters: chapters,
+              startIndex: index,
+              malId: detail.malId ?? widget.item.malId,
+            ),
+          ),
+        );
+        return;
+      case ProviderType.anime:
+      case ProviderType.movie:
+        return; // unreachable — _openPlayer only calls this for reading types
+    }
+  }
+
   /// Push the in-app trailer player for a resolved YouTube id.
   void _openTrailer(String videoId) {
     Navigator.of(
@@ -671,6 +753,33 @@ class _DetailViewState extends State<_DetailView>
       }
     }
     return (index: 0, hasResume: false);
+  }
+
+  /// Reading counterpart of [_resumeIndex]: walks the chapters for the
+  /// highest one carrying a saved reading position (per-chapter, from
+  /// [ReadStore] — the reader's own scroll/page progress), advancing past it
+  /// once it's finished — same rule [_resumeIndex] applies to video resume
+  /// marks. Keyed the same way [NovelReaderScreen] saves them: showId is
+  /// [MediaItem.id], not the show url (see `_openReader`).
+  int _readResumeIndex(List<Episode> chapters) {
+    if (chapters.isEmpty) return 0;
+    final store = sl<ReadStore>();
+    int? highestMarked;
+    for (var j = 0; j < chapters.length; j++) {
+      if (store.get(widget.item.sourceId, widget.item.id, chapters[j].id) !=
+          null) {
+        highestMarked = j;
+      }
+    }
+    if (highestMarked == null) return 0;
+    if (!store.finished(
+      widget.item.sourceId,
+      widget.item.id,
+      chapters[highestMarked].id,
+    )) {
+      return highestMarked;
+    }
+    return highestMarked + 1 < chapters.length ? highestMarked + 1 : highestMarked;
   }
 
   // ── Downloads ─────────────────────────────────────────────────────────────
@@ -880,6 +989,10 @@ class _DetailViewState extends State<_DetailView>
     final selectedSeason = state.selectedSeason;
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
+    // Manga/novel: no player, no sub/dub, no video downloads — drives the
+    // Play→Read relabel and hides the download affordances below.
+    final isReading =
+        detail.type == ProviderType.novel || detail.type == ProviderType.manga;
     // Kick the (cached, once-per-malId) filler lookup for the "Filler" badge.
     _ensureFiller(detail.malId ?? item.malId);
     // Kick the (once-per-detail) tracker-progress lookup for grey-out.
@@ -887,19 +1000,28 @@ class _DetailViewState extends State<_DetailView>
 
     // Resume / play button logic. Local playback first; else fall back to the
     // tracker's watched count (see _resumeTarget). Local case is unchanged.
+    // Reading titles use their OWN progress store instead — _resumeTarget's
+    // ResumeStore never carries a mark for a chapter, so it would always
+    // (harmlessly but wrongly) say "start over".
     final resume = _resumeTarget(eps);
-    final resumeIdx = resume.index;
+    final resumeIdx = isReading ? _readResumeIndex(eps) : resume.index;
     // Warm the stream for the episode Play will start, in the background, so
     // tapping Play is near-instant. Deferred to after this frame so it can't
-    // affect the detail screen's rendering/scroll.
-    if (eps.isNotEmpty) _maybePrefetch(eps[resumeIdx].url, item.sourceId);
+    // affect the detail screen's rendering/scroll. Skipped for reading types
+    // — prefetch resolves VIDEO sources, and merely opening a manga/novel
+    // detail must never fire that against a chapter URL.
+    if (!isReading && eps.isNotEmpty) {
+      _maybePrefetch(eps[resumeIdx].url, item.sourceId);
+    }
     final hasAnyMark = eps.any(
       (e) => store.get(item.sourceId, item.url, e.id) != null,
     );
     final episodeNum = eps.isNotEmpty
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
-    final buttonLabel = resume.hasResume ? 'Continue E$episodeNum' : 'Play';
+    final buttonLabel = isReading
+        ? 'Read'
+        : (resume.hasResume ? 'Continue E$episodeNum' : 'Play');
 
     // Cover / backdrop.
     final coverUrl = detail.cover ?? item.cover ?? '';
@@ -943,7 +1065,10 @@ class _DetailViewState extends State<_DetailView>
     if (hasMultipleSeasons) {
       metaParts.add('${seasonSet.length} Seasons');
     } else if (eps.isNotEmpty) {
-      metaParts.add('${eps.length} Episode${eps.length == 1 ? '' : 's'}');
+      // Manga/novel count chapters. The model stays `Episode`; this is the
+      // user-facing word only, so anime/movie reads exactly as before.
+      final unit = isReading ? 'Chapter' : 'Episode';
+      metaParts.add('${eps.length} $unit${eps.length == 1 ? '' : 's'}');
     }
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     final metaLine = metaParts.join('  ·  ');
@@ -1071,20 +1196,26 @@ class _DetailViewState extends State<_DetailView>
               children: [
                 _PlayButton(
                   label: buttonLabel,
+                  icon: isReading
+                      ? Icons.menu_book_rounded
+                      : Icons.play_arrow_rounded,
                   onPressed: eps.isNotEmpty
                       ? () => _openPlayer(eps, resumeIdx, detail, category)
                       : null,
                 ),
-                const SizedBox(height: 10),
-                _DownloadButton(
-                  label: downloadLabel,
-                  onPressed: () => _openDownloadSheet(
-                    detail: detail,
-                    category: category,
-                    episodesBySeason: episodesBySeason,
-                    initialSeason: currentSeason,
+                // Reading downloads are out of scope for this plan.
+                if (!isReading) ...[
+                  const SizedBox(height: 10),
+                  _DownloadButton(
+                    label: downloadLabel,
+                    onPressed: () => _openDownloadSheet(
+                      detail: detail,
+                      category: category,
+                      episodesBySeason: episodesBySeason,
+                      initialSeason: currentSeason,
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -1213,11 +1344,11 @@ class _DetailViewState extends State<_DetailView>
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
-              tabs: const [
-                Tab(text: 'Episodes'),
-                Tab(text: 'Cast'),
-                Tab(text: 'Relations'),
-                Tab(text: 'Details'),
+              tabs: [
+                Tab(text: isReading ? 'Chapters' : 'Episodes'),
+                const Tab(text: 'Cast'),
+                const Tab(text: 'Relations'),
+                const Tab(text: 'Details'),
               ],
             ),
           ),
@@ -1247,6 +1378,8 @@ class _DetailViewState extends State<_DetailView>
                 _openPlayer(eps, fullIndex, detail, category),
             onInfo: () => _tabController.animateTo(3),
             onDownload: (ep) => _downloadSingle(ep, detail, category),
+            showDownload: !isReading,
+            isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────
           _CastTab(
@@ -1263,6 +1396,7 @@ class _DetailViewState extends State<_DetailView>
           _DetailsTab(
             sourceName: sourceName,
             statusStr: statusStr,
+            reading: isReading,
             genres: detail.genres,
             studios: detail.studios,
             episodeCount: eps.length,
@@ -1666,9 +1800,16 @@ class _HeroCircleButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PlayButton extends StatelessWidget {
-  const _PlayButton({required this.label, this.onPressed});
+  const _PlayButton({
+    required this.label,
+    this.onPressed,
+    this.icon = Icons.play_arrow_rounded,
+  });
   final String label;
   final VoidCallback? onPressed;
+
+  /// Reading types (manga/novel) show a book icon instead of the play glyph.
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -1687,11 +1828,7 @@ class _PlayButton extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.play_arrow_rounded,
-                  color: Colors.black,
-                  size: 26,
-                ),
+                Icon(icon, color: Colors.black, size: 26),
                 const SizedBox(width: 8),
                 Text(
                   label,
@@ -1950,6 +2087,8 @@ class _EpisodesTab extends StatefulWidget {
     required this.onOpen,
     required this.onInfo,
     required this.onDownload,
+    this.showDownload = true,
+    this.isReading = false,
   });
 
   final List<Episode> eps;
@@ -1977,6 +2116,16 @@ class _EpisodesTab extends StatefulWidget {
 
   /// Per-episode download icon → opens the download sheet for that episode.
   final void Function(Episode ep) onDownload;
+
+  /// False for reading types (manga/novel) — chapters resolve to a reader,
+  /// not a video source, so the per-row download icon is hidden rather than
+  /// left as a dead/misleading tap target.
+  final bool showDownload;
+
+  /// True for reading types — the section header reads "Chapters" instead
+  /// of "Episodes" (single-season case only; multi-season keeps the season
+  /// pill either way).
+  final bool isReading;
 
   @override
   State<_EpisodesTab> createState() => _EpisodesTabState();
@@ -2022,11 +2171,32 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   String _numLabel(Episode e, int fallback) =>
       (e.number?.toInt() ?? fallback).toString();
 
+  /// Reading progress lives in [ReadStore] (page index / scroll permille),
+  /// keyed by showId — the video [ResumeStore] never holds a mark for a
+  /// chapter, so without this a read chapter could never dim.
+  ({bool watched, bool inProgress, bool resume, double fraction}) _readStateFor(
+    Episode ep,
+  ) {
+    final store = sl<ReadStore>();
+    final mark = store.get(widget.sourceId, widget.showId, ep.id);
+    final done = store.finished(widget.sourceId, widget.showId, ep.id);
+    final inProgress = mark != null && !done && mark.total > 0;
+    return (
+      watched: done,
+      inProgress: inProgress,
+      // No CONTINUE badge in the reading row, and the resume index we're
+      // handed is the video one — so never claim a resume here.
+      resume: false,
+      fraction: inProgress ? (mark.pos / mark.total).clamp(0.0, 1.0) : 0.0,
+    );
+  }
+
   ({bool watched, bool inProgress, bool resume, double fraction}) _stateFor(
     ResumeStore store,
     Episode ep,
     int fullIndex,
   ) {
+    if (widget.isReading) return _readStateFor(ep);
     final mark = store.get(widget.sourceId, widget.showUrl, ep.id);
     final inProgress =
         mark != null && !mark.finished && mark.duration > Duration.zero;
@@ -2102,6 +2272,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             grid: _grid,
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
+            isReading: widget.isReading,
           ),
         ),
         if (showRanges)
@@ -2141,6 +2312,25 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         final displayTitle = widget.hasMultipleSeasons
             ? cleanTitle(ep.title)
             : ep.title;
+        if (widget.isReading) {
+          return RepaintBoundary(
+            child: _ChapterRow(
+              ep: ep,
+              number: epNum,
+              displayTitle: displayTitle,
+              coverUrl: widget.coverUrl,
+              coverHeaders: widget.coverHeaders,
+              isRead: st.watched,
+              isInProgress: st.inProgress,
+              fraction: st.fraction,
+              onTap: () => widget.onOpen(fullIndex),
+              onDownload: () => widget.onDownload(ep),
+              sourceId: widget.sourceId,
+              showId: widget.showId,
+              showDownload: widget.showDownload,
+            ),
+          );
+        }
         return RepaintBoundary(
           child: _EpisodeRow(
             ep: ep,
@@ -2157,6 +2347,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
             showId: widget.showId,
+            showDownload: widget.showDownload,
           ),
         );
       },
@@ -2210,6 +2401,7 @@ class _EpisodesHeader extends StatelessWidget {
     required this.grid,
     required this.onToggleView,
     this.onJump,
+    this.isReading = false,
   });
 
   final bool hasMultipleSeasons;
@@ -2224,6 +2416,9 @@ class _EpisodesHeader extends StatelessWidget {
 
   /// Jump-to-episode; null hides the button (short seasons don't need it).
   final VoidCallback? onJump;
+
+  /// True for reading types — the single-season label reads "Chapters".
+  final bool isReading;
 
   Widget _circle(IconData icon, VoidCallback onTap, {String? semanticLabel}) =>
       Semantics(
@@ -2295,7 +2490,10 @@ class _EpisodesHeader extends StatelessWidget {
                         ),
                       ),
                     )
-                  : Text('Episodes', style: AppText.headline),
+                  : Text(
+                      isReading ? 'Chapters' : 'Episodes',
+                      style: AppText.headline,
+                    ),
             ),
           ),
           // Right: jump-to-episode (long seasons) · list/grid toggle · ⓘ info.
@@ -2618,6 +2816,162 @@ class _JumpDialogState extends State<_JumpDialog> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reading (manga/novel) chapter row — the minimal counterpart to _EpisodeRow.
+// A 44×62 portrait cover (the series art, dimmed once read), the chapter title
+// with no "14." prefix (sources put the number in the title already), a muted
+// meta line, and a hairline accent bar while a chapter is part-read. No play
+// glyph, no tick, no badges — none of that means anything for a chapter.
+//
+// Deliberately a separate widget rather than a flag inside _EpisodeRow: it
+// needs a third of _EpisodeRow's inputs, and this way the streaming row's code
+// is untouched.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ChapterRow extends StatelessWidget {
+  const _ChapterRow({
+    required this.ep,
+    required this.number,
+    required this.displayTitle,
+    required this.coverUrl,
+    required this.coverHeaders,
+    required this.isRead,
+    required this.isInProgress,
+    required this.fraction,
+    required this.onTap,
+    required this.onDownload,
+    required this.sourceId,
+    required this.showId,
+    this.showDownload = true,
+  });
+
+  /// Key on the portrait cover — the one structural marker that tells a
+  /// chapter row apart from an episode row (see chapter row tests).
+  static const coverKey = Key('chapterCover');
+
+  final Episode ep;
+  final int number;
+  final String displayTitle;
+  final String coverUrl;
+  final Map<String, String>? coverHeaders;
+  final bool isRead;
+  final bool isInProgress;
+  final double fraction;
+  final VoidCallback onTap;
+  final VoidCallback onDownload;
+  final bool showDownload;
+  final String sourceId;
+  final String showId;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = displayTitle.trim().isNotEmpty
+        ? displayTitle.trim()
+        : 'Chapter $number';
+    final meta = chapterMetaLine(ep);
+    final art = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
+        ? ep.thumbnail!
+        : coverUrl;
+
+    return InkWell(
+      onTap: onTap,
+      splashColor: AppColors.accentSoft,
+      highlightColor: AppColors.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(
+          children: [
+            SizedBox(
+              key: coverKey,
+              width: 44,
+              height: 62,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Opacity(
+                  opacity: isRead ? 0.45 : 1,
+                  child: art.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: art,
+                          httpHeaders: coverHeaders,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 140,
+                          placeholder: (c, u) =>
+                              ColoredBox(color: AppColors.surface2),
+                          errorWidget: (c, u, e) =>
+                              ColoredBox(color: AppColors.surface2),
+                        )
+                      : ColoredBox(color: AppColors.surface2),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: AppText.body.copyWith(
+                      color: isRead
+                          ? AppColors.textTertiary
+                          : AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  // Dropped entirely when the source gives us nothing to put
+                  // here, so the row shrinks instead of holding blank space.
+                  if (meta != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      meta,
+                      style: AppText.caption.copyWith(
+                        color: isRead
+                            ? AppColors.textTertiary
+                            : AppColors.textSecondary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  if (isInProgress && fraction > 0) ...[
+                    const SizedBox(height: 6),
+                    FractionallySizedBox(
+                      widthFactor: fraction.clamp(0.0, 1.0),
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Same rule as the episode row: hidden on TV, and hidden whenever
+            // the caller says there's nothing downloadable (which is every
+            // reading source today).
+            if (!sl<AppMode>().isTv && showDownload) ...[
+              const SizedBox(width: 8),
+              _EpisodeDownloadIcon(
+                sourceId: sourceId,
+                showId: showId,
+                episodeId: ep.id,
+                onTap: onDownload,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Netflix episode block — a Column per episode (NO divider lines, whitespace
 // instead):  Row[ rounded ~116px 16:9 thumb + centered play-circle (watched dim
 // / ✓ / resume bar) | "N. Title" bold + date under + CONTINUE/FILLER badges |
@@ -2642,6 +2996,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.sourceId,
     required this.showId,
     this.filler = false,
+    this.showDownload = true,
   });
 
   final Episode ep;
@@ -2656,6 +3011,7 @@ class _EpisodeRow extends StatelessWidget {
   final double fraction;
   final VoidCallback onTap;
   final VoidCallback onDownload;
+  final bool showDownload;
   final String sourceId;
   final String showId;
 
@@ -2868,7 +3224,9 @@ class _EpisodeRow extends StatelessWidget {
                 // Per-episode download icon (phone only). On TV it's redundant
                 // clutter next to the main Download button + hard to focus, so
                 // it's hidden — the TV path downloads via the Download action.
-                if (!sl<AppMode>().isTv) ...[
+                // Also hidden for reading types — a chapter has no video
+                // source to download.
+                if (!sl<AppMode>().isTv && showDownload) ...[
                   const SizedBox(width: 8),
                   _EpisodeDownloadIcon(
                     sourceId: sourceId,
@@ -4699,6 +5057,7 @@ class _DetailsTab extends StatelessWidget {
     required this.episodeCount,
     required this.year,
     required this.description,
+    this.reading = false,
   });
 
   final String sourceName;
@@ -4708,6 +5067,9 @@ class _DetailsTab extends StatelessWidget {
   final int episodeCount;
   final String? year;
   final String? description;
+
+  /// Manga/novel: the count row reads "Chapters". Display wording only.
+  final bool reading;
 
   @override
   Widget build(BuildContext context) {
@@ -4719,7 +5081,9 @@ class _DetailsTab extends StatelessWidget {
           _DetailRow(label: 'Source', value: sourceName),
         if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
         if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
-        _DetailRow(label: 'Episodes', value: '$episodeCount'),
+        _DetailRow(
+            label: reading ? 'Chapters' : 'Episodes',
+            value: '$episodeCount'),
         if (studios.isNotEmpty)
           _DetailRow(label: 'Studio', value: studios.join(', ')),
         if (genres.isNotEmpty) ...[

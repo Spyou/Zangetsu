@@ -1,0 +1,16 @@
+{
+  "name": "lnreader-cheerio-bundle",
+  "private": true,
+  "description": "Build tooling for the cheerio+htmlparser2 QuickJS bundle used by LNReader novel sources.",
+  "scripts": {
+    "build": "./build.sh"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "cheerio": "^1.0.0",
+    "htmlparser2": "^9.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0"
+  }
+}

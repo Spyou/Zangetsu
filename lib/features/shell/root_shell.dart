@@ -6,6 +6,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../auth/auth_cubit.dart';
 import '../home/home_screen.dart';
@@ -108,47 +110,58 @@ class _RootShellState extends State<RootShell>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const RootShellTv();
-    return Scaffold(
-      backgroundColor: AppColors.bg,
-      // Content runs under the floating dock (screens keep their own bottom
-      // padding so the last row scrolls clear of it).
-      extendBody: true,
-      body: AnimatedBuilder(
-        animation: _switch,
-        builder: (context, child) {
-          final v = _switch.value;
-          // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-          return Opacity(
-            opacity: 0.4 + 0.6 * v,
-            child: Transform.translate(
-              offset: Offset(0, (1 - v) * 20),
-              child: child,
-            ),
-          );
-        },
-        // RepaintBoundary → the page is a single cached layer the transition
-        // just composites (opacity + translate), so no repaint per frame.
-        child: RepaintBoundary(
-          child: IndexedStack(index: _index, children: _pages()),
+    // Reading modes have no Schedule tab (it's omitted from the dock below).
+    // If the mode flips to Manga/Novel while Schedule (tab 1) is showing,
+    // bounce back to Home rather than leaving the user on a tab that no
+    // longer has a dock item.
+    return BlocListener<ContentModeCubit, ContentMode>(
+      bloc: sl<ContentModeCubit>(),
+      listenWhen: (prev, curr) => prev != curr,
+      listener: (context, mode) {
+        if (mode.isReading && _index == 1) setState(() => _index = 0);
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.bg,
+        // Content runs under the floating dock (screens keep their own bottom
+        // padding so the last row scrolls clear of it).
+        extendBody: true,
+        body: AnimatedBuilder(
+          animation: _switch,
+          builder: (context, child) {
+            final v = _switch.value;
+            // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+            return Opacity(
+              opacity: 0.4 + 0.6 * v,
+              child: Transform.translate(
+                offset: Offset(0, (1 - v) * 20),
+                child: child,
+              ),
+            );
+          },
+          // RepaintBoundary → the page is a single cached layer the transition
+          // just composites (opacity + translate), so no repaint per frame.
+          child: RepaintBoundary(
+            child: IndexedStack(index: _index, children: _pages()),
+          ),
         ),
-      ),
-      bottomNavigationBar: ValueListenableBuilder<bool>(
-        valueListenable: dockHiddenBySection,
-        builder: (context, sectionOpen, _) {
-          // Slide the dock away only when a Settings section is open AND the
-          // Settings (Profile, last) tab is the one showing — every other tab
-          // keeps its dock.
-          final hide = sectionOpen && _index == 4;
-          return AnimatedSlide(
-            offset: hide ? const Offset(0, 1.6) : Offset.zero,
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            child: IgnorePointer(
-              ignoring: hide,
-              child: _FloatingDock(index: _index, onSelected: _onTabSelected),
-            ),
-          );
-        },
+        bottomNavigationBar: ValueListenableBuilder<bool>(
+          valueListenable: dockHiddenBySection,
+          builder: (context, sectionOpen, _) {
+            // Slide the dock away only when a Settings section is open AND the
+            // Settings (Profile, last) tab is the one showing — every other tab
+            // keeps its dock.
+            final hide = sectionOpen && _index == 4;
+            return AnimatedSlide(
+              offset: hide ? const Offset(0, 1.6) : Offset.zero,
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              child: IgnorePointer(
+                ignoring: hide,
+                child: _FloatingDock(index: _index, onSelected: _onTabSelected),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -183,37 +196,45 @@ class _FloatingDock extends StatelessWidget {
               borderRadius: BorderRadius.circular(26),
               border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
-            child: Row(
-              children: [
-                _DockItem(
-                  label: 'Home',
-                  glyph: DockGlyph.home,
-                  selected: index == 0,
-                  onTap: () => onSelected(0),
-                ),
-                _DockItem(
-                  label: 'Schedule',
-                  glyph: DockGlyph.calendar,
-                  selected: index == 1,
-                  onTap: () => onSelected(1),
-                ),
-                _DockItem(
-                  label: 'Search',
-                  glyph: DockGlyph.search,
-                  selected: index == 2,
-                  onTap: () => onSelected(2),
-                ),
-                _DockItem(
-                  label: 'My List',
-                  glyph: DockGlyph.bookmark,
-                  selected: index == 3,
-                  onTap: () => onSelected(3),
-                ),
-                _ProfileDockItem(
-                  selected: index == 4,
-                  onTap: () => onSelected(4),
-                ),
-              ],
+            // Schedule has no meaning in a reading mode (no airing anime to
+            // track), so it's omitted there. The other items keep their
+            // original onSelected index — nothing is renumbered — so tab
+            // identity and the IndexedStack below stay untouched.
+            child: BlocBuilder<ContentModeCubit, ContentMode>(
+              bloc: sl<ContentModeCubit>(),
+              builder: (context, mode) => Row(
+                children: [
+                  _DockItem(
+                    label: 'Home',
+                    glyph: DockGlyph.home,
+                    selected: index == 0,
+                    onTap: () => onSelected(0),
+                  ),
+                  if (!mode.isReading)
+                    _DockItem(
+                      label: 'Schedule',
+                      glyph: DockGlyph.calendar,
+                      selected: index == 1,
+                      onTap: () => onSelected(1),
+                    ),
+                  _DockItem(
+                    label: 'Search',
+                    glyph: DockGlyph.search,
+                    selected: index == 2,
+                    onTap: () => onSelected(2),
+                  ),
+                  _DockItem(
+                    label: 'My List',
+                    glyph: DockGlyph.bookmark,
+                    selected: index == 3,
+                    onTap: () => onSelected(3),
+                  ),
+                  _ProfileDockItem(
+                    selected: index == 4,
+                    onTap: () => onSelected(4),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

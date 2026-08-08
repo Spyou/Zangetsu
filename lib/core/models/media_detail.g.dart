@@ -83,4 +83,6 @@ const _$MediaStatusEnumMap = {
 const _$ProviderTypeEnumMap = {
   ProviderType.anime: 'anime',
   ProviderType.movie: 'movie',
+  ProviderType.manga: 'manga',
+  ProviderType.novel: 'novel',
 };

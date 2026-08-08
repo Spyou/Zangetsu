@@ -216,6 +216,24 @@ class ProviderRegistry {
     return null;
   }
 
+  /// Every cached manifest's id -> type, built with a single walk over
+  /// [ProviderReposRegistry.getAll] instead of one walk per id. Same
+  /// first-match-wins semantics as calling [typeOf] per id — for callers
+  /// resolving many ids at once (the source picker's mode filter, the
+  /// picker's own bucketing) so the repo-manifest deserialize happens once
+  /// per operation rather than once per row.
+  Map<String, String> typeMapOf() {
+    final repos = _repos;
+    if (repos == null) return const <String, String>{};
+    final out = <String, String>{};
+    for (final repo in repos.getAll()) {
+      for (final s in repo.sources) {
+        out.putIfAbsent(s.id, () => s.type);
+      }
+    }
+    return out;
+  }
+
   Stream<BoxEvent> watch() => _box.watch();
 
   /// Installs (or refreshes) a bundled provider straight from in-memory

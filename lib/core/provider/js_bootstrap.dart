@@ -239,7 +239,14 @@ String wrapProviderSource(String sourceId, String providerJs) {
     getDetail:       typeof getDetail === 'function' ? getDetail : null,
     getEpisodes:     typeof getEpisodes === 'function' ? getEpisodes : null,
     getVideoSources: typeof getVideoSources === 'function' ? getVideoSources : null,
-    getSettings:     typeof getSettings === 'function' ? getSettings : null
+    getSettings:     typeof getSettings === 'function' ? getSettings : null,
+    // Manga/novel leaf + Sozo Read compat names (Task E4). No anime/movie
+    // provider's JS defines any of these, so they're always null there —
+    // purely additive, zero behavior change for existing video sources.
+    getPages:          typeof getPages === 'function' ? getPages : null,
+    getText:           typeof getText === 'function' ? getText : null,
+    getChapters:       typeof getChapters === 'function' ? getChapters : null,
+    getChapterContent: typeof getChapterContent === 'function' ? getChapterContent : null
   };
 })();
 ''';

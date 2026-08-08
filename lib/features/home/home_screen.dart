@@ -6,10 +6,13 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/update/extension_auto_updater.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
+import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
@@ -19,6 +22,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/reading/read_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -28,10 +32,13 @@ import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
 import '../notify/subscriptions_screen.dart';
+import '../reader/manga_reader_screen.dart';
+import '../reader/novel_reader_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
+import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
+import 'continue_section.dart';
 import '../../core/ui/content_row.dart';
-import '../../core/ui/continue_card.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -40,6 +47,7 @@ import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
+import '../../core/ui/states.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
@@ -70,7 +78,8 @@ class _HomeView extends StatefulWidget {
   State<_HomeView> createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<_HomeView> {
+class _HomeViewState extends State<_HomeView>
+    with SingleTickerProviderStateMixin {
   final _repo = sl<SourceRepository>();
   final _myList = sl<MyListStore>();
 
@@ -79,6 +88,16 @@ class _HomeViewState extends State<_HomeView> {
   final Map<String, Future<HeroMeta?>> _metaCache = {};
   bool _heroPrewarmed = false;
 
+  // ── Logo-strike mode transition ──────────────────────────────────────────
+  // Tapping a mode card runs a full-screen overlay: the Zangetsu mark springs
+  // in at centre behind a scrim, a red glow pulses and a steel glint sweeps the
+  // blade, the mode swaps hidden at that peak, then it reveals. Self-contained —
+  // see [_enterMode] / [_slashOverlay].
+  late final AnimationController _slashCtrl;
+  bool _slashing = false;
+  bool _slashSwapped = false;
+  ContentMode? _slashTarget;
+
   // Auto update-check runs at most once per app process (not on every rebuild
   // or tab revisit). Static so it survives this widget being recreated.
   static bool _updateChecked = false;
@@ -86,6 +105,29 @@ class _HomeViewState extends State<_HomeView> {
   @override
   void initState() {
     super.initState();
+    // Swap the content mode at the slash's peak (hidden behind the scrim), then
+    // tear the overlay down once it finishes.
+    _slashCtrl =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 600),
+          )
+          ..addListener(() {
+            if (!_slashSwapped &&
+                _slashTarget != null &&
+                _slashCtrl.value >= 0.5) {
+              _slashSwapped = true;
+              sl<ContentModeCubit>().setMode(_slashTarget!);
+            }
+          })
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed && mounted) {
+              setState(() {
+                _slashing = false;
+                _slashTarget = null;
+              });
+            }
+          });
     // The splash usually pre-warms the rows; only fetch here if it didn't
     // (e.g. first run right after onboarding, or a source with no warm yet).
     final cubit = context.read<HomeCubit>();
@@ -105,6 +147,12 @@ class _HomeViewState extends State<_HomeView> {
       });
       _checkSourceUpdates();
     }
+  }
+
+  @override
+  void dispose() {
+    _slashCtrl.dispose();
+    super.dispose();
   }
 
   /// Best-effort, non-blocking check for CloudStream source updates on launch.
@@ -284,6 +332,15 @@ class _HomeViewState extends State<_HomeView> {
   }
 
   Future<void> _playFeatured(MediaItem item) async {
+    // Manga/novel: the hero's primary action says "Read", so it must not drop
+    // into the video player. Route to the title instead — Detail owns the real
+    // Read button, which resolves the chapter list, picks up the saved reading
+    // position and routes manga vs novel to the right reader. Duplicating that
+    // here would mean re-implementing chapter resolution on Home.
+    if (sl<ContentModeCubit>().state.isReading) {
+      _openDetail(item);
+      return;
+    }
     // Fresh play: prefer a saved per-title sub/dub choice, else the global
     // default category, else 'sub'.
     final category =
@@ -344,6 +401,35 @@ class _HomeViewState extends State<_HomeView> {
           scrobbleTitle: e.malId != null ? e.showTitle : null,
         ),
       ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Resume from Continue Reading. [ReadEntry] only carries the last-read
+  /// CHAPTER's own url (not the show's page url — unlike [HistoryEntry],
+  /// which has both), so this can't re-resolve the show's full chapter list
+  /// the way [_resume] does for video. Instead it reopens exactly that one
+  /// chapter at its saved scroll position (restored by the reader itself via
+  /// ReadStore) — prev/next chapter navigation isn't available from here,
+  /// only from the title's own Detail screen.
+  ///
+  /// Routes to [MangaReaderScreen] or [NovelReaderScreen] by [ReadEntry.type]
+  /// — see [readerFor]. [ReadEntry] has no malId of its own (it's populated
+  /// from the tapped MediaItem/detail at read-start, same as WatchHistory's
+  /// scrobbleTitle path), so a resumed session still can't scrobble; that's
+  /// an existing gap, not something this resume path can close on its own.
+  Future<void> _resumeReading(ReadEntry e) async {
+    final chapter = Episode(
+      id: e.chapterId,
+      title: e.chapterNumber != null
+          ? 'Chapter ${e.chapterNumber!.toInt()}'
+          : 'Chapter',
+      number: e.chapterNumber,
+      url: e.chapterUrl,
+    );
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => readerFor(e, chapter)),
     );
     if (mounted) setState(() {});
   }
@@ -422,6 +508,12 @@ class _HomeViewState extends State<_HomeView> {
                 currentId: id,
                 onChanged: (newId) =>
                     context.read<ActiveSourceCubit>().setSource(newId),
+                onInstallSources: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const ZangetsuSourcesScreen(openToRepos: true),
+                  ),
+                ),
               ),
             ),
           ],
@@ -556,7 +648,11 @@ class _HomeViewState extends State<_HomeView> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                Icon(Icons.sync_problem_rounded, color: AppColors.accent, size: 20),
+                Icon(
+                  Icons.sync_problem_rounded,
+                  color: AppColors.accent,
+                  size: 20,
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -570,10 +666,202 @@ class _HomeViewState extends State<_HomeView> {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textSecondary,
+                ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// AnymeX-style row of two cards under the banner, showing the two modes
+  /// you're NOT in. Reactive to [ContentModeCubit] so they re-label the instant
+  /// a switch lands. Tapping runs the sword-slash into that mode.
+  Widget _modeCards() {
+    return BlocBuilder<ContentModeCubit, ContentMode>(
+      bloc: sl<ContentModeCubit>(),
+      builder: (context, current) {
+        final others = ContentMode.values.where((m) => m != current).toList();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+          child: Row(
+            children: [
+              for (var i = 0; i < others.length; i++) ...[
+                if (i > 0) const SizedBox(width: 12),
+                Expanded(child: _modeCard(others[i])),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _modeCard(ContentMode m) {
+    return GestureDetector(
+      onTap: _slashing ? null : () => _enterMode(m),
+      child: Container(
+        height: 62,
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.hairline),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: AppColors.accentSoft,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(m.icon, size: 19, color: AppColors.accent),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              m.label,
+              style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Kicks off the slash transition into [m]. The actual mode swap happens
+  /// mid-animation via the controller listener wired in [initState].
+  void _enterMode(ContentMode m) {
+    if (_slashing) return;
+    setState(() {
+      _slashing = true;
+      _slashSwapped = false;
+      _slashTarget = m;
+    });
+    _slashCtrl.forward(from: 0);
+  }
+
+  /// Full-screen logo-strike overlay: the mark springs in at centre behind a
+  /// scrim (peaking at the midpoint to hide the content swap), a red glow pulses
+  /// and a steel glint sweeps the blade at the strike. Absorbs taps for its
+  /// ~600ms so the switch can't be double-fired.
+  Widget _slashOverlay() {
+    const logoSize = 152.0;
+    return Positioned.fill(
+      child: AbsorbPointer(
+        child: AnimatedBuilder(
+          animation: _slashCtrl,
+          builder: (context, _) {
+            final t = _slashCtrl.value;
+            // Triangular pulse: 0 at the ends, 1 at the midpoint.
+            final scrim = (1 - (t * 2 - 1).abs()).clamp(0.0, 1.0);
+            // Spring in (easeOutBack overshoots ~1), then a slight scale-up on
+            // the way out as it fades.
+            final inP = (t / 0.45).clamp(0.0, 1.0);
+            final outP = ((t - 0.75) / 0.25).clamp(0.0, 1.0);
+            final scale =
+                0.62 + 0.38 * Curves.easeOutBack.transform(inP) + outP * 0.12;
+            final logoOpacity =
+                (t < 0.12
+                        ? t / 0.12
+                        : t > 0.8
+                        ? (1 - t) / 0.2
+                        : 1.0)
+                    .clamp(0.0, 1.0);
+            // Steel glint: a white streak that sweeps across the mark around the
+            // strike (t≈0.38–0.62, peaking with the swap).
+            final glintOn = t > 0.38 && t < 0.62;
+            final glintP = ((t - 0.38) / 0.24).clamp(0.0, 1.0);
+            final glintPulse = (1 - (glintP * 2 - 1).abs()).clamp(0.0, 1.0);
+
+            return Stack(
+              children: [
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: AppColors.bg.withValues(alpha: scrim * 0.92),
+                  ),
+                ),
+                Center(
+                  child: Opacity(
+                    opacity: logoOpacity,
+                    child: Transform.scale(
+                      scale: scale,
+                      child: SizedBox(
+                        width: logoSize,
+                        height: logoSize,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            // Red energy glow behind the mark.
+                            SizedBox(
+                              width: logoSize * 0.8,
+                              height: logoSize * 0.8,
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.accent.withValues(
+                                        alpha: 0.5 * scrim,
+                                      ),
+                                      blurRadius: 48,
+                                      spreadRadius: 4,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Image.asset(
+                              'assets/icon/logo_mark.png',
+                              width: logoSize,
+                              height: logoSize,
+                            ),
+                            if (glintOn)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(26),
+                                child: SizedBox(
+                                  width: logoSize,
+                                  height: logoSize,
+                                  child: Transform.translate(
+                                    offset: Offset(
+                                      (glintP * 2 - 1) * logoSize * 0.9,
+                                      0,
+                                    ),
+                                    child: Transform.rotate(
+                                      angle: -0.5,
+                                      child: Container(
+                                        width: 34,
+                                        height: logoSize * 2,
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              Colors.white.withValues(alpha: 0),
+                                              Colors.white.withValues(
+                                                alpha: 0.85 * glintPulse,
+                                              ),
+                                              Colors.white.withValues(alpha: 0),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -602,195 +890,212 @@ class _HomeViewState extends State<_HomeView> {
         backgroundColor: AppColors.bg,
         // Extend content behind the status bar; the floating header handles
         // its own SafeArea(bottom: false).
-        body: RefreshIndicator(
-          color: AppColors.accent,
-          onRefresh: () => context.read<HomeCubit>().load(),
-          child: BlocBuilder<HomeCubit, HomeState>(
-            builder: (context, state) {
-              final sections = state.sections ?? const <HomeSection>[];
-              // The first section feeds the hero carousel; the rest render as
-              // browse rows (so the spotlight isn't duplicated right below it).
-              // A source with only ONE section (e.g. SubsPlease's single "Latest"
-              // feed) would otherwise show a hero and NO rows — keep that one
-              // section as a row too so there's something to browse.
-              //
-              // Aniyomi sources expose exactly two sections (Popular + Latest);
-              // dropping the first would hide Popular entirely, so keep the full
-              // list as rows for them — the banner still spotlights Popular, and
-              // the row repeats it (like the Aniyomi app's Popular grid).
-              final firstIsAniyomi = sections.isNotEmpty &&
-                  (sections.first.more?.sourceId.startsWith('ani:') ?? false);
-              final rowSections = (sections.length > 1 && !firstIsAniyomi)
-                  ? sections.sublist(1)
-                  : sections;
-              final showSkeletons = state.loading && sections.isEmpty;
-              // The load finished but the source returned no rows — almost
-              // always a dead/blocked site (or a search-only source). Show a
-              // clear message instead of a blank screen.
-              final loadedEmpty =
-                  !state.loading &&
-                  state.sections != null &&
-                  state.sections!.isEmpty;
-              return CustomScrollView(
-                slivers: [
-                  // ── Hero + floating header (first sliver) ─────────────────
-                  SliverToBoxAdapter(
-                    child: Builder(
-                      builder: (context) {
-                        final heroItems = state.heroItems;
-                        final hasHero = heroItems.isNotEmpty;
-                        if (hasHero) _prewarmHeroMeta(heroItems);
+        body: Stack(
+          children: [
+            RefreshIndicator(
+              color: AppColors.accent,
+              onRefresh: () => context.read<HomeCubit>().load(),
+              child: BlocBuilder<HomeCubit, HomeState>(
+                builder: (context, state) {
+                  final sections = state.sections ?? const <HomeSection>[];
+                  // The first section feeds the hero carousel; the rest render as
+                  // browse rows (so the spotlight isn't duplicated right below it).
+                  // A source with only ONE section (e.g. SubsPlease's single "Latest"
+                  // feed) would otherwise show a hero and NO rows — keep that one
+                  // section as a row too so there's something to browse.
+                  //
+                  // Aniyomi sources expose exactly two sections (Popular + Latest);
+                  // dropping the first would hide Popular entirely, so keep the full
+                  // list as rows for them — the banner still spotlights Popular, and
+                  // the row repeats it (like the Aniyomi app's Popular grid).
+                  final firstIsAniyomi =
+                      sections.isNotEmpty &&
+                      (sections.first.more?.sourceId.startsWith('ani:') ??
+                          false);
+                  final rowSections = (sections.length > 1 && !firstIsAniyomi)
+                      ? sections.sublist(1)
+                      : sections;
+                  final showSkeletons = state.loading && sections.isEmpty;
+                  // The load finished but the source returned no rows — almost
+                  // always a dead/blocked site (or a search-only source). Show a
+                  // clear message instead of a blank screen.
+                  final loadedEmpty =
+                      !state.loading &&
+                      state.sections != null &&
+                      state.sections!.isEmpty;
+                  return CustomScrollView(
+                    slivers: [
+                      // ── Hero + floating header (first sliver) ─────────────────
+                      SliverToBoxAdapter(
+                        child: Builder(
+                          builder: (context) {
+                            final heroItems = state.heroItems;
+                            final hasHero = heroItems.isNotEmpty;
+                            if (hasHero) _prewarmHeroMeta(heroItems);
 
-                        if (hasHero) {
-                          return Stack(
-                            children: [
-                              // Auto-rotating carousel (up to 6 trending items)
-                              FeaturedCarousel(
-                                items: heroItems,
-                                inList: (m) => _myList.contains(m),
-                                onPlay: _playFeatured,
-                                onInfo: _openDetail,
-                                onToggleList: (m) => showListStatusSheet(
-                                  context,
-                                  item: m,
-                                  onChanged: () {
-                                    if (mounted) setState(() {});
-                                  },
+                            if (hasHero) {
+                              return Stack(
+                                children: [
+                                  // Auto-rotating carousel (up to 6 trending items)
+                                  FeaturedCarousel(
+                                    items: heroItems,
+                                    reading:
+                                        sl<ContentModeCubit>().state.isReading,
+                                    inList: (m) => _myList.contains(m),
+                                    onPlay: _playFeatured,
+                                    onInfo: _openDetail,
+                                    onToggleList: (m) => showListStatusSheet(
+                                      context,
+                                      item: m,
+                                      onChanged: () {
+                                        if (mounted) setState(() {});
+                                      },
+                                    ),
+                                    meta: _heroMeta,
+                                    style: HeroTransition.cinematic,
+                                  ),
+                                  // Floating header sits on top
+                                  Positioned(
+                                    top: 0,
+                                    left: 0,
+                                    right: 0,
+                                    child: _buildHeader(),
+                                  ),
+                                ],
+                              );
+                            }
+
+                            // While loading or on error: plain header on bg colour.
+                            return ColoredBox(
+                              color: AppColors.bg,
+                              child: _buildHeader(),
+                            );
+                          },
+                        ),
+                      ),
+
+                      // ── Mode cards (switch Anime / Manga / Novel) ─────────────
+                      SliverToBoxAdapter(child: _modeCards()),
+
+                      // ── Reconnect banner (session lapsed → sync is off) ───────
+                      if (needsReconnect)
+                        SliverToBoxAdapter(child: _reconnectBanner()),
+
+                      // ── Continue Watching / Continue Reading ──────────────────
+                      // Driven by the watch/read history box's listenable, NOT a
+                      // one-shot read: the cloud pull writes history AFTER this
+                      // build runs (the login / boot-migration race), so reading
+                      // recent() once here would render blank until the next
+                      // navigation. Reacting to the box makes the row appear the
+                      // instant the pull lands. Swapped by ContentMode — see
+                      // ContinueSection.
+                      ContinueSection(
+                        loggedIn: loggedIn,
+                        onResume: _resume,
+                        onLongPress: _showContinueInfo,
+                        onSeeAll: _openHistory,
+                        onResumeReading: _resumeReading,
+                      ),
+
+                      // ── Provider-defined browse rows (CloudStream-style) ──────
+                      // The active provider decides the rows + their names; empty
+                      // ones are already dropped by SourceRepository.home.
+                      if (showSkeletons)
+                        ...List.generate(
+                          3,
+                          (_) => const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 10),
+                              child: RowSkeleton(),
+                            ),
+                          ),
+                        )
+                      else if (loadedEmpty)
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: HomeLoadedEmptyView(
+                            mode: sl<ContentModeCubit>().state,
+                            sourceName: sl<SourceRepository>().displayName(
+                              context.read<ActiveSourceCubit>().state,
+                            ),
+                            onRetry: () =>
+                                context.read<HomeCubit>().load(reset: true),
+                            onInstallSources: () => Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const ZangetsuSourcesScreen(
+                                  openToRepos: true,
                                 ),
-                                meta: _heroMeta,
-                                style: HeroTransition.cinematic,
-                              ),
-                              // Floating header sits on top
-                              Positioned(
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                child: _buildHeader(),
-                              ),
-                            ],
-                          );
-                        }
-
-                        // While loading or on error: plain header on bg colour.
-                        return ColoredBox(
-                          color: AppColors.bg,
-                          child: _buildHeader(),
-                        );
-                      },
-                    ),
-                  ),
-
-                  // ── Reconnect banner (session lapsed → sync is off) ───────
-                  if (needsReconnect)
-                    SliverToBoxAdapter(child: _reconnectBanner()),
-
-                  // ── Continue Watching (same poster footprint as the rows) ─
-                  // Driven by the watch_history box's listenable, NOT a one-shot
-                  // read: the cloud pull writes history AFTER this build runs
-                  // (the login / boot-migration race), so reading recent() once
-                  // here would render blank until the next navigation. Reacting
-                  // to the box makes the row appear the instant the pull lands.
-                  // Login-gated, and guarded so a signed-out render (or the test
-                  // env) never touches the box — production opens it at boot.
-                  if (loggedIn && Hive.isBoxOpen(WatchHistory.boxName))
-                    ValueListenableBuilder(
-                      valueListenable: Hive.box<Map>(
-                        WatchHistory.boxName,
-                      ).listenable(),
-                      builder: (context, _, _) {
-                        final history = sl<WatchHistory>().recent();
-                        if (history.isEmpty) {
-                          return const SliverToBoxAdapter(
-                            child: SizedBox.shrink(),
-                          );
-                        }
-                        return SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 10),
-                            child: _animated(
-                              ContentRow(
-                                title: 'Continue Watching',
-                                itemWidth: 230,
-                                itemHeight: 129, // 16:9 landscape card
-                                onSeeAll: _openHistory,
-                                itemCount: history.length,
-                                itemBuilder: (c, i) {
-                                  final e = history[i];
-                                  return ContinueCard(
-                                    title: e.showTitle,
-                                    // Prefer the landscape episode thumbnail;
-                                    // fall back to the portrait cover (older
-                                    // entries / sources without thumbnails).
-                                    imageUrl: e.thumbnail ?? e.cover,
-                                    headers: e.coverHeaders,
-                                    progress: e.progress,
-                                    cellWidth: 230,
-                                    subtitle: e.episodeNumber != null
-                                        ? 'Episode ${e.episodeNumber!.toInt()}'
-                                        : null,
-                                    onTap: () => _resume(e),
-                                    onLongPress: () => _showContinueInfo(e),
-                                  );
-                                },
                               ),
                             ),
                           ),
-                        );
-                      },
-                    )
-                  else
-                    const SliverToBoxAdapter(child: SizedBox.shrink()),
+                        )
+                      else
+                        ...rowSections.map(
+                          (s) => SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              child: _sectionRow(s),
+                            ),
+                          ),
+                        ),
 
-                  // ── Provider-defined browse rows (CloudStream-style) ──────
-                  // The active provider decides the rows + their names; empty
-                  // ones are already dropped by SourceRepository.home.
-                  if (showSkeletons)
-                    ...List.generate(
-                      3,
-                      (_) => const SliverToBoxAdapter(
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(vertical: 10),
-                          child: RowSkeleton(),
+                      // ── Bottom padding ────────────────────────────────────────
+                      // Clear the floating dock: its height arrives as MediaQuery
+                      // bottom padding (the shell's extendBody). A fixed gap hid the
+                      // last row's titles behind the capsule.
+                      SliverToBoxAdapter(
+                        child: SizedBox(
+                          height: 24 + MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
-                    )
-                  else if (loadedEmpty)
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _SourceUnavailable(
-                        sourceName: sl<SourceRepository>().displayName(
-                          context.read<ActiveSourceCubit>().state,
-                        ),
-                        onRetry: () =>
-                            context.read<HomeCubit>().load(reset: true),
-                      ),
-                    )
-                  else
-                    ...rowSections.map(
-                      (s) => SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: _sectionRow(s),
-                        ),
-                      ),
-                    ),
-
-                  // ── Bottom padding ────────────────────────────────────────
-                  // Clear the floating dock: its height arrives as MediaQuery
-                  // bottom padding (the shell's extendBody). A fixed gap hid the
-                  // last row's titles behind the capsule.
-                  SliverToBoxAdapter(
-                    child: SizedBox(
-                      height: 24 + MediaQuery.paddingOf(context).bottom,
-                    ),
-                  ),
-                ],
-              );
-            },
-          ),
+                    ],
+                  );
+                },
+              ),
+            ),
+            if (_slashing) _slashOverlay(),
+          ],
         ),
       ),
     );
+  }
+}
+
+/// Home's "provider returned no sections" branch. A reading mode with
+/// literally nothing installed for it gets a message that says so, with an
+/// action into the install flow — today's [_SourceUnavailable] ("couldn't
+/// load, try again") is flat wrong there, since nothing failed, there's just
+/// nothing set up. Anime mode (and a reading mode whose installed source
+/// failed to load) keeps [_SourceUnavailable] exactly as before.
+///
+/// Extracted as its own widget — rather than inlined in [_HomeViewState]'s
+/// build — so this decision is testable without pumping the real
+/// [HomeScreen], whose `initState` fires a real network call.
+class HomeLoadedEmptyView extends StatelessWidget {
+  const HomeLoadedEmptyView({
+    super.key,
+    required this.mode,
+    required this.sourceName,
+    required this.onRetry,
+    required this.onInstallSources,
+  });
+
+  final ContentMode mode;
+  final String sourceName;
+  final VoidCallback onRetry;
+  final VoidCallback onInstallSources;
+
+  @override
+  Widget build(BuildContext context) {
+    if (mode.isReading && !hasReadingSourcesFor(mode)) {
+      return EmptyState(
+        icon: Icons.source_outlined,
+        message: 'No ${mode.label} sources yet',
+        actionLabel: 'Browse repositories',
+        onAction: onInstallSources,
+      );
+    }
+    return _SourceUnavailable(sourceName: sourceName, onRetry: onRetry);
   }
 }
 
@@ -868,4 +1173,32 @@ class _SourceUnavailable extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The reader `_resumeReading` pushes for a resumed
+/// [ReadEntry]: [MangaReaderScreen] for [ProviderType.manga], otherwise
+/// [NovelReaderScreen] (novel, and [ReadEntry.type]'s legacy-row default).
+/// Pulled out as a plain top-level function so the routing decision is
+/// testable without pumping the whole [HomeScreen] (whose initState makes a
+/// real update-check network call and opens community/announcement Hive
+/// boxes).
+Widget readerFor(ReadEntry e, Episode chapter) {
+  if (e.type == ProviderType.manga) {
+    return MangaReaderScreen(
+      sourceId: e.sourceId,
+      showId: e.showId,
+      showTitle: e.title,
+      cover: e.cover,
+      chapters: [chapter],
+      startIndex: 0,
+    );
+  }
+  return NovelReaderScreen(
+    sourceId: e.sourceId,
+    showId: e.showId,
+    showTitle: e.title,
+    cover: e.cover,
+    chapters: [chapter],
+    startIndex: 0,
+  );
 }

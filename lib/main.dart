@@ -21,6 +21,7 @@ import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
+import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
@@ -226,6 +227,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) return;
     unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
+    unawaited(sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<MyListStore>().retryPending());
   }
 
@@ -256,6 +258,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         await Future.wait([
           sl<MyListStore>().seedCloudIfNeeded(),
           sl<WatchHistory>().seedCloudIfNeeded(),
+          sl<ReadHistory>().seedCloudIfNeeded(),
         ]).timeout(const Duration(seconds: 8));
         // Launch path: re-pull when the local cache is older than a couple of
         // minutes so a device that was away picks up the other device's changes
@@ -264,6 +267,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         await Future.wait([
           sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
+          sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
         ]).timeout(const Duration(seconds: 6));
         // Self-heal: push up any local My List adds that never reached the cloud
         // (e.g. a past write outage). No-op when nothing is pending, so it makes
@@ -308,13 +312,16 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       // so a sparse/orphaned cloud can't wipe this device's local library.
       await sl<MyListStore>().seedCloudIfNeeded();
       await sl<WatchHistory>().seedCloudIfNeeded();
+      await sl<ReadHistory>().seedCloudIfNeeded();
       await sl<MyListStore>().pullFromCloud();
       await sl<WatchHistory>().pullFromCloud();
+      await sl<ReadHistory>().pullFromCloud();
       unawaited(sl<MyListStore>().retryPending()); // flush any un-synced adds
       sl<HomeCubit>().load(); // surface pulled Continue Watching
     } else if (state.status == AuthStatus.unauthenticated) {
       await sl<MyListStore>().clearLocal();
       await sl<WatchHistory>().clearLocal();
+      await sl<ReadHistory>().clearLocal();
     }
   }
 

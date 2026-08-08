@@ -45,4 +45,6 @@ Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
 const _$ProviderTypeEnumMap = {
   ProviderType.anime: 'anime',
   ProviderType.movie: 'movie',
+  ProviderType.manga: 'manga',
+  ProviderType.novel: 'novel',
 };
