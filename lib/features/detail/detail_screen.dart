@@ -1562,10 +1562,16 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     _resolveAndOpen();
   }
 
-  /// Extract a light muxed stream for the banner and start it muted + looping.
-  /// On any failure we flip [_errored] and the cover stays as the backdrop.
+  /// Extract a stream for the banner and start it muted + looping. HD toggle on
+  /// → the 1080p video-only stream (the banner is muted, so no audio track is
+  /// needed); otherwise the light muxed 360p. Falls back to 360p if HD
+  /// extraction fails. On any failure we flip [_errored] and the cover stays.
   Future<void> _resolveAndOpen() async {
-    final url = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
+    final svc = sl<TrailerService>();
+    final hdUrl = sl<PlaybackPrefs>().trailerHd
+        ? (await svc.streamUrlHd(widget.videoId))?.video
+        : null;
+    final url = hdUrl ?? await svc.streamUrl(widget.videoId, low: true);
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _errored = true);
@@ -1614,10 +1620,34 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       // collapsed handler in didUpdateWidget start it later.
       if (autostart) {
         await player.play();
+        // Best-effort HD: 1080p is a throttled adaptive stream that can stall.
+        // If it doesn't actually start rolling, swap to the reliable 360p muxed
+        // stream so the banner never sits frozen on a single frame.
+        if (hdUrl != null) unawaited(_fallBackIfHdStalls(player));
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _errored = true);
+    }
+  }
+
+  /// Watchdog for the opt-in HD banner: if playback hasn't progressed within a
+  /// few seconds (YouTube throttled the 1080p stream), re-open with the light
+  /// 360p muxed stream. No-op if HD started fine.
+  Future<void> _fallBackIfHdStalls(Player player) async {
+    try {
+      await player.stream.position
+          .firstWhere((p) => p > Duration.zero)
+          .timeout(const Duration(seconds: 7));
+    } catch (_) {
+      if (!mounted || player != _player) return;
+      final low = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
+      if (!mounted || player != _player || low == null || low.isEmpty) return;
+      try {
+        final autostart = !_paused && !widget.collapsed;
+        await player.open(Media(low), play: autostart);
+        if (autostart) await player.play();
+      } catch (_) {/* leave the cover as the backdrop */}
     }
   }
 

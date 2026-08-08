@@ -1995,6 +1995,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.high_quality_outlined,
+                title: 'Play trailers in HD',
+                subtitle: 'Up to 1080p when available — falls back to standard '
+                    'if not. Uses more data',
+                value: _prefs.trailerHd,
+                onChanged: (v) async {
+                  await _prefs.setTrailerHd(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.fast_forward_outlined,
                 title: 'Skip intro button',
                 subtitle: 'Show Skip opening/ending on anime (when detected)',

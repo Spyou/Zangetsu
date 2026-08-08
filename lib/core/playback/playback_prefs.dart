@@ -97,6 +97,13 @@ class PlaybackPrefs {
   Future<void> setAutoplayTrailer(bool value) =>
       _box.put('autoplayTrailer', value);
 
+  /// Play the fullscreen trailer in HD (up to 1080p) instead of the light 360p
+  /// stream. Off by default: 1080p is only offered as separate video+audio
+  /// streams (joined at playback) and uses noticeably more data. The
+  /// autoplaying detail-page hero stays light regardless of this.
+  bool get trailerHd => _box.get('trailerHd', defaultValue: false) as bool;
+  Future<void> setTrailerHd(bool value) => _box.put('trailerHd', value);
+
   /// Default playback speed multiplier.
   double get defaultSpeed =>
       (_box.get('defaultSpeed', defaultValue: 1.0) as num).toDouble();

@@ -3,6 +3,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
@@ -36,10 +37,16 @@ class _TrailerScreenState extends State<TrailerScreen> {
   }
 
   Future<void> _resolveAndOpen() async {
-    final url = await sl<TrailerService>().streamUrl(
-      widget.videoId,
-      low: false,
-    );
+    final svc = sl<TrailerService>();
+    // HD path (opt-in): 1080p video + a separate audio stream attached as an
+    // external track. Falls through to the light muxed stream if HD extraction
+    // or playback setup fails, so the trailer still plays.
+    if (sl<PlaybackPrefs>().trailerHd) {
+      final hd = await svc.streamUrlHd(widget.videoId);
+      if (!mounted) return;
+      if (hd != null && await _openHd(hd)) return;
+    }
+    final url = await svc.streamUrl(widget.videoId, low: false);
     if (!mounted) return;
     if (url == null || url.isEmpty) {
       setState(() => _resolved = false);
@@ -52,6 +59,37 @@ class _TrailerScreenState extends State<TrailerScreen> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _resolved = false);
+    }
+  }
+
+  /// Opens a HD video stream and attaches its separate audio stream. Returns
+  /// true on success; false lets the caller fall back to the muxed stream.
+  ///
+  /// 1080p comes only as adaptive streams, which YouTube throttles — sometimes
+  /// to a dead stall. So we require *real* playback (the position advancing)
+  /// within a deadline; if it doesn't start, we bail to the reliable 360p muxed
+  /// stream rather than freeze on a spinner forever.
+  Future<bool> _openHd(({String video, String audio}) hd) async {
+    try {
+      Future<void> setup() async {
+        await _player.open(Media(hd.video)); // unmuted, autoplay
+        final p = _player.platform;
+        if (p is NativePlayer) {
+          // mpv: load the audio-only stream as an external track and select it.
+          try {
+            await p.command(['audio-add', hd.audio, 'select']);
+          } catch (_) {/* audio failing shouldn't sink the HD attempt */}
+        }
+        // Throttled 1080p stalls here — position never leaves zero.
+        await _player.stream.position.firstWhere((pos) => pos > Duration.zero);
+      }
+
+      await setup().timeout(const Duration(seconds: 8));
+      if (!mounted) return true;
+      setState(() => _resolved = true);
+      return true;
+    } catch (_) {
+      return false; // stalled/failed → caller falls back to 360p muxed
     }
   }
 

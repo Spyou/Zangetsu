@@ -83,6 +83,37 @@ class TrailerService {
     }
   }
 
+  /// HD variant of [streamUrl]: resolves a VIDEO-ONLY stream up to 1080p plus a
+  /// best AUDIO-ONLY stream. YouTube only offers anything above ~720p as
+  /// separate adaptive streams, so the caller plays [video] and attaches
+  /// [audio] as an external track (mpv `audio-add`). Returns null when the
+  /// video has no adaptive streams or extraction fails — the caller then falls
+  /// back to [streamUrl] (the light muxed 360p). Same short-lived-URL rule:
+  /// resolve fresh, never persist.
+  Future<({String video, String audio})?> streamUrlHd(String youtubeId) async {
+    final yt = YoutubeExplode();
+    try {
+      final manifest = await yt.videos.streamsClient.getManifest(youtubeId);
+      final videoOnly = manifest.videoOnly.toList();
+      final audioOnly = manifest.audioOnly;
+      if (videoOnly.isEmpty || audioOnly.isEmpty) return null;
+      // Highest quality at or below 1080p (a trailer doesn't need 1440/4K);
+      // if nothing is ≤1080p, take the lowest available (closest to 1080).
+      videoOnly.sort(
+        (a, b) => b.videoResolution.height.compareTo(a.videoResolution.height),
+      );
+      final atMost1080 =
+          videoOnly.where((s) => s.videoResolution.height <= 1080);
+      final video = atMost1080.isNotEmpty ? atMost1080.first : videoOnly.last;
+      final audio = audioOnly.withHighestBitrate();
+      return (video: video.url.toString(), audio: audio.url.toString());
+    } catch (_) {
+      return null;
+    } finally {
+      yt.close();
+    }
+  }
+
   // ── Anime: AniList GraphQL ────────────────────────────────────────────────
 
   Future<String?> _anilistTrailer({
