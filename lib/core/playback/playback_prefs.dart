@@ -124,6 +124,16 @@ class PlaybackPrefs {
   bool get autoPip => _box.get('autoPip', defaultValue: true) as bool;
   Future<void> setAutoPip(bool value) => _box.put('autoPip', value);
 
+  /// Match the screen's refresh rate to the playing video's fps (Android phone).
+  /// On a 120Hz panel a 24fps film runs the screen at a matching rate instead of
+  /// a fixed 120Hz — smoother for 23.976/25/50fps content and easier on battery,
+  /// the way CloudStream/ExoPlayer do it. Restored to the system default the
+  /// moment you leave the player.
+  bool get matchRefreshRate =>
+      _box.get('matchRefreshRate', defaultValue: true) as bool;
+  Future<void> setMatchRefreshRate(bool value) =>
+      _box.put('matchRefreshRate', value);
+
   /// Route TV playback to the fully-native player (TvPlayerActivity, real-window
   /// SurfaceView) instead of the Flutter platform-view player. Default ON on TV:
   /// the platform-view surface black-screens on some TVs, and the native window

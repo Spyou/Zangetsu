@@ -5,7 +5,8 @@ import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart' show rootBundle, PlatformException;
+import 'package:flutter/services.dart'
+    show rootBundle, PlatformException, MethodChannel;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -334,6 +335,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   // reason to cycle sources (which spuriously showed "No source could be
   // played" over working playback and broke the watch-progress scrobble).
   bool _startedThisSource = false;
+
+  // Auto Frame Rate: match the display refresh rate to this video's fps. Applied
+  // once per source (when playback starts) if the user's setting is on; cleared
+  // to the system default on close. Android phone only; no-op elsewhere.
+  bool _afrApplied = false;
+  static const MethodChannel _afrChannel = MethodChannel('zangetsu/frame_rate');
   // Stall watchdog: a STARTED source that dies/stalls mid-playback (dead host,
   // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
   // once started). When buffering persists with no position progress we fail
@@ -767,6 +774,10 @@ class PlayerCubit extends Cubit<PlayerState> {
           if (!_markedWatching) {
             _markedWatching = true;
             _markWatching(); // "started watching" → CURRENT on AniList now
+          }
+          if (!_afrApplied) {
+            _afrApplied = true;
+            unawaited(_applyAfr()); // match the display to this video's fps
           }
         }
 
@@ -1819,6 +1830,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
     _startTimer?.cancel();
     _startedThisSource = false; // reset; set true once this source plays
+    _afrApplied = false; // re-match the refresh rate for the new source's fps
     emit(state.copyWith(active: () => s, error: () => null));
     // When auto-resume is off, ignore the saved resume mark and start from the
     // explicit seek (a mid-session source/quality switch) or the very start.
@@ -2256,6 +2268,32 @@ class PlayerCubit extends Cubit<PlayerState> {
     }
   }
 
+  /// Ask the OS to match the display refresh rate to this video's fps (Android
+  /// phone only). One MethodChannel call — no per-frame cost. No-ops off Android,
+  /// on TV, when the setting is off, or when the fps can't be read. Best-effort:
+  /// a failure here never touches playback.
+  Future<void> _applyAfr() async {
+    if (!Platform.isAndroid || sl<AppMode>().isTv) return;
+    if (!sl<PlaybackPrefs>().matchRefreshRate) return;
+    // container-fps is the source's nominal rate (best for mode matching);
+    // estimated-vf-fps is the fallback once frames are actually flowing.
+    final raw =
+        await mpvStat('container-fps') ?? await mpvStat('estimated-vf-fps');
+    final fps = double.tryParse(raw ?? '');
+    if (fps == null || fps <= 0) return;
+    try {
+      await _afrChannel.invokeMethod('setFrameRate', fps);
+    } catch (_) {/* leave the display alone rather than disturb playback */}
+  }
+
+  /// Restore the display's default refresh rate. Called on close.
+  Future<void> _clearAfr() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _afrChannel.invokeMethod('clearFrameRate');
+    } catch (_) {}
+  }
+
   /// Read a single mpv property as a string, for the in-player info overlay.
   /// Read-only — never touches playback. Returns null when unavailable.
   Future<String?> mpvStat(String property) async {
@@ -2526,6 +2564,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   @override
   Future<void> close() async {
     await _persist(flush: true);
+    await _clearAfr(); // restore the display's default refresh rate
     // Leaving the player → drop the "Watching" presence back to browsing.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(title: showTitle, posterUrl: cover);

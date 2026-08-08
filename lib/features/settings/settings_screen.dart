@@ -2099,6 +2099,19 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     if (mounted) setState(() {});
                   },
                 ),
+              if (Platform.isAndroid && !sl<AppMode>().isTv)
+                _toggleRow(
+                  icon: Icons.sync_outlined,
+                  title: 'Match refresh rate to video',
+                  subtitle:
+                      'Sync the screen to the video\'s frame rate — smoother '
+                      'film, less battery',
+                  value: _prefs.matchRefreshRate,
+                  onChanged: (v) async {
+                    await _prefs.setMatchRefreshRate(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
               SettingsTile(
                 icon: Icons.info_outline_rounded,
                 title: 'Player info overlay',
