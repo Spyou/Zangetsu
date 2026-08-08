@@ -40,11 +40,18 @@ class LnReaderRuntime {
 
   JavascriptRuntime? _rt;
   int _callSeq = 0;
+  Future<void>? _readyFuture;
 
   /// Builds the engine and evaluates the cheerio bundle + harness on first
-  /// call; a no-op on every call after.
-  Future<void> ensureReady() async {
-    if (_rt != null) return;
+  /// call; a no-op on every call after. Concurrent first-callers share one
+  /// in-flight build instead of each constructing (and leaking) their own
+  /// runtime.
+  Future<void> ensureReady() {
+    if (_rt != null) return Future.value();
+    return _readyFuture ??= _build();
+  }
+
+  Future<void> _build() async {
     final rt = getJavascriptRuntime(xhr: false);
     final cheerio = await rootBundle.loadString(
       'assets/js/lnreader_cheerio.js',
@@ -123,12 +130,21 @@ class LnReaderRuntime {
         final url = map['url'] as String;
         final init = (map['init'] as Map?) ?? {};
         // Fire-and-forget: whichever later loop iteration is running when
-        // this future completes drains the resolve back into the runtime.
-        _fetch(url, init).then((resp) {
-          rt.evaluate(
-            '__resolveFetch(${jsonEncode(reqId)}, ${jsonEncode(jsonEncode({'status': resp.status, 'body': resp.body, 'url': resp.url}))});',
-          );
-        });
+        // this future completes drains the resolve/reject back into the
+        // runtime. A rejection must reach the JS side too — otherwise a real
+        // network failure leaves the pending promise hanging until the 30s
+        // call timeout instead of surfacing the actual error.
+        _fetch(url, init)
+            .then((resp) {
+              rt.evaluate(
+                '__resolveFetch(${jsonEncode(reqId)}, ${jsonEncode(jsonEncode({'status': resp.status, 'body': resp.body, 'url': resp.url}))});',
+              );
+            })
+            .catchError((Object e) {
+              rt.evaluate(
+                '__rejectFetch(${jsonEncode(reqId)}, ${jsonEncode(e.toString())});',
+              );
+            });
       }
       final doneFlag = rt
           .evaluate(

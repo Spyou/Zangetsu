@@ -35,4 +35,33 @@ void main() {
 
     runtime.dispose();
   });
+
+  test(
+    'a fetch failure rejects the plugin call instead of hanging to the 30s timeout',
+    () async {
+      final runtime = LnReaderRuntime(
+        fetch: (url, init) async =>
+            throw Exception('boom: connection refused'),
+      );
+
+      await runtime.loadPlugin('fake', _fakePlugin);
+
+      await expectLater(
+        runtime.call('fake', 'parseNovel', ['/a']),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('boom: connection refused'),
+          ),
+        ),
+      );
+
+      runtime.dispose();
+    },
+    // Well under the driver's 30s call timeout: if __rejectFetch ever stops
+    // reaching the pending promise, this test times out instead of quietly
+    // passing 30s slower.
+    timeout: const Timeout(Duration(seconds: 10)),
+  );
 }

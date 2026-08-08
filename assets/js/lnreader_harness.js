@@ -21,6 +21,12 @@ globalThis.__resolveFetch = function (id, json) {
   delete globalThis.__pendingFetch[id];
   try { p.resolve(JSON.parse(json)); } catch (e) { p.reject(e); }
 };
+globalThis.__rejectFetch = function (id, msg) {
+  var p = globalThis.__pendingFetch[id];
+  if (!p) return;
+  delete globalThis.__pendingFetch[id];
+  p.reject(new Error(msg));
+};
 function __rawFetch(url, init) {
   return new Promise(function (resolve, reject) {
     var id = ++globalThis.__fetchSeq;
