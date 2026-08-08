@@ -139,11 +139,14 @@ class MainActivity : FlutterActivity() {
     }
 
     // ── Auto Frame Rate ──────────────────────────────────────────────────────
-    // Pick the display mode whose refresh rate best matches [fps] — an exact
-    // integer multiple means every video frame maps to a whole number of screen
-    // refreshes (no judder). Among equally-clean matches prefer the LOWEST
-    // refresh (saves battery: 24fps → a 24Hz mode over 120Hz). Only considers
-    // modes at the current resolution; no-ops on single-mode panels.
+    // Pick the LOWEST display mode whose refresh can still show the video
+    // (refresh >= the video fps). That's the power-optimal choice, matching how
+    // the system picks for ExoPlayer/CloudStream: 24fps → 60Hz instead of 120Hz
+    // (~half the panel power). The trade is mild 3:2 judder on 24fps when the
+    // panel has no low mode — deliberate, battery over that last bit of
+    // smoothness. On a panel that DOES have a low matching mode (24/48/50Hz),
+    // "lowest >= fps" lands there — low power AND judder-free. Same-resolution
+    // modes only; no-ops on single-mode panels.
     private fun applyFrameRate(fps: Double) {
         if (fps <= 0.0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         @Suppress("DEPRECATION")
@@ -153,17 +156,17 @@ class MainActivity : FlutterActivity() {
         val current = disp.mode ?: return
         val modes = disp.supportedModes
         if (modes == null || modes.size <= 1) return
-        val best = modes
-            .filter {
-                it.physicalWidth == current.physicalWidth &&
-                    it.physicalHeight == current.physicalHeight
-            }
-            .minByOrNull { mode ->
-                val ratio = mode.refreshRate / fps
-                val mult = Math.max(1.0, Math.round(ratio).toDouble())
-                val err = Math.abs(mode.refreshRate - mult * fps) // Hz off a clean multiple
-                err + mode.refreshRate / 100000.0 // tie-break toward the lower refresh
-            } ?: return
+        val sameRes = modes.filter {
+            it.physicalWidth == current.physicalWidth &&
+                it.physicalHeight == current.physicalHeight
+        }
+        // Lowest refresh that keeps up with the video (1Hz slack for 23.976 /
+        // 59.94); if nothing is fast enough (e.g. a 120fps clip on a 60Hz panel)
+        // fall back to the highest available.
+        val best = sameRes.filter { it.refreshRate >= fps - 1.0 }
+            .minByOrNull { it.refreshRate }
+            ?: sameRes.maxByOrNull { it.refreshRate }
+            ?: return
         if (best.modeId == current.modeId) return
         val attrs = window.attributes
         if (attrs.preferredDisplayModeId == best.modeId) return
