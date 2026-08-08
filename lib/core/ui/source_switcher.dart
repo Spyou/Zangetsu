@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
 import '../di/injector.dart';
+import '../lnreader/lnreader_manager.dart';
 import '../mihon/mihon_manager.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
@@ -167,6 +168,16 @@ SourceBuckets categorizedSources() {
         label: 'Mihon · ${p.displayName}',
         repo: lang.isNotEmpty ? 'Mihon · $lang' : 'Mihon',
       ));
+    }
+  }
+  // LNReader providers — always novel; keyed by their `lnr:` sourceId. Only
+  // the novel bucket, same isRegistered guard and rationale as the Mihon
+  // block above (LnReaderManager is registered even later than MihonManager,
+  // so plenty of existing tests still build a GetIt without it).
+  // `installedSources` is SYNC and reads stored meta only — no runtime build.
+  if (sl.isRegistered<LnReaderManager>()) {
+    for (final p in sl<LnReaderManager>().installedSources) {
+      novel.add((id: p.id, label: 'LNReader · ${p.name}', repo: 'LNReader'));
     }
   }
 
