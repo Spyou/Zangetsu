@@ -64,4 +64,26 @@ void main() {
     // passing 30s slower.
     timeout: const Timeout(Duration(seconds: 10)),
   );
+
+  test('rebuilds the engine after dispose() instead of reusing a stale ready future', () async {
+    final runtime = LnReaderRuntime(
+      fetch: (url, init) async => const LnReaderHttpResponse(
+        status: 200,
+        body: '<h1>Hello</h1>',
+        url: 'http://x/a',
+      ),
+    );
+
+    await runtime.loadPlugin('fake', _fakePlugin);
+    expect(await runtime.call('fake', 'parseNovel', ['/a']), {'name': 'Hello'});
+
+    runtime.dispose();
+
+    // Same instance, used again after dispose() — must rebuild, not hit the
+    // stale _readyFuture / a null _rt.
+    await runtime.loadPlugin('fake', _fakePlugin);
+    expect(await runtime.call('fake', 'parseNovel', ['/a']), {'name': 'Hello'});
+
+    runtime.dispose();
+  });
 }

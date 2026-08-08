@@ -52,26 +52,35 @@ class LnReaderRuntime {
   }
 
   Future<void> _build() async {
-    final rt = getJavascriptRuntime(xhr: false);
-    final cheerio = await rootBundle.loadString(
-      'assets/js/lnreader_cheerio.js',
-    );
-    final harness = await rootBundle.loadString(
-      'assets/js/lnreader_harness.js',
-    );
-    final cheerioResult = rt.evaluate(cheerio);
-    if (cheerioResult.isError) {
-      rt.dispose();
-      throw StateError(
-        'lnreader cheerio bundle failed: ${cheerioResult.stringResult}',
+    try {
+      final rt = getJavascriptRuntime(xhr: false);
+      final cheerio = await rootBundle.loadString(
+        'assets/js/lnreader_cheerio.js',
       );
+      final harness = await rootBundle.loadString(
+        'assets/js/lnreader_harness.js',
+      );
+      final cheerioResult = rt.evaluate(cheerio);
+      if (cheerioResult.isError) {
+        rt.dispose();
+        throw StateError(
+          'lnreader cheerio bundle failed: ${cheerioResult.stringResult}',
+        );
+      }
+      final harnessResult = rt.evaluate(harness);
+      if (harnessResult.isError) {
+        rt.dispose();
+        throw StateError(
+          'lnreader harness failed: ${harnessResult.stringResult}',
+        );
+      }
+      _rt = rt;
+    } catch (_) {
+      // Don't cache a failed build forever — the next ensureReady() should
+      // retry instead of replaying the same rejected future.
+      _readyFuture = null;
+      rethrow;
     }
-    final harnessResult = rt.evaluate(harness);
-    if (harnessResult.isError) {
-      rt.dispose();
-      throw StateError('lnreader harness failed: ${harnessResult.stringResult}');
-    }
-    _rt = rt;
   }
 
   /// Loads a CommonJS plugin source under [pluginId]. Returns the plugin's
@@ -167,5 +176,6 @@ class LnReaderRuntime {
   void dispose() {
     _rt?.dispose();
     _rt = null;
+    _readyFuture = null;
   }
 }
