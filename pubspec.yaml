@@ -243,6 +243,8 @@ flutter:
     - extractors/doodstream.js
     # Cheerio + htmlparser2 bundle for LNReader-style novel source scripts.
     - assets/js/lnreader_cheerio.js
+    # require()/fetch shims + plugin loader that runs LNReader plugins on top.
+    - assets/js/lnreader_harness.js
     # Brand wordmark extracted from the logo (exact lettering) for header/splash.
     - assets/icon/wordmark.png
     # Square app icon — shown on the About screen.
