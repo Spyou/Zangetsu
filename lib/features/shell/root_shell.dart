@@ -2,7 +2,9 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemNavigator;
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -50,6 +52,10 @@ class _RootShellState extends State<RootShell>
 
   int _index = 0;
 
+  /// Double-back-to-exit: timestamp of the last root Back press. A second Back
+  /// within 2s exits the app; the first just shows the "press back again" toast.
+  DateTime? _lastBackPress;
+
   /// Tab-switch entrance: the visible page swaps immediately and the INCOMING
   /// tab fades + slides up into place (200ms, ease-out). We never fade the old
   /// tab out to blank — that midpoint blank frame read as a stutter. The
@@ -92,6 +98,37 @@ class _RootShellState extends State<RootShell>
     _switchCtrl.forward(from: 0);
   }
 
+  /// Root-level Back: the first press shows a toast, a second within 2s exits.
+  /// Only reached when Back would otherwise close the app — deep screens
+  /// (detail, player, …) are pushed above this shell and pop normally.
+  void _onBack() {
+    final now = DateTime.now();
+    if (_lastBackPress != null &&
+        now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackPress = now;
+    // FToast (part of fluttertoast) rather than the plain showToast, so the
+    // pill can sit ABOVE the floating dock — showToast has no bottom offset.
+    (FToast()..init(context)).showToast(
+      gravity: ToastGravity.BOTTOM,
+      toastDuration: const Duration(seconds: 2),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 104),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xF01C1C1E),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Text(
+          'Press BACK again to exit',
+          style: TextStyle(color: Colors.white, fontSize: 14),
+        ),
+      ),
+    );
+  }
+
   /// The five tab pages, in dock order: Home · Schedule · Search · My List ·
   /// Settings. Search sits centre (best thumb reach); [ScheduleScreen] takes
   /// the second slot. The last tab (Settings screen) is presented as "Profile"
@@ -114,53 +151,63 @@ class _RootShellState extends State<RootShell>
     // If the mode flips to Manga/Novel while Schedule (tab 1) is showing,
     // bounce back to Home rather than leaving the user on a tab that no
     // longer has a dock item.
-    return BlocListener<ContentModeCubit, ContentMode>(
-      bloc: sl<ContentModeCubit>(),
-      listenWhen: (prev, curr) => prev != curr,
-      listener: (context, mode) {
-        if (mode.isReading && _index == 1) setState(() => _index = 0);
+    return PopScope(
+      // Intercept Back at the app root: first press toasts, second exits.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onBack();
       },
-      child: Scaffold(
-        backgroundColor: AppColors.bg,
-        // Content runs under the floating dock (screens keep their own bottom
-        // padding so the last row scrolls clear of it).
-        extendBody: true,
-        body: AnimatedBuilder(
-          animation: _switch,
-          builder: (context, child) {
-            final v = _switch.value;
-            // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-            return Opacity(
-              opacity: 0.4 + 0.6 * v,
-              child: Transform.translate(
-                offset: Offset(0, (1 - v) * 20),
-                child: child,
-              ),
-            );
-          },
-          // RepaintBoundary → the page is a single cached layer the transition
-          // just composites (opacity + translate), so no repaint per frame.
-          child: RepaintBoundary(
-            child: IndexedStack(index: _index, children: _pages()),
+      child: BlocListener<ContentModeCubit, ContentMode>(
+        bloc: sl<ContentModeCubit>(),
+        listenWhen: (prev, curr) => prev != curr,
+        listener: (context, mode) {
+          if (mode.isReading && _index == 1) setState(() => _index = 0);
+        },
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          // Content runs under the floating dock (screens keep their own bottom
+          // padding so the last row scrolls clear of it).
+          extendBody: true,
+          body: AnimatedBuilder(
+            animation: _switch,
+            builder: (context, child) {
+              final v = _switch.value;
+              // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+              return Opacity(
+                opacity: 0.4 + 0.6 * v,
+                child: Transform.translate(
+                  offset: Offset(0, (1 - v) * 20),
+                  child: child,
+                ),
+              );
+            },
+            // RepaintBoundary → the page is a single cached layer the transition
+            // just composites (opacity + translate), so no repaint per frame.
+            child: RepaintBoundary(
+              child: IndexedStack(index: _index, children: _pages()),
+            ),
           ),
-        ),
-        bottomNavigationBar: ValueListenableBuilder<bool>(
-          valueListenable: dockHiddenBySection,
-          builder: (context, sectionOpen, _) {
-            // Slide the dock away only when a Settings section is open AND the
-            // Settings (Profile, last) tab is the one showing — every other tab
-            // keeps its dock.
-            final hide = sectionOpen && _index == 4;
-            return AnimatedSlide(
-              offset: hide ? const Offset(0, 1.6) : Offset.zero,
-              duration: const Duration(milliseconds: 240),
-              curve: Curves.easeOutCubic,
-              child: IgnorePointer(
-                ignoring: hide,
-                child: _FloatingDock(index: _index, onSelected: _onTabSelected),
-              ),
-            );
-          },
+          bottomNavigationBar: ValueListenableBuilder<bool>(
+            valueListenable: dockHiddenBySection,
+            builder: (context, sectionOpen, _) {
+              // Slide the dock away only when a Settings section is open AND the
+              // Settings (Profile, last) tab is the one showing — every other tab
+              // keeps its dock.
+              final hide = sectionOpen && _index == 4;
+              return AnimatedSlide(
+                offset: hide ? const Offset(0, 1.6) : Offset.zero,
+                duration: const Duration(milliseconds: 240),
+                curve: Curves.easeOutCubic,
+                child: IgnorePointer(
+                  ignoring: hide,
+                  child: _FloatingDock(
+                    index: _index,
+                    onSelected: _onTabSelected,
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ),
     );

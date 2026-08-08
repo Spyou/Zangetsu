@@ -140,6 +140,7 @@ dependencies:
   firebase_analytics: ^12.4.5
   supabase_flutter: ^2.16.0
   firebase_messaging: ^16.4.3
+  fluttertoast: ^10.0.0
 
 dev_dependencies:
   flutter_test:
