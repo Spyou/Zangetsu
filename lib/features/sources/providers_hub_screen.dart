@@ -5,6 +5,7 @@ import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/lnreader/lnreader_manager.dart';
 import '../../core/mihon/mihon_manager.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/provider/cloudstream_provider.dart';
@@ -20,6 +21,7 @@ import '../../core/ui/source_switcher.dart';
 import 'aniyomi_sources_screen.dart';
 import 'bloc/sources_state.dart';
 import 'cloudstream_sources_screen.dart';
+import 'lnreader_sources_screen.dart';
 import 'mihon_sources_screen.dart';
 import 'zangetsu_sources_screen.dart';
 
@@ -94,12 +96,19 @@ class _HubPhoneView extends StatelessWidget {
     // Mihon (manga extensions) boot-loads the same way Aniyomi does — the
     // load step is Android-only (M7) — so the row is gated identically.
     final showMihon = Platform.isAndroid;
+    // LNReader (novel sources) is a JS provider, same as Zangetsu — no
+    // platform gate needed. Gated on registration instead, so a minimal-GetIt
+    // test that never registers LnReaderManager doesn't crash reading it,
+    // same purpose the Mihon platform check serves.
+    final showLnReader = sl.isRegistered<LnReaderManager>();
 
     final csGroups = sl<CloudStreamManager>().repoGroups;
     final csInstalled = csGroups.fold<int>(0, (s, g) => s + g.sources.length);
     final csRepos = csGroups.length;
     final aniCount = sl<AniyomiManager>().all.length;
     final mihonCount = sl<MihonManager>().all.length;
+    final lnrCount =
+        showLnReader ? sl<LnReaderManager>().installedSources.length : 0;
 
     // Read-only pending-update counts. Zangetsu reuses SourcesState's own
     // installed-vs-manifest comparison (same result the Zangetsu screen shows);
@@ -118,7 +127,8 @@ class _HubPhoneView extends StatelessWidget {
         zangetsuCount +
         (showCs ? csInstalled : 0) +
         (showAniyomi ? aniCount : 0) +
-        (showMihon ? mihonCount : 0);
+        (showMihon ? mihonCount : 0) +
+        (showLnReader ? lnrCount : 0);
     final ecoCount =
         1 + (showCs ? 1 : 0) + (showAniyomi ? 1 : 0) + (showMihon ? 1 : 0);
 
@@ -127,6 +137,7 @@ class _HubPhoneView extends StatelessWidget {
     final activeIsCs = activeId.startsWith('cs:');
     final activeIsAni = activeId.startsWith('ani:');
     final activeIsMihon = activeId.startsWith('mihon:');
+    final activeIsLnReader = activeId.startsWith('lnr:');
     final activeIsZangetsu =
         activeId.isNotEmpty && !activeIsCs && !activeIsAni && !activeIsMihon;
 
@@ -201,27 +212,40 @@ class _HubPhoneView extends StatelessWidget {
             ),
           ],
           // Reading ecosystems live under their own header so a manga/novel
-          // source never reads as a streaming one. Mihon is the only one for
-          // now — the Zangetsu reading row was dropped because those JS
-          // sources are search-only (no popular/latest), which left Home with
-          // nothing to render. Novel support is planned as its own extension
-          // path, so the header keeps its name and the section can grow.
+          // source never reads as a streaming one. Mihon (manga) and LNReader
+          // (novel) sit side by side here — the Zangetsu reading row was
+          // dropped because those JS sources are search-only (no
+          // popular/latest), which left Home with nothing to render.
           //
-          // Guarded on showMihon: Mihon is Android-only, so off-Android the
-          // whole section would otherwise render as a header with no rows.
-          if (showMihon) ...[
+          // Guarded on showMihon || showLnReader: Mihon is Android-only and
+          // LNReader is gated on registration (see showLnReader above), so
+          // the header only renders when at least one row will follow it —
+          // otherwise off-Android it would show as a header with no rows.
+          if (showMihon || showLnReader) ...[
             const SizedBox(height: 28),
             const _SectionLabel('MANGA & NOVEL'),
             const SizedBox(height: 12),
-            _EcoRow(
-              icon: Icons.menu_book_outlined,
-              title: 'Mihon',
-              desc: 'Mihon manga extensions',
-              info: '$mihonCount sources',
-              active: activeIsMihon,
-              updateCount: mihonUpdates,
-              onTap: () => open(const MihonSourcesScreen()),
-            ),
+            if (showMihon)
+              _EcoRow(
+                icon: Icons.menu_book_outlined,
+                title: 'Mihon',
+                desc: 'Mihon manga extensions',
+                info: '$mihonCount sources',
+                active: activeIsMihon,
+                updateCount: mihonUpdates,
+                onTap: () => open(const MihonSourcesScreen()),
+              ),
+            if (showMihon && showLnReader) const SizedBox(height: 12),
+            if (showLnReader)
+              _EcoRow(
+                icon: Icons.auto_stories_outlined,
+                title: 'LNReader',
+                desc: 'Novel sources',
+                info: '$lnrCount sources',
+                active: activeIsLnReader,
+                updateCount: 0,
+                onTap: () => open(const LnReaderSourcesScreen()),
+              ),
           ],
         ],
       ),
