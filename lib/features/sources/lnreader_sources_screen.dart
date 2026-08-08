@@ -42,8 +42,15 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _state = _LoadState.loading);
+  /// [refresh] is true when called from `RefreshIndicator.onRefresh` — the
+  /// list is already populated, so skip the full-page spinner and let the
+  /// RefreshIndicator's own spinner show while the list stays mounted (mirrors
+  /// `source_health_screen.dart`'s RefreshIndicator+ListView staying mounted
+  /// through a refresh).
+  Future<void> _load({bool refresh = false}) async {
+    if (!refresh || _plugins.isEmpty) {
+      setState(() => _state = _LoadState.loading);
+    }
     try {
       final plugins = await sl<LnReaderExtensionService>().fetchIndex();
       if (!mounted) return;
@@ -111,7 +118,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
     return RefreshIndicator(
       color: AppColors.accent,
       backgroundColor: AppColors.surface,
-      onRefresh: _load,
+      onRefresh: () => _load(refresh: true),
       child: filtered.isEmpty
           ? ListView(
               padding: const EdgeInsets.fromLTRB(16, 48, 16, 24),
@@ -143,6 +150,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
                             color: AppColors.hairline,
                           ),
                         _LnReaderSourceRow(
+                          key: ValueKey(filtered[i].id),
                           meta: filtered[i],
                           installed: installedIds.contains(filtered[i].id),
                           onChanged: () => setState(() {}),
@@ -163,6 +171,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
 
 class _LnReaderSourceRow extends StatefulWidget {
   const _LnReaderSourceRow({
+    super.key,
     required this.meta,
     required this.installed,
     required this.onChanged,
