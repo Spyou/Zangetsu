@@ -173,6 +173,16 @@ class LnReaderRuntime {
     throw TimeoutException('lnreader call timed out');
   }
 
+  /// Evicts a loaded plugin from the runtime (`delete
+  /// globalThis.__lnplugins[pluginId]`) so a later [loadPlugin] with
+  /// different JS for the same id isn't shadowed by the old instance.
+  /// No-op if the runtime was never built.
+  Future<void> unloadPlugin(String pluginId) async {
+    final rt = _rt;
+    if (rt == null) return;
+    rt.evaluate('__unloadPlugin(${jsonEncode(pluginId)})');
+  }
+
   void dispose() {
     _rt?.dispose();
     _rt = null;

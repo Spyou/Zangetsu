@@ -100,6 +100,18 @@ class LnReaderManager {
     return _runtime!.call(pluginId, method, args);
   }
 
+  /// Uninstalls [pluginId]: removes it from storage, drops its cached
+  /// provider and loaded-id tracking, and — if the runtime has been built —
+  /// evicts its JS from the runtime too. Without this, a later reinstall of
+  /// the same id would keep serving the stale cached provider (`get`) or
+  /// skip reloading JS (`ensureLoaded` short-circuits on `_loadedPluginIds`).
+  Future<void> uninstall(String pluginId) async {
+    await service.uninstall(pluginId);
+    _providerCache.remove(pluginId);
+    _loadedPluginIds.remove(pluginId);
+    if (runtimeBuilt) await _runtime!.unloadPlugin(pluginId);
+  }
+
   /// The plugin's own filter schema (`pluginInfo()['filters']`), forwarded
   /// verbatim into `popularNovels` as its default `filters` argument —
   /// confirmed required by the Phase-0 spike (`proven_harness.js`), not

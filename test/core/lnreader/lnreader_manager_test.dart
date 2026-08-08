@@ -48,6 +48,30 @@ const _metaB = LnReaderPluginMeta(
   iconUrl: 'https://cdn.test/b.png',
 );
 
+/// A second, DIFFERENT install for `plugin-a`'s id — used by the uninstall
+/// test to prove a reinstall doesn't serve stale cached/loaded state. Its
+/// `popularNovels` returns a non-empty, identifiable result (unlike every
+/// other fake plugin here, which returns `[]`) so a data call can tell the
+/// two versions apart.
+const _metaA2 = LnReaderPluginMeta(
+  id: 'plugin-a',
+  name: 'Plugin A v2',
+  site: 'https://a2.test/',
+  lang: 'en',
+  version: '2.0.0',
+  url: 'https://cdn.test/a2.js',
+  iconUrl: 'https://cdn.test/a2.png',
+);
+const _pluginJsV2 = '''
+module.exports.default = {
+  name: 'Plugin A v2', site: 'https://a2.test/', version: '2.0.0', filters: {},
+  popularNovels: function (p, o) { return Promise.resolve([{name: 'v2-novel', path: '/v2'}]); },
+  searchNovels: function (t, p) { return Promise.resolve([]); },
+  parseNovel: function (x) { return Promise.resolve({name: 'N', chapters: []}); },
+  parseChapter: function (x) { return Promise.resolve(''); },
+};
+''';
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -65,6 +89,7 @@ void main() {
           return _pluginJs('Plugin A', _metaA.site, filtersJs: _sortFiltersJs);
         }
         if (url == _metaB.url) return _pluginJs('Plugin B', _metaB.site);
+        if (url == _metaA2.url) return _pluginJsV2;
         throw StateError('unexpected httpGet($url)');
       },
     );
@@ -214,4 +239,42 @@ void main() {
     });
     expect(manager.filtersFor('plugin-b'), <String, dynamic>{});
   });
+
+  test(
+    'uninstall() clears storage, the provider cache, and loaded plugin state; '
+    'reinstalling the same id with different js loads fresh (no stale short-circuit)',
+    () async {
+      await manager.init();
+      await service.install(_metaA);
+
+      final provider = manager.get('lnr:plugin-a'); // populates _providerCache
+      expect(provider, isNotNull);
+      final firstResult = await manager.callPlugin('plugin-a', 'popularNovels', [1, {}]); // loads it
+      expect(manager.runtimeBuilt, isTrue);
+      expect(firstResult, isEmpty);
+
+      await manager.uninstall('plugin-a');
+
+      expect(service.installed(), isEmpty);
+      expect(manager.get('lnr:plugin-a'), isNull);
+
+      // Reinstall the SAME id with DIFFERENT js, through the SAME manager/
+      // runtime. If uninstall() left the old plugin id in the runtime's
+      // loaded-id set, ensureLoaded() would short-circuit and skip loading
+      // this new source entirely — and the stale JS would've already been
+      // evicted from the runtime by uninstall(), so the call below would
+      // throw "unknown plugin" instead of returning the v2 marker.
+      await service.install(_metaA2);
+
+      final provider2 = manager.get('lnr:plugin-a');
+      expect(provider2, isNotNull);
+      expect(provider2!.displayName, 'Plugin A v2');
+      expect(provider2, isNot(same(provider))); // cache was actually rebuilt
+
+      final secondResult = await manager.callPlugin('plugin-a', 'popularNovels', [1, {}]);
+      expect(secondResult, [
+        {'name': 'v2-novel', 'path': '/v2'},
+      ]);
+    },
+  );
 }

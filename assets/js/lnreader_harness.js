@@ -93,6 +93,12 @@ globalThis.__callPlugin = function (pluginId, method, argsJson) {
   });
 };
 
+// Evicts a loaded plugin so a later __loadPlugin() with different source
+// isn't shadowed by the old instance.
+globalThis.__unloadPlugin = function (id) {
+  if (globalThis.__lnplugins) delete globalThis.__lnplugins[id];
+};
+
 // Plugin metadata for the Dart side (default filters, site, etc).
 globalThis.__pluginInfo = function (pluginId) {
   var plugin = globalThis.__lnplugins[pluginId];
