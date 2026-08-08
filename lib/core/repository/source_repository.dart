@@ -1,5 +1,6 @@
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
+import '../lnreader/lnreader_manager.dart';
 import '../mihon/mihon_filters.dart';
 import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
@@ -28,6 +29,7 @@ class SourceRepository {
     required ActiveSourceCubit activeSource,
     required PlaybackPrefs prefs,
     MihonManager? mihonManager,
+    LnReaderManager? lnrManager,
   }) : _manager = manager,
        _csManager = csManager,
        _aniManager = aniManager,
@@ -38,12 +40,21 @@ class SourceRepository {
        // exactly the right behaviour anywhere Mihon isn't wired (tests,
        // non-Android): `mihon:` ids simply never resolve, same as any other
        // unknown id. The injector always passes the real one.
-       _mihonManager = mihonManager ?? MihonManager();
+       _mihonManager = mihonManager ?? MihonManager(),
+       // Novel twin of the above, kept nullable rather than defaulted:
+       // LnReaderManager has no cheap no-arg default the way MihonManager
+       // does (it's a thin read-through over a Hive box that [init] must
+       // open first), so every `_lnrManager` use below is `?.`-guarded
+       // instead. Omitting it yields the same "EMPTY registry" behaviour —
+       // `lnr:` ids simply never resolve. The injector always passes the
+       // real one.
+       _lnrManager = lnrManager;
 
   final ProviderManager _manager;
   final CloudStreamManager _csManager;
   final AniyomiManager _aniManager;
   final MihonManager _mihonManager;
+  final LnReaderManager? _lnrManager;
   final ActiveSourceCubit _active;
   final PlaybackPrefs _prefs;
 
@@ -115,6 +126,11 @@ class SourceRepository {
   /// `ani:` to anime, so reusing it would type every manga source as anime.
   static bool _isMihon(String id) => id.startsWith('mihon:');
 
+  /// True for LNReader novel source ids (`lnr:<pluginId>`). Novel twin of
+  /// [_isMihon] — its own prefix so `sourceTypeOf` can type it novel without
+  /// disturbing the `mihon:`/`ani:` lines.
+  static bool _isLnReader(String id) => id.startsWith('lnr:');
+
   /// The currently-active source identifier.
   String get sourceId => _active.state;
 
@@ -142,6 +158,9 @@ class SourceRepository {
     ..._mihonManager.all
         .where((p) => !p.info.nsfw || _prefs.nsfwSources)
         .map((p) => (id: p.sourceId, name: p.displayName)),
+    // LNReader novel sources — already `{id, name}` shaped, straight from
+    // stored plugin meta (no NSFW concept for these yet).
+    if (_lnrManager != null) ..._lnrManager.installedSources,
   ];
 
   /// Base site URL for a source, used to turn a relative item URL into an
@@ -154,6 +173,10 @@ class SourceRepository {
     // the same relative→absolute treatment before it can be shared/opened.
     final m = _mihonManager.get(sourceId);
     if (m != null) return m.info.baseUrl;
+    // LNReader chapter urls are paths too (resolved against the plugin's
+    // `site`), same rationale as Mihon above.
+    final l = _lnrManager?.get(sourceId);
+    if (l != null) return l.site;
     final p = _aniManager.get(sourceId);
     return p is AniyomiProvider ? p.info.baseUrl : '';
   }
@@ -168,6 +191,9 @@ class SourceRepository {
     }
     if (_isMihon(sourceId)) {
       return _mihonManager.get(sourceId)?.displayName ?? sourceId;
+    }
+    if (_isLnReader(sourceId)) {
+      return _lnrManager?.get(sourceId)?.displayName ?? sourceId;
     }
     return _manager.get(sourceId)?.displayName ?? sourceId;
   }
@@ -185,6 +211,9 @@ class SourceRepository {
     }
     if (_isMihon(sourceId)) {
       return _mihonManager.get(sourceId) != null;
+    }
+    if (_isLnReader(sourceId)) {
+      return _lnrManager?.get(sourceId) != null;
     }
     return _manager.get(sourceId) != null;
   }
@@ -208,6 +237,8 @@ class SourceRepository {
       p = _aniManager.get(resolved);
     } else if (_isMihon(resolved)) {
       p = _mihonManager.get(resolved);
+    } else if (_isLnReader(resolved)) {
+      p = _lnrManager?.get(resolved);
     } else {
       p = _manager.get(resolved);
     }

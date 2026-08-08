@@ -72,6 +72,9 @@ import '../notify/subscription_checker.dart';
 import '../discord/discord_rpc.dart';
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
+import '../lnreader/lnreader_extension_service.dart';
+import '../lnreader/lnreader_manager.dart';
+import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
@@ -366,6 +369,52 @@ Future<void> initDependencies() async {
   final mihonManager = MihonManager();
   sl.registerSingleton<MihonManager>(mihonManager);
 
+  // LNReader novel-extension registry — the novel twin of MihonManager above.
+  // Unlike Mihon, LNReader plugins are plain JS (no native APK/DEX), so there's
+  // no Platform.isAndroid gate here — same reasoning as the JS provider path.
+  // `lnrManager.init()` only opens the `lnreader_plugins` Hive box; it deliberately
+  // never builds the ~450KB QuickJS runtime (see LnReaderManager's doc comment)
+  // — that only happens lazily the first time a `lnr:` source's data method runs.
+  // httpGet/fetch reuse the app's shared `dio` (8s timeout + browser UA already
+  // set above) rather than standing up a second HTTP client.
+  final lnrService = LnReaderExtensionService(
+    httpGet: (url) async {
+      final res = await dio.get<String>(
+        url,
+        options: Options(responseType: ResponseType.plain),
+      );
+      return res.data ?? '';
+    },
+  );
+  final lnrManager = LnReaderManager(
+    service: lnrService,
+    fetch: (url, init) async {
+      final res = await dio.request<String>(
+        url,
+        data: init['body'],
+        options: Options(
+          method: (init['method'] as String?)?.toUpperCase() ?? 'GET',
+          headers: init['headers'] is Map
+              ? Map<String, dynamic>.from(init['headers'] as Map)
+              : null,
+          responseType: ResponseType.plain,
+          // fetch() never throws on a non-2xx status — it resolves with the
+          // response so the plugin can inspect it. Without this Dio would
+          // throw on e.g. a 404, which the plugin never gets a chance to see.
+          validateStatus: (_) => true,
+        ),
+      );
+      return LnReaderHttpResponse(
+        status: res.statusCode ?? 0,
+        body: res.data ?? '',
+        url: res.realUri.toString(),
+      );
+    },
+  );
+  sl.registerSingleton<LnReaderExtensionService>(lnrService);
+  sl.registerSingleton<LnReaderManager>(lnrManager);
+  await lnrManager.init();
+
   // --- Provider registry data layer ---------------------------------
   await ProviderReposRegistry.init();
   await ProviderRegistry.init();
@@ -575,6 +624,7 @@ Future<void> initDependencies() async {
       csManager: csManager,
       aniManager: aniyomiManager,
       mihonManager: mihonManager,
+      lnrManager: lnrManager,
       activeSource: sl<ActiveSourceCubit>(),
       prefs: sl<PlaybackPrefs>(),
     ),

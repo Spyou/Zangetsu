@@ -187,6 +187,11 @@ ProviderType sourceTypeOf(String id) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;
   }
+  // LNReader novel extensions. Same reasoning as the Mihon line right below:
+  // a dedicated `lnr:` prefix, checked first, types these as novel without
+  // touching the `mihon:`/`ani:` lines — no GetIt lookup needed since an
+  // LNReader source is novel-only by construction.
+  if (id.startsWith('lnr:')) return ProviderType.novel;
   // Mihon manga extensions. They carry their own `mihon:` prefix precisely so
   // this resolver can type them as manga WITHOUT disturbing the `ani:` line
   // below (spec Decision 1) — reusing `ani:` would have typed every manga
@@ -212,10 +217,11 @@ ProviderType _typeOfFromMap(String id, Map<String, String> typeMap) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;
   }
-  // Must stay in lockstep with [sourceTypeOf]'s branch — this twin is what
-  // filterBucketsForMode uses, so without it a `mihon:` row would resolve to
-  // anime here and get filtered straight out of the manga bucket it was just
-  // put in.
+  // Must stay in lockstep with [sourceTypeOf]'s branches — this twin is what
+  // filterBucketsForMode uses, so without them a `lnr:`/`mihon:` row would
+  // resolve to anime here and get filtered straight out of the novel/manga
+  // bucket it was just put in.
+  if (id.startsWith('lnr:')) return ProviderType.novel;
   if (id.startsWith('mihon:')) return ProviderType.manga;
   if (id.startsWith('ani:')) return ProviderType.anime; // Aniyomi is video-only
   final t = typeMap[id];
