@@ -89,6 +89,30 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
     }
   }
 
+  Widget _qrOption({
+    required String data,
+    required String title,
+    required String subtitle,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          child: QrImageView(data: data, size: 200, gapless: true),
+        ),
+        const SizedBox(height: 14),
+        Text(title, style: AppText.title),
+        const SizedBox(height: 4),
+        Text(subtitle,
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(color: AppColors.textSecondary)),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -105,23 +129,36 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
             : Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                        color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                    child: QrImageView(
-                      data: 'zangetsu://pair?code=$_code&nonce=$_nonce&trackers=1',
-                      size: 220,
-                      gapless: true,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // QR 1 — the existing phone-app relay. UNCHANGED: an
+                      // installed Zangetsu app catches this deep link, approves,
+                      // and relays its own $_label session to this TV.
+                      _qrOption(
+                        data:
+                            'zangetsu://pair?code=$_code&nonce=$_nonce&trackers=1',
+                        title: 'Have the app?',
+                        subtitle: 'Open Zangetsu on your\nphone and scan',
+                      ),
+                      const SizedBox(width: 36),
+                      // QR 2 — no app needed. Opens a web page that runs the
+                      // $_label login in the phone's browser and relays the token
+                      // to this TV (same encrypted-blob path the poll consumes).
+                      _qrOption(
+                        data: 'https://zangetsu.online/tv-connect/'
+                            '?code=$_code&nonce=$_nonce&tracker=${widget.trackerId}',
+                        title: 'No app?',
+                        subtitle: 'Scan to log in with\n$_label in your browser',
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 20),
-                  Text('Open Zangetsu on your phone and scan this to\nsend $_label to this TV.',
-                      textAlign: TextAlign.center,
-                      style: AppText.body.copyWith(color: AppColors.textSecondary)),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!, style: AppText.caption.copyWith(color: Colors.redAccent)),
+                    const SizedBox(height: 16),
+                    Text(_error!,
+                        style:
+                            AppText.caption.copyWith(color: Colors.redAccent)),
                   ],
                 ],
               ),

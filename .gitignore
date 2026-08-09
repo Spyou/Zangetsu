@@ -65,3 +65,6 @@ supabase/.env
 
 # Android Gradle build output (was accidentally tracked)
 /android/build/
+
+# Supabase CLI deploy scratch
+supabase/.temp/
