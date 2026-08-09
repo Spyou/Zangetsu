@@ -1178,11 +1178,6 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   KeyEventResult _onKey(FocusNode _, KeyEvent e) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack own D-pad traversal instead of us
-      // handling play/pause/seek/menu directly here.
-      return KeyEventResult.ignored;
-    }
     final k = e.logicalKey;
     // While an overlay (menu / online search / up-next) is up, it owns the
     // D-pad: let its focused widget + traversal handle keys, don't eat them.

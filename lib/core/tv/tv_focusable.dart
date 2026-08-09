@@ -79,15 +79,26 @@ class TvFocusable extends StatefulWidget {
 
 class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
+  int _lastActivateMs = 0;
+
+  // Single activation path for both the D-pad OK key and the accessibility
+  // "click" (Semantics.onTap), deduped within a short window so a press that
+  // arrives on both channels only fires onTap once.
+  void _activate() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastActivateMs < 250) return;
+    _lastActivateMs = now;
+    widget.onTap();
+  }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack activate via the Semantics onTap
-      // below instead of us swallowing the D-pad OK press here.
-      return KeyEventResult.ignored;
-    }
+    // Deliberately NOT gated on accessibleNavigation. Fire TV reports that flag
+    // true after returning from the native player even with no screen reader
+    // running, and the old gate dead-keyed OK on everything (nothing was left
+    // to fire the Semantics.onTap fallback). _activate dedupes if a real screen
+    // reader delivers the click on both channels.
     if (event is KeyDownEvent && okKeys.contains(event.logicalKey)) {
-      widget.onTap();
+      _activate();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
@@ -234,7 +245,7 @@ class _TvFocusableState extends State<TvFocusable> {
       label: widget.semanticLabel,
       button: widget.isButton,
       focused: _focused,
-      onTap: widget.onTap,
+      onTap: _activate,
       child: Focus(
         focusNode: widget.focusNode,
         autofocus: widget.autofocus,

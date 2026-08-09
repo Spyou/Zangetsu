@@ -115,11 +115,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
 
   // D-pad RIGHT from the left pane → move into the right pane.
   KeyEventResult _onLeftKey(FocusNode _, KeyEvent event) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack own D-pad traversal instead of us
-      // bridging left ↔ right here.
-      return KeyEventResult.ignored;
-    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowRight) {
       final last = _rightScope.focusedChild;
@@ -139,11 +134,6 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   // D-pad LEFT from the right pane: try intra-pane traversal first; only
   // cross to the left pane when already at the left edge.
   KeyEventResult _onRightKey(FocusNode _, KeyEvent event) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack own D-pad traversal instead of us
-      // bridging left ↔ right here.
-      return KeyEventResult.ignored;
-    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
       final moved =
