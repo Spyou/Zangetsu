@@ -153,8 +153,8 @@ dev_dependencies:
 # ── media_kit → Predidit performance fork (feat/mediakit-fork) ───────────────
 # Same media_kit Dart API (no code changes), but a newer native mpv 0.41 +
 # out-of-tree ffmpeg patches that play the malformed HLS/DASH streams scraped
-# sources serve — the reason AnymeX/Kazumi/Dartotsu run this fork. It's a
-# monorepo, so every package points at its subdir path. Pinned to AnymeX's
+# sources serve — the reason Kazumi/Dartotsu run this fork. It's a
+# monorepo, so every package points at its subdir path. Pinned to a
 # proven commit. To revert: delete this whole block and `flutter pub get`.
 dependency_overrides:
   # screen_brightness 2.1.4+ jumped to Kotlin 2.3.21 / AGP 8.13.2, which the
