@@ -192,6 +192,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
   late final VoidCallback _roomListener;
   bool _attached = false; // true only after _wireRoom() runs
 
+  // Position sampled down to whole seconds. The always-mounted Skip / Next-episode
+  // pills only care about second-granularity, but the raw position stream fires
+  // ~once per decoded frame — so a StreamBuilder on it rebuilt (and forced a
+  // Flutter frame) every ~1/60s the whole time the video played, pinning the
+  // panel at 60 even for 24fps video. Sampling to seconds lets Flutter fall back
+  // to redrawing only when the video texture actually updates. Broadcast (mpv's
+  // position stream is), so both pills can share this one subscription.
+  late final Stream<Duration> _positionBySecond = _c.player.stream.position
+      .map((p) => Duration(seconds: p.inSeconds))
+      .distinct();
+
   bool _controlsVisible = true;
   bool _holding = false; // long-press 2x active
   Timer? _hideTimer;
@@ -1482,7 +1493,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final hasNext = _c.state.currentIndex + 1 < _c.episodes.length;
     if (!hasNext) return const SizedBox.shrink();
     return StreamBuilder<Duration>(
-      stream: _c.player.stream.position,
+      stream: _positionBySecond,
       builder: (context, snap) {
         final pos = snap.data ?? Duration.zero;
         final dur = _c.player.state.duration;
@@ -2155,13 +2166,24 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     child: AnimatedOpacity(
                       opacity: show ? 1 : 0,
                       duration: const Duration(milliseconds: 150),
-                      child: Center(
-                        child: SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: CircularProgressIndicator(
-                            color: AppColors.accent,
-                            strokeWidth: 2.5,
+                      // The spinner is kept mounted (so it can fade), but a
+                      // CircularProgressIndicator spins forever via a repeating
+                      // ticker — which scheduled a Flutter frame every vsync and
+                      // pinned the whole player at 60fps even while invisible and
+                      // the video sat idle. TickerMode freezes it unless it's
+                      // actually showing, letting the panel fall to the video's
+                      // real rate. The AnimatedOpacity's own ticker is outside
+                      // this, so the fade still plays.
+                      child: TickerMode(
+                        enabled: show,
+                        child: Center(
+                          child: SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: CircularProgressIndicator(
+                              color: AppColors.accent,
+                              strokeWidth: 2.5,
+                            ),
                           ),
                         ),
                       ),
@@ -2419,7 +2441,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
               // is MegaSkip (6c-ii) below.
               if (!_locked && !_upNext && !sl<AppMode>().isTv)
                 StreamBuilder<Duration>(
-                  stream: _c.player.stream.position,
+                  stream: _positionBySecond,
                   builder: (context, snap) {
                     final btn = _skipButtonFor(snap.data ?? Duration.zero);
                     if (btn == null) return const SizedBox.shrink();
@@ -3702,6 +3724,16 @@ class _SeekRowState extends State<_SeekRow> {
   // position stream doesn't yank it back (which made it feel un-draggable).
   double? _dragMs;
 
+  // The live thumb only creeps forward, but the raw position stream fires ~once
+  // per decoded frame — so the whole Slider (with its custom buffered track)
+  // rebuilt every frame while the controls were up, dragging the panel down to
+  // a GPU-bound ~20fps. Sample to ~4Hz: invisible for a slowly-advancing thumb,
+  // and scrubbing stays perfectly smooth because it runs off _dragMs, not this.
+  late final Stream<Duration> _livePosition = widget
+      .controller.player.stream.position
+      .map((p) => Duration(milliseconds: (p.inMilliseconds ~/ 250) * 250))
+      .distinct();
+
   // Tap the right-hand time to flip between total duration and remaining time
   // (a negative countdown, e.g. "−1:00"), CloudStream-style.
   bool _showRemaining = false;
@@ -3778,7 +3810,7 @@ class _SeekRowState extends State<_SeekRow> {
     final totalMs = widget.duration.inMilliseconds;
     final max = totalMs > 0 ? totalMs.toDouble() : 1.0;
     return StreamBuilder<Duration>(
-      stream: widget.controller.player.stream.position,
+      stream: _livePosition,
       builder: (context, snap) {
         final streamMs = (snap.data ?? Duration.zero).inMilliseconds
             .clamp(0, max.toInt())

@@ -266,6 +266,13 @@ class PlayerCubit extends Cubit<PlayerState> {
       // known, so it isn't created then resized on the first frame — kills the
       // black-frame/resize hitch at playback start.
       androidAttachSurfaceAfterVideoParameters: true,
+      // Render video through the older SurfaceTexture path instead of the newer
+      // SurfaceProducer (the media_kit default). SurfaceProducer paces frames on
+      // Flutter's own vsync loop, which pins the panel at the UI's max refresh
+      // (120Hz) all through playback — the "fps lock" regression vs 1.8.0, which
+      // predated SurfaceProducer. SurfaceTexture is producer-paced (mpv's real
+      // frame timing), so the panel follows the video's fps again like 1.8.0.
+      enableAndroidSurfaceProducer: false,
       // Route video enhancement (GLSL upscaling) through mpv's gpu-next renderer,
       // which maps to gpu-api=vulkan,opengl — far more efficient for shaders than
       // the default gpu (OpenGL) path, so upscaling stays smooth. ONLY when
@@ -341,6 +348,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   // to the system default on close. Android phone only; no-op elsewhere.
   bool _afrApplied = false;
   static const MethodChannel _afrChannel = MethodChannel('zangetsu/frame_rate');
+  // AFR is off: routing video through the SurfaceTexture path (see
+  // enableAndroidSurfaceProducer above) already lets the panel follow the
+  // video's fps, so forcing preferredDisplayModeId ourselves is redundant.
+  // Kept behind a flag — flip to true to bring the old forced path back.
+  static const bool _afrEnabled = false;
   // Stall watchdog: a STARTED source that dies/stalls mid-playback (dead host,
   // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
   // once started). When buffering persists with no position progress we fail
@@ -775,7 +787,7 @@ class PlayerCubit extends Cubit<PlayerState> {
             _markedWatching = true;
             _markWatching(); // "started watching" → CURRENT on AniList now
           }
-          if (!_afrApplied) {
+          if (_afrEnabled && !_afrApplied) {
             _afrApplied = true;
             unawaited(_applyAfr()); // match the display to this video's fps
           }
@@ -2564,7 +2576,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   @override
   Future<void> close() async {
     await _persist(flush: true);
-    await _clearAfr(); // restore the display's default refresh rate
+    if (_afrEnabled) await _clearAfr(); // restore the display's default refresh
     // Leaving the player → drop the "Watching" presence back to browsing.
     if (sl.isRegistered<DiscordRpc>()) {
       sl<DiscordRpc>().setBrowsing(title: showTitle, posterUrl: cover);
