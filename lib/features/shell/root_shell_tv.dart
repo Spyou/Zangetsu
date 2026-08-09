@@ -61,6 +61,23 @@ const List<_RailItem> _kRailItems = [
   _RailItem(label: 'Settings', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
 ];
 
+/// App-root override of [DirectionalFocusAction] so the TV shell can open/close
+/// the nav rail on LEFT/RIGHT from wherever focus happens to be. Unlike the
+/// per-scope key handlers, an [Actions] entry near the shell root is always an
+/// ancestor of the focused node, so it still fires if focus ever lands outside
+/// the content/rail scopes. Anything it doesn't special-case falls through to
+/// the default directional move via [super].
+class _TvRailDirectionalAction extends DirectionalFocusAction {
+  _TvRailDirectionalAction(this._state);
+  final _RootShellTvState _state;
+
+  @override
+  void invoke(DirectionalFocusIntent intent) {
+    if (_state.mounted && _state._railDirectional(intent.direction)) return;
+    super.invoke(intent);
+  }
+}
+
 class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   static const int _searchRailItem = 1;
 
@@ -151,25 +168,26 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   }
 
   KeyEventResult _onRailKey(FocusNode _, KeyEvent event) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack own D-pad traversal instead of us
-      // bridging rail ↔ content here.
-      return KeyEventResult.ignored;
-    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowRight) {
-      final lastFocused = _contentScope.focusedChild;
-      if (lastFocused != null && lastFocused.canRequestFocus) {
-        lastFocused.requestFocus();
-      } else {
-        _contentScope.traversalDescendants
-            .where((n) => n.canRequestFocus)
-            .firstOrNull
-            ?.requestFocus();
-      }
+      _focusContentFromRail();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// Move focus from the rail back into the content — the last-focused item if
+  /// it's still around, else the first focusable one.
+  void _focusContentFromRail() {
+    final lastFocused = _contentScope.focusedChild;
+    if (lastFocused != null && lastFocused.canRequestFocus) {
+      lastFocused.requestFocus();
+    } else {
+      _contentScope.traversalDescendants
+          .where((n) => n.canRequestFocus)
+          .firstOrNull
+          ?.requestFocus();
+    }
   }
 
   /// Move focus into the rail so the drawer expands (its onFocusChange drives
@@ -195,23 +213,72 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     });
   }
 
+  // NB: the rail bridge (this + [_onRailKey] + [_railDirectional]) is
+  // deliberately NOT gated on MediaQuery.accessibleNavigation anymore. Fire TV
+  // reports that flag true after returning from the native player Activity even
+  // with no screen reader running, and the old gate turned the LEFT-opens-rail
+  // gesture completely off in that state — so the drawer became impossible to
+  // open until an app restart. Opening the rail on a left-edge press is fine to
+  // do whether or not a screen reader is on.
   KeyEventResult _onContentKey(FocusNode _, KeyEvent event) {
-    if (MediaQuery.maybeOf(context)?.accessibleNavigation ?? false) {
-      // Screen reader is on — let TalkBack own D-pad traversal instead of us
-      // bridging rail ↔ content here.
-      return KeyEventResult.ignored;
-    }
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      final moved = FocusManager.instance.primaryFocus
-              ?.focusInDirection(TraversalDirection.left) ??
-          false;
-      // At the left edge → open the rail on the CURRENT page's item so it's
-      // clear which screen you're on.
-      if (!moved) _openRail();
+      _openRailOnLeft();
       return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
+  }
+
+  /// LEFT from content: step to the poster on the left if there really is one in
+  /// the SAME row, otherwise open the rail. Sturdier than the old
+  /// `focusInDirection(left)` check — every Home item (hero buttons + all rail
+  /// cards) lives in ONE flat scope, so that call can jump to another row's
+  /// first card (returning true) and skip opening the rail, e.g. from the hero
+  /// banner. Deciding "am I at my row's left edge?" by geometry makes the menu
+  /// open reliably wherever focus lands.
+  void _openRailOnLeft() {
+    final pf = FocusManager.instance.primaryFocus;
+    final r = pf?.rect;
+    if (r == null) {
+      _openRail();
+      return;
+    }
+    var hasLeftInRow = false;
+    for (final n in _contentScope.traversalDescendants) {
+      if (identical(n, pf) || !n.canRequestFocus) continue;
+      final nr = n.rect;
+      final sameRow = (nr.center.dy - r.center.dy).abs() <= r.height * 0.6;
+      if (sameRow && nr.left < r.left - 1) {
+        hasLeftInRow = true;
+        break;
+      }
+    }
+    if (hasLeftInRow) {
+      pf?.focusInDirection(TraversalDirection.left);
+    } else {
+      _openRail();
+    }
+  }
+
+  /// The rail open/close gesture expressed against Flutter's directional-focus
+  /// intent, so it can also run from an app-root [Actions] override. A fallback:
+  /// that override stays in the key chain even if focus ever lands OUTSIDE the
+  /// content/rail scopes (where [_onContentKey]/[_onRailKey] would be bypassed).
+  /// On a healthy TV the scope handlers consume the key first, so this never
+  /// runs there.
+  ///
+  /// Returns true when it handled the direction (rail opened/closed); false to
+  /// let the default directional move run.
+  bool _railDirectional(TraversalDirection dir) {
+    if (dir == TraversalDirection.left && !_railScope.hasFocus) {
+      _openRailOnLeft();
+      return true;
+    }
+    if (dir == TraversalDirection.right && _railScope.hasFocus) {
+      _focusContentFromRail();
+      return true;
+    }
+    return false;
   }
 
   @override
@@ -635,7 +702,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       child: BlocListener<ActiveSourceCubit, String>(
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, _) => sl<HomeCubit>().load(reset: true),
-        child: Scaffold(
+        child: Actions(
+          actions: <Type, Action<Intent>>{
+            DirectionalFocusIntent: _TvRailDirectionalAction(this),
+          },
+          child: Scaffold(
           backgroundColor: AppColors.bg,
           body: Stack(
             children: [
@@ -713,6 +784,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
               ),
             ],
           ),
+        ),
         ),
       ),
     );
