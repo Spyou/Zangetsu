@@ -138,51 +138,6 @@ class MainActivity : FlutterActivity() {
         super.onPause()
     }
 
-    // ── Auto Frame Rate ──────────────────────────────────────────────────────
-    // Pick the LOWEST display mode whose refresh can still show the video
-    // (refresh >= the video fps). That's the power-optimal choice, matching how
-    // the system picks for ExoPlayer/CloudStream: 24fps → 60Hz instead of 120Hz
-    // (~half the panel power). The trade is mild 3:2 judder on 24fps when the
-    // panel has no low mode — deliberate, battery over that last bit of
-    // smoothness. On a panel that DOES have a low matching mode (24/48/50Hz),
-    // "lowest >= fps" lands there — low power AND judder-free. Same-resolution
-    // modes only; no-ops on single-mode panels.
-    private fun applyFrameRate(fps: Double) {
-        if (fps <= 0.0 || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        @Suppress("DEPRECATION")
-        val disp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) display
-        else windowManager.defaultDisplay
-        disp ?: return
-        val current = disp.mode ?: return
-        val modes = disp.supportedModes
-        if (modes == null || modes.size <= 1) return
-        val sameRes = modes.filter {
-            it.physicalWidth == current.physicalWidth &&
-                it.physicalHeight == current.physicalHeight
-        }
-        // Lowest refresh that keeps up with the video (1Hz slack for 23.976 /
-        // 59.94); if nothing is fast enough (e.g. a 120fps clip on a 60Hz panel)
-        // fall back to the highest available.
-        val best = sameRes.filter { it.refreshRate >= fps - 1.0 }
-            .minByOrNull { it.refreshRate }
-            ?: sameRes.maxByOrNull { it.refreshRate }
-            ?: return
-        if (best.modeId == current.modeId) return
-        val attrs = window.attributes
-        if (attrs.preferredDisplayModeId == best.modeId) return
-        attrs.preferredDisplayModeId = best.modeId
-        window.attributes = attrs
-    }
-
-    // Back to the system default (mode 0) — called when the player closes.
-    private fun clearFrameRate() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        val attrs = window.attributes
-        if (attrs.preferredDisplayModeId == 0) return
-        attrs.preferredDisplayModeId = 0
-        window.attributes = attrs
-    }
-
     // A "new episode" notification tapped while the app is already running:
     // forward its payload to Dart so it opens that show's Detail.
     override fun onNewIntent(intent: Intent) {
@@ -370,28 +325,6 @@ class MainActivity : FlutterActivity() {
                                 )
                             } catch (_: Exception) {}
                         }
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // Auto Frame Rate: match the display's refresh rate to the playing
-        // video's fps — what ExoPlayer's setFrameRate does, but at the window
-        // level, since our video is a Flutter texture (SurfaceProducer), not a
-        // SurfaceView the system can frame-rate-match on its own. Armed by the
-        // phone player while a video is on screen; cleared to the system default
-        // on exit.
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/frame_rate")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "setFrameRate" -> {
-                        val fps = (call.arguments as? Number)?.toDouble() ?: 0.0
-                        try { applyFrameRate(fps) } catch (_: Exception) {}
-                        result.success(true)
-                    }
-                    "clearFrameRate" -> {
-                        try { clearFrameRate() } catch (_: Exception) {}
                         result.success(true)
                     }
                     else -> result.notImplemented()
