@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               grant_type: "authorization_code",
               client_id: "48181",
-              client_secret: "2aK6Bb7QbCWvRh5ebNhP9igaj3TFlhmezSg4HEOS",
+              client_secret: Deno.env.get("ANILIST_TV_CLIENT_SECRET") ?? "",
               redirect_uri: redirectUri,
               code,
             }),
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
             headers: { "content-type": "application/json" },
             body: JSON.stringify({
               client_id: CID,
-              client_secret: "34ba8e5ac7c8a5c27926dfdf78205e5b913de9928361cb5a243558239298c96d",
+              client_secret: Deno.env.get("SIMKL_CLIENT_SECRET") ?? "",
               redirect_uri: redirectUri,
               grant_type: "authorization_code",
               code,
