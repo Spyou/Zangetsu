@@ -21,7 +21,7 @@ jobs:
   mirror:
     if: github.repository == 'Spyou/Zangetsu'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Configure credentials via .netrc
@@ -59,7 +59,17 @@ jobs:
             exit 1
           fi
 
-      - name: Push full mirror to Codeberg (with retry)
+      - name: Configure git for large/slow pushes
+        run: |
+          set -euo pipefail
+          cd repo-mirror
+          git config http.postBuffer 1048576000
+          git config http.version HTTP/1.1
+          git config http.lowSpeedLimit 0
+          git config http.lowSpeedTime 999999
+          git config core.compression 9
+
+      - name: Set Codeberg remote
         env:
           CB_USER: ${{ secrets.CODEBERG_USER }}
           CB_REPO: ${{ secrets.CODEBERG_REPO }}
@@ -68,24 +78,38 @@ jobs:
           cd repo-mirror
           git remote set-url origin "https://codeberg.org/${CB_USER}/${CB_REPO}.git"
 
-          # Drop GitHub's per-PR refs before pushing. `git clone --mirror` pulls
-          # down refs/pull/*, which Codeberg refuses ("deny updating a hidden
-          # ref") because Forgejo owns that namespace itself. The branches and
-          # tags still pushed fine, but git exits non-zero on the partial
-          # rejection, so the whole job went red from the day the first PR was
-          # opened. Nothing downstream needs these mirrored.
-          git for-each-ref --format='delete %(refname)' refs/pull | git update-ref --stdin
-
+      - name: Push branches to Codeberg (with retry + prune)
+        run: |
+          set -euo pipefail
+          cd repo-mirror
           attempt=1
-          max_attempts=3
-          until git push --mirror origin; do
+          max_attempts=6
+          until git push --force --prune origin 'refs/heads/*:refs/heads/*'; do
             if [ "${attempt}" -ge "${max_attempts}" ]; then
-              echo "::error::Push to Codeberg failed after ${max_attempts} attempts."
+              echo "::error::Branch push to Codeberg failed after ${max_attempts} attempts."
               exit 1
             fi
-            echo "Push attempt ${attempt} failed, retrying in 10s..."
+            wait=$((attempt * 20))
+            echo "Branch push attempt ${attempt} failed, retrying in ${wait}s..."
             attempt=$((attempt + 1))
-            sleep 10
+            sleep "${wait}"
+          done
+
+      - name: Push tags to Codeberg (with retry + prune)
+        run: |
+          set -euo pipefail
+          cd repo-mirror
+          attempt=1
+          max_attempts=6
+          until git push --force --prune origin 'refs/tags/*:refs/tags/*'; do
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+              echo "::error::Tag push to Codeberg failed after ${max_attempts} attempts."
+              exit 1
+            fi
+            wait=$((attempt * 20))
+            echo "Tag push attempt ${attempt} failed, retrying in ${wait}s..."
+            attempt=$((attempt + 1))
+            sleep "${wait}"
           done
 
       - name: Clean up credentials
