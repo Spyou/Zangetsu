@@ -104,6 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _searchCtrl.dispose();
     _settingsCubit.close();
     dockHiddenBySection.value = false; // never leave the dock stuck hidden
+    shellBackIntercepted.value = false;
     super.dispose();
   }
 
@@ -896,8 +897,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
           bloc: _settingsCubit,
           // Hide the shell's floating dock while a section sub-page is open, so
           // it reads as a full page. The shell also gates on the active tab.
-          listener: (context, s) =>
-              dockHiddenBySection.value = s.openSection != null,
+          listener: (context, s) {
+            dockHiddenBySection.value = s.openSection != null;
+            // When a section or search is open our PopScope owns Back — tell the
+            // shell to stand down so it doesn't also fire the exit toast.
+            shellBackIntercepted.value =
+                s.openSection != null || s.query.isNotEmpty;
+          },
           builder: (context, s) {
             final section = s.openSection;
             final query = s.query;

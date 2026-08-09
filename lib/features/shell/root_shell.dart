@@ -102,6 +102,11 @@ class _RootShellState extends State<RootShell>
   /// Only reached when Back would otherwise close the app — deep screens
   /// (detail, player, …) are pushed above this shell and pop normally.
   void _onBack() {
+    // A sub-page inside the current tab (an open Settings section, an active
+    // search) owns this Back — its own PopScope handles it in the same event.
+    // Both PopScopes share this route, so Flutter fires ours too; bail so we
+    // don't flash the exit toast over a normal in-tab back-out.
+    if (shellBackIntercepted.value) return;
     final now = DateTime.now();
     if (_lastBackPress != null &&
         now.difference(_lastBackPress!) < const Duration(seconds: 2)) {
