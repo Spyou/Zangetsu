@@ -899,7 +899,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Double-tap one side to seek; rapid taps accumulate (−10s, −20s, −30s…)
   /// and the indicator shows on that side, YouTube-style.
   void _accumSeek(int dir) {
-    HapticFeedback.lightImpact(); // subtle tactile tick on seek
+    HapticFeedback.lightImpact(); // tactile tick, like AnymeX
     _c.seekBy(Duration(seconds: dir * _seekSeconds));
     if (_seekSide != dir) _seekAccum = 0; // changed direction → restart
     _seekSide = dir;
@@ -2228,7 +2228,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-              // 4. Double-tap seek indicator: an edge gradient
+              // 4. Double-tap seek indicator (AnymeX-style): an edge gradient
               // wash on the tapped side + an icon disc + the running total,
               // sliding/fading in. Re-keyed per tap so it replays each time.
               if (_seekSide != 0)
