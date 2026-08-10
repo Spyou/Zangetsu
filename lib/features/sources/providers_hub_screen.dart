@@ -280,6 +280,11 @@ String _activeSourceLabel(String id) {
   if (id.startsWith('mihon:')) {
     return sl<MihonManager>().get(id)?.displayName ?? id;
   }
+  if (id.startsWith('lnr:')) {
+    return sl.isRegistered<LnReaderManager>()
+        ? (sl<LnReaderManager>().metaFor(id.substring(4))?.name ?? id)
+        : id;
+  }
   final e = sl<ProviderRegistry>().entryFor(id);
   if (e == null) return id;
   return e.displayName.isNotEmpty ? e.displayName : e.name;
