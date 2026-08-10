@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/di/injector.dart';
 import '../../core/lnreader/lnreader_extension_service.dart';
 import '../../core/lnreader/lnreader_manager.dart';
+import '../../core/lnreader/novel_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
@@ -30,16 +31,67 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   final _searchCtrl = TextEditingController();
   String _query = '';
 
+  final _langPrefs = sl<NovelLangPrefs>();
+
   @override
   void initState() {
     super.initState();
+    _langPrefs.addListener(_onLangsChanged);
     _load();
   }
 
   @override
   void dispose() {
+    _langPrefs.removeListener(_onLangsChanged);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _onLangsChanged() {
+    if (mounted) setState(() {});
+  }
+
+  /// Distinct languages present in the loaded catalog.
+  Set<String> get _availableLangs => _plugins.map((m) => m.lang).toSet();
+
+  /// The languages actually shown: the user's saved selection, or — before
+  /// they've configured anything — a device-aware default of English + the
+  /// phone's language (plus "Other" so blank-lang plugins aren't hidden). Falls
+  /// back to every language if none of those are in the catalog, so the first
+  /// run is never empty.
+  Set<String> get _enabledLangs => _langPrefs.enabled ?? _defaultLangs();
+
+  // Device language code → the catalog's native-name `lang` value, so the
+  // default can include the phone's language. The LNReader index labels
+  // languages by native name, not ISO code, so we map the device's code to the
+  // exact string it uses. Missing entries (e.g. Arabic's LTR-marked value) just
+  // fall back to English-only, which the user can widen from the sheet.
+  static const _deviceNative = {
+    'en': 'English', 'ru': 'Русский', 'es': 'Español', 'fr': 'Français',
+    'tr': 'Türkçe', 'pt': 'Português', 'id': 'Bahasa Indonesia',
+    'vi': 'Tiếng Việt', 'ja': '日本語', 'th': 'ไทย', 'uk': 'Українська',
+    'pl': 'Polski', 'zh': '中文, 汉语, 漢語', 'ko': '조선말, 한국어',
+  };
+
+  Set<String> _defaultLangs() {
+    final available = _availableLangs;
+    final device =
+        WidgetsBinding.instance.platformDispatcher.locale.languageCode;
+    final def = <String>{};
+    if (available.contains('English')) def.add('English');
+    final native = _deviceNative[device];
+    if (native != null && available.contains(native)) def.add(native);
+    // If neither English nor the phone's language is in the catalog, show
+    // everything so the first run is never empty.
+    return def.isEmpty ? available : def;
+  }
+
+  /// Display label for a `lang` value. The index already uses native names
+  /// ('English', 'Русский', '日本語', 'Multi'…), so show them as-is — only ''
+  /// becomes "Other". Strips the LTR mark a couple of entries carry.
+  static String _langName(String lang) {
+    if (lang.isEmpty) return 'Other';
+    return lang.replaceAll('\u200e', '').trim(); // strip LTR mark (e.g. Arabic)
   }
 
   /// [refresh] is true when called from `RefreshIndicator.onRefresh` — the
@@ -71,7 +123,19 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: Text('LNReader', style: AppText.barTitle)),
+      appBar: AppBar(
+        title: Text('LNReader', style: AppText.barTitle),
+        actions: [
+          // Only worth showing when the catalog actually spans more than one
+          // language (otherwise there's nothing to filter).
+          if (_state == _LoadState.loaded && _availableLangs.length > 1)
+            IconButton(
+              tooltip: 'Languages',
+              icon: const Icon(Icons.language_rounded),
+              onPressed: _openLanguageSheet,
+            ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -106,12 +170,106 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
     }
   }
 
+  /// Multi-select language sheet — one row per language in the catalog (with its
+  /// plugin count), toggling the [NovelLangPrefs] enabled set live. English
+  /// first, then most-plugins first, with "Other" (blank lang) last.
+  void _openLanguageSheet() {
+    final counts = <String, int>{};
+    for (final m in _plugins) {
+      counts[m.lang] = (counts[m.lang] ?? 0) + 1;
+    }
+    final langs = counts.keys.toList()
+      ..sort((a, b) {
+        if (a == b) return 0;
+        if (a.isEmpty) return 1; // "Other" last
+        if (b.isEmpty) return -1;
+        if (a == 'English') return -1; // English first
+        if (b == 'English') return 1;
+        final byCount = counts[b]!.compareTo(counts[a]!);
+        return byCount != 0 ? byCount : _langName(a).compareTo(_langName(b));
+      });
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (ctx, setSheet) {
+              // Read through the same effective set the list uses (saved
+              // selection, else the device-aware default).
+              final enabled = _enabledLangs;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+                    child: Row(
+                      children: [
+                        Text('Languages', style: AppText.headline),
+                        const Spacer(),
+                        Text(
+                          '${enabled.where(counts.containsKey).length} of ${langs.length}',
+                          style: AppText.caption
+                              .copyWith(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final lang in langs)
+                          CheckboxListTile(
+                            value: enabled.contains(lang),
+                            onChanged: (v) {
+                              final next = {...enabled};
+                              if (v ?? false) {
+                                next.add(lang);
+                              } else {
+                                next.remove(lang);
+                              }
+                              _langPrefs.setEnabled(next);
+                              setSheet(() {});
+                            },
+                            activeColor: AppColors.accent,
+                            controlAffinity: ListTileControlAffinity.leading,
+                            title: Text(_langName(lang)),
+                            secondary: Text(
+                              '${counts[lang]}',
+                              style: AppText.caption
+                                  .copyWith(color: AppColors.textTertiary),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   Widget _list() {
     final installedIds =
         sl<LnReaderExtensionService>().installed().map((m) => m.id).toSet();
+    final enabled = _enabledLangs;
     final filtered = _plugins
-        .where((m) => sourceSearchMatches(_query, m.name, m.lang))
+        .where((m) =>
+            enabled.contains(m.lang) &&
+            sourceSearchMatches(_query, m.name, m.lang))
         .toList();
+    // Distinguish "your language filter hid everything" from "nothing here".
+    final hiddenByLang = _query.trim().isEmpty && _plugins.isNotEmpty;
 
     // Always wrapped in RefreshIndicator + a scrollable child (even when
     // filtered is empty) so pull-to-refresh keeps working on an empty result.
@@ -124,10 +282,14 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
               padding: const EdgeInsets.fromLTRB(16, 48, 16, 24),
               children: [
                 EmptyState(
-                  icon: Icons.menu_book_outlined,
-                  message: _query.trim().isEmpty
-                      ? 'No novel sources available.'
-                      : 'No sources match "${_query.trim()}".',
+                  icon: hiddenByLang
+                      ? Icons.language_rounded
+                      : Icons.menu_book_outlined,
+                  message: _query.trim().isNotEmpty
+                      ? 'No sources match "${_query.trim()}".'
+                      : hiddenByLang
+                          ? 'No sources for the selected languages.\nTap the language button to add more.'
+                          : 'No novel sources available.',
                 ),
               ],
             )

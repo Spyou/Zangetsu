@@ -15,6 +15,7 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/lnreader/lnreader_extension_service.dart';
 import 'package:watch_app/core/lnreader/lnreader_manager.dart';
+import 'package:watch_app/core/lnreader/novel_lang_prefs.dart';
 import 'package:watch_app/core/mihon/mihon_manager.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
@@ -132,7 +133,10 @@ void main() {
           ),
         ),
       )
-      ..registerSingleton<ActiveSourceCubit>(ActiveSourceCubit(fallback: ''));
+      ..registerSingleton<ActiveSourceCubit>(ActiveSourceCubit(fallback: ''))
+      // The LNReader screen reads this on mount; its box guard means no Hive
+      // is needed here (unconfigured → the screen uses its default languages).
+      ..registerSingleton<NovelLangPrefs>(NovelLangPrefs());
   });
 
   tearDown(() async {

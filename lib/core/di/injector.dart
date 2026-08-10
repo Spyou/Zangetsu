@@ -74,6 +74,7 @@ import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_extension_service.dart';
 import '../lnreader/lnreader_manager.dart';
+import '../lnreader/novel_lang_prefs.dart';
 import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
@@ -216,6 +217,8 @@ Future<void> initDependencies() async {
   await PinnedSources.init(); // favourite sources pinned atop the source picker
   await SearchSourcePrefs.init();
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
+  await NovelLangPrefs.init(); // which languages show in the LNReader catalog
+  sl.registerSingleton<NovelLangPrefs>(NovelLangPrefs());
   await SearchPrefs.init();
   sl.registerSingleton<SearchPrefs>(SearchPrefs());
   // Per-source reliability: orders search healthy-first, recoverably skips dead

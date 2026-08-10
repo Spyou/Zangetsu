@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/lnreader/lnreader_extension_service.dart';
 import 'package:watch_app/core/lnreader/lnreader_manager.dart';
+import 'package:watch_app/core/lnreader/novel_lang_prefs.dart';
 import 'package:watch_app/features/sources/lnreader_sources_screen.dart';
 
 const _catalog = <LnReaderPluginMeta>[
@@ -75,6 +76,21 @@ class _SpyLnReaderManager extends LnReaderManager {
   }
 }
 
+/// In-memory [NovelLangPrefs] so this test needs no real Hive box (a real box
+/// does file I/O that never resolves under this file's fake-async zone — see
+/// the header note).
+class _FakeNovelLangPrefs extends NovelLangPrefs {
+  _FakeNovelLangPrefs([this._langs]);
+  Set<String>? _langs;
+  @override
+  Set<String>? get enabled => _langs;
+  @override
+  Future<void> setEnabled(Set<String> langs) async {
+    _langs = langs;
+    notifyListeners();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -91,6 +107,8 @@ void main() {
     );
     sl.registerSingleton<LnReaderExtensionService>(service);
     sl.registerSingleton<LnReaderManager>(manager);
+    // Both catalog languages on, so the non-language tests see both plugins.
+    sl.registerSingleton<NovelLangPrefs>(_FakeNovelLangPrefs({'en', 'id'}));
   });
 
   tearDown(() async => sl.reset());
@@ -148,6 +166,15 @@ void main() {
       // the query text now sitting in the TextField.
       expect(find.text('id · b.test'), findsOneWidget); // Plugin B row shown
       expect(find.text('en · a.test'), findsNothing); // Plugin A row filtered
+    });
+
+    testWidgets('the language filter hides sources of unselected languages',
+        (tester) async {
+      await sl<NovelLangPrefs>().setEnabled({'en'}); // Indonesian off
+      await loadScreen(tester);
+
+      expect(find.text('en · a.test'), findsOneWidget); // English shown
+      expect(find.text('id · b.test'), findsNothing); // Indonesian hidden
     });
 
     testWidgets('Remove routes through LnReaderManager.uninstall and clears the row',
