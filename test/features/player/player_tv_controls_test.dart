@@ -374,12 +374,12 @@ void main() {
       },
     );
 
-    // ── TalkBack gate: root Focus key handler (_handleKey) ──────────────────
+    // ── D-pad stays live regardless of accessibleNavigation ────────────────
     //
-    // A screen reader does its own D-pad activation/traversal, so _handleKey
-    // must fall through (ignored) instead of also toggling play or seeking
-    // once it's on. Sighted users (accessibleNavigation: false, the default)
-    // keep the exact original OK/seek behaviour.
+    // Fire TV / onn falsely report accessibleNavigation=true after the native
+    // player with no screen reader running, which used to dead-key the D-pad.
+    // So _handleKey now processes OK/seek/arrows the same whether the flag is
+    // on or off — the screen-reader-ON case mirrors the OFF case exactly.
 
     testWidgets(
       'accessibleNavigation OFF: select still calls togglePlay (sighted '
@@ -421,8 +421,8 @@ void main() {
     );
 
     testWidgets(
-      'accessibleNavigation ON: select is ignored (TalkBack owns D-pad '
-      'activation) — togglePlay does NOT fire',
+      'accessibleNavigation ON: select still calls togglePlay (D-pad stays '
+      'live even when the TV falsely reports a screen reader)',
       (tester) async {
         await _pumpControls(
           tester,
@@ -434,15 +434,15 @@ void main() {
 
         await tester.sendKeyEvent(LogicalKeyboardKey.select);
         await tester.pumpAndSettle();
-        expect(controller.togglePlayCalls, 0);
-        // The guard returns ignored before _showBar() ever runs.
-        expect(barNotifier.value, isFalse);
+        expect(controller.togglePlayCalls, 1);
+        // _showBar() runs too — same path as the screen-reader-OFF case.
+        expect(barNotifier.value, isTrue);
       },
     );
 
     testWidgets(
-      'accessibleNavigation ON: arrowRight is ignored (TalkBack owns D-pad '
-      'activation) — seekBy does NOT fire',
+      'accessibleNavigation ON: arrowRight still seeks (D-pad stays live even '
+      'when the TV falsely reports a screen reader)',
       (tester) async {
         await _pumpControls(
           tester,
@@ -454,8 +454,11 @@ void main() {
 
         await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
         await tester.pumpAndSettle();
-        expect(controller.seekByCalls, isEmpty);
-        expect(barNotifier.value, isFalse);
+        expect(
+          controller.seekByCalls,
+          contains(const Duration(seconds: 10)),
+        );
+        expect(barNotifier.value, isTrue);
       },
     );
   });

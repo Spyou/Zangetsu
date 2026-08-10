@@ -14,7 +14,6 @@ import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_record.dart';
 import 'package:watch_app/core/models/episode.dart';
-import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/media_extras.dart';
@@ -28,6 +27,7 @@ import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/base_provider.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/detail/cubit/detail_cubit.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
@@ -233,6 +233,10 @@ void main() {
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
     sl.registerSingleton<CloudStreamManager>(_FakeCloudStreamManager());
     sl.registerSingleton<DownloadManager>(_FakeDownloadManager());
+    // Build reads TrackerHub (_maybeFetchTrackerProgress / _trackingAvailable).
+    // No trackers → anyConnected == false, so both bail before touching the
+    // binding store or rendering the Tracking button.
+    sl.registerSingleton<TrackerHub>(TrackerHub(const []));
 
     // Build and pre-load a DetailCubit so the widget renders the success state.
     final fakePrefs = _FakeTitlePrefs();
@@ -310,7 +314,9 @@ void main() {
             (node.debugLabel ?? '').startsWith('tv-detail-')) {
           scopeNodes.add(node);
         }
-        for (final child in node.children) visitScope(child);
+        for (final child in node.children) {
+          visitScope(child);
+        }
       }
       visitScope(tester.binding.focusManager.rootScope);
       expect(
@@ -552,12 +558,13 @@ void main() {
     },
   );
 
-  // ── TalkBack gate: _onLeftKey / _onRightKey ────────────────────────────────
+  // ── D-pad bridge: _onLeftKey / _onRightKey ─────────────────────────────────
   //
-  // A screen reader does its own arrow-key traversal, so both handlers must
-  // fall through (ignored) instead of fighting it once it's on. Sighted
-  // users (accessibleNavigation: false, the default) get the exact original
-  // left ↔ right bridging.
+  // The old accessibleNavigation gate was removed (commit 1ef97f8): Fire TV /
+  // onn falsely report accessibleNavigation: true after the native player,
+  // which dead-keyed the D-pad. Both handlers now bridge left ↔ right the same
+  // way REGARDLESS of accessibleNavigation — the screen-reader-ON case behaves
+  // exactly like the screen-reader-OFF (sighted user) case.
 
   testWidgets(
     'DetailScreenTv _onLeftKey: arrowRight bridges left → right when a '
@@ -591,8 +598,9 @@ void main() {
   );
 
   testWidgets(
-    'DetailScreenTv _onLeftKey: arrowRight is ignored (TalkBack owns '
-    'traversal) when a screen reader is ON',
+    'DetailScreenTv _onLeftKey: arrowRight STILL bridges left → right when a '
+    'screen reader is ON (Fire TV / onn falsely report accessibleNavigation, '
+    'so the D-pad bridge must not dead-key)',
     (tester) async {
       await tester.pumpWidget(
         BlocProvider<DetailCubit>.value(
@@ -609,11 +617,15 @@ void main() {
 
       final playFocus = tester.binding.focusManager.primaryFocus;
       expect(playFocus, isNotNull);
+      expect(playFocus?.nearestScope?.debugLabel, 'tv-detail-left');
 
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
 
-      expect(tester.binding.focusManager.primaryFocus, same(playFocus));
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-detail-right',
+      );
     },
   );
 
@@ -655,32 +667,9 @@ void main() {
   );
 
   testWidgets(
-    'DetailScreenTv _onRightKey: arrowLeft is ignored (TalkBack owns '
-    'traversal) when a screen reader is ON',
+    'DetailScreenTv _onRightKey: arrowLeft STILL bridges right → left when a '
+    'screen reader is ON (mirrors the OFF case — the gate is gone)',
     (tester) async {
-      // Phase 1 (screen reader off): land in the right pane the only way a
-      // real remote could — via the (separately-tested, working) OFF-path
-      // _onLeftKey.
-      await tester.pumpWidget(
-        BlocProvider<DetailCubit>.value(
-          value: cubit,
-          child: MaterialApp(
-            home: MediaQuery(
-              data: const MediaQueryData(accessibleNavigation: false),
-              child: DetailScreenTv(item: _testItem),
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
-      await tester.pumpAndSettle();
-      final rightFocus = tester.binding.focusManager.primaryFocus;
-      expect(rightFocus?.nearestScope?.debugLabel, 'tv-detail-right');
-
-      // Phase 2: flip the screen reader on. This rebuilds the SAME element
-      // (same widget type/position under the same BlocProvider), so
-      // _leftScope/_rightScope and the current focus survive the rebuild.
       await tester.pumpWidget(
         BlocProvider<DetailCubit>.value(
           value: cubit,
@@ -693,12 +682,25 @@ void main() {
         ),
       );
       await tester.pump();
-      expect(tester.binding.focusManager.primaryFocus, same(rightFocus));
 
-      // arrowLeft must now be a no-op — TalkBack owns it.
+      final playFocus = tester.binding.focusManager.primaryFocus;
+      expect(playFocus, isNotNull);
+
+      // Get into the right pane first (via _onLeftKey, which now works with a
+      // screen reader on too).
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.pumpAndSettle();
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-detail-right',
+      );
+
+      // arrowLeft at the right pane's left edge → _onRightKey crosses back to
+      // the left pane, restoring the previously-focused Play button — even
+      // with accessibleNavigation on.
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pumpAndSettle();
-      expect(tester.binding.focusManager.primaryFocus, same(rightFocus));
+      expect(tester.binding.focusManager.primaryFocus, same(playFocus));
     },
   );
 }

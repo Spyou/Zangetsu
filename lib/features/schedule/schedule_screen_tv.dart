@@ -301,47 +301,53 @@ class _PosterTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          TvFocusable(
-            onTap: onTap,
-            focusLabel: title,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: SizedBox(
-                width: cardWidth,
-                height: imageHeight,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [AppColors.surface2, AppColors.surface],
-                        ),
-                      ),
-                    ),
-                    if (imageUrl != null)
-                      Image.network(imageUrl!, fit: BoxFit.cover,
-                          errorBuilder: (_, _, _) => const SizedBox.shrink()),
-                    if (pill != null)
-                      Positioned(
-                        left: 6,
-                        top: 6,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: pill!.bg,
-                            borderRadius: BorderRadius.circular(999),
+          // Bound the height: focusLabel wraps the child in an all-positioned
+          // Stack that sizes to its constraints, so an unbounded height (this
+          // Column gives its children infinite main-axis room) would assert.
+          SizedBox(
+            height: imageHeight,
+            child: TvFocusable(
+              onTap: onTap,
+              focusLabel: title,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: SizedBox(
+                  width: cardWidth,
+                  height: imageHeight,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [AppColors.surface2, AppColors.surface],
                           ),
-                          child: Text(pill!.text,
-                              style: AppText.caption.copyWith(
-                                  color: pill!.fg,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 10.5)),
                         ),
                       ),
-                  ],
+                      if (imageUrl != null)
+                        Image.network(imageUrl!, fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => const SizedBox.shrink()),
+                      if (pill != null)
+                        Positioned(
+                          left: 6,
+                          top: 6,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: pill!.bg,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(pill!.text,
+                                style: AppText.caption.copyWith(
+                                    color: pill!.fg,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 10.5)),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),

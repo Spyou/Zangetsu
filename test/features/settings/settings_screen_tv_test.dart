@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
@@ -85,8 +88,14 @@ Widget _buildUnderTest({
 
 void main() {
   late ActiveSourceCubit activeCubit;
+  late Directory hiveDir;
 
-  setUp(() {
+  setUp(() async {
+    // SettingsScreenTv.initState creates an UpdateService and reads its beta
+    // opt-in, which opens the "updates" Hive box. Point Hive at a temp dir so
+    // that box open succeeds instead of throwing "Hive not initialized".
+    hiveDir = await Directory.systemTemp.createTemp('settings_tv_test');
+    Hive.init(hiveDir.path);
     _registerStubs();
     // ActiveSourceCubit with box=null falls back to 'allanime' — no Hive.
     activeCubit = ActiveSourceCubit();
@@ -95,6 +104,8 @@ void main() {
   tearDown(() async {
     await activeCubit.close();
     await GetIt.instance.reset();
+    await Hive.close();
+    await hiveDir.delete(recursive: true);
   });
 
   testWidgets(
@@ -116,7 +127,7 @@ void main() {
       // Tiles that are visible in the default 800×600 test viewport (the
       // ListView lazy-builds only what fits; Storage and below are off-screen).
       expect(find.text('Sign in'), findsOneWidget);
-      expect(find.text('Watch Party'), findsOneWidget);
+      expect(find.text('Backup & Restore'), findsOneWidget);
       expect(find.text('Providers'), findsOneWidget);
       expect(find.text('Active source'), findsOneWidget);
       expect(find.text('Source health'), findsOneWidget);

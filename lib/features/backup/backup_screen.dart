@@ -287,16 +287,22 @@ class _BackupScreenState extends State<BackupScreen> {
         ),
       );
     }
-    return CheckboxListTile(
-      value: selected,
-      onChanged: _busy ? null : (v) => toggle(),
-      title: Text(
-        label,
-        style: AppText.body.copyWith(color: AppColors.textPrimary),
+    // Transparent Material so the tile's ink/splash paints above the
+    // SettingsCard's DecoratedBox background (Flutter asserts otherwise — the
+    // card colour would hide the splash).
+    return Material(
+      type: MaterialType.transparency,
+      child: CheckboxListTile(
+        value: selected,
+        onChanged: _busy ? null : (v) => toggle(),
+        title: Text(
+          label,
+          style: AppText.body.copyWith(color: AppColors.textPrimary),
+        ),
+        subtitle: Text(subtitle, style: AppText.caption),
+        activeColor: AppColors.accent,
+        controlAffinity: ListTileControlAffinity.leading,
       ),
-      subtitle: Text(subtitle, style: AppText.caption),
-      activeColor: AppColors.accent,
-      controlAffinity: ListTileControlAffinity.leading,
     );
   }
 

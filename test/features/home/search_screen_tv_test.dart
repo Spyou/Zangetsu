@@ -235,14 +235,15 @@ void main() {
     },
   );
 
-  // ── TalkBack gate: _onFieldKey ────────────────────────────────────────────
+  // ── _onFieldKey: arrowDown leaves the field regardless of accessibleNav ───
   //
-  // A screen reader does its own arrow-key traversal, so _onFieldKey must
-  // fall through (ignored) instead of bouncing focus out of the field once
-  // it's on. Sighted users (accessibleNavigation: false, the default) get
-  // the exact original down-and-out behaviour. The scope chips ("All
-  // sources"/"Current source") render unconditionally below the field, so
-  // they're always a valid down-traversal target regardless of search state.
+  // Fire TV / onn falsely report accessibleNavigation=true after the native
+  // player with no screen reader running, which used to trap D-pad DOWN inside
+  // the field. So _onFieldKey now moves focus down whether the flag is on or
+  // off — the screen-reader-ON case mirrors the OFF case. The scope chips
+  // ("All sources"/"Current source") render unconditionally below the field,
+  // so they're always a valid down-traversal target regardless of search
+  // state.
 
   testWidgets(
     'SearchScreenTv _onFieldKey: arrowDown moves focus out of the field when '
@@ -281,8 +282,9 @@ void main() {
   );
 
   testWidgets(
-    'SearchScreenTv _onFieldKey: arrowDown is ignored (TalkBack owns '
-    'traversal) when a screen reader is ON',
+    'SearchScreenTv _onFieldKey: arrowDown still moves focus out of the field '
+    'when a screen reader is ON (D-pad stays live even when the TV falsely '
+    'reports one)',
     (tester) async {
       final bloc = _FakeSearchBloc(const SearchState());
       addTearDown(bloc.close);
@@ -309,7 +311,10 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
       await tester.pumpAndSettle();
 
-      expect(tester.binding.focusManager.primaryFocus, same(fieldNode));
+      expect(
+        tester.binding.focusManager.primaryFocus,
+        isNot(same(fieldNode)),
+      );
     },
   );
 }

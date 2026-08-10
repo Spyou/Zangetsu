@@ -14,10 +14,12 @@ import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
+import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
@@ -32,6 +34,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
+import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
@@ -284,6 +287,9 @@ void main() {
     final flags = await Hive.openBox('app_flags');
     await flags.put('communitySheetSeen', true);
     await Hive.openBox(ThemeController.boxName);
+    // SettingsScreen (rendered eagerly in the shared shell pages) reads
+    // sl<PlaybackPrefs>(), which reads its own Hive box — open it first.
+    await PlaybackPrefs.init();
 
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();
@@ -308,6 +314,18 @@ void main() {
     sl.registerSingleton<AiringService>(_FakeAiringService());
     sl.registerSingleton<ComingSoonService>(_FakeComingSoonService());
     sl.registerSingleton<AnnouncementService>(_FakeAnnouncementService());
+    sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
+    // Tracker fan-out hub (read by the My List / tracker pages). All three
+    // fakes report isConnected == false, so `connected` is empty and every
+    // read path safely no-ops — same construction as the injector.
+    sl.registerSingleton<TrackerHub>(
+      TrackerHub([sl<AniListService>(), sl<MalService>(), sl<SimklService>()]),
+    );
+    // App-wide content mode (read by Home + Search). Wraps the ActiveSourceCubit
+    // above; opens its own tiny 'content_mode' Hive box.
+    sl.registerSingleton<ContentModeCubit>(
+      await ContentModeCubit.create(activeSource),
+    );
   });
 
   tearDown(() async {
@@ -511,12 +529,16 @@ void main() {
     },
   );
 
-  // ── TalkBack gate: rail/content D-pad bridge handlers ─────────────────────
+  // ── rail/content D-pad bridge handlers ────────────────────────────────────
   //
-  // A screen reader does its own arrow-key traversal, so _onRailKey and
-  // _onContentKey must fall through (ignored) instead of fighting it once
-  // it's on. Sighted users (accessibleNavigation: false, the default) get
-  // the exact original rail ↔ content bridging.
+  // _onRailKey / _onContentKey bridge focus between the rail and the content
+  // scope on LEFT/RIGHT. This bridge is deliberately NOT gated on
+  // MediaQuery.accessibleNavigation: Fire TV / onn falsely report that flag
+  // true after returning from the native player Activity even with no screen
+  // reader running, and the old gate silently dead-keyed the D-pad in that
+  // state (the drawer became impossible to open until an app restart). So the
+  // arrows bridge rail ↔ content the same way whether accessibleNavigation is
+  // off (the default, sighted user) or on.
 
   testWidgets(
     'RootShellTv rail/content handlers: arrows bridge rail ↔ content when '
@@ -573,8 +595,8 @@ void main() {
   );
 
   testWidgets(
-    'RootShellTv rail/content handlers: arrows are ignored (TalkBack owns '
-    'traversal) when a screen reader is ON',
+    'RootShellTv rail/content handlers: arrows STILL bridge rail ↔ content when '
+    'a screen reader is ON (accessibleNavigation no longer gates the bridge)',
     (tester) async {
       await tester.pumpWidget(
         MultiBlocProvider(
@@ -592,33 +614,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final searchNavFocusable = tester.widget<TvFocusable>(
-        find.ancestor(
-          of: find.text('Search'),
-          matching: find.byType(TvFocusable),
-        ),
-      );
-      searchNavFocusable.onTap();
+      // Switch to Search — its field always autofocuses regardless of data,
+      // giving content a reliable focus target (Home's content is empty in
+      // this fixture since the fake repo throws).
+      tester
+          .widget<TvFocusable>(
+            find.ancestor(
+              of: find.text('Search'),
+              matching: find.byType(TvFocusable),
+            ),
+          )
+          .onTap();
       await tester.pumpAndSettle();
 
       final fieldFocus = tester.binding.focusManager.primaryFocus;
       expect(fieldFocus, isNotNull);
+      expect(fieldFocus?.nearestScope?.debugLabel, 'tv-content-scope');
 
-      // _onContentKey must be a no-op — TalkBack owns arrowLeft now.
+      // arrowLeft → _onContentKey drops back onto the current page's rail item
+      // even with accessibleNavigation ON (the gate that used to ignore this
+      // was removed — see commits 1ef97f8 / b6aa99c).
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pumpAndSettle();
-      expect(tester.binding.focusManager.primaryFocus, same(fieldFocus));
+      expect(
+        tester.binding.focusManager.primaryFocus?.nearestScope?.debugLabel,
+        'tv-rail-scope',
+      );
 
-      // Move focus to the rail directly (the gated _onContentKey can't do
-      // that anymore) to prove _onRailKey is ALSO a no-op.
-      final railNode = searchNavFocusable.focusNode!;
-      railNode.requestFocus();
-      await tester.pumpAndSettle();
-      expect(tester.binding.focusManager.primaryFocus, same(railNode));
-
+      // arrowRight → _onRailKey hands focus back to the last-focused content
+      // child — also fires with a screen reader ON.
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
       await tester.pumpAndSettle();
-      expect(tester.binding.focusManager.primaryFocus, same(railNode));
+      expect(tester.binding.focusManager.primaryFocus, same(fieldFocus));
     },
   );
 }

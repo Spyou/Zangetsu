@@ -6,6 +6,7 @@ import 'package:watch_app/core/download/download_record.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/features/downloads/downloads_screen.dart' show DownloadTile;
 import 'package:watch_app/features/downloads/downloads_screen_tv.dart';
 
 // ── Minimal fakes ─────────────────────────────────────────────────────────────
@@ -196,16 +197,22 @@ void main() {
       // Show title rendered in the group header.
       expect(find.text('Attack on Titan'), findsOneWidget);
 
-      // At least 2 TvFocusable widgets present (one per episode tile).
+      // Each show group renders a "Delete all episodes" header button plus one
+      // focusable per episode tile.
       final focusables =
           tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
       expect(focusables.length, greaterThanOrEqualTo(2));
 
-      // The very first TvFocusable (first episode tile) has autofocus=true.
-      expect(focusables.first.autofocus, isTrue);
+      // Episode tiles are the focusables wrapping a DownloadTile (the header
+      // delete-all button wraps a plain Icon and is not one).
+      final tiles = focusables.where((f) => f.child is DownloadTile).toList();
+      expect(tiles, hasLength(2));
 
-      // Subsequent tiles do NOT have autofocus.
-      expect(focusables.skip(1).any((f) => f.autofocus), isFalse);
+      // Exactly one focusable across the whole screen lands the D-pad, and it
+      // is the first episode tile — not the header delete-all button.
+      expect(focusables.where((f) => f.autofocus), hasLength(1));
+      expect(tiles.first.autofocus, isTrue);
+      expect(tiles.skip(1).any((f) => f.autofocus), isFalse);
     },
   );
 
@@ -252,13 +259,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final focusables =
-          tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
+      // Episode tiles wrap a DownloadTile; the group's "Delete all" header
+      // button is a separate focusable and is excluded here.
+      final tiles = tester
+          .widgetList<TvFocusable>(find.byType(TvFocusable))
+          .where((f) => f.child is DownloadTile)
+          .toList();
 
       // Two tiles: first (done) gets autofocus, second (in-progress) does not.
-      expect(focusables.length, 2);
-      expect(focusables[0].autofocus, isTrue);
-      expect(focusables[1].autofocus, isFalse);
+      expect(tiles.length, 2);
+      expect(tiles[0].autofocus, isTrue);
+      expect(tiles[1].autofocus, isFalse);
     },
   );
 

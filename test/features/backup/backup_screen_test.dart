@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -50,11 +52,16 @@ class _StubReposRegistry implements ProviderReposRegistry {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// A REAL temp dir path_provider is mocked to. Must exist on disk: the Appwrite
+// Client creates a `cookies` subdir under the app-documents dir, so a fake path
+// (the old hardcoded '/tmp/test') threw PathNotFoundException.
+late Directory _appDir;
+
 void _mockPathProvider(WidgetTester tester) {
   const channel = MethodChannel('plugins.flutter.io/path_provider');
   tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
     channel,
-    (call) async => '/tmp/test',
+    (call) async => _appDir.path,
   );
 }
 
@@ -62,6 +69,7 @@ void _mockPathProvider(WidgetTester tester) {
 
 void main() {
   setUp(() {
+    _appDir = Directory.systemTemp.createTempSync('backup_test');
     // Mock path_provider before AppwriteService is constructed: its Appwrite
     // Client asynchronously requests the app documents directory, and doing
     // this here (rather than only in the test body) avoids a cross-test race
@@ -69,7 +77,7 @@ void main() {
     const channel = MethodChannel('plugins.flutter.io/path_provider');
     TestWidgetsFlutterBinding.ensureInitialized()
         .defaultBinaryMessenger
-        .setMockMethodCallHandler(channel, (call) async => '/tmp/test');
+        .setMockMethodCallHandler(channel, (call) async => _appDir.path);
     sl
       ..registerSingleton<AppwriteService>(AppwriteService())
       ..registerSingleton<AppMode>(const AppMode(isTv: false))
@@ -80,7 +88,10 @@ void main() {
       ));
   });
 
-  tearDown(() => sl.reset());
+  tearDown(() {
+    sl.reset();
+    if (_appDir.existsSync()) _appDir.deleteSync(recursive: true);
+  });
 
   testWidgets(
     'BackupScreen renders three bundle checkboxes and four action buttons',

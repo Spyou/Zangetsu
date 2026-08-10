@@ -10,7 +10,12 @@ void main() {
   testWidgets('OK key fires onTap for every variant', (tester) async {
     for (final v in TvFocusVariant.values) {
       var taps = 0;
+      // Unique key per variant so each iteration builds a FRESH TvFocusable
+      // state. Without it Flutter reuses the state at this tree position, and
+      // its OK-activation dedupe window (which collapses a key+semantics double
+      // fire) would swallow the next iteration's press as a repeat.
       await tester.pumpWidget(_host(TvFocusable(
+        key: ValueKey(v),
         autofocus: true,
         variant: v,
         onTap: () => taps++,
