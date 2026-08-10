@@ -498,6 +498,10 @@ class SourceRepository {
     String? sourceId,
   }) => _providerFor(sourceId).getDetail(url, category: category);
 
+  /// Drop the native source HTTP cache (Mihon/Aniyomi) so a subsequent fetch is
+  /// fresh — used by pull-to-refresh. No-op on platforms/sources without it.
+  Future<void> clearHttpCache() => clearMihonHttpCache();
+
   Future<List<Episode>> episodes(
     String url, {
     String category = 'sub',

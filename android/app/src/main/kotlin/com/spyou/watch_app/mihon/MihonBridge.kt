@@ -150,6 +150,17 @@ class MihonBridge(
                 // Return a JSON array of all registered sources.
                 "listSources" -> result.success(sourcesJson(MihonSourceManager.installed()))
 
+                // Drop the shared HTTP response cache so a pull-to-refresh
+                // re-hits the source instead of serving the 10-min-cached JSON.
+                // Every source's client shares one Cache (derived from
+                // NetworkHelper.client), so evicting via any of them clears it
+                // for Mihon AND Aniyomi. No source loaded → nothing to evict.
+                "clearHttpCache" -> scope.runReporting(result, "CLEAR_CACHE") {
+                    (MihonSourceManager.all().firstOrNull() as? HttpSource)
+                        ?.client?.cache?.evictAll()
+                    "true"
+                }
+
                 // ------------------------------------------------------------------
                 // Data methods — each runs on the bridge IO scope and marshals the
                 // result back to the platform main thread before calling result.*.

@@ -20,6 +20,17 @@ import 'mihon_source_info.dart';
 /// Shared channel — matches the name registered in [MihonBridge.attach].
 const MethodChannel _mihonChannel = MethodChannel('zangetsu/mihon');
 
+/// Evicts the native OkHttp response cache that Mihon AND Aniyomi share, so a
+/// manual refresh re-hits the source instead of serving the 10-min-cached JSON.
+/// Best-effort: a missing channel (iOS) or no loaded source is a silent no-op.
+Future<void> clearMihonHttpCache() async {
+  try {
+    await _mihonChannel.invokeMethod<String>('clearHttpCache');
+  } catch (_) {
+    // No channel (non-Android) or nothing loaded — nothing to clear.
+  }
+}
+
 /// A single Mihon manga source wrapped as a [BaseProvider] + [ReadingProvider].
 ///
 /// Structural twin of `AniyomiProvider` (`lib/core/aniyomi/aniyomi_provider.dart`)

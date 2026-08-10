@@ -1377,6 +1377,7 @@ class _DetailViewState extends State<_DetailView>
             onOpen: (fullIndex) =>
                 _openPlayer(eps, fullIndex, detail, category),
             onInfo: () => _tabController.animateTo(3),
+            onRefresh: cubit.refresh,
             onDownload: (ep) => _downloadSingle(ep, detail, category),
             showDownload: !isReading,
             isReading: isReading,
@@ -2116,6 +2117,7 @@ class _EpisodesTab extends StatefulWidget {
     this.trackerProgress,
     required this.onOpen,
     required this.onInfo,
+    this.onRefresh,
     required this.onDownload,
     this.showDownload = true,
     this.isReading = false,
@@ -2143,6 +2145,10 @@ class _EpisodesTab extends StatefulWidget {
 
   /// Opens the small circular ⓘ button → jumps to the Details tab.
   final VoidCallback onInfo;
+
+  /// Force-refresh the list past the 10-min source cache (header ↻ button).
+  /// Null hides the button.
+  final Future<void> Function()? onRefresh;
 
   /// Per-episode download icon → opens the download sheet for that episode.
   final void Function(Episode ep) onDownload;
@@ -2299,6 +2305,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             currentSeason: widget.currentSeason,
             onSelectSeason: widget.onSelectSeason,
             onInfo: widget.onInfo,
+            onRefresh: widget.onRefresh,
             grid: _grid,
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
@@ -2428,6 +2435,7 @@ class _EpisodesHeader extends StatelessWidget {
     required this.currentSeason,
     required this.onSelectSeason,
     required this.onInfo,
+    this.onRefresh,
     required this.grid,
     required this.onToggleView,
     this.onJump,
@@ -2439,6 +2447,9 @@ class _EpisodesHeader extends StatelessWidget {
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
   final VoidCallback onInfo;
+
+  /// Force-refresh the list past the source cache (header ↻); null hides it.
+  final Future<void> Function()? onRefresh;
 
   /// Whether the grid view is active (toggles the view icon).
   final bool grid;
@@ -2544,6 +2555,30 @@ class _EpisodesHeader extends StatelessWidget {
                 semanticLabel: grid ? 'List view' : 'Grid view',
               ),
               const SizedBox(width: 8),
+              if (onRefresh != null) ...[
+                _circle(
+                  Icons.refresh_rounded,
+                  () {
+                    onRefresh!();
+                    ScaffoldMessenger.of(context)
+                      ..clearSnackBars()
+                      ..showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            isReading
+                                ? 'Refreshing chapters…'
+                                : 'Refreshing episodes…',
+                          ),
+                          duration: const Duration(milliseconds: 1200),
+                        ),
+                      );
+                  },
+                  semanticLabel: isReading
+                      ? 'Refresh chapters'
+                      : 'Refresh episodes',
+                ),
+                const SizedBox(width: 8),
+              ],
               _circle(
                 Icons.info_outline_rounded,
                 onInfo,

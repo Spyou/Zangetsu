@@ -149,6 +149,27 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
+  /// Pull-to-refresh. Drops the source's HTTP cache first so the re-fetch is
+  /// genuinely fresh (new chapters show now instead of after the 10-min cache
+  /// expires), then reloads detail+chapters for the current category. Keeps the
+  /// current content on screen while refreshing — no skeleton flash — and a
+  /// failed refresh leaves the page as-is rather than wiping it. Cast/Relations
+  /// are already loaded and don't change, so enrichment isn't re-run.
+  Future<void> refresh() async {
+    await _repo.clearHttpCache();
+    try {
+      final detail = await _repo.detail(
+        _url,
+        category: state.category,
+        sourceId: _sourceId,
+      );
+      if (isClosed) return;
+      emit(state.copyWith(status: DetailStatus.success, detail: detail));
+    } catch (_) {
+      // Keep what's on screen — a failed pull shouldn't blank the page.
+    }
+  }
+
   /// Fetch Cast + Relations in the background (AniList for anime, TMDB for
   /// movie/TV) and merge into state. Best-effort — failures leave the tabs in
   /// their empty state. Runs once per title; Sub/Dub switches keep the result.
