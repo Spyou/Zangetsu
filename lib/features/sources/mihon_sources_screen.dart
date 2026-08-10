@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive/hive.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_manager.dart';
 import '../../core/mihon/mihon_provider.dart';
@@ -13,6 +14,7 @@ import '../../core/mihon/mihon_update.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import 'source_language_sheet.dart';
 import '../../core/ui/states.dart';
 import 'mihon_repo_tab.dart'
     show kMihonReposBoxName, MihonAddRepoDialog, MihonRepoTab;
@@ -137,6 +139,14 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
         backgroundColor: AppColors.bg,
         appBar: AppBar(
           title: Text('Mihon', style: AppText.barTitle),
+          actions: [
+            IconButton(
+              tooltip: 'Languages',
+              icon: const Icon(Icons.language_rounded),
+              onPressed: () =>
+                  showSourceLanguageSheet(context, sl<MangaLangPrefs>()),
+            ),
+          ],
           bottom: TabBar(
             indicatorColor: AppColors.accent,
             indicatorSize: TabBarIndicatorSize.label,

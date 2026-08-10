@@ -75,6 +75,7 @@ import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_extension_service.dart';
 import '../lnreader/lnreader_manager.dart';
 import '../lnreader/novel_lang_prefs.dart';
+import '../prefs/source_lang_prefs.dart';
 import '../lnreader/lnreader_runtime.dart' show LnReaderHttpResponse;
 import '../mihon/mihon_extension_service.dart';
 import '../mihon/mihon_manager.dart';
@@ -219,6 +220,13 @@ Future<void> initDependencies() async {
   sl.registerSingleton<SearchSourcePrefs>(SearchSourcePrefs());
   await NovelLangPrefs.init(); // which languages show in the LNReader catalog
   sl.registerSingleton<NovelLangPrefs>(NovelLangPrefs());
+  // Same idea for the Mihon/Aniyomi catalogs (ISO-code langs, separate boxes).
+  final mangaLangPrefs = MangaLangPrefs();
+  await mangaLangPrefs.init();
+  sl.registerSingleton<MangaLangPrefs>(mangaLangPrefs);
+  final animeLangPrefs = AnimeLangPrefs();
+  await animeLangPrefs.init();
+  sl.registerSingleton<AnimeLangPrefs>(animeLangPrefs);
   await SearchPrefs.init();
   sl.registerSingleton<SearchPrefs>(SearchPrefs());
   // Per-source reliability: orders search healthy-first, recoverably skips dead

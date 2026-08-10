@@ -11,6 +11,8 @@ import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/i18n/source_languages.dart';
+import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/provider/base_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -21,6 +23,7 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import 'aniyomi_recommended_repos.dart';
 import 'aniyomi_repo_tab.dart' show kAniyomiReposBoxName, AniyomiAddRepoDialog, AniyomiRepoTab;
+import 'source_language_sheet.dart';
 import 'sources_search_field.dart';
 import 'tv_recommended_aniyomi_repos.dart';
 
@@ -162,6 +165,14 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
         backgroundColor: AppColors.bg,
         appBar: AppBar(
           title: Text('Aniyomi', style: AppText.barTitle),
+          actions: [
+            IconButton(
+              tooltip: 'Languages',
+              icon: const Icon(Icons.language_rounded),
+              onPressed: () =>
+                  showSourceLanguageSheet(context, sl<AnimeLangPrefs>()),
+            ),
+          ],
           bottom: TabBar(
             indicatorColor: AppColors.accent,
             indicatorSize: TabBarIndicatorSize.label,
@@ -680,6 +691,29 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                           ),
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      TvFocusable(
+                        scale: 1.04,
+                        onTap: () => showSourceLanguageSheetTv(
+                          context,
+                          sl<AnimeLangPrefs>(),
+                        ),
+                        semanticLabel: 'Languages',
+                        child: ExcludeSemantics(
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Icon(
+                              Icons.language_rounded,
+                              color: AppColors.accent,
+                              size: 20,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -1055,11 +1089,25 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
   bool _expanded = true;
   final Set<String> _installedPkgs = {};
 
+  final AnimeLangPrefs? _langPrefs =
+      sl.isRegistered<AnimeLangPrefs>() ? sl<AnimeLangPrefs>() : null;
+
   @override
   void initState() {
     super.initState();
+    _langPrefs?.addListener(_onLangsChanged);
     _loadInstalled();
     _fetch();
+  }
+
+  @override
+  void dispose() {
+    _langPrefs?.removeListener(_onLangsChanged);
+    super.dispose();
+  }
+
+  void _onLangsChanged() {
+    if (mounted) setState(() {});
   }
 
   void _loadInstalled() {
@@ -1114,9 +1162,14 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
   @override
   Widget build(BuildContext context) {
     final searching = widget.query.trim().isNotEmpty;
+    final enabled = _langPrefs == null
+        ? null
+        : (_langPrefs.enabled ?? defaultSourceLangs());
     final entries = [
       for (final e in _entries ?? const <AniyomiRepoEntry>[])
-        if (sourceSearchMatches(widget.query, e.name, e.lang)) e,
+        if (sourceSearchMatches(widget.query, e.name, e.lang) &&
+            (enabled == null || sourceLangVisible(e.lang, enabled)))
+          e,
     ];
     // While searching, a fully-loaded section with zero matches disappears.
     if (searching && !_fetching && _fetchError == null && entries.isEmpty) {

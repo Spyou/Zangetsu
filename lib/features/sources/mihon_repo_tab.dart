@@ -4,10 +4,12 @@ import 'package:hive/hive.dart';
 
 import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/di/injector.dart';
+import '../../core/i18n/source_languages.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_manager.dart';
 import '../../core/mihon/mihon_repo.dart';
 import '../../core/mihon/mihon_update.dart';
+import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
@@ -299,6 +301,12 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
   // Local installed-state cache for instant UI feedback after install/uninstall.
   final Set<String> _installedPkgs = {};
 
+  /// Null in widget tests that don't register it — the language filter is then
+  /// simply off (every entry shows), so those tests keep asserting on the full
+  /// list. In the app it's always registered.
+  final MangaLangPrefs? _langPrefs =
+      sl.isRegistered<MangaLangPrefs>() ? sl<MangaLangPrefs>() : null;
+
   /// Null when [MihonManager] isn't DI-registered (e.g. a widget test that
   /// builds this section directly without going through the app's injector).
   MihonManager? get _manager =>
@@ -308,8 +316,19 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
   @override
   void initState() {
     super.initState();
+    _langPrefs?.addListener(_onLangsChanged);
     _loadInstalledState();
     _fetchCatalog();
+  }
+
+  @override
+  void dispose() {
+    _langPrefs?.removeListener(_onLangsChanged);
+    super.dispose();
+  }
+
+  void _onLangsChanged() {
+    if (mounted) setState(() {});
   }
 
   void _loadInstalledState() {
@@ -666,11 +685,19 @@ class _MihonRepoSectionState extends State<_MihonRepoSection> {
     );
   }
 
-  /// The fetched entries filtered by the live search query.
-  List<AniyomiRepoEntry> get _filteredEntries => [
-        for (final e in _entries ?? const <AniyomiRepoEntry>[])
-          if (sourceSearchMatches(widget.query, e.name, e.lang)) e,
-      ];
+  /// The fetched entries filtered by the live search query and the language
+  /// picker (when registered — off in tests, so every entry shows there).
+  List<AniyomiRepoEntry> get _filteredEntries {
+    final enabled = _langPrefs == null
+        ? null
+        : (_langPrefs.enabled ?? defaultSourceLangs());
+    return [
+      for (final e in _entries ?? const <AniyomiRepoEntry>[])
+        if (sourceSearchMatches(widget.query, e.name, e.lang) &&
+            (enabled == null || sourceLangVisible(e.lang, enabled)))
+          e,
+    ];
+  }
 
   Widget _buildBody() {
     if (_fetching) {

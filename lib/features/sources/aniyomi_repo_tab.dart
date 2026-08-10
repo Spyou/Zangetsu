@@ -7,6 +7,8 @@ import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_repo.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
 import '../../core/di/injector.dart';
+import '../../core/i18n/source_languages.dart';
+import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -292,11 +294,27 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
       widget.managerOverride ??
       (sl.isRegistered<AniyomiManager>() ? sl<AniyomiManager>() : null);
 
+  /// Null in widget tests that don't register it — the language filter is then
+  /// off (every entry shows). Always registered in the app.
+  final AnimeLangPrefs? _langPrefs =
+      sl.isRegistered<AnimeLangPrefs>() ? sl<AnimeLangPrefs>() : null;
+
   @override
   void initState() {
     super.initState();
+    _langPrefs?.addListener(_onLangsChanged);
     _loadInstalledState();
     _fetchCatalog();
+  }
+
+  @override
+  void dispose() {
+    _langPrefs?.removeListener(_onLangsChanged);
+    super.dispose();
+  }
+
+  void _onLangsChanged() {
+    if (mounted) setState(() {});
   }
 
   void _loadInstalledState() {
@@ -653,11 +671,19 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
     );
   }
 
-  /// The fetched entries filtered by the live search query.
-  List<AniyomiRepoEntry> get _filteredEntries => [
-        for (final e in _entries ?? const <AniyomiRepoEntry>[])
-          if (sourceSearchMatches(widget.query, e.name, e.lang)) e,
-      ];
+  /// The fetched entries filtered by the live search query and the language
+  /// picker (when registered — off in tests, so every entry shows there).
+  List<AniyomiRepoEntry> get _filteredEntries {
+    final enabled = _langPrefs == null
+        ? null
+        : (_langPrefs.enabled ?? defaultSourceLangs());
+    return [
+      for (final e in _entries ?? const <AniyomiRepoEntry>[])
+        if (sourceSearchMatches(widget.query, e.name, e.lang) &&
+            (enabled == null || sourceLangVisible(e.lang, enabled)))
+          e,
+    ];
+  }
 
   Widget _buildBody() {
     if (_fetching) {
