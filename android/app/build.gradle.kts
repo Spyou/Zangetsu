@@ -158,6 +158,14 @@ dependencies {
     // Same okhttp 4.12.0 the CloudStream library already resolves, so this adds
     // no duplicate; declaring it guarantees the class is present at runtime.
     implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
+    // okhttp-brotli provides okhttp3.brotli.BrotliInterceptor. Many current
+    // Mihon/Aniyomi extensions add it to their client (Brotli-compressed
+    // responses) and reference it in their <init>; without it on the classpath
+    // they die with ClassNotFoundException: okhttp3.brotli.BrotliInterceptor →
+    // the source never instantiates → the generic "No source loaded". Same
+    // okhttp 4.12.0 the rest of the app resolves, so no duplicate. R8 is off
+    // (isMinifyEnabled = false) so the class is never stripped.
+    implementation("com.squareup.okhttp3:okhttp-brotli:4.12.0")
     // NiceHttp (the `app` global Requests type) is a runtime-transitive dep of
     // the CloudStream library; compileOnly lets PluginHost set app.baseClient to
     // attach our cookie jar without bundling NiceHttp twice. Same version.
