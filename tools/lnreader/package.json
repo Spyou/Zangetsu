@@ -8,6 +8,7 @@
   "dependencies": {
     "buffer": "^6.0.3",
     "cheerio": "^1.0.0",
+    "dayjs": "^1.11.13",
     "htmlparser2": "^9.1.0"
   },
   "devDependencies": {
