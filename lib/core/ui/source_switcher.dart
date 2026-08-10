@@ -313,6 +313,7 @@ class SourceSwitcher extends StatelessWidget {
   static const Color _csColor = Color(0xFF7EA2FF);
   static const Color _aniColor = Color(0xFFBB8CFF);
   static const Color _mihonColor = Color(0xFF6FD8A8);
+  static const Color _lnrColor = Color(0xFFF6A96B); // LNReader (novel) — amber
 
   /// Short colored ecosystem tag + source name for the chip. The tag replaces
   /// the old "CS · " name prefix: still text (a colored dot alone was too
@@ -343,6 +344,19 @@ class SourceSwitcher extends StatelessWidget {
       return (
         'MIHON',
         _mihonColor,
+        (name != null && name.isNotEmpty) ? name : currentId,
+      );
+    }
+    // Without this an `lnr:` novel source falls through to the ZAN branch,
+    // which has no ProviderRegistry entry for it, so the chip showed the raw
+    // id (e.g. "lnr:anf.net") instead of the plugin's name.
+    if (currentId.startsWith('lnr:')) {
+      final name = sl.isRegistered<LnReaderManager>()
+          ? sl<LnReaderManager>().metaFor(currentId.substring(4))?.name
+          : null;
+      return (
+        'LN',
+        _lnrColor,
         (name != null && name.isNotEmpty) ? name : currentId,
       );
     }
