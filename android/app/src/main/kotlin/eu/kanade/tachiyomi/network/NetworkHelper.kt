@@ -1,7 +1,9 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
+import okhttp3.Cache
 import okhttp3.OkHttpClient
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -16,9 +18,26 @@ import java.util.concurrent.TimeUnit
  * hands this client in is stood up lazily in `AniyomiInjektModules` (never at boot).
  */
 class NetworkHelper(
-    @Suppress("unused") private val context: Context,
-    val client: OkHttpClient,
+    private val context: Context,
+    sharedClient: OkHttpClient,
 ) {
+
+    /**
+     * Extension-facing client: the app's shared client (CloudStream's baseClient)
+     * with an HTTP response cache installed. `newBuilder()` leaves the shared
+     * client itself uncached, so the CloudStream streaming path is unchanged.
+     *
+     * Extensions default every GET/POST to `maxAge(10, MINUTES)` ([Requests]), but
+     * that directive is a no-op unless a Cache backs it — upstream Tachiyomi/Mihon
+     * installs one here and this port had dropped it, so every browse/detail/
+     * chapter open re-hit the source. Restoring the cache serves repeat opens from
+     * disk and eases source rate limits. Image/page byte fetches derive their own
+     * cacheless client (`newCachelessCallWithProgress`), so only JSON lands here.
+     */
+    val client: OkHttpClient = sharedClient.newBuilder()
+        // 15 MB is plenty for JSON (browse/detail/chapter lists); LRU-evicted.
+        .cache(Cache(File(context.cacheDir, "network_cache"), 15L * 1024 * 1024))
+        .build()
 
     /** Cookie store backed by the global WebView [android.webkit.CookieManager] —
      *  the same store the shared client's own jar writes to. */
@@ -32,8 +51,11 @@ class NetworkHelper(
     @Suppress("unused")
     val cloudflareClient: OkHttpClient = client
 
-    /** Longer-timeout variant used by extensions for large media downloads. */
+    /** Longer-timeout variant used by extensions for large media downloads.
+     *  Cacheless — big media must not evict the JSON response cache (and was
+     *  never cached before this). */
     val downloadClient: OkHttpClient = client.newBuilder()
+        .cache(null)
         .callTimeout(30, TimeUnit.MINUTES)
         .build()
 
