@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/discord/discord_rpc.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
@@ -347,6 +348,38 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     await _applyCaptionStyle();
     _applyPlaybackTuning();
     _loadQualities(src);
+    // Discord Rich Presence: announce the episode now playing. This screen
+    // hosts a native ExoPlayer PlatformView (not PlayerController), so the
+    // phone player's setWatching never fired here — mirror it.
+    _announceWatching(_ep);
+  }
+
+  /// Push a "Watching" Discord presence for [ep] (mirrors the phone player and
+  /// the native TV player). No-op when Discord isn't wired up / no title; the
+  /// service itself also drops it when disabled or incognito.
+  void _announceWatching(Episode? ep) {
+    final title = widget.showTitle;
+    if (ep == null ||
+        title == null ||
+        title.isEmpty ||
+        !sl.isRegistered<DiscordRpc>()) {
+      return;
+    }
+    sl<DiscordRpc>().setWatching(
+      title: title,
+      episodeLabel: 'Episode ${(ep.number ?? (_index + 1)).toInt()}',
+      posterUrl: widget.cover,
+      startMs: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  /// Revert presence to "browsing" when the player exits.
+  void _announceBrowsing() {
+    if (!sl.isRegistered<DiscordRpc>()) return;
+    sl<DiscordRpc>().setBrowsing(
+      title: widget.showTitle,
+      posterUrl: widget.cover,
+    );
   }
 
   Future<String?> _resolveTorrent(String uri, int gen) async {
@@ -1284,6 +1317,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   @override
   void dispose() {
+    _announceBrowsing(); // leaving the player → back to "browsing"
     _loadGen++; // supersede any in-flight torrent resolve so it stops itself
     _stopTorrent();
     _menuHideTimer?.cancel();
