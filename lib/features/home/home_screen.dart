@@ -37,6 +37,7 @@ import '../notify/subscriptions_screen.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../sources/aniyomi_repo_tab.dart' show kAniyomiReposBoxName;
+import '../sources/providers_hub_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
@@ -1004,6 +1005,20 @@ class _HomeViewState extends State<_HomeView>
                       !state.loading &&
                       state.sections != null &&
                       state.sections!.isEmpty;
+                  // Manga/novel with nothing installed: the mode-switch fallback
+                  // sets a matching source when one exists, so a reading mode
+                  // still on a non-matching (usually stale anime) active id means
+                  // nothing's installed for it — show the install guide and drop
+                  // the leaking anime rows/hero. Cheap DI-free prefix check, so
+                  // it's safe to run every build (unlike categorizedSources()).
+                  // Anime's own zero-source case (skipped setup) has no source to
+                  // load and flows through `loadedEmpty` → HomeLoadedEmptyView.
+                  final activeId = context.read<ActiveSourceCubit>().state;
+                  final noSourceForMode = switch (sl<ContentModeCubit>().state) {
+                    ContentMode.manga => !activeId.startsWith('mihon:'),
+                    ContentMode.novel => !activeId.startsWith('lnr:'),
+                    ContentMode.anime => false,
+                  };
                   return CustomScrollView(
                     slivers: [
                       // ── Hero + floating header (first sliver) ─────────────────
@@ -1014,7 +1029,7 @@ class _HomeViewState extends State<_HomeView>
                             final hasHero = heroItems.isNotEmpty;
                             if (hasHero) _prewarmHeroMeta(heroItems);
 
-                            if (hasHero) {
+                            if (hasHero && !noSourceForMode) {
                               return Stack(
                                 children: [
                                   // Auto-rotating carousel (up to 6 trending items)
@@ -1081,7 +1096,7 @@ class _HomeViewState extends State<_HomeView>
                       // ── Provider-defined browse rows (CloudStream-style) ──────
                       // The active provider decides the rows + their names; empty
                       // ones are already dropped by SourceRepository.home.
-                      if (showSkeletons)
+                      if (showSkeletons && !noSourceForMode)
                         ...List.generate(
                           3,
                           (_) => const SliverToBoxAdapter(
@@ -1091,7 +1106,7 @@ class _HomeViewState extends State<_HomeView>
                             ),
                           ),
                         )
-                      else if (loadedEmpty)
+                      else if (noSourceForMode || loadedEmpty)
                         SliverFillRemaining(
                           hasScrollBody: false,
                           child: HomeLoadedEmptyView(
@@ -1101,11 +1116,12 @@ class _HomeViewState extends State<_HomeView>
                             ),
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
+                            // No-source guide points at the Providers hub (all
+                            // ecosystems); the source-returned-nothing case
+                            // (_SourceUnavailable) keeps its retry.
                             onInstallSources: () => Navigator.of(context).push(
                               MaterialPageRoute<void>(
-                                builder: (_) => const ZangetsuSourcesScreen(
-                                  openToRepos: true,
-                                ),
+                                builder: (_) => const ProvidersHubScreen(),
                               ),
                             ),
                           ),
@@ -1168,15 +1184,81 @@ class HomeLoadedEmptyView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (mode.isReading && !hasReadingSourcesFor(mode)) {
-      return EmptyState(
-        icon: Icons.source_outlined,
-        message: 'No ${mode.label} sources yet',
-        actionLabel: 'Browse repositories',
-        onAction: onInstallSources,
-      );
+    if (!hasSourcesFor(mode)) {
+      return _NoSourcesGuide(mode: mode, onBrowse: onInstallSources);
     }
     return _SourceUnavailable(sourceName: sourceName, onRetry: onRetry);
+  }
+}
+
+/// Friendly "nothing installed for this mode yet" state — a mode-aware icon in
+/// a soft accent circle, a warm one-liner, and a single rounded button into
+/// Providers. Replaces the bare [EmptyState] so an empty manga/novel/streaming
+/// home reads as "let's set this up" rather than an error.
+class _NoSourcesGuide extends StatelessWidget {
+  const _NoSourcesGuide({required this.mode, required this.onBrowse});
+
+  final ContentMode mode;
+  final VoidCallback onBrowse;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = mode.label; // Streaming / Manga / Novel
+    final (icon, noun) = switch (mode) {
+      ContentMode.anime => (Icons.live_tv_rounded, 'shows'),
+      ContentMode.manga => (Icons.auto_stories_rounded, 'manga'),
+      ContentMode.novel => (Icons.menu_book_rounded, 'novels'),
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(40, 24, 40, 48),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 104,
+              height: 104,
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 46, color: AppColors.accent),
+            ),
+            const SizedBox(height: 22),
+            Text(
+              'No $label sources yet',
+              textAlign: TextAlign.center,
+              style: AppText.headline.copyWith(fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Add a source from Providers and your $noun will show up here.',
+              textAlign: TextAlign.center,
+              style: AppText.body.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 26),
+            FilledButton.icon(
+              onPressed: onBrowse,
+              icon: const Icon(Icons.add_rounded, size: 20),
+              label: const Text('Browse sources'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                textStyle: AppText.button.copyWith(color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

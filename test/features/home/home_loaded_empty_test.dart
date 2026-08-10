@@ -1,14 +1,12 @@
-// Task E2: Home's "provider returned no sections" branch (loadedEmpty in
-// home_screen.dart's build) currently always renders _SourceUnavailable —
-// worded as "source unavailable, try again" — even for a reading mode that
-// simply has zero manga/novel sources installed. Nothing is "unavailable"
-// there; there's nothing set up yet.
+// Home's "provider returned no sections" branch (loadedEmpty in
+// home_screen.dart's build) renders _SourceUnavailable ("Couldn't load, try
+// again") for anime, but for a reading mode with ZERO manga/novel sources
+// installed it shows an install guide ("No <mode> sources yet" → Open
+// Providers) — nothing's "unavailable", there's just nothing set up yet.
 //
 // HomeLoadedEmptyView is the decision extracted out of _HomeViewState.build
 // into its own widget so it's testable without pumping the real HomeScreen
-// (whose initState fires a real, un-DI'd network call — see
-// test/features/home/reading_home_test.dart's file header for the same
-// constraint hit by an earlier task).
+// (whose initState fires a real, un-DI'd network call).
 //
 // Anime mode never touches hasReadingSourcesFor's categorizedSources() call
 // (ContentMode.isReading is false, short-circuited) — the anime-mode test
@@ -30,11 +28,6 @@ import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
 import 'package:watch_app/features/home/home_screen.dart';
-import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
-
-// Same seeding shape as test/features/sources/reading_source_buckets_test.dart
-// — writes directly into the Hive boxes categorizedSources() reads, no
-// network.
 
 class _FakeManager implements ProviderRuntimeLoader {
   @override
@@ -127,14 +120,13 @@ void main() {
 
         expect(find.text("Couldn't load allanime"), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
-        expect(find.widgetWithText(FilledButton, 'Browse repositories'),
-            findsNothing);
+        expect(find.widgetWithText(FilledButton, 'Browse sources'), findsNothing);
         expect(find.textContaining('sources yet'), findsNothing);
       },
     );
   });
 
-  group('HomeLoadedEmptyView — reading mode', () {
+  group('HomeLoadedEmptyView — with source DI up (all modes)', () {
     late Directory tempDir;
 
     setUp(() async {
@@ -168,6 +160,42 @@ void main() {
     });
 
     testWidgets(
+      'anime mode, no anime source installed: shows the install guide, '
+      'not the "couldn\'t load" wording',
+      (tester) async {
+        var installTapped = false;
+        await pumpEmptyView(
+          tester,
+          mode: ContentMode.anime,
+          onInstall: () => installTapped = true,
+        );
+
+        // ContentMode.anime.label is "Streaming".
+        expect(find.text('No Streaming sources yet'), findsOneWidget);
+        final cta = find.widgetWithText(FilledButton, 'Browse sources');
+        expect(cta, findsOneWidget);
+        expect(find.text("Couldn't load allanime"), findsNothing);
+
+        await tester.tap(cta);
+        expect(installTapped, isTrue);
+      },
+    );
+
+    testWidgets(
+      'anime mode, an anime source IS installed: keeps the "couldn\'t load" '
+      'retry wording, not the install guide',
+      (tester) async {
+        await tester.runAsync(() => _seedJsSource(id: 'js:a', type: 'anime'));
+
+        await pumpEmptyView(tester, mode: ContentMode.anime);
+
+        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.textContaining('sources yet'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'manga mode, nothing installed: shows the install-CTA empty state, '
       'tapping the button fires onInstallSources',
       (tester) async {
@@ -179,7 +207,7 @@ void main() {
         );
 
         expect(find.text('No Manga sources yet'), findsOneWidget);
-        final cta = find.widgetWithText(FilledButton, 'Browse repositories');
+        final cta = find.widgetWithText(FilledButton, 'Browse sources');
         expect(cta, findsOneWidget);
         expect(find.text("Couldn't load allanime"), findsNothing);
 
@@ -199,45 +227,24 @@ void main() {
         expect(find.text("Couldn't load allanime"), findsOneWidget);
         expect(find.text('Retry'), findsOneWidget);
         expect(find.text('No Manga sources yet'), findsNothing);
-        expect(find.widgetWithText(FilledButton, 'Browse repositories'),
-            findsNothing);
+        expect(find.widgetWithText(FilledButton, 'Browse sources'), findsNothing);
       },
     );
 
     testWidgets(
-      'novel mode, nothing installed: shows the install-CTA empty state '
-      'and opening it pushes ZangetsuSourcesScreen(openToRepos: true)',
+      'novel mode, nothing installed: shows the install-CTA empty state, '
+      'the button fires onInstallSources',
       (tester) async {
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Scaffold(
-              body: Builder(
-                builder: (context) => HomeLoadedEmptyView(
-                  mode: ContentMode.novel,
-                  sourceName: 'allanime',
-                  onRetry: () {},
-                  onInstallSources: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          const ZangetsuSourcesScreen(openToRepos: true),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+        var installTapped = false;
+        await pumpEmptyView(
+          tester,
+          mode: ContentMode.novel,
+          onInstall: () => installTapped = true,
         );
-        await tester.pumpAndSettle();
 
         expect(find.text('No Novel sources yet'), findsOneWidget);
-        await tester.tap(
-          find.widgetWithText(FilledButton, 'Browse repositories'),
-        );
-        await tester.pumpAndSettle();
-
-        final screen = tester
-            .widget<ZangetsuSourcesScreen>(find.byType(ZangetsuSourcesScreen));
-        expect(screen.openToRepos, isTrue);
+        await tester.tap(find.widgetWithText(FilledButton, 'Browse sources'));
+        expect(installTapped, isTrue);
       },
     );
   });

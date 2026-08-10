@@ -282,6 +282,33 @@ bool hasReadingSourcesFor(ContentMode mode) {
   return (mode == ContentMode.manga ? b.manga : b.novel).isNotEmpty;
 }
 
+/// True if there's at least one installed source usable in [mode] — the mode's
+/// own reading bucket for manga/novel, or any anime/movie source for anime.
+/// Generalises [hasReadingSourcesFor] to all three modes (the app ships NO
+/// built-in sources — everything comes from installed repos), so Home can show
+/// a "no sources yet → install" guide for anime too, not just reading.
+///
+/// filterBucketsForMode drops the rows a mode can't use (the raw `movies`
+/// bucket also carries manga/novel rows for the TV picker), so any non-empty
+/// bucket after it is a real source for [mode].
+///
+/// Defensive: source enumeration touches several DI singletons, so if the graph
+/// isn't fully up (early boot, minimal test harnesses) it can throw — treat that
+/// as "sources exist" so a spurious "no sources" guide never flashes over a home
+/// that would otherwise show content (or its own retry).
+bool hasSourcesFor(ContentMode mode) {
+  try {
+    final b = filterBucketsForMode(categorizedSources(), mode);
+    return b.anime.isNotEmpty ||
+        b.movies.isNotEmpty ||
+        b.nsfw.isNotEmpty ||
+        b.manga.isNotEmpty ||
+        b.novel.isNotEmpty;
+  } catch (_) {
+    return true;
+  }
+}
+
 /// A compact pill button that shows the active source and opens a
 /// bottom-sheet picker when tapped. The selectable list is built
 /// dynamically from the installed-and-enabled providers in
