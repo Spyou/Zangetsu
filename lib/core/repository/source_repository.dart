@@ -301,6 +301,7 @@ class SourceRepository {
   ///   * `ani_latest`  → the Aniyomi provider's `latest(page:)`
   ///   * `mihon_popular` → the Mihon manga provider's `popular(page:)`
   ///   * `mihon_latest`  → the Mihon manga provider's `latest(page:)`
+  ///   * `lnr_popular` → the LNReader novel provider's `popular(page:)`
   ///   * `cs_mainpage` → the CloudStream provider's `browseMainPage(id, page)`
   ///
   /// Never throws — any failure (unknown kind, wrong provider type, provider
@@ -317,6 +318,8 @@ class SourceRepository {
           return p.popular(page: page);
         case 'mihon_latest':
           return p is MihonProvider ? p.latest(page: page) : const [];
+        case 'lnr_popular':
+          return p.popular(page: page);
         case 'cs_mainpage':
           return (p is CloudStreamProvider && more.categoryId != null)
               ? p.browseMainPage(more.categoryId!, page)

@@ -101,6 +101,21 @@ void main() {
       expect(res.single.id, 'latest');
     });
 
+    test('lnr_popular routes to popular(page:)', () async {
+      final ani = AniyomiManager();
+      final p = _RecordingAniProvider(5); // stand-in: kind isn't type-guarded
+      ani.register(p);
+      final repo = _repoWith(ani);
+
+      final res = await repo.browseMore(
+        BrowseMore(sourceId: p.sourceId, kind: 'lnr_popular'),
+        4,
+      );
+      expect(p.calledMethod, 'popular');
+      expect(p.calledPage, 4);
+      expect(res.single.id, 'popular');
+    });
+
     test('cs_mainpage on a non-CloudStream provider degrades to []', () async {
       final ani = AniyomiManager();
       final p = _RecordingAniProvider(3);

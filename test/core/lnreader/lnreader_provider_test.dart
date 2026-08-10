@@ -156,6 +156,9 @@ void main() {
     expect(sections!.first.title, 'Popular');
     expect(sections.first.items, hasLength(1));
     expect(sections.first.items.first.title, 'N1');
+    // Paginable → carries a BrowseMore so "See all" can infinite-scroll.
+    expect(sections.first.more?.kind, 'lnr_popular');
+    expect(sections.first.more?.sourceId, provider.sourceId);
   });
 
   test('getVideoSources() is always empty and never touches the runtime', () async {

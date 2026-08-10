@@ -70,7 +70,17 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
   @override
   Future<List<HomeSection>?> getHome({String category = 'sub'}) async {
     final items = await popular();
-    return items.isEmpty ? null : [HomeSection(title: 'Popular', items: items)];
+    return items.isEmpty
+        ? null
+        : [
+            HomeSection(
+              title: 'Popular',
+              items: items,
+              // Paginable, so the "See all" grid can infinite-scroll — popular()
+              // already takes a page. (Mirrors Mihon/Aniyomi's `more`.)
+              more: BrowseMore(sourceId: sourceId, kind: 'lnr_popular'),
+            ),
+          ];
   }
 
   /// [category]/[dateRange] are unused — LNReader plugins have no sub/dub or
