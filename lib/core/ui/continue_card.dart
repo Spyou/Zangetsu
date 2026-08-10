@@ -177,3 +177,144 @@ class _ContinueCardState extends State<ContinueCard> {
     );
   }
 }
+
+/// Compact "Continue Reading" bar — a small cover thumbnail beside the title,
+/// chapter and a slim progress bar, on a faint surface chip. Deliberately NOT
+/// the landscape [ContinueCard]: smaller, horizontal, and legible for long
+/// novel/manga titles. Sized to fill its [ContentRow] cell (itemWidth × 76).
+class ContinueReadingCard extends StatefulWidget {
+  const ContinueReadingCard({
+    super.key,
+    required this.title,
+    this.imageUrl,
+    this.headers,
+    required this.progress,
+    this.subtitle,
+    this.onTap,
+    this.onLongPress,
+  });
+
+  final String title;
+  final String? imageUrl;
+  final Map<String, String>? headers;
+
+  /// Read progress in [0, 1].
+  final double progress;
+
+  final String? subtitle;
+  final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  State<ContinueReadingCard> createState() => _ContinueReadingCardState();
+}
+
+class _ContinueReadingCardState extends State<ContinueReadingCard> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final memW = (46 * dpr).round();
+    final p = widget.progress.clamp(0.0, 1.0);
+    final sub = widget.subtitle;
+
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: widget.onTap,
+        onLongPress: widget.onLongPress,
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) => setState(() => _pressed = false),
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedScale(
+          scale: _pressed ? 0.97 : 1.0,
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(7),
+                  child: SizedBox(width: 46, height: 60, child: _cover(memW)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          height: 1.12,
+                        ),
+                      ),
+                      if (sub != null && sub.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          sub,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textSecondary,
+                            fontSize: 11.5,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(2),
+                        child: LinearProgressIndicator(
+                          value: p,
+                          minHeight: 3,
+                          backgroundColor: AppColors.hairline,
+                          valueColor: AlwaysStoppedAnimation(AppColors.accent),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _cover(int memW) {
+    final url = widget.imageUrl;
+    if (url == null || url.isEmpty) {
+      return ColoredBox(color: AppColors.surface);
+    }
+    if (widget.headers?['x-ani-src'] != null) {
+      return Image(
+        image: ResizeImage(
+          AniyomiImage(int.parse(widget.headers!['x-ani-src']!), url),
+          width: memW,
+        ),
+        fit: BoxFit.cover,
+        frameBuilder: imageFadeIn,
+        errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surface),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      httpHeaders: widget.headers,
+      memCacheWidth: memW,
+      fit: BoxFit.cover,
+      fadeInDuration: const Duration(milliseconds: 180),
+      placeholder: (_, _) => ColoredBox(color: AppColors.surface),
+      errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface),
+    );
+  }
+}

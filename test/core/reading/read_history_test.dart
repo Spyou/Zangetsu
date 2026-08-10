@@ -114,6 +114,19 @@ void main() {
     expect(h.recent().map((e) => e.showId).toList(), ['reading']);
   });
 
+  test('recent(type:) returns only that kind — the box mixes manga and novel',
+      () async {
+    final h = ReadHistory(SupabaseService(), () => null);
+    await h.save(entry('m1', ts: 3, type: ProviderType.manga));
+    await h.save(entry('n1', ts: 2, type: ProviderType.novel));
+    await h.save(entry('m2', ts: 1, type: ProviderType.manga));
+    expect(h.recent(type: ProviderType.manga).map((e) => e.showId).toList(),
+        ['m1', 'm2']);
+    expect(h.recent(type: ProviderType.novel).map((e) => e.showId).toList(),
+        ['n1']);
+    expect(h.recent().length, 3); // no type → both (backward compatible)
+  });
+
   test('two save() calls for the same show within the throttle window '
       'push one upsert; the local read is always immediate', () async {
     final fake = FakeReadingHistoryRemote();

@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/app_mode.dart';
+import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
@@ -707,35 +709,109 @@ class _HomeViewState extends State<_HomeView>
   }
 
   Widget _modeCard(ContentMode m) {
+    final cover = _modeArt(m);
     return GestureDetector(
       onTap: _slashing ? null : () => _enterMode(m),
-      child: Container(
-        height: 62,
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.hairline),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: AppColors.accentSoft,
-                borderRadius: BorderRadius.circular(10),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 52,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Background: a cover from the user's recent content for this
+              // mode, else a themed gradient when they've nothing there yet.
+              _modeArtBg(cover),
+              // Scrim so the white icon + label stay legible over any art.
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0xCC000000), Color(0x55000000)],
+                  ),
+                ),
               ),
-              child: Icon(m.icon, size: 19, color: AppColors.accent),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              m.label,
-              style: AppText.body.copyWith(fontWeight: FontWeight.w600),
-            ),
-          ],
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(m.icon, size: 18, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      m.label,
+                      style: AppText.body.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        shadows: const [
+                          Shadow(color: Colors.black, blurRadius: 6),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// A representative cover for [m] from the user's own history — last watched
+  /// show (streaming) or last read manga/novel. Null when there's nothing yet.
+  ({String? cover, Map<String, String>? headers}) _modeArt(ContentMode m) {
+    if (m == ContentMode.anime) {
+      if (!Hive.isBoxOpen(WatchHistory.boxName)) return (cover: null, headers: null);
+      for (final e in sl<WatchHistory>().all()) {
+        final c = e.thumbnail ?? e.cover;
+        if (c != null && c.isNotEmpty) return (cover: c, headers: e.coverHeaders);
+      }
+      return (cover: null, headers: null);
+    }
+    if (!Hive.isBoxOpen(ReadHistory.boxName)) return (cover: null, headers: null);
+    final type = m == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
+    for (final e in sl<ReadHistory>().all()) {
+      if (e.type == type && (e.cover?.isNotEmpty ?? false)) {
+        return (cover: e.cover, headers: null);
+      }
+    }
+    return (cover: null, headers: null);
+  }
+
+  Widget _modeArtBg(({String? cover, Map<String, String>? headers}) art) {
+    final url = art.cover;
+    if (url == null || url.isEmpty) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.surface2, AppColors.surface],
+          ),
+        ),
+      );
+    }
+    if (art.headers?['x-ani-src'] != null) {
+      return Image(
+        image: ResizeImage(
+          AniyomiImage(int.parse(art.headers!['x-ani-src']!), url),
+          width: 420,
+        ),
+        fit: BoxFit.cover,
+        alignment: const Alignment(0, -0.2),
+        errorBuilder: (_, _, _) => ColoredBox(color: AppColors.surface2),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: url,
+      httpHeaders: art.headers,
+      memCacheWidth: 420,
+      fit: BoxFit.cover,
+      alignment: const Alignment(0, -0.2),
+      placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
+      errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
     );
   }
 

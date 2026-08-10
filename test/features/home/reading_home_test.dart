@@ -168,12 +168,12 @@ void main() {
         expect(card.imageUrl, entry.thumbnail); // thumbnail wins over cover
         expect(card.headers, entry.coverHeaders);
         expect(card.progress, 0.25); // 6min / 24min
-        expect(card.cellWidth, 230);
+        expect(card.cellWidth, 190);
 
-        // Row geometry — 16:9 landscape (episode thumbnails), unchanged.
+        // Row geometry — compact 16:9 landscape (episode thumbnails).
         final row = tester.widget<ContentRow>(find.byType(ContentRow));
-        expect(row.itemWidth, 230);
-        expect(row.itemHeight, 129);
+        expect(row.itemWidth, 190);
+        expect(row.itemHeight, 107);
 
         await tester.tap(find.text('Anime Show'));
         expect(resumed?.showId, 'show1');
@@ -288,14 +288,14 @@ void main() {
         expect(find.text('Chapter 5'), findsOneWidget);
         expect(find.text('Continue Watching'), findsNothing);
 
-        // Portrait geometry — a chapter entry only has a portrait cover
-        // (e.cover), not an episode thumbnail, so it must NOT use Continue
-        // Watching's 230x129 landscape cell (badly letterboxes a poster).
+        // Compact horizontal "keep reading" chip — its own small shape, NOT
+        // Continue Watching's 230x129 landscape card (which would letterbox a
+        // portrait cover) and not the full-poster card either.
         final row = tester.widget<ContentRow>(find.byType(ContentRow));
-        expect(row.itemWidth, 140);
-        expect(row.itemHeight, 236);
-        final card = tester.widget<ContinueCard>(find.byType(ContinueCard));
-        expect(card.cellWidth, 140);
+        expect(row.itemWidth, 236);
+        expect(row.itemHeight, 76);
+        expect(find.byType(ContinueReadingCard), findsOneWidget);
+        expect(find.byType(ContinueCard), findsNothing); // not the anime card
 
         await tester.tap(find.text('Novel Title'));
         expect(resumed?.showId, 'show2');

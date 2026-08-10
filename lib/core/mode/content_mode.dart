@@ -7,7 +7,10 @@ enum ContentMode { anime, manga, novel }
 
 extension ContentModeX on ContentMode {
   String get label => switch (this) {
-    ContentMode.anime => 'Anime',
+    // "Streaming", not "Anime": this mode covers all video — anime, movies and
+    // series — so the switcher/history read "Streaming" rather than the narrower
+    // "Anime". (The enum value stays `anime` — only the user-facing label moved.)
+    ContentMode.anime => 'Streaming',
     ContentMode.manga => 'Manga',
     ContentMode.novel => 'Novel',
   };

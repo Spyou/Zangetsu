@@ -196,8 +196,15 @@ class ReadHistory {
   ReadEntry _fromMap(Map raw) => ReadEntry.fromJson(Map<String, dynamic>.from(raw));
 
   /// Newest-first, excluding finished chapters (the Continue Reading feed).
-  List<ReadEntry> recent({int limit = 20}) {
-    final all = _box.values.map(_fromMap).where((e) => !e.finished).toList()
+  /// [type] filters to one kind (manga or novel) — the box mixes both, so the
+  /// Continue Reading row passes the current mode's type to avoid showing manga
+  /// under Novel and vice versa. Filtering happens BEFORE [limit] so a busy
+  /// other-kind history can't crowd this kind out of the row.
+  List<ReadEntry> recent({int limit = 20, ProviderType? type}) {
+    final all = _box.values
+        .map(_fromMap)
+        .where((e) => !e.finished && (type == null || e.type == type))
+        .toList()
       ..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
     return all.take(limit).toList();
   }

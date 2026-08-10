@@ -41,7 +41,7 @@ void main() {
     await tester.tap(find.byType(ModeSwitcher));
     await tester.pumpAndSettle();
 
-    expect(find.text('Anime'), findsOneWidget);
+    expect(find.text('Streaming'), findsOneWidget); // anime mode label
     expect(find.text('Manga'), findsOneWidget);
     expect(find.text('Novel'), findsOneWidget);
 

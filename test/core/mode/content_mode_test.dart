@@ -4,7 +4,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 
 void main() {
   test('labels and reading flags', () {
-    expect(ContentMode.anime.label, 'Anime');
+    expect(ContentMode.anime.label, 'Streaming'); // anime mode = all video
     expect(ContentMode.manga.label, 'Manga');
     expect(ContentMode.novel.label, 'Novel');
     expect(ContentMode.anime.isReading, isFalse);

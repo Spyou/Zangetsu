@@ -347,7 +347,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
           overlayColor: WidgetStateProperty.all(Colors.transparent),
           tabs: const [
-            Tab(text: 'Anime'),
+            Tab(text: 'Streaming'),
             Tab(text: 'Manga'),
             Tab(text: 'Novel'),
           ],

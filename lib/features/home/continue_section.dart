@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/ui/content_row.dart';
@@ -48,7 +49,7 @@ class ContinueSection extends StatelessWidget {
     return BlocBuilder<ContentModeCubit, ContentMode>(
       bloc: sl<ContentModeCubit>(),
       builder: (context, mode) =>
-          mode.isReading ? _readingRow() : _watchingRow(),
+          mode.isReading ? _readingRow(mode) : _watchingRow(),
     );
   }
 
@@ -73,14 +74,17 @@ class ContinueSection extends StatelessWidget {
 
   // ── Continue Reading (manga/novel) ────────────────────────────────────────
 
-  Widget _readingRow() {
+  Widget _readingRow(ContentMode mode) {
     if (!(loggedIn && Hive.isBoxOpen(ReadHistory.boxName))) {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
+    // Only this mode's kind — the ReadHistory box mixes manga and novel.
+    final type =
+        mode == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
     return ValueListenableBuilder(
       valueListenable: Hive.box<Map>(ReadHistory.boxName).listenable(),
       builder: (context, _, _) => ContinueReadingRow(
-        history: sl<ReadHistory>().recent(),
+        history: sl<ReadHistory>().recent(type: type),
         onResumeReading: onResumeReading,
         onSeeAll: onSeeAll,
       ),
@@ -114,8 +118,9 @@ class ContinueWatchingRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: ContentRow(
           title: 'Continue Watching',
-          itemWidth: 230,
-          itemHeight: 129, // 16:9 landscape card
+          // Compact 16:9 landscape card — same design, just smaller/tighter.
+          itemWidth: 190,
+          itemHeight: 107,
           onSeeAll: onSeeAll,
           itemCount: history.length,
           itemBuilder: (c, i) {
@@ -127,7 +132,7 @@ class ContinueWatchingRow extends StatelessWidget {
               imageUrl: e.thumbnail ?? e.cover,
               headers: e.coverHeaders,
               progress: e.progress,
-              cellWidth: 230,
+              cellWidth: 190,
               subtitle: e.episodeNumber != null
                   ? 'Episode ${e.episodeNumber!.toInt()}'
                   : null,
@@ -165,23 +170,21 @@ class ContinueReadingRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: ContentRow(
           title: 'Continue Reading',
-          // Portrait, not the 16:9 landscape Continue Watching uses — that
-          // shape fits an episode thumbnail, but a chapter entry only has
-          // e.cover (a portrait poster), which would letterbox/crop badly at
-          // 230x129. Same 140x236 portrait cell the browse rows use.
-          itemWidth: 140,
-          itemHeight: 236,
+          // Compact horizontal "keep reading" chip (cover + title + chapter +
+          // slim progress), NOT the landscape Continue Watching card nor a full
+          // portrait poster — smaller and its own shape for reading.
+          itemWidth: 236,
+          itemHeight: 76,
           onSeeAll: onSeeAll,
           itemCount: history.length,
           itemBuilder: (c, i) {
             final e = history[i];
             final progress =
                 e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
-            return ContinueCard(
+            return ContinueReadingCard(
               title: e.title,
               imageUrl: e.cover,
               progress: progress,
-              cellWidth: 140,
               subtitle: e.chapterNumber != null
                   ? 'Chapter ${e.chapterNumber!.toInt()}'
                   : null,
