@@ -99,6 +99,24 @@ class ReadingHistoryRemote {
         .eq('user_key', userKey);
     return (res as List).cast<Map<String, dynamic>>();
   }
+
+  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
+    await _service.client.from('reading_history').delete().match({
+      'user_key': userKey,
+      'source_id': sourceId,
+      'show_id': showId,
+    });
+  }
+
+  /// Delete every reading-history row for [userKey] of one kind
+  /// (`'manga'`/`'novel'`) — used by the per-tab "Clear history" so it can't
+  /// sync back, and so clearing manga never touches novel (they share a table).
+  Future<void> deleteAllForType(String userKey, String typeName) async {
+    await _service.client.from('reading_history').delete().match({
+      'user_key': userKey,
+      'type': typeName,
+    });
+  }
 }
 
 /// Continue Reading, backed by Hive for instant local reads and synced to
@@ -184,10 +202,11 @@ class ReadHistory {
     return all.take(limit).toList();
   }
 
-  /// Every read title, newest-first, including finished ones — used by
-  /// [pushAllLocalToCloud] to back up the full local library, not just the
-  /// unfinished subset [recent] surfaces.
-  List<ReadEntry> _all() {
+  /// Every read title, newest-first, including finished ones — backs both the
+  /// full reading-History screen and [pushAllLocalToCloud]'s library backup,
+  /// not just the unfinished subset [recent] surfaces. The box mixes manga and
+  /// novel; callers filter on [ReadEntry.type].
+  List<ReadEntry> all() {
     return _box.values.map(_fromMap).toList()
       ..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
   }
@@ -212,7 +231,7 @@ class ReadHistory {
       readOk = false;
     }
     var pushed = 0, failed = 0;
-    for (final e in _all()) {
+    for (final e in all()) {
       final key = _key(e.sourceId, e.showId);
       final cloudT = cloudTimes[key];
       if (cloudT != null && cloudT >= e.updatedMs) continue;
@@ -292,6 +311,40 @@ class ReadHistory {
     if (Hive.isBoxOpen(syncMetaBox)) {
       Hive.box(syncMetaBox)
           .put(_syncMetaKey, DateTime.now().millisecondsSinceEpoch);
+    }
+  }
+
+  /// Remove a single title from reading history, locally and (when signed in)
+  /// from the cloud so it doesn't sync back — see [WatchHistory.remove].
+  Future<void> remove(String sourceId, String showId) async {
+    final key = _key(sourceId, showId);
+    await _box.delete(key);
+    _lastCloudPush.remove(key);
+    final uid = _currentUserId();
+    if (uid == null) return;
+    try {
+      await _remote.deleteRow(uid, sourceId, showId);
+    } catch (_) {/* best-effort */}
+  }
+
+  /// User-initiated "Clear history" for ONE kind (manga or novel): wipe those
+  /// rows everywhere — local AND cloud — so a later pull can't restore them,
+  /// while leaving the other kind untouched (both live in this one box/table).
+  /// Deletes the cloud rows first so even a racing pull sees nothing.
+  Future<void> clearType(ProviderType type) async {
+    final uid = _currentUserId();
+    if (uid != null) {
+      try {
+        await _remote.deleteAllForType(uid, type.name);
+      } catch (_) {/* best-effort — local still clears */}
+    }
+    final keys = _box.keys.where((k) {
+      final raw = _box.get(k);
+      return raw != null && readEntryTypeFromName(raw['type'] as String?) == type;
+    }).toList();
+    for (final k in keys) {
+      await _box.delete(k);
+      _lastCloudPush.remove(k);
     }
   }
 

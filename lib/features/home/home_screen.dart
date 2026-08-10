@@ -597,11 +597,16 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// Open the full watch-history screen (Continue Watching "See all").
+  /// Open the full history screen ("See all"). Lands on the tab matching the
+  /// current content mode — the [ContentMode] enum is ordered anime/manga/novel,
+  /// the same order as the History tabs — so reading modes open on Manga/Novel.
   void _openHistory() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const HistoryScreen()),
+      MaterialPageRoute(
+        builder: (_) =>
+            HistoryScreen(initialIndex: sl<ContentModeCubit>().state.index),
+      ),
     ).then((_) {
       if (mounted) setState(() {});
     });

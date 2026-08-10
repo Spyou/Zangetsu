@@ -82,6 +82,7 @@ class ContinueSection extends StatelessWidget {
       builder: (context, _, _) => ContinueReadingRow(
         history: sl<ReadHistory>().recent(),
         onResumeReading: onResumeReading,
+        onSeeAll: onSeeAll,
       ),
     );
   }
@@ -147,10 +148,12 @@ class ContinueReadingRow extends StatelessWidget {
     super.key,
     required this.history,
     required this.onResumeReading,
+    this.onSeeAll,
   });
 
   final List<ReadEntry> history;
   final void Function(ReadEntry) onResumeReading;
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -168,8 +171,7 @@ class ContinueReadingRow extends StatelessWidget {
           // 230x129. Same 140x236 portrait cell the browse rows use.
           itemWidth: 140,
           itemHeight: 236,
-          // No "See all" yet — there's no reading-history screen (the watch
-          // History screen is anime-only).
+          onSeeAll: onSeeAll,
           itemCount: history.length,
           itemBuilder: (c, i) {
             final e = history[i];

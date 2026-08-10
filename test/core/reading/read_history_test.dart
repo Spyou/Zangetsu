@@ -27,6 +27,19 @@ class FakeReadingHistoryRemote implements ReadingHistoryRemote {
   Future<List<Map<String, dynamic>>> listFor(String userKey) async {
     return rows.where((r) => r['user_key'] == userKey).toList();
   }
+
+  @override
+  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
+    rows.removeWhere((r) =>
+        r['user_key'] == userKey &&
+        r['source_id'] == sourceId &&
+        r['show_id'] == showId);
+  }
+
+  @override
+  Future<void> deleteAllForType(String userKey, String typeName) async {
+    rows.removeWhere((r) => r['user_key'] == userKey && r['type'] == typeName);
+  }
 }
 
 /// Throws on every call, standing in for the `reading_history` table not
@@ -39,6 +52,16 @@ class _BrokenReadingHistoryRemote implements ReadingHistoryRemote {
 
   @override
   Future<List<Map<String, dynamic>>> listFor(String userKey) async {
+    throw Exception('relation "reading_history" does not exist');
+  }
+
+  @override
+  Future<void> deleteRow(String userKey, String sourceId, String showId) async {
+    throw Exception('relation "reading_history" does not exist');
+  }
+
+  @override
+  Future<void> deleteAllForType(String userKey, String typeName) async {
     throw Exception('relation "reading_history" does not exist');
   }
 }
@@ -324,5 +347,43 @@ void main() {
     final h = ReadHistory(SupabaseService(), () => null);
     await h.save(entry('m', type: ProviderType.manga));
     expect(h.recent().single.type, ProviderType.manga);
+  });
+
+  // ── History screen: all() / remove() / clearType() ──────────────────────
+
+  test('all() returns every row (finished included) newest-first', () async {
+    final h = ReadHistory(SupabaseService(), () => null);
+    await h.save(
+      entry('finishedManga', pos: 19, total: 20, ts: 1, type: ProviderType.manga),
+    );
+    await h.save(entry('novelA', pos: 2, ts: 5));
+    final all = h.all();
+    // newest-first, and unlike recent() the finished row is NOT dropped.
+    expect(all.map((e) => e.showId).toList(), ['novelA', 'finishedManga']);
+  });
+
+  test('remove() deletes the row locally and from the cloud', () async {
+    final fake = FakeReadingHistoryRemote();
+    final h = ReadHistory(SupabaseService(), () => 'user1', remote: fake);
+    await h.save(entry('a', pos: 1, ts: 1), flush: true);
+    expect(fake.rows, hasLength(1));
+
+    await h.remove('js:m', 'a');
+
+    expect(h.all(), isEmpty); // local gone
+    expect(fake.rows, isEmpty); // cloud gone, so it can't sync back
+  });
+
+  test('clearType(manga) wipes only manga rows — local AND cloud — leaving '
+      'novel history untouched', () async {
+    final fake = FakeReadingHistoryRemote();
+    final h = ReadHistory(SupabaseService(), () => 'user1', remote: fake);
+    await h.save(entry('m1', ts: 1, type: ProviderType.manga), flush: true);
+    await h.save(entry('n1', ts: 2, type: ProviderType.novel), flush: true);
+
+    await h.clearType(ProviderType.manga);
+
+    expect(h.all().map((e) => e.showId).toList(), ['n1']); // local: novel kept
+    expect(fake.rows.map((r) => r['show_id']).toList(), ['n1']); // cloud too
   });
 }
