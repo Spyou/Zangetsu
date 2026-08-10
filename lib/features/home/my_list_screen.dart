@@ -167,15 +167,6 @@ class _MyListViewState extends State<_MyListView> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 6),
-                      _pillIcon(
-                        Icons.search_rounded,
-                        'Search',
-                        () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                              builder: (_) => const SearchScreen()),
-                        ),
-                      ),
                       const SizedBox(width: 8),
                       _pillIcon(
                         _typeFilter == null
