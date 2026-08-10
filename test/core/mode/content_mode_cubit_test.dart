@@ -107,4 +107,48 @@ void main() {
     await cubit.setMode(ContentMode.manga);
     expect(active.state, 'js:mangasrc');
   });
+
+  // ── C: mode-appropriate fallback (the "Novel shows an anime source" bug) ──
+  test('entering a reading mode with no remembered source lands on a source of '
+      'that mode, not the active anime source', () async {
+    await ActiveSourceCubit.init();
+    final active = ActiveSourceCubit(box: Hive.box(ActiveSourceCubit.boxName));
+    final cubit = await ContentModeCubit.create(active);
+    active.setSource('allanime'); // an anime source is active
+    sl.registerSingleton<SourceRepository>(
+      _FakeSourceRepository(['allanime', 'lnr:wbnovel']),
+    );
+
+    await cubit.setMode(ContentMode.novel); // first time in novel — no memory
+    expect(active.state, 'lnr:wbnovel'); // fell back to the novel source
+  });
+
+  test('setMode keeps the current source when it already belongs to the mode',
+      () async {
+    await ActiveSourceCubit.init();
+    final active = ActiveSourceCubit(box: Hive.box(ActiveSourceCubit.boxName));
+    final cubit = await ContentModeCubit.create(active);
+    active.setSource('lnr:a');
+    sl.registerSingleton<SourceRepository>(
+      _FakeSourceRepository(['lnr:a', 'lnr:b']),
+    );
+
+    await cubit.setMode(ContentMode.novel);
+    expect(active.state, 'lnr:a'); // not swapped to lnr:b — current pick fits
+  });
+
+  test('ensureSourceForMode() self-corrects a reading mode stuck on an anime '
+      'source (boot safety net)', () async {
+    await ActiveSourceCubit.init();
+    final active = ActiveSourceCubit(box: Hive.box(ActiveSourceCubit.boxName));
+    final cubit = await ContentModeCubit.create(active);
+    await cubit.setMode(ContentMode.novel); // mode is novel (no repo yet → no-op)
+    active.setSource('allanime'); // simulate boot restoring an anime source
+    sl.registerSingleton<SourceRepository>(
+      _FakeSourceRepository(['allanime', 'lnr:wbnovel']),
+    );
+
+    cubit.ensureSourceForMode();
+    expect(active.state, 'lnr:wbnovel');
+  });
 }

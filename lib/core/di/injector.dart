@@ -600,12 +600,16 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ActiveSourceCubit>(
     ActiveSourceCubit(
       box: Hive.box(ActiveSourceCubit.boxName),
-      // Valid ids = JS providers (CloudStream + Aniyomi load off the boot
-      // path, so a saved `cs:`/`ani:` active source is restored a moment later
-      // via reapplySaved rather than being in this initial set).
+      // Valid ids = JS providers + LNReader novel sources (both load on the
+      // boot path — lnrManager.installedSources is synchronous). CloudStream,
+      // Aniyomi and Mihon load off the boot path, so a saved `cs:`/`ani:`/
+      // `mihon:` active source is restored a moment later via reapplySaved
+      // rather than being in this initial set. lnr had neither, so a saved
+      // novel source fell back to allanime on every restart — include it here.
       valid: {
         ...manager.installedIds,
         ...csManager.all.map((p) => p.sourceId),
+        ...lnrManager.installedSources.map((s) => s.id),
       },
     ),
   );
@@ -629,6 +633,13 @@ Future<void> initDependencies() async {
       prefs: sl<PlaybackPrefs>(),
     ),
   );
+
+  // Now that SourceRepository can enumerate loaded sources, make sure the
+  // restored content mode points at a source that belongs to it (e.g. a
+  // novel-mode launch shouldn't show an anime source). No-op for anime mode
+  // and for any already-correct pick. Mihon (manga) loads async and is handled
+  // by its own reapply step below; lnr (novel) is already loaded here.
+  sl<ContentModeCubit>().ensureSourceForMode();
 
   // "New episode" subscriptions (CloudStream-style): the store + the checker
   // that re-fetches each subscribed show's episodes (works for JS and CS via

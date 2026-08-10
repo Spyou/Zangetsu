@@ -47,6 +47,39 @@ class ContentModeCubit extends Cubit<ContentMode> {
     return sl<SourceRepository>().loadedSources.any((s) => s.id == id);
   }
 
+  /// Which mode a source id belongs to, by id prefix — no manager lookup, so
+  /// it's cheap and can't throw when the registry isn't up yet: `lnr:` = novel,
+  /// `mihon:` = manga, everything else (JS / CloudStream / Aniyomi) = anime.
+  /// Matches the prefix rules in [sourceTypeOf].
+  static bool _sourceInMode(String id, ContentMode m) => switch (m) {
+    ContentMode.novel => id.startsWith('lnr:'),
+    ContentMode.manga => id.startsWith('mihon:'),
+    ContentMode.anime => !id.startsWith('lnr:') && !id.startsWith('mihon:'),
+  };
+
+  /// No valid remembered source for [m] — don't leave a source from another
+  /// mode active (the "enter Novel and the header still shows an anime source"
+  /// bug). Keep the current pick if it already fits [m], otherwise land on the
+  /// first loaded source of the mode. Guarded on SourceRepository like
+  /// [_sourceStillLoaded]: if it isn't ready we can't enumerate, so leave the
+  /// source alone.
+  void _fallBackToModeSource(ContentMode m) {
+    if (!sl.isRegistered<SourceRepository>()) return;
+    if (_sourceInMode(_active.state, m)) return; // already fits — keep it
+    for (final s in sl<SourceRepository>().loadedSources) {
+      if (_sourceInMode(s.id, m)) {
+        _active.setSource(s.id);
+        return;
+      }
+    }
+  }
+
+  /// Boot safety net: make the restored mode's active source belong to that
+  /// mode. Called once after SourceRepository is registered so a novel-mode
+  /// launch that restored an anime source self-corrects. No-op for anime and
+  /// for any already-correct pick.
+  void ensureSourceForMode() => _fallBackToModeSource(state);
+
   Future<void> setMode(ContentMode m) async {
     if (m == state) return;
     // Capture the outgoing mode/source BEFORE emitting or restoring anything
@@ -65,6 +98,10 @@ class ContentModeCubit extends Cubit<ContentMode> {
         remembered.isNotEmpty &&
         _sourceStillLoaded(remembered)) {
       _active.setSource(remembered);
+    } else {
+      // No valid remembered source for this mode — don't strand a reading mode
+      // on the anime source that was active; land on a source of this mode.
+      _fallBackToModeSource(m);
     }
 
     // Fire-and-forget; Hive serializes writes so ordering is preserved (same
