@@ -355,73 +355,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Prompts for a CloudStream repo URL, installs it via the native channel,
   /// and reports how many sources are now available. Android-only.
-  /// Account header — signed-in profile (pfp + name → Profile) or a Sign-in
-  /// prompt. Card-less: the row sits flat on the background like every other
-  /// settings row.
+  /// Account header — a single profile card at the top of Settings. Signed in:
+  /// avatar + name + email → Profile. Signed out: an avatar placeholder + a
+  /// clear "Sign in" call-to-action → Login (its own card, so it no longer
+  /// reads as a flat duplicate of the "Account & sync" row below it).
   Widget _accountCard(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
+        final Widget row;
         if (auth.isLoggedIn) {
           final initial = auth.displayName.isNotEmpty
               ? auth.displayName[0].toUpperCase()
               : '?';
-          return InkWell(
+          row = _accountRow(
             onTap: () => _push(const ProfileScreen()),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 16, 22, 20),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 23,
-                    backgroundColor: AppColors.surface2,
-                    backgroundImage: auth.avatarUrl != null
-                        ? CachedNetworkImageProvider(auth.avatarUrl!)
-                        : null,
-                    child: auth.avatarUrl == null
-                        ? Text(
-                            initial,
-                            style: AppText.headline.copyWith(fontSize: 18),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 15),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          auth.displayName,
-                          style: AppText.headline.copyWith(fontSize: 16),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          auth.user?.email ?? '',
-                          style: AppText.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary,
-                    size: 20,
-                  ),
-                ],
+            avatar: CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.surface2,
+              backgroundImage: auth.avatarUrl != null
+                  ? CachedNetworkImageProvider(auth.avatarUrl!)
+                  : null,
+              child: auth.avatarUrl == null
+                  ? Text(initial, style: AppText.headline.copyWith(fontSize: 18))
+                  : null,
+            ),
+            title: auth.displayName,
+            subtitle: auth.user?.email ?? '',
+            trailing: const Icon(
+              Icons.chevron_right_rounded,
+              color: AppColors.textTertiary,
+              size: 20,
+            ),
+          );
+        } else {
+          row = _accountRow(
+            onTap: () => _push(const LoginScreen()),
+            avatar: CircleAvatar(
+              radius: 24,
+              backgroundColor: AppColors.accentSoft,
+              child: Icon(
+                Icons.person_outline_rounded,
+                color: AppColors.accent,
+                size: 24,
+              ),
+            ),
+            title: 'Sign in',
+            subtitle: 'Sync your list, history & continue watching',
+            trailing: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: AppColors.accent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                'Sign in',
+                style: AppText.caption.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           );
         }
-        return SettingsTile(
-          icon: Icons.person_outline_rounded,
-          title: 'Sign in',
-          subtitle: 'Sync your list & continue watching',
-          onTap: () => _push(const LoginScreen()),
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: SettingsCard(children: [row]),
         );
       },
+    );
+  }
+
+  Widget _accountRow({
+    required VoidCallback onTap,
+    required Widget avatar,
+    required String title,
+    required String subtitle,
+    required Widget trailing,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        child: Row(
+          children: [
+            avatar,
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: AppText.headline.copyWith(fontSize: 16),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: AppText.caption,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            trailing,
+          ],
+        ),
+      ),
     );
   }
 
@@ -1126,7 +1169,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   String _sectionSummary(String section) => switch (section) {
-    'Account & sync' => 'Sign in, trackers, Discord, backup',
+    'Account & sync' => 'Trackers, Discord, backup, sync',
     'Sources' => 'Providers, active source, updates',
     'Playback' => 'Quality, autoplay, speed',
     'History' => 'Shows you\'ve watched',
