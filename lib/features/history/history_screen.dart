@@ -199,6 +199,60 @@ class _HistoryScreenState extends State<HistoryScreen>
     _reloadReading();
   }
 
+  /// Reading sources use `id == url` (both the series path), so a ReadEntry's
+  /// [showId] doubles as the detail URL — enough to build a real MediaItem.
+  MediaItem _readStub(ReadEntry e) => MediaItem(
+    id: e.showId,
+    title: e.title,
+    cover: e.cover,
+    url: e.showId,
+    type: e.type,
+    sourceId: e.sourceId,
+  );
+
+  void _openReadDetail(MediaItem item) {
+    Navigator.push(context, DetailScreen.route(item)).then((_) => _reloadReading());
+  }
+
+  /// Long-press info sheet for a manga/novel row — the reading twin of
+  /// [_showInfo] (cover hero, synopsis, Resume, My List, Details, Remove).
+  void _showReadInfo(ReadEntry e) {
+    final stub = _readStub(e);
+    final hasProgress = e.total > 0;
+    final progress = hasProgress ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+    final chap = e.chapterNumber != null
+        ? 'Chapter ${e.chapterNumber!.toInt()}'
+        : null;
+    final pctLabel = hasProgress ? '${(progress * 100).round()}% read' : null;
+    showMediaInfoSheet(
+      context,
+      title: e.title,
+      cover: e.cover,
+      typeLabel: e.type == ProviderType.manga ? 'Manga' : 'Novel',
+      detail: _detailOf(e.showId, e.sourceId),
+      inMyList: _myList.contains(stub),
+      playLabel: 'Resume',
+      progress: hasProgress ? progress : null,
+      progressLabel: [?chap, ?pctLabel].join('  ·  '),
+      onPlay: () => _resumeRead(e),
+      onOpenDetail: () => _openReadDetail(stub),
+      onToggleMyList: () async {
+        await showListStatusSheet(
+          context,
+          item: stub,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
+        return _myList.contains(stub);
+      },
+      onRemoveFromContinue: () async {
+        await _read.remove(e.sourceId, e.showId);
+        _reloadReading();
+      },
+    );
+  }
+
   // ── Clear-all (acts on the active tab only) ───────────────────────────────
 
   bool get _activeNotEmpty => switch (_tab.index) {
@@ -324,6 +378,7 @@ class _HistoryScreenState extends State<HistoryScreen>
             row: (e) => _ReadRow(
               entry: e,
               onTap: () => _resumeRead(e),
+              onLongPress: () => _showReadInfo(e),
               onRemove: () => _removeRead(e),
             ),
             empty: const _EmptyState(
@@ -339,6 +394,7 @@ class _HistoryScreenState extends State<HistoryScreen>
             row: (e) => _ReadRow(
               entry: e,
               onTap: () => _resumeRead(e),
+              onLongPress: () => _showReadInfo(e),
               onRemove: () => _removeRead(e),
             ),
             empty: const _EmptyState(
@@ -480,11 +536,13 @@ class _ReadRow extends StatelessWidget {
   const _ReadRow({
     required this.entry,
     required this.onTap,
+    required this.onLongPress,
     required this.onRemove,
   });
 
   final ReadEntry entry;
   final VoidCallback onTap;
+  final VoidCallback onLongPress;
   final VoidCallback onRemove;
 
   @override
@@ -505,6 +563,7 @@ class _ReadRow extends StatelessWidget {
       headers: null,
       progress: progress,
       onTap: onTap,
+      onLongPress: onLongPress,
       onRemove: onRemove,
     );
   }
