@@ -334,6 +334,49 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
+  /// Long-press info card for a Continue Reading item — the manga/novel twin of
+  /// [_showContinueInfo]: Read + Remove + My List, backed by [ReadHistory].
+  void _showContinueReadingInfo(ReadEntry e) {
+    final stub = MediaItem(
+      id: e.showId,
+      title: e.title,
+      cover: e.cover,
+      url: e.showId,
+      type: e.type,
+      sourceId: e.sourceId,
+    );
+    final pct = e.total > 0 ? ((e.pos / e.total) * 100).round() : 0;
+    final progress = e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+    showMediaInfoSheet(
+      context,
+      title: e.title,
+      cover: e.cover,
+      detail: _detailOf(e.showId, e.sourceId),
+      inMyList: _myList.contains(stub),
+      playLabel: 'Read',
+      progress: progress,
+      progressLabel: e.chapterNumber != null
+          ? 'Chapter ${e.chapterNumber!.toInt()} · $pct% read'
+          : '$pct% read',
+      onPlay: () => _resumeReading(e),
+      onOpenDetail: () => _openDetail(stub),
+      onToggleMyList: () async {
+        await showListStatusSheet(
+          context,
+          item: stub,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
+        return _myList.contains(stub);
+      },
+      onRemoveFromContinue: () async {
+        await sl<ReadHistory>().remove(e.sourceId, e.showId);
+        if (mounted) setState(() {});
+      },
+    );
+  }
+
   Future<void> _playFeatured(MediaItem item) async {
     // Manga/novel: the hero's primary action says "Read", so it must not drop
     // into the video player. Route to the title instead — Detail owns the real
@@ -1094,6 +1137,7 @@ class _HomeViewState extends State<_HomeView>
                         onLongPress: _showContinueInfo,
                         onSeeAll: _openHistory,
                         onResumeReading: _resumeReading,
+                        onLongPressReading: _showContinueReadingInfo,
                       ),
 
                       // ── Provider-defined browse rows (CloudStream-style) ──────

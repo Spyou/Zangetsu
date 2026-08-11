@@ -36,6 +36,7 @@ class ContinueSection extends StatelessWidget {
     required this.onLongPress,
     required this.onSeeAll,
     required this.onResumeReading,
+    required this.onLongPressReading,
   });
 
   final bool loggedIn;
@@ -43,6 +44,7 @@ class ContinueSection extends StatelessWidget {
   final void Function(HistoryEntry) onLongPress;
   final VoidCallback onSeeAll;
   final void Function(ReadEntry) onResumeReading;
+  final void Function(ReadEntry) onLongPressReading;
 
   @override
   Widget build(BuildContext context) {
@@ -86,6 +88,7 @@ class ContinueSection extends StatelessWidget {
       builder: (context, _, _) => ContinueReadingRow(
         history: sl<ReadHistory>().recent(type: type),
         onResumeReading: onResumeReading,
+        onLongPress: onLongPressReading,
         onSeeAll: onSeeAll,
       ),
     );
@@ -153,11 +156,13 @@ class ContinueReadingRow extends StatelessWidget {
     super.key,
     required this.history,
     required this.onResumeReading,
+    this.onLongPress,
     this.onSeeAll,
   });
 
   final List<ReadEntry> history;
   final void Function(ReadEntry) onResumeReading;
+  final void Function(ReadEntry)? onLongPress;
   final VoidCallback? onSeeAll;
 
   @override
@@ -189,6 +194,7 @@ class ContinueReadingRow extends StatelessWidget {
                   ? 'Chapter ${e.chapterNumber!.toInt()}'
                   : null,
               onTap: () => onResumeReading(e),
+              onLongPress: onLongPress == null ? null : () => onLongPress!(e),
             );
           },
         ),
