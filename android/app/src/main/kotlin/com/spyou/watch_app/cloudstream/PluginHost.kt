@@ -685,7 +685,7 @@ class PluginHost(private val context: Context) {
                     "name" to el.name,
                     "referer" to el.referer,
                     "quality" to el.quality,
-                    "headers" to el.headers,
+                    "headers" to enrichLinkHeaders(el.url, el.referer, el.headers),
                     "isM3u8" to el.isM3u8,
                     "drmKid" to drm?.kid,
                     "drmKey" to drm?.key,
@@ -693,6 +693,65 @@ class PluginHost(private val context: Context) {
             },
             "subtitles" to subs.toList().map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },
         )
+    }
+
+    // A real browser UA for mpv, matching what CloudStream's OkHttp already sends.
+    // mpv would otherwise fetch with ffmpeg's default UA, which anti-leech CDNs 403.
+    private val DEFAULT_BROWSER_UA =
+        "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+
+    /**
+     * mpv fetches the stream itself (NOT through CloudStream's OkHttp), so it never
+     * inherits the Cloudflare clearance + matching User-Agent the OkHttp side solved,
+     * and it sends no Origin. Anti-leech / CF-gated CDNs (AnimeSalt-style) reject
+     * those raw fetches → intermittent 403s. Fold the missing bits into each link's
+     * headers so mpv's manifest + segment requests look like the ones CloudStream
+     * already made. Purely ADDITIVE: never overwrites a header the extractor set,
+     * and the cf_clearance cookie is only attached for hosts that actually have one
+     * — non-Cloudflare streams are untouched.
+     */
+    private fun enrichLinkHeaders(
+        url: String,
+        referer: String?,
+        headers: Map<String, String>?,
+    ): Map<String, String> {
+        val h = HashMap(headers ?: emptyMap())
+        fun has(k: String) = h.keys.any { it.equals(k, ignoreCase = true) }
+
+        // Origin, synthesized from the Referer (many WAFs check it alongside Referer).
+        if (!has("Origin") && !referer.isNullOrBlank()) {
+            runCatching {
+                val u = java.net.URI(referer)
+                if (!u.scheme.isNullOrBlank() && !u.host.isNullOrBlank()) {
+                    val port = if (u.port > 0) ":${u.port}" else ""
+                    h["Origin"] = "${u.scheme}://${u.host}$port"
+                }
+            }
+        }
+
+        // Cloudflare clearance cookie for THIS host — null/absent for non-CF hosts,
+        // so nothing is added there.
+        val cf = runCatching {
+            android.webkit.CookieManager.getInstance().getCookie(url)
+        }.getOrNull()
+        val hasCf = cf != null && cf.contains("cf_clearance")
+        if (hasCf) {
+            val existing = h.entries.firstOrNull { it.key.equals("Cookie", ignoreCase = true) }
+            if (existing == null) {
+                h["Cookie"] = cf!!
+            } else if (!existing.value.contains("cf_clearance")) {
+                h[existing.key] = existing.value.trimEnd(';', ' ') + "; " + cf
+            }
+        }
+
+        // A browser User-Agent for mpv (only if the extractor set none). When we
+        // carry cf_clearance it MUST equal the UA that solved the challenge.
+        if (!has("User-Agent")) {
+            h["User-Agent"] = if (hasCf) (CfClearance.userAgent ?: DEFAULT_BROWSER_UA)
+            else DEFAULT_BROWSER_UA
+        }
+        return h
     }
 
     // ── mappers ──────────────────────────────────────────────────────────────
