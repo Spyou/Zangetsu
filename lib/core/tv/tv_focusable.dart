@@ -260,7 +260,16 @@ class _TvFocusableState extends State<TvFocusable> {
             );
           }
         },
-        child: box,
+        // Touch support: some Android TVs / TV boxes have a touchscreen. A
+        // physical tap fires the same single, deduped action as the remote's
+        // OK/Enter (via [_activate]). Remote-only TVs never emit touch events,
+        // so this is completely inert there — the D-pad path is untouched. A
+        // scroll drag beats the tap in the gesture arena, so lists still scroll.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: _activate,
+          child: box,
+        ),
       ),
     );
   }
