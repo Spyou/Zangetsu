@@ -57,6 +57,7 @@ import '../../core/trailer/trailer_service.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
+import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
@@ -1443,16 +1444,19 @@ class _Hero extends StatelessWidget {
   /// trailer, and as the placeholder/fallback underneath the player.
   Widget _coverBackdrop() {
     if (!hasCover) return ColoredBox(color: AppColors.surface2);
-    // Aniyomi path: when the x-ani-src marker is present, fetch image bytes
-    // through the source's own OkHttpClient (which carries the CF session)
-    // instead of CachedNetworkImage which cannot pass Cloudflare.
+    // Aniyomi/Mihon path: when the x-ani-src / x-mihon-src marker is present,
+    // fetch image bytes through the source's own OkHttpClient (which carries the
+    // CF session) instead of CachedNetworkImage which cannot pass Cloudflare.
     final aniSrcId = coverHeaders?['x-ani-src'];
-    if (aniSrcId != null) {
+    final mihonSrcId = coverHeaders?['x-mihon-src'];
+    if (aniSrcId != null || mihonSrcId != null) {
       return Image(
-        // Resize to the backdrop's memCacheWidth (matches the non-Aniyomi path)
+        // Resize to the backdrop's memCacheWidth (matches the non-native path)
         // so a full-res cover doesn't sit in the image cache.
         image: ResizeImage(
-          AniyomiImage(int.parse(aniSrcId), coverUrl),
+          aniSrcId != null
+              ? AniyomiImage(int.parse(aniSrcId), coverUrl)
+              : MihonImage(int.parse(mihonSrcId!), coverUrl),
           width: 800,
         ),
         fit: BoxFit.cover,

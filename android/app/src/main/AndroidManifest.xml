@@ -162,6 +162,15 @@
             android:taskAffinity=""
             android:theme="@style/Theme.MihonSettings"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
+        <!-- Visible WebView to solve a source's Cloudflare (interactive Turnstile)
+             challenge; cf_clearance lands in the shared CookieManager the Mihon
+             OkHttp client reads. -->
+        <activity
+            android:name=".mihon.MihonCloudflareActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.MihonSettings"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <!-- Fully-native TV video player (TvPlayerActivity). Landscape, no title
              bar; renders ExoPlayer's SurfaceView straight to the window so TVs
              that black-screen the Flutter platform-view player show video. -->

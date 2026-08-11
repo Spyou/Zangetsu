@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
+import '../mihon/mihon_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -72,15 +73,21 @@ class _ContinueCardState extends State<ContinueCard> {
                 // ── Landscape art (fills the 16:9 cell) ─────────────────────
                 if (widget.imageUrl == null || widget.imageUrl!.isEmpty)
                   ColoredBox(color: AppColors.surface2)
-                else if (widget.headers?['x-ani-src'] != null)
-                  // Cloudflare-walled Aniyomi image — load via the source's
+                else if (widget.headers?['x-ani-src'] != null ||
+                    widget.headers?['x-mihon-src'] != null)
+                  // Cloudflare-walled Aniyomi/Mihon image — load via the source's
                   // native client instead of CachedNetworkImage.
                   Image(
                     image: ResizeImage(
-                      AniyomiImage(
-                        int.parse(widget.headers!['x-ani-src']!),
-                        widget.imageUrl!,
-                      ),
+                      widget.headers?['x-ani-src'] != null
+                          ? AniyomiImage(
+                              int.parse(widget.headers!['x-ani-src']!),
+                              widget.imageUrl!,
+                            )
+                          : MihonImage(
+                              int.parse(widget.headers!['x-mihon-src']!),
+                              widget.imageUrl!,
+                            ),
                       width: memW,
                     ),
                     fit: BoxFit.cover,
@@ -296,10 +303,13 @@ class _ContinueReadingCardState extends State<ContinueReadingCard> {
     if (url == null || url.isEmpty) {
       return ColoredBox(color: AppColors.surface);
     }
-    if (widget.headers?['x-ani-src'] != null) {
+    if (widget.headers?['x-ani-src'] != null ||
+        widget.headers?['x-mihon-src'] != null) {
       return Image(
         image: ResizeImage(
-          AniyomiImage(int.parse(widget.headers!['x-ani-src']!), url),
+          widget.headers?['x-ani-src'] != null
+              ? AniyomiImage(int.parse(widget.headers!['x-ani-src']!), url)
+              : MihonImage(int.parse(widget.headers!['x-mihon-src']!), url),
           width: memW,
         ),
         fit: BoxFit.cover,

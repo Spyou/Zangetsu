@@ -81,7 +81,15 @@ MediaItem mediaItemFromSManga(
 }) {
   final url = (j['url'] as String?) ?? '';
   final coverHeaders = (headers != null && headers.isNotEmpty)
-      ? Map<String, String>.of(headers)
+      ? {
+          ...headers,
+          // Internal marker → routes cover/page images through MihonImage (native
+          // getImage, which carries the cf_clearance cookie) instead of
+          // cached_network_image, which can't pass a Cloudflare-gated image host.
+          // Stripped from real requests; never sent over the network.
+          'x-mihon-src':
+              sourceId.startsWith('mihon:') ? sourceId.substring(6) : sourceId,
+        }
       : null;
   return MediaItem(
     id: url,
@@ -117,7 +125,15 @@ MediaDetail mediaDetailFromSManga(
 }) {
   final url = (j['url'] as String?) ?? '';
   final coverHeaders = (headers != null && headers.isNotEmpty)
-      ? Map<String, String>.of(headers)
+      ? {
+          ...headers,
+          // Internal marker → routes cover/page images through MihonImage (native
+          // getImage, which carries the cf_clearance cookie) instead of
+          // cached_network_image, which can't pass a Cloudflare-gated image host.
+          // Stripped from real requests; never sent over the network.
+          'x-mihon-src':
+              sourceId.startsWith('mihon:') ? sourceId.substring(6) : sourceId,
+        }
       : null;
   return MediaDetail(
     id: url,

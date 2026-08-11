@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
+import '../mihon/mihon_image_provider.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -54,11 +55,21 @@ class _PosterCardState extends State<PosterCard> {
     return int.tryParse(raw);
   }
 
+  /// The Mihon source id for this cover, or null. Twin of [_aniSrcId] — routes
+  /// Cloudflare-gated manga covers through the native, cf_clearance-carrying
+  /// [MihonImage] instead of CachedNetworkImage.
+  int? get _mihonSrcId {
+    final raw = widget.headers?['x-mihon-src'];
+    if (raw == null || widget.imageUrl == null) return null;
+    return int.tryParse(raw);
+  }
+
   @override
   Widget build(BuildContext context) {
     final dpr = MediaQuery.of(context).devicePixelRatio;
     final memW = (widget.cellWidth * dpr).round();
     final aniSrcId = _aniSrcId;
+    final mihonSrcId = _mihonSrcId;
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
@@ -81,16 +92,18 @@ class _PosterCardState extends State<PosterCard> {
                     children: [
                       if (widget.imageUrl == null)
                         ColoredBox(color: AppColors.surface2)
-                      else if (aniSrcId != null)
-                        // Aniyomi path: fetch bytes through the source's own
+                      else if (aniSrcId != null || mihonSrcId != null)
+                        // Aniyomi/Mihon path: fetch bytes through the source's own
                         // OkHttpClient (carries CF session cookies) instead of
                         // going through CachedNetworkImage which can't pass CF.
                         Image(
                           // Resize to the cell's pixel width so a big cover
                           // doesn't sit full-res in the image cache (matches the
-                          // memCacheWidth the non-Aniyomi path already uses).
+                          // memCacheWidth the non-native path already uses).
                           image: ResizeImage(
-                            AniyomiImage(aniSrcId, widget.imageUrl!),
+                            aniSrcId != null
+                                ? AniyomiImage(aniSrcId, widget.imageUrl!)
+                                : MihonImage(mihonSrcId!, widget.imageUrl!),
                             width: memW,
                           ),
                           fit: BoxFit.cover,

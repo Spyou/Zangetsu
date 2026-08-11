@@ -176,6 +176,10 @@ dependencies {
     // Only the dedicated CloudStreamSettingsActivity uses these themes; the
     // Flutter UI keeps its own theme, so this doesn't affect the main app.
     implementation("androidx.appcompat:appcompat:1.7.0")
+    // Cloudflare Turnstile parity with Mihon: setUserAgent() uses WebSettingsCompat
+    // to set Sec-CH-UA client-hint metadata matching the spoofed UA, so the hints
+    // don't contradict it and flag the WebView as a bot.
+    implementation("androidx.webkit:webkit:1.11.0")
     implementation("com.google.android.material:material:1.12.0")
     // SAF DocumentFile — used to check if a content:// download still exists.
     implementation("androidx.documentfile:documentfile:1.0.1")

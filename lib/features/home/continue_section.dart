@@ -189,6 +189,7 @@ class ContinueReadingRow extends StatelessWidget {
             return ContinueReadingCard(
               title: e.title,
               imageUrl: e.cover,
+              headers: e.coverHeaders,
               progress: progress,
               subtitle: e.chapterNumber != null
                   ? 'Chapter ${e.chapterNumber!.toInt()}'

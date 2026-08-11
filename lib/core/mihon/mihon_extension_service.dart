@@ -115,6 +115,20 @@ class MihonExtensionService {
     }
   }
 
+  /// Opens the native visible WebView (MihonCloudflareActivity) so the user can
+  /// complete a Cloudflare challenge for [url]. The `cf_clearance` cookie it
+  /// captures is shared with the Mihon OkHttp client, so the source loads
+  /// afterwards. Best-effort — a missing channel (non-Android) is a silent no-op.
+  static Future<void> solveCloudflare(String url) async {
+    try {
+      await _channel.invokeMethod<void>('solveCloudflare', {'url': url});
+    } on PlatformException catch (e) {
+      debugPrint('[mihon] solveCloudflare failed: $e');
+    } on MissingPluginException {
+      // Non-Android host — no native solver.
+    }
+  }
+
   /// Downloads the extension APK from [entry.apkUrl], installs it, then
   /// builds a [MihonProvider] for every new source in the package.
   ///

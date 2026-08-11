@@ -49,6 +49,22 @@ class ReadEntry {
   /// page/chapter (manga).
   bool get finished => total > 0 && (total == 1000 ? pos >= 950 : pos >= total - 1);
 
+  /// Reconstructs the internal native-image marker (`x-mihon-src` / `x-ani-src`)
+  /// from the stored [sourceId], so Continue-Reading covers on a Cloudflare-gated
+  /// image host route through the native, cf_clearance-carrying image path — the
+  /// same way fresh browse covers do (see `mihon_mapping`/`aniyomi_mapping`). The
+  /// marker is a UI-only key, never sent over the network. Null for JS/other
+  /// sources, which fall back to CachedNetworkImage as before.
+  Map<String, String>? get coverHeaders {
+    if (sourceId.startsWith('mihon:')) {
+      return {'x-mihon-src': sourceId.substring(6)};
+    }
+    if (sourceId.startsWith('ani:')) {
+      return {'x-ani-src': sourceId.substring(4)};
+    }
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
     'sourceId': sourceId,
     'showId': showId,

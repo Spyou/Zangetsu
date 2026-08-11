@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
+import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import java.io.File
@@ -22,6 +23,11 @@ class NetworkHelper(
     sharedClient: OkHttpClient,
 ) {
 
+    /** Cookie store backed by the global WebView [android.webkit.CookieManager] —
+     *  the same store the shared client's own jar writes to. Declared before
+     *  [client] because the Cloudflare interceptor below reads/updates it. */
+    val cookieJar = AndroidCookieJar()
+
     /**
      * Extension-facing client: the app's shared client (CloudStream's baseClient)
      * with an HTTP response cache installed. `newBuilder()` leaves the shared
@@ -37,11 +43,22 @@ class NetworkHelper(
     val client: OkHttpClient = sharedClient.newBuilder()
         // 15 MB is plenty for JSON (browse/detail/chapter lists); LRU-evicted.
         .cache(Cache(File(context.cacheDir, "network_cache"), 15L * 1024 * 1024))
+        // Read+write cookies through the global WebView CookieManager. Without
+        // this the client inherits whatever jar the shared CloudStream client had
+        // when this was built — which, depending on init order, can be none — so
+        // the cf_clearance a Cloudflare solve stores in the WebView jar would
+        // never be sent, and the source would stay blocked even after solving.
+        .cookieJar(cookieJar)
+        // Solve Cloudflare challenges (403/503 + `Server: cloudflare`) in a hidden
+        // WebView, exactly as upstream Mihon does — without it, Cloudflare-gated
+        // manga sources (e.g. Comix) 403 on every request. shouldIntercept() is
+        // false for anything that isn't a Cloudflare challenge, so MangaDex and
+        // other open sources pass straight through untouched. Added to the Mihon
+        // client only — the shared CloudStream/anime client is not modified.
+        .addInterceptor(
+            CloudflareInterceptor(context, cookieJar, ::defaultUserAgentProvider),
+        )
         .build()
-
-    /** Cookie store backed by the global WebView [android.webkit.CookieManager] —
-     *  the same store the shared client's own jar writes to. */
-    val cookieJar = AndroidCookieJar()
 
     /**
      * @deprecated Since extension-lib 1.5 — the regular [client] handles Cloudflare.

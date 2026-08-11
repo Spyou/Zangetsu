@@ -13,6 +13,7 @@ import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import '../provider/base_provider.dart';
 import '../provider/reading_provider.dart';
+import 'mihon_cloudflare.dart';
 import 'mihon_filters.dart';
 import 'mihon_mapping.dart';
 import 'mihon_source_info.dart';
@@ -279,10 +280,35 @@ class MihonProvider implements BaseProvider, ReadingProvider {
     });
     if (raw == null || raw.isEmpty) return const [];
     try {
-      return pagesFromJson(jsonDecode(raw));
+      final pages = pagesFromJson(jsonDecode(raw));
+      if (pages.isEmpty) return pages;
+      // Attach the source's Cloudflare session (cf_clearance cookie + matching
+      // UA) to each page so Flutter's image loader can fetch pages from a
+      // Cloudflare-gated image host (e.g. static.comix.to). Empty/no-op for
+      // sources that aren't behind Cloudflare.
+      final cookieHeaders = await _imageCookieHeaders(pages.first.url);
+      if (cookieHeaders.isEmpty) return pages;
+      return [
+        for (final p in pages)
+          PageImage(url: p.url, headers: {...?p.headers, ...cookieHeaders}),
+      ];
     } catch (e) {
       debugPrint('[mihon] getPages parse failed for $chapterUrl: $e');
       return const [];
+    }
+  }
+
+  /// Cookie + User-Agent to send with page-image requests so
+  /// `cached_network_image` can clear a Cloudflare-gated image host, via the
+  /// native `imageCookie` (reads the WebView CookieManager the solve wrote to).
+  Future<Map<String, String>> _imageCookieHeaders(String url) async {
+    try {
+      final res = await _mihonChannel
+          .invokeMethod<Map<dynamic, dynamic>>('imageCookie', {'url': url});
+      if (res == null) return const {};
+      return res.map((k, v) => MapEntry(k.toString(), v.toString()));
+    } catch (_) {
+      return const {};
     }
   }
 
@@ -299,9 +325,28 @@ class MihonProvider implements BaseProvider, ReadingProvider {
 
   /// Invokes [method] on the mihon channel with [args], returning the raw
   /// JSON string result. Returns null on any error so callers degrade cleanly.
-  Future<String?> _safeInvoke(String method, Map<String, dynamic> args) async {
+  ///
+  /// When [surfaceCloudflare] is true, a native `CLOUDFLARE` failure is re-thrown
+  /// as a [CloudflareRequiredException] (carrying the URL to solve) instead of
+  /// being swallowed — so the browse/home path can offer a "Solve Cloudflare"
+  /// action. Detail/chapter/page calls leave it false and keep degrading to
+  /// null, since the user solves once from the browse screen and the cached
+  /// cf_clearance then unblocks everything.
+  Future<String?> _safeInvoke(
+    String method,
+    Map<String, dynamic> args, {
+    bool surfaceCloudflare = false,
+  }) async {
     try {
       return await _mihonChannel.invokeMethod<String>(method, args);
+    } on PlatformException catch (e) {
+      if (surfaceCloudflare && e.code == 'CLOUDFLARE') {
+        throw CloudflareRequiredException(
+          (e.message?.isNotEmpty ?? false) ? e.message! : info.baseUrl,
+        );
+      }
+      debugPrint('[mihon] $method(sourceId=${info.id}) failed: $e');
+      return null;
     } catch (e) {
       debugPrint('[mihon] $method(sourceId=${info.id}) failed: $e');
       return null;
@@ -314,7 +359,7 @@ class MihonProvider implements BaseProvider, ReadingProvider {
     String method,
     Map<String, dynamic> args,
   ) async {
-    final raw = await _safeInvoke(method, args);
+    final raw = await _safeInvoke(method, args, surfaceCloudflare: true);
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;

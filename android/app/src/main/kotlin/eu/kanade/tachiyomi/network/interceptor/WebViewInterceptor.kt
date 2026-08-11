@@ -8,6 +8,7 @@ import android.widget.Toast
 import eu.kanade.tachiyomi.util.system.DeviceUtil
 import eu.kanade.tachiyomi.util.system.WebViewUtil
 import eu.kanade.tachiyomi.util.system.setDefaultSettings
+import eu.kanade.tachiyomi.util.system.setUserAgent
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.coroutines.DelicateCoroutinesApi
 import okhttp3.Headers
@@ -58,7 +59,7 @@ abstract class WebViewInterceptor(
 
         if (!WebViewUtil.supportsWebView(context)) {
             launchUI {
-                context.toast("Webview is required for dantotsu", Toast.LENGTH_LONG)
+                context.toast("WebView is required to load this source", Toast.LENGTH_LONG)
             }
             return response
         }
@@ -84,8 +85,10 @@ abstract class WebViewInterceptor(
     fun createWebView(request: Request): WebView {
         return WebView(context).apply {
             setDefaultSettings()
-            // Avoid sending empty User-Agent, Chromium WebView will reset to default if empty
-            settings.userAgentString = request.header("User-Agent") ?: defaultUserAgentProvider()
+            // Avoid sending empty User-Agent, Chromium WebView will reset to default if empty.
+            // setUserAgent (not settings.userAgentString) also fixes the Sec-CH-UA client
+            // hints so they don't contradict the UA — Cloudflare parity with Mihon.
+            setUserAgent(request.header("User-Agent") ?: defaultUserAgentProvider())
         }
     }
 }

@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/mihon/mihon_cloudflare.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/repository/source_repository.dart';
@@ -13,7 +14,7 @@ import '../../../core/repository/source_repository.dart';
 /// feeds the hero carousel via [heroItems]; the screen renders the remaining
 /// sections as browse rows.
 class HomeState extends Equatable {
-  const HomeState({this.sections, this.loading = false});
+  const HomeState({this.sections, this.loading = false, this.cloudflareUrl});
 
   /// The provider's named home rows, in order. Null until the first load.
   final List<HomeSection>? sections;
@@ -21,19 +22,29 @@ class HomeState extends Equatable {
   /// True while the rows are being (re)fetched.
   final bool loading;
 
+  /// Set when the active (Mihon) source is blocked by a Cloudflare challenge the
+  /// headless solver couldn't pass — the URL to open in the visible WebView
+  /// solve. Null in every other state. Drives the "Solve Cloudflare" empty view.
+  final String? cloudflareUrl;
+
   /// Items that drive the hero carousel — the first section's items. Empty
   /// until something loads.
   List<MediaItem> get heroItems => (sections != null && sections!.isNotEmpty)
       ? sections!.first.items
       : const [];
 
-  HomeState copyWith({List<HomeSection>? sections, bool? loading}) => HomeState(
+  HomeState copyWith({
+    List<HomeSection>? sections,
+    bool? loading,
+    String? cloudflareUrl,
+  }) => HomeState(
     sections: sections ?? this.sections,
     loading: loading ?? this.loading,
+    cloudflareUrl: cloudflareUrl ?? this.cloudflareUrl,
   );
 
   @override
-  List<Object?> get props => [sections, loading];
+  List<Object?> get props => [sections, loading, cloudflareUrl];
 }
 
 /// Owns the Home rows. Delegates entirely to [SourceRepository.home], which
@@ -61,14 +72,22 @@ class HomeCubit extends Cubit<HomeState> {
     emit(reset ? const HomeState(loading: true) : state.copyWith(loading: true));
 
     List<HomeSection> sections;
+    String? cloudflareUrl;
     try {
       sections = await _repo.home();
+    } on CloudflareRequiredException catch (e) {
+      sections = const <HomeSection>[];
+      cloudflareUrl = e.url;
     } catch (_) {
       sections = const <HomeSection>[];
     }
 
     // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;
-    emit(HomeState(sections: sections, loading: false));
+    emit(HomeState(
+      sections: sections,
+      loading: false,
+      cloudflareUrl: cloudflareUrl,
+    ));
   }
 }

@@ -16,6 +16,7 @@ import okhttp3.Request
 import okhttp3.Response
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class CloudflareInterceptor(
     private val context: Context,
@@ -47,7 +48,10 @@ class CloudflareInterceptor(
         // Because OkHttp's enqueue only handles IOExceptions, wrap the exception so that
         // we don't crash the entire app
         catch (e: CloudflareBypassException) {
-            throw IOException("Failed to bypass Cloudflare")
+            // The headless solve can't pass an interactive challenge (Turnstile).
+            // Surface it as a typed IOException carrying the URL so the bridge can
+            // offer the user a visible WebView solve (MihonCloudflareActivity).
+            throw CloudflareRequiredException(request.url.toString())
         } catch (e: Exception) {
             throw IOException(e)
         }
@@ -112,7 +116,10 @@ class CloudflareInterceptor(
             webview?.loadUrl(origRequestUrl, headers)
         }
 
-        latch.awaitFor30Seconds()
+        // A managed (auto) challenge clears in a few seconds; give it a short
+        // window and then fall back to the visible solve for interactive
+        // Turnstile, rather than blocking the browse for a full 30s.
+        latch.await(HEADLESS_SOLVE_SECONDS, TimeUnit.SECONDS)
 
         executor.execute {
             if (!cloudflareBypassed) {
@@ -143,5 +150,15 @@ class CloudflareInterceptor(
 private val ERROR_CODES = listOf(403, 503)
 private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
 private val COOKIE_NAMES = listOf("cf_clearance")
+private const val HEADLESS_SOLVE_SECONDS = 12L
 
 class CloudflareBypassException : Exception()
+
+/**
+ * Thrown when the headless solver couldn't clear an interactive Cloudflare
+ * challenge. Carries the [url] to solve so the app can open a visible WebView
+ * ([com.spyou.watch_app.mihon.MihonCloudflareActivity]). Extends [IOException]
+ * so it propagates cleanly through OkHttp and the source call.
+ */
+class CloudflareRequiredException(val url: String) :
+    IOException("Cloudflare challenge — solve at $url")

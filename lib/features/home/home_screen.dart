@@ -8,6 +8,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/mihon/mihon_extension_service.dart';
+import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/notify/notification_service.dart';
@@ -818,7 +820,7 @@ class _HomeViewState extends State<_HomeView>
     final type = m == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
     for (final e in sl<ReadHistory>().all()) {
       if (e.type == type && (e.cover?.isNotEmpty ?? false)) {
-        return (cover: e.cover, headers: null);
+        return (cover: e.cover, headers: e.coverHeaders);
       }
     }
     return (cover: null, headers: null);
@@ -837,10 +839,13 @@ class _HomeViewState extends State<_HomeView>
         ),
       );
     }
-    if (art.headers?['x-ani-src'] != null) {
+    if (art.headers?['x-ani-src'] != null ||
+        art.headers?['x-mihon-src'] != null) {
       return Image(
         image: ResizeImage(
-          AniyomiImage(int.parse(art.headers!['x-ani-src']!), url),
+          art.headers?['x-ani-src'] != null
+              ? AniyomiImage(int.parse(art.headers!['x-ani-src']!), url)
+              : MihonImage(int.parse(art.headers!['x-mihon-src']!), url),
           width: 420,
         ),
         fit: BoxFit.cover,
@@ -1171,6 +1176,21 @@ class _HomeViewState extends State<_HomeView>
                                 builder: (_) => const ProvidersHubScreen(),
                               ),
                             ),
+                            // Cloudflare-blocked (Mihon) source: offer the visible
+                            // solve, then reload once the user closes the WebView.
+                            cloudflareUrl: state.cloudflareUrl,
+                            onSolveCloudflare: state.cloudflareUrl == null
+                                ? null
+                                : () async {
+                                    await MihonExtensionService.solveCloudflare(
+                                      state.cloudflareUrl!,
+                                    );
+                                    if (context.mounted) {
+                                      context
+                                          .read<HomeCubit>()
+                                          .load(reset: true);
+                                    }
+                                  },
                           ),
                         )
                       else
@@ -1222,6 +1242,8 @@ class HomeLoadedEmptyView extends StatelessWidget {
     required this.sourceName,
     required this.onRetry,
     required this.onInstallSources,
+    this.cloudflareUrl,
+    this.onSolveCloudflare,
   });
 
   final ContentMode mode;
@@ -1229,8 +1251,22 @@ class HomeLoadedEmptyView extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onInstallSources;
 
+  /// Non-null when the active source is blocked by a Cloudflare challenge;
+  /// [onSolveCloudflare] opens the visible solve WebView and reloads after.
+  final String? cloudflareUrl;
+  final Future<void> Function()? onSolveCloudflare;
+
   @override
   Widget build(BuildContext context) {
+    // A Cloudflare block takes priority over the no-sources guide: the source
+    // IS installed, it's just gated behind a challenge the user can solve.
+    if (cloudflareUrl != null && onSolveCloudflare != null) {
+      return _SourceUnavailable(
+        sourceName: sourceName,
+        onRetry: onRetry,
+        onSolveCloudflare: onSolveCloudflare,
+      );
+    }
     if (!hasSourcesFor(mode)) {
       return _NoSourcesGuide(mode: mode, onBrowse: onInstallSources);
     }
@@ -1313,13 +1349,24 @@ class _NoSourcesGuide extends StatelessWidget {
 /// typically a dead/blocked site. Offers a retry and points to the source
 /// switcher. Continue Watching (app-side) still renders above this.
 class _SourceUnavailable extends StatelessWidget {
-  const _SourceUnavailable({required this.sourceName, required this.onRetry});
+  const _SourceUnavailable({
+    required this.sourceName,
+    required this.onRetry,
+    this.onSolveCloudflare,
+  });
 
   final String sourceName;
   final VoidCallback onRetry;
 
+  /// When set, this is a Cloudflare block (not a generic outage): show a shield
+  /// + a primary "Solve Cloudflare" action that opens the visible solve WebView.
+  final Future<void> Function()? onSolveCloudflare;
+
+  static const Color _cloudflareOrange = Color(0xFFF48120);
+
   @override
   Widget build(BuildContext context) {
+    final isCloudflare = onSolveCloudflare != null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(36, 40, 36, 56),
       child: Column(
@@ -1329,18 +1376,22 @@ class _SourceUnavailable extends StatelessWidget {
             width: 88,
             height: 88,
             decoration: BoxDecoration(
-              color: AppColors.surface,
+              color: isCloudflare
+                  ? _cloudflareOrange.withValues(alpha: 0.14)
+                  : AppColors.surface,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.cloud_off_rounded,
+            child: Icon(
+              isCloudflare ? Icons.shield_rounded : Icons.cloud_off_rounded,
               size: 40,
-              color: AppColors.textTertiary,
+              color: isCloudflare ? _cloudflareOrange : AppColors.textTertiary,
             ),
           ),
           const SizedBox(height: 20),
           Text(
-            "Couldn't load $sourceName",
+            isCloudflare
+                ? '$sourceName is protected by Cloudflare'
+                : "Couldn't load $sourceName",
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textPrimary,
@@ -1349,36 +1400,70 @@ class _SourceUnavailable extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 10),
-          const Text(
-            "This source isn't responding right now. It may be down or "
-            "blocking requests — try again, or switch to another source "
-            "from the top.",
+          Text(
+            isCloudflare
+                ? 'Complete the Cloudflare check once and this source will '
+                      'load normally from then on.'
+                : "This source isn't responding right now. It may be down or "
+                      "blocking requests — try again, or switch to another "
+                      "source from the top.",
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
               height: 1.45,
             ),
           ),
           const SizedBox(height: 24),
-          ElevatedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            label: const Text('Retry'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accent,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
-              textStyle: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(26),
+          if (isCloudflare) ...[
+            ElevatedButton.icon(
+              onPressed: () => onSolveCloudflare!(),
+              icon: const Icon(Icons.shield_rounded, size: 20),
+              label: const Text('Solve Cloudflare'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _cloudflareOrange,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(26),
+                ),
               ),
             ),
-          ),
+            const SizedBox(height: 6),
+            TextButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Retry'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textSecondary,
+              ),
+            ),
+          ] else
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accent,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(26),
+                ),
+              ),
+            ),
         ],
       ),
     );

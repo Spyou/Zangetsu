@@ -19,6 +19,7 @@ package com.spyou.watch_app.mihon
 import android.content.Context
 import android.content.Intent
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.interceptor.CloudflareRequiredException
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
@@ -85,6 +86,29 @@ class MihonBridge(
     private val context: Context,
     private val scope: CoroutineScope,
 ) {
+
+    companion object {
+        /**
+         * The in-flight `solveCloudflare` call's result. Held (not completed)
+         * while [MihonCloudflareActivity] is open so the Dart Future only
+         * resolves once the user closes the solve WebView — then the browse
+         * screen reloads with the fresh cf_clearance cookie. Completed on the
+         * main thread from the activity's `onDestroy`.
+         */
+        private var pendingSolve: MethodChannel.Result? = null
+
+        /** Stores [result] as the pending solve, completing any prior one. */
+        fun beginCloudflareSolve(result: MethodChannel.Result) {
+            pendingSolve?.let { runCatching { it.success(false) } }
+            pendingSolve = result
+        }
+
+        /** Completes the pending solve; called from the activity when it closes. */
+        fun finishCloudflareSolve() {
+            pendingSolve?.let { runCatching { it.success(true) } }
+            pendingSolve = null
+        }
+    }
 
     /**
      * Attaches this bridge to [channel] by registering a [MethodChannel.MethodCallHandler].
@@ -354,6 +378,26 @@ class MihonBridge(
                     }
                 }
 
+                // Returns the Cookie + User-Agent to attach to chapter-page image
+                // requests, so Flutter's image loader (which fetches pages itself,
+                // keeping its disk cache) can pass a Cloudflare-gated image host
+                // using the cf_clearance a solve stored in the WebView CookieManager.
+                "imageCookie" -> {
+                    val url = call.argument<String>("url") ?: run {
+                        result.error("BAD_ARGS", "url required", null); return@setMethodCallHandler
+                    }
+                    val cookie = try {
+                        android.webkit.CookieManager.getInstance().getCookie(url)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val headers = HashMap<String, String>()
+                    if (!cookie.isNullOrBlank()) headers["Cookie"] = cookie
+                    headers["User-Agent"] =
+                        eu.kanade.tachiyomi.network.NetworkHelper.defaultUserAgentProvider()
+                    result.success(headers)
+                }
+
                 "hasSourceSettings" -> {
                     val sourceId = call.sourceId(result) ?: return@setMethodCallHandler
                     result.success(MihonSourceManager.get(sourceId) is ConfigurableSource)
@@ -375,6 +419,21 @@ class MihonBridge(
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(intent)
                     result.success(true)
+                }
+
+                "solveCloudflare" -> {
+                    val url = call.argument<String>("url")
+                    if (url.isNullOrBlank()) {
+                        result.error("BAD_ARGS", "url required", null)
+                        return@setMethodCallHandler
+                    }
+                    // Hold the result until the solve WebView closes (see the
+                    // companion object) so Dart can reload only once it's done.
+                    beginCloudflareSolve(result)
+                    val intent = Intent(context, MihonCloudflareActivity::class.java)
+                        .putExtra(MihonCloudflareActivity.EXTRA_URL, url)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
                 }
 
                 else -> result.notImplemented()
@@ -627,8 +686,19 @@ private fun CoroutineScope.runReporting(
         runCatching { block() }.fold(
             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
             onFailure = { err ->
+                // Walk the cause chain: a Cloudflare failure may be wrapped by the
+                // source or the suspend adapter. When found, report a distinct
+                // "CLOUDFLARE" code carrying the URL so the app can offer the
+                // visible solve instead of a generic failure.
+                val cf = generateSequence(err as Throwable?) { it.cause }
+                    .filterIsInstance<CloudflareRequiredException>()
+                    .firstOrNull()
                 withContext(Dispatchers.Main) {
-                    result.error(errorCode, "${err::class.java.simpleName}: ${err.message}", null)
+                    if (cf != null) {
+                        result.error("CLOUDFLARE", cf.url, null)
+                    } else {
+                        result.error(errorCode, "${err::class.java.simpleName}: ${err.message}", null)
+                    }
                 }
             },
         )
