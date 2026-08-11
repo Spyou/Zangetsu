@@ -686,7 +686,7 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// AnymeX-style row of two cards under the banner, showing the two modes
+  /// A row of two cards under the banner, showing the two modes
   /// you're NOT in. Reactive to [ContentModeCubit] so they re-label the instant
   /// a switch lands. Tapping runs the sword-slash into that mode.
   Widget _modeCards() {

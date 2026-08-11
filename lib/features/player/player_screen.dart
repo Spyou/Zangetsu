@@ -212,6 +212,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
   int _seekAccum = 0; // accumulated seconds in the current burst
   int _seekSide = 0; // -1 = left/rewind, +1 = right/forward, 0 = hidden
   int _seekTick = 0; // bumps each tap → re-keys the indicator so it replays
+  // The real seek is debounced: rapid taps bump the indicator instantly but the
+  // player only jumps once, after tapping stops — one smooth jump instead of a
+  // buffer-stutter per tap. Signed pending seconds, not yet applied.
+  Timer? _seekDebounceTimer;
+  int _pendingSeek = 0;
 
   // ── Pinch-to-zoom (continuous, CloudStream-style: 1×–4×, pan + snap-back) ──
   // Driven by a passive Listener watching raw pointers (NOT a scale recognizer),
@@ -832,6 +837,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void dispose() {
     _hideTimer?.cancel();
     _seekLabelTimer?.cancel();
+    _seekDebounceTimer?.cancel();
     _hudTimer?.cancel();
     _upNextTimer?.cancel();
     _megaFlashTimer?.cancel();
@@ -899,14 +905,26 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Double-tap one side to seek; rapid taps accumulate (−10s, −20s, −30s…)
   /// and the indicator shows on that side, YouTube-style.
   void _accumSeek(int dir) {
-    HapticFeedback.lightImpact(); // tactile tick, like AnymeX
-    _c.seekBy(Duration(seconds: dir * _seekSeconds));
-    if (_seekSide != dir) _seekAccum = 0; // changed direction → restart
+    HapticFeedback.lightImpact(); // tactile tick on each seek tap
+    if (_seekSide != dir) {
+      // Direction flipped mid-burst: commit whatever was pending the old way
+      // first, then start a fresh count on the new side.
+      _flushPendingSeek();
+      _seekAccum = 0;
+    }
     _seekSide = dir;
     _seekAccum += _seekSeconds;
+    _pendingSeek += dir * _seekSeconds;
     _seekTick++; // re-key the indicator so its slide/fade replays each tap
     _seekLabelTimer?.cancel();
-    setState(() {});
+    setState(() {}); // the indicator updates instantly for immediate feedback
+    // Debounce the real jump: only seek once tapping settles, so rapid taps are
+    // one smooth jump instead of a re-buffer per tap.
+    _seekDebounceTimer?.cancel();
+    _seekDebounceTimer = Timer(
+      const Duration(milliseconds: 350),
+      _flushPendingSeek,
+    );
     _seekLabelTimer = Timer(const Duration(milliseconds: 800), () {
       if (mounted) {
         setState(() {
@@ -915,7 +933,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
         });
       }
     });
-    _bumpControls();
+    // Don't pop the full controls on a double-tap seek — show only the seek
+    // indicator so the video/subtitles stay unobstructed (YouTube-style). Keep
+    // the controls alive only if they were already showing.
+    if (_controlsVisible) _scheduleHide();
+  }
+
+  /// Apply the accumulated (debounced) double-tap seek as a single jump.
+  void _flushPendingSeek() {
+    _seekDebounceTimer?.cancel();
+    if (_pendingSeek != 0) {
+      _c.seekBy(Duration(seconds: _pendingSeek));
+      _pendingSeek = 0;
+    }
   }
 
   // ── Gestures ────────────────────────────────────────────────────────────
@@ -2228,7 +2258,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 },
               ),
 
-              // 4. Double-tap seek indicator (AnymeX-style): an edge gradient
+              // 4. Double-tap seek indicator: an edge gradient
               // wash on the tapped side + an icon disc + the running total,
               // sliding/fading in. Re-keyed per tap so it replays each time.
               if (_seekSide != 0)

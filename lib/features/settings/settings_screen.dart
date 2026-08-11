@@ -2543,7 +2543,7 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
-/// The "Developer" row inside the profile card (AnymeX InfoCard style).
+/// The "Developer" row inside the profile card.
 class _DeveloperRow extends StatelessWidget {
   const _DeveloperRow();
 
