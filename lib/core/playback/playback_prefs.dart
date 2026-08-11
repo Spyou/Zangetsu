@@ -393,7 +393,7 @@ class PlaybackPrefs {
   /// downloads always preview (it's instant and free); online generates frames
   /// live, which costs a little extra data, so it's user-toggleable.
   bool get seekPreviewOnline =>
-      _box.get('seekPreviewOnline', defaultValue: true) as bool;
+      _box.get('seekPreviewOnline', defaultValue: false) as bool;
   Future<void> setSeekPreviewOnline(bool value) =>
       _box.put('seekPreviewOnline', value);
 

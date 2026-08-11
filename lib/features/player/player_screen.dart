@@ -3809,6 +3809,8 @@ class _SeekRowState extends State<_SeekRow> {
   // is already loaded by the time the user scrubs — avoids the long "hold and
   // wait" for the box to appear. Offline (MMR) is instant, so no pre-warm.
   void _maybePrewarm() {
+    // Online scrub preview removed (see _previewEnabled) — this stays inert:
+    // the local check returns for downloads, and online no longer enables.
     if (_prewarmed) return;
     final c = widget.controller;
     if (c.previewUri == null || c.isLocalMedia) return;
@@ -3824,8 +3826,11 @@ class _SeekRowState extends State<_SeekRow> {
   bool get _previewEnabled {
     final c = widget.controller;
     if (c.previewUri == null) return false;
-    // Offline files always preview (instant/free); online honours the setting.
-    return c.isLocalMedia || sl<PlaybackPrefs>().seekPreviewOnline;
+    // Online scrub preview removed — the hidden second-mpv engine was flaky
+    // (screenshots often came back empty) and re-downloaded the stream just to
+    // make thumbnails. Only local (download) previews remain: instant and free.
+    return c.isLocalMedia;
+    // return c.isLocalMedia || sl<PlaybackPrefs>().seekPreviewOnline;
   }
 
   void _ensurePreview() {

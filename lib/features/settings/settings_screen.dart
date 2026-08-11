@@ -2068,16 +2068,21 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     if (mounted) setState(() {});
                   },
                 ),
+              // Seek preview (online) removed — the streaming engine was flaky
+              // and re-downloaded video just for thumbnails. Download-file
+              // previews still work (instant + free), so no toggle is needed.
+              /*
               _toggleRow(
                 icon: Icons.image_outlined,
                 title: 'Seek preview (online)',
-                subtitle: 'Thumbnail while scrubbing — uses a little data',
+                subtitle: 'Thumbnails while scrubbing streams — costs extra data',
                 value: _prefs.seekPreviewOnline,
                 onChanged: (v) async {
                   await _prefs.setSeekPreviewOnline(v);
                   if (mounted) setState(() {});
                 },
               ),
+              */
               if (Platform.isAndroid && !sl<AppMode>().isTv)
                 _toggleRow(
                   icon: Icons.picture_in_picture_alt_outlined,
