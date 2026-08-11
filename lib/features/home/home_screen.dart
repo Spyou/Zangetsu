@@ -986,15 +986,18 @@ class _HomeViewState extends State<_HomeView>
                   // feed) would otherwise show a hero and NO rows — keep that one
                   // section as a row too so there's something to browse.
                   //
-                  // Aniyomi sources expose exactly two sections (Popular + Latest);
-                  // dropping the first would hide Popular entirely, so keep the full
-                  // list as rows for them — the banner still spotlights Popular, and
-                  // the row repeats it (like the Aniyomi app's Popular grid).
-                  final firstIsAniyomi =
-                      sections.isNotEmpty &&
-                      (sections.first.more?.sourceId.startsWith('ani:') ??
-                          false);
-                  final rowSections = (sections.length > 1 && !firstIsAniyomi)
+                  // Aniyomi AND Mihon sources expose exactly two sections
+                  // (Popular + Latest); dropping the first would hide Popular
+                  // entirely, so keep the full list as rows for them — the banner
+                  // still spotlights Popular, and the row repeats it (like the
+                  // Aniyomi/Mihon apps' Popular grid).
+                  final firstId = sections.isNotEmpty
+                      ? (sections.first.more?.sourceId ?? '')
+                      : '';
+                  final firstIsNativeCatalog =
+                      firstId.startsWith('ani:') || firstId.startsWith('mihon:');
+                  final rowSections =
+                      (sections.length > 1 && !firstIsNativeCatalog)
                       ? sections.sublist(1)
                       : sections;
                   final showSkeletons = state.loading && sections.isEmpty;
