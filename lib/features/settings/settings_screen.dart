@@ -48,7 +48,8 @@ import '../../core/update/update_service.dart';
 import '../update/update_dialog.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/dock_visibility.dart';
-import 'developers_screen.dart';
+import '../../core/ui/team_section.dart';
+import 'contributors_screen.dart';
 import 'donate_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../backup/backup_screen.dart';
@@ -79,12 +80,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   final TextEditingController _searchCtrl = TextEditingController();
   // Search text + which section's sub-page is open. Held in a Cubit so the
-  // drill-down/search state is testable; the async prefs mirrors below
-  // (_dnsChoice/_betaUpdates) and subtitle refreshes stay local setState.
+  // drill-down/search state is testable; the async prefs mirror below
+  // (_dnsChoice) and subtitle refreshes stay local setState.
   late final SettingsCubit _settingsCubit = SettingsCubit();
-
-  final UpdateService _updateService = UpdateService();
-  bool _betaUpdates = false;
 
   @override
   void initState() {
@@ -94,9 +92,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         if (mounted) setState(() => _dnsChoice = c);
       });
     }
-    _updateService.betaOptIn().then((v) {
-      if (mounted) setState(() => _betaUpdates = v);
-    });
   }
 
   @override
@@ -854,77 +849,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'logs share diagnostic debug bug report crash',
         onTap: _shareLogs,
       ),
-      // About
-      _SettingsEntry(
-        section: 'About',
-        icon: Icons.help_outline_rounded,
-        title: 'How it works',
-        subtitle: 'New here? A quick guide',
-        keywords: 'how it works guide help tutorial intro faq',
-        onTap: () => _push(const HowItWorksScreen()),
-      ),
-      _SettingsEntry(
-        section: 'About',
-        icon: Icons.system_update_rounded,
-        title: 'Check for updates',
-        subtitle: 'Get the latest version from GitHub',
-        keywords: 'check updates version github upgrade app latest',
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Checking for updates…')),
-          );
-          maybeShowUpdateDialog(context, manual: true);
-        },
-      ),
-      _SettingsEntry(
-        section: 'About',
-        icon: Icons.science_outlined,
-        title: 'Beta updates',
-        subtitle: 'Get pre-release builds early — may be unstable',
-        subtitleMaxLines: null,
-        keywords: 'beta prerelease pre-release early test unstable channel updates',
-        trailing: Switch.adaptive(
-          value: _betaUpdates,
-          activeThumbColor: AppColors.accent,
-          onChanged: (v) async {
-            // Turning it on: confirm first so it's never a silent opt-in.
-            if (v && !await confirmJoinBeta(context)) return;
-            await _updateService.setBetaOptIn(v);
-            if (!mounted) return;
-            setState(() => _betaUpdates = v);
-            // Then check right away so a waiting beta shows up.
-            if (v && context.mounted) maybeShowUpdateDialog(context, manual: true);
-          },
-        ),
-      ),
-      _SettingsEntry(
-        section: 'About',
-        icon: Icons.favorite_border_rounded,
-        title: 'Support the app',
-        subtitle: 'Buy me a coffee',
-        keywords: 'support donate coffee tip contribute',
-        // The one coral accent here: a filled heart.
-        trailing: Icon(
-          Icons.favorite_rounded,
-          color: AppColors.accent,
-          size: 18,
-        ),
-        onTap: () => _push(const DonateScreen()),
-      ),
-      _SettingsEntry(
-        section: 'About',
-        icon: Icons.people_outline_rounded,
-        title: 'Developers',
-        subtitle: 'Meet the people behind Zangetsu',
-        keywords: 'developers credits team contributors about',
-        onTap: () => _push(const DevelopersScreen()),
-      ),
+      // About — a single destination holding the app info, contributors,
+      // social links, updates, beta toggle and support (so the section opens
+      // straight to it — no nested "About" sub-page).
       _SettingsEntry(
         section: 'About',
         icon: Icons.info_outline_rounded,
         title: 'About',
         subtitle: 'v$kAppVersion',
-        keywords: 'about version app info license',
+        keywords: 'about version app info license developers credits team '
+            'contributors social discord telegram how it works guide '
+            'check updates upgrade latest beta prerelease support donate coffee',
         onTap: () => _push(const AboutSettingsScreen()),
       ),
     ];
@@ -1227,7 +1162,6 @@ class _SettingsEntry {
     this.keywords = '',
     this.trailing,
     this.onTap,
-    this.subtitleMaxLines = 1,
   });
 
   final String section;
@@ -1240,9 +1174,6 @@ class _SettingsEntry {
   final Widget? trailing;
   final VoidCallback? onTap;
 
-  /// Max description lines before ellipsis; null lets a long subtitle wrap.
-  final int? subtitleMaxLines;
-
   /// [q] is already lower-cased by the caller.
   bool matches(String q) =>
       '$title ${subtitle ?? ''} $keywords $section'.toLowerCase().contains(q);
@@ -1253,7 +1184,6 @@ class _SettingsEntry {
     subtitle: subtitle,
     trailing: trailing,
     onTap: onTap,
-    subtitleMaxLines: subtitleMaxLines,
     iconAccent: iconAccent,
   );
 }
@@ -2439,10 +2369,29 @@ class StorageSettingsScreen extends StatelessWidget {
 // About
 // ---------------------------------------------------------------------------
 
-class AboutSettingsScreen extends StatelessWidget {
+class AboutSettingsScreen extends StatefulWidget {
   const AboutSettingsScreen({super.key});
 
-  static const String _discussionUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
+  @override
+  State<AboutSettingsScreen> createState() => _AboutSettingsScreenState();
+}
+
+class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
+  static const String _websiteUrl = 'https://zangetsu.online';
+  static const String _telegramUrl = 'https://t.me/+9mQlsdvDlo83Mjk1';
+  static const String _discordUrl = 'https://discord.gg/938JJBn44';
+  static const String _githubUrl = 'https://github.com/Spyou/Zangetsu';
+
+  final UpdateService _updateService = UpdateService();
+  bool _betaUpdates = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateService.betaOptIn().then((v) {
+      if (mounted) setState(() => _betaUpdates = v);
+    });
+  }
 
   Future<void> _open(String url) async {
     final uri = Uri.parse(url);
@@ -2451,62 +2400,109 @@ class AboutSettingsScreen extends StatelessWidget {
     }
   }
 
+  void _push(Widget screen) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => screen));
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('About'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(0, 28, 0, 28),
+        padding: const EdgeInsets.only(top: 24, bottom: 30),
         children: [
-          // App logo.
-          Center(
-            child: Container(
-              width: 96,
-              height: 96,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surface2,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(
-                  'assets/icon/app_icon.png',
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 18),
-          Center(
-            child: Text(kAppName, style: AppText.largeTitle.copyWith(fontSize: 24)),
-          ),
-          const SizedBox(height: 4),
-          Center(child: Text('Version $kAppVersion', style: AppText.caption)),
-          const SizedBox(height: 20),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              'Your anime, movies and series — one sleek, ad-free home. '
-              'Add community sources to browse and stream in 4K, download for '
-              'offline, and pick up right where you left off across devices.',
-              style: AppText.body.copyWith(height: 1.5),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 28),
+          const _ProfileCard(),
+          const SizedBox(height: 24),
+          // Contributors — above Social, opens the full list.
           SettingsCard(
             children: [
               SettingsTile(
-                icon: Icons.forum_rounded,
-                title: 'Discussion group',
-                subtitle: 'Join the community on Telegram',
-                onTap: () => _open(_discussionUrl),
+                icon: Icons.group_rounded,
+                title: 'Contributors',
+                onTap: () => _push(const ContributorsScreen()),
               ),
             ],
           ),
-          const SizedBox(height: 18),
+          const SettingsSectionLabel('Social', muted: true),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.language_rounded,
+                title: 'Website',
+                subtitle: 'zangetsu.online',
+                onTap: () => _open(_websiteUrl),
+              ),
+              SettingsTile(
+                icon: Icons.send_rounded,
+                title: 'Telegram',
+                subtitle: 'Community chat',
+                onTap: () => _open(_telegramUrl),
+              ),
+              SettingsTile(
+                icon: Icons.discord,
+                title: 'Discord',
+                subtitle: 'Join the server',
+                onTap: () => _open(_discordUrl),
+              ),
+              SettingsTile(
+                icon: Icons.code_rounded,
+                title: 'GitHub',
+                subtitle: 'View the source code',
+                onTap: () => _open(_githubUrl),
+              ),
+            ],
+          ),
+          const SettingsSectionLabel('App', muted: true),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.help_outline_rounded,
+                title: 'How it works',
+                subtitle: 'New here? A quick guide',
+                onTap: () => _push(const HowItWorksScreen()),
+              ),
+              SettingsTile(
+                icon: Icons.system_update_rounded,
+                title: 'Check for updates',
+                subtitle: 'Get the latest version from GitHub',
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Checking for updates…')),
+                  );
+                  maybeShowUpdateDialog(context, manual: true);
+                },
+              ),
+              SettingsTile(
+                icon: Icons.science_outlined,
+                title: 'Beta updates',
+                subtitle: 'Get pre-release builds early — may be unstable',
+                subtitleMaxLines: null,
+                trailing: Switch.adaptive(
+                  value: _betaUpdates,
+                  activeThumbColor: AppColors.accent,
+                  onChanged: (v) async {
+                    // Turning it on: confirm first so it's never a silent opt-in.
+                    if (v && !await confirmJoinBeta(context)) return;
+                    await _updateService.setBetaOptIn(v);
+                    if (!mounted) return;
+                    setState(() => _betaUpdates = v);
+                    // Then check right away so a waiting beta shows up.
+                    if (v && context.mounted) {
+                      maybeShowUpdateDialog(context, manual: true);
+                    }
+                  },
+                ),
+              ),
+              SettingsTile(
+                icon: Icons.favorite_border_rounded,
+                title: 'Support the app',
+                subtitle: 'Buy me a coffee',
+                onTap: () => _push(const DonateScreen()),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
           Center(
             child: Text(
               '© ${DateTime.now().year}  $kAppName',
@@ -2517,6 +2513,98 @@ class AboutSettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The app header: the clean logo mark, name and version floating on the page
+/// (no grey box), then the lead-developer card.
+class _ProfileCard extends StatelessWidget {
+  const _ProfileCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 6),
+        Image.asset('assets/icon/logo_mark.png', height: 96),
+        const SizedBox(height: 16),
+        Text(kAppName, style: AppText.largeTitle.copyWith(fontSize: 25)),
+        const SizedBox(height: 3),
+        Text(
+          'v$kAppVersion',
+          style: AppText.caption.copyWith(color: AppColors.textTertiary),
+        ),
+        const SizedBox(height: 20),
+        const _DeveloperRow(),
+      ],
+    );
+  }
+}
+
+/// The "Developer" row inside the profile card (AnymeX InfoCard style).
+class _DeveloperRow extends StatelessWidget {
+  const _DeveloperRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () async {
+            final uri = Uri.parse('https://github.com/spyou');
+            if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+              await launchUrl(uri, mode: LaunchMode.platformDefault);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              // One solid dark grey, matching the app's cards.
+              color: AppColors.settingsCard,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                const TeamAvatar(
+                  url: 'https://github.com/spyou.png?size=200',
+                  name: 'Krishna',
+                  size: 46,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Krishna Vishwakarma',
+                        style: AppText.headline.copyWith(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Lead Developer',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.code_rounded, color: AppColors.textTertiary),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

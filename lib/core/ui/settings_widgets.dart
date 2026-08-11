@@ -178,11 +178,20 @@ class SettingsCard extends StatelessWidget {
 /// Material-You category header: a small uppercase accent label above a
 /// [SettingsCard]. No divider — the boxed cards separate the groups.
 class SettingsSectionLabel extends StatelessWidget {
-  const SettingsSectionLabel(this.label, {super.key, this.first = false});
+  const SettingsSectionLabel(
+    this.label, {
+    super.key,
+    this.first = false,
+    this.muted = false,
+  });
   final String label;
 
   /// The topmost section: tighter top padding.
   final bool first;
+
+  /// Render in a quiet grey instead of the accent — for showcase screens (the
+  /// About page) where accent-on-everything reads busy.
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
@@ -190,12 +199,13 @@ class SettingsSectionLabel extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(28, first ? 4 : 22, 22, 9),
       child: Text(
         label.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Inter',
           fontSize: 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,
-        ).copyWith(color: AppColors.accent),
+          color: muted ? AppColors.textTertiary : AppColors.accent,
+        ),
       ),
     );
   }

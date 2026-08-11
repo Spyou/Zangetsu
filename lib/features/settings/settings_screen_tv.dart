@@ -28,7 +28,6 @@ import '../sources/sources_screen.dart';
 import '../sources/tv_recommended_cs_repos.dart';
 import '../update/update_dialog.dart';
 import 'connections_screen_tv.dart';
-import 'developers_screen.dart';
 import 'discord_settings_screen.dart';
 import 'donate_screen.dart';
 import 'settings_screen.dart';
@@ -583,17 +582,6 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                             icon: Icons.coffee_rounded,
                             title: 'Support the app',
                             subtitle: 'Buy me a coffee',
-                            trailing: _kChevron,
-                          ),
-                        ),
-                      ),
-                      TvFocusable(scale: 1.0,
-                        onTap: () => _push(const DevelopersScreen()),
-                        semanticLabel: 'Developers',
-                        child: const ExcludeSemantics(
-                          child: SettingsTile(
-                            icon: Icons.people_outline_rounded,
-                            title: 'Developers',
                             trailing: _kChevron,
                           ),
                         ),
