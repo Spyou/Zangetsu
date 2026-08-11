@@ -17,6 +17,7 @@ import 'core/logging/app_logger.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
+import 'core/ui/route_observer.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/my_list.dart';
@@ -390,7 +391,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               debugShowCheckedModeBanner: false,
               scaffoldMessengerKey: rootMessengerKey,
               navigatorKey: rootNavigatorKey,
-              navigatorObservers: [Analytics.observer],
+              navigatorObservers: [Analytics.observer, appRouteObserver],
               home: home,
               builder: (context, child) => Stack(
                 children: [

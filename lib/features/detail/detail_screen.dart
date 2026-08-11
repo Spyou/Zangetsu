@@ -58,6 +58,7 @@ import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/ui/badge.dart';
+import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
 import '../player/tv_exo_player_screen.dart';
@@ -1537,7 +1538,7 @@ class _HeroTrailer extends StatefulWidget {
   State<_HeroTrailer> createState() => _HeroTrailerState();
 }
 
-class _HeroTrailerState extends State<_HeroTrailer> {
+class _HeroTrailerState extends State<_HeroTrailer> with RouteAware {
   // Created lazily once a stream URL resolves — never before, so a failed
   // extraction never mounts an empty/black player.
   Player? _player;
@@ -1555,12 +1556,41 @@ class _HeroTrailerState extends State<_HeroTrailer> {
   // User-facing play/pause intent (separate from the scroll-driven collapse
   // pause). Seeded from the "Autoplay trailer" setting: off → start paused.
   bool _paused = false;
+  // True while another screen is stacked on top (player / another title). Gates
+  // autostart too, so a trailer that resolves after the page got covered stays
+  // put instead of playing out of sight.
+  bool _covered = false;
 
   @override
   void initState() {
     super.initState();
     _paused = !sl<PlaybackPrefs>().autoplayTrailer;
     _resolveAndOpen();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Listen for another screen covering/uncovering this page so the trailer
+    // can pause instead of decoding video behind the player or a stacked title.
+    final route = ModalRoute.of(context);
+    if (route is PageRoute) appRouteObserver.subscribe(this, route);
+  }
+
+  // Another screen (the player, or a title tapped from this page) was pushed on
+  // top — pause so a muted trailer isn't left decoding video out of sight.
+  @override
+  void didPushNext() {
+    _covered = true;
+    _player?.pause();
+  }
+
+  // Back on top — resume unless the user paused it, it's scrolled past, or it
+  // failed. Mirrors the autostart gate so autoplay behaves exactly as before.
+  @override
+  void didPopNext() {
+    _covered = false;
+    if (!_paused && !widget.collapsed && !_errored) _player?.play();
   }
 
   /// Extract a stream for the banner and start it muted + looping. HD toggle on
@@ -1601,7 +1631,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
     // Belt-and-braces loop: also restart on completion (covers engines where
     // PlaylistMode.single doesn't auto-restart a single media).
     _completedSub = player.stream.completed.listen((done) {
-      if (done && mounted && !widget.collapsed && !_paused) {
+      if (done && mounted && !widget.collapsed && !_paused && !_covered) {
         _player?.seek(Duration.zero);
         _player?.play();
       }
@@ -1612,7 +1642,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       // don't honor the autoplay flag until the first user interaction. Open
       // paused, then explicitly play() the moment the media is loaded and the
       // widget is still mounted, so the trailer starts on its own with no touch.
-      final autostart = !_paused && !widget.collapsed;
+      final autostart = !_paused && !widget.collapsed && !_covered;
       await player.open(Media(url), play: autostart);
       if (!mounted) return;
       // Autostart only when the hero is on-screen AND the user hasn't paused
@@ -1645,7 +1675,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
       final low = await sl<TrailerService>().streamUrl(widget.videoId, low: true);
       if (!mounted || player != _player || low == null || low.isEmpty) return;
       try {
-        final autostart = !_paused && !widget.collapsed;
+        final autostart = !_paused && !widget.collapsed && !_covered;
         await player.open(Media(low), play: autostart);
         if (autostart) await player.play();
       } catch (_) {/* leave the cover as the backdrop */}
@@ -1706,6 +1736,7 @@ class _HeroTrailerState extends State<_HeroTrailer> {
 
   @override
   void dispose() {
+    appRouteObserver.unsubscribe(this);
     _disposePlayer();
     super.dispose();
   }
