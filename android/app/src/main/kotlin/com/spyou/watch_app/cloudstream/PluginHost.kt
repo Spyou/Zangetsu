@@ -65,6 +65,12 @@ class PluginHost(private val context: Context) {
         // Plugins reach for the global app context via CloudStreamApp; set it
         // before any plugin loads so requiresResources/settings plugins work.
         com.lagradost.cloudstream3.CloudStreamApp.setContext(context)
+        // Also feed the library's ContextHelper (com.lagradost.api.getContext),
+        // which WebViewResolver reads. Without it, WebView-based extractors
+        // (FaselHD, …) throw "No base context in WebViewResolver" and resolve no
+        // links. Additive: it was unset (null) before, so this only enables a
+        // path that previously crashed — never changes a working one.
+        com.lagradost.api.setContext(java.lang.ref.WeakReference<Any>(context))
 
         // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
         // cookie jar, so cookies never persist between requests. Give it a

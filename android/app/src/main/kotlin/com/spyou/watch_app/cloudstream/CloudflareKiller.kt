@@ -40,6 +40,26 @@ class CloudflareKiller : Interceptor {
     // per-instance backoff was lost, re-popping a 30s "verifying" on every click.
     private val cookieByHost = ConcurrentHashMap<String, String>()
 
+    /**
+     * Cookie headers for [url]'s host — the Cloudflare cookies (cf_clearance, …)
+     * from the shared WebView store plus the User-Agent the challenge was solved
+     * with. Some plugins (e.g. FaselHD) call `CloudflareKiller().getCookieHeaders(url)`
+     * to authenticate their own requests; without this method they hit
+     * NoSuchMethodError in loadLinks and return zero sources ("no source playable").
+     * ADDITIVE — no existing code path calls it, so it can't change current
+     * behaviour for any other plugin.
+     */
+    fun getCookieHeaders(url: String): okhttp3.Headers {
+        val builder = okhttp3.Headers.Builder()
+        com.spyou.watch_app.cloudstream.CfClearance.userAgent
+            ?.let { builder.add("User-Agent", it) }
+        runCatching { CookieManager.getInstance().getCookie(url) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { builder.add("Cookie", it) }
+        return builder.build()
+    }
+
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val host = request.url.host
