@@ -158,6 +158,26 @@ globalThis.__callProvider = function(sourceId, method, argsJson) {
   } catch (e) { return Promise.reject(stringifyErr(e)); }
 };
 
+// Same call as __callProvider, but guaranteed to settle within `ms` even when a
+// dead/hung source never resolves. Without this the host's promise poller keeps
+// spinning QuickJS forever on a stuck call (the outer Dart timeout only stops
+// the *waiting*, not the poll loop). Racing against a setTimeout reject makes the
+// promise settle, so the poller sees it done and stops. Resolves with the exact
+// same value as __callProvider on success; ms<=0 skips the deadline entirely.
+globalThis.__callProviderT = function(sourceId, method, argsJson, ms) {
+  var call = __callProvider(sourceId, method, argsJson);
+  if (!(ms > 0)) return call;
+  var timer = null;
+  var deadline = new Promise(function(_res, rej) {
+    timer = setTimeout(function() { rej(method + ' timed out'); }, ms);
+  });
+  function clear() { if (timer != null) { clearTimeout(timer); timer = null; } }
+  return Promise.race([call, deadline]).then(
+    function(v) { clear(); return v; },
+    function(e) { clear(); return Promise.reject(e); }
+  );
+};
+
 globalThis.htmlText = function(html) {
   if (!html) return '';
   return String(html)

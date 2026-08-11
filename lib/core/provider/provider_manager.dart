@@ -194,8 +194,12 @@ class _JsHost {
     _suppressCfSolve = method == 'search';
     try {
       final argsJson = jsonEncode(args);
+      // __callProviderT (not __callProvider): a JS-side deadline settles the
+      // promise even if the source hangs, so flutter_js's promise poller stops
+      // instead of spinning QuickJS forever. The .timeout() below stays as a
+      // backstop for the rare case the JS timer never fires.
       final expr =
-          '__callProvider(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)})';
+          '__callProviderT(${jsonEncode(sourceId)}, ${jsonEncode(method)}, ${jsonEncode(argsJson)}, ${timeout.inMilliseconds})';
       final asyncResult = await _runtime.evaluateAsync(expr);
       final resolved = await _runtime
           .handlePromise(asyncResult)
