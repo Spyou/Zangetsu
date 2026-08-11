@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 
 import '../aniyomi/aniyomi_repo.dart';
 import 'mihon_extension_service.dart' show githubMirrors;
+import 'mihon_pb_index.dart';
 
 /// Raised when a repo index was reachable but unusable (wrong format, invalid
 /// JSON) or unreachable on every URL we tried.
@@ -40,9 +41,16 @@ class MihonRepoException implements Exception {
 /// Both shapes map onto [AniyomiRepoEntry] so nothing downstream (install,
 /// update check, the repo tab) had to learn a second entry type.
 class MihonRepo {
-  /// Index file names in preference order. `index.json` first: where both
-  /// exist, `index.min.json` is the deprecated one.
-  static const List<String> _indexFiles = ['index.json', 'index.min.json'];
+  /// Index file names in preference order. `index.pb` first: it's the same data
+  /// as `index.json` (keiyoushi regenerates both in one commit) but ~13x smaller
+  /// on the wire, and `repo.json` advertises it as the canonical `index_v2`. A
+  /// pb that won't fetch or decode falls through to `index.json`; `index.min.json`
+  /// is the legacy-only last resort.
+  static const List<String> _indexFiles = [
+    'index.pb',
+    'index.json',
+    'index.min.json',
+  ];
 
   /// Parses either index shape into [AniyomiRepoEntry]s, picking the parser by
   /// the JSON's top-level type (array = legacy, object = Mihon).
@@ -138,6 +146,23 @@ class MihonRepo {
     );
   }
 
+  /// Decodes a Mihon `index.pb` (gzip-compressed protobuf) into entries, reusing
+  /// the same [_entryFrom] mapping as `index.json` — the two carry identical
+  /// data. Throws (via [decodeMihonPbIndex]) on malformed bytes so [fetchIndex]
+  /// can fall back to `index.json`.
+  static List<AniyomiRepoEntry> parsePbIndex(
+    List<int> bytes, {
+    required String repoBaseUrl,
+  }) {
+    final base = AniyomiRepo.normalizeBase(repoBaseUrl);
+    final entries = <AniyomiRepoEntry>[];
+    for (final e in decodeMihonPbIndex(bytes)) {
+      final entry = _entryFrom(e, base);
+      if (entry != null) entries.add(entry);
+    }
+    return entries;
+  }
+
   static String _str(Object? v) => v == null ? '' : '$v';
 
   static int _int(Object? v) =>
@@ -145,9 +170,9 @@ class MihonRepo {
 
   /// Fetches and parses the index for [repoBaseUrl].
   ///
-  /// Tries `index.json` then `index.min.json`, each one direct first and then
-  /// through the GitHub-raw mirrors — raw.githubusercontent.com is blocked on
-  /// some devices (see `aniyomi_extension_service.dart`'s note).
+  /// Tries `index.pb`, then `index.json`, then `index.min.json`, each one direct
+  /// first and then through the GitHub-raw mirrors — raw.githubusercontent.com is
+  /// blocked on some devices (see `aniyomi_extension_service.dart`'s note).
   ///
   /// Only an *unreachable* URL (network error, 404, any non-2xx, empty body)
   /// falls through to the next one, so `index.min.json` is reached exactly
@@ -167,8 +192,33 @@ class MihonRepo {
 
     Object? lastError;
     for (final file in _indexFiles) {
+      final isPb = file.endsWith('.pb');
       final direct = '$base/$file';
       for (final url in <String>[direct, ...githubMirrors(direct)]) {
+        if (isPb) {
+          List<int>? bytes;
+          try {
+            final resp = await dio.get<List<int>>(
+              url,
+              options: Options(responseType: ResponseType.bytes),
+            );
+            if ((resp.statusCode ?? 0) < 300) bytes = resp.data;
+          } catch (e) {
+            lastError = e;
+            continue;
+          }
+          if (bytes == null || bytes.isEmpty) continue;
+          // Unlike index.json below, a pb that decodes badly does NOT fail the
+          // repo: it's just a smaller mirror of the identical index.json, so on
+          // any decode error (schema drift, corrupt gzip) fall through to JSON.
+          try {
+            return parsePbIndex(bytes, repoBaseUrl: base);
+          } catch (e) {
+            lastError = e;
+            break; // give up on pb mirrors; move on to index.json
+          }
+        }
+
         String? body;
         try {
           final resp = await dio.get<String>(url, options: options);
