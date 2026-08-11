@@ -338,7 +338,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       DeviceOrientation.landscapeRight,
     ]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
+    // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
     // only our own HUD shows (CloudStream draws its own too). Restored on exit.
     if (_gesturesEnabled) {
@@ -355,6 +355,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
     } else {
       _startSession(widget.episodes, widget.startIndex);
+    }
+  }
+
+  // Enable the wake-lock while playing/buffering, release it on pause. Only
+  // toggles on an actual change so it never spams the platform channel, and
+  // respects the keepScreenOn pref (off → never held).
+  void _syncWakelock() {
+    final want = sl<PlaybackPrefs>().keepScreenOn &&
+        (_c.player.state.playing || _c.player.state.buffering);
+    if (want == _wakelockOn) return;
+    _wakelockOn = want;
+    if (want) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
     }
   }
 
@@ -599,6 +614,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   StreamSubscription<bool>? _completedSub;
+  // Wake-lock bound to playback: screen stays on while playing OR buffering and
+  // is released on pause, so a paused-and-forgotten player lets the screen time
+  // out instead of burning battery at full brightness. Mirrors CloudStream.
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<bool>? _bufferingSub;
+  bool _wakelockOn = false;
 
   // A DRM (clearkey CENC/DASH) source can't play in mpv, so the controller calls
   // this instead of opening it: open the ExoPlayer-backed [DrmPlayerScreen] (which
@@ -657,6 +678,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
       initialResume: widget.resumePosition,
       onDrmSource: _handoffToNativeDrm,
     )..init(startIndex);
+
+    // Bind the wake-lock to playback now that the player exists: on while
+    // playing/buffering, released on pause. Set up here (not _initInApp) because
+    // _c isn't built until this point.
+    _playingSub = _c.player.stream.playing.listen((_) => _syncWakelock());
+    _bufferingSub = _c.player.stream.buffering.listen((_) => _syncWakelock());
+    _syncWakelock();
 
     _room.attachPlayer(
       localPosition: () => _c.player.state.position,
@@ -843,6 +871,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _megaFlashTimer?.cancel();
     _sleepTimer?.cancel();
     _completedSub?.cancel();
+    _playingSub?.cancel();
+    _bufferingSub?.cancel();
     _pipSub?.cancel();
     sl<CastController>().removeListener(_onCastStateChanged);
     // Disarm auto-PiP so leaving the closed player can't trigger it.

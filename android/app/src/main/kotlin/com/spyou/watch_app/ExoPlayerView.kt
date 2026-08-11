@@ -59,9 +59,8 @@ class ExoPlayerView(
     private val playerView = PlayerView(context).apply {
         player = this@ExoPlayerView.player
         useController = false // Flutter draws the controls on top
-        // With the Flutter wakelock, keeps the screen on during playback so TVs
-        // don't drop into a screensaver mid-episode. Rendering-safe.
-        keepScreenOn = true
+        // keepScreenOn is managed by syncKeepScreenOn() below — on while
+        // playing/buffering, released on pause — not pinned on for the session.
     }
     private val channel = MethodChannel(messenger, "zangetsu/exoplayer_$id")
     private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")
@@ -85,11 +84,21 @@ class ExoPlayerView(
             override fun onCancel(args: Any?) { sink = null }
         })
         player.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) = emitState()
-            override fun onIsPlayingChanged(isPlaying: Boolean) = emitState()
+            override fun onPlaybackStateChanged(state: Int) { syncKeepScreenOn(); emitState() }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { syncKeepScreenOn(); emitState() }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) = emitState()
         })
+        syncKeepScreenOn()
         handler.post(tick)
+    }
+
+    // Keep the screen on only while actively playing or buffering, released on
+    // pause — matching CloudStream — rather than pinning it on for the whole
+    // player session (which drains battery on a paused-and-left player).
+    private fun syncKeepScreenOn() {
+        playerView.keepScreenOn = player.playWhenReady &&
+            (player.playbackState == Player.STATE_READY ||
+                player.playbackState == Player.STATE_BUFFERING)
     }
 
     private fun emitState() {

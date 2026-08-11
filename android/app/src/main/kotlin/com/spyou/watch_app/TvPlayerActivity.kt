@@ -235,7 +235,8 @@ class TvPlayerActivity : Activity() {
         updateEpisodeUi()
 
         playerView.useController = false
-        playerView.keepScreenOn = true
+        // keepScreenOn is managed by syncKeepScreenOn() — on while playing or
+        // buffering, released on pause — not pinned on for the whole session.
 
         val exo = ExoPlayer.Builder(this, renderersFactory()).build()
         player = exo
@@ -260,12 +261,14 @@ class TvPlayerActivity : Activity() {
                 ).show()
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                syncKeepScreenOn()
                 updatePlayPauseIcon()
                 // Keep the controls (and the pause glyph) on screen while paused so
                 // it's obvious playback is stopped; resume re-arms the auto-hide.
                 if (isPlaying) bumpControls() else { showControls(); cancelAutoHide() }
             }
             override fun onPlaybackStateChanged(state: Int) {
+                syncKeepScreenOn()
                 updatePlayPauseIcon()
                 if (!switching) {
                     loading.visibility =
@@ -1155,6 +1158,17 @@ class TvPlayerActivity : Activity() {
         timeBar.setBufferedPosition(p.bufferedPosition.coerceAtLeast(0))
         positionText.text = fmt(pos)
         durationText.text = fmt(dur)
+    }
+
+    // Keep the screen on only while actively playing or buffering, released on
+    // pause — matching CloudStream — instead of pinning it on for the whole
+    // session. On a TV this lets the screensaver return when you pause and walk
+    // away, while never letting it kick in mid-episode.
+    private fun syncKeepScreenOn() {
+        val p = player
+        playerView.keepScreenOn = p != null && p.playWhenReady &&
+            (p.playbackState == Player.STATE_READY ||
+                p.playbackState == Player.STATE_BUFFERING)
     }
 
     private fun updatePlayPauseIcon() {
