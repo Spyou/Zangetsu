@@ -3376,12 +3376,30 @@ class _EpisodeDownloadIcon extends StatelessWidget {
       listenable: manager,
       builder: (context, _) {
         final rec = manager.recordFor(sourceId, showId, episodeId);
-        return _glyph(rec?.status, rec?.progress ?? 0);
+        final s = rec?.status;
+        // While a download is live (or paused/queued/resolving), tapping the ring
+        // opens a Pause/Cancel menu instead of re-opening the server picker.
+        final inProgress = rec != null &&
+            (s == DownloadStatus.downloading ||
+                s == DownloadStatus.paused ||
+                s == DownloadStatus.queued ||
+                s == DownloadStatus.resolving);
+        return _glyph(
+          s,
+          rec?.progress ?? 0,
+          onPressed: inProgress
+              ? () => _showDownloadMenu(context, manager, rec)
+              : onTap,
+        );
       },
     );
   }
 
-  Widget _glyph(DownloadStatus? status, double progress) {
+  Widget _glyph(
+    DownloadStatus? status,
+    double progress, {
+    required VoidCallback onPressed,
+  }) {
     final child = switch (status) {
       DownloadStatus.done => Icon(
         Icons.download_done_rounded,
@@ -3432,11 +3450,65 @@ class _EpisodeDownloadIcon extends StatelessWidget {
       _ => 'Download episode',
     };
     return IconButton(
-      onPressed: onTap,
+      onPressed: onPressed,
       visualDensity: VisualDensity.compact,
       splashRadius: 22,
       tooltip: label,
       icon: child,
+    );
+  }
+
+  // Tap on a live download's ring → a small Pause/Resume + Cancel sheet, rather
+  // than the server picker (which only makes sense before a download starts).
+  void _showDownloadMenu(
+    BuildContext context,
+    DownloadManager manager,
+    DownloadRecord rec,
+  ) {
+    final paused = rec.status == DownloadStatus.paused;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
+                color: AppColors.textPrimary,
+              ),
+              title: Text(
+                paused ? 'Resume download' : 'Pause download',
+                style: AppText.body.copyWith(color: AppColors.textPrimary),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                if (paused) {
+                  manager.resume(rec);
+                } else {
+                  manager.pause(rec);
+                }
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.close_rounded, color: AppColors.accent),
+              title: Text(
+                'Cancel download',
+                style: AppText.body.copyWith(color: AppColors.accent),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                manager.cancel(rec);
+              },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
