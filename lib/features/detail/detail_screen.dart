@@ -49,6 +49,7 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_registry.dart';
+import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
@@ -757,14 +758,20 @@ class _DetailViewState extends State<_DetailView>
     return (index: 0, hasResume: false);
   }
 
-  /// Reading counterpart of [_resumeIndex]: walks the chapters for the
+  /// Reading counterpart of [_resumeTarget]: walks the chapters for the
   /// highest one carrying a saved reading position (per-chapter, from
   /// [ReadStore] — the reader's own scroll/page progress), advancing past it
   /// once it's finished — same rule [_resumeIndex] applies to video resume
   /// marks. Keyed the same way [NovelReaderScreen] saves them: showId is
   /// [MediaItem.id], not the show url (see `_openReader`).
-  int _readResumeIndex(List<Episode> chapters) {
-    if (chapters.isEmpty) return 0;
+  ///
+  /// With NO local mark (e.g. this device never opened a chapter, or the
+  /// reader's per-chapter position was never saved) it falls back to
+  /// [ReadHistory] — the cloud-synced last-read chapter — the same way
+  /// [_resumeTarget] falls back to the tracker's watched count for video.
+  /// Only when both come up empty does this say "start over" (chapter 0).
+  ({int index, bool hasResume}) _readResumeIndex(List<Episode> chapters) {
+    if (chapters.isEmpty) return (index: 0, hasResume: false);
     final store = sl<ReadStore>();
     int? highestMarked;
     for (var j = 0; j < chapters.length; j++) {
@@ -773,15 +780,29 @@ class _DetailViewState extends State<_DetailView>
         highestMarked = j;
       }
     }
-    if (highestMarked == null) return 0;
-    if (!store.finished(
-      widget.item.sourceId,
-      widget.item.id,
-      chapters[highestMarked].id,
-    )) {
-      return highestMarked;
+    if (highestMarked != null) {
+      if (!store.finished(
+        widget.item.sourceId,
+        widget.item.id,
+        chapters[highestMarked].id,
+      )) {
+        return (index: highestMarked, hasResume: true);
+      }
+      final next = highestMarked + 1 < chapters.length
+          ? highestMarked + 1
+          : highestMarked;
+      return (index: next, hasResume: true);
     }
-    return highestMarked + 1 < chapters.length ? highestMarked + 1 : highestMarked;
+    final entry = sl<ReadHistory>().get(widget.item.sourceId, widget.item.id);
+    if (entry != null) {
+      var idx = chapters.indexWhere((c) => c.id == entry.chapterId);
+      if (idx < 0) idx = chapters.indexWhere((c) => c.url == entry.chapterUrl);
+      if (idx >= 0) {
+        if (entry.finished && idx + 1 < chapters.length) idx += 1;
+        return (index: idx, hasResume: true);
+      }
+    }
+    return (index: 0, hasResume: false);
   }
 
   // ── Downloads ─────────────────────────────────────────────────────────────
@@ -1006,7 +1027,8 @@ class _DetailViewState extends State<_DetailView>
     // ResumeStore never carries a mark for a chapter, so it would always
     // (harmlessly but wrongly) say "start over".
     final resume = _resumeTarget(eps);
-    final resumeIdx = isReading ? _readResumeIndex(eps) : resume.index;
+    final readResume = isReading ? _readResumeIndex(eps) : null;
+    final resumeIdx = isReading ? readResume!.index : resume.index;
     // Warm the stream for the episode Play will start, in the background, so
     // tapping Play is near-instant. Deferred to after this frame so it can't
     // affect the detail screen's rendering/scroll. Skipped for reading types
@@ -1022,7 +1044,7 @@ class _DetailViewState extends State<_DetailView>
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
     final buttonLabel = isReading
-        ? 'Read'
+        ? (readResume!.hasResume ? 'Continue' : 'Read')
         : (resume.hasResume ? 'Continue E$episodeNum' : 'Play');
 
     // Cover / backdrop.

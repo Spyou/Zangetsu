@@ -375,6 +375,18 @@ void main() {
     expect(all.map((e) => e.showId).toList(), ['novelA', 'finishedManga']);
   });
 
+  test('get() returns the saved entry for a title, or null when there is '
+      'none — the Read button\'s cross-device resume fallback', () async {
+    final h = ReadHistory(SupabaseService(), () => null);
+    expect(h.get('js:m', 'a'), isNull);
+
+    await h.save(entry('a', pos: 4, ts: 1));
+    final got = h.get('js:m', 'a');
+    expect(got?.showId, 'a');
+    expect(got?.pos, 4);
+    expect(h.get('js:m', 'other'), isNull); // different show, no entry
+  });
+
   test('remove() deletes the row locally and from the cloud', () async {
     final fake = FakeReadingHistoryRemote();
     final h = ReadHistory(SupabaseService(), () => 'user1', remote: fake);

@@ -7,10 +7,13 @@
 // an ancestor BlocProvider), DetailScreen builds its own cubit internally, so
 // we just pump DetailScreen(item:) directly and let it load.
 
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/download/download_manager.dart';
@@ -29,6 +32,7 @@ import 'package:watch_app/core/playback/watch_history.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/base_provider.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/reading/read_history.dart';
 import 'package:watch_app/core/reading/read_store.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
@@ -141,6 +145,18 @@ class _FakeReadStore extends ReadStore {
   }
 }
 
+/// [ReadHistory] stub for the ReadHistory-fallback resume test — [entry], when
+/// set, is what `_readResumeIndex` finds once it falls off the end of an empty
+/// [ReadStore]. Doesn't touch Hive (the real ReadHistory only does that inside
+/// methods this override bypasses), so no ReadHistory.init() is needed here.
+class _FakeReadHistory extends ReadHistory {
+  _FakeReadHistory([this.entry]) : super(SupabaseService(), () => null);
+  final ReadEntry? entry;
+
+  @override
+  ReadEntry? get(String sourceId, String showId) => entry;
+}
+
 class _FakeProviderRegistry implements ProviderRegistry {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
@@ -189,13 +205,6 @@ class _FakeTrailerService extends TrailerService {
     required ProviderType type,
     String? year,
   }) async => null;
-}
-
-/// Hive-backed in reality; overriding the one getter the reader's build()
-/// touches unconditionally avoids needing a real box.
-class _FakeReaderPrefs extends ReaderPrefs {
-  @override
-  String get theme => 'dark';
 }
 
 /// Hive-backed in reality; overrides just the getters _openPlayer's
@@ -272,6 +281,8 @@ class _RecordingNavigatorObserver extends NavigatorObserver {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 void main() {
+  late Directory readerPrefsDir;
+
   setUpAll(() {
     TestWidgetsFlutterBinding.ensureInitialized();
   });
@@ -295,11 +306,22 @@ void main() {
     sl.registerSingleton<PlaybackPrefs>(_FakePlaybackPrefs());
     sl.registerSingleton<TrailerService>(_FakeTrailerService());
     sl.registerSingleton<TrackerHub>(TrackerHub(const []));
-    sl.registerSingleton<ReaderPrefs>(_FakeReaderPrefs());
+    // A real (temp-dir-backed) ReaderPrefs, not a hand-rolled fake — the
+    // novel reader reads a growing list of its getters (comfort, typography,
+    // pagination…) on mount, and every one already has a sensible default.
+    // Same disposable-Hive pattern as read_history_test.dart.
+    readerPrefsDir = await Directory.systemTemp.createTemp('reader_prefs_test');
+    Hive.init(readerPrefsDir.path);
+    await ReaderPrefs.init();
+    sl.registerSingleton<ReaderPrefs>(ReaderPrefs());
     // Empty by default (no saved reading position) — the novel test below
     // just needs this registered so _readResumeIndex's sl<ReadStore>() call
     // doesn't blow up; the dedicated resume test overrides it with marks.
     sl.registerSingleton<ReadStore>(_FakeReadStore(const {}));
+    // No cloud-synced entry by default — _readResumeIndex falls back to this
+    // whenever ReadStore has no local mark, so it must always be registered
+    // for a reading title; the dedicated fallback test overrides it.
+    sl.registerSingleton<ReadHistory>(_FakeReadHistory());
     // Only needed for the anime test: building the pushed PlayerScreen WIDGET
     // (not its State — see _RecordingNavigatorObserver) still evaluates every
     // sl<T>() in _openPlayer's constructor-argument list, including this one.
@@ -315,6 +337,10 @@ void main() {
           null,
         );
     await sl.reset();
+    await Hive.deleteFromDisk();
+    if (await readerPrefsDir.exists()) {
+      await readerPrefsDir.delete(recursive: true);
+    }
   });
 
   testWidgets(
@@ -359,8 +385,8 @@ void main() {
   );
 
   testWidgets(
-    'Task 12 Part E: the Read button resumes from the last-read chapter '
-    '(ReadStore), not always chapter 1',
+    'a ReadStore mark resumes from the last-read chapter (not chapter 1) '
+    'and relabels the button Continue',
     (tester) async {
       tester.view.physicalSize = const Size(800, 2400);
       tester.view.devicePixelRatio = 1.0;
@@ -383,7 +409,10 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      await tester.tap(find.text('Read').first);
+      expect(find.text('Continue'), findsOneWidget);
+      expect(find.text('Read'), findsNothing); // relabelled, not a fresh title
+
+      await tester.tap(find.text('Continue').first);
       await tester.pumpAndSettle();
 
       final reader = tester.widget<NovelReaderScreen>(
@@ -391,6 +420,56 @@ void main() {
       );
       expect(reader.startIndex, 1); // resumed onto chapter 2 (index 1)
       expect(reader.chapters.length, 2); // still the full chapter list
+    },
+  );
+
+  testWidgets(
+    'with no ReadStore mark, the Read button falls back to ReadHistory — '
+    'the cloud-synced last-read chapter — instead of starting at chapter 1',
+    (tester) async {
+      tester.view.physicalSize = const Size(800, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      sl.registerSingleton<SourceRepository>(
+        _StubSourceRepository(_novelDetail),
+      );
+      // ReadStore stays empty (setUp's default) — nothing marked on THIS
+      // device — but ReadHistory (synced from elsewhere) says chapter 1 was
+      // finished, so the reader should resume on chapter 2, same as a local
+      // mark would, and the button should read Continue.
+      sl.unregister<ReadHistory>();
+      sl.registerSingleton<ReadHistory>(
+        _FakeReadHistory(
+          ReadEntry(
+            sourceId: 'test',
+            showId: 'test-novel',
+            title: 'Test Novel',
+            chapterId: 'c1',
+            chapterUrl: '/c1',
+            pos: 19,
+            total: 20, // finished
+            updatedMs: 1,
+            type: ProviderType.novel,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: DetailScreen(item: _novelItem)),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Continue'), findsOneWidget);
+
+      await tester.tap(find.text('Continue').first);
+      await tester.pumpAndSettle();
+
+      final reader = tester.widget<NovelReaderScreen>(
+        find.byType(NovelReaderScreen),
+      );
+      expect(reader.startIndex, 1); // resumed onto chapter 2 (index 1)
     },
   );
 

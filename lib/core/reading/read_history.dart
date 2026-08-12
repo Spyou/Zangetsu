@@ -337,6 +337,15 @@ class ReadHistory {
     }
   }
 
+  /// Look up the saved entry for one title — the cloud-synced "last read
+  /// chapter", which the Read button falls back to when [ReadStore] (this
+  /// reader's own per-chapter positions, local-only) has no mark yet, e.g. a
+  /// title read on another device. Same key as [remove].
+  ReadEntry? get(String sourceId, String showId) {
+    final raw = _box.get(_key(sourceId, showId));
+    return raw == null ? null : _fromMap(raw);
+  }
+
   /// Remove a single title from reading history, locally and (when signed in)
   /// from the cloud so it doesn't sync back — see [WatchHistory.remove].
   Future<void> remove(String sourceId, String showId) async {
