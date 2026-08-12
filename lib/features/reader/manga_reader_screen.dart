@@ -9,6 +9,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/reading/reader_prefs.dart';
+import '../../core/reading/reader_settings.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -159,11 +160,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     });
   }
 
+  /// Decode width for the current device — see `readerDecodeWidth`'s doc.
+  /// Computed from `context` rather than cached: it's cheap, and re-reading
+  /// it picks up an orientation/window change for free.
+  int _decodeWidth(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return readerDecodeWidth((mq.size.width * mq.devicePixelRatio).round());
+  }
+
   void _preload(int index, List<PageImage> pages) {
+    final width = _decodeWidth(context);
     for (final i in preloadWindow(index, pages.length)) {
       final p = pages[i];
       precacheImage(
-        CachedNetworkImageProvider(p.url, headers: p.headers),
+        // Mirrors exactly what CachedNetworkImage(memCacheWidth: width,
+        // maxWidthDiskCache: width) builds internally (cached_network_image
+        // wraps its provider in the same ResizeImage), so this precache
+        // lands under the same cache key the visible page will later
+        // resolve to instead of warming a full-res entry nothing reads.
+        ResizeImage.resizeIfNeeded(
+          width,
+          null,
+          CachedNetworkImageProvider(p.url, headers: p.headers, maxWidth: width),
+        ),
         context,
         onError: (_, _) {}, // best-effort — a failed prefetch is not fatal
       );
@@ -460,7 +479,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       key: const ValueKey('manga-listview'),
       controller: _verticalController,
       itemCount: pages.length,
-      itemBuilder: (context, index) => _verticalItem(pages[index]),
+      itemBuilder: (context, index) => _verticalItem(context, pages[index]),
     );
   }
 
@@ -470,33 +489,39 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       () => TransformationController(),
     );
     return LayoutBuilder(
-      builder: (context, constraints) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapUp: (d) => _handleTap(d.localPosition.dx, constraints.maxWidth),
-        onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
-        onDoubleTap: () => _toggleZoom(ctrl),
-        child: InteractiveViewer(
-          transformationController: ctrl,
-          minScale: 1.0,
-          maxScale: 4.0,
-          child: Center(
-            child: CachedNetworkImage(
-              imageUrl: page.url,
-              httpHeaders: page.headers,
-              fit: BoxFit.contain,
-              // Static, not an animated spinner — see ColoredBox usage in
-              // poster_card.dart/continue_card.dart for the same convention.
-              placeholder: (_, _) =>
-                  SizedBox.expand(child: ColoredBox(color: AppColors.surface2)),
-              errorWidget: (_, _, _) => const Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white38,
-                size: 48,
+      builder: (context, constraints) {
+        final width = _decodeWidth(context);
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTapUp: (d) => _handleTap(d.localPosition.dx, constraints.maxWidth),
+          onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
+          onDoubleTap: () => _toggleZoom(ctrl),
+          child: InteractiveViewer(
+            transformationController: ctrl,
+            minScale: 1.0,
+            maxScale: 4.0,
+            child: Center(
+              child: CachedNetworkImage(
+                imageUrl: page.url,
+                httpHeaders: page.headers,
+                memCacheWidth: width,
+                maxWidthDiskCache: width,
+                fit: BoxFit.contain,
+                // Static, not an animated spinner — see ColoredBox usage in
+                // poster_card.dart/continue_card.dart for the same convention.
+                placeholder: (_, _) => SizedBox.expand(
+                  child: ColoredBox(color: AppColors.surface2),
+                ),
+                errorWidget: (_, _, _) => const Icon(
+                  Icons.broken_image_outlined,
+                  color: Colors.white38,
+                  size: 48,
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -505,7 +530,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   /// mean. Every tap here just toggles chrome, matching `zoneFor`'s own
   /// vertical branch (kept in sync there; this widget doesn't call `zoneFor`
   /// since there's only one outcome to reach).
-  Widget _verticalItem(PageImage page) {
+  Widget _verticalItem(BuildContext context, PageImage page) {
+    final width = _decodeWidth(context);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggleChrome,
@@ -513,6 +539,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         imageUrl: page.url,
         httpHeaders: page.headers,
         width: double.infinity,
+        memCacheWidth: width,
+        maxWidthDiskCache: width,
         fit: BoxFit.fitWidth,
         // Fixed-height static placeholder (not a spinner) — avoids a
         // zero-height flash in the list while still not perpetually

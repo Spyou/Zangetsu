@@ -25,6 +25,7 @@ import 'package:watch_app/core/provider/reading_provider.dart';
 import 'package:watch_app/core/reading/read_history.dart';
 import 'package:watch_app/core/reading/read_store.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
+import 'package:watch_app/core/reading/reader_settings.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
@@ -399,11 +400,29 @@ Future<void> settle(WidgetTester tester) async {
 /// this sandbox). `precacheImage` → `ImageProvider.resolve` →
 /// `ImageCache.putIfAbsent` runs synchronously, so no extra pump is needed
 /// between triggering it and checking here.
-Future<bool> _imageTracked(String url) async {
-  final key = await CachedNetworkImageProvider(
-    url,
+///
+/// [width] must be the same `readerDecodeWidth` result the reader itself
+/// computed (via [_decodeWidthFor]) — the reader now precaches through a
+/// `ResizeImage`-wrapped, `maxWidth`-bounded provider (so the eventual
+/// on-screen `CachedNetworkImage`'s `memCacheWidth`/`maxWidthDiskCache`
+/// resolves to the very entry `_preload` warmed, instead of decoding the
+/// page a second time), which changes the provider's cache key from a bare
+/// `CachedNetworkImageProvider(url)`.
+Future<bool> _imageTracked(String url, int width) async {
+  final key = await ResizeImage.resizeIfNeeded(
+    width,
+    null,
+    CachedNetworkImageProvider(url, maxWidth: width),
   ).obtainKey(ImageConfiguration.empty);
   return PaintingBinding.instance.imageCache.statusForKey(key).tracked;
+}
+
+/// The decode width the reader itself would compute for the current test
+/// surface — mirrors `_MangaReaderScreenState._decodeWidth` exactly so
+/// `_imageTracked` checks the real cache key instead of a guessed one.
+int _decodeWidthFor(WidgetTester tester) {
+  final mq = MediaQuery.of(tester.element(find.byType(MangaReaderScreen)));
+  return readerDecodeWidth((mq.size.width * mq.devicePixelRatio).round());
 }
 
 void main() {
@@ -795,26 +814,27 @@ void main() {
 
         await tester.pumpWidget(harness());
         await settle(tester);
+        final width = _decodeWidthFor(tester);
 
         // preloadWindow(0, 6) == [1, 2, 3] — those, and only those, should be
         // registered in Flutter's global image cache.
         expect(
-          await _imageTracked(sixPages[1].url),
+          await _imageTracked(sixPages[1].url, width),
           isTrue,
           reason: 'page 1 should be preloaded',
         );
         expect(
-          await _imageTracked(sixPages[2].url),
+          await _imageTracked(sixPages[2].url, width),
           isTrue,
           reason: 'page 2 should be preloaded',
         );
         expect(
-          await _imageTracked(sixPages[3].url),
+          await _imageTracked(sixPages[3].url, width),
           isTrue,
           reason: 'page 3 should be preloaded',
         );
         expect(
-          await _imageTracked(sixPages[4].url),
+          await _imageTracked(sixPages[4].url, width),
           isFalse,
           reason: 'page 4 is outside the 3-page preload window',
         );
@@ -866,6 +886,7 @@ void main() {
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
         final savesBefore = spyHistory.flushCalls.length;
+        final width = _decodeWidthFor(tester);
 
         final slider = tester.widget<Slider>(find.byType(Slider));
         slider.onChangeStart!(0);
@@ -882,20 +903,20 @@ void main() {
           reason: 'one save for the whole drag, not one per tick',
         );
         // preloadWindow(15, 20) == [16, 17, 18] — the final position only.
-        expect(await _imageTracked(twentyPages[16].url), isTrue);
-        expect(await _imageTracked(twentyPages[17].url), isTrue);
-        expect(await _imageTracked(twentyPages[18].url), isTrue);
+        expect(await _imageTracked(twentyPages[16].url, width), isTrue);
+        expect(await _imageTracked(twentyPages[17].url, width), isTrue);
+        expect(await _imageTracked(twentyPages[18].url, width), isTrue);
         // preloadWindow(2, 20) == [3, 4, 5] and preloadWindow(3, 20) ==
         // [4, 5, 6] — page 5/6 are only reachable via one of those leaking.
         expect(
-          await _imageTracked(twentyPages[5].url),
+          await _imageTracked(twentyPages[5].url, width),
           isFalse,
           reason:
               'would be tracked if the page-2 mid-drag tick had leaked '
               'a preload',
         );
         expect(
-          await _imageTracked(twentyPages[6].url),
+          await _imageTracked(twentyPages[6].url, width),
           isFalse,
           reason:
               'would be tracked if the page-3 mid-drag tick had leaked '
@@ -939,6 +960,7 @@ void main() {
         PaintingBinding.instance.imageCache.clear();
         PaintingBinding.instance.imageCache.clearLiveImages();
         final savesBefore = spyHistory.flushCalls.length;
+        final width = _decodeWidthFor(tester);
 
         final slider = tester.widget<Slider>(find.byType(Slider));
         slider.onChangeStart!(0);
@@ -958,9 +980,9 @@ void main() {
         // preload actually fires (positive check; see the comment above for
         // why a negative "nothing else got preloaded" check isn't reliable
         // here).
-        expect(await _imageTracked(twentyPages[16].url), isTrue);
-        expect(await _imageTracked(twentyPages[17].url), isTrue);
-        expect(await _imageTracked(twentyPages[18].url), isTrue);
+        expect(await _imageTracked(twentyPages[16].url, width), isTrue);
+        expect(await _imageTracked(twentyPages[17].url, width), isTrue);
+        expect(await _imageTracked(twentyPages[18].url, width), isTrue);
 
         await disposeHarness(tester);
       },
