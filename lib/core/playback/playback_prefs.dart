@@ -155,11 +155,12 @@ class PlaybackPrefs {
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);
 
-  /// Auto-add a title to My List (as "Watching") the first time you start
-  /// watching it — mirrors the tracker auto-scrobble. Off by default so My List
-  /// stays a manually-curated list; trackers scrobble regardless of this.
+  /// Auto-add a title to My List (as "Watching"/"Reading") the first time you
+  /// open it — mirrors the tracker auto-scrobble. On by default; anyone who's
+  /// explicitly flipped this keeps their own choice, this only changes what a
+  /// never-touched install starts with.
   bool get autoAddToMyList =>
-      _box.get('autoAddToMyList', defaultValue: false) as bool;
+      _box.get('autoAddToMyList', defaultValue: true) as bool;
   Future<void> setAutoAddToMyList(bool value) =>
       _box.put('autoAddToMyList', value);
 

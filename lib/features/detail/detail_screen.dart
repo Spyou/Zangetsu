@@ -564,6 +564,14 @@ class _DetailViewState extends State<_DetailView>
         t == ProviderType.manga ||
         it == ProviderType.novel ||
         it == ProviderType.manga) {
+      // Same auto-add as the video path below — reading titles route out
+      // through this early return, so without this they never got it.
+      if (sl<PlaybackPrefs>().autoAddToMyList &&
+          !IncognitoMode.on &&
+          !_myList.contains(widget.item)) {
+        _myList.add(widget.item);
+        _listStatus.setStatus(widget.item, WatchStatus.watching);
+      }
       _openReader(episodes, index, detail);
       return;
     }
