@@ -14,6 +14,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import 'reader_chrome.dart';
 import 'reader_comfort.dart';
 
 /// Image reader for manga chapters — the paged/webtoon counterpart of
@@ -436,8 +437,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       body: Stack(
         children: [
           Positioned.fill(child: _buildBody(prefs)),
-          if (_chromeVisible) _buildTopBar(),
-          if (_chromeVisible) _buildBottomBar(),
+          // Both bars stay in the tree at all times now (an AnimatedOpacity
+          // fade instead of the old conditional if (_chromeVisible) build) so
+          // the fade can actually animate — see the IgnorePointer below for
+          // why that doesn't let a hidden bar eat page taps.
+          _buildTopBar(),
+          _buildBottomBar(),
         ],
       ),
     );
@@ -679,48 +684,71 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   Widget _buildTopBar() {
     final pages = _pages;
+    // IgnorePointer, not the old `if (_chromeVisible) build it at all` — the
+    // bar is always in the tree so AnimatedOpacity has something to fade,
+    // but that means it'd otherwise sit invisible on top of the page
+    // catching taps meant for page-turn/chrome-toggle underneath. Ignoring
+    // while hidden keeps every tap zone in `_handleTap`/`_toggleChrome`
+    // working exactly as before.
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
-      child: SafeArea(
-        bottom: false,
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.85),
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-          child: Row(
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _chromeVisible ? 1 : 0,
+          child: Stack(
+            alignment: Alignment.topCenter,
             children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                onPressed: () => Navigator.of(context).maybePop(),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      widget.showTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    ValueListenableBuilder<int>(
-                      valueListenable: _pageIndexVN,
-                      builder: (context, pageIndex, _) => Text(
-                        pages == null || pages.isEmpty
-                            ? 'Chapter ${_index + 1} / ${widget.chapters.length}'
-                            : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
+              const ReaderScrim(top: true),
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      readerBarButton(
+                        Icons.arrow_back_rounded,
+                        () => Navigator.of(context).maybePop(),
+                      ),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              widget.showTitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.body.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            ValueListenableBuilder<int>(
+                              valueListenable: _pageIndexVN,
+                              builder: (context, pageIndex, _) => Text(
+                                pages == null || pages.isEmpty
+                                    ? 'Chapter ${_index + 1} / ${widget.chapters.length}'
+                                    : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
+                                style: AppText.caption.copyWith(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
             ],
           ),
         ),
@@ -733,65 +761,83 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     final pageCount = pages?.length ?? 0;
     final hasPrev = _index > 0;
     final hasNext = _index < widget.chapters.length - 1;
+    // Same IgnorePointer-while-hidden reasoning as _buildTopBar.
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: SafeArea(
-        top: false,
-        child: Container(
-          color: Colors.black.withValues(alpha: 0.85),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+      child: IgnorePointer(
+        ignoring: !_chromeVisible,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 200),
+          opacity: _chromeVisible ? 1 : 0,
+          child: Stack(
+            alignment: Alignment.bottomCenter,
             children: [
-              if (pageCount > 1)
-                ValueListenableBuilder<int>(
-                  valueListenable: _pageIndexVN,
-                  builder: (context, pageIndex, _) => Row(
+              const ReaderScrim(top: false),
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('${pageIndex + 1}', style: AppText.caption),
-                      Expanded(
-                        child: Slider(
-                          value: pageIndex.toDouble().clamp(
-                            0,
-                            (pageCount - 1).toDouble(),
+                      if (pageCount > 1)
+                        ValueListenableBuilder<int>(
+                          valueListenable: _pageIndexVN,
+                          builder: (context, pageIndex, _) => Row(
+                            children: [
+                              Text(
+                                '${pageIndex + 1}',
+                                style: AppText.caption.copyWith(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                              Expanded(
+                                child: ReaderSlider(
+                                  value: pageIndex.toDouble().clamp(
+                                    0,
+                                    (pageCount - 1).toDouble(),
+                                  ),
+                                  min: 0,
+                                  max: (pageCount - 1).toDouble(),
+                                  divisions: pageCount - 1,
+                                  onChangeStart: (_) => _seeking = true,
+                                  onChanged: (v) => _seekToPage(v.round()),
+                                  onChangeEnd: (v) => _commitSeek(v.round()),
+                                ),
+                              ),
+                              Text(
+                                '$pageCount',
+                                style: AppText.caption.copyWith(
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
                           ),
-                          min: 0,
-                          max: (pageCount - 1).toDouble(),
-                          divisions: pageCount - 1,
-                          activeColor: AppColors.accent,
-                          onChangeStart: (_) => _seeking = true,
-                          onChanged: (v) => _seekToPage(v.round()),
-                          onChangeEnd: (v) => _commitSeek(v.round()),
                         ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          readerBarButton(
+                            Icons.skip_previous_rounded,
+                            () => _goToChapter(_index - 1),
+                            enabled: hasPrev,
+                          ),
+                          readerBarButton(
+                            Icons.tune_rounded,
+                            _openSettingsSheet,
+                          ),
+                          readerBarButton(
+                            Icons.skip_next_rounded,
+                            () => _goToChapter(_index + 1),
+                            enabled: hasNext,
+                          ),
+                        ],
                       ),
-                      Text('$pageCount', style: AppText.caption),
                     ],
                   ),
                 ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(
-                      Icons.skip_previous_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: hasPrev ? () => _goToChapter(_index - 1) : null,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.tune_rounded, color: Colors.white),
-                    onPressed: _openSettingsSheet,
-                  ),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.skip_next_rounded,
-                      color: Colors.white,
-                    ),
-                    onPressed: hasNext ? () => _goToChapter(_index + 1) : null,
-                  ),
-                ],
               ),
             ],
           ),
@@ -807,10 +853,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   void _openSettingsSheet() {
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final prefs = sl<ReaderPrefs>();
@@ -820,102 +864,122 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             if (mounted) setState(() {});
           }
 
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      width: 36,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppColors.textTertiary.withValues(alpha: 0.5),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
+          return ReaderSheetShell(
+            child: SafeArea(
+              top: false,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: SingleChildScrollView(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 4),
+                            width: 36,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: AppColors.textTertiary.withValues(
+                                alpha: 0.5,
+                              ),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        Text('Reader settings', style: AppText.headline),
+                        readerSheetSection('Reading'),
+                        Text('Direction', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final d in const ['ltr', 'rtl', 'vertical'])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  _directionLabel(d),
+                                  prefs.direction == d,
+                                  () => apply(() {
+                                    prefs.setDirection(d);
+                                    _syncControllersAfterDirectionChange();
+                                  }),
+                                ),
+                              ),
+                          ],
+                        ),
+                        readerSheetSection('Display'),
+                        Text('Fit', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final f in const [
+                              'contain',
+                              'width',
+                              'height',
+                              'original',
+                              'smart',
+                            ])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  _fitLabel(f),
+                                  prefs.fitMode == f,
+                                  () => apply(() => prefs.setFitMode(f)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text('Background', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final b in const [
+                              'black',
+                              'white',
+                              'gray',
+                              'system',
+                            ])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  _backgroundLabel(b),
+                                  prefs.mangaBackground == b,
+                                  () => apply(() => prefs.setMangaBackground(b)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        readerSheetSection('Comfort'),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Keep screen on',
+                                style: AppText.body,
+                              ),
+                            ),
+                            Switch(
+                              value: prefs.keepScreenOn,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setKeepScreenOn(v);
+                                applyReaderComfort();
+                              }),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                  Text('Reader settings', style: AppText.headline),
-                  const SizedBox(height: 12),
-                  Text('Direction', style: AppText.caption),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    runSpacing: 8,
-                    children: [
-                      for (final d in const ['ltr', 'rtl', 'vertical'])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _choiceChip(
-                            _directionLabel(d),
-                            prefs.direction == d,
-                            () => apply(() {
-                              prefs.setDirection(d);
-                              _syncControllersAfterDirectionChange();
-                            }),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Fit', style: AppText.caption),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    runSpacing: 8,
-                    children: [
-                      for (final f in const [
-                        'contain',
-                        'width',
-                        'height',
-                        'original',
-                        'smart',
-                      ])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _choiceChip(
-                            _fitLabel(f),
-                            prefs.fitMode == f,
-                            () => apply(() => prefs.setFitMode(f)),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Background', style: AppText.caption),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    runSpacing: 8,
-                    children: [
-                      for (final b in const ['black', 'white', 'gray', 'system'])
-                        Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _choiceChip(
-                            _backgroundLabel(b),
-                            prefs.mangaBackground == b,
-                            () => apply(() => prefs.setMangaBackground(b)),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('Keep screen on', style: AppText.body),
-                      ),
-                      Switch(
-                        value: prefs.keepScreenOn,
-                        activeThumbColor: AppColors.accent,
-                        onChanged: (v) => apply(() {
-                          prefs.setKeepScreenOn(v);
-                          applyReaderComfort();
-                        }),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
           );
