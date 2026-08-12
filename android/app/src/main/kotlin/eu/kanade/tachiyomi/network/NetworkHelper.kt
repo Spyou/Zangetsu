@@ -2,6 +2,8 @@ package eu.kanade.tachiyomi.network
 
 import android.content.Context
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
+import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
+import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import java.io.File
@@ -41,6 +43,17 @@ class NetworkHelper(
      * cacheless client (`newCachelessCallWithProgress`), so only JSON lands here.
      */
     val client: OkHttpClient = sharedClient.newBuilder()
+        // Mihon's default client must carry an UncaughtExceptionInterceptor FIRST
+        // in the chain — some extensions (e.g. Asura Scans) assert its presence on
+        // the DEFAULT client and otherwise throw "UncaughtExceptionInterceptor must
+        // be present in default client", so browse/latest just fail. This is a
+        // newBuilder copy of the shared client, so the CloudStream/anime client is
+        // untouched; index 0 so it wraps everything below it.
+        .apply { interceptors().add(0, UncaughtExceptionInterceptor()) }
+        // Same story: extensions also assert a UserAgentInterceptor on the default
+        // client ("UserAgentInterceptor must be present in default client"). It
+        // just fills in a default User-Agent when a request has none.
+        .addInterceptor(UserAgentInterceptor(::defaultUserAgentProvider))
         // 15 MB is plenty for JSON (browse/detail/chapter lists); LRU-evicted.
         .cache(Cache(File(context.cacheDir, "network_cache"), 15L * 1024 * 1024))
         // Read+write cookies through the global WebView CookieManager. Without
@@ -84,5 +97,16 @@ class NetworkHelper(
                 "Chrome/125.0.0.0 Mobile Safari/537.36"
 
         fun defaultUserAgentProvider(): String = DEFAULT_USER_AGENT
+
+        /**
+         * The User-Agent of the last request that hit a Cloudflare challenge.
+         * The visible solver (MihonCloudflareActivity) reads this so it solves
+         * with the SAME UA the source's okhttp requests actually send — a
+         * cf_clearance cookie is bound to its UA, so a mismatch (source uses its
+         * own UA, solver used the app default) makes Cloudflare reject the
+         * solved cookie and re-challenge forever.
+         */
+        @Volatile
+        var challengeUserAgent: String? = null
     }
 }

@@ -36,6 +36,12 @@ class CloudflareInterceptor(
         request: Request,
         response: Response
     ): Response {
+        // Remember the UA this source actually sends, so the visible solver
+        // (MihonCloudflareActivity) solves under the SAME UA — a cf_clearance
+        // cookie is bound to its UA; solving under the app default when the
+        // source uses its own UA makes Cloudflare reject the cookie forever.
+        eu.kanade.tachiyomi.network.NetworkHelper.challengeUserAgent =
+            request.header("User-Agent")
         try {
             response.close()
             cookieManager.remove(request.url, COOKIE_NAMES, 0)

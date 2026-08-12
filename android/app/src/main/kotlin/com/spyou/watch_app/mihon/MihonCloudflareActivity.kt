@@ -70,9 +70,14 @@ class MihonCloudflareActivity : AppCompatActivity() {
 
         val web = WebView(this).apply {
             setDefaultSettings()
-            // Match the OkHttp client's UA so the cf_clearance cookie is bound to
-            // a user agent the source's requests will actually send.
-            setUserAgent(NetworkHelper.defaultUserAgentProvider())
+            // Solve under the SAME UA the source's requests actually send (the UA
+            // of the request that hit the challenge), not just the app default —
+            // otherwise the cf_clearance is bound to a UA the source never sends
+            // and Cloudflare rejects it. Falls back to the default when unknown.
+            setUserAgent(
+                NetworkHelper.challengeUserAgent
+                    ?: NetworkHelper.defaultUserAgentProvider()
+            )
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, pageUrl: String) {
                     maybeFinishIfSolved()
