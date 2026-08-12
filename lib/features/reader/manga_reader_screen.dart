@@ -1,6 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:gal/gal.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -813,6 +816,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 _handleTap(d.localPosition.dx, constraints.maxWidth),
             onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
             onDoubleTap: () => _toggleZoom(ctrl),
+            onLongPress: () => _showPageActions(page),
             child: InteractiveViewer(
               transformationController: ctrl,
               minScale: 1.0,
@@ -857,6 +861,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleChrome,
+        onLongPress: () => _showPageActions(page),
         child: _cropIfEnabled(
           CachedNetworkImage(
             imageUrl: page.url,
@@ -1465,7 +1470,121 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       ),
     );
   }
+
+  /// Long-press on a page — a small sheet offering Save/Share. Both actions
+  /// read the page's bytes from the disk cache the visible `CachedNetworkImage`
+  /// already populated (`DefaultCacheManager().getSingleFile`, with the
+  /// page's own CF headers so a protected source resolves the same way the
+  /// reader itself does) rather than issuing a second download.
+  Future<void> _showPageActions(PageImage page) async {
+    final action = await showModalBottomSheet<_PageAction>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ReaderSheetShell(
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                _pageActionRow(
+                  Icons.download_rounded,
+                  'Save to gallery',
+                  () => Navigator.pop(ctx, _PageAction.save),
+                ),
+                _pageActionRow(
+                  Icons.ios_share_rounded,
+                  'Share',
+                  () => Navigator.pop(ctx, _PageAction.share),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (action == null) return;
+    switch (action) {
+      case _PageAction.save:
+        await _savePage(page);
+      case _PageAction.share:
+        await _sharePage(page);
+    }
+  }
+
+  Widget _pageActionRow(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+        child: Row(
+          children: [
+            Icon(icon, color: AppColors.textPrimary, size: 22),
+            const SizedBox(width: 16),
+            Text(label, style: AppText.body),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Saves the page to the device gallery — same `gal` call/retry shape as
+  /// the player's own screenshot save (`player_controller.dart`'s
+  /// `captureScreenshot`): try the write, and only request the runtime
+  /// permission on the older-Android/iOS path where it throws.
+  Future<void> _savePage(PageImage page) async {
+    try {
+      final file = await DefaultCacheManager().getSingleFile(
+        page.url,
+        headers: page.headers ?? const {},
+      );
+      final bytes = await file.readAsBytes();
+      final name = 'Zangetsu_${DateTime.now().millisecondsSinceEpoch}';
+      try {
+        await Gal.putImageBytes(bytes, name: name);
+      } on GalException {
+        await Gal.requestAccess();
+        await Gal.putImageBytes(bytes, name: name);
+      }
+      _toast('Saved to gallery');
+    } catch (_) {
+      _toast('Save failed');
+    }
+  }
+
+  Future<void> _sharePage(PageImage page) async {
+    try {
+      final file = await DefaultCacheManager().getSingleFile(
+        page.url,
+        headers: page.headers ?? const {},
+      );
+      await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
+    } catch (_) {
+      _toast('Share failed');
+    }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 }
+
+/// Save-or-share choice from [_MangaReaderScreenState._showPageActions].
+enum _PageAction { save, share }
 
 /// Resolves `ReaderPrefs.fitMode` into the `BoxFit` used to render a paged
 /// page. `smart` needs a page's own decoded aspect ratio to pick between
