@@ -84,8 +84,11 @@ class ReaderSlider extends StatelessWidget {
         inactiveTrackColor: Colors.white24,
         thumbColor: Colors.white,
         overlayColor: AppColors.accentSoft,
-        trackHeight: 3,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+        // Pill-style: a fat, fully-rounded capsule track (rounded end caps)
+        // instead of the thin default line — reads like a modern scrubber.
+        trackHeight: 7,
+        trackShape: const RoundedRectSliderTrackShape(),
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
         overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
       ),
       child: Slider(
