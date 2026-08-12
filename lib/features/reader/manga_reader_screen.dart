@@ -219,7 +219,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   void _restoreControllerPositions(int start, int pageCount) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_pageController.hasClients) _pageController.jumpToPage(start);
+      if (_pageController.hasClients) {
+        // In double-page mode the PageView is indexed by spread, so map the
+        // real page we're resuming to onto its spread before jumping.
+        final spreads = _activeSpreads();
+        _pageController.jumpToPage(
+          spreads == null ? start : _spreadOfPage(spreads, start),
+        );
+      }
       if (_verticalController.hasClients && pageCount > 1) {
         final max = _verticalController.position.maxScrollExtent;
         if (max > 0) {
@@ -264,16 +271,57 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   void _onPageChanged(int index) {
+    // `index` is a spread index when the double-page view is active, else a
+    // real page index. Map it back to a real page so `_pageIndex` NEVER holds
+    // a spread index — every downstream consumer (`_saveProgress`, resume,
+    // mark-read, scrobble, the slider, the "pg x/N" label) reads it as an
+    // actual page. Using the highest page of the spread means the final spread
+    // yields the final page, so `ReadStore.finished` still fires at the end.
+    final spreads = _activeSpreads();
+    final page = spreads == null
+        ? index
+        : spreads[index].reduce((a, b) => a > b ? a : b);
     // Just the notifier, not setState — see the field comment on
     // _pageIndexVN. The next-chapter overlay and chrome's page counter each
     // listen for this themselves.
-    _pageIndex = index;
+    _pageIndex = page;
     // A slider drag drives this too (jumpToPage fires onPageChanged) —
     // _commitSeek does the preload/save exactly once when the drag ends.
     if (_seeking) return;
     final pages = _pages;
-    if (pages != null) _preload(index, pages);
+    if (pages != null) _preload(page, pages);
     _saveProgress(flush: false);
+  }
+
+  /// The double-page spread grouping in effect right now, or null when the
+  /// reader is on its ordinary one-page-per-view path (portrait, double-page
+  /// pref off, or vertical/webtoon mode). Recomputed on demand — a single pass
+  /// over the page indices, cheap enough to call from every page-turn/seek —
+  /// so the page↔spread mapping in the callbacks can never drift from whatever
+  /// the current build produced.
+  List<List<int>>? _activeSpreads() {
+    if (!mounted) return null;
+    final pages = _pages;
+    if (pages == null || pages.isEmpty) return null;
+    final prefs = sl<ReaderPrefs>();
+    if (!prefs.doublePageLandscape) return null;
+    final dir = _effectiveDirection(prefs);
+    if (dir == 'vertical') return null;
+    if (MediaQuery.orientationOf(context) != Orientation.landscape) return null;
+    // ponytail: wide-page detection deferred (needs the image decoded to read
+    // its aspect ratio) — every pair is two portrait pages. Upgrade path:
+    // resolve each page's decoded size via an ImageStream listener and pass
+    // the landscape (aspect > 1) indices here as `wide`.
+    return pairPages(pages.length, rtl: dir == 'rtl', wide: const {});
+  }
+
+  /// The index of the spread that contains real page [page]. Falls back to 0
+  /// so a stale/out-of-range page never throws while seeking or restoring.
+  int _spreadOfPage(List<List<int>> spreads, int page) {
+    for (var s = 0; s < spreads.length; s++) {
+      if (spreads[s].contains(page)) return s;
+    }
+    return 0;
   }
 
   void _onVerticalScroll() {
@@ -417,7 +465,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (pages == null || pages.isEmpty) return;
     final clamped = clampPageIndex(page, pages.length);
     setState(() => _pageIndex = clamped);
-    if (_pageController.hasClients) _pageController.jumpToPage(clamped);
+    if (_pageController.hasClients) {
+      // The slider seeks in real page numbers; map to the containing spread
+      // when the double-page view is active.
+      final spreads = _activeSpreads();
+      _pageController.jumpToPage(
+        spreads == null ? clamped : _spreadOfPage(spreads, clamped),
+      );
+    }
     if (_verticalController.hasClients && pages.length > 1) {
       final max = _verticalController.position.maxScrollExtent;
       if (max > 0) {
@@ -464,7 +519,15 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (pages == null || pages.isEmpty) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_pageController.hasClients) _pageController.jumpToPage(_pageIndex);
+      if (_pageController.hasClients) {
+        // Reused when the double-page toggle flips too (itemCount goes
+        // page-count↔spread-count under the same controller): re-anchor on the
+        // spread holding the current page instead of trusting the stale index.
+        final spreads = _activeSpreads();
+        _pageController.jumpToPage(
+          spreads == null ? _pageIndex : _spreadOfPage(spreads, _pageIndex),
+        );
+      }
       if (_verticalController.hasClients && pages.length > 1) {
         final max = _verticalController.position.maxScrollExtent;
         if (max > 0) {
@@ -580,14 +643,55 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   Widget _buildPaged(List<PageImage> pages, String direction) {
+    final spreads = _activeSpreads();
+    if (spreads == null) {
+      // Ordinary one-page-per-view path — byte-for-byte what it was before
+      // double-page existed.
+      return PageView.builder(
+        key: const ValueKey('manga-pageview'),
+        controller: _pageController,
+        reverse: direction == 'rtl',
+        itemCount: pages.length,
+        onPageChanged: _onPageChanged,
+        itemBuilder: (context, index) => _pagedItem(pages[index], index),
+      );
+    }
+    // Double-page landscape: each PageView page is a spread. `onPageChanged`
+    // still maps the spread index back to a real page (see there).
     return PageView.builder(
       key: const ValueKey('manga-pageview'),
       controller: _pageController,
       reverse: direction == 'rtl',
-      itemCount: pages.length,
+      itemCount: spreads.length,
       onPageChanged: _onPageChanged,
-      itemBuilder: (context, index) => _pagedItem(pages[index], index),
+      itemBuilder: (context, index) => _spreadItem(spreads[index], pages),
     );
+  }
+
+  /// One PageView page in double-page mode: a lone page renders exactly like
+  /// the single-page path, a two-page spread lays the two page images side by
+  /// side. Reusing [_pagedItem] per side keeps each page's own fit, pinch-zoom,
+  /// RepaintBoundary, decode width and tap zones (a tap still turns a whole
+  /// spread — the tap advances the PageController one page, i.e. one spread).
+  Widget _spreadItem(List<int> spread, List<PageImage> pages) {
+    if (spread.length == 1) {
+      return _pagedItem(pages[spread.first], spread.first);
+    }
+    return Row(
+      children: [
+        for (final i in spread) Expanded(child: _pagedItem(pages[i], i)),
+      ],
+    );
+  }
+
+  /// Conservative border crop for the `cropBorders` pref. Overflow-scales the
+  /// page a few percent and clips back to its box, shaving the outer margin a
+  /// typical scan leaves without pixel analysis.
+  // ponytail: content-aware crop deferred (needs pixel analysis) — this is a
+  // fixed ~3%-per-edge inset, tuned to trim margins without eating art.
+  Widget _cropIfEnabled(Widget image) {
+    if (!sl<ReaderPrefs>().cropBorders) return image;
+    return ClipRect(child: Transform.scale(scale: 1.06, child: image));
   }
 
   /// Webtoon pinch-zoom. The strip stays a lazy `ListView.builder` (one-finger
@@ -615,9 +719,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           behavior: HitTestBehavior.opaque,
           gestures: {
             _TwoFingerScaleRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                  _TwoFingerScaleRecognizer
-                >(
+                GestureRecognizerFactoryWithHandlers<_TwoFingerScaleRecognizer>(
                   () => _TwoFingerScaleRecognizer(),
                   (r) {
                     r.onStart = _onWebtoonScaleStart;
@@ -633,9 +735,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             child: ListView.builder(
               key: const ValueKey('manga-listview'),
               controller: _verticalController,
-              physics: _wZooming
-                  ? const NeverScrollableScrollPhysics()
-                  : null,
+              physics: _wZooming ? const NeverScrollableScrollPhysics() : null,
               itemCount: pages.length,
               itemBuilder: (context, index) =>
                   _verticalItem(context, pages[index]),
@@ -718,21 +818,23 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               minScale: 1.0,
               maxScale: 4.0,
               child: Center(
-                child: CachedNetworkImage(
-                  imageUrl: page.url,
-                  httpHeaders: page.headers,
-                  memCacheWidth: width,
-                  maxWidthDiskCache: width,
-                  fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-                  // Static, not an animated spinner — see ColoredBox usage in
-                  // poster_card.dart/continue_card.dart for the same convention.
-                  placeholder: (_, _) => SizedBox.expand(
-                    child: ColoredBox(color: AppColors.surface2),
-                  ),
-                  errorWidget: (_, _, _) => const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white38,
-                    size: 48,
+                child: _cropIfEnabled(
+                  CachedNetworkImage(
+                    imageUrl: page.url,
+                    httpHeaders: page.headers,
+                    memCacheWidth: width,
+                    maxWidthDiskCache: width,
+                    fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                    // Static, not an animated spinner — see ColoredBox usage in
+                    // poster_card.dart/continue_card.dart for the same convention.
+                    placeholder: (_, _) => SizedBox.expand(
+                      child: ColoredBox(color: AppColors.surface2),
+                    ),
+                    errorWidget: (_, _, _) => const Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white38,
+                      size: 48,
+                    ),
                   ),
                 ),
               ),
@@ -755,27 +857,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _toggleChrome,
-        child: CachedNetworkImage(
-          imageUrl: page.url,
-          httpHeaders: page.headers,
-          width: double.infinity,
-          memCacheWidth: width,
-          maxWidthDiskCache: width,
-          fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-          // Fixed-height static placeholder (not a spinner) — avoids a
-          // zero-height flash in the list while still not perpetually
-          // animating; same ColoredBox convention as poster_card.dart.
-          placeholder: (_, _) => SizedBox(
-            height: 200,
+        child: _cropIfEnabled(
+          CachedNetworkImage(
+            imageUrl: page.url,
+            httpHeaders: page.headers,
             width: double.infinity,
-            child: ColoredBox(color: AppColors.surface2),
-          ),
-          errorWidget: (_, _, _) => const SizedBox(
-            height: 200,
-            child: Icon(
-              Icons.broken_image_outlined,
-              color: Colors.white38,
-              size: 48,
+            memCacheWidth: width,
+            maxWidthDiskCache: width,
+            fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+            // Fixed-height static placeholder (not a spinner) — avoids a
+            // zero-height flash in the list while still not perpetually
+            // animating; same ColoredBox convention as poster_card.dart.
+            placeholder: (_, _) => SizedBox(
+              height: 200,
+              width: double.infinity,
+              child: ColoredBox(color: AppColors.surface2),
+            ),
+            errorWidget: (_, _, _) => const SizedBox(
+              height: 200,
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: Colors.white38,
+                size: 48,
+              ),
             ),
           ),
         ),
@@ -1162,7 +1266,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 child: _choiceChip(
                                   _backgroundLabel(b),
                                   prefs.mangaBackground == b,
-                                  () => apply(() => prefs.setMangaBackground(b)),
+                                  () =>
+                                      apply(() => prefs.setMangaBackground(b)),
                                 ),
                               ),
                           ],
@@ -1187,6 +1292,41 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                   () => apply(() => prefs.setColorFilter(f)),
                                 ),
                               ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Double-page (landscape)',
+                                style: AppText.body,
+                              ),
+                            ),
+                            Switch(
+                              value: prefs.doublePageLandscape,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setDoublePageLandscape(v);
+                                // itemCount flips page-count↔spread-count under
+                                // the same controller — re-anchor on the page
+                                // we're already reading.
+                                _syncControllersAfterDirectionChange();
+                              }),
+                            ),
+                          ],
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('Crop borders', style: AppText.body),
+                            ),
+                            Switch(
+                              value: prefs.cropBorders,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setCropBorders(v)),
+                            ),
                           ],
                         ),
                         readerSheetSection('Comfort'),

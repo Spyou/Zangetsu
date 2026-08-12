@@ -76,3 +76,31 @@ ColorFilter? readerColorFilter(String key) => switch (key) {
   ]),
   _ => null,
 };
+
+/// Groups page indices into the spreads shown by the landscape double-page
+/// reader. Walks left-to-right, pairing each page with the next one; a page
+/// listed in [wide] (a full-spread scan that already spans two pages) stands
+/// alone, and so does any page that can't find a partner (the one after a wide
+/// page, or an odd final page). [rtl] reverses the two indices within a pair,
+/// so a right-to-left spread shows the higher-numbered page on the left.
+///
+/// Pure so the pairing contract is unit-testable without pumping the reader,
+/// and so the widget can map page↔spread the same way in both directions.
+List<List<int>> pairPages(
+  int count, {
+  required bool rtl,
+  Set<int> wide = const {},
+}) {
+  final spreads = <List<int>>[];
+  var i = 0;
+  while (i < count) {
+    if (wide.contains(i) || i + 1 >= count || wide.contains(i + 1)) {
+      spreads.add([i]);
+      i += 1;
+    } else {
+      spreads.add(rtl ? [i + 1, i] : [i, i + 1]);
+      i += 2;
+    }
+  }
+  return spreads;
+}

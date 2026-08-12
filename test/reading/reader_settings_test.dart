@@ -115,4 +115,48 @@ void main() {
       );
     });
   });
+
+  group('pairPages', () {
+    test('four normal pages pair up left-to-right', () {
+      expect(pairPages(4, rtl: false), [
+        [0, 1],
+        [2, 3],
+      ]);
+    });
+
+    test('rtl reverses the two indices within each pair', () {
+      expect(pairPages(4, rtl: true), [
+        [1, 0],
+        [3, 2],
+      ]);
+    });
+
+    test('a wide page stands alone, and so does the page it displaced', () {
+      // Page 2 is a full-spread scan: it takes a slot on its own, which
+      // leaves page 3 without a partner, so it stands alone too.
+      expect(pairPages(4, rtl: false, wide: {2}), [
+        [0, 1],
+        [2],
+        [3],
+      ]);
+    });
+
+    test('empty chapter yields no spreads', () {
+      expect(pairPages(0, rtl: false), <List<int>>[]);
+    });
+
+    test('a single page is its own spread', () {
+      expect(pairPages(1, rtl: false), [
+        [0],
+      ]);
+    });
+
+    test('an odd count leaves the last page alone', () {
+      expect(pairPages(5, rtl: false), [
+        [0, 1],
+        [2, 3],
+        [4],
+      ]);
+    });
+  });
 }
