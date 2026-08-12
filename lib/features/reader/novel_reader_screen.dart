@@ -264,11 +264,16 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     if (text == null) return const SizedBox.shrink();
 
     final base = TextStyle(
+      fontFamily: novelFontFamily(prefs.fontFamily),
       fontSize: prefs.fontSize,
       height: prefs.lineHeight,
       color: theme.text,
     );
-    final spans = novelSpans(text.html, base);
+    final spans = novelSpans(
+      text.html,
+      base,
+      paragraphSpacing: prefs.paragraphSpacing,
+    );
     final hasNext = _index < widget.chapters.length - 1;
 
     return SafeArea(
@@ -281,7 +286,12 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text.rich(TextSpan(style: base, children: spans)),
+            Text.rich(
+              TextSpan(style: base, children: spans),
+              textAlign: prefs.textAlignJustify
+                  ? TextAlign.justify
+                  : TextAlign.start,
+            ),
             if (_atEnd && hasNext)
               Padding(
                 padding: const EdgeInsets.only(top: 28),
@@ -514,10 +524,61 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           48,
                           (v) => apply(() => prefs.setMarginWidth(v)),
                         ),
-                        readerSheetSection('Theme'),
-                        Row(
+                        const SizedBox(height: 4),
+                        Text('Font', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
                           children: [
-                            for (final t in const ['dark', 'black', 'sepia'])
+                            for (final f in const ['inter', 'serif', 'system'])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  _fontLabel(f),
+                                  prefs.fontFamily == f,
+                                  () => apply(() => prefs.setFontFamily(f)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Text('Alignment', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final justify in const [false, true])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  justify ? 'Justify' : 'Left',
+                                  prefs.textAlignJustify == justify,
+                                  () => apply(
+                                    () => prefs.setTextAlignJustify(justify),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        _prefSlider(
+                          'Paragraph spacing',
+                          prefs.paragraphSpacing,
+                          0,
+                          24,
+                          (v) => apply(() => prefs.setParagraphSpacing(v)),
+                        ),
+                        readerSheetSection('Theme'),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final t in const [
+                              'dark',
+                              'black',
+                              'sepia',
+                              'gray',
+                              'paper',
+                            ])
                               Padding(
                                 padding: const EdgeInsets.only(right: 10),
                                 child: _themeSwatch(
@@ -582,6 +643,40 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     );
   }
 
+  String _fontLabel(String f) => switch (f) {
+    'serif' => 'Serif',
+    'system' => 'System',
+    _ => 'Inter',
+  };
+
+  /// Same shape as MangaReaderScreen's own `_choiceChip`.
+  Widget _choiceChip(String label, bool selected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.accent.withValues(alpha: 0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? AppColors.accent
+                : Colors.white.withValues(alpha: 0.16),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppText.body.copyWith(
+            color: selected ? AppColors.accent : AppColors.textPrimary,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _themeSwatch(String id, bool selected, VoidCallback onTap) {
     final theme = _readerTheme(id);
     return GestureDetector(
@@ -622,18 +717,48 @@ _ReaderTheme _readerTheme(String theme) {
       return const _ReaderTheme(Colors.black, Color(0xFFDDDDDD));
     case 'sepia':
       return const _ReaderTheme(Color(0xFFF0E6D2), Color(0xFF4A3B2A));
+    // Soft charcoal — easier on the eyes than true black at night without
+    // going all the way to the app's own (near-black) 'dark' background.
+    case 'gray':
+      return const _ReaderTheme(Color(0xFF2B2B2E), Color(0xFFD6D6D6));
+    // Warm off-white "paper" — lighter and more neutral than 'sepia', for
+    // readers who want something closer to a printed page than a screen.
+    case 'paper':
+      return const _ReaderTheme(Color(0xFFFAF6EE), Color(0xFF2B2B2B));
     default: // 'dark'
       return _ReaderTheme(AppColors.bg, AppColors.textPrimary);
   }
 }
+
+/// Maps the `fontFamily` pref to a [TextStyle.fontFamily]. 'inter' uses the
+/// bundled Inter family (same one the rest of the app's UI text uses);
+/// 'serif' hands the engine the generic 'serif' name, which the Android
+/// engine resolves to a real system serif font — no bundled asset needed;
+/// 'system' returns null so the platform's default text font renders
+/// untouched.
+String? novelFontFamily(String key) => switch (key) {
+  'serif' => 'serif',
+  'system' => null,
+  _ => 'Inter',
+};
 
 /// HTML → styled spans for the novel body. Pure and top-level so it's
 /// unit-testable without pumping a widget.
 ///
 /// `<p>`/`<br>` become paragraph/line breaks, `<b>`/`<strong>` and
 /// `<i>`/`<em>` become bold/italic spans, everything else (including
-/// `<script>`/`<style>` and their contents) is stripped.
-List<TextSpan> novelSpans(String html, TextStyle base) {
+/// `<script>`/`<style>` and their contents) is stripped. A closed `<p>`
+/// (not a bare `<br>` line break) additionally gets [paragraphSpacing] of
+/// vertical gap via a full-width `WidgetSpan` — the standard way to get a
+/// precise pixel gap between blocks inside one `Text.rich` without leaving
+/// span-land for a widget-per-paragraph layout. Default 0 reproduces the
+/// reader's original spacing exactly (just the `\n`), so every existing
+/// caller is unaffected.
+List<InlineSpan> novelSpans(
+  String html,
+  TextStyle base, {
+  double paragraphSpacing = 0,
+}) {
   // `(?:</\1>|$)` (not just `</\1>`) so an unclosed <script>/<style> tag
   // still gets its raw content stripped through end-of-string instead of
   // leaking into the rendered chapter.
@@ -646,7 +771,7 @@ List<TextSpan> novelSpans(String html, TextStyle base) {
     '',
   );
 
-  final spans = <TextSpan>[];
+  final spans = <InlineSpan>[];
   final buffer = StringBuffer();
   var bold = false;
   var italic = false;
@@ -675,6 +800,16 @@ List<TextSpan> novelSpans(String html, TextStyle base) {
     if (tag.startsWith('</p') || tag.startsWith('<br')) {
       flush();
       spans.add(const TextSpan(text: '\n'));
+      // Only a paragraph close gets the extra gap — a bare `<br>` is a soft
+      // line break within a paragraph (e.g. a poem line), not a block
+      // boundary, so it stays exactly `\n` as before.
+      if (tag.startsWith('</p') && paragraphSpacing > 0) {
+        spans.add(
+          WidgetSpan(
+            child: SizedBox(height: paragraphSpacing, width: double.infinity),
+          ),
+        );
+      }
     } else if (tag.startsWith('<b') || tag.startsWith('<strong')) {
       flush();
       bold = true;

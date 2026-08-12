@@ -338,6 +338,42 @@ void main() {
       expect(text, contains('after'));
       expect(text, contains('&#99999999;')); // left unrecognised, as-is
     });
+
+    test('paragraphSpacing defaults to 0 (no widget gap, same as before '
+        'this pref existed)', () {
+      final spans = novelSpans('<p>One</p><p>Two</p>', const TextStyle());
+      expect(spans.whereType<WidgetSpan>(), isEmpty);
+    });
+
+    test('paragraphSpacing > 0 adds a sized WidgetSpan gap after each '
+        'paragraph close, but not after a bare <br> line break', () {
+      final spans = novelSpans(
+        '<p>One</p><p>Two<br>Three</p>',
+        const TextStyle(),
+        paragraphSpacing: 12,
+      );
+      final gaps = spans.whereType<WidgetSpan>().toList();
+      // Two </p> closes ("One", "Three") each get a gap — the <br> between
+      // "Two" and "Three" does not (it's a soft line break, not a block).
+      expect(gaps, hasLength(2));
+      for (final gap in gaps) {
+        expect((gap.child as SizedBox).height, 12);
+      }
+      // No character/content is lost around the gaps.
+      final text = spans.map((s) => s.toPlainText()).join();
+      expect(text, contains('One'));
+      expect(text, contains('Two'));
+      expect(text, contains('Three'));
+    });
+  });
+
+  group('novelFontFamily', () {
+    test('maps inter/serif/system, defaulting unknown keys to Inter', () {
+      expect(novelFontFamily('inter'), 'Inter');
+      expect(novelFontFamily('serif'), 'serif');
+      expect(novelFontFamily('system'), isNull);
+      expect(novelFontFamily('nonsense'), 'Inter');
+    });
   });
 
   group('NovelReaderScreen', () {
