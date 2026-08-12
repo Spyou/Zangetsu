@@ -505,45 +505,71 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     );
   }
 
+  /// Bounds `_zoomControllers` so a long chapter doesn't retain one
+  /// `TransformationController` per page ever visited (they're only ever
+  /// added via `_pagedItem`'s `putIfAbsent`, never removed on their own) —
+  /// disposes/drops any controller more than 3 pages from wherever the
+  /// reader actually is right now. A page revisited after being evicted just
+  /// gets a fresh, non-zoomed controller via `putIfAbsent`, same as a page
+  /// that was never visited.
+  void _evictFarZoomControllers(int current) {
+    final stale = _zoomControllers.keys
+        .where((k) => (k - current).abs() > 3)
+        .toList();
+    for (final k in stale) {
+      _zoomControllers.remove(k)?.dispose();
+    }
+  }
+
   Widget _pagedItem(PageImage page, int index) {
     final ctrl = _zoomControllers.putIfAbsent(
       index,
       () => TransformationController(),
     );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = _decodeWidth(context);
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapUp: (d) => _handleTap(d.localPosition.dx, constraints.maxWidth),
-          onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
-          onDoubleTap: () => _toggleZoom(ctrl),
-          child: InteractiveViewer(
-            transformationController: ctrl,
-            minScale: 1.0,
-            maxScale: 4.0,
-            child: Center(
-              child: CachedNetworkImage(
-                imageUrl: page.url,
-                httpHeaders: page.headers,
-                memCacheWidth: width,
-                maxWidthDiskCache: width,
-                fit: BoxFit.contain,
-                // Static, not an animated spinner — see ColoredBox usage in
-                // poster_card.dart/continue_card.dart for the same convention.
-                placeholder: (_, _) => SizedBox.expand(
-                  child: ColoredBox(color: AppColors.surface2),
-                ),
-                errorWidget: (_, _, _) => const Icon(
-                  Icons.broken_image_outlined,
-                  color: Colors.white38,
-                  size: 48,
+    _evictFarZoomControllers(_pageIndex);
+    // RepaintBoundary: a page's own raster is expensive (a decoded bitmap up
+    // to readerDecodeWidth), and without this it can get swept into the same
+    // repaint as chrome/slider changes above it in the Stack — this pins it
+    // to its own compositor layer so those don't re-raster the page. Purely
+    // a compositing boundary: it sizes to its child exactly, no layout
+    // change.
+    return RepaintBoundary(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = _decodeWidth(context);
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (d) =>
+                _handleTap(d.localPosition.dx, constraints.maxWidth),
+            onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
+            onDoubleTap: () => _toggleZoom(ctrl),
+            child: InteractiveViewer(
+              transformationController: ctrl,
+              minScale: 1.0,
+              maxScale: 4.0,
+              child: Center(
+                child: CachedNetworkImage(
+                  imageUrl: page.url,
+                  httpHeaders: page.headers,
+                  memCacheWidth: width,
+                  maxWidthDiskCache: width,
+                  fit: BoxFit.contain,
+                  // Static, not an animated spinner — see ColoredBox usage in
+                  // poster_card.dart/continue_card.dart for the same convention.
+                  placeholder: (_, _) => SizedBox.expand(
+                    child: ColoredBox(color: AppColors.surface2),
+                  ),
+                  errorWidget: (_, _, _) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white38,
+                    size: 48,
+                  ),
                 ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -554,30 +580,33 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   /// since there's only one outcome to reach).
   Widget _verticalItem(BuildContext context, PageImage page) {
     final width = _decodeWidth(context);
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: _toggleChrome,
-      child: CachedNetworkImage(
-        imageUrl: page.url,
-        httpHeaders: page.headers,
-        width: double.infinity,
-        memCacheWidth: width,
-        maxWidthDiskCache: width,
-        fit: BoxFit.fitWidth,
-        // Fixed-height static placeholder (not a spinner) — avoids a
-        // zero-height flash in the list while still not perpetually
-        // animating; same ColoredBox convention as poster_card.dart.
-        placeholder: (_, _) => SizedBox(
-          height: 200,
+    // See the comment on _pagedItem's RepaintBoundary — same reasoning here.
+    return RepaintBoundary(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _toggleChrome,
+        child: CachedNetworkImage(
+          imageUrl: page.url,
+          httpHeaders: page.headers,
           width: double.infinity,
-          child: ColoredBox(color: AppColors.surface2),
-        ),
-        errorWidget: (_, _, _) => const SizedBox(
-          height: 200,
-          child: Icon(
-            Icons.broken_image_outlined,
-            color: Colors.white38,
-            size: 48,
+          memCacheWidth: width,
+          maxWidthDiskCache: width,
+          fit: BoxFit.fitWidth,
+          // Fixed-height static placeholder (not a spinner) — avoids a
+          // zero-height flash in the list while still not perpetually
+          // animating; same ColoredBox convention as poster_card.dart.
+          placeholder: (_, _) => SizedBox(
+            height: 200,
+            width: double.infinity,
+            child: ColoredBox(color: AppColors.surface2),
+          ),
+          errorWidget: (_, _, _) => const SizedBox(
+            height: 200,
+            child: Icon(
+              Icons.broken_image_outlined,
+              color: Colors.white38,
+              size: 48,
+            ),
           ),
         ),
       ),
