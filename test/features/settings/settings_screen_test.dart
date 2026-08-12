@@ -12,6 +12,7 @@ import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/reading/reader_prefs.dart';
 import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
@@ -90,6 +91,7 @@ void main() {
     await Hive.openBox(TorrentPrefs.boxName);
     await Hive.openBox(ThemeController.boxName);
     await Hive.openBox(PlaybackPrefs.boxName);
+    await ReaderPrefs.init();
     final sl = GetIt.instance;
     sl
       ..registerSingleton<AppMode>(AppMode(isTv: false))
@@ -100,7 +102,8 @@ void main() {
       ..registerSingleton<SimklService>(_StubSimkl())
       ..registerSingleton<PlaybackPrefs>(PlaybackPrefs())
       ..registerSingleton<DownloadPrefs>(DownloadPrefs())
-      ..registerSingleton<TorrentPrefs>(TorrentPrefs());
+      ..registerSingleton<TorrentPrefs>(TorrentPrefs())
+      ..registerSingleton<ReaderPrefs>(ReaderPrefs());
     activeCubit = ActiveSourceCubit();
   });
 
@@ -171,6 +174,21 @@ void main() {
     // Other sections' rows are gone (we're on the Sources sub-page).
     expect(find.text('Downloads'), findsNothing);
     expect(find.text('About'), findsNothing);
+  });
+
+  testWidgets('Playback section has a Reader entry that opens reader defaults',
+      (tester) async {
+    await _pumpSettings(tester);
+
+    await tester.tap(find.text('Playback'));
+    await tester.pumpAndSettle();
+    expect(find.text('Reader'), findsOneWidget);
+
+    await tester.tap(find.text('Reader'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('MANGA DEFAULTS'), findsOneWidget);
+    expect(find.text('NOVEL DEFAULTS'), findsOneWidget);
   });
 
   testWidgets('search cuts across every section (flat filtered list)',

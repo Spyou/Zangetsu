@@ -34,6 +34,7 @@ import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import 'appearance_screen.dart';
+import 'reader_settings_screen.dart';
 import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
@@ -723,6 +724,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         subtitle: 'Quality, autoplay, speed',
         keywords: 'playback quality autoplay speed player decoder audio subtitle resume gesture',
         onTap: () => _push(const PlaybackSettingsScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Playback',
+        icon: Icons.menu_book_outlined,
+        title: 'Reader',
+        subtitle: 'Manga & novel reading defaults',
+        keywords:
+            'reader manga novel reading defaults fit direction fontsize theme orientation preload',
+        onTap: () => _push(const ReaderSettingsScreen()),
       ),
       _SettingsEntry(
         section: 'History',
