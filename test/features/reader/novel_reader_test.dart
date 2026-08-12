@@ -629,5 +629,105 @@ void main() {
       });
       expect(fake.scrobbleCalls, 1);
     });
+
+    testWidgets('paged mode renders a PageView (not the scroll view) and '
+        'reaching the last page scrobbles exactly once via the same path', (
+      tester,
+    ) async {
+      final longText = List.generate(
+        200,
+        (i) => 'Paragraph number $i with enough words to take real space.',
+      ).join('</p><p>');
+      ani.register(_FakeReadingProvider('ani:n', {'u1': longText}));
+      final fake = _FakeTracker();
+      sl.registerSingleton<TrackerHub>(TrackerHub([fake]));
+      await tester.runAsync(() => sl<ReaderPrefs>().setNovelPaginated(true));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NovelReaderScreen(
+            sourceId: 'ani:n',
+            showId: 'b1',
+            showTitle: 'Book',
+            cover: null,
+            chapters: [chapter('c1', 'u1', number: 4)],
+            startIndex: 0,
+            malId: 555,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Mode really switched.
+      expect(find.byType(PageView), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsNothing);
+
+      final pageView = tester.widget<PageView>(find.byType(PageView));
+      final controller = pageView.controller!;
+      expect(controller.position.maxScrollExtent, greaterThan(0));
+
+      // Jump to the last page — permille hits 1000, which is ReadStore's
+      // finished threshold, so the shared _saveProgress scrobbles once.
+      await tester.runAsync(() async {
+        controller.jumpTo(controller.position.maxScrollExtent);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      await tester.pumpAndSettle();
+
+      expect(fake.scrobbleCalls, 1);
+      expect(fake.lastScrobbleKind, MediaKind.manga);
+      expect(fake.lastScrobbleEpisode, 4);
+      expect(fake.lastScrobbleMalId, 555);
+
+      // Dispose re-flushes the still-finished chapter — no second scrobble.
+      await tester.runAsync(() async {
+        await tester.pumpWidget(const SizedBox());
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+      expect(fake.scrobbleCalls, 1);
+    });
+
+    testWidgets('paged mode resumes on the page matching the saved permille', (
+      tester,
+    ) async {
+      final longText = List.generate(
+        200,
+        (i) => 'Paragraph number $i with enough words to take real space.',
+      ).join('</p><p>');
+      ani.register(_FakeReadingProvider('ani:n', {'u1': longText}));
+      await tester.runAsync(() => sl<ReaderPrefs>().setNovelPaginated(true));
+      // Saved at the very end → paged mode must open on the last page.
+      await tester.runAsync(
+        () => sl<ReadStore>().save('ani:n', 'b1', 'c1', pos: 1000, total: 1000),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: NovelReaderScreen(
+            sourceId: 'ani:n',
+            showId: 'b1',
+            showTitle: 'Book',
+            cover: null,
+            chapters: [chapter('c1', 'u1')],
+            startIndex: 0,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final pageView = tester.widget<PageView>(find.byType(PageView));
+      final controller = pageView.controller!;
+      expect(controller.position.maxScrollExtent, greaterThan(0));
+      // Last page = full permille; the restore jump landed us there.
+      expect(
+        controller.offset,
+        closeTo(controller.position.maxScrollExtent, 1.0),
+      );
+
+      await tester.runAsync(() async {
+        await tester.pumpWidget(const SizedBox());
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      });
+    });
   });
 }

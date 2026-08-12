@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import 'novel_paginator.dart';
 import 'reader_chrome.dart';
 import 'reader_comfort.dart';
 
@@ -63,6 +64,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   // this, never `widget.chapters` directly.
   late List<Episode> _chapters = widget.chapters;
   late final ScrollController _scrollController;
+  late final PageController _pageController;
 
   bool _loading = true;
   String? _error;
@@ -70,6 +72,15 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   bool _chromeVisible = false;
   bool _atEnd = false;
   int _lastScrollSaveMs = 0;
+
+  // Paged (book) mode state — only used when `prefs.novelPaginated` is true.
+  // The scroll path above is left completely untouched so the default reader
+  // stays byte-for-byte today's behavior. `_paginationKey` fingerprints the
+  // inputs (chapter + text style + page size) so we only re-paginate when one
+  // of them actually changes, not on every LayoutBuilder tick.
+  List<TextSpan> _pages = const [];
+  int _pageIndex = 0;
+  String? _paginationKey;
 
   // Chapter ids already scrobbled this session — dedupes a repeated
   // "finished" save (throttled scroll ticks + the flush on chapter
@@ -81,6 +92,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     super.initState();
     _index = widget.startIndex;
     _scrollController = ScrollController()..addListener(_onScroll);
+    _pageController = PageController();
     // Wakelock/brightness/orientation — see ReaderComfortMixin. The novel
     // reader never held a wakelock before this; it now does, same as manga.
     applyReaderComfort();
@@ -94,6 +106,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     restoreReaderComfort();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
+    _pageController.dispose();
     super.dispose();
   }
 
@@ -188,6 +201,9 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   }
 
   int _currentPermille() {
+    // Both modes speak the same 0–1000 permille scale, so ReadStore/scrobble/
+    // resume semantics are identical — only the source of the number differs.
+    if (sl<ReaderPrefs>().novelPaginated) return _pagedPermille();
     if (!_scrollController.hasClients) return 0;
     final pos = _scrollController.position;
     if (pos.maxScrollExtent <= 0) return 1000; // whole chapter fits on screen
@@ -195,6 +211,44 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     if (raw < 0) return 0;
     if (raw > 1000) return 1000;
     return raw;
+  }
+
+  /// Paged-mode permille: the last page is 1000 (= finished, ≥ ReadStore's 950
+  /// novel rule), so mark-read + scrobble fire at the end of a paged chapter
+  /// exactly like they do when scrolling to the bottom.
+  int _pagedPermille() {
+    final count = _pages.length;
+    if (count <= 1) return 1000; // single page = whole chapter on screen
+    final raw = (_pageIndex / (count - 1) * 1000).round();
+    if (raw < 0) return 0;
+    if (raw > 1000) return 1000;
+    return raw;
+  }
+
+  /// The chapter's saved permille (0 when never read) — the paged analogue of
+  /// what `_restoreScrollPosition` reads.
+  int _savedPermille() {
+    final saved = sl<ReadStore>().get(
+      widget.sourceId,
+      widget.showId,
+      _chapter.id,
+    );
+    if (saved == null) return 0;
+    final p = saved.pos;
+    if (p < 0) return 0;
+    if (p > 1000) return 1000;
+    return p;
+  }
+
+  /// Converts a saved permille to a starting page, so resuming lands on the
+  /// same spot the scroll mode would — and switching modes mid-chapter keeps
+  /// the reader at roughly the same place.
+  int _pageForPermille(int permille, int count) {
+    if (count <= 1) return 0;
+    final page = (permille / 1000 * (count - 1)).round();
+    if (page < 0) return 0;
+    if (page >= count) return count - 1;
+    return page;
   }
 
   /// Persists the current chapter's position. `ReadStore.save`/
@@ -267,6 +321,11 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       _error = null;
       _atEnd = false;
       _lastScrollSaveMs = 0;
+      // Drop the old chapter's pages so paged mode re-paginates the new one
+      // and restores from ITS saved permille (empty pages → use saved, below).
+      _pages = const [];
+      _paginationKey = null;
+      _pageIndex = 0;
     });
     _load();
   }
@@ -308,6 +367,10 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     if (_error != null) return _buildError(theme);
     final text = _text;
     if (text == null) return const SizedBox.shrink();
+
+    // Optional page-flip mode. When off (the default) the scroll path below is
+    // left exactly as it was — same widgets, same restore, same behavior.
+    if (prefs.novelPaginated) return _buildPaged(theme, prefs, text);
 
     final base = TextStyle(
       fontFamily: novelFontFamily(prefs.fontFamily),
@@ -387,6 +450,118 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
         ),
       ),
     );
+  }
+
+  /// Page-flip (book) mode: the same styled text split into page-sized
+  /// [TextSpan]s by [paginateSpans] and shown in a horizontal [PageView].
+  /// Left/right thirds turn the page, the center toggles chrome — the novel's
+  /// analogue of the manga reader's tap zones. The scroll reader is untouched
+  /// by this path; `prefs.novelPaginated` picks between them in `_buildBody`.
+  Widget _buildPaged(_ReaderTheme theme, ReaderPrefs prefs, ChapterText text) {
+    final base = TextStyle(
+      fontFamily: novelFontFamily(prefs.fontFamily),
+      fontSize: prefs.fontSize,
+      height: prefs.lineHeight,
+      color: theme.text,
+    );
+    return SafeArea(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The page's text area, matching the item padding below exactly
+          // (horizontal margin each side, 32 top + 32 bottom) so a paginated
+          // page fills the view without ever overflowing it.
+          final pageSize = Size(
+            (constraints.maxWidth - prefs.marginWidth * 2).clamp(
+              1.0,
+              double.infinity,
+            ),
+            (constraints.maxHeight - 64).clamp(1.0, double.infinity),
+          );
+          _ensurePaginated(text.html, base, pageSize);
+          final pages = _pages;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (d) =>
+                _handlePageTap(d.localPosition.dx, constraints.maxWidth),
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: pages.isEmpty ? 1 : pages.length,
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, index) {
+                if (pages.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: prefs.marginWidth,
+                    vertical: 32,
+                  ),
+                  child: Align(
+                    alignment: Alignment.topLeft,
+                    child: Text.rich(
+                      pages[index],
+                      textAlign: prefs.textAlignJustify
+                          ? TextAlign.justify
+                          : TextAlign.start,
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// Recomputes pagination only when the chapter, text style, or page size
+  /// changes (not on every rebuild), then jumps the [PageController] to the
+  /// resume/carry-over page. A never-read chapter with empty `_pages` uses its
+  /// saved permille (0 → page 0); a re-paginate (font/size/rotation) carries
+  /// the live position so the reader stays roughly in place.
+  void _ensurePaginated(String html, TextStyle base, Size pageSize) {
+    final key =
+        '${identityHashCode(_text)}|${base.fontSize}|${base.fontFamily}'
+        '|${base.height}|${pageSize.width.toStringAsFixed(1)}'
+        '|${pageSize.height.toStringAsFixed(1)}';
+    if (key == _paginationKey) return;
+    final carry = _pages.isEmpty ? _savedPermille() : _pagedPermille();
+    _paginationKey = key;
+    final spans = novelSpans(html, base); // paragraphSpacing 0 → pure TextSpans
+    _pages = paginateSpans(
+      TextSpan(style: base, children: spans),
+      pageSize: pageSize,
+      style: base,
+    );
+    final target = _pageForPermille(carry, _pages.length);
+    _pageIndex = target;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pageController.hasClients) return;
+      if (_pageController.page?.round() != target) {
+        _pageController.jumpToPage(target);
+      }
+    });
+  }
+
+  void _onPageChanged(int index) {
+    if (index == _pageIndex) return; // e.g. the restore jump landing on target
+    setState(() => _pageIndex = index); // refresh the page x / y indicator
+    _saveProgress(flush: false); // same save/scrobble path as scroll mode
+  }
+
+  void _handlePageTap(double dx, double width) {
+    final third = width / 3;
+    if (dx < third) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    } else if (dx > width - third) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    } else {
+      _toggleChrome();
+    }
   }
 
   // Chrome bars are always white-on-scrim now, matching the manga reader —
@@ -479,19 +654,34 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
               const ReaderScrim(top: false),
               SafeArea(
                 top: false,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    readerBarButton(
-                      Icons.skip_previous_rounded,
-                      () => _goToChapter(_index - 1),
-                      enabled: hasPrev,
-                    ),
-                    readerBarButton(Icons.tune_rounded, _openSettingsSheet),
-                    readerBarButton(
-                      Icons.skip_next_rounded,
-                      () => _goToChapter(_index + 1),
-                      enabled: hasNext,
+                    if (sl<ReaderPrefs>().novelPaginated && _pages.length > 1)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          'Page ${_pageIndex + 1} / ${_pages.length}',
+                          style: AppText.caption.copyWith(
+                            color: Colors.white70,
+                          ),
+                        ),
+                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        readerBarButton(
+                          Icons.skip_previous_rounded,
+                          () => _goToChapter(_index - 1),
+                          enabled: hasPrev,
+                        ),
+                        readerBarButton(Icons.tune_rounded, _openSettingsSheet),
+                        readerBarButton(
+                          Icons.skip_next_rounded,
+                          () => _goToChapter(_index + 1),
+                          enabled: hasNext,
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -613,6 +803,36 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           0,
                           24,
                           (v) => apply(() => prefs.setParagraphSpacing(v)),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text('Paginated', style: AppText.body),
+                            ),
+                            Switch(
+                              value: prefs.novelPaginated,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                // Persist the spot in the CURRENT mode first,
+                                // then switch — so the other mode resumes from
+                                // the same permille (see _ensurePaginated /
+                                // _restoreScrollPosition).
+                                _saveProgress(flush: false);
+                                prefs.setNovelPaginated(v);
+                                _paginationKey = null;
+                                _pages = const [];
+                                _pageIndex = 0;
+                                if (!v) {
+                                  WidgetsBinding.instance.addPostFrameCallback((
+                                    _,
+                                  ) {
+                                    if (mounted) _restoreScrollPosition();
+                                  });
+                                }
+                              }),
+                            ),
+                          ],
                         ),
                         readerSheetSection('Theme'),
                         Wrap(
