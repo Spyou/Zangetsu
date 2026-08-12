@@ -306,6 +306,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       title: widget.showTitle,
       episode: n.toInt(),
       kind: MediaKind.manga,
+      novel: true, // AniList files this under manga+format:NOVEL, not manga
     );
   }
 

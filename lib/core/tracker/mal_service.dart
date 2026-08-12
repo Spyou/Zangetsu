@@ -597,6 +597,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false, // MAL has no format filter for this yet — ignored
   }) async {
     if (!isConnected || !autoSync || episode <= 0) return;
     final a = await _resolveFor(kind, malId, title);
@@ -723,6 +724,7 @@ class MalService extends ChangeNotifier implements Tracker {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false, // MAL has no format filter for this yet — ignored
   }) async {
     if (!isConnected) return null;
     final token = await _validToken();

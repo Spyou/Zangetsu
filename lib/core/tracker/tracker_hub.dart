@@ -58,6 +58,7 @@ class TrackerHub {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
     if (IncognitoMode.on) return; // incognito: pause auto-scrobble
     await _fan(
@@ -69,6 +70,7 @@ class TrackerHub {
         imdbId: imdbId,
         episode: episode,
         kind: kind,
+        novel: novel,
       ),
     );
   }
@@ -125,6 +127,7 @@ class TrackerHub {
     String? imdbId,
     Map<String, String>? pinnedIds,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
     final results = await Future.wait(
       connected.map((t) async {
@@ -137,6 +140,7 @@ class TrackerHub {
             imdbId: imdbId,
             pinnedId: pinnedIds?[t.displayName],
             kind: kind,
+            novel: novel,
           );
         } catch (_) {
           return null;

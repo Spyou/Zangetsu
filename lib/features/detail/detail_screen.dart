@@ -378,6 +378,7 @@ class _DetailViewState extends State<_DetailView>
           imdbId: detail.imdbId ?? widget.item.imdbId,
           pinnedIds: pins.isEmpty ? null : pins,
           kind: reading ? MediaKind.manga : MediaKind.anime,
+          novel: detail.type == ProviderType.novel,
         )
         .then((e) {
       final p = e?.progress;

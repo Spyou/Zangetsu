@@ -13,6 +13,8 @@ import 'package:watch_app/core/tracker/tracker.dart';
 /// send and returns a matching canned response — no real network. Lets the
 /// [AniListService.flushPending] test prove which `type:` (ANIME/MANGA) a
 /// replayed queued scrobble actually hit, which is the whole point of D1.
+/// Also stubs the two title-search shapes ([AniListApi.mediaBySearch] and
+/// [AniListApi.searchMedia]) so a novel-scrobble test can tell them apart.
 class _RecordingAdapter implements HttpClientAdapter {
   final List<String> queries = [];
 
@@ -37,6 +39,36 @@ class _RecordingAdapter implements HttpClientAdapter {
       body = {
         'data': {
           'Media': {'id': 999, field: 50},
+        },
+      };
+    } else if (query != null && query.contains('Page(perPage')) {
+      // searchMedia — the format-aware search novel resolution uses. A
+      // fixed id (4242) distinct from the plain-search id below, so a test
+      // can tell which path actually ran.
+      body = {
+        'data': {
+          'Page': {
+            'media': [
+              {
+                'id': 4242,
+                'idMal': null,
+                'chapters': 47,
+                'volumes': 8,
+                'format': 'NOVEL',
+                'seasonYear': 2014,
+                'title': {'romaji': 'Mushoku Tensei', 'english': null},
+                'coverImage': {'medium': null},
+              },
+            ],
+          },
+        },
+      };
+    } else if (query != null && query.contains('Media(search')) {
+      // mediaBySearch — the plain, unfiltered title search (manga/anime).
+      final field = query.contains('type:MANGA') ? 'chapters' : 'episodes';
+      body = {
+        'data': {
+          'Media': {'id': 1234, field: 30},
         },
       };
     } else if (query != null && query.contains('SaveMediaListEntry')) {
@@ -232,5 +264,91 @@ void main() {
         expect(resolveQueries.single, contains('type:ANIME'));
       },
     );
+  });
+
+  group('AniListService.scrobble — novel resolves via format:NOVEL search', () {
+    late Directory dir;
+    late _RecordingAdapter adapter;
+    late AniListService service;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('anilist_novel_test');
+      Hive.init(dir.path);
+      await AniListStore.init();
+
+      final store = AniListStore();
+      await store.saveSession(token: 'tok', expiresAt: 0);
+      await store.saveViewer(id: 1, name: 'me');
+
+      adapter = _RecordingAdapter();
+      final dio = Dio()..httpClientAdapter = adapter;
+      service = AniListService(dio);
+    });
+
+    tearDown(() async {
+      service.dispose();
+      await Hive.close();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    });
+
+    test('novel:true with no malId hits the format_in:[NOVEL] search, not '
+        'the plain title search', () async {
+      await service.scrobble(
+        title: 'Mushoku Tensei: Jobless Reincarnation',
+        episode: 5,
+        kind: MediaKind.manga,
+        novel: true,
+      );
+
+      final novelSearch = adapter.queries.where(
+        (q) => q.contains('Page(perPage'),
+      );
+      expect(novelSearch, isNotEmpty);
+      expect(novelSearch.single, contains('format_in:[NOVEL]'));
+      expect(adapter.queries.any((q) => q.contains('Media(search')), isFalse);
+
+      // Progress landed on the id the format-aware search returned (4242),
+      // not whatever a plain search would have picked.
+      expect(AniListStore().scrobbledProgress(4242), 5);
+    });
+
+    test('novel:false (plain manga) with the same title stays on the '
+        'unfiltered search — byte-identical to before this fix', () async {
+      await service.scrobble(
+        title: 'Mushoku Tensei: Jobless Reincarnation',
+        episode: 5,
+        kind: MediaKind.manga,
+      );
+
+      final plainSearch = adapter.queries.where(
+        (q) => q.contains('Media(search'),
+      );
+      expect(plainSearch, isNotEmpty);
+      expect(plainSearch.single, isNot(contains('format_in')));
+      expect(adapter.queries.any((q) => q.contains('Page(perPage')), isFalse);
+      expect(AniListStore().scrobbledProgress(1234), 5);
+    });
+
+    test('a novel and a same-titled manga resolve independently — the title '
+        'cache does not collide between them', () async {
+      await service.scrobble(
+        title: 'Mushoku Tensei: Jobless Reincarnation',
+        episode: 1,
+        kind: MediaKind.manga,
+        novel: true,
+      );
+      await service.scrobble(
+        title: 'Mushoku Tensei: Jobless Reincarnation',
+        episode: 1,
+        kind: MediaKind.manga,
+      );
+
+      // Both resolved over the network, each to its own id — the second
+      // call did not short-circuit off the first's cached title→id entry.
+      expect(adapter.queries.where((q) => q.contains('Page(perPage')), isNotEmpty);
+      expect(adapter.queries.where((q) => q.contains('Media(search')), isNotEmpty);
+      expect(AniListStore().scrobbledProgress(4242), 1); // the novel
+      expect(AniListStore().scrobbledProgress(1234), 1); // the manga
+    });
   });
 }

@@ -175,6 +175,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
   MediaKind? lastScrobbleKind;
   int? lastScrobbleEpisode;
   int? lastScrobbleMalId;
+  bool? lastScrobbleNovel;
 
   @override
   String get displayName => 'Fake';
@@ -213,11 +214,13 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
     scrobbleCalls++;
     lastScrobbleKind = kind;
     lastScrobbleEpisode = episode;
     lastScrobbleMalId = malId;
+    lastScrobbleNovel = novel;
   }
 
   @override
@@ -253,6 +256,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async => null;
 
   @override
@@ -620,6 +624,9 @@ void main() {
       expect(fake.lastScrobbleKind, MediaKind.manga);
       expect(fake.lastScrobbleEpisode, 3);
       expect(fake.lastScrobbleMalId, 777);
+      // The novel reader must flag this as a novel — AniList resolves it
+      // under manga+format:NOVEL, not the top plain-manga title match.
+      expect(fake.lastScrobbleNovel, isTrue);
 
       // Dispose flushes progress again for the same (still-finished)
       // chapter — must not scrobble a second time.
@@ -678,6 +685,7 @@ void main() {
       expect(fake.lastScrobbleKind, MediaKind.manga);
       expect(fake.lastScrobbleEpisode, 4);
       expect(fake.lastScrobbleMalId, 555);
+      expect(fake.lastScrobbleNovel, isTrue);
 
       // Dispose re-flushes the still-finished chapter — no second scrobble.
       await tester.runAsync(() async {

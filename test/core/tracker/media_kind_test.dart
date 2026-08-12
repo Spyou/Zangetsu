@@ -50,6 +50,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
     scrobbleKind = kind;
   }
@@ -87,6 +88,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async => null;
 
   @override

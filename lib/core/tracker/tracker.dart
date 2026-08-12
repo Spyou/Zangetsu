@@ -154,6 +154,12 @@ abstract interface class Tracker implements Listenable {
 
   /// Record that [episode] was watched (for a movie, episode is ignored). For
   /// [MediaKind.manga], [episode] is the chapter number.
+  ///
+  /// [novel] narrows a title-search resolution to light novels specifically —
+  /// AniList files novels under [MediaKind.manga] too (`format: NOVEL`), so
+  /// without this a novel with no [malId] resolves against its franchise's
+  /// manga entry instead of its own. Ignored outside AniList; ignored by
+  /// [malId]-based resolution (unambiguous there already).
   Future<void> scrobble({
     int? malId,
     String? title,
@@ -162,6 +168,7 @@ abstract interface class Tracker implements Listenable {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   });
 
   /// Set an explicit library status (from the "Add to List" sheet).
@@ -194,7 +201,7 @@ abstract interface class Tracker implements Listenable {
   /// the title's total episodes and next airing — to populate the sync sheet.
   /// Best-effort: null when disconnected, unmatched, or on any error. When
   /// [pinnedId] is supplied (a tracker-native id chosen via the match-fixer) it
-  /// overrides the malId/title/tmdb resolution.
+  /// overrides the malId/title/tmdb resolution. [novel] — see [scrobble].
   Future<TrackerEntry?> fetchEntry({
     int? malId,
     String? title,
@@ -203,6 +210,7 @@ abstract interface class Tracker implements Listenable {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   });
 
   /// Write status/score/progress together for ONE title (the sync sheet's

@@ -245,6 +245,7 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false, // no manga/novel API to disambiguate — ignored
   }) async {
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected || !autoSync || episode <= 0) return;
@@ -431,6 +432,7 @@ class SimklService extends ChangeNotifier implements Tracker {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false, // no manga/novel API to disambiguate — ignored
   }) async {
     if (kind == MediaKind.manga) return null; // Simkl has no manga/novel API
     if (!isConnected) return null;

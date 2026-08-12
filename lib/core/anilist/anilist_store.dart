@@ -190,26 +190,41 @@ class AniListStore {
   // plus [kind], since MAL's anime/manga id spaces overlap (the same malId
   // can legitimately be queued for both at once). A row written before
   // [kind] existed has no 'kind' field; [mediaKindFromName] reads that as
-  // anime, matching what it always implicitly meant.
-  static String _pendingKey(int? malId, String? title, MediaKind kind) =>
-      '${kind.name}:${malId != null ? 'mal:$malId' : 'title:${(title ?? '').toLowerCase()}'}';
+  // anime, matching what it always implicitly meant. [novel] is folded in
+  // the same way, suffix-only, so a pre-novel row's key is untouched.
+  static String _pendingKey(
+    int? malId,
+    String? title,
+    MediaKind kind, [
+    bool novel = false,
+  ]) =>
+      '${kind.name}${novel ? ':novel' : ''}:'
+      '${malId != null ? 'mal:$malId' : 'title:${(title ?? '').toLowerCase()}'}';
 
   static MediaKind _rowKind(Map<String, dynamic> e) =>
       mediaKindFromName(e['kind'] as String?);
 
-  /// Add or update a queued scrobble (keyed by malId/title/kind — newest ep
-  /// wins).
+  static bool _rowNovel(Map<String, dynamic> e) => e['novel'] as bool? ?? false;
+
+  /// Add or update a queued scrobble (keyed by malId/title/kind/novel —
+  /// newest ep wins).
   Future<void> queueScrobble({
     int? malId,
     String? title,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
-    final key = _pendingKey(malId, title, kind);
+    final key = _pendingKey(malId, title, kind, novel);
     final list = pendingScrobbles;
     final i = list.indexWhere(
       (e) =>
-          _pendingKey(e['malId'] as int?, e['title'] as String?, _rowKind(e)) ==
+          _pendingKey(
+            e['malId'] as int?,
+            e['title'] as String?,
+            _rowKind(e),
+            _rowNovel(e),
+          ) ==
           key,
     );
     final entry = {
@@ -217,6 +232,7 @@ class AniListStore {
       'title': title,
       'episode': episode,
       'kind': kind.name,
+      'novel': novel,
     };
     if (i >= 0) {
       if ((list[i]['episode'] as int? ?? 0) >= episode) return;
@@ -231,8 +247,9 @@ class AniListStore {
     int? malId,
     String? title,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
-    final key = _pendingKey(malId, title, kind);
+    final key = _pendingKey(malId, title, kind, novel);
     final list = pendingScrobbles
       ..removeWhere(
         (e) =>
@@ -240,6 +257,7 @@ class AniListStore {
               e['malId'] as int?,
               e['title'] as String?,
               _rowKind(e),
+              _rowNovel(e),
             ) ==
             key,
       );

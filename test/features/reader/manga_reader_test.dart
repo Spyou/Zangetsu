@@ -272,6 +272,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
   MediaKind? lastScrobbleKind;
   int? lastScrobbleEpisode;
   int? lastScrobbleMalId;
+  bool? lastScrobbleNovel;
 
   @override
   String get displayName => 'Fake';
@@ -310,11 +311,13 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     required int episode,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async {
     scrobbleCalls++;
     lastScrobbleKind = kind;
     lastScrobbleEpisode = episode;
     lastScrobbleMalId = malId;
+    lastScrobbleNovel = novel;
   }
 
   @override
@@ -350,6 +353,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     String? imdbId,
     String? pinnedId,
     MediaKind kind = MediaKind.anime,
+    bool novel = false,
   }) async => null;
 
   @override
@@ -735,6 +739,8 @@ void main() {
         expect(fake.lastScrobbleKind, MediaKind.manga);
         expect(fake.lastScrobbleEpisode, 2);
         expect(fake.lastScrobbleMalId, 555);
+        // Manga is not a novel — must stay on the plain (unfiltered) search.
+        expect(fake.lastScrobbleNovel, isFalse);
 
         // Committing a slider seek back to the same (still-finished) last
         // page must not scrobble a second time.
