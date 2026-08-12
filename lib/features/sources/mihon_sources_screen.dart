@@ -233,6 +233,16 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
             .all
             .where((p) => sourceSearchMatches(query, p.displayName, p.info.lang))
             .toList();
+        // Group by extension package so a multi-language extension (MangaDex is a
+        // SourceFactory that yields one source PER LANGUAGE) collapses to ONE row
+        // instead of ~40 — matching Mihon's Extensions list. Which languages you
+        // actually browse is chosen in the source picker, not in this management
+        // list. Insertion order preserved (MihonManager.all is a LinkedHashMap).
+        final byPkg = <String, List<MihonProvider>>{};
+        for (final s in sources) {
+          (byPkg[s.pkg] ??= <MihonProvider>[]).add(s);
+        }
+        final groups = byPkg.values.toList();
         if (sources.isEmpty) {
           return EmptyState(
             icon: Icons.menu_book_outlined,
@@ -272,7 +282,7 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
                       ),
                     ),
                     Text(
-                      '${sources.length}',
+                      '${groups.length}',
                       style: AppText.overline.copyWith(
                         color: AppColors.textTertiary,
                       ),
@@ -297,17 +307,25 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
                         ),
                         child: Column(
                           children: [
-                            for (var i = 0; i < sources.length; i++) ...[
+                            for (var i = 0; i < groups.length; i++) ...[
                               if (i > 0)
                                 const Divider(
                                   height: 0.5,
                                   thickness: 0.5,
                                   color: AppColors.hairline,
                                 ),
-                              _MihonSourceRow(
-                                source: sources[i],
-                                activeId: activeId,
-                              ),
+                              // One source → the normal row (unchanged). A
+                              // multi-language extension → one collapsible group.
+                              if (groups[i].length == 1)
+                                _MihonSourceRow(
+                                  source: groups[i].first,
+                                  activeId: activeId,
+                                )
+                              else
+                                _MihonExtensionGroup(
+                                  sources: groups[i],
+                                  activeId: activeId,
+                                ),
                             ],
                           ],
                         ),
@@ -318,6 +336,103 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
           ],
         );
       },
+    );
+  }
+}
+
+/// A multi-language Mihon extension (e.g. MangaDex) shown as ONE collapsible
+/// row — its per-language sources are revealed on tap. Mirrors Mihon's
+/// Extensions list; which language you actually browse is chosen in the source
+/// picker. Each revealed row is the same [_MihonSourceRow] as a single-language
+/// source, so activate / settings / uninstall behave identically (uninstall
+/// removes the whole extension — all its languages).
+class _MihonExtensionGroup extends StatefulWidget {
+  const _MihonExtensionGroup({required this.sources, required this.activeId});
+
+  final List<MihonProvider> sources;
+  final String activeId;
+
+  @override
+  State<_MihonExtensionGroup> createState() => _MihonExtensionGroupState();
+}
+
+class _MihonExtensionGroupState extends State<_MihonExtensionGroup> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    // Sources of one extension share a display name; sort the revealed rows by
+    // language so the expanded list reads predictably.
+    final rows = [...widget.sources]
+      ..sort((a, b) => a.info.lang.compareTo(b.info.lang));
+    final name = rows.first.displayName;
+    // Highlight the extension while any of its languages is the active source.
+    final active = rows.any((s) => s.sourceId == widget.activeId);
+    return Column(
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        name,
+                        style: AppText.headline.copyWith(
+                          color:
+                              active ? AppColors.accent : AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text('${rows.length} languages', style: AppText.caption),
+                    ],
+                  ),
+                ),
+                AnimatedRotation(
+                  turns: _expanded ? 0.5 : 0,
+                  duration: const Duration(milliseconds: 200),
+                  child: const Icon(
+                    Icons.expand_more,
+                    color: AppColors.textTertiary,
+                    size: 22,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: !_expanded
+              ? const SizedBox(width: double.infinity)
+              : ColoredBox(
+                  // Slightly recessed so the revealed per-language rows read as
+                  // nested under the extension.
+                  color: AppColors.bg,
+                  child: Column(
+                    children: [
+                      for (final s in rows) ...[
+                        const Divider(
+                          height: 0.5,
+                          thickness: 0.5,
+                          color: AppColors.hairline,
+                        ),
+                        _MihonSourceRow(source: s, activeId: widget.activeId),
+                      ],
+                    ],
+                  ),
+                ),
+        ),
+      ],
     );
   }
 }
