@@ -525,7 +525,9 @@ Future<void> initDependencies() async {
   sl.registerSingleton<BackupService>(BackupService(
     SourcesBackup(sl<ProviderReposRegistry>(), sl<ProviderRegistry>(),
         sl.isRegistered<CloudStreamManager>() ? sl<CloudStreamManager>() : null,
-        aniyomi: AniyomiExtensionService()),
+        aniyomi: AniyomiExtensionService(),
+        mihon: MihonExtensionService(),
+        lnreader: lnrService),
     LibraryBackup(),
     SettingsBackup(),
   ));
@@ -649,6 +651,10 @@ Future<void> initDependencies() async {
     try {
       if (!Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
         await openBoxSafely<dynamic>(MihonExtensionService.installedBoxName);
+      }
+      // Repo-URL box too, so Backup's sync build() can read it any time.
+      if (!Hive.isBoxOpen('mihon_repos')) {
+        await openBoxSafely<String>('mihon_repos');
       }
       final box = Hive.box<dynamic>(MihonExtensionService.installedBoxName);
       if (box.isEmpty) {

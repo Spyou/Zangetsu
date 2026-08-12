@@ -3,6 +3,9 @@ import 'package:watch_app/core/hive/safe_box.dart';
 
 import '../aniyomi/aniyomi_extension_service.dart';
 import '../aniyomi/aniyomi_repo.dart';
+import '../lnreader/lnreader_extension_service.dart';
+import '../mihon/mihon_extension_service.dart';
+import '../mihon/mihon_repo.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
@@ -20,6 +23,10 @@ import '../provider/provider_repo_registry.dart';
 ///   [_cs]      — CloudStream manager (null on non-Android or in tests)
 ///   [_ani]     — Aniyomi extension service (null on non-Android or in tests)
 ///   [_fetchAniyomiIndex] — Aniyomi repo index fetcher (overridable in tests)
+///   [_mihon]   — Mihon (manga) extension service (null on non-Android or in tests)
+///   [_fetchMihonIndex] — Mihon repo index fetcher (overridable in tests)
+///   [_lnr]     — LNReader (novel) extension service (null in tests that
+///                don't need novel-source restore; safe on every platform)
 class SourcesBackup {
   const SourcesBackup(
     this._repos,
@@ -28,8 +35,15 @@ class SourcesBackup {
     AniyomiExtensionService? aniyomi,
     Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)?
         fetchAniyomiIndex,
+    MihonExtensionService? mihon,
+    Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)?
+        fetchMihonIndex,
+    LnReaderExtensionService? lnreader,
   })  : _ani = aniyomi,
-        _fetchAniyomiIndex = fetchAniyomiIndex ?? AniyomiRepo.fetchIndex;
+        _fetchAniyomiIndex = fetchAniyomiIndex ?? AniyomiRepo.fetchIndex,
+        _mihon = mihon,
+        _fetchMihonIndex = fetchMihonIndex ?? MihonRepo.fetchIndex,
+        _lnr = lnreader;
 
   final ProviderReposRegistry _repos;
   final ProviderRegistry _registry;
@@ -43,6 +57,15 @@ class SourcesBackup {
   final Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)
       _fetchAniyomiIndex;
 
+  /// Null on non-Android platforms or in tests that don't need Mihon restore.
+  final MihonExtensionService? _mihon;
+
+  final Future<List<AniyomiRepoEntry>> Function(String repoBaseUrl)
+      _fetchMihonIndex;
+
+  /// Null in tests that don't need LNReader restore.
+  final LnReaderExtensionService? _lnr;
+
   static const String _psBoxName = 'provider_settings';
 
   // The Hive key under which CloudStreamManager persists its repo list.
@@ -52,6 +75,15 @@ class SourcesBackup {
   // The Hive box of tracked Aniyomi repo base URLs (Box<String>, list-style).
   // Matches `kAniyomiReposBoxName` in the sources UI.
   static const String _aniReposBoxName = 'aniyomi_repos';
+
+  // The Hive box of tracked Mihon repo base URLs (Box<String>, list-style).
+  // Matches `kMihonReposBoxName` in `lib/features/sources/mihon_repo_tab.dart`.
+  // Hardcoded here rather than imported, same reason as `_aniReposBoxName`
+  // above (avoids a core → features import).
+  static const String _mihonReposBoxName = 'mihon_repos';
+
+  // LNReader has ONE pinned plugin catalog (LnReaderExtensionService.indexUrl)
+  // — no user-added repos — so there's no LNReader twin of `_aniReposBoxName`.
 
   // ── build ──────────────────────────────────────────────────────────────────
 
@@ -64,6 +96,9 @@ class SourcesBackup {
   /// - `providers`  — every installed provider entry serialised via `toJson`.
   /// - `aniyomiRepoUrls` — tracked Aniyomi repo base URLs.
   /// - `aniyomiPkgs` — installed Aniyomi extension package names.
+  /// - `mihonRepoUrls` — tracked Mihon (manga) repo base URLs.
+  /// - `mihonPkgs` — installed Mihon extension package names.
+  /// - `lnreaderPkgs` — installed LNReader (novel) plugin ids.
   /// - `settings`   — contents of the `provider_settings` Hive box, or `{}`.
   Map<String, dynamic> build() => {
         'jsRepoUrls': _repos.getAll().map((r) => r.url).toList(),
@@ -72,6 +107,9 @@ class SourcesBackup {
         'providers': _registry.getAll().map((e) => e.toJson()).toList(),
         'aniyomiRepoUrls': _readAniyomiRepoUrls(),
         'aniyomiPkgs': _readAniyomiPkgs(),
+        'mihonRepoUrls': _readMihonRepoUrls(),
+        'mihonPkgs': _readMihonPkgs(),
+        'lnreaderPkgs': _readLnReaderPkgs(),
         'settings': _readProviderSettings(),
       };
 
@@ -192,6 +230,95 @@ class SourcesBackup {
       }
     }
 
+    // Mihon repos (union into the Box<String> list) ---------------------------
+    final mihonRepoUrls =
+        (data['mihonRepoUrls'] as List?)?.cast<String>() ?? const <String>[];
+    if (mihonRepoUrls.isNotEmpty) {
+      try {
+        final box = Hive.isBoxOpen(_mihonReposBoxName)
+            ? Hive.box<String>(_mihonReposBoxName)
+            : await openBoxSafely<String>(_mihonReposBoxName);
+        for (final url in mihonRepoUrls) {
+          if (box.values.contains(url)) continue;
+          await box.add(url);
+        }
+      } catch (_) {
+        failures.add('Mihon repos');
+      }
+    }
+
+    // Mihon extensions (re-download from any tracked repo's index) ------------
+    final mihonPkgs =
+        (data['mihonPkgs'] as List?)?.cast<String>() ?? const <String>[];
+    if (mihonPkgs.isNotEmpty && _mihon != null) {
+      // installFromRepo persists pkg → apk path only when this box is open.
+      if (!Hive.isBoxOpen(MihonExtensionService.installedBoxName)) {
+        try {
+          await openBoxSafely<dynamic>(MihonExtensionService.installedBoxName);
+        } catch (_) {}
+      }
+      final installedPkgs = _readMihonPkgs().toSet();
+      final missing =
+          mihonPkgs.where((p) => !installedPkgs.contains(p)).toList();
+      if (missing.isNotEmpty) {
+        // Fetch each tracked repo's index once, then look pkgs up locally.
+        final repoUrls = <String>{
+          ...mihonRepoUrls,
+          if (Hive.isBoxOpen(_mihonReposBoxName))
+            ...Hive.box<String>(_mihonReposBoxName).values,
+        };
+        final entriesByPkg = <String, AniyomiRepoEntry>{};
+        for (final url in repoUrls) {
+          try {
+            for (final e in await _fetchMihonIndex(url)) {
+              entriesByPkg.putIfAbsent(e.pkg, () => e);
+            }
+          } catch (_) {} // fetchIndex never throws, but stay defensive
+        }
+        for (final pkg in missing) {
+          final entry = entriesByPkg[pkg];
+          if (entry == null) {
+            failures.add('Mihon extension: $pkg');
+            continue;
+          }
+          // installFromRepo never throws — [] means the install failed.
+          final providers = await _mihon.installFromRepo(entry);
+          if (providers.isEmpty) failures.add('Mihon extension: ${entry.name}');
+        }
+      }
+    }
+
+    // LNReader novel plugins (re-download the JS source from the pinned
+    // index) ---------------------------------------------------------------
+    final lnreaderPkgs =
+        (data['lnreaderPkgs'] as List?)?.cast<String>() ?? const <String>[];
+    if (lnreaderPkgs.isNotEmpty && _lnr != null) {
+      final installedIds = _lnr.installed().map((m) => m.id).toSet();
+      final missing =
+          lnreaderPkgs.where((id) => !installedIds.contains(id)).toList();
+      if (missing.isNotEmpty) {
+        List<LnReaderPluginMeta> index;
+        try {
+          index = await _lnr.fetchIndex();
+        } catch (_) {
+          index = const [];
+        }
+        final entriesById = {for (final m in index) m.id: m};
+        for (final id in missing) {
+          final meta = entriesById[id];
+          if (meta == null) {
+            failures.add('Novel source: $id');
+            continue;
+          }
+          try {
+            await _lnr.install(meta);
+          } catch (_) {
+            failures.add('Novel source: ${meta.name}');
+          }
+        }
+      }
+    }
+
     // Installed providers (union: only add those not already present) ---------
     final providers = (data['providers'] as List?) ?? const [];
     for (final raw in providers) {
@@ -273,6 +400,29 @@ class SourcesBackup {
   List<String> _readAniyomiPkgs() =>
       Hive.isBoxOpen(AniyomiExtensionService.installedBoxName)
           ? Hive.box<dynamic>(AniyomiExtensionService.installedBoxName)
+              .keys
+              .map((k) => k.toString())
+              .toList()
+          : const [];
+
+  /// Tracked Mihon repo base URLs (empty when the box isn't open).
+  List<String> _readMihonRepoUrls() => Hive.isBoxOpen(_mihonReposBoxName)
+      ? Hive.box<String>(_mihonReposBoxName).values.toList()
+      : const [];
+
+  /// Installed Mihon extension package names (empty when the box isn't open).
+  List<String> _readMihonPkgs() =>
+      Hive.isBoxOpen(MihonExtensionService.installedBoxName)
+          ? Hive.box<dynamic>(MihonExtensionService.installedBoxName)
+              .keys
+              .map((k) => k.toString())
+              .toList()
+          : const [];
+
+  /// Installed LNReader plugin ids (empty when the box isn't open).
+  List<String> _readLnReaderPkgs() =>
+      Hive.isBoxOpen(LnReaderExtensionService.boxName)
+          ? Hive.box<Map>(LnReaderExtensionService.boxName)
               .keys
               .map((k) => k.toString())
               .toList()

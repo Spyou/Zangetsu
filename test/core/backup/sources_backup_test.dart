@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -7,6 +8,10 @@ import 'package:watch_app/core/aniyomi/aniyomi_extension_service.dart';
 import 'package:watch_app/core/aniyomi/aniyomi_provider.dart';
 import 'package:watch_app/core/aniyomi/aniyomi_repo.dart';
 import 'package:watch_app/core/backup/sources_backup.dart';
+import 'package:watch_app/core/lnreader/lnreader_extension_service.dart';
+import 'package:watch_app/core/mihon/mihon_extension_service.dart';
+import 'package:watch_app/core/mihon/mihon_manager.dart';
+import 'package:watch_app/core/mihon/mihon_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart'
     show AniyomiManager;
 import 'package:watch_app/core/provider/provider_registry.dart';
@@ -400,6 +405,192 @@ void main() {
     expect(ani.installedPkgs, isEmpty);
     expect(failures, isEmpty);
   });
+
+  // ── Mihon: build reads the repo + installed boxes ───────────────────────────
+
+  test('build: includes mihon repo urls and installed pkgs', () async {
+    final repoBox = await Hive.openBox<String>('mihon_repos');
+    await repoBox.add('https://raw.githubusercontent.com/o/mihon-repo/main');
+    final instBox =
+        await Hive.openBox<dynamic>(MihonExtensionService.installedBoxName);
+    await instBox.put('eu.kanade.ext.mangaworld', '/data/apk/m.apk');
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    final data = backup.build();
+
+    expect(data['mihonRepoUrls'],
+        ['https://raw.githubusercontent.com/o/mihon-repo/main']);
+    expect(data['mihonPkgs'], ['eu.kanade.ext.mangaworld']);
+  });
+
+  // ── Mihon: merge unions repo urls into the box ──────────────────────────────
+
+  test('merge: adds missing mihon repo urls, skips existing', () async {
+    final repoBox = await Hive.openBox<String>('mihon_repos');
+    await repoBox.add('https://existing.example/mihon');
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    await backup.merge({
+      'mihonRepoUrls': [
+        'https://existing.example/mihon',
+        'https://new.example/mihon',
+      ],
+    });
+
+    expect(repoBox.values.toList(),
+        ['https://existing.example/mihon', 'https://new.example/mihon']);
+  });
+
+  // ── Mihon: merge reinstalls missing extensions from repo indexes ───────────
+
+  test('merge: reinstalls missing mihon pkgs, records not-found failures',
+      () async {
+    await Hive.openBox<dynamic>(MihonExtensionService.installedBoxName);
+    final mihon = _StubMihonService();
+    final entry = AniyomiRepoEntry(
+      name: 'MangaWorld',
+      pkg: 'eu.kanade.ext.mangaworld',
+      apk: 'mangaworld.apk',
+      lang: 'en',
+      version: '1.0',
+      code: 1,
+      nsfw: false,
+      sources: const [],
+      repoBaseUrl: 'https://repo.example/mihon',
+    );
+
+    final backup = SourcesBackup(
+      _StubRepos([]),
+      _StubProviderRegistry([]),
+      null,
+      mihon: mihon,
+      fetchMihonIndex: (url) async => [entry],
+    );
+
+    final failures = await backup.merge({
+      'mihonRepoUrls': ['https://repo.example/mihon'],
+      'mihonPkgs': ['eu.kanade.ext.mangaworld', 'eu.kanade.ext.ghost'],
+    });
+
+    expect(mihon.installedPkgs, ['eu.kanade.ext.mangaworld']);
+    expect(failures, ['Mihon extension: eu.kanade.ext.ghost']);
+  });
+
+  test('merge: does not reinstall an already-installed mihon pkg', () async {
+    final instBox =
+        await Hive.openBox<dynamic>(MihonExtensionService.installedBoxName);
+    await instBox.put('eu.kanade.ext.mangaworld', '/data/apk/m.apk');
+    final mihon = _StubMihonService();
+
+    final backup = SourcesBackup(
+      _StubRepos([]),
+      _StubProviderRegistry([]),
+      null,
+      mihon: mihon,
+      fetchMihonIndex: (url) async => [],
+    );
+
+    final failures =
+        await backup.merge({'mihonPkgs': ['eu.kanade.ext.mangaworld']});
+
+    expect(mihon.installedPkgs, isEmpty);
+    expect(failures, isEmpty);
+  });
+
+  // ── LNReader: build reads the installed-plugin box ──────────────────────────
+
+  test('build: includes lnreader installed plugin ids', () async {
+    final box = await Hive.openBox<Map>('lnreader_plugins');
+    await box.put('novelsite', {'id': 'novelsite', 'name': 'Novel Site'});
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    final data = backup.build();
+
+    expect(data['lnreaderPkgs'], ['novelsite']);
+  });
+
+  // ── LNReader: merge installs a missing plugin from the pinned index ────────
+
+  test('merge: installs a missing lnreader plugin from the pinned index',
+      () async {
+    await Hive.openBox<Map>('lnreader_plugins');
+    final lnr = LnReaderExtensionService(httpGet: (url) async {
+      if (url == LnReaderExtensionService.indexUrl) {
+        return jsonEncode([
+          {
+            'id': 'novelsite',
+            'name': 'Novel Site',
+            'site': 'https://novelsite.example',
+            'lang': 'English',
+            'version': '1.0.0',
+            'url': 'https://novelsite.example/plugin.js',
+            'iconUrl': '',
+          },
+        ]);
+      }
+      return 'js-source-code';
+    });
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null,
+        lnreader: lnr);
+
+    final failures = await backup.merge({
+      'lnreaderPkgs': ['novelsite'],
+    });
+
+    expect(failures, isEmpty);
+    expect(lnr.installed().map((m) => m.id), contains('novelsite'));
+    expect(lnr.jsFor('novelsite'), 'js-source-code');
+  });
+
+  test('merge: does not reinstall an already-installed lnreader plugin',
+      () async {
+    final box = await Hive.openBox<Map>('lnreader_plugins');
+    await box.put('novelsite', {
+      'id': 'novelsite',
+      'name': 'Novel Site',
+      'site': '',
+      'lang': '',
+      'version': '',
+      'url': '',
+      'iconUrl': '',
+      'js': 'already-here',
+    });
+    var fetchedIndex = false;
+    final lnr = LnReaderExtensionService(httpGet: (url) async {
+      fetchedIndex = true;
+      return jsonEncode([]);
+    });
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null,
+        lnreader: lnr);
+
+    final failures = await backup.merge({'lnreaderPkgs': ['novelsite']});
+
+    expect(failures, isEmpty);
+    expect(fetchedIndex, isFalse); // already installed — no network call
+  });
+
+  // ── back-compat: an OLD backup with no manga/novel keys still imports ──────
+
+  test('merge: an OLD-shaped payload (no mihon/lnreader keys) imports fine',
+      () async {
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null,
+        aniyomi: _StubAniyomiService(),
+        mihon: _StubMihonService(),
+        lnreader: LnReaderExtensionService(httpGet: (_) async => '[]'));
+
+    // Shape of a backup taken before manga/novel support existed — no
+    // aniyomiRepoUrls/aniyomiPkgs/mihonRepoUrls/mihonPkgs/lnreaderPkgs keys.
+    final failures = await backup.merge({
+      'jsRepoUrls': [],
+      'csRepoUrls': [],
+      'providers': [],
+      'settings': {},
+    });
+
+    expect(failures, isEmpty);
+  });
 }
 
 /// Stub [AniyomiExtensionService]: records installFromRepo calls and pretends
@@ -425,6 +616,38 @@ class _StubAniyomiService implements AniyomiExtensionService {
           lang: 'it',
           baseUrl: 'https://animeworld.example',
           pkg: 'eu.kanade.ext.animeworld',
+          nsfw: false,
+        ),
+      ),
+    ];
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
+}
+
+/// Stub [MihonExtensionService]: the manga twin of [_StubAniyomiService].
+class _StubMihonService implements MihonExtensionService {
+  final List<String> installedPkgs = [];
+
+  @override
+  Future<List<MihonProvider>> installFromRepo(
+    AniyomiRepoEntry entry, {
+    Dio? dio,
+    Directory? apkDirectory,
+    Future<void> Function(String url, String savePath)? downloader,
+    MihonManager? manager,
+  }) async {
+    installedPkgs.add(entry.pkg);
+    // Non-empty result = success; the codec only checks isEmpty.
+    return [
+      MihonProvider(
+        info: const MihonSourceInfo(
+          id: 1,
+          name: 'MangaWorld',
+          lang: 'en',
+          baseUrl: 'https://mangaworld.example',
+          pkg: 'eu.kanade.ext.mangaworld',
           nsfw: false,
         ),
       ),
