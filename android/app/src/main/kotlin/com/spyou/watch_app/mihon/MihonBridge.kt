@@ -51,6 +51,18 @@ private const val PAGE_LOG = "MihonPages"
 private val mihonMangaLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
 private fun mihonMangaLock(key: String): Mutex = mihonMangaLocks.getOrPut(key) { Mutex() }
 
+// The real SChapter objects (+ their manga url) returned by getChapters, keyed
+// by "$sourceId:$chapterUrl". Newer extensions (Asura) validate getPageList's
+// chapter against the manga's freshly-cached getMangaUpdate state and throw
+// "Refresh Chapter List" for a bare url-stub; keeping the real objects lets
+// getPages re-sync the source and pass the chapter it actually issued.
+private class MihonChapterEntry(
+    val mangaUrl: String,
+    val chapter: eu.kanade.tachiyomi.source.model.SChapter,
+)
+private val mihonChapterCache =
+    java.util.concurrent.ConcurrentHashMap<String, MihonChapterEntry>()
+
 /**
  * Exposes Mihon manga-extension capabilities to the Flutter layer via a
  * [MethodChannel] named "zangetsu/mihon".
@@ -315,6 +327,12 @@ class MihonBridge(
                                 fetchChapters = true,
                             )
                         }
+                        // Keep the real chapter objects so getPages can re-issue
+                        // them (newer extensions reject a bare url-stub).
+                        update.chapters.forEach { ch ->
+                            mihonChapterCache["$sourceId:${ch.url}"] =
+                                MihonChapterEntry(url, ch)
+                        }
                         MihonJson.chaptersToJson(update.chapters)
                     }
                 }
@@ -340,11 +358,31 @@ class MihonBridge(
                         return@setMethodCallHandler
                     }
                     scope.runReporting(result, "PAGE_LIST") {
-                        val chapter = SChapterImpl().apply {
+                        val cached = mihonChapterCache["$sourceId:$chapterUrl"]
+                        val chapter = cached?.chapter ?: SChapterImpl().apply {
                             this.url = chapterUrl
                             this.name = ""
                         }
-                        val pages = src.getPageList(chapter)
+                        val pages = try {
+                            src.getPageList(chapter)
+                        } catch (e: Exception) {
+                            // Newer extensions (Asura) require the manga's chapter
+                            // list to be freshly cached in the source before
+                            // getPageList, else "Refresh Chapter List". Re-run
+                            // getMangaUpdate for the manga we saw this chapter under,
+                            // then retry with the real chapter object. MangaDex and
+                            // other stateless sources succeed above and never hit this.
+                            val mangaUrl = cached?.mangaUrl ?: throw e
+                            mihonMangaLock("$sourceId:$mangaUrl").withLock {
+                                src.getMangaUpdate(
+                                    manga = SMangaImpl().apply { this.url = mangaUrl },
+                                    chapters = emptyList(),
+                                    fetchDetails = false,
+                                    fetchChapters = true,
+                                )
+                            }
+                            src.getPageList(cached.chapter)
+                        }
                         // Not an HttpSource (local/stub source): no client, no
                         // headersBuilder, nothing to resolve — hand back the raw
                         // page list rather than failing the whole chapter.
