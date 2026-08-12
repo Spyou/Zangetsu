@@ -12,6 +12,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import 'reader_comfort.dart';
 
 /// Text reader for manga/novel chapters — the reading counterpart of the
 /// video player. Phone-only (no TV twin, no TV focus handling needed).
@@ -44,7 +45,8 @@ class NovelReaderScreen extends StatefulWidget {
   State<NovelReaderScreen> createState() => _NovelReaderScreenState();
 }
 
-class _NovelReaderScreenState extends State<NovelReaderScreen> {
+class _NovelReaderScreenState extends State<NovelReaderScreen>
+    with ReaderComfortMixin<NovelReaderScreen> {
   late int _index;
   late final ScrollController _scrollController;
 
@@ -65,12 +67,16 @@ class _NovelReaderScreenState extends State<NovelReaderScreen> {
     super.initState();
     _index = widget.startIndex;
     _scrollController = ScrollController()..addListener(_onScroll);
+    // Wakelock/brightness/orientation — see ReaderComfortMixin. The novel
+    // reader never held a wakelock before this; it now does, same as manga.
+    applyReaderComfort();
     _load();
   }
 
   @override
   void dispose() {
     _flushProgress(); // reader close: don't lose the last-read position
+    restoreReaderComfort();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
@@ -473,6 +479,22 @@ class _NovelReaderScreenState extends State<NovelReaderScreen> {
                             () => apply(() => prefs.setTheme(t)),
                           ),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Keep screen on', style: AppText.body),
+                      ),
+                      Switch(
+                        value: prefs.keepScreenOn,
+                        activeThumbColor: AppColors.accent,
+                        onChanged: (v) => apply(() {
+                          prefs.setKeepScreenOn(v);
+                          applyReaderComfort();
+                        }),
+                      ),
                     ],
                   ),
                 ],

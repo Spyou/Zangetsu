@@ -1,6 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -15,6 +14,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
+import 'reader_comfort.dart';
 
 /// Image reader for manga chapters — the paged/webtoon counterpart of
 /// [package:watch_app/features/reader/novel_reader_screen.dart]'s text
@@ -46,7 +46,8 @@ class MangaReaderScreen extends StatefulWidget {
   State<MangaReaderScreen> createState() => _MangaReaderScreenState();
 }
 
-class _MangaReaderScreenState extends State<MangaReaderScreen> {
+class _MangaReaderScreenState extends State<MangaReaderScreen>
+    with ReaderComfortMixin<MangaReaderScreen> {
   late int _index; // chapter index
   late final PageController _pageController;
   late final ScrollController _verticalController;
@@ -91,12 +92,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     _index = widget.startIndex;
     _pageController = PageController();
     _verticalController = ScrollController()..addListener(_onVerticalScroll);
-    // Best-effort: a plugin-channel failure (e.g. an unusual device, or — in
-    // widget tests — no host handler at all) must not crash the reader.
-    // `.ignore()` mirrors what player_screen.dart does (fire-and-forget) but
-    // also silences the async error so it can't surface as an unhandled
-    // exception.
-    if (sl<ReaderPrefs>().keepScreenOn) WakelockPlus.enable().ignore();
+    // Wakelock/brightness/orientation — see ReaderComfortMixin. Best-effort:
+    // a plugin-channel failure (e.g. an unusual device, or — in widget tests
+    // — no host handler at all) must not crash the reader; the mixin itself
+    // swallows that.
+    applyReaderComfort();
     _load();
   }
 
@@ -109,7 +109,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     // ScrollController one last time before that controller goes away.
     _captureFinalVerticalIndex();
     _flushProgress(); // reader close: don't lose the last-read position
-    WakelockPlus.disable().ignore();
+    restoreReaderComfort();
     _verticalController.removeListener(_onVerticalScroll);
     _verticalController.dispose();
     _pageController.dispose();
@@ -885,11 +885,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                         activeThumbColor: AppColors.accent,
                         onChanged: (v) => apply(() {
                           prefs.setKeepScreenOn(v);
-                          if (v) {
-                            WakelockPlus.enable().ignore();
-                          } else {
-                            WakelockPlus.disable().ignore();
-                          }
+                          applyReaderComfort();
                         }),
                       ),
                     ],
