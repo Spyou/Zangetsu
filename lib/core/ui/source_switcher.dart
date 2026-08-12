@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../aniyomi/aniyomi_provider.dart';
 import '../di/injector.dart';
+import '../i18n/source_languages.dart';
 import '../lnreader/lnreader_manager.dart';
 import '../mihon/mihon_manager.dart';
+import '../prefs/source_lang_prefs.dart';
 import '../mode/content_mode.dart';
 import '../mode/content_mode_cubit.dart';
 import '../playback/pinned_sources.dart';
@@ -154,15 +156,21 @@ SourceBuckets categorizedSources() {
   // GetIt "not registered" crash. NSFW reuses the general `nsfwSources` toggle
   // (there is no Mihon-specific pref), matching SourceRepository.loadedSources.
   if (sl.isRegistered<MihonManager>()) {
+    // Only surface sources in the user's enabled languages. A multi-language
+    // extension (MangaDex, MANGA Plus) is a SourceFactory that yields one source
+    // PER LANGUAGE, so without this the picker floods with dozens of identical
+    // rows. Mirrors the Mihon sources screen's Languages filter + default
+    // (English + device language).
+    final langs = sl.isRegistered<MangaLangPrefs>()
+        ? (sl<MangaLangPrefs>().enabled ?? defaultSourceLangs())
+        : null;
     for (final p in sl<MihonManager>().all) {
       if (p.info.nsfw && !nsfwEnabled) continue;
-      // Carry the language in the subtitle. Multi-language extensions are a
-      // SourceFactory that yields one source PER LANGUAGE — MANGA Plus alone
-      // installs five — and they all share a display name, so without this
-      // they render as five identical rows that look like a duplicate install.
-      // Matches the `mihon • <lang>` the Mihon sources screen already shows,
-      // and feeds the picker's search (which matches on this field too).
       final lang = p.info.lang;
+      if (langs != null && !sourceLangVisible(lang, langs)) continue;
+      // Carry the language code in the subtitle so the ones that DO show (e.g.
+      // the enabled languages of a multi-language extension) stay
+      // distinguishable; it feeds the picker's search too.
       manga.add((
         id: p.sourceId,
         label: 'Mihon · ${p.displayName}',
