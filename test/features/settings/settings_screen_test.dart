@@ -176,19 +176,19 @@ void main() {
     expect(find.text('About'), findsNothing);
   });
 
-  testWidgets('Playback section has a Reader entry that opens reader defaults',
+  testWidgets('Reading section has a Reader entry that opens reader defaults',
       (tester) async {
     await _pumpSettings(tester);
 
-    await tester.tap(find.text('Playback'));
+    await tester.tap(find.text('Reading'));
     await tester.pumpAndSettle();
     expect(find.text('Reader'), findsOneWidget);
 
     await tester.tap(find.text('Reader'));
     await tester.pumpAndSettle();
 
-    expect(find.text('MANGA DEFAULTS'), findsOneWidget);
-    expect(find.text('NOVEL DEFAULTS'), findsOneWidget);
+    expect(find.text('MANGA'), findsOneWidget);
+    expect(find.text('NOVEL'), findsOneWidget);
   });
 
   testWidgets('search cuts across every section (flat filtered list)',

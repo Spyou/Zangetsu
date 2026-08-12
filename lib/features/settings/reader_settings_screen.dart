@@ -5,13 +5,17 @@ import '../../core/reading/reader_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
-import '../reader/reader_chrome.dart';
 
 /// Global reader defaults — manga and novel. These are the same
 /// [ReaderPrefs] keys the in-reader settings sheets write; the manga
 /// reader's per-series overrides (Direction/Fit chips there) sit on TOP of
 /// whatever's set here and win when present, so this screen only ever
 /// changes what an unmodified title falls back to.
+///
+/// Deliberately built from the SAME row language as the rest of Settings
+/// (Playback, Interface…): compact rows showing the current value on the
+/// right, tap to open a small picker — not the in-reader sheet's inline
+/// segmented controls, which read as a heavy wall of pills on a full screen.
 class ReaderSettingsScreen extends StatefulWidget {
   const ReaderSettingsScreen({super.key});
 
@@ -64,17 +68,17 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     ('paper', 'Paper'),
   ];
 
-  /// `(value, label)` tuples (the option consts above) as the record list
-  /// [ReaderSegmentedControl] takes.
-  List<({String value, String label})> _segments(
-    List<(String, String)> options,
-  ) => [for (final (v, l) in options) (value: v, label: l)];
+  String _labelOf(List<(String, String)> options, String value) {
+    for (final (v, l) in options) {
+      if (v == value) return l;
+    }
+    return value;
+  }
 
-  /// One option-picker row: the same icon+label shape as a [SettingsTile],
-  /// but the control itself is a [ReaderSegmentedControl] on the line below
-  /// instead of a chevron that opens a picker sheet — replaces the old
-  /// `_pick`/`_pickString` bottom sheet for every reader default that's a
-  /// short, fixed option list.
+  /// A row that shows its current value on the right and opens a small
+  /// option-picker sheet on tap — the app-wide Settings pattern (mirrors
+  /// `_pickSearchLayout` in settings_screen.dart), so this screen reads like
+  /// every other Settings sub-page rather than a wall of segmented pills.
   Widget _pickerRow({
     required IconData icon,
     required String title,
@@ -82,22 +86,80 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     required String current,
     required Future<void> Function(String) onPicked,
   }) {
-    return readerSheetRow(
+    return SettingsTile(
       icon: icon,
-      label: title,
-      child: ReaderSegmentedControl(
-        options: _segments(options),
-        selected: current,
-        onSelect: (v) async {
-          await onPicked(v);
-          if (mounted) setState(() {});
-        },
+      title: title,
+      onTap: () => _openPicker(title, options, current, onPicked),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _labelOf(options, current),
+            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+          ),
+          const SizedBox(width: 6),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: AppColors.textTertiary,
+            size: 20,
+          ),
+        ],
       ),
     );
   }
 
-  /// A boolean row rendered as a [SwitchListTile]-shaped [SettingsTile] —
-  /// same shape as `PlaybackSettingsScreen._toggleRow`.
+  Future<void> _openPicker(
+    String title,
+    List<(String, String)> options,
+    String current,
+    Future<void> Function(String) onPicked,
+  ) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(title, style: AppText.headline),
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            for (final (v, l) in options)
+              ListTile(
+                title: Text(l, style: AppText.body),
+                trailing: v == current
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, v),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await onPicked(picked);
+    if (mounted) setState(() {});
+  }
+
+  /// A boolean row — same shape as `PlaybackSettingsScreen._toggleRow`.
   Widget _toggleRow({
     required IconData icon,
     required String title,
@@ -136,30 +198,25 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     double val = value.clamp(min, max);
     return StatefulBuilder(
       builder: (context, setLocal) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: const EdgeInsets.fromLTRB(15, 10, 15, 6),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(icon, color: AppColors.textSecondary, size: 22),
-                const SizedBox(width: 16),
+                Icon(icon, color: AppColors.textSecondary, size: 20),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Text(
                     title,
-                    style: AppText.headline.copyWith(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
-                    ),
+                    style: AppText.body.copyWith(color: AppColors.textPrimary),
                   ),
                 ),
                 Text(
                   format(val),
-                  style: AppText.headline.copyWith(
+                  style: AppText.body.copyWith(
                     color: AppColors.accent,
                     fontWeight: FontWeight.w700,
-                    fontSize: 15,
                   ),
                 ),
               ],
@@ -172,6 +229,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                   alpha: 0.3,
                 ),
                 overlayColor: AppColors.accent.withValues(alpha: 0.2),
+                trackHeight: 3,
               ),
               child: Slider(
                 min: min,
@@ -201,13 +259,9 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Manga defaults', first: true),
-          // Option pickers first, grouped in the same rounded card +
-          // segmented-control language the in-reader sheets use — reads as
-          // one design instead of a chevron-into-a-bottom-sheet per row.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: readerSheetGroup([
+          const SettingsSectionLabel('Manga', first: true),
+          SettingsCard(
+            children: [
               _pickerRow(
                 icon: Icons.swap_horiz_rounded,
                 title: 'Reading mode',
@@ -243,10 +297,6 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                 current: prefs.orientation,
                 onPicked: prefs.setOrientation,
               ),
-            ]),
-          ),
-          SettingsCard(
-            children: [
               _toggleRow(
                 icon: Icons.vertical_split_rounded,
                 title: 'Double-page (landscape)',
@@ -288,10 +338,9 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
             ],
           ),
-          const SettingsSectionLabel('Novel defaults'),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: readerSheetGroup([
+          const SettingsSectionLabel('Novel'),
+          SettingsCard(
+            children: [
               _pickerRow(
                 icon: Icons.font_download_outlined,
                 title: 'Font',
@@ -306,10 +355,6 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                 current: prefs.theme,
                 onPicked: prefs.setTheme,
               ),
-            ]),
-          ),
-          SettingsCard(
-            children: [
               _sliderRow(
                 icon: Icons.format_size_rounded,
                 title: 'Font size',
