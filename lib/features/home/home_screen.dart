@@ -456,10 +456,11 @@ class _HomeViewState extends State<_HomeView>
   /// Resume from Continue Reading. [ReadEntry] only carries the last-read
   /// CHAPTER's own url (not the show's page url — unlike [HistoryEntry],
   /// which has both), so this can't re-resolve the show's full chapter list
-  /// the way [_resume] does for video. Instead it reopens exactly that one
+  /// up front the way [_resume] does for video. It reopens exactly that one
   /// chapter at its saved scroll position (restored by the reader itself via
-  /// ReadStore) — prev/next chapter navigation isn't available from here,
-  /// only from the title's own Detail screen.
+  /// ReadStore) and passes `resolveChapters: true` — the reader fetches the
+  /// full list itself in the background and lights up prev/next once it
+  /// lands, without touching the chapter already on screen.
   ///
   /// Routes to [MangaReaderScreen] or [NovelReaderScreen] by [ReadEntry.type]
   /// — see [readerFor]. [ReadEntry] has no malId of its own (it's populated
@@ -1486,6 +1487,7 @@ Widget readerFor(ReadEntry e, Episode chapter) {
       cover: e.cover,
       chapters: [chapter],
       startIndex: 0,
+      resolveChapters: true,
     );
   }
   return NovelReaderScreen(
@@ -1495,5 +1497,6 @@ Widget readerFor(ReadEntry e, Episode chapter) {
     cover: e.cover,
     chapters: [chapter],
     startIndex: 0,
+    resolveChapters: true,
   );
 }

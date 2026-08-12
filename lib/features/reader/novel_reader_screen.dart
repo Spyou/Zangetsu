@@ -29,6 +29,7 @@ class NovelReaderScreen extends StatefulWidget {
     required this.chapters, // sorted ascending
     required this.startIndex,
     this.malId,
+    this.resolveChapters = false,
   });
 
   final String sourceId;
@@ -42,6 +43,13 @@ class NovelReaderScreen extends StatefulWidget {
   /// (AniList/MAL manga list). Falls back to [showTitle] when null/unmatched.
   final int? malId;
 
+  /// True when [chapters] may be a single-chapter placeholder (e.g. a
+  /// Continue Reading resume, which only has the last-read chapter) that
+  /// should widen to the show's real chapter list in the background — see
+  /// `_maybeResolveChapters`. Default false: every other caller (Detail
+  /// screen) already passes the full list, so this is a no-op for them.
+  final bool resolveChapters;
+
   @override
   State<NovelReaderScreen> createState() => _NovelReaderScreenState();
 }
@@ -49,6 +57,11 @@ class NovelReaderScreen extends StatefulWidget {
 class _NovelReaderScreenState extends State<NovelReaderScreen>
     with ReaderComfortMixin<NovelReaderScreen> {
   late int _index;
+  // Mutable so a Continue Reading resume (opened with just the one chapter)
+  // can widen to the show's full list in the background — see
+  // `_maybeResolveChapters`. Every read of the chapter list goes through
+  // this, never `widget.chapters` directly.
+  late List<Episode> _chapters = widget.chapters;
   late final ScrollController _scrollController;
 
   bool _loading = true;
@@ -72,6 +85,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // reader never held a wakelock before this; it now does, same as manga.
     applyReaderComfort();
     _load();
+    _maybeResolveChapters();
   }
 
   @override
@@ -83,7 +97,39 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     super.dispose();
   }
 
-  Episode get _chapter => widget.chapters[_index];
+  Episode get _chapter => _chapters[_index];
+
+  /// Background upgrade for a Continue Reading resume: opened with just the
+  /// one already-read chapter, this fetches the show's real chapter list
+  /// (same repo call the Detail screen uses) and — once it lands — widens
+  /// `_chapters` and corrects `_index` to the same chapter's new position,
+  /// so prev/next light up without disturbing whatever's already on screen.
+  /// Never touches `_load()`/scroll state itself. Silent no-op on any
+  /// failure, an empty/single-chapter result, or a chapter that can't be
+  /// found in the fetched list — the single chapter stays a perfectly usable
+  /// reader on its own.
+  Future<void> _maybeResolveChapters() async {
+    if (!widget.resolveChapters || _chapters.length > 1) return;
+    final current = _chapter;
+    try {
+      final fetched = await sl<SourceRepository>().episodes(
+        widget.showId,
+        sourceId: widget.sourceId,
+      );
+      if (!mounted || fetched.length <= 1) return;
+      var newIndex = fetched.indexWhere((c) => c.url == current.url);
+      if (newIndex < 0) {
+        newIndex = fetched.indexWhere((c) => c.id == current.id);
+      }
+      if (newIndex < 0) return;
+      setState(() {
+        _chapters = fetched;
+        _index = newIndex;
+      });
+    } catch (_) {
+      // Keep the single chapter — no error UI, no regression.
+    }
+  }
 
   Future<void> _load() async {
     setState(() {
@@ -212,7 +258,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   void _flushProgress() => _saveProgress(flush: true);
 
   void _goToChapter(int newIndex) {
-    if (newIndex < 0 || newIndex >= widget.chapters.length) return;
+    if (newIndex < 0 || newIndex >= _chapters.length) return;
     if (newIndex == _index) return;
     _flushProgress(); // chapter change: push the chapter we're leaving now
     setState(() {
@@ -274,7 +320,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       base,
       paragraphSpacing: prefs.paragraphSpacing,
     );
-    final hasNext = _index < widget.chapters.length - 1;
+    final hasNext = _index < _chapters.length - 1;
 
     return SafeArea(
       child: SingleChildScrollView(
@@ -394,7 +440,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                               ),
                             ),
                             Text(
-                              'Chapter ${_index + 1} / ${widget.chapters.length}',
+                              'Chapter ${_index + 1} / ${_chapters.length}',
                               style: AppText.caption.copyWith(
                                 color: Colors.white70,
                               ),
@@ -416,7 +462,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
 
   Widget _buildBottomBar() {
     final hasPrev = _index > 0;
-    final hasNext = _index < widget.chapters.length - 1;
+    final hasNext = _index < _chapters.length - 1;
     // Same IgnorePointer-while-hidden reasoning as _buildTopBar.
     return Positioned(
       left: 0,

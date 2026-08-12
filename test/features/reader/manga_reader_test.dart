@@ -122,11 +122,17 @@ void _pureLogicTests() {
 /// URL — mirrors `_FakeReadingProvider` in novel_reader_test.dart, with
 /// `getPages` implemented instead of `getText`.
 class _FakeReadingProvider implements BaseProvider, ReadingProvider {
-  _FakeReadingProvider(this.sourceId, this.pagesByUrl);
+  _FakeReadingProvider(this.sourceId, this.pagesByUrl, {this.episodes});
 
   @override
   final String sourceId;
   final Map<String, List<PageImage>> pagesByUrl;
+
+  /// Full chapter list for `getEpisodes` — the `resolveChapters` upgrade
+  /// test is the only one that sets this. Every other test leaves it null,
+  /// so `getEpisodes` stays unreachable (`UnimplementedError`), same as
+  /// before this field existed.
+  final List<Episode>? episodes;
 
   @override
   String get displayName => sourceId;
@@ -157,8 +163,11 @@ class _FakeReadingProvider implements BaseProvider, ReadingProvider {
       throw UnimplementedError();
 
   @override
-  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) =>
-      throw UnimplementedError();
+  Future<List<Episode>> getEpisodes(String url, {String category = 'sub'}) {
+    final eps = episodes;
+    if (eps == null) throw UnimplementedError();
+    return Future.value(eps);
+  }
 
   @override
   Future<List<VideoSource>> getVideoSources(
@@ -811,6 +820,93 @@ void main() {
 
       await disposeHarness(tester);
     });
+
+    testWidgets(
+      'resolveChapters widens a single-chapter Continue Reading resume to '
+      'the full list in the background, enabling prev/next',
+      (tester) async {
+        // Same show as a real resume: the source has 3 chapters, but the
+        // reader opens with just the middle one (mirrors what
+        // home_screen.dart's readerFor builds from a ReadEntry).
+        ani.register(
+          _FakeReadingProvider(
+            'ani:m',
+            {'u1': pages(3), 'u2': pages(2), 'u3': pages(1)},
+            episodes: [
+              chapter('c1', 'u1'),
+              chapter('c2', 'u2'),
+              chapter('c3', 'u3'),
+            ],
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MangaReaderScreen(
+              sourceId: 'ani:m',
+              showId: 'm1',
+              showTitle: 'Some Manga',
+              cover: null,
+              chapters: [chapter('c2', 'u2')],
+              startIndex: 0,
+              resolveChapters: true,
+            ),
+          ),
+        );
+        await settle(tester);
+
+        final prevBtn = tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.skip_previous_rounded),
+        );
+        final nextBtn = tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.skip_next_rounded),
+        );
+        expect(prevBtn.onPressed, isNotNull);
+        expect(nextBtn.onPressed, isNotNull);
+
+        await disposeHarness(tester);
+      },
+    );
+
+    testWidgets(
+      'a genuinely single-chapter title stays single — resolveChapters '
+      'leaves prev/next disabled when the source only has one chapter',
+      (tester) async {
+        ani.register(
+          _FakeReadingProvider(
+            'ani:m',
+            {'u1': pages(3)},
+            episodes: [chapter('c1', 'u1')],
+          ),
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: MangaReaderScreen(
+              sourceId: 'ani:m',
+              showId: 'm1',
+              showTitle: 'Some Manga',
+              cover: null,
+              chapters: [chapter('c1', 'u1')],
+              startIndex: 0,
+              resolveChapters: true,
+            ),
+          ),
+        );
+        await settle(tester);
+
+        final prevBtn = tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.skip_previous_rounded),
+        );
+        final nextBtn = tester.widget<IconButton>(
+          find.widgetWithIcon(IconButton, Icons.skip_next_rounded),
+        );
+        expect(prevBtn.onPressed, isNull);
+        expect(nextBtn.onPressed, isNull);
+
+        await disposeHarness(tester);
+      },
+    );
 
     testWidgets('page/chapter header shows "ch n · pg i/N"', (tester) async {
       await tester.runAsync(() => sl<ReaderPrefs>().setDirection('ltr'));
