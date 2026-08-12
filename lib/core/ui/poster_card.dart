@@ -70,13 +70,20 @@ class _PosterCardState extends State<PosterCard> {
     final memW = (widget.cellWidth * dpr).round();
     final aniSrcId = _aniSrcId;
     final mihonSrcId = _mihonSrcId;
+    // Only wire the press-scale handlers when this card is actually tappable.
+    // On TV the card is wrapped in a TvFocusable and passed onTap: null — if we
+    // still attached onTapDown/Up/Cancel they'd claim the tap in the gesture
+    // arena and do nothing (onTap is null), swallowing the touch before the
+    // parent TvFocusable's onTap could fire. Null handlers = no recognizer = the
+    // parent gets the tap. (D-pad is unaffected; it never uses the arena.)
+    final interactive = widget.onTap != null || widget.onLongPress != null;
     return RepaintBoundary(
       child: GestureDetector(
         onTap: widget.onTap,
         onLongPress: widget.onLongPress,
-        onTapDown: _handleTapDown,
-        onTapUp: _handleTapUp,
-        onTapCancel: _handleTapCancel,
+        onTapDown: interactive ? _handleTapDown : null,
+        onTapUp: interactive ? _handleTapUp : null,
+        onTapCancel: interactive ? _handleTapCancel : null,
         child: AnimatedScale(
           scale: _pressed ? 0.97 : 1.0,
           duration: const Duration(milliseconds: 120),
