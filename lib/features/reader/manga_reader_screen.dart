@@ -1115,10 +1115,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
-  /// Direction/background/keep-screen-on, live-applied — mirrors the shape
-  /// of NovelReaderScreen's settings sheet (StatefulBuilder + an `apply`
-  /// helper that writes to prefs and rebuilds both the sheet and the
-  /// reader).
+  /// Direction/Fit/Background/Filter/Comfort, live-applied — mirrors the
+  /// shape of NovelReaderScreen's settings sheet (StatefulBuilder + an
+  /// `apply` helper that writes to prefs and rebuilds both the sheet and the
+  /// reader). Every row is built from reader_chrome.dart's shared
+  /// readerSheetRow/ReaderSegmentedControl/readerSheetGroup pieces, so this
+  /// sheet, the novel reader's, and Settings -> Reader all read as one
+  /// design instead of three different layouts.
   void _openSettingsSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -1146,6 +1149,34 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             setSheetState(() {});
             if (mounted) setState(() {});
           }
+
+          // 'default' is a sentinel segment, not a real direction/fit value —
+          // picking it clears the per-series override (same
+          // setModeOverride/setFitOverride(..., null) the old null-chip did).
+          final directionOptions = <({String value, String label})>[
+            (value: 'default', label: 'Default'),
+            for (final d in const ['ltr', 'rtl', 'vertical'])
+              (value: d, label: _directionLabel(d)),
+          ];
+          final fitOptions = <({String value, String label})>[
+            (value: 'default', label: 'Default'),
+            for (final f in const [
+              'contain',
+              'width',
+              'height',
+              'original',
+              'smart',
+            ])
+              (value: f, label: _fitLabel(f)),
+          ];
+          final backgroundOptions = <({String value, String label})>[
+            for (final b in const ['black', 'white', 'gray', 'system'])
+              (value: b, label: _backgroundLabel(b)),
+          ];
+          final filterOptions = <({String value, String label})>[
+            for (final f in const ['none', 'grayscale', 'invert', 'sepia'])
+              (value: f, label: _filterLabel(f)),
+          ];
 
           return ReaderSheetShell(
             child: SafeArea(
@@ -1176,139 +1207,71 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         ),
                         Text('Reader settings', style: AppText.headline),
                         readerSheetSection('Reading'),
-                        Text('Direction', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final d in const <String?>[
-                              null,
-                              'ltr',
-                              'rtl',
-                              'vertical',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  d == null ? 'Default' : _directionLabel(d),
-                                  modeOverride == d,
-                                  () => apply(() {
-                                    overrides?.setModeOverride(
-                                      widget.sourceId,
-                                      widget.showId,
-                                      d,
-                                    );
-                                    _syncControllersAfterDirectionChange();
-                                  }),
-                                ),
-                              ),
-                          ],
-                        ),
-                        if (modeOverride != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '· this title',
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textTertiary,
-                              ),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.swap_horiz_rounded,
+                            label: 'Direction',
+                            trailing: modeOverride != null
+                                ? readerOverrideTag()
+                                : null,
+                            child: ReaderSegmentedControl(
+                              options: directionOptions,
+                              selected: modeOverride ?? 'default',
+                              onSelect: (v) => apply(() {
+                                overrides?.setModeOverride(
+                                  widget.sourceId,
+                                  widget.showId,
+                                  v == 'default' ? null : v,
+                                );
+                                _syncControllersAfterDirectionChange();
+                              }),
                             ),
                           ),
+                        ]),
                         readerSheetSection('Display'),
-                        Text('Fit', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final f in const <String?>[
-                              null,
-                              'contain',
-                              'width',
-                              'height',
-                              'original',
-                              'smart',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  f == null ? 'Default' : _fitLabel(f),
-                                  fitOverride == f,
-                                  () => apply(
-                                    () => overrides?.setFitOverride(
-                                      widget.sourceId,
-                                      widget.showId,
-                                      f,
-                                    ),
-                                  ),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.fit_screen_outlined,
+                            label: 'Fit',
+                            trailing: fitOverride != null
+                                ? readerOverrideTag()
+                                : null,
+                            child: ReaderSegmentedControl(
+                              options: fitOptions,
+                              selected: fitOverride ?? 'default',
+                              onSelect: (v) => apply(
+                                () => overrides?.setFitOverride(
+                                  widget.sourceId,
+                                  widget.showId,
+                                  v == 'default' ? null : v,
                                 ),
-                              ),
-                          ],
-                        ),
-                        if (fitOverride != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '· this title',
-                              style: AppText.caption.copyWith(
-                                color: AppColors.textTertiary,
                               ),
                             ),
                           ),
-                        const SizedBox(height: 16),
-                        Text('Background', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final b in const [
-                              'black',
-                              'white',
-                              'gray',
-                              'system',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  _backgroundLabel(b),
-                                  prefs.mangaBackground == b,
-                                  () =>
-                                      apply(() => prefs.setMangaBackground(b)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text('Filter', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final f in const [
-                              'none',
-                              'grayscale',
-                              'invert',
-                              'sepia',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  _filterLabel(f),
-                                  prefs.colorFilter == f,
-                                  () => apply(() => prefs.setColorFilter(f)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Double-page (landscape)',
-                                style: AppText.body,
-                              ),
+                          readerSheetRow(
+                            icon: Icons.palette_outlined,
+                            label: 'Background',
+                            child: ReaderSegmentedControl(
+                              options: backgroundOptions,
+                              selected: prefs.mangaBackground,
+                              onSelect: (v) =>
+                                  apply(() => prefs.setMangaBackground(v)),
                             ),
-                            Switch(
+                          ),
+                          readerSheetRow(
+                            icon: Icons.tune_rounded,
+                            label: 'Filter',
+                            child: ReaderSegmentedControl(
+                              options: filterOptions,
+                              selected: prefs.colorFilter,
+                              onSelect: (v) =>
+                                  apply(() => prefs.setColorFilter(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.auto_stories_outlined,
+                            label: 'Double-page (landscape)',
+                            trailing: Switch(
                               value: prefs.doublePageLandscape,
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) => apply(() {
@@ -1319,31 +1282,24 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 _syncControllersAfterDirectionChange();
                               }),
                             ),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text('Crop borders', style: AppText.body),
-                            ),
-                            Switch(
+                          ),
+                          readerSheetRow(
+                            icon: Icons.crop_outlined,
+                            label: 'Crop borders',
+                            trailing: Switch(
                               value: prefs.cropBorders,
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) =>
                                   apply(() => prefs.setCropBorders(v)),
                             ),
-                          ],
-                        ),
+                          ),
+                        ]),
                         readerSheetSection('Comfort'),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Keep screen on',
-                                style: AppText.body,
-                              ),
-                            ),
-                            Switch(
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.visibility_outlined,
+                            label: 'Keep screen on',
+                            trailing: Switch(
                               value: prefs.keepScreenOn,
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) => apply(() {
@@ -1351,34 +1307,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                 applyReaderComfort();
                               }),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _prefSlider(
-                                'Brightness',
-                                prefs.brightness,
-                                -1.0,
-                                1.0,
-                                (v) => apply(() {
-                                  prefs.setBrightness(v);
-                                  applyReaderComfort();
-                                }),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            _choiceChip(
-                              'System',
+                          ),
+                          readerSheetRow(
+                            icon: Icons.brightness_6_rounded,
+                            label: 'Brightness',
+                            trailing: _systemBrightnessTag(
                               prefs.brightness < 0,
                               () => apply(() {
                                 prefs.setBrightness(-1.0);
                                 applyReaderComfort();
                               }),
                             ),
-                          ],
-                        ),
+                            child: Slider(
+                              value: prefs.brightness.clamp(-1.0, 1.0),
+                              min: -1.0,
+                              max: 1.0,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setBrightness(v);
+                                applyReaderComfort();
+                              }),
+                            ),
+                          ),
+                        ]),
                       ],
                     ),
                   ),
@@ -1419,52 +1370,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     _ => 'None',
   };
 
-  /// Same shape as NovelReaderScreen's own `_prefSlider` — a label column
-  /// plus an expanded `Slider`, used here for the brightness row.
-  Widget _prefSlider(
-    String label,
-    double value,
-    double min,
-    double max,
-    ValueChanged<double> onChanged,
-  ) {
-    return Row(
-      children: [
-        SizedBox(width: 88, child: Text(label, style: AppText.body)),
-        Expanded(
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            activeColor: AppColors.accent,
-            onChanged: onChanged,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _choiceChip(String label, bool selected, VoidCallback onTap) {
+  /// Small tappable pill next to the Brightness row — jumps straight to the
+  /// OS-managed brightness. Calls the exact same `setBrightness(-1.0)` +
+  /// `applyReaderComfort()` pair the old inline "System" chip did; only the
+  /// styling moved (from a chip in the row to a tag beside its label).
+  Widget _systemBrightnessTag(bool active, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.2)
+          color: active
+              ? AppColors.accent.withValues(alpha: 0.18)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: selected
-                ? AppColors.accent
-                : Colors.white.withValues(alpha: 0.16),
-            width: selected ? 2 : 1,
+            color: active ? AppColors.accent : AppColors.hairline,
           ),
         ),
         child: Text(
-          label,
-          style: AppText.body.copyWith(
-            color: selected ? AppColors.accent : AppColors.textPrimary,
+          'System',
+          style: AppText.caption.copyWith(
+            color: active ? AppColors.accent : AppColors.textSecondary,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

@@ -186,3 +186,197 @@ Widget readerSheetSection(String label) {
     ),
   );
 }
+
+/// Equal-width option picker for a reader settings sheet — replaces the old
+/// free-wrapping chip `Wrap` rows, which was the main source of the
+/// "unorganised" feedback. All of [options] live in one rounded, bordered
+/// strip; the selected segment fills solid [AppColors.accent] (white text),
+/// the rest sit transparent ([AppColors.textSecondary]). Prefers a single
+/// row at a smaller font, and only drops to two full-width rows of equal
+/// segments when the labels genuinely don't fit the sheet's width.
+class ReaderSegmentedControl extends StatelessWidget {
+  const ReaderSegmentedControl({
+    super.key,
+    required this.options,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  /// Each segment's underlying value + display label. `selected` is compared
+  /// against `value`, never `label`.
+  final List<({String value, String label})> options;
+  final String selected;
+  final ValueChanged<String> onSelect;
+
+  static const _labelStyle = TextStyle(
+    fontFamily: 'Inter',
+    fontSize: 12.5,
+    fontWeight: FontWeight.w600,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Sum of each label's own natural width (+ its segment padding) —
+        // a cheap stand-in for "would every segment be legible at its
+        // equal-width Expanded size". Good enough to pick single-row vs
+        // wrapped without a real layout pass.
+        var natural = 0.0;
+        for (final o in options) {
+          final painter = TextPainter(
+            text: TextSpan(text: o.label, style: _labelStyle),
+            textDirection: TextDirection.ltr,
+            maxLines: 1,
+          )..layout();
+          natural += painter.width + 28;
+        }
+        if (options.length <= 1 || natural <= constraints.maxWidth) {
+          return _row(options);
+        }
+        final mid = (options.length / 2).ceil();
+        return Column(
+          children: [
+            _row(options.sublist(0, mid)),
+            const SizedBox(height: 6),
+            _row(options.sublist(mid)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _row(List<({String value, String label})> opts) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.hairline),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              for (var i = 0; i < opts.length; i++) ...[
+                if (i > 0)
+                  const VerticalDivider(
+                    width: 1,
+                    thickness: 1,
+                    color: AppColors.hairline,
+                  ),
+                Expanded(child: _segment(opts[i])),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _segment(({String value, String label}) o) {
+    final isSelected = o.value == selected;
+    return Material(
+      color: isSelected ? AppColors.accent : Colors.transparent,
+      child: InkWell(
+        onTap: () => onSelect(o.value),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+          child: Text(
+            o.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: _labelStyle.copyWith(
+              color: isSelected ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// One setting row inside a reader sheet's grouped card: a small leading
+/// icon + label, an optional [trailing] widget inline on the same line (a
+/// `Switch`, or the manga reader's per-series override tag), and the row's
+/// own control — a [ReaderSegmentedControl], a `Slider`, or nothing — on the
+/// line below via [child]. Same shape used by both readers' sheets and the
+/// global Settings -> Reader screen, so all three read as one design.
+Widget readerSheetRow({
+  required IconData icon,
+  required String label,
+  Widget? trailing,
+  Widget? child,
+}) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 16, color: AppColors.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                label,
+                style: AppText.body.copyWith(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ?trailing,
+          ],
+        ),
+        if (child != null) ...[const SizedBox(height: 8), child],
+      ],
+    ),
+  );
+}
+
+/// Groups a section's [readerSheetRow]s into one rounded card with a thin
+/// [AppColors.hairline] divider between each — pairs with
+/// [readerSheetSection]'s header sitting above it. Same "grouped card" shape
+/// as `settings_widgets.dart`'s `SettingsCard`, sized down for a sheet row.
+Widget readerSheetGroup(List<Widget> rows) {
+  final children = <Widget>[];
+  for (var i = 0; i < rows.length; i++) {
+    if (i > 0) {
+      children.add(
+        const Divider(height: 1, thickness: 1, color: AppColors.hairline),
+      );
+    }
+    children.add(rows[i]);
+  }
+  return DecoratedBox(
+    decoration: BoxDecoration(
+      color: AppColors.surface2,
+      borderRadius: BorderRadius.circular(14),
+    ),
+    child: Column(mainAxisSize: MainAxisSize.min, children: children),
+  );
+}
+
+/// Small accent-tinted pill flagging that a row's control is a per-series
+/// override rather than the global default — replaces the old loose
+/// "· this title" caption under the manga reader's Direction/Fit rows.
+Widget readerOverrideTag() {
+  return Container(
+    margin: const EdgeInsets.only(left: 8),
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppColors.accent.withValues(alpha: 0.16),
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Text(
+      'This title',
+      style: AppText.caption.copyWith(
+        color: AppColors.accent,
+        fontSize: 10.5,
+        fontWeight: FontWeight.w700,
+        height: 1,
+      ),
+    ),
+  );
+}

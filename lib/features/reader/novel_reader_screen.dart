@@ -694,9 +694,12 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     );
   }
 
-  /// The four novel prefs, live-applied: each change writes straight to
+  /// The novel prefs, live-applied: each change writes straight to
   /// [ReaderPrefs] and calls `setState` on both the sheet and the reader
-  /// body so the text underneath re-styles immediately.
+  /// body so the text underneath re-styles immediately. Every row is built
+  /// from reader_chrome.dart's shared readerSheetRow/ReaderSegmentedControl/
+  /// readerSheetGroup pieces, so this sheet, the manga reader's, and
+  /// Settings -> Reader all read as one design.
   void _openSettingsSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -710,6 +713,15 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             setSheetState(() {});
             if (mounted) setState(() {});
           }
+
+          final fontOptions = <({String value, String label})>[
+            for (final f in const ['inter', 'serif', 'system'])
+              (value: f, label: _fontLabel(f)),
+          ];
+          const alignmentOptions = <({String value, String label})>[
+            (value: 'left', label: 'Left'),
+            (value: 'justify', label: 'Justify'),
+          ];
 
           return ReaderSheetShell(
             child: SafeArea(
@@ -740,78 +752,86 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                         ),
                         Text('Reader settings', style: AppText.headline),
                         readerSheetSection('Text'),
-                        _prefSlider(
-                          'Font size',
-                          prefs.fontSize,
-                          12,
-                          28,
-                          (v) => apply(() => prefs.setFontSize(v)),
-                        ),
-                        _prefSlider(
-                          'Line height',
-                          prefs.lineHeight,
-                          1.2,
-                          2.4,
-                          (v) => apply(() => prefs.setLineHeight(v)),
-                        ),
-                        _prefSlider(
-                          'Margin',
-                          prefs.marginWidth,
-                          0,
-                          48,
-                          (v) => apply(() => prefs.setMarginWidth(v)),
-                        ),
-                        const SizedBox(height: 4),
-                        Text('Font', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final f in const ['inter', 'serif', 'system'])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  _fontLabel(f),
-                                  prefs.fontFamily == f,
-                                  () => apply(() => prefs.setFontFamily(f)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Text('Alignment', style: AppText.caption),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final justify in const [false, true])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _choiceChip(
-                                  justify ? 'Justify' : 'Left',
-                                  prefs.textAlignJustify == justify,
-                                  () => apply(
-                                    () => prefs.setTextAlignJustify(justify),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _prefSlider(
-                          'Paragraph spacing',
-                          prefs.paragraphSpacing,
-                          0,
-                          24,
-                          (v) => apply(() => prefs.setParagraphSpacing(v)),
-                        ),
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text('Paginated', style: AppText.body),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.text_fields_rounded,
+                            label: 'Font',
+                            child: ReaderSegmentedControl(
+                              options: fontOptions,
+                              selected: prefs.fontFamily,
+                              onSelect: (v) =>
+                                  apply(() => prefs.setFontFamily(v)),
                             ),
-                            Switch(
+                          ),
+                          readerSheetRow(
+                            icon: Icons.format_size_rounded,
+                            label: 'Font size',
+                            child: Slider(
+                              value: prefs.fontSize.clamp(12, 28),
+                              min: 12,
+                              max: 28,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setFontSize(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.format_line_spacing_rounded,
+                            label: 'Line height',
+                            child: Slider(
+                              value: prefs.lineHeight.clamp(1.2, 2.4),
+                              min: 1.2,
+                              max: 2.4,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setLineHeight(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.format_align_justify_rounded,
+                            label: 'Alignment',
+                            child: ReaderSegmentedControl(
+                              options: alignmentOptions,
+                              selected: prefs.textAlignJustify
+                                  ? 'justify'
+                                  : 'left',
+                              onSelect: (v) => apply(
+                                () =>
+                                    prefs.setTextAlignJustify(v == 'justify'),
+                              ),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.view_stream_outlined,
+                            label: 'Paragraph spacing',
+                            child: Slider(
+                              value: prefs.paragraphSpacing.clamp(0, 24),
+                              min: 0,
+                              max: 24,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setParagraphSpacing(v)),
+                            ),
+                          ),
+                        ]),
+                        readerSheetSection('Page'),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.format_indent_increase_rounded,
+                            label: 'Margin',
+                            child: Slider(
+                              value: prefs.marginWidth.clamp(0, 48),
+                              min: 0,
+                              max: 48,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setMarginWidth(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.menu_book_rounded,
+                            label: 'Paginated',
+                            trailing: Switch(
                               value: prefs.novelPaginated,
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) => apply(() {
@@ -833,39 +853,41 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                 }
                               }),
                             ),
-                          ],
-                        ),
+                          ),
+                        ]),
                         readerSheetSection('Theme'),
-                        Wrap(
-                          runSpacing: 8,
-                          children: [
-                            for (final t in const [
-                              'dark',
-                              'black',
-                              'sepia',
-                              'gray',
-                              'paper',
-                            ])
-                              Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _themeSwatch(
-                                  t,
-                                  prefs.theme == t,
-                                  () => apply(() => prefs.setTheme(t)),
-                                ),
-                              ),
-                          ],
-                        ),
-                        readerSheetSection('Comfort'),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Keep screen on',
-                                style: AppText.body,
-                              ),
+                        readerSheetGroup([
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 10,
+                              horizontal: 12,
                             ),
-                            Switch(
+                            child: Wrap(
+                              spacing: 12,
+                              runSpacing: 10,
+                              children: [
+                                for (final t in const [
+                                  'dark',
+                                  'black',
+                                  'sepia',
+                                  'gray',
+                                  'paper',
+                                ])
+                                  _themeSwatch(
+                                    t,
+                                    prefs.theme == t,
+                                    () => apply(() => prefs.setTheme(t)),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ]),
+                        readerSheetSection('Comfort'),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.visibility_outlined,
+                            label: 'Keep screen on',
+                            trailing: Switch(
                               value: prefs.keepScreenOn,
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) => apply(() {
@@ -873,8 +895,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                 applyReaderComfort();
                               }),
                             ),
-                          ],
-                        ),
+                          ),
+                        ]),
                       ],
                     ),
                   ),
@@ -887,62 +909,11 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     );
   }
 
-  Widget _prefSlider(
-    String label,
-    double value,
-    double min,
-    double max,
-    ValueChanged<double> onChanged,
-  ) {
-    return Row(
-      children: [
-        SizedBox(width: 88, child: Text(label, style: AppText.body)),
-        Expanded(
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            activeColor: AppColors.accent,
-            onChanged: onChanged,
-          ),
-        ),
-      ],
-    );
-  }
-
   String _fontLabel(String f) => switch (f) {
     'serif' => 'Serif',
     'system' => 'System',
     _ => 'Inter',
   };
-
-  /// Same shape as MangaReaderScreen's own `_choiceChip`.
-  Widget _choiceChip(String label, bool selected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected
-              ? AppColors.accent.withValues(alpha: 0.2)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: selected
-                ? AppColors.accent
-                : Colors.white.withValues(alpha: 0.16),
-            width: selected ? 2 : 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: AppText.body.copyWith(
-            color: selected ? AppColors.accent : AppColors.textPrimary,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _themeSwatch(String id, bool selected, VoidCallback onTap) {
     final theme = _readerTheme(id);
