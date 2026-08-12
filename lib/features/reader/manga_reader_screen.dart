@@ -8,6 +8,7 @@ import '../../core/models/page_content.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
+import '../../core/reading/reader_overrides.dart';
 import '../../core/reading/reader_prefs.dart';
 import '../../core/reading/reader_settings.dart';
 import '../../core/repository/source_repository.dart';
@@ -439,6 +440,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);
 
+  /// The direction this chapter is actually shown with: this series' own
+  /// override (set from the settings sheet's Direction chips) if one is
+  /// active, else the global `prefs.direction`. The `isRegistered` guard
+  /// matters for tests: most build this reader with a GetIt that never
+  /// registers `ReaderOverrideStore`, and this simply falls back to the
+  /// global pref there rather than throwing — same fallback the app itself
+  /// would never need, since the injector always registers it.
+  String _effectiveDirection(ReaderPrefs prefs) => sl.isRegistered<ReaderOverrideStore>()
+      ? sl<ReaderOverrideStore>().effectiveMode(widget.sourceId, widget.showId, prefs)
+      : prefs.direction;
+
+  /// Same idea as [_effectiveDirection], for fit.
+  String _effectiveFit(ReaderPrefs prefs) => sl.isRegistered<ReaderOverrideStore>()
+      ? sl<ReaderOverrideStore>().effectiveFit(widget.sourceId, widget.showId, prefs)
+      : prefs.fitMode;
+
   /// Best-effort continuity when the direction pref changes mid-chapter from
   /// the settings sheet: jumps whichever view becomes active to the page the
   /// reader was already on, instead of snapping back to the top.
@@ -458,7 +475,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   void _handleTap(double dx, double width) {
-    switch (zoneFor(dx, width, sl<ReaderPrefs>().direction)) {
+    switch (zoneFor(dx, width, _effectiveDirection(sl<ReaderPrefs>()))) {
       case ReaderTapZone.previous:
         _pageController.previousPage(
           duration: const Duration(milliseconds: 200),
@@ -533,7 +550,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         child: const SizedBox.expand(),
       );
     }
-    final direction = prefs.direction;
+    final direction = _effectiveDirection(prefs);
     Widget content = direction == 'vertical'
         ? _buildVertical(pages)
         : _buildPaged(pages, direction);
@@ -706,7 +723,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   httpHeaders: page.headers,
                   memCacheWidth: width,
                   maxWidthDiskCache: width,
-                  fit: _pageBoxFit(sl<ReaderPrefs>().fitMode),
+                  fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
                   // Static, not an animated spinner — see ColoredBox usage in
                   // poster_card.dart/continue_card.dart for the same convention.
                   placeholder: (_, _) => SizedBox.expand(
@@ -744,7 +761,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           width: double.infinity,
           memCacheWidth: width,
           maxWidthDiskCache: width,
-          fit: _verticalBoxFit(sl<ReaderPrefs>().fitMode),
+          fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
           // Fixed-height static placeholder (not a spinner) — avoids a
           // zero-height flash in the list while still not perpetually
           // animating; same ColoredBox convention as poster_card.dart.
@@ -1001,6 +1018,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheetState) {
           final prefs = sl<ReaderPrefs>();
+          // Guarded the same way as the reader body — see _effectiveDirection's
+          // doc. Null only in a test harness that never registered the store;
+          // the app itself always does (injector.dart).
+          final overrides = sl.isRegistered<ReaderOverrideStore>()
+              ? sl<ReaderOverrideStore>()
+              : null;
+          final modeOverride = overrides?.modeOverride(
+            widget.sourceId,
+            widget.showId,
+          );
+          final fitOverride = overrides?.fitOverride(
+            widget.sourceId,
+            widget.showId,
+          );
           void apply(VoidCallback change) {
             change();
             setSheetState(() {});
@@ -1041,27 +1072,47 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         Wrap(
                           runSpacing: 8,
                           children: [
-                            for (final d in const ['ltr', 'rtl', 'vertical'])
+                            for (final d in const <String?>[
+                              null,
+                              'ltr',
+                              'rtl',
+                              'vertical',
+                            ])
                               Padding(
                                 padding: const EdgeInsets.only(right: 10),
                                 child: _choiceChip(
-                                  _directionLabel(d),
-                                  prefs.direction == d,
+                                  d == null ? 'Default' : _directionLabel(d),
+                                  modeOverride == d,
                                   () => apply(() {
-                                    prefs.setDirection(d);
+                                    overrides?.setModeOverride(
+                                      widget.sourceId,
+                                      widget.showId,
+                                      d,
+                                    );
                                     _syncControllersAfterDirectionChange();
                                   }),
                                 ),
                               ),
                           ],
                         ),
+                        if (modeOverride != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '· this title',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ),
                         readerSheetSection('Display'),
                         Text('Fit', style: AppText.caption),
                         const SizedBox(height: 8),
                         Wrap(
                           runSpacing: 8,
                           children: [
-                            for (final f in const [
+                            for (final f in const <String?>[
+                              null,
                               'contain',
                               'width',
                               'height',
@@ -1071,13 +1122,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                               Padding(
                                 padding: const EdgeInsets.only(right: 10),
                                 child: _choiceChip(
-                                  _fitLabel(f),
-                                  prefs.fitMode == f,
-                                  () => apply(() => prefs.setFitMode(f)),
+                                  f == null ? 'Default' : _fitLabel(f),
+                                  fitOverride == f,
+                                  () => apply(
+                                    () => overrides?.setFitOverride(
+                                      widget.sourceId,
+                                      widget.showId,
+                                      f,
+                                    ),
+                                  ),
                                 ),
                               ),
                           ],
                         ),
+                        if (fitOverride != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              '· this title',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
+                          ),
                         const SizedBox(height: 16),
                         Text('Background', style: AppText.caption),
                         const SizedBox(height: 8),

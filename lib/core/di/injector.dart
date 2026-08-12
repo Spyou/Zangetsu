@@ -27,6 +27,7 @@ import '../playback/skip_service.dart';
 import '../playback/resume_store.dart';
 import '../reading/read_history.dart';
 import '../reading/read_store.dart';
+import '../reading/reader_overrides.dart';
 import '../reading/reader_prefs.dart';
 import '../playback/title_prefs.dart';
 import '../playback/watch_history.dart';
@@ -203,6 +204,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
   await ReaderPrefs.init();
   sl.registerSingleton<ReaderPrefs>(ReaderPrefs());
+  await ReaderOverrideStore.init();
+  sl.registerSingleton<ReaderOverrideStore>(ReaderOverrideStore());
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
   await DownloadPrefs.init();
