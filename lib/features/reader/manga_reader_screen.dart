@@ -54,7 +54,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   bool _loading = true;
   String? _error;
   List<PageImage>? _pages;
-  int _pageIndex = 0;
+
+  // Current page, as a ValueNotifier rather than plain state: the top-bar
+  // label and the bottom slider listen to it directly (ValueListenableBuilder
+  // below), so a page turn/scroll tick no longer has to setState() the whole
+  // screen — the PageView/ListView, chrome, etc. don't get rebuilt just to
+  // update a page counter. `_pageIndex` stays as a getter/setter so every
+  // existing read/write in this file (there are many) is unchanged.
+  final ValueNotifier<int> _pageIndexVN = ValueNotifier<int>(0);
+  int get _pageIndex => _pageIndexVN.value;
+  set _pageIndex(int value) => _pageIndexVN.value = value;
+
   bool _chromeVisible = false;
   int _lastScrollSaveMs = 0;
   Offset? _lastDoubleTapPos;
@@ -106,6 +116,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     for (final c in _zoomControllers.values) {
       c.dispose();
     }
+    _pageIndexVN.dispose();
     super.dispose();
   }
 
@@ -190,7 +201,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   }
 
   void _onPageChanged(int index) {
-    setState(() => _pageIndex = index);
+    // Just the notifier, not setState — see the field comment on
+    // _pageIndexVN. The next-chapter overlay and chrome's page counter each
+    // listen for this themselves.
+    _pageIndex = index;
     // A slider drag drives this too (jumpToPage fires onPageChanged) —
     // _commitSeek does the preload/save exactly once when the drag ends.
     if (_seeking) return;
@@ -211,7 +225,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       pages.length,
     );
     if (estimated != _pageIndex) {
-      setState(() => _pageIndex = estimated);
+      _pageIndex = estimated; // notifier only — see _onPageChanged
       if (!_seeking) _preload(estimated, pages);
     }
     // Same reasoning as _onPageChanged: a slider drag also drives this via
@@ -453,12 +467,20 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     final content = direction == 'vertical'
         ? _buildVertical(pages)
         : _buildPaged(pages, direction);
-    final atEnd = _pageIndex == pages.length - 1;
     final hasNext = _index < widget.chapters.length - 1;
     return Stack(
       children: [
         Positioned.fill(child: content),
-        if (atEnd && hasNext) _buildNextChapterOverlay(),
+        // _pageIndex no longer setState()s on every page/scroll tick (see
+        // _pageIndexVN), so the overlay has to watch it directly to still
+        // appear/disappear exactly at the last page, same as before.
+        if (hasNext)
+          ValueListenableBuilder<int>(
+            valueListenable: _pageIndexVN,
+            builder: (context, pageIndex, _) => pageIndex == pages.length - 1
+                ? _buildNextChapterOverlay()
+                : const SizedBox.shrink(),
+          ),
       ],
     );
   }
@@ -649,13 +671,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.white),
                     ),
-                    Text(
-                      pages == null || pages.isEmpty
-                          ? 'Chapter ${_index + 1} / ${widget.chapters.length}'
-                          : 'ch ${_index + 1} · pg ${_pageIndex + 1}/${pages.length}',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
+                    ValueListenableBuilder<int>(
+                      valueListenable: _pageIndexVN,
+                      builder: (context, pageIndex, _) => Text(
+                        pages == null || pages.isEmpty
+                            ? 'Chapter ${_index + 1} / ${widget.chapters.length}'
+                            : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   ],
@@ -687,26 +712,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (pageCount > 1)
-                Row(
-                  children: [
-                    Text('${_pageIndex + 1}', style: AppText.caption),
-                    Expanded(
-                      child: Slider(
-                        value: _pageIndex.toDouble().clamp(
-                          0,
-                          (pageCount - 1).toDouble(),
+                ValueListenableBuilder<int>(
+                  valueListenable: _pageIndexVN,
+                  builder: (context, pageIndex, _) => Row(
+                    children: [
+                      Text('${pageIndex + 1}', style: AppText.caption),
+                      Expanded(
+                        child: Slider(
+                          value: pageIndex.toDouble().clamp(
+                            0,
+                            (pageCount - 1).toDouble(),
+                          ),
+                          min: 0,
+                          max: (pageCount - 1).toDouble(),
+                          divisions: pageCount - 1,
+                          activeColor: AppColors.accent,
+                          onChangeStart: (_) => _seeking = true,
+                          onChanged: (v) => _seekToPage(v.round()),
+                          onChangeEnd: (v) => _commitSeek(v.round()),
                         ),
-                        min: 0,
-                        max: (pageCount - 1).toDouble(),
-                        divisions: pageCount - 1,
-                        activeColor: AppColors.accent,
-                        onChangeStart: (_) => _seeking = true,
-                        onChanged: (v) => _seekToPage(v.round()),
-                        onChangeEnd: (v) => _commitSeek(v.round()),
                       ),
-                    ),
-                    Text('$pageCount', style: AppText.caption),
-                  ],
+                      Text('$pageCount', style: AppText.caption),
+                    ],
+                  ),
                 ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
