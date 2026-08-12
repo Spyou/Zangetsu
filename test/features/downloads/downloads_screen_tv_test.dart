@@ -231,7 +231,11 @@ void main() {
         find.text('Episodes you download appear here'),
         findsOneWidget,
       );
-      expect(find.byType(TvFocusable), findsNothing);
+      // The download-location header ("Saving to … · Change") is always present
+      // and focusable so it stays D-pad reachable even with no downloads — it's
+      // the only focusable on an empty screen.
+      expect(find.text('Saving to'), findsOneWidget);
+      expect(find.byType(TvFocusable), findsOneWidget);
     },
   );
 

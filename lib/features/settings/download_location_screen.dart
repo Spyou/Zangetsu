@@ -2,6 +2,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -37,9 +38,25 @@ class DownloadLocationScreen extends StatefulWidget {
 }
 
 class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
+  // Detected drives (internal + any SD/USB/SSD) — the CloudStream-style list
+  // that works without the SAF picker. Loaded from the native side.
+  List<({String path, String label, bool removable})> _volumes = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVolumes();
+  }
+
+  Future<void> _loadVolumes() async {
+    final v = await sl<DownloadManager>().listDownloadVolumes();
+    if (mounted) setState(() => _volumes = v);
+  }
+
   @override
   Widget build(BuildContext context) {
     final prefs = sl<DownloadPrefs>();
+    final current = prefs.locationUri;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Download location'),
@@ -73,6 +90,31 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
               ),
             ],
           ),
+          if (_volumes.isNotEmpty) ...[
+            const SettingsSectionLabel('Available drives'),
+            SettingsCard(
+              children: [
+                for (final v in _volumes)
+                  SettingsTile(
+                    icon: v.removable
+                        ? Icons.sd_storage_rounded
+                        : Icons.smartphone_rounded,
+                    title: v.label,
+                    subtitle:
+                        v.removable ? 'Removable drive' : 'On this device',
+                    iconAccent: current == v.path,
+                    trailing: current == v.path
+                        ? Icon(Icons.check_rounded,
+                            color: AppColors.accent, size: 20)
+                        : null,
+                    onTap: () async {
+                      await sl<DownloadPrefs>().setLocation(v.path, v.label);
+                      if (mounted) setState(() {});
+                    },
+                  ),
+              ],
+            ),
+          ],
           SettingsCard(
             children: [
               SettingsTile(
@@ -104,8 +146,8 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'New downloads save here. Existing downloads and streaming '
-              '(HLS) downloads stay in Downloads › Zangetsu.',
+              'New downloads save here. Downloads that already finished stay '
+              'where they were.',
               style: AppText.caption,
             ),
           ),

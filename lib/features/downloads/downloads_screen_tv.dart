@@ -1,15 +1,18 @@
 import 'dart:async';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/download/download_manager.dart';
+import '../../core/download/download_prefs.dart';
 import '../../core/download/download_record.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
+import '../settings/download_location_screen.dart' show folderLabelFromUri;
 import 'downloads_screen.dart';
 
 /// TV Downloads: a full-screen focusable list of downloaded episodes backed by
@@ -32,6 +35,9 @@ class DownloadsScreenTv extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final mgr = manager ?? sl<DownloadManager>();
+    // With nothing downloaded there's no episode tile to hold initial focus, so
+    // the location header autofocuses instead — keeping it D-pad reachable.
+    final noDownloads = mgr.byShow.isEmpty;
     return Scaffold(
       backgroundColor: AppColors.bg,
       body: SafeArea(
@@ -43,6 +49,8 @@ class DownloadsScreenTv extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
               child: Text('Downloads', style: AppText.largeTitle),
             ),
+            // ── Download-location header (folder picker) ─────────────────────
+            _TvLocationHeader(autofocus: noDownloads),
             // ── Episode list ─────────────────────────────────────────────────
             Expanded(
               child: ListenableBuilder(
@@ -347,6 +355,236 @@ class _TvDownloadActions extends StatelessWidget {
                   ),
                 ),
               ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Focusable "Saving to: `<folder>` · Change" row for the TV Downloads screen —
+/// the phone's location header (`_locationHeader` in downloads_screen.dart) has
+/// no TV equivalent, so this surfaces the same custom-folder picker for D-pad.
+/// Opens [_TvLocationPicker] and refreshes its label when it closes.
+class _TvLocationHeader extends StatefulWidget {
+  const _TvLocationHeader({required this.autofocus});
+
+  /// Autofocus this row when the screen has no episode tiles to hold focus.
+  final bool autofocus;
+
+  @override
+  State<_TvLocationHeader> createState() => _TvLocationHeaderState();
+}
+
+class _TvLocationHeaderState extends State<_TvLocationHeader> {
+  @override
+  Widget build(BuildContext context) {
+    // Guard the DI lookup so widget tests (which inject a fake manager and skip
+    // GetIt) still render the header with the default label.
+    final label = (sl.isRegistered<DownloadPrefs>()
+            ? sl<DownloadPrefs>().locationLabel
+            : null) ??
+        'Download › Zangetsu';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
+      child: TvFocusable(
+        autofocus: widget.autofocus,
+        semanticLabel: 'Change download folder',
+        onTap: () async {
+          await showDialog<void>(
+            context: context,
+            builder: (_) => const _TvLocationPicker(),
+          );
+          if (mounted) setState(() {}); // reflect a newly picked folder
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.folder_rounded,
+                  color: AppColors.textSecondary, size: 22),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Saving to', style: AppText.caption),
+                    const SizedBox(height: 2),
+                    Text(label,
+                        style: AppText.body,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Change',
+                  style: AppText.body.copyWith(color: AppColors.accent)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// TV dialog to pick a custom download folder (or reset to default). Reuses the
+/// exact SAF picker + label helper the phone screen uses, wrapped in
+/// [TvFocusable] so it works with a remote. Note: the folder picker relies on
+/// the Android system document UI, which some TVs don't ship — if nothing opens,
+/// the TV has no SAF picker and the default location stays in use.
+class _TvLocationPicker extends StatefulWidget {
+  const _TvLocationPicker();
+
+  @override
+  State<_TvLocationPicker> createState() => _TvLocationPickerState();
+}
+
+class _TvLocationPickerState extends State<_TvLocationPicker> {
+  // Detected drives (internal + USB/SSD/SD) — the CloudStream-style list that
+  // works on TV without a SAF picker. Loaded async from the native side.
+  List<({String path, String label, bool removable})> _volumes = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVolumes();
+  }
+
+  Future<void> _loadVolumes() async {
+    if (!sl.isRegistered<DownloadManager>()) return;
+    final v = await sl<DownloadManager>().listDownloadVolumes();
+    if (mounted) setState(() => _volumes = v);
+  }
+
+  Future<void> _select(String? path, String? label) async {
+    final nav = Navigator.of(context);
+    await sl<DownloadPrefs>().setLocation(path, label);
+    if (mounted) nav.pop();
+  }
+
+  Future<void> _pickSaf() async {
+    final nav = Navigator.of(context);
+    Uri? uri;
+    try {
+      uri = await FileDownloader().uri.pickDirectory(persistedUriPermission: true);
+    } catch (_) {
+      uri = null; // no SAF picker on this TV — leave the current location
+    }
+    if (uri == null) return; // canceled or unavailable
+    await sl<DownloadPrefs>()
+        .setLocation(uri.toString(), folderLabelFromUri(uri));
+    if (mounted) nav.pop();
+  }
+
+  Widget _row({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required bool autofocus,
+    required VoidCallback onTap,
+    bool selected = false,
+  }) {
+    final tint = selected ? AppColors.accent : AppColors.textPrimary;
+    return TvFocusable(
+      autofocus: autofocus,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, color: tint, size: 22),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: AppText.headline.copyWith(color: tint),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle,
+                        style: AppText.caption,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_rounded, color: AppColors.accent, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = sl.isRegistered<DownloadPrefs>() ? sl<DownloadPrefs>() : null;
+    final current = prefs?.locationUri;
+    final hasCustom = current != null;
+
+    // Build the option rows; the first one gets autofocus so the D-pad lands on
+    // a real target. Detected drives first, then SAF custom, then reset.
+    final rows = <Widget>[];
+    for (final v in _volumes) {
+      rows.add(_row(
+        icon: v.removable
+            ? Icons.sd_storage_rounded
+            : Icons.smartphone_rounded,
+        title: v.label,
+        subtitle: v.removable ? 'Removable drive' : 'On this device',
+        autofocus: rows.isEmpty,
+        selected: current == v.path,
+        onTap: () => _select(v.path, v.label),
+      ));
+    }
+    rows.add(_row(
+      icon: Icons.folder_open_outlined,
+      title: 'Choose folder…',
+      subtitle: 'Needs a file-manager app on the TV',
+      autofocus: rows.isEmpty,
+      onTap: _pickSaf,
+    ));
+    if (hasCustom) {
+      rows.add(_row(
+        icon: Icons.restore_rounded,
+        title: 'Reset to default',
+        autofocus: false,
+        onTap: () => _select(null, null),
+      ));
+    }
+
+    return Dialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 40),
+      child: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
+              child: Text('Download location',
+                  style: AppText.title.copyWith(color: AppColors.textPrimary)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              child: Text(prefs?.locationLabel ?? 'Download › Zangetsu',
+                  style: AppText.body),
+            ),
+            const Divider(height: 1, color: AppColors.hairline),
+            ...rows,
             const SizedBox(height: 12),
           ],
         ),

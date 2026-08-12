@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.storage.StorageManager
 import android.speech.RecognizerIntent
 import android.util.Log
 import android.util.Rational
@@ -269,6 +270,35 @@ class MainActivity : FlutterActivity() {
                                 runOnUiThread { result.success(ok) }
                             }.start()
                         }
+                    }
+                    // Detected storage volumes the app can write to WITHOUT the SAF
+                    // picker (which Android TV usually lacks): internal + any SD/USB
+                    // drive, as app-specific external dirs from getExternalFilesDirs.
+                    // Each: {path, label, removable}. This is how CloudStream lets a
+                    // TV pick a USB/SSD with just the D-pad.
+                    "listDownloadVolumes" -> {
+                        val out = ArrayList<Map<String, Any?>>()
+                        try {
+                            val sm = getSystemService(STORAGE_SERVICE) as StorageManager
+                            getExternalFilesDirs(null).forEachIndexed { i, f ->
+                                if (f == null) return@forEachIndexed
+                                var label = if (i == 0) "Internal storage" else "Removable drive"
+                                var removable = i > 0
+                                try {
+                                    val vol = sm.getStorageVolume(f)
+                                    if (vol != null) {
+                                        vol.getDescription(this)?.takeIf { it.isNotBlank() }?.let { label = it }
+                                        removable = vol.isRemovable
+                                    }
+                                } catch (_: Exception) {}
+                                out.add(mapOf(
+                                    "path" to f.absolutePath,
+                                    "label" to label,
+                                    "removable" to removable,
+                                ))
+                            }
+                        } catch (_: Exception) {}
+                        result.success(out)
                     }
                     else -> result.notImplemented()
                 }

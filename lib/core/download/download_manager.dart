@@ -473,16 +473,20 @@ class DownloadManager extends ChangeNotifier {
     // the partial (the host supports range — mpv can seek it) on each drop
     // instead of restarting from 0. waitingToRetry / negative retry-progress
     // are already handled in _onUpdate, so this only adds resilience.
-    final customUri = _downloadPrefs.locationUri;
-    final DownloadTask task = customUri != null
-        // Custom folder: stream straight into the user's picked SAF directory
+    // A picked SAF folder (content://) streams straight into that tree. A
+    // detected drive (a plain volume path) or the default both download to
+    // app-docs first — _finish then moves a drive download onto the volume.
+    final loc = _downloadPrefs.locationUri;
+    final safUri = loc != null && loc.isNotEmpty && isUriPath(loc) ? loc : null;
+    final DownloadTask task = safUri != null
+        // Custom SAF folder: stream straight into the user's picked directory
         // (the file ends up as a content:// URI — see _finish). No post-move.
         ? UriDownloadTask(
             taskId: rec.id,
             url: source.url,
             filename: filename,
             headers: headers,
-            directoryUri: Uri.parse(customUri),
+            directoryUri: Uri.parse(safUri),
             updates: Updates.statusAndProgress,
             retries: 5,
             allowPause: true,
@@ -580,6 +584,30 @@ class DownloadManager extends ChangeNotifier {
     }
   }
 
+  /// Storage volumes downloads can target WITHOUT the SAF picker (internal +
+  /// any USB/SSD/SD drive), for the TV location picker. Each is a plain
+  /// app-specific external path stored as the download location. Android only;
+  /// empty elsewhere.
+  Future<List<({String path, String label, bool removable})>>
+      listDownloadVolumes() async {
+    if (!Platform.isAndroid) return const [];
+    try {
+      final raw = await _downloadChannel
+          .invokeMethod<List<dynamic>>('listDownloadVolumes');
+      if (raw == null) return const [];
+      return raw.map((e) {
+        final m = (e as Map).cast<String, dynamic>();
+        return (
+          path: m['path'] as String,
+          label: (m['label'] as String?) ?? 'Storage',
+          removable: (m['removable'] as bool?) ?? false,
+        );
+      }).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Finalizes an HLS download the isolate left as a local `.ts` temp: on Android
   /// remux it into a real, seekable `.mp4` (falling back to the `.ts` if the
   /// remux can't handle the stream); iOS keeps the `.ts` (no MediaMuxer, and mpv
@@ -591,6 +619,35 @@ class DownloadManager extends ChangeNotifier {
     String? customUri,
     String? subDir,
   }) async {
+    final dir = subDir ?? _sharedDir;
+    // A detected drive is a plain volume path (not a content:// SAF tree) — an
+    // app-specific external dir we can write to with plain File I/O. Remux the
+    // .ts into a real .mp4 STRAIGHT onto the volume, avoiding a big post-move.
+    final isVolume =
+        customUri != null && customUri.isNotEmpty && !isUriPath(customUri);
+    if (isVolume && Platform.isAndroid) {
+      try {
+        final destDir = Directory('$customUri/$dir');
+        await destDir.create(recursive: true);
+        final mp4 = '${destDir.path}/${_withExt(tsPath.split('/').last, 'mp4')}';
+        if (await _remuxToMp4(tsPath, mp4)) {
+          try {
+            await File(tsPath).delete();
+          } catch (_) {}
+          return mp4;
+        }
+        // Remux couldn't handle the stream → keep the .ts, on the volume.
+        return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+      } catch (_) {
+        return tsPath; // volume write failed → keep the local temp
+      }
+    }
+    if (isVolume) {
+      // iOS (no MediaMuxer): just move the .ts onto the chosen location.
+      return await _moveToVolume(tsPath, customUri, dir) ?? tsPath;
+    }
+
+    // ── Picked SAF folder / default public Downloads (unchanged) ──
     var publish = tsPath; // already an honest .ts
     if (Platform.isAndroid) {
       final mp4 = _withExt(tsPath, 'mp4');
@@ -613,11 +670,34 @@ class DownloadManager extends ChangeNotifier {
       final moved = await _dl.moveFileToSharedStorage(
         publish,
         SharedStorage.downloads,
-        directory: subDir ?? _sharedDir,
+        directory: dir,
       );
       return moved ?? publish;
     } catch (_) {
       return publish;
+    }
+  }
+
+  /// Move a finished local file onto a detected drive (a plain app-specific
+  /// external volume path — USB/SSD/SD). Cross-filesystem, so copy+delete
+  /// (rename fails across mounts). Returns the new path, or null on failure so
+  /// the caller keeps the local copy.
+  Future<String?> _moveToVolume(
+    String localPath,
+    String volumeBase,
+    String subDir,
+  ) async {
+    try {
+      final dir = Directory('$volumeBase/$subDir');
+      await dir.create(recursive: true);
+      final dest = '${dir.path}/${localPath.split('/').last}';
+      await File(localPath).copy(dest);
+      try {
+        await File(localPath).delete();
+      } catch (_) {}
+      return dest;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1053,13 +1133,20 @@ class DownloadManager extends ChangeNotifier {
         }
       } catch (_) {}
 
-      try {
-        path = await _dl.moveToSharedStorage(
-          task,
-          SharedStorage.downloads,
-          directory: '$_sharedDir/${_safe(rec.showTitle)}',
-        );
-      } catch (_) {}
+      final subDir = '$_sharedDir/${_safe(rec.showTitle)}';
+      final loc = _downloadPrefs.locationUri;
+      if (loc != null && loc.isNotEmpty && !isUriPath(loc)) {
+        // Detected drive (USB/SSD/SD): move the file onto that volume.
+        path = await _moveToVolume(await task.filePath(), loc, subDir);
+      } else {
+        try {
+          path = await _dl.moveToSharedStorage(
+            task,
+            SharedStorage.downloads,
+            directory: subDir,
+          );
+        } catch (_) {}
+      }
       // Fall back to the app-documents path if the move failed.
       path ??= await task.filePath();
     }
@@ -1132,10 +1219,13 @@ class DownloadManager extends ChangeNotifier {
     _put(rec.copyWith(isTorrent: true, status: DownloadStatus.downloading));
     notifyListeners();
     try {
+      // Torrent save-to-folder is SAF-only; a detected-drive (plain path) choice
+      // isn't wired through the native torrent side yet, so fall back to default.
+      final loc = _downloadPrefs.locationUri;
       await _torrentSvc.enqueue(
         rec.id,
         source.url,
-        saveTreeUri: _downloadPrefs.locationUri,
+        saveTreeUri: loc != null && isUriPath(loc) ? loc : null,
         allowMobileData: TorrentPrefs().allowMobileData,
       );
     } catch (e) {
