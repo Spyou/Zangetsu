@@ -72,6 +72,13 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   bool _chromeVisible = false;
   bool _atEnd = false;
   int _lastScrollSaveMs = 0;
+  // Last scroll permille computed while the controller was still attached.
+  // `dispose()` flushes progress AFTER the Scrollable has detached, so
+  // `_currentPermille()` can't read the live position then — it falls back to
+  // this instead of saving 0, which would blank the Continue-Reading progress
+  // bar and make the chapter reopen at the top. Manga keeps its position in a
+  // retained field for the same reason.
+  int _lastScrollPermille = 0;
 
   // Paged (book) mode state — only used when `prefs.novelPaginated` is true.
   // The scroll path above is left completely untouched so the default reader
@@ -204,13 +211,13 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // Both modes speak the same 0–1000 permille scale, so ReadStore/scrobble/
     // resume semantics are identical — only the source of the number differs.
     if (sl<ReaderPrefs>().novelPaginated) return _pagedPermille();
-    if (!_scrollController.hasClients) return 0;
+    // Controller already detached (e.g. inside dispose's flush) — reuse the
+    // last value captured while scrolling instead of clobbering progress with 0.
+    if (!_scrollController.hasClients) return _lastScrollPermille;
     final pos = _scrollController.position;
-    if (pos.maxScrollExtent <= 0) return 1000; // whole chapter fits on screen
+    if (pos.maxScrollExtent <= 0) return _lastScrollPermille = 1000;
     final raw = (pos.pixels / pos.maxScrollExtent * 1000).round();
-    if (raw < 0) return 0;
-    if (raw > 1000) return 1000;
-    return raw;
+    return _lastScrollPermille = raw.clamp(0, 1000);
   }
 
   /// Paged-mode permille: the last page is 1000 (= finished, ≥ ReadStore's 950
@@ -322,6 +329,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       _error = null;
       _atEnd = false;
       _lastScrollSaveMs = 0;
+      _lastScrollPermille = 0; // don't carry the old chapter's progress over
       // Drop the old chapter's pages so paged mode re-paginates the new one
       // and restores from ITS saved permille (empty pages → use saved, below).
       _pages = const [];
