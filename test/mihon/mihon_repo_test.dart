@@ -60,7 +60,7 @@ void main() {
       expect(s.baseUrl, 'https://ahottie.top');
     });
 
-    test('maps a multi-source entry, taking lang from its first source', () {
+    test("maps a multi-source (multi-language) entry as 'all'", () {
       final e = entries.firstWhere(
         (e) => e.pkg == 'eu.kanade.tachiyomi.extension.all.comikey',
       );
@@ -71,8 +71,11 @@ void main() {
         e.sources.map((s) => s.lang).toList(),
         ['en', 'es', 'id', 'pt-BR', 'pt-BR'],
       );
-      // Not 'all': the package is `.all.` but its first source is English.
-      expect(e.lang, 'en');
+      // Sources span several languages → 'all', NOT the first source's lang.
+      // Tagging it by the first source (e.g. MangaDex's alphabetically-first
+      // "af") would let the language filter wrongly hide a multi-language
+      // extension that actually contains the enabled language.
+      expect(e.lang, 'all');
       expect(e.sources.first.id, 2769857481066602061);
     });
 

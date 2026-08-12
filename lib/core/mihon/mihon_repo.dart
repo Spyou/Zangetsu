@@ -127,9 +127,14 @@ class MihonRepo {
       }
     }
 
-    final lang = sources.isNotEmpty && sources.first.lang.isNotEmpty
-        ? sources.first.lang
-        : 'all';
+    // A multi-language extension (MangaDex is a SourceFactory with one source
+    // per language) must be tagged 'all', not its FIRST source's language —
+    // otherwise it looks single-language (e.g. "af", the alphabetically-first
+    // one) and the language filter wrongly hides it even though it contains
+    // English. Only a genuinely single-language extension keeps its language.
+    final distinctLangs =
+        sources.map((s) => s.lang).where((l) => l.isNotEmpty).toSet();
+    final lang = distinctLangs.length == 1 ? distinctLangs.first : 'all';
 
     return AniyomiRepoEntry(
       name: _str(raw['name']),
