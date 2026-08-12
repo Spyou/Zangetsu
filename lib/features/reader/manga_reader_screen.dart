@@ -181,7 +181,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
 
   void _preload(int index, List<PageImage> pages) {
     final width = _decodeWidth(context);
-    for (final i in preloadWindow(index, pages.length)) {
+    final window = preloadWindow(
+      index,
+      pages.length,
+      count: sl<ReaderPrefs>().preloadCount,
+    );
+    for (final i in window) {
       final p = pages[i];
       precacheImage(
         // Mirrors exactly what CachedNetworkImage(memCacheWidth: width,
@@ -956,12 +961,13 @@ ReaderTapZone zoneFor(double dx, double width, String direction) {
   return ReaderTapZone.chrome;
 }
 
-/// The page indices to prefetch after landing on [current] — the next 3
-/// pages, clamped to the chapter's bounds. Pure so the "preload the next 3"
+/// The page indices to prefetch after landing on [current] — the next
+/// [count] pages (default 3, matching the reader's original hardcoded
+/// window), clamped to the chapter's bounds. Pure so the "preload the next N"
 /// contract is unit-testable without a real image loader.
-List<int> preloadWindow(int current, int pageCount) {
+List<int> preloadWindow(int current, int pageCount, {int count = 3}) {
   final result = <int>[];
-  for (var i = current + 1; i <= current + 3 && i < pageCount; i++) {
+  for (var i = current + 1; i <= current + count && i < pageCount; i++) {
     result.add(i);
   }
   return result;

@@ -52,4 +52,12 @@ class ReaderPrefs {
   bool get keepScreenOn =>
       _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
+
+  /// How many pages ahead the reader precaches after landing on a page.
+  /// Default (3) matches the reader's original hardcoded window, so a fresh
+  /// install and an upgrade both preload exactly as much as before.
+  int get preloadCount =>
+      (_box.get('preloadCount', defaultValue: 3) as num).toInt().clamp(1, 8);
+  Future<void> setPreloadCount(int value) =>
+      _box.put('preloadCount', value.clamp(1, 8));
 }
