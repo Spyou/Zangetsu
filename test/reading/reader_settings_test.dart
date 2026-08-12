@@ -69,4 +69,50 @@ void main() {
       expect(readerBgColor('system'), isNotNull);
     });
   });
+
+  group('readerColorFilter', () {
+    test('none applies no filter', () {
+      expect(readerColorFilter('none'), isNull);
+    });
+
+    test('an unrecognized key falls back to no filter', () {
+      expect(readerColorFilter('bogus'), isNull);
+    });
+
+    test('grayscale weights every row by luminance (0.2126/0.7152/0.0722)', () {
+      expect(
+        readerColorFilter('grayscale'),
+        const ColorFilter.matrix(<double>[
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0.2126, 0.7152, 0.0722, 0, 0, //
+          0, 0, 0, 1, 0, //
+        ]),
+      );
+    });
+
+    test('invert negates each channel and offsets by 255', () {
+      expect(
+        readerColorFilter('invert'),
+        const ColorFilter.matrix(<double>[
+          -1, 0, 0, 0, 255, //
+          0, -1, 0, 0, 255, //
+          0, 0, -1, 0, 255, //
+          0, 0, 0, 1, 0, //
+        ]),
+      );
+    });
+
+    test('sepia uses the standard sepia coefficients', () {
+      expect(
+        readerColorFilter('sepia'),
+        const ColorFilter.matrix(<double>[
+          0.393, 0.769, 0.189, 0, 0, //
+          0.349, 0.686, 0.168, 0, 0, //
+          0.272, 0.534, 0.131, 0, 0, //
+          0, 0, 0, 1, 0, //
+        ]),
+      );
+    });
+  });
 }

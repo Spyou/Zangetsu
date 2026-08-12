@@ -474,9 +474,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       );
     }
     final direction = prefs.direction;
-    final content = direction == 'vertical'
+    Widget content = direction == 'vertical'
         ? _buildVertical(pages)
         : _buildPaged(pages, direction);
+    // Only wrap in ColorFiltered when a filter is actually chosen — 'none'
+    // (the default) must leave this widget out of the tree entirely so the
+    // default reading path is byte-for-byte what it was before this feature.
+    final colorFilter = readerColorFilter(prefs.colorFilter);
+    if (colorFilter != null) {
+      content = ColorFiltered(colorFilter: colorFilter, child: content);
+    }
     final hasNext = _index < widget.chapters.length - 1;
     return Stack(
       children: [
@@ -506,12 +513,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
+  /// Webtoon pinch-zoom. `panEnabled: false` is the whole trick: a single
+  /// finger drag is still routed to InteractiveViewer's own recognizer
+  /// first (it always registers one, scale-enabled or not), but with
+  /// panning disabled it declines the gesture instead of consuming it, so
+  /// the ListView's own vertical-drag recognizer underneath wins the arena
+  /// and scrolling/mark-read-on-scroll-bottom are untouched — verified with
+  /// a throwaway widget test driving a real `tester.drag()` before wiring
+  /// this in (ListView scrolled normally; a plain tap still reached the
+  /// GestureDetector below). Two-finger pinch still reaches `scaleEnabled`.
+  /// Tradeoff: panning a zoomed-in strip sideways doesn't work this way —
+  /// acceptable per the plan, and far safer than a custom gesture arbiter.
   Widget _buildVertical(List<PageImage> pages) {
-    return ListView.builder(
-      key: const ValueKey('manga-listview'),
-      controller: _verticalController,
-      itemCount: pages.length,
-      itemBuilder: (context, index) => _verticalItem(context, pages[index]),
+    return InteractiveViewer(
+      panEnabled: false,
+      scaleEnabled: true,
+      minScale: 1.0,
+      maxScale: 4.0,
+      child: ListView.builder(
+        key: const ValueKey('manga-listview'),
+        controller: _verticalController,
+        itemCount: pages.length,
+        itemBuilder: (context, index) => _verticalItem(context, pages[index]),
+      ),
     );
   }
 
@@ -957,6 +981,28 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                               ),
                           ],
                         ),
+                        const SizedBox(height: 16),
+                        Text('Filter', style: AppText.caption),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          runSpacing: 8,
+                          children: [
+                            for (final f in const [
+                              'none',
+                              'grayscale',
+                              'invert',
+                              'sepia',
+                            ])
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _choiceChip(
+                                  _filterLabel(f),
+                                  prefs.colorFilter == f,
+                                  () => apply(() => prefs.setColorFilter(f)),
+                                ),
+                              ),
+                          ],
+                        ),
                         readerSheetSection('Comfort'),
                         Row(
                           children: [
@@ -971,6 +1017,32 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                               activeThumbColor: AppColors.accent,
                               onChanged: (v) => apply(() {
                                 prefs.setKeepScreenOn(v);
+                                applyReaderComfort();
+                              }),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _prefSlider(
+                                'Brightness',
+                                prefs.brightness,
+                                -1.0,
+                                1.0,
+                                (v) => apply(() {
+                                  prefs.setBrightness(v);
+                                  applyReaderComfort();
+                                }),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _choiceChip(
+                              'System',
+                              prefs.brightness < 0,
+                              () => apply(() {
+                                prefs.setBrightness(-1.0);
                                 applyReaderComfort();
                               }),
                             ),
@@ -1008,6 +1080,38 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     'system' => 'Theme',
     _ => 'Black',
   };
+
+  String _filterLabel(String f) => switch (f) {
+    'grayscale' => 'Grayscale',
+    'invert' => 'Invert',
+    'sepia' => 'Sepia',
+    _ => 'None',
+  };
+
+  /// Same shape as NovelReaderScreen's own `_prefSlider` — a label column
+  /// plus an expanded `Slider`, used here for the brightness row.
+  Widget _prefSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+  ) {
+    return Row(
+      children: [
+        SizedBox(width: 88, child: Text(label, style: AppText.body)),
+        Expanded(
+          child: Slider(
+            value: value.clamp(min, max),
+            min: min,
+            max: max,
+            activeColor: AppColors.accent,
+            onChanged: onChanged,
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _choiceChip(String label, bool selected, VoidCallback onTap) {
     return GestureDetector(

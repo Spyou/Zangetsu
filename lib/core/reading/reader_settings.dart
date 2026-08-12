@@ -44,3 +44,35 @@ Color readerBgColor(String key) => switch (key) {
   'gray' => const Color(0xFF121212),
   _ => AppColors.bg,
 };
+
+/// Reading colour filter for `ReaderPrefs.colorFilter`'s keys: 'grayscale' |
+/// 'invert' | 'sepia'. 'none' (or anything unrecognized) returns null —
+/// callers must skip wrapping the page in `ColorFiltered` entirely when this
+/// is null, rather than pass an identity matrix, so the default reading path
+/// renders exactly as it did before this feature existed.
+ColorFilter? readerColorFilter(String key) => switch (key) {
+  // Standard luminance weights (W3C Filter Effects grayscale-equivalent),
+  // applied identically to every output channel.
+  'grayscale' => const ColorFilter.matrix(<double>[
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0.2126, 0.7152, 0.0722, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ]),
+  // Negates each channel and offsets by the matrix's 0..255 translation
+  // column so the result lands back in range.
+  'invert' => const ColorFilter.matrix(<double>[
+    -1, 0, 0, 0, 255, //
+    0, -1, 0, 0, 255, //
+    0, 0, -1, 0, 255, //
+    0, 0, 0, 1, 0, //
+  ]),
+  // Standard sepia coefficients (W3C Filter Effects sepia-equivalent).
+  'sepia' => const ColorFilter.matrix(<double>[
+    0.393, 0.769, 0.189, 0, 0, //
+    0.349, 0.686, 0.168, 0, 0, //
+    0.272, 0.534, 0.131, 0, 0, //
+    0, 0, 0, 1, 0, //
+  ]),
+  _ => null,
+};
