@@ -425,6 +425,56 @@ int _decodeWidthFor(WidgetTester tester) {
   return readerDecodeWidth((mq.size.width * mq.devicePixelRatio).round());
 }
 
+/// The scale currently applied to the webtoon strip — read straight off the
+/// `Transform` that wraps the vertical `ListView` (the same one both the
+/// broken `InteractiveViewer` and the fixed `RawGestureDetector` produce), so
+/// the pinch test asserts the real rendered scale in either structure.
+double _webtoonScale(WidgetTester tester) {
+  final t = tester
+      .widgetList<Transform>(
+        find.ancestor(
+          of: find.byKey(const ValueKey('manga-listview')),
+          matching: find.byType(Transform),
+        ),
+      )
+      .first;
+  return t.transform.getMaxScaleOnAxis();
+}
+
+/// A real two-pointer pinch driven by two `TestGesture`s. It starts with a
+/// small *common* downward drift (both fingers together — a pure translation,
+/// no change in span) and only then spreads the fingers apart.
+///
+/// That opening drift is deliberate and is what makes this a faithful repro
+/// of the on-device bug: a Scrollable's vertical-drag recognizer greedily
+/// claims that net downward motion and wins the gesture arena, after which a
+/// scale recognizer sitting *above* the ListView (the old
+/// InteractiveViewer) never gets the pinch. Real fingers never spread with a
+/// perfectly cancelling net motion, so on a device the strip refused to zoom;
+/// a symmetric-only spread hides the bug because the net drag is zero.
+Future<void> _pinchOpen(WidgetTester tester) async {
+  final center = tester.getCenter(
+    find.byKey(const ValueKey('manga-listview')),
+  );
+  final f1 = await tester.startGesture(center - const Offset(0, 40), pointer: 1);
+  final f2 = await tester.startGesture(center + const Offset(0, 40), pointer: 2);
+  await tester.pump();
+  // Phase 1: both fingers drift down together (net vertical drag, span held).
+  for (var i = 0; i < 3; i++) {
+    await f1.moveBy(const Offset(0, 10));
+    await f2.moveBy(const Offset(0, 10));
+    await tester.pump();
+  }
+  // Phase 2: spread apart (span grows -> a pinch).
+  for (var i = 0; i < 8; i++) {
+    await f1.moveBy(const Offset(0, -16));
+    await f2.moveBy(const Offset(0, 16));
+    await tester.pump();
+  }
+  await f1.up();
+  await f2.up();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -987,5 +1037,90 @@ void main() {
         await disposeHarness(tester);
       },
     );
+
+    // ── Webtoon pinch-zoom ───────────────────────────────────────────────
+    //
+    // A real two-finger pinch (two TestGesture pointers spreading apart) must
+    // scale the strip. The old InteractiveViewer(panEnabled:false) lost the
+    // gesture arena for this: the ListView's own vertical-drag recognizer
+    // claimed the two-finger gesture before the scale recognizer could, so
+    // the pinch was a no-op — the Transform stayed at scale 1. This asserts
+    // the strip actually zooms now.
+    testWidgets('a two-finger pinch zooms the webtoon strip', (tester) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      expect(
+        _webtoonScale(tester),
+        closeTo(1.0, 0.001),
+        reason: 'starts un-zoomed',
+      );
+
+      await _pinchOpen(tester);
+      await settle(tester);
+
+      expect(
+        _webtoonScale(tester),
+        greaterThan(1.0),
+        reason: 'a two-finger spread must scale the strip',
+      );
+
+      await disposeHarness(tester);
+    });
+
+    // Guardrail: zoom must not cost the single-finger scroll that drives
+    // mark-read-on-scroll-to-bottom. A one-pointer drag still moves the
+    // ListView's own controller.
+    testWidgets('vertical: a single-finger drag still scrolls the ListView', (
+      tester,
+    ) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+      ani.register(_FakeReadingProvider('ani:m', {'u1': pages(20)}));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      final list = tester.widget<ListView>(
+        find.byKey(const ValueKey('manga-listview')),
+      );
+      expect(list.controller!.offset, 0);
+
+      await tester.drag(
+        find.byKey(const ValueKey('manga-listview')),
+        const Offset(0, -300),
+      );
+      await settle(tester);
+
+      expect(list.controller!.offset, greaterThan(0));
+
+      await disposeHarness(tester);
+    });
+
+    // Guardrail: a plain single tap still toggles chrome (AnimatedOpacity
+    // targets flip 0 -> 1).
+    testWidgets('vertical: a single tap still toggles chrome', (tester) async {
+      await tester.runAsync(() => sl<ReaderPrefs>().setDirection('vertical'));
+
+      await tester.pumpWidget(harness());
+      await settle(tester);
+
+      final before = tester
+          .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
+          .map((o) => o.opacity);
+      expect(before, everyElement(0.0), reason: 'chrome starts hidden');
+
+      await tester.tapAt(const Offset(400, 300));
+      await settle(tester);
+
+      final after = tester
+          .widgetList<AnimatedOpacity>(find.byType(AnimatedOpacity))
+          .map((o) => o.opacity);
+      expect(after, everyElement(1.0), reason: 'tap reveals chrome');
+
+      await disposeHarness(tester);
+    });
   });
 }

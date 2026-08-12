@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
@@ -71,6 +72,15 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   int _lastScrollSaveMs = 0;
   Offset? _lastDoubleTapPos;
   final Map<int, TransformationController> _zoomControllers = {};
+
+  // Webtoon (vertical) pinch-zoom. The strip stays a lazy ListView for
+  // one-finger scrolling; a two-finger pinch drives this scale/offset which a
+  // Transform applies over the whole list. See _buildVertical.
+  double _wScale = 1.0; // current strip scale, clamped [1, 4]
+  Offset _wOffset = Offset.zero; // current strip translation
+  bool _wZooming = false; // true only while a 2-finger pinch is live
+  double _wStartScale = 1.0; // scale at pinch start
+  Offset _wStartFocalChild = Offset.zero; // child point grabbed under the focal
 
   // Chapter ids already scrobbled this session — dedupes a repeated
   // "finished" save (page turns, throttled scroll ticks, and the flush on
@@ -342,6 +352,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       _error = null;
       _pageIndex = 0;
       _lastScrollSaveMs = 0;
+      // A new chapter starts un-zoomed — don't carry the last one's pinch over.
+      _wScale = 1.0;
+      _wOffset = Offset.zero;
+      _wZooming = false;
     });
     _load();
   }
@@ -513,30 +527,89 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
-  /// Webtoon pinch-zoom. `panEnabled: false` is the whole trick: a single
-  /// finger drag is still routed to InteractiveViewer's own recognizer
-  /// first (it always registers one, scale-enabled or not), but with
-  /// panning disabled it declines the gesture instead of consuming it, so
-  /// the ListView's own vertical-drag recognizer underneath wins the arena
-  /// and scrolling/mark-read-on-scroll-bottom are untouched — verified with
-  /// a throwaway widget test driving a real `tester.drag()` before wiring
-  /// this in (ListView scrolled normally; a plain tap still reached the
-  /// GestureDetector below). Two-finger pinch still reaches `scaleEnabled`.
-  /// Tradeoff: panning a zoomed-in strip sideways doesn't work this way —
-  /// acceptable per the plan, and far safer than a custom gesture arbiter.
+  /// Webtoon pinch-zoom. The strip stays a lazy `ListView.builder` (one-finger
+  /// scroll, controller, mark-read-on-bottom all untouched); zoom rides on top
+  /// of it via a [_TwoFingerScaleRecognizer] that only enters the play once a
+  /// *second* finger lands. That's the whole fix: the old
+  /// `InteractiveViewer(panEnabled:false)` sat above the ListView and lost the
+  /// gesture arena — the Scrollable's own vertical-drag recognizer claimed any
+  /// two-finger gesture that carried the slightest net drag before the scale
+  /// recognizer could, so the pinch never fired. This recognizer instead grabs
+  /// the arena the instant the 2nd pointer goes down, before the drag
+  /// recognizer can cross its slop, so the pinch reliably wins while a lone
+  /// finger is still left entirely to the ListView.
+  ///
+  /// The scale/offset it produces feed a `Transform` wrapping the list, and the
+  /// list is frozen ([NeverScrollableScrollPhysics]) only while a pinch is
+  /// live so it can't scroll out from under the zoom. Two-finger drag pans a
+  /// zoomed strip sideways; the offset is clamped so the content can't be
+  /// pushed past its own edges.
   Widget _buildVertical(List<PageImage> pages) {
-    return InteractiveViewer(
-      panEnabled: false,
-      scaleEnabled: true,
-      minScale: 1.0,
-      maxScale: 4.0,
-      child: ListView.builder(
-        key: const ValueKey('manga-listview'),
-        controller: _verticalController,
-        itemCount: pages.length,
-        itemBuilder: (context, index) => _verticalItem(context, pages[index]),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewport = constraints.biggest;
+        return RawGestureDetector(
+          behavior: HitTestBehavior.opaque,
+          gestures: {
+            _TwoFingerScaleRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  _TwoFingerScaleRecognizer
+                >(
+                  () => _TwoFingerScaleRecognizer(),
+                  (r) {
+                    r.onStart = _onWebtoonScaleStart;
+                    r.onUpdate = (d) => _onWebtoonScaleUpdate(d, viewport);
+                    r.onEnd = _onWebtoonScaleEnd;
+                  },
+                ),
+          },
+          child: Transform(
+            transform: Matrix4.identity()
+              ..translateByDouble(_wOffset.dx, _wOffset.dy, 0, 1.0)
+              ..scaleByDouble(_wScale, _wScale, 1.0, 1.0),
+            child: ListView.builder(
+              key: const ValueKey('manga-listview'),
+              controller: _verticalController,
+              physics: _wZooming
+                  ? const NeverScrollableScrollPhysics()
+                  : null,
+              itemCount: pages.length,
+              itemBuilder: (context, index) =>
+                  _verticalItem(context, pages[index]),
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  void _onWebtoonScaleStart(ScaleStartDetails d) {
+    _wStartScale = _wScale;
+    // The child-space point currently under the focal — held fixed for the
+    // gesture so the zoom stays under the fingers and a two-finger drag pans.
+    _wStartFocalChild = (d.localFocalPoint - _wOffset) / _wStartScale;
+    setState(() => _wZooming = true);
+  }
+
+  void _onWebtoonScaleUpdate(ScaleUpdateDetails d, Size viewport) {
+    final s = (_wStartScale * d.scale).clamp(1.0, 4.0);
+    // Solve the translation that keeps the grabbed child point under the
+    // current focal: screen = s * child + offset.
+    var t = d.localFocalPoint - _wStartFocalChild * s;
+    // Clamp so a scaled strip can't be panned past its own edges (and pins
+    // offset to zero at scale 1, where there's nothing to pan).
+    t = Offset(
+      t.dx.clamp(viewport.width * (1 - s), 0.0),
+      t.dy.clamp(viewport.height * (1 - s), 0.0),
+    );
+    setState(() {
+      _wScale = s;
+      _wOffset = t;
+    });
+  }
+
+  void _onWebtoonScaleEnd(ScaleEndDetails d) {
+    setState(() => _wZooming = false);
   }
 
   /// Bounds `_zoomControllers` so a long chapter doesn't retain one
@@ -1169,6 +1242,30 @@ BoxFit _pageBoxFit(String fitModeKey) {
 BoxFit _verticalBoxFit(String fitModeKey) {
   if (fitModeKey == 'contain') return BoxFit.fitWidth;
   return _pageBoxFit(fitModeKey);
+}
+
+/// A [ScaleGestureRecognizer] that stays out of the gesture arena until a
+/// *second* pointer lands, then claims it immediately. That two-part rule is
+/// what lets the webtoon strip zoom without losing its scroll: a lone finger
+/// is never contested, so the ListView underneath scrolls normally; the moment
+/// a second finger goes down this grabs the arena — before the Scrollable's
+/// vertical-drag recognizer can cross its touch slop — so the pinch reliably
+/// wins instead of being read as a drag.
+class _TwoFingerScaleRecognizer extends ScaleGestureRecognizer {
+  final Set<int> _pointers = {};
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    _pointers.add(event.pointer);
+    if (_pointers.length >= 2) resolve(GestureDisposition.accepted);
+  }
+
+  @override
+  void didStopTrackingLastPointer(int pointer) {
+    _pointers.clear();
+    super.didStopTrackingLastPointer(pointer);
+  }
 }
 
 /// Where a tap on a page lands, in the paged (ltr/rtl) reader.
