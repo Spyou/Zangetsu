@@ -2274,7 +2274,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),
   /// keyed by showId — the video [ResumeStore] never holds a mark for a
-  /// chapter, so without this a read chapter could never dim.
+  /// chapter, so without this a read chapter could never dim. Also OR's in
+  /// the connected tracker's chapter progress ([_EpisodesTab.trackerProgress]),
+  /// same idea as [_stateFor]'s watched calc for video — a chapter you've
+  /// only read on AniList/MAL should dim too. No seasons in reading, so no
+  /// hasMultipleSeasons guard is needed here.
   ({bool watched, bool inProgress, bool resume, double fraction}) _readStateFor(
     Episode ep,
   ) {
@@ -2282,8 +2286,12 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     final mark = store.get(widget.sourceId, widget.showId, ep.id);
     final done = store.finished(widget.sourceId, widget.showId, ep.id);
     final inProgress = mark != null && !done && mark.total > 0;
+    final watched = done ||
+        (widget.trackerProgress != null &&
+            ep.number != null &&
+            ep.number! <= widget.trackerProgress!);
     return (
-      watched: done,
+      watched: watched,
       inProgress: inProgress,
       // No CONTINUE badge in the reading row, and the resume index we're
       // handed is the video one — so never claim a resume here.
