@@ -432,7 +432,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   Widget build(BuildContext context) {
     final prefs = sl<ReaderPrefs>();
     return Scaffold(
-      backgroundColor: _readerBackground(prefs.background),
+      backgroundColor: readerBgColor(prefs.mangaBackground),
       body: Stack(
         children: [
           Positioned.fill(child: _buildBody(prefs)),
@@ -558,7 +558,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   httpHeaders: page.headers,
                   memCacheWidth: width,
                   maxWidthDiskCache: width,
-                  fit: BoxFit.contain,
+                  fit: _pageBoxFit(sl<ReaderPrefs>().fitMode),
                   // Static, not an animated spinner — see ColoredBox usage in
                   // poster_card.dart/continue_card.dart for the same convention.
                   placeholder: (_, _) => SizedBox.expand(
@@ -596,7 +596,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           width: double.infinity,
           memCacheWidth: width,
           maxWidthDiskCache: width,
-          fit: BoxFit.fitWidth,
+          fit: _verticalBoxFit(sl<ReaderPrefs>().fitMode),
           // Fixed-height static placeholder (not a spinner) — avoids a
           // zero-height flash in the list while still not perpetually
           // animating; same ColoredBox convention as poster_card.dart.
@@ -842,7 +842,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   const SizedBox(height: 12),
                   Text('Direction', style: AppText.caption),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    runSpacing: 8,
                     children: [
                       for (final d in const ['ltr', 'rtl', 'vertical'])
                         Padding(
@@ -859,17 +860,41 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Text('Background', style: AppText.caption),
+                  Text('Fit', style: AppText.caption),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    runSpacing: 8,
                     children: [
-                      for (final b in const ['black', 'dark'])
+                      for (final f in const [
+                        'contain',
+                        'width',
+                        'height',
+                        'original',
+                        'smart',
+                      ])
                         Padding(
                           padding: const EdgeInsets.only(right: 10),
                           child: _choiceChip(
-                            b == 'black' ? 'Black' : 'Dark',
-                            prefs.background == b,
-                            () => apply(() => prefs.setBackground(b)),
+                            _fitLabel(f),
+                            prefs.fitMode == f,
+                            () => apply(() => prefs.setFitMode(f)),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Background', style: AppText.caption),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    runSpacing: 8,
+                    children: [
+                      for (final b in const ['black', 'white', 'gray', 'system'])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: _choiceChip(
+                            _backgroundLabel(b),
+                            prefs.mangaBackground == b,
+                            () => apply(() => prefs.setMangaBackground(b)),
                           ),
                         ),
                     ],
@@ -905,6 +930,21 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     _ => 'Left to right',
   };
 
+  String _fitLabel(String f) => switch (f) {
+    'width' => 'Width',
+    'height' => 'Height',
+    'original' => 'Original',
+    'smart' => 'Smart',
+    _ => 'Contain',
+  };
+
+  String _backgroundLabel(String b) => switch (b) {
+    'white' => 'White',
+    'gray' => 'Gray',
+    'system' => 'Theme',
+    _ => 'Black',
+  };
+
   Widget _choiceChip(String label, bool selected, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -933,8 +973,35 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 }
 
-Color _readerBackground(String background) =>
-    background == 'dark' ? AppColors.bg : Colors.black;
+/// Resolves `ReaderPrefs.fitMode` into the `BoxFit` used to render a paged
+/// page. `smart` needs a page's own decoded aspect ratio to pick between
+/// fit-width/fit-height (see `fitToBoxFit`'s smart branch, unit-tested on its
+/// own), which means waiting on that page's `ImageStream` — heavier than
+/// this phase needs, since a tall page (the common case smart-fit is for)
+/// already wants fit-width.
+// ponytail: smart-fit skips real aspect-ratio resolution here and renders as
+// fitWidth (the common tall-page outcome). Upgrade path: resolve each page's
+// decoded ImageInfo size via an ImageStream listener and call
+// fitToBoxFit(FitMode.smart, pageAspect: ..., screenAspect: ...) with the
+// real values.
+BoxFit _pageBoxFit(String fitModeKey) {
+  if (fitModeKey == 'smart') return BoxFit.fitWidth;
+  final mode = FitMode.values.firstWhere(
+    (m) => m.name == fitModeKey,
+    orElse: () => FitMode.contain,
+  );
+  return fitToBoxFit(mode, pageAspect: 1, screenAspect: 1);
+}
+
+/// Same as [_pageBoxFit], but for the webtoon (vertical) strip: it's always
+/// rendered `width: double.infinity`, so 'contain' has no meaning there — its
+/// contain-equivalent default is fit-to-width, matching the reader's
+/// original hardcoded behavior. Any other explicitly-chosen fit is honored
+/// as-is.
+BoxFit _verticalBoxFit(String fitModeKey) {
+  if (fitModeKey == 'contain') return BoxFit.fitWidth;
+  return _pageBoxFit(fitModeKey);
+}
 
 /// Where a tap on a page lands, in the paged (ltr/rtl) reader.
 enum ReaderTapZone { previous, next, chrome }
