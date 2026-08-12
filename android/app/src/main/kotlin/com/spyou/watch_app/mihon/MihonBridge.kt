@@ -30,6 +30,8 @@ import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
@@ -40,6 +42,14 @@ import java.lang.reflect.Method
 
 /** logcat tag for everything on the page-image path. */
 private const val PAGE_LOG = "MihonPages"
+
+// Serialize getMangaUpdate for a single manga. The newer extension-lib rejects
+// concurrent detail fetches ("getMangaUpdate must not be called concurrently for
+// same manga") and some sources race into an NPE — yet our getDetails and
+// getChapters fire in parallel for one opened title. Keyed by sourceId:url so
+// different titles still run concurrently.
+private val mihonMangaLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+private fun mihonMangaLock(key: String): Mutex = mihonMangaLocks.getOrPut(key) { Mutex() }
 
 /**
  * Exposes Mihon manga-extension capabilities to the Flutter layer via a
@@ -268,12 +278,14 @@ class MihonBridge(
                     }
                     scope.runReporting(result, "DETAILS") {
                         val stub = SMangaImpl().apply { this.url = url }
-                        val update = src.getMangaUpdate(
-                            manga = stub,
-                            chapters = emptyList(),
-                            fetchDetails = true,
-                            fetchChapters = false,
-                        )
+                        val update = mihonMangaLock("$sourceId:$url").withLock {
+                            src.getMangaUpdate(
+                                manga = stub,
+                                chapters = emptyList(),
+                                fetchDetails = true,
+                                fetchChapters = false,
+                            )
+                        }
                         // The details parse usually returns metadata without
                         // re-setting url — carry the known input url so Dart keeps
                         // a valid detail/chapter key.
@@ -295,12 +307,14 @@ class MihonBridge(
                     }
                     scope.runReporting(result, "CHAPTERS") {
                         val stub = SMangaImpl().apply { this.url = url }
-                        val update = src.getMangaUpdate(
-                            manga = stub,
-                            chapters = emptyList(),
-                            fetchDetails = false,
-                            fetchChapters = true,
-                        )
+                        val update = mihonMangaLock("$sourceId:$url").withLock {
+                            src.getMangaUpdate(
+                                manga = stub,
+                                chapters = emptyList(),
+                                fetchDetails = false,
+                                fetchChapters = true,
+                            )
+                        }
                         MihonJson.chaptersToJson(update.chapters)
                     }
                 }
