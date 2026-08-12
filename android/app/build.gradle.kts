@@ -151,21 +151,26 @@ dependencies {
     // dep). compileOnly lets our clean-room DataStore reference JsonMapper for the
     // plugin-settings API without duplicating Jackson at runtime. Same version.
     compileOnly("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
-    // okhttp is on the runtime classpath via NiceHttp (CloudStream transitive);
-    // compileOnly lets our clean-room CloudflareKiller implement Interceptor.
-    compileOnly("com.squareup.okhttp3:okhttp:4.12.0")
+    // okhttp is on the runtime classpath via NiceHttp (CloudStream transitive),
+    // which requires 5.3.2 — so that's what actually resolves regardless of what
+    // we declare. Pinned to 5.3.2 to match reality; compileOnly lets our
+    // clean-room CloudflareKiller implement Interceptor without bundling a copy.
+    compileOnly("com.squareup.okhttp3:okhttp:5.3.2")
     // okhttp-dnsoverhttps powers the opt-in in-app DNS (Doh.kt → DnsOverHttps).
-    // Same okhttp 4.12.0 the CloudStream library already resolves, so this adds
-    // no duplicate; declaring it guarantees the class is present at runtime.
-    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0")
-    // okhttp-brotli provides okhttp3.brotli.BrotliInterceptor. Many current
-    // Mihon/Aniyomi extensions add it to their client (Brotli-compressed
-    // responses) and reference it in their <init>; without it on the classpath
-    // they die with ClassNotFoundException: okhttp3.brotli.BrotliInterceptor →
-    // the source never instantiates → the generic "No source loaded". Same
-    // okhttp 4.12.0 the rest of the app resolves, so no duplicate. R8 is off
-    // (isMinifyEnabled = false) so the class is never stripped.
-    implementation("com.squareup.okhttp3:okhttp-brotli:4.12.0")
+    // Matches the okhttp 5.3.2 the CloudStream/NiceHttp graph resolves.
+    implementation("com.squareup.okhttp3:okhttp-dnsoverhttps:5.3.2")
+    // okhttp-brotli provides okhttp3.brotli.BrotliInterceptor AND (5.x only) the
+    // okhttp3.brotli.Brotli DecompressionAlgorithm object. Current Mihon/Aniyomi
+    // extensions reference these in their <init>; a version older than the core
+    // dies with NoClassDefFoundError (Asura Scans needs okhttp3.brotli.Brotli,
+    // absent from 4.12.0). Pinned to 5.3.2 to match the core okhttp the app
+    // already resolves. R8 is off (isMinifyEnabled = false) so it isn't stripped.
+    implementation("com.squareup.okhttp3:okhttp-brotli:5.3.2")
+    // okhttp-zstd (okhttp 5.2+) provides okhttp3.zstd.Zstd — the other half of the
+    // new CompressionInterceptor(Brotli, Zstd). Extensions like Asura Scans wire
+    // both, so without this they NoClassDefFoundError on okhttp3.zstd.Zstd. Same
+    // 5.3.2 as the core; R8 off so it's kept.
+    implementation("com.squareup.okhttp3:okhttp-zstd:5.3.2")
     // NiceHttp (the `app` global Requests type) is a runtime-transitive dep of
     // the CloudStream library; compileOnly lets PluginHost set app.baseClient to
     // attach our cookie jar without bundling NiceHttp twice. Same version.
