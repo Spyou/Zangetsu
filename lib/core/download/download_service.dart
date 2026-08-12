@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
 
-import 'package:background_downloader/background_downloader.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:path_provider/path_provider.dart';
@@ -131,30 +130,26 @@ void downloadServiceOnStart(ServiceInstance service) async {
       return;
     }
 
+    // Hand the local temp back to the main isolate to FINALIZE: remux the
+    // concatenated TS into a real MP4 (Android MediaMuxer) and move it into
+    // shared storage / the user's SAF tree. Neither MediaMuxer nor the SAF/
+    // MediaStore move is reachable from this background isolate.
     final customUri = job['customUri'] as String?;
-    if (customUri != null && customUri.isNotEmpty) {
-      // Custom SAF folder: moving into a user-picked tree needs the app's
-      // Activity/persisted permission, which this background isolate lacks —
-      // hand the local temp + target tree to the main isolate to finish.
-      await _writeResult(id, status: 'done', filePath: outputPath);
-      service.invoke('done', {
-        'id': id,
-        'filePath': outputPath,
-        'customUri': customUri,
-      });
-      return;
-    }
-    String? finalPath;
-    try {
-      finalPath = await FileDownloader().moveFileToSharedStorage(
-        outputPath,
-        SharedStorage.downloads,
-        directory: sharedSubDir,
-      );
-    } catch (_) {}
-    finalPath ??= outputPath;
-    await _writeResult(id, status: 'done', filePath: finalPath);
-    service.invoke('done', {'id': id, 'filePath': finalPath});
+    await _writeResult(
+      id,
+      status: 'done',
+      filePath: outputPath,
+      needsFinalize: true,
+      customUri: customUri,
+      sharedSubDir: sharedSubDir,
+    );
+    service.invoke('done', {
+      'id': id,
+      'filePath': outputPath,
+      'needsFinalize': true,
+      'customUri': customUri,
+      'sharedSubDir': sharedSubDir,
+    });
   }
 
   // One worker: drains queued jobs until the queue is empty, then retires.
@@ -218,6 +213,9 @@ Future<void> _writeResult(
   required String status,
   String? filePath,
   String? error,
+  bool needsFinalize = false,
+  String? customUri,
+  String? sharedSubDir,
 }) async {
   try {
     final docs = await getApplicationDocumentsDirectory();
@@ -227,7 +225,15 @@ Future<void> _writeResult(
     await dir.create(recursive: true);
     final f = File('${dir.path}/$id.json');
     await f.writeAsString(
-      jsonEncode({'id': id, 'status': status, 'filePath': filePath, 'error': error}),
+      jsonEncode({
+        'id': id,
+        'status': status,
+        'filePath': filePath,
+        'error': error,
+        'needsFinalize': needsFinalize,
+        'customUri': customUri,
+        'sharedSubDir': sharedSubDir,
+      }),
     );
   } catch (_) {}
 }

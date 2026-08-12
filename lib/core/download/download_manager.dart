@@ -146,12 +146,15 @@ class DownloadManager extends ChangeNotifier {
       if (rec == null) return;
       _candidates.remove(id);
       var path = d?['filePath'] as String?;
-      // HLS into a custom folder: the isolate handed us the local temp; move it
-      // into the user's SAF tree here (persisted permission; no isolate needed).
-      final customUri = d?['customUri'] as String?;
-      if (path != null && customUri != null && customUri.isNotEmpty) {
-        final moved = await _moveIntoTree(path, customUri, path.split('/').last);
-        if (moved != null) path = moved;
+      // The isolate handed back the local .ts temp; remux it to a real .mp4
+      // (Android) and move it into shared storage / the user's SAF folder here.
+      if (path != null && d?['needsFinalize'] == true) {
+        final finalized = await _finalizeHls(
+          path,
+          customUri: d?['customUri'] as String?,
+          subDir: d?['sharedSubDir'] as String?,
+        );
+        if (finalized != null) path = finalized;
       }
       _put(rec.copyWith(
         status: DownloadStatus.done,
@@ -228,10 +231,20 @@ class DownloadManager extends ChangeNotifier {
             final status = m['status'] as String?;
             if (status == 'done') {
               _candidates.remove(id);
+              var path = m['filePath'] as String?;
+              // App was killed before the live finalize ran — remux + move now.
+              if (path != null && m['needsFinalize'] == true) {
+                final finalized = await _finalizeHls(
+                  path,
+                  customUri: m['customUri'] as String?,
+                  subDir: m['sharedSubDir'] as String?,
+                );
+                if (finalized != null) path = finalized;
+              }
               _put(rec.copyWith(
                 status: DownloadStatus.done,
                 progress: 1,
-                filePath: () => m['filePath'] as String?,
+                filePath: () => path,
               ));
             } else if (status == 'failed') {
               final err = m['error'] as String? ?? 'Download failed';
@@ -508,9 +521,12 @@ class DownloadManager extends ChangeNotifier {
       final safeShow = _safe(rec.showTitle);
       final dir = Directory('${docs.path}/$_sharedDir/$safeShow');
       await dir.create(recursive: true);
+      // Download the concatenated TS to a local temp with an honest .ts name;
+      // the main isolate finalizes it (remux → real .mp4 on Android, else keep
+      // the .ts) once the service reports done — see _finalizeHls.
       final outputPath =
           '${dir.path}/${safeShow}_E${rec.episodeNumber?.toInt() ?? ''}'
-          '_${_safe(rec.quality)}.mp4';
+          '_${_safe(rec.quality)}.ts';
 
       if (!await DownloadService.instance.isRunning()) {
         await DownloadService.instance.startService();
@@ -542,6 +558,75 @@ class DownloadManager extends ChangeNotifier {
       );
       notifyListeners();
     }
+  }
+
+  /// Native TS→MP4 remux channel (Android only). See MainActivity + TsRemuxer.
+  static const MethodChannel _downloadChannel =
+      MethodChannel('zangetsu/download');
+
+  /// Remux the concatenated-TS file at [input] into a real MP4 at [output] via
+  /// the native MediaMuxer (stream-copy). Returns true on success; false on
+  /// non-Android and on any native failure, so callers fall back to a `.ts`.
+  Future<bool> _remuxToMp4(String input, String output) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final ok = await _downloadChannel.invokeMethod<bool>(
+        'remuxTsToMp4',
+        {'input': input, 'output': output},
+      );
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Finalizes an HLS download the isolate left as a local `.ts` temp: on Android
+  /// remux it into a real, seekable `.mp4` (falling back to the `.ts` if the
+  /// remux can't handle the stream); iOS keeps the `.ts` (no MediaMuxer, and mpv
+  /// plays a correctly-named `.ts` fine — the frame-skipping was purely the old
+  /// `.mp4` mislabel). Then move the result into the custom SAF folder or public
+  /// Downloads. Returns the final stored path (or the local one on move failure).
+  Future<String?> _finalizeHls(
+    String tsPath, {
+    String? customUri,
+    String? subDir,
+  }) async {
+    var publish = tsPath; // already an honest .ts
+    if (Platform.isAndroid) {
+      final mp4 = _withExt(tsPath, 'mp4');
+      final remuxed = mp4 != tsPath && await _remuxToMp4(tsPath, mp4);
+      debugPrint('[dl] HLS finalize: ${remuxed ? 'remuxed to mp4' : 'kept .ts'}');
+      if (remuxed) {
+        publish = mp4;
+        try {
+          await File(tsPath).delete();
+        } catch (_) {}
+      }
+      // Remux failed on an odd stream → keep the honestly-labelled .ts.
+    }
+    if (customUri != null && customUri.isNotEmpty) {
+      final moved =
+          await _moveIntoTree(publish, customUri, publish.split('/').last);
+      return moved ?? publish;
+    }
+    try {
+      final moved = await _dl.moveFileToSharedStorage(
+        publish,
+        SharedStorage.downloads,
+        directory: subDir ?? _sharedDir,
+      );
+      return moved ?? publish;
+    } catch (_) {
+      return publish;
+    }
+  }
+
+  /// [path] with its extension swapped to [ext] (e.g. `foo.ts` → `foo.mp4`).
+  String _withExt(String path, String ext) {
+    final slash = path.lastIndexOf('/');
+    final dot = path.lastIndexOf('.');
+    final base = dot > slash ? path.substring(0, dot) : path;
+    return '$base.$ext';
   }
 
   /// Download the soft-subtitle sidecar files a [source] advertises and record

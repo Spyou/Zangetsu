@@ -252,6 +252,28 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // Download channel: stream-copy remux of a concatenated-TS HLS download
+        // into a real MP4 (MediaExtractor → MediaMuxer). Runs off the main thread;
+        // returns false on any failure so Dart can fall back to a .ts file.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/download")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "remuxTsToMp4" -> {
+                        val input = call.argument<String>("input")
+                        val output = call.argument<String>("output")
+                        if (input.isNullOrEmpty() || output.isNullOrEmpty()) {
+                            result.error("BAD_ARGS", "input/output required", null)
+                        } else {
+                            Thread {
+                                val ok = com.spyou.watch_app.download.TsRemuxer.remux(input, output)
+                                runOnUiThread { result.success(ok) }
+                            }.start()
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // Native TV-player channel (bidirectional). Dart→native: launch. The same
         // channel is stored in tvBridge so TvPlayerActivity can call native→Dart
         // (resolveEpisode / saveProgress).
