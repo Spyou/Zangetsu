@@ -27,6 +27,7 @@ import com.spyou.watch_app.cloudstream.SubscriptionWorker
 import com.spyou.watch_app.mihon.MihonBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import io.flutter.embedding.android.FlutterActivity
 import java.util.concurrent.TimeUnit
 import io.flutter.embedding.engine.FlutterEngine
@@ -853,6 +854,40 @@ class MainActivity : FlutterActivity() {
         // bridge and separate source registry from Aniyomi's; nothing shared.
         val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/mihon")
         MihonBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(mihonChannel)
+
+        // Novel-fetch channel: routes the LNReader plugin's HTTP requests
+        // through native OkHttp (see NovelHttp.kt) instead of Dio/dart:io.
+        // Android's platform TLS stack gets a Chrome-like fingerprint that
+        // Cloudflare-gated novel hosts (webnovel.com) don't 403 — headers
+        // alone don't clear that gate. Dart falls back to Dio itself if this
+        // channel throws or is missing, so a bad response here never breaks
+        // a working source.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/novel_http")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "request") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                val url = call.argument<String>("url")
+                if (url.isNullOrBlank()) {
+                    result.error("bad_args", "url required", null)
+                    return@setMethodCallHandler
+                }
+                val method = call.argument<String>("method") ?: "GET"
+                @Suppress("UNCHECKED_CAST")
+                val headers = call.argument<Map<String, String>>("headers") ?: emptyMap()
+                val body = call.argument<String>("body")
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val (status, respBody, finalUrl) = NovelHttp.request(url, method, headers, body)
+                        runOnUiThread {
+                            result.success(mapOf("status" to status, "body" to respBody, "url" to finalUrl))
+                        }
+                    } catch (e: Exception) {
+                        runOnUiThread { result.error("novel_http_failed", e.message, null) }
+                    }
+                }
+            }
 
         // Device-class detection: lets Dart know if the app is running on an
         // Android TV / Leanback device. Returns false on phones/tablets so every

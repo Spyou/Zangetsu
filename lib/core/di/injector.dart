@@ -94,6 +94,39 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
+/// Browser-like default headers for LNReader plugin requests — a straight
+/// mirror of LNReader's own `makeInit` (src/plugins/helpers/fetch.ts). Some
+/// novel hosts (e.g. webnovel.com) sit behind Cloudflare bot-fight that 403s
+/// a bare request which doesn't look like a browser; it's a fingerprint check,
+/// not a challenge to solve, so real LNReader passes these headers and works
+/// with no CF solver. Merged UNDER each plugin's own headers so a plugin that
+/// sets its own User-Agent (WebNovel ships a desktop-Chrome UA) still wins.
+/// Pure headers → identical behaviour on Android and iOS, no WebView.
+///
+/// Accept-Encoding is intentionally left out: dart:io already sends `gzip` and
+/// auto-decompresses it, whereas declaring `deflate` here would hand back a
+/// body dart:io won't decode.
+const Map<String, String> _lnreaderBrowserHeaders = {
+  'User-Agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Sec-Fetch-Mode': 'cors',
+  'Connection': 'keep-alive',
+  'Cache-Control': 'max-age=0',
+};
+
+/// Headers alone don't clear webnovel.com's Cloudflare bot-fight — confirmed
+/// on-device, still 403 with the full browser header block above. That gate
+/// is on the TLS/JA3 fingerprint, and dart:io/Dio's doesn't pass it. Android's
+/// native OkHttp (Conscrypt/BoringSSL) has a Chrome-like fingerprint that
+/// does — it's how the real LNReader app (RN → OkHttp) gets through — so on
+/// Android the LNReader fetch tries this channel (see NovelHttp.kt) before
+/// falling back to Dio. iOS/other platforms never touch this and keep using
+/// Dio as before.
+const MethodChannel _novelHttp = MethodChannel('zangetsu/novel_http');
+
 /// One-time app bootstrap: Hive boxes, Dio, the shared provider runtime,
 /// the provider registry (built-in providers seeded from assets + any
 /// repo-installed providers), and the bundled extractors.
@@ -403,14 +436,59 @@ Future<void> initDependencies() async {
   final lnrManager = LnReaderManager(
     service: lnrService,
     fetch: (url, init) async {
+      // Send LNReader's own browser-like header block UNDER the plugin's
+      // headers. Some novel hosts (webnovel.com) sit behind Cloudflare's
+      // bot-fight, which 403s a bare request that doesn't look like a browser
+      // — it's not a real challenge to solve, just a fingerprint check. The
+      // real LNReader app passes these same headers and works with no CF
+      // solver at all. Plugin headers win the merge (WebNovel sets its own
+      // desktop-Chrome UA).
+      final pluginHeaders = init['headers'] is Map
+          ? Map<String, dynamic>.from(init['headers'] as Map)
+          : const <String, dynamic>{};
+      final mergedHeaders = {..._lnreaderBrowserHeaders, ...pluginHeaders};
+      final method = (init['method'] as String?)?.toUpperCase() ?? 'GET';
+
+      // Native HTTP first on mobile: headers alone don't get past
+      // webnovel.com's Cloudflare check (confirmed on-device — still 403 with
+      // the block above), because that gate is on the TLS fingerprint, not the
+      // request shape. The native stacks present a browser-like fingerprint
+      // that gets through — OkHttp/Conscrypt on Android, URLSession on iOS.
+      // Any failure here (missing channel, thrown exception, desktop/web/tests)
+      // just falls through to the same Dio request that ran before this existed.
+      if (Platform.isAndroid || Platform.isIOS) {
+        try {
+          final res = await _novelHttp.invokeMapMethod<String, dynamic>(
+            'request',
+            {
+              'url': url,
+              'method': method,
+              'headers': mergedHeaders.map(
+                (k, v) => MapEntry(k, v.toString()),
+              ),
+              'body': init['body'] is String
+                  ? init['body'] as String
+                  : init['body']?.toString(),
+            },
+          );
+          if (res != null) {
+            return LnReaderHttpResponse(
+              status: (res['status'] as num?)?.toInt() ?? 0,
+              body: res['body'] as String? ?? '',
+              url: res['url'] as String? ?? url,
+            );
+          }
+        } catch (_) {
+          // Fall through to Dio below.
+        }
+      }
+
       final res = await dio.request<String>(
         url,
         data: init['body'],
         options: Options(
-          method: (init['method'] as String?)?.toUpperCase() ?? 'GET',
-          headers: init['headers'] is Map
-              ? Map<String, dynamic>.from(init['headers'] as Map)
-              : null,
+          method: method,
+          headers: mergedHeaders,
           responseType: ResponseType.plain,
           // fetch() never throws on a non-2xx status — it resolves with the
           // response so the plugin can inspect it. Without this Dio would
