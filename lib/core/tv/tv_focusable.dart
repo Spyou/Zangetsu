@@ -237,38 +237,47 @@ class _TvFocusableState extends State<TvFocusable> {
         );
     }
 
-    // container: true makes this the one semantics node for the whole
-    // focusable (Focus adds its own focusable/focused bits below us, and
-    // those merge up into this node instead of forming a second one).
-    return Semantics(
-      container: true,
-      label: widget.semanticLabel,
-      button: widget.isButton,
-      focused: _focused,
-      onTap: _activate,
-      child: Focus(
-        focusNode: widget.focusNode,
-        autofocus: widget.autofocus,
-        onKeyEvent: _onKey,
-        onFocusChange: (f) {
-          setState(() => _focused = f);
-          if (f) {
-            Scrollable.ensureVisible(
-              context,
-              alignment: 0.5,
-              duration: const Duration(milliseconds: 200),
-            );
-          }
-        },
-        // Touch support: some Android TVs / TV boxes have a touchscreen. A
-        // physical tap fires the same single, deduped action as the remote's
-        // OK/Enter (via [_activate]). Remote-only TVs never emit touch events,
-        // so this is completely inert there — the D-pad path is untouched. A
-        // scroll drag beats the tap in the gesture arena, so lists still scroll.
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _activate,
-          child: box,
+    // MergeSemantics collapses the whole focusable into ONE accessibility node
+    // so the label, button role and tap action land together on the node that
+    // actually receives D-pad/TalkBack focus. Without it, the inner Focus +
+    // GestureDetector form a separate, unlabeled node — the one TalkBack lands
+    // on — so every nav item/button announced as "unlabeled". The visible label
+    // Text is ExcludeSemantics'd at the call sites, so only [semanticLabel]
+    // (or, when it's null, the child's own text) names the merged node.
+    return MergeSemantics(
+      child: Semantics(
+        container: true,
+        label: widget.semanticLabel,
+        button: widget.isButton,
+        focused: _focused,
+        onTap: _activate,
+        child: Focus(
+          focusNode: widget.focusNode,
+          autofocus: widget.autofocus,
+          onKeyEvent: _onKey,
+          onFocusChange: (f) {
+            setState(() => _focused = f);
+            if (f) {
+              Scrollable.ensureVisible(
+                context,
+                alignment: 0.5,
+                duration: const Duration(milliseconds: 200),
+              );
+            }
+          },
+          // Touch support: some Android TVs / TV boxes have a touchscreen. A
+          // physical tap fires the same single, deduped action as the remote's
+          // OK/Enter (via [_activate]). Remote-only TVs never emit touch events,
+          // so this is completely inert there — the D-pad path is untouched. A
+          // scroll drag beats the tap in the gesture arena, so lists still
+          // scroll. excludeFromSemantics: the outer Semantics already exposes
+          // the tap to TalkBack, so this must not add a second, unlabeled node.
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: _activate,
+            child: box,
+          ),
         ),
       ),
     );
