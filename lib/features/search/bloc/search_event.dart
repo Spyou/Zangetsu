@@ -98,13 +98,13 @@ class SearchGenreFilterChanged extends SearchEvent {
   List<Object?> get props => [genre];
 }
 
-/// Sets (or clears, with null) the best-effort decade filter (start year).
-class SearchDecadeFilterChanged extends SearchEvent {
-  const SearchDecadeFilterChanged(this.decade);
-  final int? decade;
+/// Switches the audio filter (Any / Subbed / Dubbed). Anime mode only.
+class SearchAudioFilterChanged extends SearchEvent {
+  const SearchAudioFilterChanged(this.filter);
+  final SearchAudioFilter filter;
 
   @override
-  List<Object?> get props => [decade];
+  List<Object?> get props => [filter];
 }
 
 /// Fired once on open to load trending titles for the idle screen.
@@ -128,6 +128,16 @@ class SearchSourceFiltersApplied extends SearchEvent {
 /// browse is active, one is already in flight, or the source ran out of pages.
 class SearchFilteredBrowseMore extends SearchEvent {
   const SearchFilteredBrowseMore();
+
+  @override
+  List<Object?> get props => [];
+}
+
+/// The app-wide content mode changed (Streaming ⇄ Manga ⇄ Novel). Results only
+/// make sense in the mode they were fetched in, so the bloc drops them; the
+/// query text stays put, but nothing re-runs on its own.
+class SearchModeChanged extends SearchEvent {
+  const SearchModeChanged();
 
   @override
   List<Object?> get props => [];

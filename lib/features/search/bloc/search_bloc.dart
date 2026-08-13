@@ -38,18 +38,34 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchSourceFilterChanged>(_onSourceFilterChanged);
     on<SearchEcosystemChanged>(_onEcosystemChanged);
     on<SearchContentFilterChanged>(_onContentFilterChanged);
+    on<SearchAudioFilterChanged>(_onAudioFilterChanged);
     on<SearchGenreFilterChanged>(_onGenreFilterChanged);
-    on<SearchDecadeFilterChanged>(_onDecadeFilterChanged);
     on<SearchRunRequested>(_onRunRequested);
     on<SearchSubmitted>(_onSubmitted);
     on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
     on<SearchFilteredBrowseMore>(_onFilteredBrowseMore);
+    on<SearchModeChanged>(_onModeChanged);
+    // Results belong to the mode they were fetched in. The Search tab stays
+    // alive in the nav shell, so without this a manga search was still on
+    // screen after switching to Streaming — stale results from sources this
+    // mode doesn't even search. Listening here rather than in the screen means
+    // it also holds when the mode is changed from Home and Search is opened
+    // afterwards.
+    // Guarded: bloc tests construct SearchBloc with explicit deps and never
+    // register the cubit, and subscribing unconditionally would blow up at
+    // construction before such a test does anything. Production always has it.
+    if (sl.isRegistered<ContentModeCubit>()) {
+      _modeSub = sl<ContentModeCubit>().stream.listen((_) {
+        add(const SearchModeChanged());
+      });
+    }
   }
 
   final SourceRepository _repo;
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
+  StreamSubscription<ContentMode>? _modeSub;
 
   /// [SourceRepository.loadedSources] narrowed to the active content mode, so an
   /// all-sources search only fans out over sources that mode can actually show —
@@ -60,12 +76,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// searched everything regardless of mode, so the picker and the results
   /// disagreed.
   ///
-  /// Anime short-circuits to the unfiltered list exactly as the screen does, so
-  /// anime/movie search is byte-identical to before. TV has no mode switcher and
-  /// is therefore always anime mode, so TV is unaffected too.
+  /// Every mode narrows, anime included. Anime used to short-circuit to the
+  /// unfiltered list — harmless when the only sources were video ones, but once
+  /// Mihon (`mihon:`) and LNReader (`lnr:`) became installable it meant an
+  /// anime search quietly queried every manga and novel source too, and their
+  /// results rendered as ordinary groups. Nothing is lost by filtering here:
+  /// `ContentMode.anime.matchesProvider` accepts anime AND movie, and
+  /// `sourceTypeOf` types `cs:`/`ani:`/untyped sources as anime, so the only
+  /// sources this drops are the manga and novel ones.
   List<({String id, String name})> _modeSources() {
     final mode = sl<ContentModeCubit>().state;
-    if (mode == ContentMode.anime) return _repo.loadedSources;
     return filterSourcesForMode(
       {for (final s in _repo.loadedSources) s.id: s},
       mode,
@@ -84,11 +104,17 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       (s) => s.name == prefs.sortName,
       orElse: () => SearchSort.bestMatch,
     );
+    // Same fallback pattern migrates an old 'rating' sort name (the enum
+    // value no longer exists) straight to bestMatch — nothing else needed.
+    final audio = SearchAudioFilter.values.firstWhere(
+      (f) => f.name == prefs.audioFilterName,
+      orElse: () => SearchAudioFilter.any,
+    );
     return SearchState(
       contentFilter: content,
       sort: sort,
+      audioFilter: audio,
       genreFilter: prefs.genre,
-      decadeFilter: prefs.decade,
       currentSourceOnly: prefs.currentSourceOnly,
     );
   }
@@ -237,6 +263,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     _prefs.setContentFilterName(event.filter.name);
   }
 
+  void _onAudioFilterChanged(
+    SearchAudioFilterChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    // Switching audio can hide the active source group; fall back to "All
+    // sources" so the user never lands on an empty filtered view.
+    emit(state.copyWith(audioFilter: event.filter, sourceFilter: kAllSources));
+    _prefs.setAudioFilterName(event.filter.name);
+  }
+
   void _onGenreFilterChanged(
     SearchGenreFilterChanged event,
     Emitter<SearchState> emit,
@@ -251,20 +287,6 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     _prefs.setGenre(event.genre);
   }
 
-  void _onDecadeFilterChanged(
-    SearchDecadeFilterChanged event,
-    Emitter<SearchState> emit,
-  ) {
-    emit(
-      state.copyWith(
-        decadeFilter: event.decade,
-        clearDecadeFilter: event.decade == null,
-        sourceFilter: kAllSources,
-      ),
-    );
-    _prefs.setDecade(event.decade);
-  }
-
   /// The single entry point for the heavy search. Sets [query] when provided
   /// (suggestion taps), cancels any pending autocomplete, clears suggestions,
   /// and runs the cross-source search.
@@ -276,7 +298,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     final q = (event.query ?? state.query).trim();
     if (q.isEmpty) return;
     // Reset only the per-search source chip + ecosystem tab — the user's
-    // remembered sort and content/genre/decade filters persist across searches
+    // remembered sort and content/audio/genre filters persist across searches
     // (and screen opens); a fresh search always lands on the "All" tab.
     emit(
       state.copyWith(
@@ -314,6 +336,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       state.copyWith(
         status: SearchStatus.loading,
         groups: const [],
+        respondedSources: const {},
         clearError: true,
       ),
     );
@@ -408,13 +431,26 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
               state.copyWith(
                 status: SearchStatus.success,
                 groups: List.of(acc),
+                respondedSources: {...state.respondedSources, s.id},
               ),
+            );
+          } else {
+            // No results, but the source DID answer — mark it responded (without
+            // touching status/groups) so its pending skeleton clears instead of
+            // sitting there forever. See [SearchState.respondedSources].
+            emit(
+              state.copyWith(respondedSources: {...state.respondedSources, s.id}),
             );
           }
         } catch (_) {
           // searchStatus is no-throw, but stay defensive — never let one source
-          // break the fan-out.
+          // break the fan-out. Still mark it responded so its skeleton clears.
           anyError = true;
+          if (!isClosed && gen == _runGen) {
+            emit(
+              state.copyWith(respondedSources: {...state.respondedSources, s.id}),
+            );
+          }
         }
       }),
     );
@@ -599,9 +635,28 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
   }
 
+  /// Mode switched — drop everything the previous mode fetched. The query text
+  /// is kept so re-running it in the new mode is one tap, but nothing is
+  /// searched automatically: an all-sources fan-out is expensive and the user
+  /// didn't ask for it by flipping mode.
+  void _onModeChanged(SearchModeChanged event, Emitter<SearchState> emit) {
+    _runGen++; // orphan any in-flight fan-out from the old mode
+    emit(
+      state.copyWith(
+        status: SearchStatus.idle,
+        groups: const [],
+        respondedSources: const {},
+        suggestions: const [],
+        sourceFilter: kAllSources,
+        ecosystem: SearchEcosystem.all,
+      ),
+    );
+  }
+
   @override
   Future<void> close() {
     _suggestDebounce?.cancel();
+    _modeSub?.cancel();
     return super.close();
   }
 }

@@ -112,6 +112,9 @@ class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
   String? get contentFilterName => null;
 
   @override
+  String? get audioFilterName => null;
+
+  @override
   String? get sortName => null;
 
   @override

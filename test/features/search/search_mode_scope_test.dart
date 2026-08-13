@@ -43,6 +43,8 @@ class _FakeSearchPrefs extends SearchPrefs {
   @override
   String? get contentFilterName => null;
   @override
+  String? get audioFilterName => null;
+  @override
   String? get sortName => null;
   @override
   String? get genre => null;
@@ -53,6 +55,8 @@ class _FakeSearchPrefs extends SearchPrefs {
 
   @override
   Future<void> setContentFilterName(String name) async {}
+  @override
+  Future<void> setAudioFilterName(String name) async {}
   @override
   Future<void> setSortName(String name) async {}
   @override
@@ -304,7 +308,7 @@ void main() {
     );
 
     test(
-      'anime mode: all-sources search is unfiltered by mode',
+      'anime mode: manga and novel sources are not searched',
       () async {
         // Anime is already the restored default, but set it explicitly so
         // this test never depends on run order or a leftover Hive value.
@@ -313,16 +317,58 @@ void main() {
         bloc.add(const SearchRunRequested('naruto'));
         await Future<void>.delayed(const Duration(milliseconds: 20));
 
-        // This is the hard constraint: anime mode must short-circuit to the
-        // unfiltered source list exactly as before the fix, so anime/movie
-        // search (and TV, which is always anime mode) never regresses. Both
-        // sources — including the manga-typed one — must be searched.
+        // This assertion used to be inverted — it required anime mode to
+        // search EVERY source, manga ones included, on the theory that any
+        // narrowing would drop streaming sources. It doesn't: anime accepts
+        // both anime and movie providers, and cs:/ani:/untyped ids all type as
+        // anime, so the only thing filtering removes is exactly the manga and
+        // novel sources that were leaking into anime results.
         expect(
           repo.searchedSourceIds.toSet(),
-          {'ani:1', 'mihon:1'},
+          {'ani:1'},
           reason:
-              'anime mode must not narrow the source list at all; any '
-              'filtering here would be a streaming/TV regression',
+              'anime mode must search video sources only — a mihon: source '
+              'here is the manga/novel leak this test now guards against',
+        );
+      },
+    );
+  });
+
+  group('SearchBloc.respondedSources (pending-skeleton bug fix)', () {
+    // Pins the fix for a source that returns EMPTY results (or errors) never
+    // leaving the Search screen's per-source skeleton on screen forever — see
+    // SearchBloc._runSearch and SearchState.respondedSources. Before the fix,
+    // `groups` was the ONLY signal the view had for "this source is done", and
+    // a source only lands in `groups` when it has results — so an empty
+    // response was indistinguishable from "hasn't answered yet".
+    test(
+      'a source that answers with zero results is still marked responded',
+      () async {
+        await modeCubit.setMode(ContentMode.manga);
+        // A second manga source with no seeded items — searchStatus returns an
+        // empty list for it, exactly like a real "no results" source.
+        repo.loadedSourcesSeed = const [
+          (id: 'mihon:1', name: 'MangaSource'),
+          (id: 'mihon:2', name: 'EmptyMangaSource'),
+        ];
+
+        bloc.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(
+          bloc.state.respondedSources,
+          containsAll(['mihon:1', 'mihon:2']),
+          reason:
+              'both sources answered — mihon:2 with zero results — so '
+              'neither should still read as pending once the run settles',
+        );
+        expect(
+          bloc.state.groups.map((g) => g.sourceId),
+          ['mihon:1'],
+          reason:
+              'mihon:2 produced no group (no results), unlike '
+              'respondedSources, which tracks completion regardless of '
+              'outcome',
         );
       },
     );

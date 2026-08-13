@@ -9,8 +9,7 @@ enum SearchSort {
   bestMatch('Best match'),
   newest('Newest'),
   titleAsc('Title A–Z'),
-  titleDesc('Title Z–A'),
-  rating('Rating');
+  titleDesc('Title Z–A');
 
   const SearchSort(this.label);
   final String label;
@@ -40,10 +39,34 @@ enum SearchContentFilter {
   }
 }
 
-/// Best-effort metadata helpers for [MediaItem]. The search-result model carries
-/// no year/genre/rating fields (those only land on the on-demand [MediaDetail]),
-/// so we derive what we can from the title text. Everything here is OPTIONAL:
-/// when a value can't be parsed the relevant filter/sort treats the item as a
+/// Audio-track filter (anime mode only — see [MediaItem.subCount]/[dubCount],
+/// the same real data that already drives the SUB/DUB poster badges).
+enum SearchAudioFilter {
+  any('Any'),
+  subbed('Subbed'),
+  dubbed('Dubbed');
+
+  const SearchAudioFilter(this.label);
+  final String label;
+
+  /// True when [item] passes this audio filter.
+  bool matches(MediaItem item) {
+    switch (this) {
+      case SearchAudioFilter.any:
+        return true;
+      case SearchAudioFilter.subbed:
+        return (item.subCount ?? 0) > 0;
+      case SearchAudioFilter.dubbed:
+        return (item.dubCount ?? 0) > 0;
+    }
+  }
+}
+
+/// Best-effort metadata helpers for [MediaItem]. [year] parses a release year
+/// out of the title text (search results carry no such field) for the Newest
+/// sort — [matchesGenre] does NOT parse titles, it compares against the
+/// item's real, source-provided [MediaItem.genres]. Year is OPTIONAL: when it
+/// can't be parsed, [SearchState]'s Newest sort treats the item as a
 /// pass-through rather than dropping it.
 class SearchMeta {
   SearchMeta._();
@@ -64,26 +87,14 @@ class SearchMeta {
     return best;
   }
 
-  /// Genre keywords offered in the filter sheet. Genre data isn't present on
-  /// search results, so the filter is applied best-effort by matching the
-  /// keyword against the title; items whose title doesn't mention the genre
-  /// still pass when the filter is "Any".
-  static const List<String> genres = [
-    'Action',
-    'Adventure',
-    'Comedy',
-    'Drama',
-    'Fantasy',
-    'Horror',
-    'Romance',
-    'Sci-Fi',
-    'Thriller',
-  ];
-
-  /// Best-effort genre match: true when the title mentions [genre]
-  /// (case-insensitive). Used only when a genre filter is active.
-  static bool titleMentionsGenre(MediaItem item, String genre) {
-    return item.title.toLowerCase().contains(genre.toLowerCase());
+  /// True when [item] carries [genre] among its real (source-provided)
+  /// genres, case-insensitively and trimmed. Used only when a genre filter is
+  /// active. Items with no genre data never match a specific genre — that's
+  /// what filtering means — see [SearchState.hasItemsWithoutGenre] for the
+  /// UI's disclosure of that gap.
+  static bool matchesGenre(MediaItem item, String genre) {
+    final wanted = genre.trim().toLowerCase();
+    return item.genres.any((g) => g.trim().toLowerCase() == wanted);
   }
 }
 
@@ -180,16 +191,21 @@ class SearchState extends Equatable {
 
   final SearchSort sort;
 
-  /// Active content-type filter (All / Anime / Movies & Series).
+  /// Active content-type filter (All / Anime / Movies & Series). Only
+  /// meaningful — and only shown — in anime mode; see
+  /// `searchTypeAudioGroupsVisible` in search_screen.dart.
   final SearchContentFilter contentFilter;
 
-  /// Active genre keyword filter, or null for "Any" (best-effort — see
-  /// [SearchMeta.titleMentionsGenre]).
-  final String? genreFilter;
+  /// Active audio filter (Any / Subbed / Dubbed). Anime mode only — see
+  /// [SearchAudioFilter].
+  final SearchAudioFilter audioFilter;
 
-  /// Active decade filter as a start year (e.g. 2020 → 2020–2029), or null for
-  /// "Any". Best-effort, keyed off [SearchMeta.year].
-  final int? decadeFilter;
+  /// Active genre filter, or null for "Any". Matched against
+  /// [MediaItem.genres] — see [SearchMeta.matchesGenre]. A value that isn't
+  /// (or is no longer) among [availableGenres] simply matches nothing rather
+  /// than erroring; the UI keeps the "Any" pill reachable so it's always
+  /// clearable.
+  final String? genreFilter;
 
   final String? error;
 
@@ -203,6 +219,19 @@ class SearchState extends Equatable {
   /// selection JSON string produced by [AniyomiFilters.toSelectionJson].
   /// Only populated for `ani:` sources; non-Aniyomi ids are never present.
   final Map<String, String> aniFiltersBySource;
+
+  /// Ids of sources that have FINISHED responding for the current search run
+  /// (ok, empty, or error) — independent of whether they actually produced a
+  /// [SourceResultGroup]. Reset at the start of every run.
+  ///
+  /// [groups] alone can't drive the "still loading" skeletons: a source is
+  /// only added to [groups] when it returns results, so a source that comes
+  /// back empty (or errors) is indistinguishable from one that just hasn't
+  /// answered yet — that gap is what left pending skeletons on screen forever
+  /// for a source with zero results. This tracks completion regardless of
+  /// outcome, so the UI can tell "no results yet" apart from "done, no
+  /// results".
+  final Set<String> respondedSources;
 
   /// Results of a filters-only browse — source filters applied with an empty
   /// search box. Aniyomi treats "no query + filters" as a normal search request
@@ -244,12 +273,13 @@ class SearchState extends Equatable {
     this.currentSourceOnly = true,
     this.sort = SearchSort.bestMatch,
     this.contentFilter = SearchContentFilter.all,
+    this.audioFilter = SearchAudioFilter.any,
     this.genreFilter,
-    this.decadeFilter,
     this.error,
     this.trending = const [],
     this.suggestions = const [],
     this.aniFiltersBySource = const {},
+    this.respondedSources = const {},
     this.filteredBrowse = const [],
     this.filteredBrowseSourceId = '',
     this.filteredBrowsePage = 1,
@@ -258,26 +288,29 @@ class SearchState extends Equatable {
   });
 
   /// True when any client-side filter narrows the results (drives the active
-  /// tint on the filter button).
+  /// tint on the filter button and the "no results — clear filters" hint).
+  /// Deliberately excludes [sort] — a sort choice reorders, never narrows.
   bool get hasActiveFilter =>
       contentFilter != SearchContentFilter.all ||
-      genreFilter != null ||
-      decadeFilter != null;
+      audioFilter != SearchAudioFilter.any ||
+      genreFilter != null;
 
-  /// Applies the content-type + genre + decade filters to [item].
+  /// Count of non-default selections across the whole merged Filters sheet —
+  /// [sort] included, unlike [hasActiveFilter] — for the sheet header/toolbar
+  /// badge. Sort used to tint its own separate icon; now that it lives in the
+  /// same sheet, a non-default sort still needs a visible signal somewhere.
+  int get activeFilterCount =>
+      (sort != SearchSort.bestMatch ? 1 : 0) +
+      (contentFilter != SearchContentFilter.all ? 1 : 0) +
+      (audioFilter != SearchAudioFilter.any ? 1 : 0) +
+      (genreFilter != null ? 1 : 0);
+
+  /// Applies the content-type + audio + genre filters to [item].
   bool _passes(MediaItem item) {
     if (!contentFilter.matches(item)) return false;
-    if (genreFilter != null &&
-        !SearchMeta.titleMentionsGenre(item, genreFilter!)) {
+    if (!audioFilter.matches(item)) return false;
+    if (genreFilter != null && !SearchMeta.matchesGenre(item, genreFilter!)) {
       return false;
-    }
-    if (decadeFilter != null) {
-      final y = SearchMeta.year(item);
-      // Best-effort: items with no parseable year pass through rather than
-      // vanishing — only items KNOWN to be outside the decade are dropped.
-      if (y != null && (y < decadeFilter! || y >= decadeFilter! + 10)) {
-        return false;
-      }
     }
     return true;
   }
@@ -299,6 +332,35 @@ class SearchState extends Equatable {
   /// Result count for one source group under the active filters.
   int countFor(SourceResultGroup g) => g.items.where(_passes).length;
 
+  /// Genre pills to offer in the filter sheet, derived from the actual result
+  /// set instead of a fixed list — a genre is only worth offering if some
+  /// result can actually match it. De-duplicated case-insensitively (first-seen
+  /// capitalisation wins), sorted alphabetically, capped at 20 so an unusually
+  /// genre-rich result set can't turn the sheet into a wall of chips.
+  List<String> get availableGenres {
+    final byLower = <String, String>{};
+    for (final g in groups) {
+      for (final item in g.items) {
+        for (final genre in item.genres) {
+          final trimmed = genre.trim();
+          if (trimmed.isEmpty) continue;
+          byLower.putIfAbsent(trimmed.toLowerCase(), () => trimmed);
+        }
+      }
+    }
+    final sorted = byLower.values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return sorted.take(20).toList();
+  }
+
+  /// True when at least one result across all groups has no genre data.
+  /// Sources vary in whether they supply genres at all, so when a genre
+  /// filter is active this drives a small disclosure under the pills — an
+  /// active filter silently drops whole sources with no genre data, and this
+  /// says so instead of leaving that unexplained.
+  bool get hasItemsWithoutGenre =>
+      groups.any((g) => g.items.any((item) => item.genres.isEmpty));
+
   /// Result groups (in the active ecosystem) that have at least one item under
   /// the active filters.
   List<SourceResultGroup> get visibleGroups => [
@@ -307,7 +369,7 @@ class SearchState extends Equatable {
   ];
 
   /// Groups in the active ecosystem whose SOURCE returned at least one result,
-  /// IGNORING the content/genre/decade filters. Drives the source-filter chip
+  /// IGNORING the content/audio/genre filters. Drives the source-filter chip
   /// row so it (and the selected chip) stays put even when a filter empties the
   /// current view — otherwise selecting a chip that yields nothing would hide
   /// the very chips you'd use to change or clear it.
@@ -351,7 +413,7 @@ class SearchState extends Equatable {
     // back to arrival order for sources that match equally well — so the common
     // case where several sources all have the exact title keeps today's
     // fast-source-first feel and nothing reshuffles. Any explicit sort
-    // (Title/Newest/Rating) keeps pure arrival order, unchanged.
+    // (Title/Newest) keeps pure arrival order, unchanged.
     if (sort == SearchSort.bestMatch && query.trim().isNotEmpty) {
       // Score each section's best match ONCE, then sort — cheaper than
       // rescoring inside the comparator.
@@ -434,8 +496,8 @@ class SearchState extends Equatable {
   }
 
   /// Applies [sort] to a list of items. Best-match ranks by query relevance;
-  /// newest/rating fall back to title order for items lacking the data so the
-  /// list stays stable rather than reshuffling unparseable items to the bottom.
+  /// newest falls back to title order for items lacking a parseable year so
+  /// the list stays stable rather than reshuffling unparseable items around.
   List<MediaItem> _sortItems(List<MediaItem> items) {
     switch (sort) {
       case SearchSort.bestMatch:
@@ -472,12 +534,6 @@ class SearchState extends Equatable {
           if (yb == null) return -1;
           return yb.compareTo(ya);
         });
-      case SearchSort.rating:
-        // No rating on search results — keep deterministic (title) order so the
-        // option is wired without inventing a value. Best-effort by design.
-        return items..sort(
-          (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
-        );
     }
   }
 
@@ -490,15 +546,15 @@ class SearchState extends Equatable {
     bool? currentSourceOnly,
     SearchSort? sort,
     SearchContentFilter? contentFilter,
+    SearchAudioFilter? audioFilter,
     String? genreFilter,
     bool clearGenreFilter = false,
-    int? decadeFilter,
-    bool clearDecadeFilter = false,
     String? error,
     bool clearError = false,
     List<MediaItem>? trending,
     List<String>? suggestions,
     Map<String, String>? aniFiltersBySource,
+    Set<String>? respondedSources,
     List<MediaItem>? filteredBrowse,
     String? filteredBrowseSourceId,
     int? filteredBrowsePage,
@@ -513,14 +569,13 @@ class SearchState extends Equatable {
     currentSourceOnly: currentSourceOnly ?? this.currentSourceOnly,
     sort: sort ?? this.sort,
     contentFilter: contentFilter ?? this.contentFilter,
+    audioFilter: audioFilter ?? this.audioFilter,
     genreFilter: clearGenreFilter ? null : (genreFilter ?? this.genreFilter),
-    decadeFilter: clearDecadeFilter
-        ? null
-        : (decadeFilter ?? this.decadeFilter),
     error: clearError ? null : (error ?? this.error),
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
     aniFiltersBySource: aniFiltersBySource ?? this.aniFiltersBySource,
+    respondedSources: respondedSources ?? this.respondedSources,
     filteredBrowse: filteredBrowse ?? this.filteredBrowse,
     filteredBrowseSourceId:
         filteredBrowseSourceId ?? this.filteredBrowseSourceId,
@@ -540,12 +595,13 @@ class SearchState extends Equatable {
     currentSourceOnly,
     sort,
     contentFilter,
+    audioFilter,
     genreFilter,
-    decadeFilter,
     error,
     trending,
     suggestions,
     aniFiltersBySource,
+    respondedSources,
     filteredBrowse,
     filteredBrowseSourceId,
     filteredBrowsePage,

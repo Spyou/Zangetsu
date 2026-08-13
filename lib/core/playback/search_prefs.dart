@@ -15,8 +15,8 @@ enum SearchLayout {
 }
 
 /// Persisted search preferences that outlive a single screen open: the results
-/// LAYOUT (grid vs rows) plus the last-used FILTERS (content type, genre,
-/// decade) and SORT. Source toggles stay in [SearchSourcePrefs]; this store
+/// LAYOUT (grid vs rows) plus the last-used FILTERS (content type, audio,
+/// genre) and SORT. Source toggles stay in [SearchSourcePrefs]; this store
 /// covers everything else the search screen needs to remember.
 ///
 /// Backed by a tiny Hive box (same pattern as [SearchSourcePrefs]). A
@@ -25,6 +25,7 @@ class SearchPrefs extends ChangeNotifier {
   static const String boxName = 'search_view_prefs';
   static const String _layoutKey = 'layout';
   static const String _contentFilterKey = 'contentFilter';
+  static const String _audioFilterKey = 'audioFilter';
   static const String _sortKey = 'sort';
   static const String _genreKey = 'genre';
   static const String _decadeKey = 'decade';
@@ -74,6 +75,11 @@ class SearchPrefs extends ChangeNotifier {
   Future<void> setContentFilterName(String name) =>
       _box.put(_contentFilterKey, name);
 
+  /// Stored by enum name, same pattern as [contentFilterName].
+  String? get audioFilterName => _box.get(_audioFilterKey) as String?;
+  Future<void> setAudioFilterName(String name) =>
+      _box.put(_audioFilterKey, name);
+
   String? get sortName => _box.get(_sortKey) as String?;
   Future<void> setSortName(String name) => _box.put(_sortKey, name);
 
@@ -87,6 +93,12 @@ class SearchPrefs extends ChangeNotifier {
       _box.put(_genreKey, genre ?? '');
 
   /// A decade start year (e.g. 2020 means 2020–2029) or null for "Any".
+  ///
+  /// UNUSED by the app — the decade filter was removed (it keyed off a year
+  /// parsed out of the title text, which real titles almost never carry, so
+  /// it filtered close to nothing). Kept only so a value written by an older
+  /// build stays inert rather than needing an explicit migration, and so
+  /// existing test doubles that still override this don't need touching.
   int? get decade => _box.get(_decadeKey) as int?;
   Future<void> setDecade(int? decade) async {
     if (decade == null) {
