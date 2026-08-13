@@ -49,6 +49,8 @@ List<String> _parseGenres(String? genre) {
 ///   url           — String  (non-null; opaque source key)
 ///   title         — String
 ///   thumbnail_url — String? (cover image)
+///   genre         — String? (comma-separated, e.g. "Action, Comedy") — feeds
+///                   [MediaItem.genres], same parsing as [mediaDetailFromSAnime].
 MediaItem mediaItemFromSAnime(
   Map<String, dynamic> j, {
   required String sourceId,
@@ -73,6 +75,7 @@ MediaItem mediaItemFromSAnime(
     url: url,
     type: ProviderType.anime,
     sourceId: sourceId,
+    genres: _parseGenres(j['genre'] as String?),
   );
 }
 

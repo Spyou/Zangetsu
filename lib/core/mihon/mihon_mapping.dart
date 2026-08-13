@@ -74,6 +74,8 @@ List<String> _authorsToStudios(String? author, String? artist) {
 ///   url           — String  (non-null; opaque source key)
 ///   title         — String
 ///   thumbnail_url — String? (cover image)
+///   genre         — String? (comma-separated, e.g. "Action, Comedy") — feeds
+///                   [MediaItem.genres], same parsing as [mediaDetailFromSManga].
 MediaItem mediaItemFromSManga(
   Map<String, dynamic> j, {
   required String sourceId,
@@ -99,6 +101,7 @@ MediaItem mediaItemFromSManga(
     url: url,
     type: ProviderType.manga,
     sourceId: sourceId,
+    genres: _parseGenres(j['genre'] as String?),
   );
 }
 

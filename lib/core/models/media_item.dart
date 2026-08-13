@@ -34,6 +34,12 @@ class MediaItem extends Equatable {
   /// IMDb id (e.g. `tt1234567`) for Simkl tracking when no TMDB id is exposed.
   final String? imdbId;
 
+  /// Genres, when the source provides them on the search/browse item itself
+  /// (Mihon/Aniyomi carry these; most sources don't and this stays empty).
+  /// Drives the search screen's genre filter — see [MediaDetail.genres] for
+  /// the on-demand detail equivalent.
+  final List<String> genres;
+
   const MediaItem({
     required this.id,
     required this.title,
@@ -49,6 +55,7 @@ class MediaItem extends Equatable {
     this.tmdbId,
     this.tmdbIsTv = false,
     this.imdbId,
+    this.genres = const [],
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
@@ -95,6 +102,7 @@ class MediaItem extends Equatable {
     tmdbId,
     tmdbIsTv,
     imdbId,
+    genres,
   ];
 }
 
