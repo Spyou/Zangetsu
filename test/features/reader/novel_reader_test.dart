@@ -445,10 +445,12 @@ void main() {
     ) async {
       await tester.pumpWidget(harness());
       await tester.pumpAndSettle();
-      expect(find.textContaining('chapter one text'), findsOneWidget);
+      expect(find.textContaining('chapter one text', findRichText: true), findsOneWidget);
 
-      // chrome → next
-      await tester.tap(find.byType(SingleChildScrollView));
+      // chrome → next — the scroll body is now a lazy sliver HTML view
+      // inside a CustomScrollView (was SingleChildScrollView, then a
+      // ListView.builder), so the tap-to-toggle-chrome target moved again.
+      await tester.tap(find.byType(CustomScrollView));
       await tester.pumpAndSettle();
 
       // Advancing writes a flushed ReadHistory entry, which is real Hive
@@ -460,7 +462,7 @@ void main() {
       });
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('chapter two text'), findsOneWidget);
+      expect(find.textContaining('chapter two text', findRichText: true), findsOneWidget);
 
       // Explicitly dispose the reader (under runAsync, same reason as
       // above) instead of relying on the framework's between-test teardown
@@ -478,7 +480,8 @@ void main() {
       await tester.pumpWidget(harness());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byType(SingleChildScrollView));
+      // Scroll body is a lazy sliver HTML view inside a CustomScrollView now.
+      await tester.tap(find.byType(CustomScrollView));
       await tester.pumpAndSettle();
 
       await tester.runAsync(() async {
@@ -517,12 +520,12 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Retry'), findsOneWidget);
-        expect(find.textContaining('chapter one text'), findsNothing);
+        expect(find.textContaining('chapter one text', findRichText: true), findsNothing);
 
         await tester.tap(find.text('Retry'));
         await tester.pumpAndSettle();
 
-        expect(find.textContaining('chapter one text'), findsOneWidget);
+        expect(find.textContaining('chapter one text', findRichText: true), findsOneWidget);
         expect(find.text('Retry'), findsNothing);
 
         // Dispose under runAsync — same reason as the tests above.
@@ -568,15 +571,31 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final scrollView = tester.widget<SingleChildScrollView>(
-        find.byType(SingleChildScrollView),
+      // Scroll body is a lazy sliver HTML view inside a CustomScrollView now.
+      final scrollView = tester.widget<CustomScrollView>(
+        find.byType(CustomScrollView),
       );
       final controller = scrollView.controller!;
+
+      // The restore now polls instead of landing in one post-frame jump — a
+      // lazy sliver's maxScrollExtent is only an estimate until content near
+      // the target has actually laid out, so it takes a couple of the
+      // restore's own 50ms ticks to converge. Give it more than enough of
+      // them before checking where it landed.
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      await tester.pumpAndSettle();
+
       final maxExtent = controller.position.maxScrollExtent;
       expect(maxExtent, greaterThan(0)); // sanity: the chapter actually scrolls
 
       final expectedOffset = 0.5 * maxExtent; // 500 / 1000 permille
-      expect(controller.offset, closeTo(expectedOffset, 1.0));
+      // Lazy sliver layout means the restore is percent-accurate, not
+      // pixel-exact: the scroll extent keeps growing as more paragraphs lay
+      // out after the jump, so allow a few percent of drift. Still tight
+      // enough to fail if resume landed at the top or the wrong place.
+      expect(controller.offset, closeTo(expectedOffset, maxExtent * 0.03));
 
       await tester.runAsync(() async {
         await tester.pumpWidget(const SizedBox());
@@ -609,8 +628,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      final scrollView = tester.widget<SingleChildScrollView>(
-        find.byType(SingleChildScrollView),
+      // Scroll body is a lazy sliver HTML view inside a CustomScrollView now.
+      final scrollView = tester.widget<CustomScrollView>(
+        find.byType(CustomScrollView),
       );
       final controller = scrollView.controller!;
 

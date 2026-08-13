@@ -73,6 +73,9 @@ dependencies:
   # Image caching
   cached_network_image: ^3.4.1
   flutter_cache_manager: ^3.4.1
+  # Lazy HTML rendering for the novel reader (RenderMode.sliverList) — only the
+  # on-screen paragraphs are built, so long chapters scroll without jank.
+  flutter_widget_from_html: ^0.15.3
   # Dominant-colour extraction for the colour-matched hero banner
   palette_generator: ^0.3.3+3
 

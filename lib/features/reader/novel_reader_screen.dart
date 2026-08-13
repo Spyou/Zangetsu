@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_widget_from_html/flutter_widget_from_html.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
@@ -178,6 +179,15 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
 
   /// Jumps to the chapter's saved scroll permille once the fresh content has
   /// laid out. No-op for a never-read chapter (nothing saved, or saved 0).
+  ///
+  /// The scroll body is now a lazy `SliverList` (see `_buildBody`), so unlike
+  /// the old shrink-wrapped `Text.rich`, `maxScrollExtent` is only an
+  /// ESTIMATE until enough items have actually laid out — a single
+  /// post-frame `jumpTo` lands short. Poll instead: re-jump to the same
+  /// target FRACTION every tick, so each tick corrects the previous one's
+  /// guess against the current (better) estimate. Stops once the estimate
+  /// stops moving, the user grabs the scrollbar themselves (don't yank
+  /// them), or a ~3s ceiling either way.
   void _restoreScrollPosition() {
     final saved = sl<ReadStore>().get(
       widget.sourceId,
@@ -185,12 +195,35 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       _chapter.id,
     );
     if (saved == null || saved.pos <= 0) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
-      final max = _scrollController.position.maxScrollExtent;
-      if (max <= 0) return;
-      _scrollController.jumpTo((saved.pos / 1000) * max);
-    });
+    // Set now, not after the poll lands — a dispose before the poll settles
+    // must not fall back to 0 (see `_lastScrollPermille`'s own doc).
+    _lastScrollPermille = saved.pos;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _pollRestoreScroll(saved.pos / 1000),
+    );
+  }
+
+  Future<void> _pollRestoreScroll(double fraction) async {
+    // Bounded by a fixed tick count, NOT a DateTime.now() deadline: widget
+    // tests run on a faked clock where wall-time barely advances, so a
+    // real-clock deadline would never trip and this loop would spin forever
+    // (hanging pumpAndSettle). 60 ticks × 50ms ≈ 3s of lazy layout to catch up.
+    double? lastMax;
+    for (var tick = 0; tick < 60 && mounted && _scrollController.hasClients; tick++) {
+      final pos = _scrollController.position;
+      // A jump already landed and the user has since dragged away from it —
+      // leave them alone instead of yanking them back mid-read.
+      if (lastMax != null && (pos.pixels - fraction * lastMax).abs() > 8) {
+        return;
+      }
+      final max = pos.maxScrollExtent;
+      if (max > 0) {
+        _scrollController.jumpTo((fraction * max).clamp(0, max));
+        if (lastMax != null && (max - lastMax).abs() < 1) return; // settled
+        lastMax = max;
+      }
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
   }
 
   void _onScroll() {
@@ -387,32 +420,70 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       height: prefs.lineHeight,
       color: theme.text,
     );
-    final spans = novelSpans(
-      text.html,
-      base,
-      paragraphSpacing: prefs.paragraphSpacing,
-    );
     final hasNext = _index < _chapters.length - 1;
+    // Same condition the old trailing `if (_atEnd && hasNext)` child used —
+    // just expressed as one extra sliver, so it only exists (and only adds
+    // to maxScrollExtent) once the chapter's actually been scrolled to the
+    // bottom.
+    final showNext = _atEnd && hasNext;
 
+    // Lazy sliver HTML instead of a paragraph-per-ListView-item — a long
+    // chapter with a few huge paragraphs used to still lay those out (and
+    // repaint) whole; `flutter_widget_from_html`'s sliverList mode only
+    // builds the blocks actually on screen. Same `_scrollController`, so
+    // progress/resume/mark-read (all pixels/maxScrollExtent based) are
+    // untouched — <img> tags render via the package's own bundled
+    // cached-network-image support, no wiring needed here.
     return SafeArea(
-      child: SingleChildScrollView(
+      child: CustomScrollView(
         controller: _scrollController,
-        padding: EdgeInsets.symmetric(
-          horizontal: prefs.marginWidth,
-          vertical: 32,
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text.rich(
-              TextSpan(style: base, children: spans),
-              textAlign: prefs.textAlignJustify
-                  ? TextAlign.justify
-                  : TextAlign.start,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: EdgeInsets.symmetric(
+              horizontal: prefs.marginWidth,
+              vertical: 32,
             ),
-            if (_atEnd && hasNext)
-              Padding(
-                padding: const EdgeInsets.only(top: 28),
+            sliver: HtmlWidget(
+              cleanNovelHtml(text.html),
+              renderMode: RenderMode.sliverList,
+              textStyle: base,
+              // HtmlWidget caches its built tree and only re-renders when the
+              // HTML or one of these triggers changes — a changed `textStyle`
+              // alone does NOT re-render it. So every setting that feeds `base`
+              // (font size/family/line height/colour) or `customStylesBuilder`
+              // (spacing/alignment) has to be listed here, or the slider moves
+              // but the text doesn't.
+              rebuildTriggers: [
+                prefs.fontSize,
+                prefs.fontFamily,
+                prefs.lineHeight,
+                theme.text,
+                prefs.paragraphSpacing,
+                prefs.textAlignJustify,
+              ],
+              customStylesBuilder: (element) {
+                // Force font size + line height as CSS on every element so a
+                // source that baked its own sizing in can't win over the
+                // reader's setting (textStyle alone loses to inline CSS).
+                final styles = <String, String>{
+                  'font-size': '${prefs.fontSize}px',
+                  'line-height': '${prefs.lineHeight}',
+                };
+                if (element.localName == 'p' || element.localName == 'div') {
+                  styles['margin'] = '0 0 ${prefs.paragraphSpacing}px 0';
+                  styles['text-align'] = prefs.textAlignJustify
+                      ? 'justify'
+                      : 'start';
+                }
+                return styles;
+              },
+            ),
+          ),
+          if (showNext)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 28, bottom: 40),
                 child: Center(
                   child: TextButton(
                     onPressed: () => _goToChapter(_index + 1),
@@ -423,8 +494,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }
@@ -988,23 +1059,34 @@ String? novelFontFamily(String key) => switch (key) {
   _ => 'Inter',
 };
 
-/// HTML → styled spans for the novel body. Pure and top-level so it's
-/// unit-testable without pumping a widget.
-///
-/// `<p>`/`<br>` become paragraph/line breaks, `<b>`/`<strong>` and
-/// `<i>`/`<em>` become bold/italic spans, everything else (including
-/// `<script>`/`<style>` and their contents) is stripped. A closed `<p>`
-/// (not a bare `<br>` line break) additionally gets [paragraphSpacing] of
-/// vertical gap via a full-width `WidgetSpan` — the standard way to get a
-/// precise pixel gap between blocks inside one `Text.rich` without leaving
-/// span-land for a widget-per-paragraph layout. Default 0 reproduces the
-/// reader's original spacing exactly (just the `\n`), so every existing
-/// caller is unaffected.
-List<InlineSpan> novelSpans(
-  String html,
-  TextStyle base, {
-  double paragraphSpacing = 0,
-}) {
+/// One decoded run of inline HTML — a text run with its bold/italic state,
+/// or a break marker — the unit [novelSpans] walks raw chapter HTML into via
+/// [_tokenizeHtml]. Only used by the paged (book) reader mode now; the
+/// scroll reader hands its HTML straight to `HtmlWidget` instead (see
+/// `_buildBody`).
+class _HtmlToken {
+  const _HtmlToken.text(this.text, {required this.bold, required this.italic})
+    : isBreak = false,
+      paragraphBreak = false;
+  const _HtmlToken.brk({required this.paragraphBreak})
+    : text = '',
+      bold = false,
+      italic = false,
+      isBreak = true;
+
+  final String text;
+  final bool bold;
+  final bool italic;
+  final bool isBreak;
+  // Only meaningful when [isBreak] is true: a closed `</p>` (block boundary)
+  // vs. a bare `<br>` (soft line break within a paragraph, e.g. a poem line).
+  final bool paragraphBreak;
+}
+
+/// Walks HTML into a flat list of [_HtmlToken]s for [novelSpans] (the paged
+/// reader's only remaining consumer) — kept as its own function since it was
+/// pulled out that way rather than folded back inline.
+List<_HtmlToken> _tokenizeHtml(String html) {
   // `(?:</\1>|$)` (not just `</\1>`) so an unclosed <script>/<style> tag
   // still gets its raw content stripped through end-of-string instead of
   // leaking into the rendered chapter.
@@ -1017,21 +1099,15 @@ List<InlineSpan> novelSpans(
     '',
   );
 
-  final spans = <InlineSpan>[];
+  final tokens = <_HtmlToken>[];
   final buffer = StringBuffer();
   var bold = false;
   var italic = false;
 
   void flush() {
     if (buffer.isEmpty) return;
-    spans.add(
-      TextSpan(
-        text: buffer.toString(),
-        style: base.copyWith(
-          fontWeight: bold ? FontWeight.bold : null,
-          fontStyle: italic ? FontStyle.italic : null,
-        ),
-      ),
+    tokens.add(
+      _HtmlToken.text(buffer.toString(), bold: bold, italic: italic),
     );
     buffer.clear();
   }
@@ -1045,17 +1121,7 @@ List<InlineSpan> novelSpans(
     final tag = cleaned.substring(m.start, m.end).toLowerCase();
     if (tag.startsWith('</p') || tag.startsWith('<br')) {
       flush();
-      spans.add(const TextSpan(text: '\n'));
-      // Only a paragraph close gets the extra gap — a bare `<br>` is a soft
-      // line break within a paragraph (e.g. a poem line), not a block
-      // boundary, so it stays exactly `\n` as before.
-      if (tag.startsWith('</p') && paragraphSpacing > 0) {
-        spans.add(
-          WidgetSpan(
-            child: SizedBox(height: paragraphSpacing, width: double.infinity),
-          ),
-        );
-      }
+      tokens.add(_HtmlToken.brk(paragraphBreak: tag.startsWith('</p')));
     } else if (tag.startsWith('<b') || tag.startsWith('<strong')) {
       flush();
       bold = true;
@@ -1076,6 +1142,69 @@ List<InlineSpan> novelSpans(
     buffer.write(_unescapeHtml(cleaned.substring(last)));
   }
   flush();
+  return tokens;
+}
+
+/// HTML → styled spans for the novel body. Pure and top-level so it's
+/// unit-testable without pumping a widget.
+///
+/// `<p>`/`<br>` become paragraph/line breaks, `<b>`/`<strong>` and
+/// `<i>`/`<em>` become bold/italic spans, everything else (including
+/// `<script>`/`<style>` and their contents) is stripped. A closed `<p>`
+/// (not a bare `<br>` line break) additionally gets [paragraphSpacing] of
+/// vertical gap via a full-width `WidgetSpan` — the standard way to get a
+/// precise pixel gap between blocks inside one `Text.rich` without leaving
+/// span-land for a widget-per-paragraph layout. Default 0 reproduces the
+/// reader's original spacing exactly (just the `\n`), so every existing
+/// caller is unaffected. What the page-flip paginator consumes — the scroll
+/// reader renders its HTML directly via `HtmlWidget` instead (see
+/// `_buildBody`).
+/// Strips a chapter's own inline styling before it's handed to `HtmlWidget`,
+/// so the source's baked-in font size / family / line height can't override
+/// the reader's settings. Removes `<style>` blocks, `style="…"` attributes,
+/// and `<font>` tags (keeping their text). Only the scroll reader's HTML path
+/// uses this; the paginator keeps parsing the raw HTML via `novelSpans`.
+String cleanNovelHtml(String html) {
+  return html
+      .replaceAll(
+        RegExp(r'<style[^>]*>.*?</style>', dotAll: true, caseSensitive: false),
+        '',
+      )
+      .replaceAll(
+        RegExp('''\\sstyle\\s*=\\s*("[^"]*"|'[^']*')''', caseSensitive: false),
+        '',
+      )
+      .replaceAll(RegExp(r'</?font[^>]*>', caseSensitive: false), '');
+}
+
+List<InlineSpan> novelSpans(
+  String html,
+  TextStyle base, {
+  double paragraphSpacing = 0,
+}) {
+  final spans = <InlineSpan>[];
+  for (final t in _tokenizeHtml(html)) {
+    if (t.isBreak) {
+      spans.add(const TextSpan(text: '\n'));
+      if (t.paragraphBreak && paragraphSpacing > 0) {
+        spans.add(
+          WidgetSpan(
+            child: SizedBox(height: paragraphSpacing, width: double.infinity),
+          ),
+        );
+      }
+      continue;
+    }
+    spans.add(
+      TextSpan(
+        text: t.text,
+        style: base.copyWith(
+          fontWeight: t.bold ? FontWeight.bold : null,
+          fontStyle: t.italic ? FontStyle.italic : null,
+        ),
+      ),
+    );
+  }
   return spans;
 }
 
