@@ -201,7 +201,8 @@ void main() {
       );
     }
 
-    test('prefers index.json', () async {
+    test('tries index.pb first, then index.json, never the legacy file',
+        () async {
       final adapter = _RoutingAdapter({
         '$_base/index.json': _fixture('keiyoushi_index.json'),
         '$_base/index.min.json': _fixture('keiyoushi_index_min.json'),
@@ -210,7 +211,13 @@ void main() {
 
       final entries = await MihonRepo.fetchIndex(_base);
       expect(entries, hasLength(1369));
-      expect(adapter.requested, ['$_base/index.json']);
+      // index.pb is the smaller mirror of the same data, so it's asked for
+      // first; this adapter doesn't serve it, so the run falls through to
+      // index.json. The legacy file must never be reached once index.json
+      // parses.
+      expect(adapter.requested.first, '$_base/index.pb');
+      expect(adapter.requested, contains('$_base/index.json'));
+      expect(adapter.requested, isNot(contains('$_base/index.min.json')));
     });
 
     // ── The legacy fallback exists for exactly one case, and these two tests
@@ -227,10 +234,13 @@ void main() {
       final entries = await MihonRepo.fetchIndex(_base);
       expect(entries, hasLength(2));
       expect(entries.first.pkg, 'eu.kanade.tachiyomi.extension.all.keiyoushi');
-      // index.json is tried first, direct then through every mirror, before
-      // the legacy file gets a turn.
-      expect(adapter.requested.first, '$_base/index.json');
-      expect(adapter.requested, contains('$_base/index.min.json'));
+      // Order matters: index.pb, then index.json (each direct then through
+      // every mirror), and only then does the legacy file get a turn.
+      expect(adapter.requested.first, '$_base/index.pb');
+      expect(
+        adapter.requested.indexOf('$_base/index.json'),
+        lessThan(adapter.requested.indexOf('$_base/index.min.json')),
+      );
     });
 
     test('a reachable but unparseable index.json raises instead of falling '
@@ -254,8 +264,13 @@ void main() {
       );
       // Returning the 2 deprecation stubs here would look exactly like the
       // bug this parser was written to fix, so the legacy file is never even
-      // requested — and no mirror of index.json is retried either.
-      expect(adapter.requested, ['$_base/index.json']);
+      // requested — and no mirror of index.json is retried either. (index.pb
+      // is attempted first and 404s; only index.json itself is fetched.)
+      expect(adapter.requested, isNot(contains('$_base/index.min.json')));
+      expect(
+        adapter.requested.where((u) => u.endsWith('/index.json')),
+        hasLength(1),
+      );
     });
 
     test('an index.json that is not JSON at all also raises', () async {
@@ -281,8 +296,8 @@ void main() {
         MihonRepo.fetchIndex(_base),
         throwsA(isA<MihonRepoException>()),
       );
-      // Both files, each direct + 3 GitHub mirrors.
-      expect(adapter.requested, hasLength(8));
+      // All three index files, each direct + 3 GitHub mirrors.
+      expect(adapter.requested, hasLength(12));
     });
 
     test('a trailing /index.min.json in a saved URL is normalised away',
