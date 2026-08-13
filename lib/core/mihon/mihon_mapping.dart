@@ -27,6 +27,15 @@ MediaStatus _statusFromInt(int? v) {
   }
 }
 
+/// Same as [_statusFromInt] but folds the "unknown" fallback to null —
+/// [MediaItem.status] uses null to mean "this source didn't say", so it stays
+/// distinguishable from a status the source actually reported. Only used on
+/// the search/browse mapping; the detail mapping keeps the non-null default.
+MediaStatus? _itemStatus(int? v) {
+  final s = _statusFromInt(v);
+  return s == MediaStatus.unknown ? null : s;
+}
+
 /// Splits the comma-separated `genre` field from SManga into a Dart list.
 List<String> _parseGenres(String? genre) {
   if (genre == null || genre.isEmpty) return const [];
@@ -76,6 +85,9 @@ List<String> _authorsToStudios(String? author, String? artist) {
 ///   thumbnail_url — String? (cover image)
 ///   genre         — String? (comma-separated, e.g. "Action, Comedy") — feeds
 ///                   [MediaItem.genres], same parsing as [mediaDetailFromSManga].
+///   status        — int?   (0=unknown, 1=ongoing, 2=completed, 5=cancelled,
+///                   6=hiatus) — feeds [MediaItem.status]; folded to null when
+///                   unknown, see [_itemStatus].
 MediaItem mediaItemFromSManga(
   Map<String, dynamic> j, {
   required String sourceId,
@@ -89,8 +101,9 @@ MediaItem mediaItemFromSManga(
           // getImage, which carries the cf_clearance cookie) instead of
           // cached_network_image, which can't pass a Cloudflare-gated image host.
           // Stripped from real requests; never sent over the network.
-          'x-mihon-src':
-              sourceId.startsWith('mihon:') ? sourceId.substring(6) : sourceId,
+          'x-mihon-src': sourceId.startsWith('mihon:')
+              ? sourceId.substring(6)
+              : sourceId,
         }
       : null;
   return MediaItem(
@@ -102,6 +115,7 @@ MediaItem mediaItemFromSManga(
     type: ProviderType.manga,
     sourceId: sourceId,
     genres: _parseGenres(j['genre'] as String?),
+    status: _itemStatus((j['status'] as num?)?.toInt()),
   );
 }
 
@@ -134,8 +148,9 @@ MediaDetail mediaDetailFromSManga(
           // getImage, which carries the cf_clearance cookie) instead of
           // cached_network_image, which can't pass a Cloudflare-gated image host.
           // Stripped from real requests; never sent over the network.
-          'x-mihon-src':
-              sourceId.startsWith('mihon:') ? sourceId.substring(6) : sourceId,
+          'x-mihon-src': sourceId.startsWith('mihon:')
+              ? sourceId.substring(6)
+              : sourceId,
         }
       : null;
   return MediaDetail(
@@ -194,8 +209,9 @@ Episode episodeFromSChapter(Map<String, dynamic> j) {
 
   // Derive a stable id: prefer chapter-number key so reading-history survives
   // URL changes; fall back to the raw URL for specials / unordered chapters.
-  final numberedId =
-      chapterNum != null ? 'ch-${chapterNum.toStringAsFixed(1)}' : null;
+  final numberedId = chapterNum != null
+      ? 'ch-${chapterNum.toStringAsFixed(1)}'
+      : null;
   // Fold the scanlator in when present — otherwise two groups' releases of
   // the same chapter number collide onto one id (see doc comment above). No
   // scanlator → id is byte-identical to the pre-fix 'ch-<n>' form.
@@ -241,9 +257,7 @@ PageImage? pageImageFromJson(Map<String, dynamic> j) {
   Map<String, String>? headers;
   final rawHeaders = j['headers'];
   if (rawHeaders is Map && rawHeaders.isNotEmpty) {
-    headers = {
-      for (final e in rawHeaders.entries) '${e.key}': '${e.value}',
-    };
+    headers = {for (final e in rawHeaders.entries) '${e.key}': '${e.value}'};
   }
 
   return PageImage(url: imageUrl, headers: headers);
@@ -277,7 +291,9 @@ List<PageImage> pagesFromJson(dynamic raw) {
 double? parseChapterNumber(String name) {
   final n = name.toLowerCase();
   // "chapter 12", "chapter 12.5", "ch. 12", "ch 12", "c12"
-  final marked = RegExp(r'(?:chapter|chap|ch)\.?\s*(\d+(?:\.\d+)?)').firstMatch(n);
+  final marked = RegExp(
+    r'(?:chapter|chap|ch)\.?\s*(\d+(?:\.\d+)?)',
+  ).firstMatch(n);
   if (marked != null) {
     final v = double.tryParse(marked.group(1)!);
     if (v != null && v >= 0) return v;

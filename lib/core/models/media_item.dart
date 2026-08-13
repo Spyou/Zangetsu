@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:json_annotation/json_annotation.dart';
 
+import 'media_detail.dart';
 import 'provider_info.dart';
 
 part 'media_item.g.dart';
@@ -40,6 +41,16 @@ class MediaItem extends Equatable {
   /// the on-demand detail equivalent.
   final List<String> genres;
 
+  /// Publication status, when the source provides it on the search/browse item
+  /// itself (Mihon/Aniyomi carry it — same `status` field already parsed for
+  /// [MediaDetail.status], now also carried on the list item). Null — NOT
+  /// [MediaStatus.unknown] — means "this source didn't say", so an explicitly
+  /// reported "unknown" status and "no data at all" stay distinguishable;
+  /// see [mediaItemFromSManga]/[mediaItemFromSAnime] for the mapping. Drives
+  /// the search screen's Status filter, which self-hides when nothing in the
+  /// current results carries one.
+  final MediaStatus? status;
+
   const MediaItem({
     required this.id,
     required this.title,
@@ -56,6 +67,7 @@ class MediaItem extends Equatable {
     this.tmdbIsTv = false,
     this.imdbId,
     this.genres = const [],
+    this.status,
   });
 
   factory MediaItem.fromJson(Map<String, dynamic> json) =>
@@ -103,6 +115,7 @@ class MediaItem extends Equatable {
     tmdbIsTv,
     imdbId,
     genres,
+    status,
   ];
 }
 
@@ -133,7 +146,8 @@ MediaItem? bestTitleMatch(
   }..removeWhere((s) => s.isEmpty);
   for (final m in results) {
     if (wants.contains(normalizeTitle(m.title)) ||
-        (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)))) {
+        (m.englishTitle != null &&
+            wants.contains(normalizeTitle(m.englishTitle!)))) {
       return m;
     }
   }

@@ -23,6 +23,15 @@ MediaStatus _statusFromInt(int? v) {
   }
 }
 
+/// Same as [_statusFromInt] but folds the "unknown" fallback to null —
+/// [MediaItem.status] uses null to mean "this source didn't say", so it stays
+/// distinguishable from a status the source actually reported. Only used on
+/// the search/browse mapping; the detail mapping keeps the non-null default.
+MediaStatus? _itemStatus(int? v) {
+  final s = _statusFromInt(v);
+  return s == MediaStatus.unknown ? null : s;
+}
+
 /// Splits the comma-separated `genre` field from SAnime into a Dart list.
 List<String> _parseGenres(String? genre) {
   if (genre == null || genre.isEmpty) return const [];
@@ -51,6 +60,9 @@ List<String> _parseGenres(String? genre) {
 ///   thumbnail_url — String? (cover image)
 ///   genre         — String? (comma-separated, e.g. "Action, Comedy") — feeds
 ///                   [MediaItem.genres], same parsing as [mediaDetailFromSAnime].
+///   status        — int?   (0=unknown, 1=ongoing, 2=completed, 5=cancelled,
+///                   6=hiatus) — feeds [MediaItem.status]; folded to null when
+///                   unknown, see [_itemStatus].
 MediaItem mediaItemFromSAnime(
   Map<String, dynamic> j, {
   required String sourceId,
@@ -63,8 +75,9 @@ MediaItem mediaItemFromSAnime(
   // instead of CachedNetworkImage. The key is never sent over the network.
   Map<String, String>? coverHeaders;
   if (headers != null && headers.isNotEmpty) {
-    final numericId =
-        sourceId.startsWith('ani:') ? sourceId.substring(4) : sourceId;
+    final numericId = sourceId.startsWith('ani:')
+        ? sourceId.substring(4)
+        : sourceId;
     coverHeaders = {...headers, 'x-ani-src': numericId};
   }
   return MediaItem(
@@ -76,6 +89,7 @@ MediaItem mediaItemFromSAnime(
     type: ProviderType.anime,
     sourceId: sourceId,
     genres: _parseGenres(j['genre'] as String?),
+    status: _itemStatus((j['status'] as num?)?.toInt()),
   );
 }
 
@@ -106,8 +120,9 @@ MediaDetail mediaDetailFromSAnime(
   // uses the same AniyomiImage guard in detail_screen.dart.
   Map<String, String>? coverHeaders;
   if (headers != null && headers.isNotEmpty) {
-    final numericId =
-        sourceId.startsWith('ani:') ? sourceId.substring(4) : sourceId;
+    final numericId = sourceId.startsWith('ani:')
+        ? sourceId.substring(4)
+        : sourceId;
     coverHeaders = {...headers, 'x-ani-src': numericId};
   }
   return MediaDetail(
@@ -178,16 +193,15 @@ Episode episodeFromSEpisode(Map<String, dynamic> j) {
 VideoSource videoSourceFromVideo(Map<String, dynamic> j) {
   final videoUrl = (j['videoUrl'] as String?) ?? '';
   final lowerUrl = videoUrl.toLowerCase();
-  final container =
-      lowerUrl.endsWith('.m3u8') ? SourceContainer.hls : SourceContainer.mp4;
+  final container = lowerUrl.endsWith('.m3u8')
+      ? SourceContainer.hls
+      : SourceContainer.mp4;
 
   // Headers arrive as a JSON object {"Referer":"https://..."}
   Map<String, String>? headers;
   final rawHeaders = j['headers'];
   if (rawHeaders is Map && rawHeaders.isNotEmpty) {
-    headers = {
-      for (final e in rawHeaders.entries) '${e.key}': '${e.value}',
-    };
+    headers = {for (final e in rawHeaders.entries) '${e.key}': '${e.value}'};
   }
 
   // Subtitle tracks: [{url, lang}]

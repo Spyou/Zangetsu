@@ -26,6 +26,7 @@ MediaItem _$MediaItemFromJson(Map<String, dynamic> json) => MediaItem(
   genres:
       (json['genres'] as List<dynamic>?)?.map((e) => e as String).toList() ??
       const [],
+  status: $enumDecodeNullable(_$MediaStatusEnumMap, json['status']),
 );
 
 Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
@@ -44,6 +45,7 @@ Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
   'tmdbIsTv': instance.tmdbIsTv,
   'imdbId': instance.imdbId,
   'genres': instance.genres,
+  'status': _$MediaStatusEnumMap[instance.status],
 };
 
 const _$ProviderTypeEnumMap = {
@@ -51,4 +53,12 @@ const _$ProviderTypeEnumMap = {
   ProviderType.movie: 'movie',
   ProviderType.manga: 'manga',
   ProviderType.novel: 'novel',
+};
+
+const _$MediaStatusEnumMap = {
+  MediaStatus.ongoing: 'ongoing',
+  MediaStatus.completed: 'completed',
+  MediaStatus.hiatus: 'hiatus',
+  MediaStatus.cancelled: 'cancelled',
+  MediaStatus.unknown: 'unknown',
 };

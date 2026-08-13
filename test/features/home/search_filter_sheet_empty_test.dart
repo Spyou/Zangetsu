@@ -32,20 +32,25 @@ void main() {
       expect(searchFilterSections(_buckets(), ContentMode.anime), isEmpty);
     });
 
-    test('anime/movies/nsfw each become their own category, in order, exactly '
-        'like the original hardcoded literal — reading buckets never leak in',
-        () {
-      final buckets = _buckets(
-        anime: [_row],
-        movies: [_row],
-        nsfw: [_row],
-        manga: [_row],
-        novel: [_row],
-      );
-      final sections = searchFilterSections(buckets, ContentMode.anime);
-      expect(sections.map((s) => s.title).toList(),
-          ['Anime', 'Movies & Series', 'NSFW']);
-    });
+    test(
+      'anime/movies/nsfw each become their own category, in order, exactly '
+      'like the original hardcoded literal — reading buckets never leak in',
+      () {
+        final buckets = _buckets(
+          anime: [_row],
+          movies: [_row],
+          nsfw: [_row],
+          manga: [_row],
+          novel: [_row],
+        );
+        final sections = searchFilterSections(buckets, ContentMode.anime);
+        expect(sections.map((s) => s.title).toList(), [
+          'Anime',
+          'Movies & Series',
+          'NSFW',
+        ]);
+      },
+    );
   });
 
   group('searchFilterSections — reading modes', () {
@@ -66,13 +71,36 @@ void main() {
       expect(sections.single.rows, [_row]);
     });
 
-    test('novel mode with a novel source installed → a single Novel section',
-        () {
-      final buckets = _buckets(novel: [_row]);
-      final sections = searchFilterSections(buckets, ContentMode.novel);
-      expect(sections.map((s) => s.title).toList(), ['Novel']);
-    });
+    test(
+      'novel mode with a novel source installed → a single Novel section',
+      () {
+        final buckets = _buckets(novel: [_row]);
+        final sections = searchFilterSections(buckets, ContentMode.novel);
+        expect(sections.map((s) => s.title).toList(), ['Novel']);
+      },
+    );
   });
+
+  group(
+    'searchTypeAudioGroupsVisible — Type/Audio are anime-only concepts',
+    () {
+      // Both used to render unconditionally, so in manga/novel mode every
+      // option (SearchContentFilter only distinguishes anime vs movie;
+      // SearchAudioFilter keys off subCount/dubCount reading sources never set)
+      // filtered out 100% of results — the exact bug this task removes.
+      test('shown in anime mode', () {
+        expect(searchTypeAudioGroupsVisible(ContentMode.anime), isTrue);
+      });
+
+      test('hidden in manga mode', () {
+        expect(searchTypeAudioGroupsVisible(ContentMode.manga), isFalse);
+      });
+
+      test('hidden in novel mode', () {
+        expect(searchTypeAudioGroupsVisible(ContentMode.novel), isFalse);
+      });
+    },
+  );
 
   group('SearchSourcesEmptyView', () {
     testWidgets(

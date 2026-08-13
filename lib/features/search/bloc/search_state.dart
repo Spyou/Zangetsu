@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../core/models/media_detail.dart' show MediaStatus;
 import '../../../core/models/media_item.dart';
 import '../../../core/models/provider_info.dart';
 
@@ -58,6 +59,32 @@ enum SearchAudioFilter {
         return (item.subCount ?? 0) > 0;
       case SearchAudioFilter.dubbed:
         return (item.dubCount ?? 0) > 0;
+    }
+  }
+}
+
+/// Publication-status filter. Real data: [MediaItem.status], carried from the
+/// same Mihon/Aniyomi `status` field already parsed for [MediaDetail.status]
+/// (see `mihon_mapping.dart`/`aniyomi_mapping.dart`) — not a title-text guess
+/// like the old decade filter was. Not mode-gated: both Mihon (manga) and
+/// Aniyomi (anime) sources report it.
+enum SearchStatusFilter {
+  any('Any'),
+  ongoing('Ongoing'),
+  completed('Completed');
+
+  const SearchStatusFilter(this.label);
+  final String label;
+
+  /// True when [item] passes this status filter.
+  bool matches(MediaItem item) {
+    switch (this) {
+      case SearchStatusFilter.any:
+        return true;
+      case SearchStatusFilter.ongoing:
+        return item.status == MediaStatus.ongoing;
+      case SearchStatusFilter.completed:
+        return item.status == MediaStatus.completed;
     }
   }
 }
@@ -207,6 +234,10 @@ class SearchState extends Equatable {
   /// clearable.
   final String? genreFilter;
 
+  /// Active publication-status filter (Any / Ongoing / Completed). Not
+  /// mode-gated — see [SearchStatusFilter].
+  final SearchStatusFilter statusFilter;
+
   final String? error;
 
   /// Trending titles for the idle screen (loaded once).
@@ -275,6 +306,7 @@ class SearchState extends Equatable {
     this.contentFilter = SearchContentFilter.all,
     this.audioFilter = SearchAudioFilter.any,
     this.genreFilter,
+    this.statusFilter = SearchStatusFilter.any,
     this.error,
     this.trending = const [],
     this.suggestions = const [],
@@ -293,7 +325,8 @@ class SearchState extends Equatable {
   bool get hasActiveFilter =>
       contentFilter != SearchContentFilter.all ||
       audioFilter != SearchAudioFilter.any ||
-      genreFilter != null;
+      genreFilter != null ||
+      statusFilter != SearchStatusFilter.any;
 
   /// Count of non-default selections across the whole merged Filters sheet —
   /// [sort] included, unlike [hasActiveFilter] — for the sheet header/toolbar
@@ -303,15 +336,17 @@ class SearchState extends Equatable {
       (sort != SearchSort.bestMatch ? 1 : 0) +
       (contentFilter != SearchContentFilter.all ? 1 : 0) +
       (audioFilter != SearchAudioFilter.any ? 1 : 0) +
-      (genreFilter != null ? 1 : 0);
+      (genreFilter != null ? 1 : 0) +
+      (statusFilter != SearchStatusFilter.any ? 1 : 0);
 
-  /// Applies the content-type + audio + genre filters to [item].
+  /// Applies the content-type + audio + genre + status filters to [item].
   bool _passes(MediaItem item) {
     if (!contentFilter.matches(item)) return false;
     if (!audioFilter.matches(item)) return false;
     if (genreFilter != null && !SearchMeta.matchesGenre(item, genreFilter!)) {
       return false;
     }
+    if (!statusFilter.matches(item)) return false;
     return true;
   }
 
@@ -360,6 +395,23 @@ class SearchState extends Equatable {
   /// says so instead of leaving that unexplained.
   bool get hasItemsWithoutGenre =>
       groups.any((g) => g.items.any((item) => item.genres.isEmpty));
+
+  /// True when at least one result across all groups carries a (real, source-
+  /// reported) publication status — see [MediaItem.status]. Drives whether the
+  /// filter sheet's Status group shows at all: most sources never set it, and a
+  /// filter that mostly matches nothing is exactly what this group must avoid.
+  bool get hasAnyStatus =>
+      groups.any((g) => g.items.any((item) => item.status != null));
+
+  /// True when at least one result reports a sub or dub count. Same reasoning
+  /// as [hasAnyStatus]: movie-oriented sources never set these, so on a result
+  /// set built from them the Audio group would sit there offering Subbed and
+  /// Dubbed and empty the list either way.
+  bool get hasAnyAudio => groups.any(
+    (g) => g.items.any(
+      (item) => (item.subCount ?? 0) > 0 || (item.dubCount ?? 0) > 0,
+    ),
+  );
 
   /// Result groups (in the active ecosystem) that have at least one item under
   /// the active filters.
@@ -434,7 +486,10 @@ class SearchState extends Equatable {
   }
 
   /// A section's relevance = the best [_scoreItem] among its items.
-  double _bestScore(List<MediaItem> items, ({String q, List<String> tokens}) m) {
+  double _bestScore(
+    List<MediaItem> items,
+    ({String q, List<String> tokens}) m,
+  ) {
     var best = 0.0;
     for (final e in items) {
       final s = _scoreItem(e, m);
@@ -549,6 +604,7 @@ class SearchState extends Equatable {
     SearchAudioFilter? audioFilter,
     String? genreFilter,
     bool clearGenreFilter = false,
+    SearchStatusFilter? statusFilter,
     String? error,
     bool clearError = false,
     List<MediaItem>? trending,
@@ -571,6 +627,7 @@ class SearchState extends Equatable {
     contentFilter: contentFilter ?? this.contentFilter,
     audioFilter: audioFilter ?? this.audioFilter,
     genreFilter: clearGenreFilter ? null : (genreFilter ?? this.genreFilter),
+    statusFilter: statusFilter ?? this.statusFilter,
     error: clearError ? null : (error ?? this.error),
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
@@ -597,6 +654,7 @@ class SearchState extends Equatable {
     contentFilter,
     audioFilter,
     genreFilter,
+    statusFilter,
     error,
     trending,
     suggestions,

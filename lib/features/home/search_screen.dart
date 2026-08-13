@@ -366,7 +366,11 @@ class _SearchViewState extends State<_SearchView>
             _sourcePillsRow(),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: AppColors.hairline,
+              ),
             ),
             const SizedBox(height: 6),
             Expanded(
@@ -536,9 +540,7 @@ class _SearchViewState extends State<_SearchView>
                 // lower than it looked like it should.
                 padding: const EdgeInsets.only(top: 5, bottom: 11),
                 decoration: const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.hairline),
-                  ),
+                  border: Border(bottom: BorderSide(color: AppColors.hairline)),
                 ),
                 child: Row(
                   children: [
@@ -752,7 +754,8 @@ class _SearchViewState extends State<_SearchView>
           p.groups != c.groups ||
           p.contentFilter != c.contentFilter ||
           p.audioFilter != c.audioFilter ||
-          p.genreFilter != c.genreFilter,
+          p.genreFilter != c.genreFilter ||
+          p.statusFilter != c.statusFilter,
       builder: (context, state) {
         if (state.currentSourceOnly) {
           if (state.status != SearchStatus.success) {
@@ -791,6 +794,7 @@ class _SearchViewState extends State<_SearchView>
           p.contentFilter != c.contentFilter ||
           p.audioFilter != c.audioFilter ||
           p.genreFilter != c.genreFilter ||
+          p.statusFilter != c.statusFilter ||
           p.currentSourceOnly != c.currentSourceOnly,
       builder: (context, state) => ListenableBuilder(
         listenable: sl<SearchSourcePrefs>(),
@@ -1000,6 +1004,7 @@ class _SearchViewState extends State<_SearchView>
           p.contentFilter != c.contentFilter ||
           p.audioFilter != c.audioFilter ||
           p.genreFilter != c.genreFilter ||
+          p.statusFilter != c.statusFilter ||
           p.ecosystem != c.ecosystem ||
           p.suggestions != c.suggestions ||
           p.status != c.status,
@@ -1754,7 +1759,9 @@ class _SearchViewState extends State<_SearchView>
 /// [_SearchFilterSheet]) so it's unit-testable without a real [SearchBloc].
 List<({String title, List<({String id, String label, String? repo})> rows})>
 searchFilterSections(SourceBuckets buckets, ContentMode mode) {
-  final readingBucket = mode == ContentMode.manga ? buckets.manga : buckets.novel;
+  final readingBucket = mode == ContentMode.manga
+      ? buckets.manga
+      : buckets.novel;
   return [
     if (!mode.isReading && buckets.anime.isNotEmpty)
       (title: 'Anime', rows: buckets.anime),
@@ -1795,9 +1802,7 @@ class SearchSourcesEmptyView extends StatelessWidget {
     if (!mode.isReading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(
-          child: Text('No sources installed', style: AppText.body),
-        ),
+        child: Center(child: Text('No sources installed', style: AppText.body)),
       );
     }
     return Padding(
@@ -1833,7 +1838,8 @@ class _SearchFilterSheet extends StatelessWidget {
       ..add(const SearchSortChanged(SearchSort.bestMatch))
       ..add(const SearchContentFilterChanged(SearchContentFilter.all))
       ..add(const SearchAudioFilterChanged(SearchAudioFilter.any))
-      ..add(const SearchGenreFilterChanged(null));
+      ..add(const SearchGenreFilterChanged(null))
+      ..add(const SearchStatusFilterChanged(SearchStatusFilter.any));
   }
 
   bool _canReset(SearchState state, SearchSourcePrefs prefs) =>
@@ -1880,8 +1886,15 @@ class _SearchFilterSheet extends StatelessWidget {
                   children: [
                     _sortSelector(context),
                     if (showTypeAudio) _contentTypeSelector(context),
-                    if (showTypeAudio) _audioSelector(context),
+                    // Audio needs BOTH anime mode and results that actually
+                    // report sub/dub counts — movie sources never set them, so
+                    // without the second test the group shows and either choice
+                    // empties the list. Same rule Genre and Status already use.
+                    if (showTypeAudio &&
+                        context.watch<SearchBloc>().state.hasAnyAudio)
+                      _audioSelector(context),
                     _genreSelector(context),
+                    _statusSelector(context),
                     if (!context.read<SearchBloc>().state.currentSourceOnly)
                       _sourcesSummaryRow(context, sections, prefs, mode),
                   ],
@@ -1913,15 +1926,13 @@ class _SearchFilterSheet extends StatelessWidget {
                 p.sort != c.sort ||
                 p.contentFilter != c.contentFilter ||
                 p.audioFilter != c.audioFilter ||
-                p.genreFilter != c.genreFilter,
+                p.genreFilter != c.genreFilter ||
+                p.statusFilter != c.statusFilter,
             builder: (context, state) {
               final count = state.activeFilterCount;
               if (count == 0) return const SizedBox.shrink();
               return Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 7,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppColors.accent,
                   borderRadius: BorderRadius.circular(999),
@@ -1943,6 +1954,7 @@ class _SearchFilterSheet extends StatelessWidget {
                 p.contentFilter != c.contentFilter ||
                 p.audioFilter != c.audioFilter ||
                 p.genreFilter != c.genreFilter ||
+                p.statusFilter != c.statusFilter ||
                 p.sort != c.sort ||
                 p.currentSourceOnly != c.currentSourceOnly,
             builder: (context, state) {
@@ -1976,6 +1988,7 @@ class _SearchFilterSheet extends StatelessWidget {
           p.contentFilter != c.contentFilter ||
           p.audioFilter != c.audioFilter ||
           p.genreFilter != c.genreFilter ||
+          p.statusFilter != c.statusFilter ||
           p.sort != c.sort ||
           p.groups != c.groups ||
           p.ecosystem != c.ecosystem ||
@@ -2242,6 +2255,51 @@ class _SearchFilterSheet extends StatelessWidget {
                   ),
                 ),
               ],
+              const SizedBox(height: 6),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Status (Ongoing/Completed) selector — real data, see [MediaItem.status]
+  /// (carried from Mihon/Aniyomi, same as [MediaDetail.status]). Not mode-
+  /// gated like Type/Audio — both manga (Mihon) and anime (Aniyomi) sources
+  /// report it — instead it self-hides via [SearchState.hasAnyStatus], same
+  /// spirit as the genre selector self-hiding when there's nothing to offer;
+  /// kept visible while a filter is active so a stale selection stays
+  /// reachable to clear.
+  Widget _statusSelector(BuildContext context) {
+    return BlocBuilder<SearchBloc, SearchState>(
+      buildWhen: (p, c) =>
+          p.statusFilter != c.statusFilter || p.groups != c.groups,
+      builder: (context, state) {
+        if (!state.hasAnyStatus &&
+            state.statusFilter == SearchStatusFilter.any) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _filterLabel('STATUS'),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final f in SearchStatusFilter.values)
+                    _pill(
+                      label: f.label,
+                      selected: state.statusFilter == f,
+                      onTap: () => context.read<SearchBloc>().add(
+                        SearchStatusFilterChanged(f),
+                      ),
+                    ),
+                ],
+              ),
               const SizedBox(height: 6),
             ],
           ),

@@ -26,6 +26,8 @@ class _FakeSearchPrefs extends SearchPrefs {
   @override
   String? get audioFilterName => null;
   @override
+  String? get statusFilterName => null;
+  @override
   String? get sortName => null;
   @override
   String? get genre => null;
@@ -38,6 +40,8 @@ class _FakeSearchPrefs extends SearchPrefs {
   Future<void> setContentFilterName(String name) async {}
   @override
   Future<void> setAudioFilterName(String name) async {}
+  @override
+  Future<void> setStatusFilterName(String name) async {}
   @override
   Future<void> setSortName(String name) async {}
   @override

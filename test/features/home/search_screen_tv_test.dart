@@ -37,6 +37,8 @@ class _StubSearchPrefs extends SearchPrefs {
   @override
   String? get audioFilterName => null;
   @override
+  String? get statusFilterName => null;
+  @override
   String? get sortName => null;
   @override
   String? get genre => null;

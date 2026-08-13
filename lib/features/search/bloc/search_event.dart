@@ -107,6 +107,15 @@ class SearchAudioFilterChanged extends SearchEvent {
   List<Object?> get props => [filter];
 }
 
+/// Switches the publication-status filter (Any / Ongoing / Completed).
+class SearchStatusFilterChanged extends SearchEvent {
+  const SearchStatusFilterChanged(this.filter);
+  final SearchStatusFilter filter;
+
+  @override
+  List<Object?> get props => [filter];
+}
+
 /// Fired once on open to load trending titles for the idle screen.
 class SearchStarted extends SearchEvent {
   const SearchStarted();

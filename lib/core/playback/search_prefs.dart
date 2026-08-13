@@ -26,6 +26,7 @@ class SearchPrefs extends ChangeNotifier {
   static const String _layoutKey = 'layout';
   static const String _contentFilterKey = 'contentFilter';
   static const String _audioFilterKey = 'audioFilter';
+  static const String _statusFilterKey = 'statusFilter';
   static const String _sortKey = 'sort';
   static const String _genreKey = 'genre';
   static const String _decadeKey = 'decade';
@@ -80,6 +81,11 @@ class SearchPrefs extends ChangeNotifier {
   Future<void> setAudioFilterName(String name) =>
       _box.put(_audioFilterKey, name);
 
+  /// Stored by enum name, same pattern as [contentFilterName].
+  String? get statusFilterName => _box.get(_statusFilterKey) as String?;
+  Future<void> setStatusFilterName(String name) =>
+      _box.put(_statusFilterKey, name);
+
   String? get sortName => _box.get(_sortKey) as String?;
   Future<void> setSortName(String name) => _box.put(_sortKey, name);
 
@@ -89,8 +95,7 @@ class SearchPrefs extends ChangeNotifier {
     return (g == null || g.isEmpty) ? null : g;
   }
 
-  Future<void> setGenre(String? genre) =>
-      _box.put(_genreKey, genre ?? '');
+  Future<void> setGenre(String? genre) => _box.put(_genreKey, genre ?? '');
 
   /// A decade start year (e.g. 2020 means 2020–2029) or null for "Any".
   ///

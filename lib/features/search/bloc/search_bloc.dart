@@ -40,6 +40,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchContentFilterChanged>(_onContentFilterChanged);
     on<SearchAudioFilterChanged>(_onAudioFilterChanged);
     on<SearchGenreFilterChanged>(_onGenreFilterChanged);
+    on<SearchStatusFilterChanged>(_onStatusFilterChanged);
     on<SearchRunRequested>(_onRunRequested);
     on<SearchSubmitted>(_onSubmitted);
     on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
@@ -110,11 +111,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       (f) => f.name == prefs.audioFilterName,
       orElse: () => SearchAudioFilter.any,
     );
+    final statusFilter = SearchStatusFilter.values.firstWhere(
+      (f) => f.name == prefs.statusFilterName,
+      orElse: () => SearchStatusFilter.any,
+    );
     return SearchState(
       contentFilter: content,
       sort: sort,
       audioFilter: audio,
       genreFilter: prefs.genre,
+      statusFilter: statusFilter,
       currentSourceOnly: prefs.currentSourceOnly,
     );
   }
@@ -287,6 +293,16 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     _prefs.setGenre(event.genre);
   }
 
+  void _onStatusFilterChanged(
+    SearchStatusFilterChanged event,
+    Emitter<SearchState> emit,
+  ) {
+    // Switching status can hide the active source group; fall back to "All
+    // sources" so the user never lands on an empty filtered view.
+    emit(state.copyWith(statusFilter: event.filter, sourceFilter: kAllSources));
+    _prefs.setStatusFilterName(event.filter.name);
+  }
+
   /// The single entry point for the heavy search. Sets [query] when provided
   /// (suggestion taps), cancels any pending autocomplete, clears suggestions,
   /// and runs the cross-source search.
@@ -351,9 +367,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       sources = [(id: activeId, name: _repo.displayName(activeId))];
     } else {
       final prefs = sl<SearchSourcePrefs>();
-      sources = _modeSources()
-          .where((s) => prefs.isIncluded(s.id))
-          .toList();
+      sources = _modeSources().where((s) => prefs.isIncluded(s.id)).toList();
     }
     if (sources.isEmpty) {
       emit(state.copyWith(status: SearchStatus.error));
@@ -439,7 +453,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
             // touching status/groups) so its pending skeleton clears instead of
             // sitting there forever. See [SearchState.respondedSources].
             emit(
-              state.copyWith(respondedSources: {...state.respondedSources, s.id}),
+              state.copyWith(
+                respondedSources: {...state.respondedSources, s.id},
+              ),
             );
           }
         } catch (_) {
@@ -448,7 +464,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           anyError = true;
           if (!isClosed && gen == _runGen) {
             emit(
-              state.copyWith(respondedSources: {...state.respondedSources, s.id}),
+              state.copyWith(
+                respondedSources: {...state.respondedSources, s.id},
+              ),
             );
           }
         }
@@ -562,7 +580,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     Emitter<SearchState> emit,
   ) async {
     if (filtersJson == null || filtersJson.isEmpty) {
-      emit(state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''));
+      emit(
+        state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''),
+      );
       return;
     }
     try {
@@ -583,7 +603,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       );
     } catch (_) {
       if (isClosed) return;
-      emit(state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''));
+      emit(
+        state.copyWith(filteredBrowse: const [], filteredBrowseSourceId: ''),
+      );
     }
   }
 
