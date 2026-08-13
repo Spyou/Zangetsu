@@ -21,11 +21,9 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
-import 'aniyomi_recommended_repos.dart';
 import 'aniyomi_repo_tab.dart' show kAniyomiReposBoxName, AniyomiAddRepoDialog, AniyomiRepoTab;
 import 'source_language_sheet.dart';
 import 'sources_search_field.dart';
-import 'tv_recommended_aniyomi_repos.dart';
 
 /// Dedicated Aniyomi ecosystem screen — Installed + Repositories in one
 /// scroll. Stateful because it owns the Aniyomi-repos Hive-box state
@@ -1587,10 +1585,6 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
               '"/index.min.json" automatically.',
               style: AppText.caption,
             ),
-            if (kRecommendedAniyomiRepos.isNotEmpty)
-              TvRecommendedAniyomiRepos(
-                onPick: (url) => Navigator.pop(context, url),
-              ),
           ],
         ),
       ),

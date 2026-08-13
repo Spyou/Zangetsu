@@ -25,7 +25,6 @@ import '../onboarding/how_it_works.dart';
 import '../player/tv_exo_spike_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
-import '../sources/tv_recommended_cs_repos.dart';
 import '../update/update_dialog.dart';
 import 'connections_screen_tv.dart';
 import 'discord_settings_screen.dart';
@@ -736,9 +735,8 @@ class _TvAddRepoDialog extends StatefulWidget {
 
 class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
   final _controller = TextEditingController();
-  // Not auto-focused: the dialog opens with the first RECOMMENDED repo focused
-  // so a recommendation is one OK-press away and stays visible (auto-raising the
-  // leanback IME would cover it). Focus the field + OK to type a custom URL.
+  // Not auto-focused on purpose: auto-focusing the field would raise the
+  // leanback IME and cover the dialog. D-pad to the field + OK to type a URL.
   final _focusNode = FocusNode();
 
   @override
@@ -769,10 +767,6 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
                 hintText: 'https://.../repo.json',
               ),
               onSubmitted: (v) => Navigator.pop(context, v.trim()),
-            ),
-            // Same recommended repos as the phone dialog, D-pad-focusable.
-            TvRecommendedCsRepos(
-              onPick: (url) => Navigator.pop(context, url),
             ),
           ],
         ),

@@ -13,7 +13,6 @@ import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
-import 'mihon_recommended_repos.dart';
 import 'sources_search_field.dart';
 
 /// Hive box name for persisted Mihon repo URLs.
@@ -61,59 +60,6 @@ class _MihonAddRepoDialogState extends State<MihonAddRepoDialog> {
     if (url.isNotEmpty) Navigator.pop(context, url);
   }
 
-  Widget _recommendedTile(
-    BuildContext context,
-    ({String name, String desc, String url}) repo,
-  ) {
-    final added = widget.alreadyAddedUrls.contains(repo.url);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  repo.name,
-                  style: AppText.body.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(repo.desc, style: AppText.caption),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          if (added)
-            Text(
-              'Added',
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            )
-          else
-            OutlinedButton(
-              onPressed: () => Navigator.pop(context, repo.url),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accent,
-                side: BorderSide(
-                  color: AppColors.accent.withValues(alpha: 0.6),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 6,
-                ),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text('Add'),
-            ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -142,20 +88,6 @@ class _MihonAddRepoDialogState extends State<MihonAddRepoDialog> {
               '"/index.json" automatically.',
               style: AppText.caption,
             ),
-            if (kRecommendedMihonRepos.isNotEmpty) ...[
-              const SizedBox(height: 18),
-              Text(
-                'RECOMMENDED',
-                style: AppText.caption.copyWith(
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                ),
-              ),
-              const SizedBox(height: 4),
-              for (final r in kRecommendedMihonRepos)
-                _recommendedTile(context, r),
-            ],
           ],
         ),
       ),

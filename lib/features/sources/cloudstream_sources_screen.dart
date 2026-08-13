@@ -13,9 +13,7 @@ import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/states.dart';
 import 'source_settings_screen.dart';
-import 'sources_screen.dart' show kRecommendedCsRepos;
 import 'sources_search_field.dart';
-import 'tv_recommended_cs_repos.dart';
 
 /// Dedicated CloudStream ecosystem screen — Installed + Repositories in one
 /// scroll. Self-contained: [CloudStreamManager] is an `sl` singleton, so the
@@ -1088,59 +1086,6 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
 
   void _submit() => Navigator.pop(context, _urlCtrl.text.trim());
 
-  /// A recommended repo row: name + blurb, with a one-tap "Add" that closes
-  /// the dialog with the repo URL (same code path as a pasted one), or an
-  /// "Added" marker when it's already in the user's list.
-  Widget _recommendedTile(
-    BuildContext context,
-    ({String name, String desc, String url}) repo,
-  ) {
-    final added = sl<CloudStreamManager>().hasRepo(repo.url);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  repo.name,
-                  style: AppText.body.copyWith(
-                    color: AppColors.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(repo.desc, style: AppText.caption),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          if (added)
-            Text(
-              'Added',
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            )
-          else
-            OutlinedButton(
-              onPressed: () => Navigator.pop(context, repo.url),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accent,
-                side: BorderSide(
-                  color: AppColors.accent.withValues(alpha: 0.6),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: const Text('Add'),
-            ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1169,17 +1114,6 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
               'source it lists.',
               style: AppText.caption,
             ),
-            const SizedBox(height: 18),
-            Text(
-              'RECOMMENDED',
-              style: AppText.caption.copyWith(
-                color: AppColors.textSecondary,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            for (final r in kRecommendedCsRepos) _recommendedTile(context, r),
           ],
         ),
       ),
@@ -2413,10 +2347,8 @@ class _CsScreenTvAddRepoDialog extends StatefulWidget {
 
 class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
   final _urlCtrl = TextEditingController();
-  // Not auto-focused: the dialog opens with the first RECOMMENDED repo
-  // focused so a recommendation is one OK-press away and stays visible
-  // (auto-raising the leanback IME would cover it). Focus the field + OK to
-  // type a custom URL.
+  // Not auto-focused on purpose: auto-focusing the field would raise the
+  // leanback IME and cover the dialog. D-pad to the field + OK to type a URL.
   final _urlFocus = FocusNode();
 
   @override
@@ -2454,10 +2386,6 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
             Text(
               'Paste a CloudStream repository URL.',
               style: AppText.caption,
-            ),
-            // Same recommended repos as the phone dialog, D-pad-focusable.
-            TvRecommendedCsRepos(
-              onPick: (url) => Navigator.pop(context, url),
             ),
           ],
         ),

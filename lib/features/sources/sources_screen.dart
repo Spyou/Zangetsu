@@ -9,7 +9,6 @@ import '../../core/aniyomi/aniyomi_provider.dart';
 import '../../core/aniyomi/aniyomi_update.dart';
 import '../../core/provider/base_provider.dart';
 import '../../core/di/injector.dart';
-import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -381,26 +380,6 @@ class _AniSourceRowState extends State<_AniSourceRow> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Shared CloudStream repo recommendations
-// ---------------------------------------------------------------------------
-
-/// One-tap CloudStream repos surfaced in the "Add CS repo" dialog (see
-/// [CloudStreamSourcesScreen]). Each is added through the same
-/// [CloudStreamManager.addRepo] path as a manually pasted URL.
-const List<({String name, String desc, String url})> kRecommendedCsRepos = [
-  (
-    name: 'Phisher',
-    desc: 'Large multi-source pack — anime, movies & series',
-    url: 'https://raw.githubusercontent.com/phisher98/cloudstream-extensions-phisher/refs/heads/builds/repo.json',
-  ),
-  (
-    name: 'CNC (All Languages)',
-    desc: 'Multi-language movies, series & live TV',
-    url: 'https://raw.githubusercontent.com/NivinCNC/CNCVerse-Cloud-Stream-Extension/refs/heads/builds/CNC.json',
-  ),
-];
 
 /// Test-only handle to the private installed Aniyomi row.
 @visibleForTesting

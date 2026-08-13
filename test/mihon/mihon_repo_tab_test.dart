@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/aniyomi/aniyomi_repo.dart';
 import 'package:watch_app/core/mihon/mihon_extension_service.dart';
-import 'package:watch_app/features/sources/mihon_recommended_repos.dart';
 import 'package:watch_app/features/sources/mihon_repo_tab.dart';
 
 /// Widget tests for the Mihon repo add/browse/install UI. Structural twin of
@@ -55,59 +54,10 @@ void main() {
     await Hive.box<dynamic>(MihonExtensionService.installedBoxName).clear();
   });
 
-  // ── kRecommendedMihonRepos ──────────────────────────────────────────────
-  //
-  // Asserts real, specific values (not just "the list built") so a wrong
-  // repo URL or an accidentally-emptied list actually fails this test.
-
-  group('kRecommendedMihonRepos', () {
-    test('contains exactly the verified keiyoushi entry', () {
-      expect(kRecommendedMihonRepos, hasLength(1));
-      final repo = kRecommendedMihonRepos.single;
-      expect(repo.name, 'Keiyoushi');
-      expect(
-        repo.url,
-        'https://raw.githubusercontent.com/keiyoushi/extensions/repo',
-      );
-      expect(repo.desc, isNotEmpty);
-      // The URL must be the bare repo base — fetchIndex appends index.json
-      // itself, so a URL that already ends with an index file would double up
-      // and 404.
-      expect(repo.url, isNot(endsWith('index.min.json')));
-    });
-  });
-
   // ── MihonAddRepoDialog ──────────────────────────────────────────────────
 
   group('MihonAddRepoDialog', () {
-    testWidgets('shows all recommended repo names', (tester) async {
-      await tester.pumpWidget(_wrap(
-        Builder(
-          builder: (ctx) => ElevatedButton(
-            onPressed: () => showDialog<String>(
-              context: ctx,
-              builder: (_) => const MihonAddRepoDialog(),
-            ),
-            child: const Text('Open'),
-          ),
-        ),
-      ));
-
-      await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
-
-      // Dialog title is visible.
-      expect(find.text('Add Mihon repo'), findsOneWidget);
-
-      // Every recommended repo name appears.
-      for (final r in kRecommendedMihonRepos) {
-        expect(find.text(r.name), findsOneWidget,
-            reason: '${r.name} should appear in the dialog');
-      }
-    });
-
-    testWidgets(
-        'tapping recommended "Add" button pops dialog with the correct URL',
+    testWidgets('typing a URL and tapping Add pops the dialog with that URL',
         (tester) async {
       String? result;
       await tester.pumpWidget(MaterialApp(
@@ -129,25 +79,23 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      // Tap the "Add" button on the first recommended repo.
-      final addButtons = find.text('Add');
-      expect(addButtons, findsWidgets);
-      await tester.tap(addButtons.first);
+      await tester.enterText(
+        find.byType(TextField),
+        'https://example.com/my-repo',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Add'));
       await tester.pumpAndSettle();
 
-      expect(result, kRecommendedMihonRepos.first.url);
+      expect(result, 'https://example.com/my-repo');
     });
 
-    testWidgets('"Added" label shown when URL already in alreadyAddedUrls',
-        (tester) async {
+    testWidgets('does not render a RECOMMENDED section', (tester) async {
       await tester.pumpWidget(_wrap(
         Builder(
           builder: (ctx) => ElevatedButton(
             onPressed: () => showDialog<String>(
               context: ctx,
-              builder: (_) => MihonAddRepoDialog(
-                alreadyAddedUrls: {kRecommendedMihonRepos.first.url},
-              ),
+              builder: (_) => const MihonAddRepoDialog(),
             ),
             child: const Text('Open'),
           ),
@@ -157,8 +105,8 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      // Should show "Added" label, not an "Add" button for the first repo.
-      expect(find.text('Added'), findsOneWidget);
+      expect(find.text('Add Mihon repo'), findsOneWidget);
+      expect(find.text('RECOMMENDED'), findsNothing);
     });
   });
 

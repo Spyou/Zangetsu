@@ -12,19 +12,15 @@ import 'package:watch_app/core/provider/provider_downloader.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/provider/provider_repo_registry.dart';
-import 'package:watch_app/features/sources/zangetsu_recommended_repos.dart';
 import 'package:watch_app/features/sources/zangetsu_sources_screen.dart';
 
-// The Zangetsu (JS-provider) "Add repo" dialog used to offer the Sozo Read
-// pack as a recommended suggestion. That pack was dropped along with the
-// Zangetsu reading-source entry points — those JS sources are search-only
-// (no popular/latest), so selecting one left Home with nothing to render.
-// Manga is served by Mihon extensions instead; novel support is planned as
-// its own extension path. kRecommendedZangetsuRepos is now empty by design,
-// and the dialog's RECOMMENDED section is gated on it being non-empty — this
-// checks the dialog still renders cleanly with no stray section left behind.
-// PHONE view only (isTv: false); the TV variant (_ZTvAddRepoDialog /
-// _ZTvView) is untouched and not exercised here.
+// The Zangetsu (JS-provider) "Add repo" dialog used to offer a recommended
+// repo pack with a one-tap add. The whole recommended-repo surface — data,
+// tile, and section — was removed app-wide so the app never ships or
+// suggests specific extension repositories; only the manual URL field
+// remains. This checks the dialog still renders cleanly with no stray
+// RECOMMENDED section left behind. PHONE view only (isTv: false); the TV
+// variant (_ZTvAddRepoDialog / _ZTvView) is untouched and not exercised here.
 
 /// No-op runtime loader — no source is actually installed in these tests.
 class _FakeManager implements ProviderRuntimeLoader {
@@ -143,11 +139,8 @@ void main() {
   }
 
   testWidgets(
-    'kRecommendedZangetsuRepos is empty, and the add-repo dialog renders '
-    'with no stray RECOMMENDED section',
+    'add-repo dialog renders with no stray RECOMMENDED section',
     (tester) async {
-      expect(kRecommendedZangetsuRepos, isEmpty);
-
       await openAddRepoDialog(tester);
 
       expect(find.text('Add repo'), findsOneWidget);

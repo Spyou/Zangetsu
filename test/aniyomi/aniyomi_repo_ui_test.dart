@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/aniyomi/aniyomi_repo.dart';
-import 'package:watch_app/features/sources/aniyomi_recommended_repos.dart';
 import 'package:watch_app/features/sources/aniyomi_repo_tab.dart';
 
 /// Wraps [child] in a minimal MaterialApp+Scaffold suitable for widget tests.
@@ -53,34 +52,7 @@ void main() {
   // ── AniyomiAddRepoDialog ──────────────────────────────────────────────────
 
   group('AniyomiAddRepoDialog', () {
-    testWidgets('shows all recommended repo names', (tester) async {
-      await tester.pumpWidget(_wrap(
-        Builder(
-          builder: (ctx) => ElevatedButton(
-            onPressed: () => showDialog<String>(
-              context: ctx,
-              builder: (_) => const AniyomiAddRepoDialog(),
-            ),
-            child: const Text('Open'),
-          ),
-        ),
-      ));
-
-      await tester.tap(find.text('Open'));
-      await tester.pumpAndSettle();
-
-      // Dialog title is visible.
-      expect(find.text('Add Aniyomi repo'), findsOneWidget);
-
-      // Every recommended repo name appears.
-      for (final r in kRecommendedAniyomiRepos) {
-        expect(find.text(r.name), findsOneWidget,
-            reason: '${r.name} should appear in the dialog');
-      }
-    });
-
-    testWidgets(
-        'tapping recommended "Add" button pops dialog with the correct URL',
+    testWidgets('typing a URL and tapping Add pops the dialog with that URL',
         (tester) async {
       String? result;
       await tester.pumpWidget(MaterialApp(
@@ -102,25 +74,23 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      // Tap the "Add" button on the first recommended repo.
-      final addButtons = find.text('Add');
-      expect(addButtons, findsWidgets);
-      await tester.tap(addButtons.first);
+      await tester.enterText(
+        find.byType(TextField),
+        'https://example.com/my-repo',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Add'));
       await tester.pumpAndSettle();
 
-      expect(result, kRecommendedAniyomiRepos.first.url);
+      expect(result, 'https://example.com/my-repo');
     });
 
-    testWidgets('"Added" label shown when URL already in alreadyAddedUrls',
-        (tester) async {
+    testWidgets('does not render a RECOMMENDED section', (tester) async {
       await tester.pumpWidget(_wrap(
         Builder(
           builder: (ctx) => ElevatedButton(
             onPressed: () => showDialog<String>(
               context: ctx,
-              builder: (_) => AniyomiAddRepoDialog(
-                alreadyAddedUrls: {kRecommendedAniyomiRepos.first.url},
-              ),
+              builder: (_) => const AniyomiAddRepoDialog(),
             ),
             child: const Text('Open'),
           ),
@@ -130,8 +100,8 @@ void main() {
       await tester.tap(find.text('Open'));
       await tester.pumpAndSettle();
 
-      // Should show "Added" label, not an "Add" button for the first repo.
-      expect(find.text('Added'), findsOneWidget);
+      expect(find.text('Add Aniyomi repo'), findsOneWidget);
+      expect(find.text('RECOMMENDED'), findsNothing);
     });
   });
 
