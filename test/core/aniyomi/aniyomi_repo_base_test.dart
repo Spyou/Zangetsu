@@ -19,6 +19,19 @@ void main() {
       );
     });
 
+    // Regression: index.pb is the file MihonRepo.fetchIndex prefers, so it's
+    // the link people actually copy — but normalizeBase only knew about the
+    // two JSON names, so pasting it asked for `.../index.pb/index.pb` and the
+    // repo 404'd on every mirror.
+    test('strips a trailing /index.pb', () {
+      expect(
+        AniyomiRepo.normalizeBase(
+          'https://github.com/keiyoushi/extensions/raw/repo/index.pb',
+        ),
+        'https://github.com/keiyoushi/extensions/raw/repo',
+      );
+    });
+
     test('strips a trailing slash', () {
       expect(
         AniyomiRepo.normalizeBase('https://example.com/repo/'),

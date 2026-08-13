@@ -66,17 +66,29 @@ class AniyomiRepo {
   /// and the `apk/` folder. Users (and older saved repos) sometimes store the
   /// full index URL (`.../main/index.min.json`) instead of the directory
   /// (`.../main`); left as-is that produces a broken `.../index.min.json/apk/…`
-  /// download URL that 404s on every mirror. Strips a trailing
-  /// `/index.min.json` (or `/index.json`) and any trailing slash.
+  /// download URL that 404s on every mirror. Strips a trailing index filename
+  /// — `/index.min.json`, `/index.json` or `/index.pb` — and any trailing
+  /// slash. Shared with Mihon, which prefers `index.pb`.
   static String normalizeBase(String base) {
     var b = base.trim();
     while (b.endsWith('/')) {
       b = b.substring(0, b.length - 1);
     }
-    if (b.endsWith('/index.min.json')) {
-      b = b.substring(0, b.length - '/index.min.json'.length);
-    } else if (b.endsWith('/index.json')) {
-      b = b.substring(0, b.length - '/index.json'.length);
+    // People paste the link to the index file itself, not the folder holding
+    // it, so strip a trailing index filename. Listed longest-first so
+    // `index.min.json` isn't half-matched by `index.json`. `index.pb` belongs
+    // here too — it's the file the fetcher now prefers, so it's the most
+    // likely thing to be pasted; leaving it out meant the app asked for
+    // `.../index.pb/index.pb` and the repo just 404'd.
+    for (final name in const [
+      '/index.min.json',
+      '/index.json',
+      '/index.pb',
+    ]) {
+      if (b.endsWith(name)) {
+        b = b.substring(0, b.length - name.length);
+        break;
+      }
     }
     while (b.endsWith('/')) {
       b = b.substring(0, b.length - 1);

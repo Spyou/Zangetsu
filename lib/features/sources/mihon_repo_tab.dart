@@ -84,8 +84,8 @@ class _MihonAddRepoDialogState extends State<MihonAddRepoDialog> {
             ),
             const SizedBox(height: 10),
             Text(
-              "Paste the repo's base URL — the app appends "
-              '"/index.json" automatically.',
+              "Paste the repo's base URL — the app finds its index file "
+              'itself. A link straight to index.pb or index.json works too.',
               style: AppText.caption,
             ),
           ],
