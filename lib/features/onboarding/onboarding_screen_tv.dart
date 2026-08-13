@@ -32,9 +32,9 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
     await _markOnboarded();
     if (!mounted) return;
     widget.onDone();
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const ProvidersHubScreen()));
   }
 
   Future<void> _later() async {
@@ -106,21 +106,28 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                 TvFocusable(
                   autofocus: true,
                   onTap: _addSourcesNow,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 56,
-                    child: FilledButton(
-                      onPressed: _addSourcesNow,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.accent,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                  // ExcludeFocus: a Flutter button is focusable in its own
+                  // right, so without this the D-pad stops on the inner button
+                  // as well as the TvFocusable around it — down from here would
+                  // land on itself instead of the next action. Every other TV
+                  // screen wraps a plain Container for the same reason.
+                  child: ExcludeFocus(
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: FilledButton(
+                        onPressed: _addSourcesNow,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        'Add sources now',
-                        style: AppText.button.copyWith(color: Colors.white),
+                        child: Text(
+                          'Add sources now',
+                          style: AppText.button.copyWith(color: Colors.white),
+                        ),
                       ),
                     ),
                   ),
@@ -129,15 +136,17 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                 TvFocusable(
                   autofocus: false,
                   onTap: _later,
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: TextButton(
-                      onPressed: _later,
-                      child: Text(
-                        "I'll do it later",
-                        style: AppText.caption.copyWith(
-                          color: AppColors.textTertiary,
+                  child: ExcludeFocus(
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: TextButton(
+                        onPressed: _later,
+                        child: Text(
+                          "I'll do it later",
+                          style: AppText.caption.copyWith(
+                            color: AppColors.textTertiary,
+                          ),
                         ),
                       ),
                     ),
