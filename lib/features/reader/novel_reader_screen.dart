@@ -248,7 +248,14 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // last value captured while scrolling instead of clobbering progress with 0.
     if (!_scrollController.hasClients) return _lastScrollPermille;
     final pos = _scrollController.position;
-    if (pos.maxScrollExtent <= 0) return _lastScrollPermille = 1000;
+    // Nothing to scroll means "the whole chapter fits on screen" — finished —
+    // but ONLY when there's actually a chapter there. A blank page (a source
+    // that returned no text) is unscrollable too, and counting that as read
+    // would mark it finished and scrobble it to the user's tracker.
+    if (pos.maxScrollExtent <= 0) {
+      final hasText = (_text?.html.trim().isNotEmpty ?? false);
+      return _lastScrollPermille = hasText ? 1000 : 0;
+    }
     final raw = (pos.pixels / pos.maxScrollExtent * 1000).round();
     return _lastScrollPermille = raw.clamp(0, 1000);
   }

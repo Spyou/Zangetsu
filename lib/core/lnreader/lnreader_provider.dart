@@ -169,7 +169,17 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
   Future<ChapterText> getText(String chapterUrl) async {
     await manager.ensureLoaded(meta.id);
     final raw = await _safeCall('parseChapter', [chapterUrl]);
-    return ChapterText(html: raw is String ? raw : '');
+    // A failed parse (dead site, 403, Cloudflare, timeout — _safeCall returns
+    // null) used to come back as an empty-but-successful chapter: the reader
+    // showed a blank page with no error and no Retry, and one flick on that
+    // page counted as "read to the end", marking it finished AND scrobbling it
+    // to the user's tracker. Throw instead so the reader's existing error path
+    // handles it. An empty String from a working plugin is left alone — that's
+    // a real (if odd) chapter, not a failure.
+    if (raw is! String) {
+      throw StateError('Could not load this chapter from ${meta.name}.');
+    }
+    return ChapterText(html: raw);
   }
 
   // ── private helpers ─────────────────────────────────────────────────────────
