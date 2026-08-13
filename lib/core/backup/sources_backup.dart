@@ -82,8 +82,11 @@ class SourcesBackup {
   // above (avoids a core → features import).
   static const String _mihonReposBoxName = 'mihon_repos';
 
-  // LNReader has ONE pinned plugin catalog (LnReaderExtensionService.indexUrl)
-  // — no user-added repos — so there's no LNReader twin of `_aniReposBoxName`.
+  // The Hive box of tracked LNReader (novel) repo index URLs (Box<String>,
+  // list-style). Matches `kLnReaderReposBoxName` in
+  // `lib/features/sources/lnreader_sources_screen.dart`. Hardcoded here
+  // rather than imported, same reason as `_aniReposBoxName` above.
+  static const String _lnrReposBoxName = 'lnreader_repos';
 
   // ── build ──────────────────────────────────────────────────────────────────
 
@@ -98,6 +101,7 @@ class SourcesBackup {
   /// - `aniyomiPkgs` — installed Aniyomi extension package names.
   /// - `mihonRepoUrls` — tracked Mihon (manga) repo base URLs.
   /// - `mihonPkgs` — installed Mihon extension package names.
+  /// - `lnreaderRepoUrls` — tracked LNReader (novel) repo index URLs.
   /// - `lnreaderPkgs` — installed LNReader (novel) plugin ids.
   /// - `settings`   — contents of the `provider_settings` Hive box, or `{}`.
   Map<String, dynamic> build() => {
@@ -109,6 +113,7 @@ class SourcesBackup {
         'aniyomiPkgs': _readAniyomiPkgs(),
         'mihonRepoUrls': _readMihonRepoUrls(),
         'mihonPkgs': _readMihonPkgs(),
+        'lnreaderRepoUrls': _readLnReaderRepoUrls(),
         'lnreaderPkgs': _readLnReaderPkgs(),
         'settings': _readProviderSettings(),
       };
@@ -288,8 +293,25 @@ class SourcesBackup {
       }
     }
 
-    // LNReader novel plugins (re-download the JS source from the pinned
-    // index) ---------------------------------------------------------------
+    // LNReader repos (union into the Box<String> list) ------------------------
+    final lnrRepoUrls =
+        (data['lnreaderRepoUrls'] as List?)?.cast<String>() ?? const <String>[];
+    if (lnrRepoUrls.isNotEmpty) {
+      try {
+        final box = Hive.isBoxOpen(_lnrReposBoxName)
+            ? Hive.box<String>(_lnrReposBoxName)
+            : await openBoxSafely<String>(_lnrReposBoxName);
+        for (final url in lnrRepoUrls) {
+          if (box.values.contains(url)) continue;
+          await box.add(url);
+        }
+      } catch (_) {
+        failures.add('LNReader repos');
+      }
+    }
+
+    // LNReader novel plugins (re-download the JS source from any tracked
+    // repo's index) ------------------------------------------------------------
     final lnreaderPkgs =
         (data['lnreaderPkgs'] as List?)?.cast<String>() ?? const <String>[];
     if (lnreaderPkgs.isNotEmpty && _lnr != null) {
@@ -297,13 +319,22 @@ class SourcesBackup {
       final missing =
           lnreaderPkgs.where((id) => !installedIds.contains(id)).toList();
       if (missing.isNotEmpty) {
-        List<LnReaderPluginMeta> index;
-        try {
-          index = await _lnr.fetchIndex();
-        } catch (_) {
-          index = const [];
+        // Fetch each tracked repo's index once, then look ids up locally.
+        // Dedupes by id (putIfAbsent = first repo wins) so an id present in
+        // two repos doesn't matter here either.
+        final repoUrls = <String>{
+          ...lnrRepoUrls,
+          if (Hive.isBoxOpen(_lnrReposBoxName))
+            ...Hive.box<String>(_lnrReposBoxName).values,
+        };
+        final entriesById = <String, LnReaderPluginMeta>{};
+        for (final url in repoUrls) {
+          try {
+            for (final m in await _lnr.fetchIndex(url)) {
+              entriesById.putIfAbsent(m.id, () => m);
+            }
+          } catch (_) {} // fetchIndex may throw on a dead/unreachable repo
         }
-        final entriesById = {for (final m in index) m.id: m};
         for (final id in missing) {
           final meta = entriesById[id];
           if (meta == null) {
@@ -418,6 +449,11 @@ class SourcesBackup {
               .map((k) => k.toString())
               .toList()
           : const [];
+
+  /// Tracked LNReader repo index URLs (empty when the box isn't open).
+  List<String> _readLnReaderRepoUrls() => Hive.isBoxOpen(_lnrReposBoxName)
+      ? Hive.box<String>(_lnrReposBoxName).values.toList()
+      : const [];
 
   /// Installed LNReader plugin ids (empty when the box isn't open).
   List<String> _readLnReaderPkgs() =>

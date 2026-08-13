@@ -8,6 +8,8 @@
 // Uses the same in-memory fake LnReaderExtensionService as
 // lnreader_sources_screen_test.dart — a real Hive box does file I/O that
 // never resolves under the widget-test zone.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
@@ -78,7 +80,7 @@ class _FakeLnrService extends LnReaderExtensionService {
   void seed(LnReaderPluginMeta meta) => _installed[meta.id] = meta;
 
   @override
-  Future<List<LnReaderPluginMeta>> fetchIndex() async => const [];
+  Future<List<LnReaderPluginMeta>> fetchIndex(String indexUrl) async => const [];
   @override
   Future<void> install(LnReaderPluginMeta meta) async => _installed[meta.id] = meta;
   @override
@@ -102,8 +104,24 @@ const _pluginA = LnReaderPluginMeta(
 void main() {
   final sl = GetIt.instance;
   late _FakeLnrService lnrService;
+  late Directory tempDir;
+
+  // The pushed LnReaderSourcesScreen opens the (real) `lnreader_repos` box on
+  // mount — same reasoning as `lnreader_sources_screen_test.dart`'s header
+  // note: it's plain key-value I/O, nothing network-shaped.
+  setUpAll(() async {
+    tempDir = await Directory.systemTemp.createTemp('lnreader_hub_entry_test_');
+    Hive.init(tempDir.path);
+    await Hive.openBox<String>(kLnReaderReposBoxName);
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+    await tempDir.delete(recursive: true);
+  });
 
   setUp(() {
+    Hive.box<String>(kLnReaderReposBoxName).clear();
     final entries = [
       ProviderRegistryEntry(
         name: 'anime1',

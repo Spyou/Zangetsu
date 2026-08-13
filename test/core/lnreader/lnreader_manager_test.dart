@@ -5,6 +5,11 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/lnreader/lnreader_extension_service.dart';
 import 'package:watch_app/core/lnreader/lnreader_manager.dart';
 
+/// A stand-in repo index URL — LNReader ships no built-in catalog, so
+/// `fetchIndex` always takes a URL the caller supplies (a user-added repo in
+/// the real app; just a literal here).
+const _testIndexUrl = 'https://repo.test/plugins.min.json';
+
 const _indexJson = '''
 [
   {"id":"plugin-a","name":"Plugin A","site":"https://a.test/","lang":"en","version":"1.0.0","url":"https://cdn.test/a.js","iconUrl":"https://cdn.test/a.png"},
@@ -84,7 +89,7 @@ void main() {
     Hive.init(tmpDir.path);
     service = LnReaderExtensionService(
       httpGet: (url) async {
-        if (url == LnReaderExtensionService.indexUrl) return _indexJson;
+        if (url == _testIndexUrl) return _indexJson;
         if (url == _metaA.url) {
           return _pluginJs('Plugin A', _metaA.site, filtersJs: _sortFiltersJs);
         }
@@ -107,7 +112,7 @@ void main() {
   });
 
   test('fetchIndex() parses the 2-entry plugin index', () async {
-    final metas = await service.fetchIndex();
+    final metas = await service.fetchIndex(_testIndexUrl);
 
     expect(metas, hasLength(2));
     expect(metas[0].id, 'plugin-a');

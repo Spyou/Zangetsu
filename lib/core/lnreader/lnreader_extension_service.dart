@@ -52,11 +52,16 @@ class LnReaderPluginMeta {
   };
 }
 
-/// Fetches the LNReader plugin index and installs/stores novel-source
+/// Fetches a user-added LNReader plugin index and installs/stores novel-source
 /// plugins in the `lnreader_plugins` Hive box — the novel twin of
 /// `MihonExtensionService`'s repo-index + install tracking. Deliberately
 /// duplicated rather than shared, same rationale as every other *Reader/
 /// *Mihon twin in this codebase (see `mihon_extension_service.dart`).
+///
+/// Ships with no built-in catalog — same DMCA stance as every other source
+/// ecosystem in this app. [fetchIndex] only ever reads a URL the user added
+/// themselves (tracked in the `lnreader_repos` Hive box by
+/// `LnReaderSourcesScreen`, `lib/features/sources/lnreader_sources_screen.dart`).
 ///
 /// Unlike Mihon (native APKs, installed through a MethodChannel), an
 /// LNReader plugin is just a JS source file: [install] downloads it via
@@ -80,15 +85,12 @@ class LnReaderExtensionService {
   /// [LnReaderPluginMeta.id].
   static const String boxName = 'lnreader_plugins';
 
-  /// Pinned LNReader plugin index — a JSON array of
-  /// `{id, name, site, lang, version, url, iconUrl}`.
-  static const String indexUrl =
-      'https://raw.githubusercontent.com/LNReader/lnreader-plugins/plugins/v3.0.0/.dist/plugins.min.json';
-
   Box<Map> get _box => Hive.box<Map>(boxName);
 
-  /// Fetches and parses the plugin index.
-  Future<List<LnReaderPluginMeta>> fetchIndex() async {
+  /// Fetches and parses the plugin index at [indexUrl] — a JSON array of
+  /// `{id, name, site, lang, version, url, iconUrl}`, same shape the LNReader
+  /// app's own repos publish (e.g. `.../plugins/v3.0.0/.dist/plugins.min.json`).
+  Future<List<LnReaderPluginMeta>> fetchIndex(String indexUrl) async {
     final body = await httpGet(indexUrl);
     final decoded = jsonDecode(body) as List<dynamic>;
     return decoded.whereType<Map>().map(LnReaderPluginMeta.fromMap).toList();

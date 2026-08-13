@@ -506,6 +506,13 @@ Future<void> initDependencies() async {
   sl.registerSingleton<LnReaderExtensionService>(lnrService);
   sl.registerSingleton<LnReaderManager>(lnrManager);
   await lnrManager.init();
+  // Repo-URL box too, so Backup's sync build() can read it any time — the
+  // novel twin of the mihon_repos/aniyomi_repos opens below. Unlike those
+  // (opened inside a guarded, Android-only microtask), LNReader has no
+  // platform gate, so this can just run inline here.
+  if (!Hive.isBoxOpen('lnreader_repos')) {
+    await openBoxSafely<String>('lnreader_repos');
+  }
 
   // --- Provider registry data layer ---------------------------------
   await ProviderReposRegistry.init();

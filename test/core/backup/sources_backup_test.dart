@@ -497,25 +497,48 @@ void main() {
     expect(failures, isEmpty);
   });
 
-  // ── LNReader: build reads the installed-plugin box ──────────────────────────
+  // ── LNReader: build reads the repo + installed-plugin boxes ────────────────
 
-  test('build: includes lnreader installed plugin ids', () async {
+  test('build: includes lnreader repo urls and installed pkgs', () async {
+    final repoBox = await Hive.openBox<String>('lnreader_repos');
+    await repoBox.add('https://repo.example/lnreader/index.json');
     final box = await Hive.openBox<Map>('lnreader_plugins');
     await box.put('novelsite', {'id': 'novelsite', 'name': 'Novel Site'});
 
     final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
     final data = backup.build();
 
+    expect(data['lnreaderRepoUrls'],
+        ['https://repo.example/lnreader/index.json']);
     expect(data['lnreaderPkgs'], ['novelsite']);
   });
 
-  // ── LNReader: merge installs a missing plugin from the pinned index ────────
+  // ── LNReader: merge unions repo urls into the box ───────────────────────────
 
-  test('merge: installs a missing lnreader plugin from the pinned index',
-      () async {
+  test('merge: adds missing lnreader repo urls, skips existing', () async {
+    final repoBox = await Hive.openBox<String>('lnreader_repos');
+    await repoBox.add('https://existing.example/lnreader');
+
+    final backup = SourcesBackup(_StubRepos([]), _StubProviderRegistry([]), null);
+    await backup.merge({
+      'lnreaderRepoUrls': [
+        'https://existing.example/lnreader',
+        'https://new.example/lnreader',
+      ],
+    });
+
+    expect(repoBox.values.toList(),
+        ['https://existing.example/lnreader', 'https://new.example/lnreader']);
+  });
+
+  // ── LNReader: merge installs a missing plugin from a tracked repo's index ──
+
+  test(
+      'merge: installs a missing lnreader plugin from a tracked repo, '
+      'records not-found failures', () async {
     await Hive.openBox<Map>('lnreader_plugins');
     final lnr = LnReaderExtensionService(httpGet: (url) async {
-      if (url == LnReaderExtensionService.indexUrl) {
+      if (url == 'https://repo.example/lnreader/index.json') {
         return jsonEncode([
           {
             'id': 'novelsite',
@@ -535,10 +558,11 @@ void main() {
         lnreader: lnr);
 
     final failures = await backup.merge({
-      'lnreaderPkgs': ['novelsite'],
+      'lnreaderRepoUrls': ['https://repo.example/lnreader/index.json'],
+      'lnreaderPkgs': ['novelsite', 'ghost'],
     });
 
-    expect(failures, isEmpty);
+    expect(failures, ['Novel source: ghost']);
     expect(lnr.installed().map((m) => m.id), contains('novelsite'));
     expect(lnr.jsFor('novelsite'), 'js-source-code');
   });
