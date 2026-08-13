@@ -25,9 +25,13 @@ import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../auth/auth_cubit.dart';
+import '../../core/mode/content_mode.dart';
+import '../../core/mode/content_mode_cubit.dart';
+import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
 import '../player/tv_exo_player_screen.dart';
 import '../player/tv_native_player.dart';
+import '../sources/providers_hub_screen.dart';
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
 
@@ -47,6 +51,17 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// Per-item hero metadata cache (genres + episode count). Mirrors the phone's
   /// _metaCache; futures are stored so carousel rotation never re-fetches.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    // Kick the first load ourselves, exactly like the phone home does. main()
+    // only calls HomeCubit.load() when isOnboarded() was already true at boot,
+    // so someone who just finished onboarding lands here with sections == null
+    // and nothing ever fetches them — a permanently empty TV home.
+    final cubit = context.read<HomeCubit>();
+    if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+  }
 
   // ── Navigation helpers ────────────────────────────────────────────────────
 
@@ -272,6 +287,25 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     final state = context.watch<HomeCubit>().state;
     final sections = state.sections ?? const <HomeSection>[];
 
+    // Nothing installed for this mode. The phone shows _NoSourcesGuide here;
+    // TV used to fall through and render an empty scroll view — a blank pane
+    // with no hint, which is what every new user sees now that the app ships
+    // no sources of its own. Give it the same guide plus a focusable CTA, so
+    // the D-pad has somewhere to land instead of nowhere.
+    // Fail open when the cubit isn't wired up (widget tests pump this screen
+    // with only Home/Auth registered) — same reasoning as `hasSourcesFor`,
+    // which returns true on error so a half-initialised app never shows a
+    // false "no sources" screen. Production always has it.
+    final mode = sl.isRegistered<ContentModeCubit>()
+        ? sl<ContentModeCubit>().state
+        : null;
+    if (mode != null && !hasSourcesFor(mode)) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: _TvNoSourcesGuide(mode: mode),
+      );
+    }
+
     // Use the same heroItems getter the phone uses (first section's items).
     final heroItems = state.heroItems;
     final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
@@ -350,6 +384,90 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
                   buildScroll(sl<WatchHistory>().recent()),
             )
           : buildScroll(const <HistoryEntry>[]),
+    );
+  }
+}
+
+/// TV twin of the phone's `_NoSourcesGuide` — shown when nothing is installed
+/// for the current mode. Same wording, sized for a 10-foot screen, and its
+/// button is a [TvFocusable] with autofocus so the D-pad lands on it instead of
+/// on an empty screen with nothing to reach.
+class _TvNoSourcesGuide extends StatelessWidget {
+  const _TvNoSourcesGuide({required this.mode});
+
+  final ContentMode mode;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, noun) = switch (mode) {
+      ContentMode.anime => (Icons.live_tv_rounded, 'shows'),
+      ContentMode.manga => (Icons.auto_stories_rounded, 'manga'),
+      ContentMode.novel => (Icons.menu_book_rounded, 'novels'),
+    };
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              color: AppColors.accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 54, color: AppColors.accent),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'No ${mode.label} sources yet',
+            textAlign: TextAlign.center,
+            style: AppText.headline.copyWith(fontSize: 26),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Add a source from Providers and your $noun will show up here.',
+            textAlign: TextAlign.center,
+            style: AppText.body.copyWith(
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 30),
+          TvFocusable(
+            autofocus: true,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const ProvidersHubScreen(),
+              ),
+            ),
+            // ExcludeFocus so the D-pad stops on the TvFocusable itself, not on
+            // the button inside it — same reason the TV onboarding buttons do.
+            child: ExcludeFocus(
+              child: SizedBox(
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const ProvidersHubScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.add_rounded, size: 22),
+                  label: const Text('Browse sources'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    textStyle: AppText.button.copyWith(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
