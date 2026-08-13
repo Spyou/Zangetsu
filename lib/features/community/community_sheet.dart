@@ -3,6 +3,7 @@ import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
@@ -10,7 +11,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 
 const _telegramUrl = 'https://t.me/ZangetsuStream';
-const _discordUrl = 'https://discord.gg/f9cKxR9cz';
+const _discordUrl = kDiscordInviteUrl;
 const _flagsBox = 'app_flags';
 const _seenKey = 'communitySheetSeen';
 

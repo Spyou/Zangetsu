@@ -15,6 +15,11 @@ const String kAppId = 'watch_app';
 /// Manifest schema version this app speaks. Repos below this are rejected.
 const int kManifestSchemaVersion = 2;
 
+/// Community Discord invite. Lived in two places (the launch community sheet
+/// and Settings → About) and drifted — the sheet's copy went stale and expired.
+/// One const now, so refreshing the invite is a single edit here.
+const String kDiscordInviteUrl = 'https://discord.gg/938JJBn44';
+
 /// Developer announcements feed (a plain JSON file in the public app repo).
 /// The app READS this on launch to show in-app announcements — never writes.
 /// Edit + push that file to broadcast a message to every user.
