@@ -5,15 +5,16 @@ import 'package:watch_app/features/onboarding/onboarding_screen_tv.dart';
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 //
-// These tests cover the initial (pre-install) state only. The install path
-// calls into DI (ProviderReposRegistry, ProviderRegistry, ActiveSourceCubit,
-// HomeCubit) which is not stubbed here — that path is exercised by integration
-// tests. Pumping OnboardingScreenTv with no DI is safe because the DI calls
-// live in _setup() / _skip(), which are only triggered by button activation.
+// Onboarding no longer downloads or installs anything. These tests cover the
+// initial render only — "Add sources now" marks onboarded (Hive) then pushes
+// ProvidersHubScreen, which is not stubbed here (it pulls in a wide set of DI
+// singletons), so that path is left to integration tests. Pumping
+// OnboardingScreenTv with no DI is safe because those calls live in
+// _addSourcesNow() / _later(), which only run on button activation.
 
 void main() {
   testWidgets(
-    'OnboardingScreenTv renders Get Started + Skip buttons with first autofocused',
+    'OnboardingScreenTv renders Add sources now + later buttons with first autofocused',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: OnboardingScreenTv(onDone: () {})),
@@ -24,19 +25,19 @@ void main() {
       expect(find.textContaining('Welcome to'), findsOneWidget);
 
       // Both action buttons are rendered in the initial state.
-      expect(find.text('Get Started'), findsOneWidget);
-      expect(find.text('Skip for now'), findsOneWidget);
+      expect(find.text('Add sources now'), findsOneWidget);
+      expect(find.text("I'll do it later"), findsOneWidget);
 
       // Both buttons are wrapped in TvFocusable for D-pad navigation.
       final focusables =
           tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
       expect(focusables.length, greaterThanOrEqualTo(2));
 
-      // The first TvFocusable (Get Started) carries autofocus=true so the
+      // The first TvFocusable (Add sources now) carries autofocus=true so the
       // D-pad lands on it when the screen opens.
       expect(focusables.first.autofocus, isTrue);
 
-      // The second TvFocusable (Skip for now) has autofocus=false.
+      // The second TvFocusable (I'll do it later) has autofocus=false.
       expect(focusables[1].autofocus, isFalse);
     },
   );
@@ -55,7 +56,7 @@ void main() {
       // Guard: at least one focusable must be built.
       expect(focusables, isNotEmpty);
 
-      // Only the first (Get Started) carries autofocus.
+      // Only the first (Add sources now) carries autofocus.
       expect(focusables.first.autofocus, isTrue);
 
       // All subsequent TvFocusable widgets have autofocus=false.

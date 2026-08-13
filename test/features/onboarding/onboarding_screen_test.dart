@@ -4,18 +4,17 @@ import 'package:get_it/get_it.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/features/onboarding/onboarding_screen.dart';
 
-// Task E4 regression guard: Part B adds a *recommended* Zangetsu repo
-// suggestion inside the add-repo dialog only. First-launch onboarding
-// (lib/features/onboarding/onboarding_screen.dart, kZangetsuRepoUrl seeding)
-// must be completely unaffected — nothing here is pre-installed or added to
-// the onboarding flow. This mirrors the existing
-// onboarding_screen_tv_test.dart's initial-state coverage, for the phone
-// screen, to prove that flow still renders identically.
+// Onboarding no longer downloads or installs anything — the app ships with
+// zero sources, and this screen's job is just to explain that and point the
+// user at Providers. "Add sources now" marks onboarded (Hive) then pushes
+// ProvidersHubScreen, which pulls in a wide set of DI singletons (CloudStream,
+// Aniyomi, LNReader, Mihon managers, ...) that aren't stubbed here, so this
+// test covers the initial render only and never taps either button — mirrors
+// onboarding_screen_tv_test.dart's same-scoped coverage for the TV screen.
 //
-// Like the TV test, this only covers the initial (pre-install) state — the
-// install path reaches into DI (ProviderReposRegistry, ProviderRegistry,
-// ActiveSourceCubit, HomeCubit) which isn't stubbed here. That's fine: it's
-// only triggered by pressing "Get Started", which these tests never do.
+// Also a regression guard from Task E4: Part B's *recommended* Zangetsu repo
+// suggestion lives inside the add-repo dialog only and must never leak into
+// this welcome copy.
 
 void main() {
   setUp(() {
@@ -27,7 +26,7 @@ void main() {
   });
 
   testWidgets(
-    'OnboardingScreen renders the unchanged welcome + Get Started + Skip UI',
+    'OnboardingScreen renders the welcome + Add sources now + later UI, no install copy',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(home: OnboardingScreen(onDone: () {})),
@@ -35,8 +34,12 @@ void main() {
       await tester.pump();
 
       expect(find.textContaining('Welcome to'), findsOneWidget);
-      expect(find.text('Get Started'), findsOneWidget);
-      expect(find.text('Skip for now'), findsOneWidget);
+      expect(find.text('Add sources now'), findsOneWidget);
+      expect(find.text("I'll do it later"), findsOneWidget);
+
+      // The old "we'll install the official source catalog" pitch is gone.
+      expect(find.textContaining('install the official'), findsNothing);
+      expect(find.text('Get Started'), findsNothing);
 
       // Nothing from the new manga/novel recommended-repo suggestion (Task
       // E4 Part B) leaks into onboarding copy.
