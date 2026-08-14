@@ -11,6 +11,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
+import '../error/exceptions.dart';
 import '../provider/base_provider.dart';
 import 'aniyomi_filters.dart';
 import 'aniyomi_source_info.dart';
@@ -124,7 +125,12 @@ class AniyomiProvider implements BaseProvider {
     int page = 1,
   }) async {
     if (!Platform.isAndroid) return const [];
-    return _invokeAnimeList('getPopular', {'sourceId': info.id, 'page': page});
+    // surfaceCloudflare: this feeds the Home rows, the one screen that can
+    // offer the visible solve. See [_safeInvoke].
+    return _invokeAnimeList('getPopular', {
+      'sourceId': info.id,
+      'page': page,
+    }, surfaceCloudflare: true);
   }
 
   /// Returns the source's latest-updated anime page. Public wrapper over
@@ -133,8 +139,11 @@ class AniyomiProvider implements BaseProvider {
   Future<List<MediaItem>> latest({int page = 1}) => _fetchLatest(page: page);
 
   /// Returns the source's latest-updated anime page.
-  Future<List<MediaItem>> _fetchLatest({int page = 1}) =>
-      _invokeAnimeList('getLatest', {'sourceId': info.id, 'page': page});
+  Future<List<MediaItem>> _fetchLatest({int page = 1}) => _invokeAnimeList(
+    'getLatest',
+    {'sourceId': info.id, 'page': page},
+    surfaceCloudflare: true,
+  );
 
   /// Searches the source for [query].  [category] is unused by Aniyomi sources.
   ///
@@ -253,9 +262,28 @@ class AniyomiProvider implements BaseProvider {
 
   /// Invokes [method] on the aniyomi channel with [args], returning the raw
   /// JSON string result.  Returns null on any error so callers degrade cleanly.
-  Future<String?> _safeInvoke(String method, Map<String, dynamic> args) async {
+  ///
+  /// When [surfaceCloudflare] is true, a native `CLOUDFLARE` failure is
+  /// re-thrown as a [CloudflareRequiredException] (carrying the URL to solve)
+  /// instead of being swallowed, so the home path can offer a "Solve
+  /// Cloudflare" action. Detail/episode/video calls leave it false and keep
+  /// degrading to null: the user solves once from home and the cf_clearance
+  /// cookie then unblocks everything else.
+  Future<String?> _safeInvoke(
+    String method,
+    Map<String, dynamic> args, {
+    bool surfaceCloudflare = false,
+  }) async {
     try {
       return await _aniChannel.invokeMethod<String>(method, args);
+    } on PlatformException catch (e) {
+      if (surfaceCloudflare && e.code == 'CLOUDFLARE') {
+        throw CloudflareRequiredException(
+          (e.message?.isNotEmpty ?? false) ? e.message! : info.baseUrl,
+        );
+      }
+      debugPrint('[aniyomi] $method(sourceId=${info.id}) failed: $e');
+      return null;
     } catch (e) {
       debugPrint('[aniyomi] $method(sourceId=${info.id}) failed: $e');
       return null;
@@ -266,9 +294,14 @@ class AniyomiProvider implements BaseProvider {
   /// maps each to a [MediaItem].
   Future<List<MediaItem>> _invokeAnimeList(
     String method,
-    Map<String, dynamic> args,
-  ) async {
-    final raw = await _safeInvoke(method, args);
+    Map<String, dynamic> args, {
+    bool surfaceCloudflare = false,
+  }) async {
+    final raw = await _safeInvoke(
+      method,
+      args,
+      surfaceCloudflare: surfaceCloudflare,
+    );
     if (raw == null || raw.isEmpty) return const [];
     try {
       final list = jsonDecode(raw) as List<dynamic>;

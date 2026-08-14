@@ -94,6 +94,8 @@ Future<void> pumpEmptyView(
   required ContentMode mode,
   VoidCallback? onInstall,
   VoidCallback? onRetry,
+  String? cloudflareUrl,
+  Future<void> Function()? onSolveCloudflare,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -103,6 +105,8 @@ Future<void> pumpEmptyView(
           sourceName: 'allanime',
           onRetry: onRetry ?? () {},
           onInstallSources: onInstall ?? () {},
+          cloudflareUrl: cloudflareUrl,
+          onSolveCloudflare: onSolveCloudflare,
         ),
       ),
     ),
@@ -245,6 +249,59 @@ void main() {
         expect(find.text('No Novel sources yet'), findsOneWidget);
         await tester.tap(find.widgetWithText(FilledButton, 'Browse sources'));
         expect(installTapped, isTrue);
+      },
+    );
+  });
+
+  // The hidden WebView solver clears Cloudflare's automatic challenges, but the
+  // interactive one (Turnstile, served to networks Cloudflare distrusts) needs a
+  // human. Anime and manga extensions share one HTTP stack, so both surface it —
+  // and both land here, which is the only screen that offers the visible solve.
+  group('HomeLoadedEmptyView — Cloudflare block', () {
+    testWidgets(
+      'a Cloudflare-blocked source offers Solve Cloudflare, not the generic '
+      "\"couldn't load\" outage wording",
+      (tester) async {
+        await pumpEmptyView(
+          tester,
+          mode: ContentMode.anime,
+          cloudflareUrl: 'https://animepahe.ru/',
+          onSolveCloudflare: () async {},
+        );
+
+        expect(find.text('allanime is protected by Cloudflare'), findsOneWidget);
+        expect(find.text("Couldn't load allanime"), findsNothing);
+        expect(
+          find.widgetWithText(ElevatedButton, 'Solve Cloudflare'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('tapping Solve Cloudflare fires onSolveCloudflare', (
+      tester,
+    ) async {
+      var solved = false;
+      await pumpEmptyView(
+        tester,
+        mode: ContentMode.anime,
+        cloudflareUrl: 'https://animepahe.ru/',
+        onSolveCloudflare: () async => solved = true,
+      );
+
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Solve Cloudflare'));
+      await tester.pump();
+      expect(solved, isTrue);
+    });
+
+    testWidgets(
+      'with no solve callback it stays the plain outage state — a source that '
+      'is merely down must not claim to be Cloudflare-gated',
+      (tester) async {
+        await pumpEmptyView(tester, mode: ContentMode.anime);
+
+        expect(find.text("Couldn't load allanime"), findsOneWidget);
+        expect(find.text('Solve Cloudflare'), findsNothing);
       },
     );
   });

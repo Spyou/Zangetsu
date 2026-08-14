@@ -25,6 +25,7 @@ import eu.kanade.tachiyomi.animesource.model.SAnimeImpl
 import eu.kanade.tachiyomi.animesource.model.SEpisodeImpl
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.interceptor.CloudflareRequiredException
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -141,7 +142,7 @@ class AniyomiBridge(
                             AniyomiJson.animesToJson(page2.animes)
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("POPULAR", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "POPULAR") } },
                         )
                     }
                 }
@@ -161,7 +162,7 @@ class AniyomiBridge(
                             AniyomiJson.animesToJson(page2.animes)
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("LATEST", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "LATEST") } },
                         )
                     }
                 }
@@ -179,7 +180,7 @@ class AniyomiBridge(
                             AniyomiFilterJson.filterListToJson(src.getFilterList())
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("FILTERS", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "FILTERS") } },
                         )
                     }
                 }
@@ -206,7 +207,7 @@ class AniyomiBridge(
                             AniyomiJson.animesToJson(page2.animes)
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("SEARCH", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "SEARCH") } },
                         )
                     }
                 }
@@ -232,7 +233,7 @@ class AniyomiBridge(
                             AniyomiJson.animeToJson(details).apply { put("url", url) }.toString()
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("DETAILS", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "DETAILS") } },
                         )
                     }
                 }
@@ -255,7 +256,7 @@ class AniyomiBridge(
                             AniyomiJson.episodesToJson(episodes)
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("EPISODES", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "EPISODES") } },
                         )
                     }
                 }
@@ -316,7 +317,7 @@ class AniyomiBridge(
                             arr.toString()
                         }.fold(
                             onSuccess = { json -> withContext(Dispatchers.Main) { result.success(json) } },
-                            onFailure = { err -> withContext(Dispatchers.Main) { result.error("VIDEO_LIST", "${err::class.java.simpleName}: ${err.message}", null) } },
+                            onFailure = { err -> withContext(Dispatchers.Main) { result.failWith(err, "VIDEO_LIST") } },
                         )
                     }
                 }
@@ -429,5 +430,29 @@ class AniyomiBridge(
             }
         }
         return arr.toString()
+    }
+}
+
+/**
+ * Reports [err] to Dart, mapping a Cloudflare challenge to a distinct
+ * "CLOUDFLARE" code that carries the URL to solve.
+ *
+ * The headless WebView solver clears the automatic challenges, but Cloudflare
+ * serves an interactive one (Turnstile) to networks it doesn't trust — and no
+ * hidden WebView can click that. When it gives up, [CloudflareRequiredException]
+ * comes back up the chain and the app can offer a visible solve instead of
+ * showing an empty source. Anime and manga extensions share one HTTP stack, so
+ * this mirrors what MihonBridge already does for manga.
+ *
+ * Walks the cause chain: sources and the suspend adapter both wrap exceptions.
+ */
+private fun MethodChannel.Result.failWith(err: Throwable, code: String) {
+    val cf = generateSequence(err) { it.cause }
+        .filterIsInstance<CloudflareRequiredException>()
+        .firstOrNull()
+    if (cf != null) {
+        error("CLOUDFLARE", cf.url, null)
+    } else {
+        error(code, "${err::class.java.simpleName}: ${err.message}", null)
     }
 }
