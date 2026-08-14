@@ -74,8 +74,12 @@ class MihonCloudflareActivity : AppCompatActivity() {
             // of the request that hit the challenge), not just the app default —
             // otherwise the cf_clearance is bound to a UA the source never sends
             // and Cloudflare rejects it. Falls back to the default when unknown.
+            // Prefer THIS host's recorded UA: the global is whatever request was
+            // challenged last, and a browse fires several at once, so it can
+            // belong to a different host/request than the one being solved here.
             setUserAgent(
-                NetworkHelper.challengeUserAgent
+                NetworkHelper.solveUaFor(android.net.Uri.parse(targetUrl).host.orEmpty())
+                    ?: NetworkHelper.challengeUserAgent
                     ?: NetworkHelper.defaultUserAgentProvider()
             )
             webViewClient = object : WebViewClient() {

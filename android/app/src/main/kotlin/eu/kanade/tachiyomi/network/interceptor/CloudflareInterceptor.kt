@@ -42,6 +42,13 @@ class CloudflareInterceptor(
         // source uses its own UA makes Cloudflare reject the cookie forever.
         eu.kanade.tachiyomi.network.NetworkHelper.challengeUserAgent =
             request.header("User-Agent")
+        // Per-host too: the global above is overwritten by whichever concurrent
+        // request is challenged last, which is how a solve ends up bound to a
+        // UA that a different request never sends.
+        eu.kanade.tachiyomi.network.NetworkHelper.rememberSolveUa(
+            request.url.host,
+            request.header("User-Agent"),
+        )
         // A clearance the user JUST earned by hand is never thrown away. Without
         // this the app loops forever: the reload after a visible solve gets
         // challenged, the remove() below deletes the fresh cf_clearance, the

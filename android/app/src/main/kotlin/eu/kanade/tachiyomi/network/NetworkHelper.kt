@@ -99,6 +99,45 @@ class NetworkHelper(
         .addInterceptor(
             CloudflareInterceptor(context, cookieJar, ::defaultUserAgentProvider),
         )
+        // Pin the User-Agent of clearance-carrying requests, at the wire.
+        //
+        // A network interceptor is the last thing before the socket, so it sees
+        // (and fixes) the FINAL headers — an application interceptor can't. That
+        // distinction is the whole point: on a blocked device the application
+        // layer reported the UA as correct while the wire carried a different
+        // one, because layers below it had rewritten the request. Anything that
+        // must be true of what leaves the phone has to be enforced here.
+        .addNetworkInterceptor { chain ->
+            val original = chain.request()
+            val cookieHeader = original.header("Cookie").orEmpty()
+            val pinnedUa = solveUaFor(original.url.host)
+            val req = if (
+                pinnedUa != null &&
+                cookieHeader.contains("cf_clearance") &&
+                original.header("User-Agent") != pinnedUa
+            ) {
+                original.newBuilder().header("User-Agent", pinnedUa).build()
+            } else {
+                original
+            }
+            val res = chain.proceed(req)
+            val cfServer = res.header("Server")?.contains("cloudflare", true) == true
+            if (res.code in intArrayOf(403, 503) && cfServer) {
+                val wireUa = req.header("User-Agent").orEmpty()
+                val solveUa = (solveUaFor(req.url.host) ?: challengeUserAgent).orEmpty()
+                val cookie = req.header("Cookie").orEmpty()
+                fun tail(s: String) = if (s.length > 26) "…" + s.takeLast(26) else s
+                android.util.Log.w(
+                    "ZangetsuCF",
+                    "refused at the wire: ${res.code} ${req.url.host} " +
+                        "cf=${if (cookie.contains("cf_clearance")) "yes" else "NO"} " +
+                        "ua=${if (wireUa == solveUa) "same" else "DIFF"} " +
+                        "ray=${res.header("cf-ray")?.take(8) ?: "-"}\n" +
+                        "wireUA=$wireUa\nsolveUA=$solveUa\ncookie=${tail(cookie)}",
+                )
+            }
+            res
+        }
         .build()
 
     /**
@@ -146,6 +185,27 @@ class NetworkHelper(
          */
         @Volatile
         var challengeUserAgent: String? = null
+
+        /**
+         * The UA a Cloudflare challenge was solved under, PER HOST.
+         *
+         * [challengeUserAgent] alone is a single global, and a browse fires
+         * several requests at once (list, latest, covers) that need not carry
+         * the same UA — whichever is challenged last wins, so the solve can run
+         * under one request's UA while another goes out with a different one.
+         * cf_clearance is bound to the UA that earned it, so Cloudflare refuses
+         * the mismatch and the user is challenged again immediately. Measured on
+         * a blocked device: cookie present on the wire, UA different.
+         *
+         * Keyed by host because that's the scope a clearance has.
+         */
+        private val solveUaByHost = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        fun rememberSolveUa(host: String, ua: String?) {
+            if (!ua.isNullOrBlank()) solveUaByHost[host] = ua
+        }
+
+        fun solveUaFor(host: String): String? = solveUaByHost[host]
 
         /**
          * When the visible solver last came away with a `cf_clearance`
