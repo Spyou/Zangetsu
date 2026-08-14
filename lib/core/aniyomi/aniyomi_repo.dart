@@ -42,7 +42,10 @@ class AniyomiRepoEntry {
     required this.nsfw,
     required this.sources,
     required String repoBaseUrl,
-  }) : apkUrl = '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk';
+    String absoluteApkUrl = '',
+  }) : apkUrl = absoluteApkUrl.startsWith('http')
+           ? absoluteApkUrl
+           : '${AniyomiRepo.normalizeBase(repoBaseUrl)}/apk/$apk';
 
   final String name;
   final String pkg;
@@ -55,8 +58,16 @@ class AniyomiRepoEntry {
   final bool nsfw;
   final List<AniyomiRepoSource> sources;
 
-  /// Full URL to download the extension APK, e.g.
-  /// `https://raw.githubusercontent.com/owner/repo/branch/apk/ext-v1.0.apk`.
+  /// Full URL to download the extension APK.
+  ///
+  /// Normally derived from the repo base + [apk]
+  /// (`https://raw.githubusercontent.com/owner/repo/branch/apk/ext-v1.0.apk`),
+  /// which is where repos have historically kept their APKs. When the index
+  /// carries an absolute link of its own that wins instead: Keiyoushi now
+  /// publishes to GitHub Releases under a per-build tag
+  /// (`.../releases/download/88e1412-0/ext-v1.6.4.apk`) that cannot be
+  /// reconstructed from the base — rebuilding the old path 404s on all ~1400
+  /// of its extensions, so nothing installs.
   final String apkUrl;
 }
 

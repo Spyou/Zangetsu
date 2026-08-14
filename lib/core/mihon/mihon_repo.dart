@@ -101,12 +101,21 @@ class MihonRepo {
     if (raw is! Map) return null;
 
     final pkg = _str(raw['packageName']);
-    // `resources.apkUrl` is an absolute jsDelivr URL, but [AniyomiRepoEntry]
-    // builds its download URL as `<base>/apk/<apk>` — so keep the filename
-    // only and let it resolve against the repo the user actually added.
-    final apk = _str(
+    // `resources.apkUrl` is absolute. Keep the filename for [AniyomiRepoEntry.apk]
+    // (it names the file on disk and drives update comparisons), but KEEP THE
+    // URL TOO and hand it over as-is.
+    //
+    // It used to be a jsDelivr mirror of `<base>/apk/<file>`, so rebuilding that
+    // path from the repo the user actually added was the more robust choice.
+    // That stopped being true: Keiyoushi publishes to GitHub Releases under a
+    // per-build tag (`.../releases/download/88e1412-0/…`) which simply isn't
+    // derivable from the base, so the rebuilt `<base>/apk/<file>` 404s for every
+    // one of its ~1400 extensions and nothing installs. Both `index.pb` and
+    // `index.json` land here, so honouring the absolute URL fixes both.
+    final apkUrl = _str(
       (raw['resources'] is Map ? (raw['resources'] as Map)['apkUrl'] : null),
-    ).split('?').first.split('/').last;
+    );
+    final apk = apkUrl.split('?').first.split('/').last;
     if (pkg.isEmpty || apk.isEmpty) return null;
 
     final sources = <AniyomiRepoSource>[];
@@ -148,6 +157,7 @@ class MihonRepo {
       nsfw: _str(raw['contentWarning']) == 'CONTENT_WARNING_NSFW',
       sources: sources,
       repoBaseUrl: base,
+      absoluteApkUrl: apkUrl,
     );
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -45,10 +46,15 @@ void main() {
       // yield 0 — either way this line fails.
       expect(e.code, 4);
       expect(e.nsfw, isTrue);
-      // resources.apkUrl points at jsDelivr; only the filename survives, so
-      // the download resolves against the repo the user actually added.
+      // The filename is kept (it names the file on disk), and the index's own
+      // absolute apkUrl is honoured rather than rebuilt — see the Releases test
+      // below for why rebuilding breaks the live repo.
       expect(e.apk, 'tachiyomi-all.ahottie-v1.6.4.apk');
-      expect(e.apkUrl, '$_base/apk/tachiyomi-all.ahottie-v1.6.4.apk');
+      expect(
+        e.apkUrl,
+        'https://cdn.jsdelivr.net/gh/keiyoushi/extensions@repo/apk/'
+        'tachiyomi-all.ahottie-v1.6.4.apk',
+      );
       expect(e.lang, 'all');
       expect(e.sources, hasLength(1));
       final s = e.sources.single;
@@ -96,7 +102,8 @@ void main() {
       expect(entries.every((e) => e.pkg.isNotEmpty), isTrue);
       expect(entries.every((e) => e.apk.endsWith('.apk')), isTrue);
       expect(entries.every((e) => !e.apk.contains('/')), isTrue);
-      expect(entries.every((e) => e.apkUrl.startsWith('$_base/apk/')), isTrue);
+      expect(entries.every((e) => e.apkUrl.startsWith('http')), isTrue);
+      expect(entries.every((e) => e.apkUrl.endsWith(e.apk)), isTrue);
       // A String→int regression on versionCode would collapse these to 0.
       expect(entries.where((e) => e.code > 0), hasLength(1369));
     });
@@ -110,6 +117,90 @@ void main() {
       );
       expect(entries.single.code, 77);
       expect(entries.single.lang, 'all'); // no sources → falls back to 'all'
+    });
+
+    // Keiyoushi moved its APKs off the repo tree to GitHub Releases (some time
+    // after the 2026-08-05 fixture above, which still points at jsDelivr). The
+    // download tag is per-build, so `<base>/apk/<file>` cannot be derived from
+    // the repo URL — rebuilding it 404s on every one of the ~1400 extensions
+    // and nothing installs. The index's own URL has to be used verbatim.
+    test('a GitHub-Releases apkUrl is used as-is, not rebuilt from the base', () {
+      const released =
+          'https://github.com/keiyoushi/extensions/releases/download/'
+          '88e1412-0/tachiyomi-all.ahottie-v1.6.4.apk';
+      final entries = MihonRepo.parseIndex(
+        '{"extensionList":{"extensions":[{'
+        '"name":"AHottie","packageName":"p.a","versionCode":"4",'
+        '"versionName":"1.6.4","resources":{"apkUrl":"$released"},'
+        '"sources":[]}]}}',
+        repoBaseUrl: _base,
+      );
+      expect(entries.single.apkUrl, released);
+      expect(entries.single.apkUrl, isNot(startsWith('$_base/apk/')));
+      // The bare filename is still what lands on disk.
+      expect(entries.single.apk, 'tachiyomi-all.ahottie-v1.6.4.apk');
+    });
+
+    // index.pb is the PRIMARY format — it's tried before index.json and is
+    // ~13x smaller, so it's the path a real install actually takes. It decodes
+    // through the same entry mapping, but that's exactly why this is asserted
+    // over real protobuf bytes rather than JSON: a regression that reintroduced
+    // URL-rebuilding inside the pb path would leave a JSON-only test green
+    // while every install still 404s.
+    test('index.pb (the primary format) honours an absolute apkUrl', () {
+      const released =
+          'https://github.com/keiyoushi/extensions/releases/download/'
+          'abc1234-0/tachiyomi-en-example-v1.2.3.apk';
+
+      // proto3 wire encoders — see test/core/mihon/mihon_pb_index_test.dart.
+      List<int> varint(int v) {
+        final out = <int>[];
+        var n = v;
+        while (true) {
+          final b = n & 0x7f;
+          n >>= 7;
+          if (n == 0) {
+            out.add(b);
+            break;
+          }
+          out.add(b | 0x80);
+        }
+        return out;
+      }
+
+      List<int> tag(int f, int w) => varint((f << 3) | w);
+      List<int> varintField(int f, int v) => [...tag(f, 0), ...varint(v)];
+      List<int> lenField(int f, List<int> p) =>
+          [...tag(f, 2), ...varint(p.length), ...p];
+      List<int> strField(int f, String s) => lenField(f, utf8.encode(s));
+
+      final source = <int>[
+        ...varintField(1, 12),
+        ...strField(2, 'Example'),
+        ...strField(3, 'en'),
+        ...strField(4, 'https://e.test'),
+      ];
+      final ext = <int>[
+        ...strField(1, 'Example'),
+        ...strField(2, 'p.e'),
+        ...lenField(3, strField(1, released)), // Resources { apkUrl=1 }
+        ...varintField(5, 3),
+        ...strField(6, '1.2.3'),
+        ...lenField(8, source),
+      ];
+      final store = <int>[
+        ...strField(1, 'TestRepo'),
+        ...lenField(101, lenField(1, ext)),
+      ];
+
+      final entries = MihonRepo.parsePbIndex(
+        gzip.encode(store),
+        repoBaseUrl: _base,
+      );
+
+      expect(entries.single.apkUrl, released);
+      expect(entries.single.apkUrl, isNot(startsWith('$_base/apk/')));
+      expect(entries.single.apk, 'tachiyomi-en-example-v1.2.3.apk');
     });
   });
 
@@ -309,7 +400,13 @@ void main() {
 
       final entries = await MihonRepo.fetchIndex('$_base/index.min.json');
       expect(entries, hasLength(1369));
-      expect(entries.first.apkUrl, startsWith('$_base/apk/'));
+      // Assert the normalisation directly: the saved filename is stripped and
+      // the index is fetched from the DIRECTORY, never `…/index.min.json/…`.
+      expect(adapter.requested, contains('$_base/index.json'));
+      expect(
+        adapter.requested.any((u) => u.contains('index.min.json/')),
+        isFalse,
+      );
     });
   });
 }
