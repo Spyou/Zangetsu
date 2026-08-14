@@ -189,10 +189,16 @@ class AniyomiExtensionService {
   /// blocks / rate limits), retry via the jsDelivr GitHub CDN mirror.
   static const Duration _apkDownloadTimeout = Duration(minutes: 3);
 
+  /// Same reasoning as the transfer timeout above, for the CONNECT phase: 8s
+  /// suits a search fanning out across sources, not one install the user is
+  /// sat waiting on — and a mirror retry means several connections to make.
+  static const Duration _apkConnectTimeout = Duration(seconds: 30);
+
   Future<void> _downloadApk(Dio dio, String url, String savePath) async {
     final opts = Options(
       receiveTimeout: _apkDownloadTimeout,
       sendTimeout: _apkDownloadTimeout,
+      connectTimeout: _apkConnectTimeout,
     );
     // Try the direct URL first, then every GitHub-raw mirror in turn. Some
     // phones/ISPs block raw.githubusercontent.com but can reach the CDNs/proxies

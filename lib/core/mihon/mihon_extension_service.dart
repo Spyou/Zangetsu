@@ -218,10 +218,19 @@ class MihonExtensionService {
   /// (ISP blocks / rate limits), retry via a GitHub-raw mirror.
   static const Duration _apkDownloadTimeout = Duration(minutes: 3);
 
+  /// The shared Dio connects in 8s, which is right for browsing — a search
+  /// fans out across every source, so a host that won't answer should be
+  /// dropped fast. It's wrong for an install: that's one deliberate tap the
+  /// user is waiting on, and a repo whose APKs live off-site (Keiyoushi now
+  /// redirects to GitHub Releases) makes the phone establish TWO connections,
+  /// each rolling that dice on a weak signal.
+  static const Duration _apkConnectTimeout = Duration(seconds: 30);
+
   Future<void> _downloadApk(Dio dio, String url, String savePath) async {
     final opts = Options(
       receiveTimeout: _apkDownloadTimeout,
       sendTimeout: _apkDownloadTimeout,
+      connectTimeout: _apkConnectTimeout,
     );
     // Try the direct URL first, then every GitHub-raw mirror in turn. Some
     // phones/ISPs block raw.githubusercontent.com but can reach the CDNs/proxies,
