@@ -736,6 +736,11 @@ Future<void> initDependencies() async {
       lnrManager: lnrManager,
       activeSource: sl<ActiveSourceCubit>(),
       prefs: sl<PlaybackPrefs>(),
+      // The language sets the sources screens already filter their lists by.
+      // Without these the repo hands search every language a multi-language
+      // extension installs, so choosing English still returned Hebrew.
+      mangaLangs: mangaLangPrefs,
+      animeLangs: animeLangPrefs,
     ),
   );
 

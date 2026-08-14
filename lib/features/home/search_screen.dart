@@ -28,7 +28,9 @@ import '../../core/ui/poster_card.dart';
 import '../../core/ui/reveal_item.dart';
 import '../../core/ui/states.dart';
 import '../../core/aniyomi/aniyomi_filters.dart';
+import '../../core/mihon/mihon_filters.dart';
 import '../aniyomi/aniyomi_filter_sheet.dart';
+import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
@@ -256,6 +258,32 @@ class _SearchViewState extends State<_SearchView>
         sourceId,
         AniyomiFilters.toSelectionJson(result),
       ),
+    );
+  }
+
+  /// Mihon twin of [_openAniFilters] — same flow, [MihonFilter] types and
+  /// `_repo.mihonFilters`/`showMihonFilterSheet` instead of the Aniyomi ones.
+  Future<void> _openMihonFilters(String sourceId) async {
+    final stored = context
+        .read<SearchBloc>()
+        .state
+        .mihonFiltersBySource[sourceId];
+    final List<MihonFilter> filters = (stored != null && stored.isNotEmpty)
+        ? MihonFilters.parse(stored)
+        : await _repo.mihonFilters(sourceId);
+    if (!mounted) return;
+    if (filters.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This source has no filters')),
+      );
+      return;
+    }
+    // Drop focus first — see [_openAniFilters] for why.
+    FocusScope.of(context).unfocus();
+    final result = await showMihonFilterSheet(context, filters);
+    if (result == null || !mounted) return;
+    context.read<SearchBloc>().add(
+      SearchSourceFiltersApplied(sourceId, MihonFilters.toSelectionJson(result)),
     );
   }
 
@@ -736,7 +764,7 @@ class _SearchViewState extends State<_SearchView>
         child: Row(
           children: [
             Expanded(child: _controlRowLeft(modeSources)),
-            _aniFilterAction(),
+            _sourceFilterAction(),
             _filterAction(),
           ],
         ),
@@ -777,7 +805,21 @@ class _SearchViewState extends State<_SearchView>
           return const SizedBox.shrink();
         }
         final tabs = ecosystemTabsFor(modeSources.map((s) => s.id));
-        if (tabs.length < 3) return const SizedBox.shrink();
+        // Fewer than three means "All" plus at most one real ecosystem — the
+        // two would show identical results, so the strip is pointless. Show
+        // the result count instead of leaving the row blank next to a lone
+        // filter icon, which reads as something failing to load. (Manga mode
+        // hits this whenever every installed source is a Mihon one.)
+        if (tabs.length < 3) {
+          final n = state.totalCount;
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '$n result${n == 1 ? '' : 's'}',
+              style: AppText.caption.copyWith(fontSize: 12.5),
+            ),
+          );
+        }
         return _ecosystemTabs(state, tabs);
       },
     );
@@ -877,26 +919,51 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
-  /// Aniyomi per-source filter action. In single-source mode there's no
-  /// per-source section header to host it (the old scope pill surfaced it
-  /// beside itself for the same reason), so it lives here — shown only when
-  /// scoped to an `ani:` source.
-  Widget _aniFilterAction() {
+  /// Per-source filter routing for [sourceId] by [sourceFilterEcosystemOf] —
+  /// the tap handler for the section-header tune icon (or null to hide it)
+  /// plus whether a selection is already stored (drives the active tint).
+  /// Shared by [_sourceFilterAction] and both source-section headers
+  /// ([_sourceRow]/[_sourceGrid]) so the routing lives in exactly one place.
+  ({VoidCallback? onFilter, bool active}) _sourceFilterFor(
+    String sourceId,
+    SearchState state,
+  ) {
+    return switch (sourceFilterEcosystemOf(sourceId)) {
+      SourceFilterEcosystem.aniyomi => (
+          onFilter: () => _openAniFilters(sourceId),
+          active: state.aniFiltersBySource.containsKey(sourceId),
+        ),
+      SourceFilterEcosystem.mihon => (
+          onFilter: () => _openMihonFilters(sourceId),
+          active: state.mihonFiltersBySource.containsKey(sourceId),
+        ),
+      null => (onFilter: null, active: false),
+    };
+  }
+
+  /// Per-source filter action (Aniyomi or Mihon). In single-source mode
+  /// there's no per-source section header to host it (the old scope pill
+  /// surfaced it beside itself for the same reason), so it lives here —
+  /// shown only when scoped to a source with a per-source filter sheet; see
+  /// [sourceFilterEcosystemOf].
+  Widget _sourceFilterAction() {
     return BlocBuilder<SearchBloc, SearchState>(
       buildWhen: (p, c) =>
           p.currentSourceOnly != c.currentSourceOnly ||
-          p.aniFiltersBySource != c.aniFiltersBySource,
+          p.aniFiltersBySource != c.aniFiltersBySource ||
+          p.mihonFiltersBySource != c.mihonFiltersBySource,
       builder: (context, state) {
         if (!state.currentSourceOnly) return const SizedBox.shrink();
         return BlocBuilder<ActiveSourceCubit, String>(
           builder: (context, activeId) {
-            if (!activeId.startsWith('ani:')) return const SizedBox.shrink();
+            final filter = _sourceFilterFor(activeId, state);
+            if (filter.onFilter == null) return const SizedBox.shrink();
             return IconButton(
-              onPressed: () => _openAniFilters(activeId),
+              onPressed: filter.onFilter,
               icon: Icon(
                 Icons.tune_rounded,
                 size: 20,
-                color: state.aniFiltersBySource.containsKey(activeId)
+                color: filter.active
                     ? AppColors.accent
                     : AppColors.textTertiary,
               ),
@@ -1272,10 +1339,10 @@ class _SearchViewState extends State<_SearchView>
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
         : g.items;
-    final isAni = g.sourceId.startsWith('ani:');
-    final aniFilters = isAni
-        ? context.read<SearchBloc>().state.aniFiltersBySource
-        : const <String, String>{};
+    final filter = _sourceFilterFor(
+      g.sourceId,
+      context.read<SearchBloc>().state,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1284,8 +1351,8 @@ class _SearchViewState extends State<_SearchView>
           g.sourceName,
           g.items.length,
           onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
-          onFilter: isAni ? () => _openAniFilters(g.sourceId) : null,
-          filterActive: isAni && aniFilters.containsKey(g.sourceId),
+          onFilter: filter.onFilter,
+          filterActive: filter.active,
         ),
         SizedBox(
           height: itemH,
@@ -1336,10 +1403,10 @@ class _SearchViewState extends State<_SearchView>
     final preview = overflows
         ? g.items.take(_kSourcePreviewCap).toList(growable: false)
         : g.items;
-    final isAni = g.sourceId.startsWith('ani:');
-    final aniFilters = isAni
-        ? context.read<SearchBloc>().state.aniFiltersBySource
-        : const <String, String>{};
+    final filter = _sourceFilterFor(
+      g.sourceId,
+      context.read<SearchBloc>().state,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -1348,8 +1415,8 @@ class _SearchViewState extends State<_SearchView>
           g.sourceName,
           g.items.length,
           onSeeAll: overflows ? () => _openSourceSeeAll(g) : null,
-          onFilter: isAni ? () => _openAniFilters(g.sourceId) : null,
-          filterActive: isAni && aniFilters.containsKey(g.sourceId),
+          onFilter: filter.onFilter,
+          filterActive: filter.active,
         ),
         GridView.builder(
           shrinkWrap: true,
@@ -1782,6 +1849,20 @@ searchFilterSections(SourceBuckets buckets, ContentMode mode) {
 /// out 100% of results. A top-level function (same pattern as
 /// [searchFilterSections]) so it's unit-testable without pumping the sheet.
 bool searchTypeAudioGroupsVisible(ContentMode mode) => !mode.isReading;
+
+/// Which ecosystem's per-source filter sheet [sourceId] opens — Aniyomi for
+/// `ani:` ids, Mihon for `mihon:` ids, or null for everything else (no
+/// per-source filter button shown). Drives the filter icon on the
+/// single-source control row ([_SearchViewState._sourceFilterAction]) and both
+/// source-section headers. A top-level function (same pattern as
+/// [searchFilterSections]) so it's unit-testable without pumping the sheet.
+enum SourceFilterEcosystem { aniyomi, mihon }
+
+SourceFilterEcosystem? sourceFilterEcosystemOf(String sourceId) {
+  if (sourceId.startsWith('ani:')) return SourceFilterEcosystem.aniyomi;
+  if (sourceId.startsWith('mihon:')) return SourceFilterEcosystem.mihon;
+  return null;
+}
 
 /// The filter sheet's "no sources" state. Anime mode's wording (a bare,
 /// button-less line) is unchanged; a reading mode gets a reading-specific

@@ -415,7 +415,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           final res = await _repo.searchStatus(
             q,
             sourceId: s.id,
-            filtersJson: state.aniFiltersBySource[s.id],
+            filtersJson: state.filterSelectionFor(s.id),
             cache: true,
           );
           sw.stop();
@@ -512,8 +512,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     return out;
   }
 
-  /// Stores the per-source Aniyomi filter selection and re-fetches that one
-  /// source with the updated selection applied.
+  /// Stores the per-source filter selection (Aniyomi or Mihon, routed by the
+  /// `mihon:` id prefix) and re-fetches that one source with the updated
+  /// selection applied.
   ///
   /// An empty [SearchSourceFiltersApplied.selectionJson] clears the entry,
   /// reverting the source to unfiltered results on the next search.
@@ -521,13 +522,20 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     SearchSourceFiltersApplied event,
     Emitter<SearchState> emit,
   ) async {
-    final map = Map<String, String>.of(state.aniFiltersBySource);
+    final isMihon = event.sourceId.startsWith('mihon:');
+    final map = Map<String, String>.of(
+      isMihon ? state.mihonFiltersBySource : state.aniFiltersBySource,
+    );
     if (event.selectionJson.isEmpty) {
       map.remove(event.sourceId);
     } else {
       map[event.sourceId] = event.selectionJson;
     }
-    emit(state.copyWith(aniFiltersBySource: map));
+    emit(
+      isMihon
+          ? state.copyWith(mihonFiltersBySource: map)
+          : state.copyWith(aniFiltersBySource: map),
+    );
     final q = state.query.trim();
     if (q.isEmpty) {
       // Filters with an empty search box = browse. The idle screen's "Top
@@ -620,7 +628,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   ) async {
     if (!state.canLoadMoreFilteredBrowse) return;
     final sourceId = state.filteredBrowseSourceId;
-    final filtersJson = state.aniFiltersBySource[sourceId];
+    final filtersJson = state.filterSelectionFor(sourceId);
     if (sourceId.isEmpty || filtersJson == null || filtersJson.isEmpty) return;
 
     final nextPage = state.filteredBrowsePage + 1;

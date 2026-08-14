@@ -13,6 +13,8 @@ import '../models/video_source.dart';
 import '../playback/playback_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
+import '../i18n/source_languages.dart';
+import '../prefs/source_lang_prefs.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
@@ -30,7 +32,14 @@ class SourceRepository {
     required PlaybackPrefs prefs,
     MihonManager? mihonManager,
     LnReaderManager? lnrManager,
-  }) : _manager = manager,
+    // Optional so existing tests construct this unchanged; null simply means
+    // "no language filtering", which is also the behaviour for a user who has
+    // never picked a language set.
+    MangaLangPrefs? mangaLangs,
+    AnimeLangPrefs? animeLangs,
+  }) : _mangaLangs = mangaLangs,
+       _animeLangs = animeLangs,
+       _manager = manager,
        _csManager = csManager,
        _aniManager = aniManager,
        _active = activeSource,
@@ -142,27 +151,107 @@ class SourceRepository {
   ///
   /// NSFW Aniyomi sources are excluded when [PlaybackPrefs.showNsfwAniyomi]
   /// is false so toggling the pref is immediately reflected here.
-  List<({String id, String name})> get loadedSources => [
-    ..._manager.all.map((p) => (id: p.sourceId, name: p.displayName)),
+  /// Installed sources as `{id, name}`, with same-named entries disambiguated
+  /// by language.
+  ///
+  /// Multi-language extensions install one source PER language, each carrying
+  /// the same `info.name` — so MangaDex alone showed up as a dozen identical
+  /// "MangaDex" chips, an unreadable picker, and a stack of identical result
+  /// sections. Only names that actually collide get the suffix, so a
+  /// single-language source reads exactly as before.
+  List<({String id, String name})> get loadedSources {
+    final raw = _rawLoadedSources;
+    final counts = <String, int>{};
+    for (final s in raw) {
+      counts[s.name] = (counts[s.name] ?? 0) + 1;
+    }
+    return [
+      for (final s in raw)
+        (
+          id: s.id,
+          name: (counts[s.name]! > 1 && (s.lang ?? '').isNotEmpty)
+              ? '${s.name} (${s.lang!.toUpperCase()})'
+              : s.name,
+        ),
+    ];
+  }
+
+  /// The user's enabled language codes for [T], or null when they've never
+  /// configured them (or in tests where the prefs aren't registered). Null
+  /// means "don't filter" — a language set is only ever applied because the
+  /// user picked one, so an untouched install keeps every source it had.
+  final MangaLangPrefs? _mangaLangs;
+  final AnimeLangPrefs? _animeLangs;
+
+  /// The language set to filter by, mirroring what the sources screens do
+  /// (`mihon_repo_tab.dart`): an unset preference falls back to the DEFAULTS,
+  /// not to "no filtering". Getting this wrong is why choosing English on the
+  /// sources screen still returned Telugu and Hebrew in search — that screen
+  /// was showing the default set while the repo filtered by nothing.
+  ///
+  /// Null only when the prefs object itself is absent (tests), which keeps
+  /// every existing test's source list untouched.
+  Set<String>? _langsFor(LangPrefs? prefs) {
+    if (prefs == null) return null;
+    final set = prefs.enabled;
+    if (set != null) return set;
+    try {
+      return defaultSourceLangs();
+    } catch (_) {
+      // defaultSourceLangs reads the platform locale, which needs a binding.
+      return const {'en'};
+    }
+  }
+
+  /// True when a source declaring [lang] should be used at all, given [enabled].
+  /// `sourceLangVisible` already lets blank/`all`/unknown codes through, so a
+  /// source can never be hidden with no way to bring it back.
+  bool _langOk(String? lang, Set<String>? enabled) =>
+      enabled == null || sourceLangVisible(lang ?? '', enabled);
+
+  List<({String id, String name, String? lang})> get _rawLoadedSources => [
+    ..._manager.all.map(
+      (p) => (id: p.sourceId, name: p.displayName, lang: null),
+    ),
     // Only ENABLED CloudStream sources — a disabled source shouldn't be
     // searched (and skipping them trims the search fan-out).
-    ..._csManager.enabled.map((p) => (id: p.sourceId, name: p.displayName)),
+    ..._csManager.enabled.map(
+      (p) => (id: p.sourceId, name: p.displayName, lang: null),
+    ),
     // Aniyomi sources — NSFW entries filtered when the pref is off.
     ..._aniManager.all
         .where(
           (p) => aniyomiNsfwVisible(p, showNsfwAniyomi: _prefs.showNsfwAniyomi),
         )
-        .map((p) => (id: p.sourceId, name: p.displayName)),
+        .map(
+          (p) => (
+            id: p.sourceId,
+            name: p.displayName,
+            lang: p is AniyomiProvider ? p.info.lang : null,
+          ),
+        )
+        .where((s) => _langOk(s.lang, _langsFor(_animeLangs))),
     // Mihon manga sources. There is no Mihon-specific NSFW pref, so these
     // reuse the general "show NSFW sources" toggle rather than inventing a
     // third one — same default (off), so an 18+ manga source stays hidden
     // until the user opts in, exactly like every other NSFW source.
     ..._mihonManager.all
         .where((p) => !p.info.nsfw || _prefs.nsfwSources)
-        .map((p) => (id: p.sourceId, name: p.displayName)),
+        .map(
+          (p) => (id: p.sourceId, name: p.displayName, lang: p.info.lang),
+        )
+        // A multi-language extension installs one source PER language, so
+        // installing MangaDex registered a dozen of them and search queried
+        // every one — Hebrew results for a user who'd chosen English. The
+        // sources screen already filtered its list this way; the source list
+        // that actually gets searched never did.
+        .where((s) => _langOk(s.lang, _langsFor(_mangaLangs))),
     // LNReader novel sources — already `{id, name}` shaped, straight from
     // stored plugin meta (no NSFW concept for these yet).
-    if (_lnrManager != null) ..._lnrManager.installedSources,
+    if (_lnrManager != null)
+      ..._lnrManager.installedSources.map(
+        (s) => (id: s.id, name: s.name, lang: null),
+      ),
   ];
 
   /// Base site URL for a source, used to turn a relative item URL into an

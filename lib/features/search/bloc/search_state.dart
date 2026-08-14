@@ -164,7 +164,9 @@ enum SearchEcosystem {
   all('All'),
   zangetsu('Zangetsu'),
   cloudstream('CloudStream'),
-  aniyomi('Aniyomi');
+  aniyomi('Aniyomi'),
+  mihon('Mihon'),
+  lnreader('LNReader');
 
   const SearchEcosystem(this.label);
   final String label;
@@ -176,6 +178,12 @@ enum SearchEcosystem {
 SearchEcosystem ecosystemOf(String sourceId) {
   if (sourceId.startsWith('ani:')) return SearchEcosystem.aniyomi;
   if (sourceId.startsWith('cs:')) return SearchEcosystem.cloudstream;
+  // Manga and novel extensions carry their own prefixes and belong to their own
+  // ecosystems. Without these they fell through to Zangetsu, so a MangaDex
+  // result sat under a tab labelled "Zangetsu" and no Mihon tab ever appeared.
+  // A future ecosystem (Mangayomi, say) is one prefix and one enum value.
+  if (sourceId.startsWith('mihon:')) return SearchEcosystem.mihon;
+  if (sourceId.startsWith('lnr:')) return SearchEcosystem.lnreader;
   return SearchEcosystem.zangetsu;
 }
 
@@ -192,6 +200,8 @@ List<SearchEcosystem> ecosystemTabsFor(Iterable<String> sourceIds) {
       SearchEcosystem.zangetsu,
       SearchEcosystem.cloudstream,
       SearchEcosystem.aniyomi,
+      SearchEcosystem.mihon,
+      SearchEcosystem.lnreader,
     ])
       if (present.contains(e)) e,
   ];
@@ -250,6 +260,14 @@ class SearchState extends Equatable {
   /// selection JSON string produced by [AniyomiFilters.toSelectionJson].
   /// Only populated for `ani:` sources; non-Aniyomi ids are never present.
   final Map<String, String> aniFiltersBySource;
+
+  /// Mihon twin of [aniFiltersBySource]: maps `mihon:` source ids to a
+  /// selection JSON string produced by `MihonFilters.toSelectionJson`. Kept as
+  /// a SEPARATE map (not a shared/renamed one) so a stored selection is always
+  /// parsed back with the matching ecosystem's parser — the search screen
+  /// picks `AniyomiFilters.parse` vs `MihonFilters.parse` by which map (and
+  /// therefore which id prefix) the selection came from, never by guessing.
+  final Map<String, String> mihonFiltersBySource;
 
   /// Ids of sources that have FINISHED responding for the current search run
   /// (ok, empty, or error) — independent of whether they actually produced a
@@ -311,6 +329,7 @@ class SearchState extends Equatable {
     this.trending = const [],
     this.suggestions = const [],
     this.aniFiltersBySource = const {},
+    this.mihonFiltersBySource = const {},
     this.respondedSources = const {},
     this.filteredBrowse = const [],
     this.filteredBrowseSourceId = '',
@@ -592,6 +611,16 @@ class SearchState extends Equatable {
     }
   }
 
+  /// Stored per-source filter selection JSON for [sourceId], regardless of
+  /// ecosystem — looks in [mihonFiltersBySource] for `mihon:` ids and
+  /// [aniFiltersBySource] for everything else (only ever Aniyomi ids in
+  /// practice). Used by the bloc's cross-source search fan-out and filtered
+  /// browse, which forward whatever selection is stored without caring which
+  /// ecosystem it came from.
+  String? filterSelectionFor(String sourceId) => sourceId.startsWith('mihon:')
+      ? mihonFiltersBySource[sourceId]
+      : aniFiltersBySource[sourceId];
+
   SearchState copyWith({
     SearchStatus? status,
     String? query,
@@ -610,6 +639,7 @@ class SearchState extends Equatable {
     List<MediaItem>? trending,
     List<String>? suggestions,
     Map<String, String>? aniFiltersBySource,
+    Map<String, String>? mihonFiltersBySource,
     Set<String>? respondedSources,
     List<MediaItem>? filteredBrowse,
     String? filteredBrowseSourceId,
@@ -632,6 +662,7 @@ class SearchState extends Equatable {
     trending: trending ?? this.trending,
     suggestions: suggestions ?? this.suggestions,
     aniFiltersBySource: aniFiltersBySource ?? this.aniFiltersBySource,
+    mihonFiltersBySource: mihonFiltersBySource ?? this.mihonFiltersBySource,
     respondedSources: respondedSources ?? this.respondedSources,
     filteredBrowse: filteredBrowse ?? this.filteredBrowse,
     filteredBrowseSourceId:
@@ -659,6 +690,7 @@ class SearchState extends Equatable {
     trending,
     suggestions,
     aniFiltersBySource,
+    mihonFiltersBySource,
     respondedSources,
     filteredBrowse,
     filteredBrowseSourceId,
