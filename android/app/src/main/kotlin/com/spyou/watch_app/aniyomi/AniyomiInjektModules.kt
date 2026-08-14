@@ -83,13 +83,39 @@ object AniyomiInjektModules {
                 com.lagradost.cloudstream3.app.baseClient
             }.getOrElse { OkHttpClient() }
 
+            // …but NOT CloudStream's UA-realigning network interceptor.
+            //
+            // It rewrites the User-Agent of any request carrying a cf_clearance
+            // cookie to the UA *CloudStream's* WebView solver used, which is
+            // persisted to disk and can be from a much older solve. That's right
+            // for CloudStream (NiceHttp otherwise sends a desktop UA the cookie
+            // wasn't issued to) and wrong for extensions, which solve their own
+            // challenges: the clearance gets bound to the UA the extension's
+            // solve ran under, then this swaps a different UA onto the wire.
+            // Cloudflare sees a cookie issued to one browser presented by
+            // another and challenges forever — the user solves, passes, and is
+            // blocked again on the very next request.
+            //
+            // It runs at the NETWORK layer, below the extension client's own
+            // interceptors, so nothing above can see or undo it. Dropping it
+            // here leaves extension traffic with exactly one Cloudflare
+            // identity, the way upstream Aniyomi/Mihon has it. CloudStream's own
+            // client keeps the interceptor untouched.
+            val extensionClient: OkHttpClient = shared.newBuilder()
+                .apply {
+                    networkInterceptors().removeAll {
+                        it === com.spyou.watch_app.cloudstream.CfClearance.interceptor
+                    }
+                }
+                .build()
+
             Injekt.importModule(object : InjektModule {
                 // InjektModule.registerInjectables is defined as an extension
                 // function on InjektRegistrar; 'this' inside the body is the
                 // InjektRegistrar, so addSingleton is called as an extension.
                 override fun InjektRegistrar.registerInjectables() {
                     addSingleton(app)
-                    addSingleton(NetworkHelper(app, shared))
+                    addSingleton(NetworkHelper(app, extensionClient))
                     addSingleton(Json { ignoreUnknownKeys = true })
                     addSingleton(
                         SourcePreferences(
