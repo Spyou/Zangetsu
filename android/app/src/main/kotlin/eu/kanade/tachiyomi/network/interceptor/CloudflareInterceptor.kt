@@ -42,6 +42,54 @@ class CloudflareInterceptor(
         // source uses its own UA makes Cloudflare reject the cookie forever.
         eu.kanade.tachiyomi.network.NetworkHelper.challengeUserAgent =
             request.header("User-Agent")
+        // A clearance the user JUST earned by hand is never thrown away. Without
+        // this the app loops forever: the reload after a visible solve gets
+        // challenged, the remove() below deletes the fresh cf_clearance, the
+        // headless retry can't pass an interactive challenge, so we prompt again
+        // — and every solve is wiped by the request that follows it.
+        //
+        // Inside the grace window we retry ONCE carrying the cookie. If
+        // Cloudflare still refuses, the clearance isn't being accepted for our
+        // requests at all and re-solving cannot help, so we return that response
+        // and let it surface as an ordinary failure rather than another prompt.
+        val solvedAt = eu.kanade.tachiyomi.network.NetworkHelper.lastSolveAtMs
+        val justSolved = solvedAt > 0 &&
+            System.currentTimeMillis() - solvedAt < SOLVE_GRACE_MS
+        if (justSolved &&
+            cookieManager.get(request.url).any { it.name == "cf_clearance" }
+        ) {
+            response.close()
+            val retried = chain.proceed(request)
+
+            // A clearance earned by hand seconds ago and still refused means the
+            // cookie isn't being accepted for our requests at all. Log what we
+            // actually sent — whether the cookie went out, and whether the UA
+            // the source sends matches the one the challenge was solved under
+            // (cf_clearance is bound to its UA, so a mismatch is refused every
+            // time). This is the only window where the answer is knowable, and
+            // it's cheap: it runs once per failed solve, never in the happy path.
+            if (retried.code in ERROR_CODES && retried.header("Server") in SERVER_CHECK) {
+                val cookieSent = cookieManager.get(request.url)
+                    .any { it.name == "cf_clearance" }
+                val reqUa = request.header("User-Agent")
+                val solveUa =
+                    eu.kanade.tachiyomi.network.NetworkHelper.challengeUserAgent
+                val uaState = when {
+                    reqUa == null -> "none"
+                    reqUa == solveUa -> "match"
+                    else -> "MISMATCH"
+                }
+                android.util.Log.w(
+                    "ZangetsuCF",
+                    "still challenged after a manual solve: ${retried.code} " +
+                        "${request.url.host} cookie=${if (cookieSent) "sent" else "MISSING"} " +
+                        "ua=$uaState mit=${retried.header("cf-mitigated") ?: "-"}\n" +
+                        "reqUA=$reqUa\nsolveUA=$solveUa",
+                )
+            }
+            return retried
+        }
+
         try {
             response.close()
             cookieManager.remove(request.url, COOKIE_NAMES, 0)
@@ -157,6 +205,11 @@ private val ERROR_CODES = listOf(403, 503)
 private val SERVER_CHECK = arrayOf("cloudflare-nginx", "cloudflare")
 private val COOKIE_NAMES = listOf("cf_clearance")
 private const val HEADLESS_SOLVE_SECONDS = 12L
+
+/** How long a hand-solved `cf_clearance` is treated as fresh (see [CloudflareInterceptor.intercept]).
+ *  Long enough to cover the reload right after a solve, short enough that a
+ *  genuinely stale cookie still gets cleared on the next browse. */
+private const val SOLVE_GRACE_MS = 90_000L
 
 class CloudflareBypassException : Exception()
 

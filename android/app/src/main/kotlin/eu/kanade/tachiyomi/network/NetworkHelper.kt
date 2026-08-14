@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.network
 
 import android.content.Context
+import android.webkit.WebSettings
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UncaughtExceptionInterceptor
 import eu.kanade.tachiyomi.network.interceptor.UserAgentInterceptor
@@ -24,6 +25,33 @@ class NetworkHelper(
     private val context: Context,
     sharedClient: OkHttpClient,
 ) {
+
+    init {
+        // Adopt the DEVICE's real WebView User-Agent as the app's default.
+        //
+        // A cf_clearance cookie is tied to the browser identity that earned it,
+        // and Cloudflare cross-checks the UA against signals the WebView sends
+        // regardless (Sec-CH-UA client hints, TLS). Shipping a fixed
+        // "Android 13; Pixel 7 … Chrome/125" string made those disagree: the
+        // solver forces the WebView to claim Chrome 125 while its client hints
+        // still say what it really is (a tester on Android 10 reported
+        // Chrome/141), so the clearance is issued against an identity our
+        // okhttp requests can't reproduce — the user passes the challenge and
+        // is immediately blocked again. Taking the real UA makes the challenge
+        // and the requests that follow it the same browser.
+        //
+        // `; wv` marks the UA as a WebView; upstream strips it so sources see a
+        // normal Chrome, and the tester's Animiru UA confirms that convention.
+        // Best-effort: this can throw while WebView is being updated, and the
+        // hardcoded constant remains the fallback.
+        if (deviceUserAgent == null) {
+            deviceUserAgent = runCatching {
+                WebSettings.getDefaultUserAgent(context)
+                    .replace("; wv", "")
+                    .takeIf { it.isNotBlank() }
+            }.getOrNull()
+        }
+    }
 
     /** Cookie store backed by the global WebView [android.webkit.CookieManager] —
      *  the same store the shared client's own jar writes to. Declared before
@@ -89,14 +117,24 @@ class NetworkHelper(
         .callTimeout(30, TimeUnit.MINUTES)
         .build()
 
-    fun defaultUserAgentProvider(): String = DEFAULT_USER_AGENT
+    /** The instance overload the interceptors above are wired to — it must
+     *  resolve to the SAME string as the companion one, or okhttp would send a
+     *  different UA than the Cloudflare solve used. */
+    fun defaultUserAgentProvider(): String = Companion.defaultUserAgentProvider()
 
     companion object {
+        /** Fallback only — used until [deviceUserAgent] is known, and on the
+         *  rare device where WebView can't be queried at all. */
         private const val DEFAULT_USER_AGENT =
             "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) " +
                 "Chrome/125.0.0.0 Mobile Safari/537.36"
 
-        fun defaultUserAgentProvider(): String = DEFAULT_USER_AGENT
+        /** The device's own WebView UA (`; wv` stripped), filled in by the
+         *  NetworkHelper constructor. Null until then. */
+        @Volatile
+        var deviceUserAgent: String? = null
+
+        fun defaultUserAgentProvider(): String = deviceUserAgent ?: DEFAULT_USER_AGENT
 
         /**
          * The User-Agent of the last request that hit a Cloudflare challenge.
@@ -108,5 +146,18 @@ class NetworkHelper(
          */
         @Volatile
         var challengeUserAgent: String? = null
+
+        /**
+         * When the visible solver last came away with a `cf_clearance`
+         * (`System.currentTimeMillis()`, 0 = never).
+         *
+         * The Cloudflare interceptor clears cf_clearance before every re-solve.
+         * That's right for a stale cookie and wrong for one the user just earned
+         * by hand — deleting it means the next challenge re-prompts, and the
+         * solve after that is deleted too, forever. This lets the interceptor
+         * spot a fresh cookie and keep it.
+         */
+        @Volatile
+        var lastSolveAtMs: Long = 0L
     }
 }

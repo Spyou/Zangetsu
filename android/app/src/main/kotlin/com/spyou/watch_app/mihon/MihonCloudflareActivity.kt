@@ -111,6 +111,10 @@ class MihonCloudflareActivity : AppCompatActivity() {
         if (cookie.contains("cf_clearance")) {
             solved = true
             CookieManager.getInstance().flush()
+            // Mark it fresh BEFORE the reload this finish() triggers, so the
+            // interceptor keeps the cookie instead of clearing it and prompting
+            // again — see NetworkHelper.lastSolveAtMs.
+            NetworkHelper.lastSolveAtMs = System.currentTimeMillis()
             Toast.makeText(this, "Cloudflare passed", Toast.LENGTH_SHORT).show()
             setResult(RESULT_OK)
             finish()
