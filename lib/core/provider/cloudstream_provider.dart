@@ -14,6 +14,7 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
+import 'cs_repo_url.dart';
 
 /// Native MethodChannel bridging to the CloudStream plugin host. All methods
 /// are async, Android-only, and return JSON-shaped collections. Every call is
@@ -1177,8 +1178,14 @@ class CloudStreamManager extends ChangeNotifier {
   /// NOT install anything — the user installs plugins one by one via
   /// [installPlugin]. Returns the number of installable plugins the repo
   /// advertises. No-op on non-Android.
-  Future<int> addRepo(String url) async {
+  Future<int> addRepo(String rawUrl) async {
     if (!Platform.isAndroid) return 0;
+    // Tidy the paste first: a link copied out of chat or a browser arrives
+    // wrapped in <>/quotes, with a trailing full stop, or with no scheme at
+    // all — and the native fetch rejects anything java.net.URL won't parse.
+    // Normalising here means the tidied URL is what gets stored and looked up
+    // below, so the repo isn't recorded under a string we can't fetch again.
+    final url = normalizeCsRepoUrl(rawUrl);
     try {
       final repo = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
         'addRepo',
