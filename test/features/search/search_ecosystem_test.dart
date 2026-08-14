@@ -109,13 +109,13 @@ void main() {
       _group('cs:AnimePahe', arrival: 1), // CloudStream
       _group('ani:1', arrival: 2), // Aniyomi
     ];
-    final base = const SearchState().copyWith(
+    final base = SearchState().copyWith(
       status: SearchStatus.success,
       groups: groups,
     );
 
     test('defaults to the All ecosystem', () {
-      expect(const SearchState().ecosystem, SearchEcosystem.all);
+      expect(SearchState().ecosystem, SearchEcosystem.all);
     });
 
     test('All tab shows every group (unchanged behaviour)', () {

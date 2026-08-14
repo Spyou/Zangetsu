@@ -52,12 +52,23 @@ void main() {
       expect(_order(state), ['fast', 'slow']); // arrival tie-break
     });
 
-    test('an explicit sort keeps pure arrival order', () {
+    // Section (and chip) order ranks by best-matching source whenever there's
+    // a query, independent of the item-sort setting — item sort only governs
+    // the order of items INSIDE a section (see the item-sort test below).
+    test('an explicit item sort still ranks sections by relevance', () {
       final state = _state('one piece', [
         _group('fast', 0, ['One Piece Film: Red']),
         _group('slow', 1, ['One Piece']),
       ], sort: SearchSort.titleAsc);
-      expect(_order(state), ['fast', 'slow']); // arrival, not relevance
+      expect(_order(state), ['slow', 'fast']); // relevance, not arrival
+    });
+
+    test('empty query keeps pure arrival order regardless of sort', () {
+      final state = _state('', [
+        _group('fast', 0, ['One Piece Film: Red']),
+        _group('slow', 1, ['One Piece']),
+      ], sort: SearchSort.titleAsc);
+      expect(_order(state), ['fast', 'slow']);
     });
 
     test('the chip row matches the row order (best source first)', () {
@@ -68,6 +79,17 @@ void main() {
       final chips = state.sourceChipGroups.map((g) => g.sourceId).toList();
       expect(chips, ['slow', 'fast']); // same as _order(state)
       expect(chips, _order(state));
+    });
+
+    test('the chip row ranks best-source-first even under a non-bestMatch '
+        'sort — chip order is independent of item sort', () {
+      final state = _state('one piece', [
+        _group('fast', 0, ['One Piece Film: Red']), // prefix
+        _group('slow', 1, ['One Piece']), // exact, arrived later
+      ], sort: SearchSort.titleAsc);
+      final chips = state.sourceChipGroups.map((g) => g.sourceId).toList();
+      expect(chips, ['slow', 'fast']); // relevance, not arrival
+      expect(chips, _order(state)); // still lines up with the section order
     });
   });
 }

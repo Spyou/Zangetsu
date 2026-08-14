@@ -88,7 +88,7 @@ class _FakeSearchBloc extends SearchBloc {
           prefs: _StubSearchPrefs(),
           suggestions: _StubSuggestions(),
         ) {
-    emit(const SearchState(currentSourceOnly: false));
+    emit(SearchState(currentSourceOnly: false));
     stream.listen((s) => scopeEvents.add(s.currentSourceOnly));
   }
   final scopeEvents = <bool>[];

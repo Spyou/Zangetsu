@@ -13,12 +13,12 @@ import 'package:watch_app/features/search/bloc/search_state.dart';
 void main() {
   group('SearchState.mihonFiltersBySource', () {
     test('defaults to empty', () {
-      const state = SearchState();
+      final state = SearchState();
       expect(state.mihonFiltersBySource, isEmpty);
     });
 
     test('copyWith sets mihonFiltersBySource', () {
-      const state = SearchState();
+      final state = SearchState();
       final updated = state.copyWith(
         mihonFiltersBySource: {'mihon:1': '["selection"]'},
       );
@@ -26,7 +26,7 @@ void main() {
     });
 
     test('copyWith without mihonFiltersBySource preserves the existing map', () {
-      final state = const SearchState().copyWith(
+      final state = SearchState().copyWith(
         mihonFiltersBySource: {'mihon:2': '["sel"]'},
       );
       final again = state.copyWith(query: 'x');
@@ -34,7 +34,7 @@ void main() {
     });
 
     test('mihonFiltersBySource is independent of aniFiltersBySource', () {
-      final state = const SearchState().copyWith(
+      final state = SearchState().copyWith(
         aniFiltersBySource: {'ani:1': '["a"]'},
         mihonFiltersBySource: {'mihon:1': '["m"]'},
       );
@@ -43,7 +43,7 @@ void main() {
     });
 
     test('mihonFiltersBySource is part of props (state equality)', () {
-      final a = const SearchState();
+      final a = SearchState();
       final b = a.copyWith(mihonFiltersBySource: {'mihon:1': '["x"]'});
       expect(a, isNot(equals(b)));
     });
@@ -51,7 +51,7 @@ void main() {
 
   group('SearchState.filterSelectionFor — routes by id prefix', () {
     test('a mihon: id reads mihonFiltersBySource, never aniFiltersBySource', () {
-      final state = const SearchState().copyWith(
+      final state = SearchState().copyWith(
         aniFiltersBySource: {'mihon:1': 'WRONG_MAP'},
         mihonFiltersBySource: {'mihon:1': '["right"]'},
       );
@@ -59,14 +59,14 @@ void main() {
     });
 
     test('an ani: id reads aniFiltersBySource', () {
-      final state = const SearchState().copyWith(
+      final state = SearchState().copyWith(
         aniFiltersBySource: {'ani:1': '["a"]'},
       );
       expect(state.filterSelectionFor('ani:1'), '["a"]');
     });
 
     test('an id with no stored selection returns null', () {
-      const state = SearchState();
+      final state = SearchState();
       expect(state.filterSelectionFor('mihon:missing'), isNull);
       expect(state.filterSelectionFor('ani:missing'), isNull);
     });
@@ -76,7 +76,7 @@ void main() {
     test('a Mihon selection round-trips as MihonFilter via MihonFilters.parse', () {
       final original = [MihonCheckBox(name: 'Dubbed', state: true)];
       final json = MihonFilters.toSelectionJson(original);
-      final state = const SearchState().copyWith(
+      final state = SearchState().copyWith(
         mihonFiltersBySource: {'mihon:1': json},
       );
 
@@ -93,7 +93,7 @@ void main() {
       () {
         final original = [AniyomiCheckBox(name: 'Dubbed', state: true)];
         final json = AniyomiFilters.toSelectionJson(original);
-        final state = const SearchState().copyWith(
+        final state = SearchState().copyWith(
           aniFiltersBySource: {'ani:1': json},
         );
 

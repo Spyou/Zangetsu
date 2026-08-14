@@ -216,25 +216,25 @@ void main() {
     });
 
     test('no groups at all is false, not a crash', () {
-      expect(const SearchState().hasAnyStatus, isFalse);
+      expect(SearchState().hasAnyStatus, isFalse);
     });
   });
 
   group('hasActiveFilter / activeFilterCount include audio and status', () {
     test('audio alone counts as one active filter', () {
-      const state = SearchState(audioFilter: SearchAudioFilter.subbed);
+      final state = SearchState(audioFilter: SearchAudioFilter.subbed);
       expect(state.hasActiveFilter, isTrue);
       expect(state.activeFilterCount, 1);
     });
 
     test('status alone counts as one active filter', () {
-      const state = SearchState(statusFilter: SearchStatusFilter.ongoing);
+      final state = SearchState(statusFilter: SearchStatusFilter.ongoing);
       expect(state.hasActiveFilter, isTrue);
       expect(state.activeFilterCount, 1);
     });
 
     test('audio + status + a non-default sort all stack in the count', () {
-      const state = SearchState(
+      final state = SearchState(
         sort: SearchSort.newest,
         audioFilter: SearchAudioFilter.dubbed,
         statusFilter: SearchStatusFilter.completed,
@@ -243,7 +243,7 @@ void main() {
     });
 
     test('defaults for both count as no active filter', () {
-      const state = SearchState();
+      final state = SearchState();
       expect(state.hasActiveFilter, isFalse);
       expect(state.activeFilterCount, 0);
     });

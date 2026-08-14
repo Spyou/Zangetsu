@@ -123,7 +123,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         onLoadMore: widget.onLoadMore,
       );
     }
-    final cellW = (MediaQuery.of(context).size.width - 32 - 24) / 3;
+    final cellW = (MediaQuery.sizeOf(context).width - 32 - 24) / 3;
     final paginating = widget.onLoadMore != null;
     // A trailing spinner cell spanning the full row while a page is loading.
     final showSpinner = paginating && _loading;

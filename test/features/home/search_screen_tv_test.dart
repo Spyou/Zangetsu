@@ -130,7 +130,7 @@ void main() {
   testWidgets(
     'SearchScreenTv renders an autofocus-capable search field',
     (tester) async {
-      final bloc = _FakeSearchBloc(const SearchState());
+      final bloc = _FakeSearchBloc(SearchState());
       addTearDown(bloc.close);
 
       await tester.pumpWidget(_buildUnderTest(bloc));
@@ -148,7 +148,7 @@ void main() {
     'SearchScreenTv shows idle state when bloc is idle',
     (tester) async {
       final bloc =
-          _FakeSearchBloc(const SearchState(status: SearchStatus.idle));
+          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
       addTearDown(bloc.close);
 
       await tester.pumpWidget(_buildUnderTest(bloc));
@@ -210,7 +210,7 @@ void main() {
     'SearchScreenTv shows error state when bloc emits error',
     (tester) async {
       final bloc =
-          _FakeSearchBloc(const SearchState(status: SearchStatus.error));
+          _FakeSearchBloc(SearchState(status: SearchStatus.error));
       addTearDown(bloc.close);
 
       await tester.pumpWidget(_buildUnderTest(bloc));
@@ -224,7 +224,7 @@ void main() {
     'SearchScreenTv shows no-results message on success with empty groups',
     (tester) async {
       final bloc = _FakeSearchBloc(
-        const SearchState(
+        SearchState(
           status: SearchStatus.success,
           query: 'xyznotfound',
           groups: [],
@@ -253,7 +253,7 @@ void main() {
     'SearchScreenTv _onFieldKey: arrowDown moves focus out of the field when '
     'a screen reader is OFF (sighted user, original behaviour)',
     (tester) async {
-      final bloc = _FakeSearchBloc(const SearchState());
+      final bloc = _FakeSearchBloc(SearchState());
       addTearDown(bloc.close);
 
       await tester.pumpWidget(
@@ -290,7 +290,7 @@ void main() {
     'when a screen reader is ON (D-pad stays live even when the TV falsely '
     'reports one)',
     (tester) async {
-      final bloc = _FakeSearchBloc(const SearchState());
+      final bloc = _FakeSearchBloc(SearchState());
       addTearDown(bloc.close);
 
       await tester.pumpWidget(

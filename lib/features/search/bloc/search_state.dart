@@ -101,13 +101,19 @@ class SearchMeta {
   /// Pulls a 4-digit release year out of a title (e.g. "Dune (2021)",
   /// "Some Show 2019"). Only accepts a plausible film/TV range so a stray
   /// number in a title (e.g. "Power Rangers 3000") doesn't masquerade as a year.
-  static int? year(MediaItem item) {
-    final matches = RegExp(r'(?:19|20)\d{2}').allMatches(item.title);
+  static final RegExp _yearPattern = RegExp(r'(?:19|20)\d{2}');
+
+  /// [maxYear] caps plausible years (default `DateTime.now().year + 1`).
+  /// Callers sorting a whole list should compute it ONCE outside the loop
+  /// instead of letting every call hit the system clock.
+  static int? year(MediaItem item, {int? maxYear}) {
+    final cap = maxYear ?? DateTime.now().year + 1;
+    final matches = _yearPattern.allMatches(item.title);
     int? best;
     for (final m in matches) {
       final y = int.tryParse(m.group(0)!);
       if (y == null) continue;
-      if (y < 1950 || y > DateTime.now().year + 1) continue;
+      if (y < 1950 || y > cap) continue;
       // Prefer the latest plausible year if a title carries more than one.
       if (best == null || y > best) best = y;
     }
@@ -313,7 +319,7 @@ class SearchState extends Equatable {
   bool get canLoadMoreFilteredBrowse =>
       hasFilteredBrowse && !filteredBrowseLoadingMore && !filteredBrowseAtEnd;
 
-  const SearchState({
+  SearchState({
     this.status = SearchStatus.idle,
     this.query = '',
     this.groups = const [],
@@ -445,16 +451,17 @@ class SearchState extends Equatable {
   /// current view — otherwise selecting a chip that yields nothing would hide
   /// the very chips you'd use to change or clear it.
   ///
-  /// On the default Best-match sort the chips are ordered best-matching-source
-  /// first — the SAME order as [sortedVisibleGroups] — so the first chip lines
-  /// up with the top row. Ties keep arrival order; explicit sorts / empty query
-  /// keep pure arrival order.
+  /// Whenever there's a query, chips are ordered best-matching-source first —
+  /// the SAME order as [sortedVisibleGroups] — so the first chip lines up with
+  /// the top row. This is independent of [sort]: item sort governs the order
+  /// of items INSIDE a section, not which source's chip/section leads. Ties
+  /// keep arrival order; an empty query keeps pure arrival order.
   List<SourceResultGroup> get sourceChipGroups {
     final raw = [
       for (final g in groups)
         if (_inEcosystem(g.sourceId) && g.items.isNotEmpty) g,
     ];
-    if (sort != SearchSort.bestMatch || query.trim().isEmpty) return raw;
+    if (query.trim().isEmpty) return raw;
     final m = _queryMatch;
     final score = {for (final g in raw) g.sourceId: _bestScore(g.items, m)};
     // Decorate with the original (arrival) index so equal scores stay put.
@@ -466,10 +473,12 @@ class SearchState extends Equatable {
     return [for (final e in indexed) e.g];
   }
 
-  /// Per-source groups, each already filtered + sorted, ordered CloudStream-style
-  /// by ARRIVAL: the source that returned results first sits at the top, slower
-  /// sources below. This SECTION order is independent of the in-section item
-  /// sort. Honours the active source-filter chip.
+  /// Per-source groups, each already filtered + sorted. With a query, SECTION
+  /// order leads with the best-matching source (see below); with an empty
+  /// query it's CloudStream-style ARRIVAL order — the source that returned
+  /// results first sits at the top, slower sources below. Either way this
+  /// section order is independent of the in-section item sort. Honours the
+  /// active source-filter chip.
   List<SourceResultGroup> get sortedVisibleGroups {
     final out = <SourceResultGroup>[];
     for (final g in groups) {
@@ -479,13 +488,16 @@ class SearchState extends Equatable {
       if (items.isEmpty) continue;
       out.add(g.withItems(items));
     }
-    // Section order. On the default Best-match sort, lead with the source whose
-    // best result most closely matches the query (relevance-first), and fall
-    // back to arrival order for sources that match equally well — so the common
-    // case where several sources all have the exact title keeps today's
-    // fast-source-first feel and nothing reshuffles. Any explicit sort
-    // (Title/Newest) keeps pure arrival order, unchanged.
-    if (sort == SearchSort.bestMatch && query.trim().isNotEmpty) {
+    // Section order. Whenever there's a query, lead with the source whose best
+    // result most closely matches it (relevance-first), and fall back to
+    // arrival order for sources that match equally well — so the common case
+    // where several sources all have the exact title keeps today's
+    // fast-source-first feel and nothing reshuffles. This is independent of
+    // [sort]: item sort governs the order of items INSIDE a section (applied
+    // above via _sortItems), not section order — see [sourceChipGroups],
+    // which this stays in lockstep with. An empty query keeps pure arrival
+    // order.
+    if (query.trim().isNotEmpty) {
       // Score each section's best match ONCE, then sort — cheaper than
       // rescoring inside the comparator.
       final m = _queryMatch;
@@ -544,12 +556,37 @@ class SearchState extends Equatable {
         .toList(),
   );
 
+  /// Memo of [_scoreItem] results for this SearchState instance. Three
+  /// separate passes (sortedVisibleGroups' item sort, its section-order pass,
+  /// and sourceChipGroups) each score the same items from scratch per
+  /// rebuild — this makes the 2nd and 3rd pass free.
+  ///
+  /// Keyed on (sourceId, url) rather than the MediaItem itself: MediaItem is
+  /// Equatable and usable as a map key, but its hashCode walks all 16 props
+  /// via equatable's Jenkins-hash combiner, including `coverHeaders` (a Map —
+  /// the combiner SORTS its keys on every single hashCode call) and `genres`
+  /// (a List, hashed element-by-element). That's real work on every lookup.
+  /// (sourceId, url) is a Dart record of two Strings — cheap structural
+  /// hashing — and already uniquely identifies a result within one state.
+  ///
+  /// Safe to scope to the instance: SearchState is immutable and rebuilt (a
+  /// new instance via copyWith) on every emission, and `query` — which
+  /// `_queryMatch`/[m] is derived from — never changes on an existing
+  /// instance, so a score cached here can't go stale under it.
+  final Map<(String, String), double> _scoreCache = {};
+
   /// Relevance of [item] to a precomputed query match [m], 0–100 (higher =
   /// better). Scores against BOTH the source title and the English title and
   /// keeps the best: exact match wins, then prefix, then substring, then the
   /// fraction of query words present. An empty (e.g. non-Latin) query scores 0,
   /// so nothing reshuffles.
-  double _scoreItem(MediaItem item, ({String q, List<String> tokens}) m) {
+  double _scoreItem(MediaItem item, ({String q, List<String> tokens}) m) =>
+      _scoreCache[(item.sourceId, item.url)] ??= _scoreItemUncached(item, m);
+
+  double _scoreItemUncached(
+    MediaItem item,
+    ({String q, List<String> tokens}) m,
+  ) {
     if (m.q.isEmpty) return 0;
     double scoreOf(String? cand) {
       if (cand == null) return 0;
@@ -598,9 +635,12 @@ class SearchState extends Equatable {
           (a, b) => b.title.toLowerCase().compareTo(a.title.toLowerCase()),
         );
       case SearchSort.newest:
+        // Computed once for the whole sort instead of once per comparison —
+        // SearchMeta.year() no longer hits DateTime.now() internally.
+        final maxYear = DateTime.now().year + 1;
         return items..sort((a, b) {
-          final ya = SearchMeta.year(a);
-          final yb = SearchMeta.year(b);
+          final ya = SearchMeta.year(a, maxYear: maxYear);
+          final yb = SearchMeta.year(b, maxYear: maxYear);
           if (ya == null && yb == null) {
             return a.title.toLowerCase().compareTo(b.title.toLowerCase());
           }

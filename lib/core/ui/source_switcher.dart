@@ -468,7 +468,7 @@ class SourceSwitcher extends StatelessWidget {
     // mode sizes off its own single bucket instead (anime/movies/nsfw are
     // always empty there, so counting them in too would be harmless, but
     // this keeps the "what's actually shown" intent explicit).
-    final screenH = MediaQuery.of(context).size.height;
+    final screenH = MediaQuery.sizeOf(context).height;
     final relevant = mode.isReading
         ? [mode == ContentMode.manga ? b.manga : b.novel]
         : [b.anime, b.movies, b.nsfw];

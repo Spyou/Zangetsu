@@ -367,8 +367,10 @@ class _SearchViewState extends State<_SearchView>
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final cellW = (mq.size.width - 40 - 24) / 3;
+    // sizeOf (not MediaQuery.of) so this rebuilds only when the screen size
+    // actually changes, not on every viewInsets change (e.g. every keyboard
+    // animation frame).
+    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
     // Computed once per outer build, not once per BlocBuilder rebuild below
     // (each fires on every search state emission during a live fan-out).
     final modeSources = _modeSources;
@@ -1084,22 +1086,24 @@ class _SearchViewState extends State<_SearchView>
         // it. Base "enough sources to filter" on the sources that RETURNED
         // results, not the content-filtered view.
         final hasSelection = state.sourceFilter != kAllSources;
+        // Computed once here instead of once for the length check and again
+        // inside _filterChips.
+        final chipGroups = state.sourceChipGroups;
         if (state.currentSourceOnly ||
             showingSuggestions ||
             state.status != SearchStatus.success ||
-            (state.sourceChipGroups.length < 2 && !hasSelection)) {
+            (chipGroups.length < 2 && !hasSelection)) {
           return const SizedBox.shrink();
         }
         return Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 2),
-          child: _filterChips(state),
+          child: _filterChips(state, chipGroups),
         );
       },
     );
   }
 
-  Widget _filterChips(SearchState state) {
-    final groups = state.sourceChipGroups;
+  Widget _filterChips(SearchState state, List<SourceResultGroup> groups) {
     return SizedBox(
       height: 34,
       child: ListView(
@@ -1363,7 +1367,10 @@ class _SearchViewState extends State<_SearchView>
             // window) so TalkBack can reach each one and the row auto-scrolls to
             // it — otherwise swipe navigation stalls at the first few. Sighted
             // users keep the lazy 600px window unchanged.
-            cacheExtent: MediaQuery.of(context).accessibleNavigation
+            // `accessibleNavigationOf`, not `MediaQuery.of(...)`: the latter
+            // subscribes to every aspect including viewInsets, so each row
+            // rebuilt on every frame of the keyboard sliding in or out.
+            cacheExtent: MediaQuery.accessibleNavigationOf(context)
                 ? double.infinity
                 : 600,
             itemCount: preview.length,
@@ -1583,7 +1590,7 @@ class _SearchViewState extends State<_SearchView>
       );
     }
 
-    final cellW = (MediaQuery.of(context).size.width - 40 - 24) / 3;
+    final cellW = (MediaQuery.sizeOf(context).width - 40 - 24) / 3;
     return NotificationListener<ScrollNotification>(
       // Infinite scroll for a filtered browse, the way Aniyomi keeps paging one.
       // The bloc ignores the event unless a browse is active and idle, so this
@@ -1944,7 +1951,7 @@ class _SearchFilterSheet extends StatelessWidget {
     return SafeArea(
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.86,
+          maxHeight: MediaQuery.sizeOf(context).height * 0.86,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

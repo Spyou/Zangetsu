@@ -66,7 +66,7 @@ class _PosterCardState extends State<PosterCard> {
 
   @override
   Widget build(BuildContext context) {
-    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
     final memW = (widget.cellWidth * dpr).round();
     final aniSrcId = _aniSrcId;
     final mihonSrcId = _mihonSrcId;
