@@ -268,6 +268,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Brightness / volume swipe gestures ──────────────────────────────────
   final bool _gesturesEnabled = sl<PlaybackPrefs>().gestureControls;
+  // Horizontal drag-to-seek. Its own switch, not part of [_gesturesEnabled],
+  // which only ever meant the vertical brightness/volume swipes.
+  final bool _swipeSeekEnabled = sl<PlaybackPrefs>().swipeSeek;
   final bool _holdSpeedEnabled = sl<PlaybackPrefs>().holdSpeed;
   final bool _skipIntroEnabled = sl<PlaybackPrefs>().skipIntro;
   // Fields for the in-player info overlay (read once). Shown on demand via the
@@ -1130,6 +1133,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   // Horizontal swipe across the surface scrubs the position; a time bubble shows
   // the target while dragging, and the seek commits on release.
   void _onHDragStart(DragStartDetails d) {
+    if (!_swipeSeekEnabled) return;
     if (_duration <= Duration.zero) return; // can't scrub without a duration
     _hSeekStart = _c.player.state.position;
     _hSeekTarget = _hSeekStart;
@@ -2274,9 +2278,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         onVerticalDragStart: _onVDragStart,
                         onVerticalDragUpdate: _onVDragUpdate,
                         onVerticalDragEnd: _onVDragEnd,
-                        onHorizontalDragStart: _onHDragStart,
-                        onHorizontalDragUpdate: _onHDragUpdate,
-                        onHorizontalDragEnd: _onHDragEnd,
+                        // Nulled rather than no-op'd when the setting is off:
+                        // a live recognizer still joins the gesture arena and
+                        // would swallow any tap that drifted sideways, so the
+                        // controls would stop toggling on a slightly sloppy tap.
+                        onHorizontalDragStart: _swipeSeekEnabled
+                            ? _onHDragStart
+                            : null,
+                        onHorizontalDragUpdate: _swipeSeekEnabled
+                            ? _onHDragUpdate
+                            : null,
+                        onHorizontalDragEnd: _swipeSeekEnabled
+                            ? _onHDragEnd
+                            : null,
                       ),
                       // Tap zones — translucent so drags still reach the layer
                       // below. Thirds match the old seek trigger areas. The

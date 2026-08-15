@@ -2154,6 +2154,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.swap_horiz_rounded,
+                title: 'Swipe to seek',
+                subtitle: 'Drag left or right across the video to scrub',
+                value: _prefs.swipeSeek,
+                onChanged: (v) async {
+                  await _prefs.setSwipeSeek(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.fast_forward_rounded,
                 title: 'Hold for 2× speed',
                 subtitle: 'Long-press the video to play at 2× while held',

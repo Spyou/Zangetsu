@@ -207,6 +207,15 @@ class PlaybackPrefs {
   Future<void> setGestureControls(bool value) =>
       _box.put('gestureControls', value);
 
+  /// Whether dragging left/right across the video scrubs through the episode.
+  /// Separate from [gestureControls], which only ever covered the vertical
+  /// swipes — the horizontal one was ungated until now, so turning that off
+  /// left scrubbing live. It maps the full screen width to the whole runtime,
+  /// so a stray sideways drag can throw your position minutes away; this is
+  /// the switch for people who'd rather it didn't.
+  bool get swipeSeek => _box.get('swipeSeek', defaultValue: true) as bool;
+  Future<void> setSwipeSeek(bool value) => _box.put('swipeSeek', value);
+
   /// Whether long-pressing the video plays at 2× while held.
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);
