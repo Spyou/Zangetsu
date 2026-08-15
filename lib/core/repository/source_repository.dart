@@ -597,6 +597,31 @@ class SourceRepository {
     String? sourceId,
   }) => _providerFor(sourceId).getEpisodes(url, category: category);
 
+  /// The links resolved SO FAR for [episodeUrl], plus whether more may arrive.
+  ///
+  /// A fast [sources] call returns on the first usable link while the native
+  /// resolve keeps running, so mirrors needing an extra round-trip land shortly
+  /// afterwards. This reads that growing set without starting any work.
+  ///
+  /// CloudStream sources only — every other provider resolves in one shot, so
+  /// there is nothing to poll. Those (and any failure) report `done: true` with
+  /// no sources, which tells a caller to simply stop asking.
+  Future<({List<VideoSource> sources, bool done})> polledSources(
+    String episodeUrl, {
+    String? sourceId,
+  }) async {
+    final provider = _providerFor(sourceId);
+    if (provider is! CloudStreamProvider) {
+      return (sources: const <VideoSource>[], done: true);
+    }
+    try {
+      return await provider.pollVideoSources(episodeUrl);
+    } catch (_) {
+      // Never surfaced: the caller already has a playable list.
+      return (sources: const <VideoSource>[], done: true);
+    }
+  }
+
   /// Resolve playable sources. [fast] (playback) returns as soon as the first
   /// link(s) are ready; downloads leave it false to get every mirror. A fast
   /// call reuses a fresh [prefetch] for the same episode when one exists.

@@ -105,6 +105,7 @@ class PlayerScreen extends StatefulWidget {
     required this.sourceId,
     required this.resume,
     required this.resolveSources,
+    this.pollSources,
     this.episodes = const [],
     this.startIndex = 0,
     this.episodesResolver,
@@ -129,6 +130,16 @@ class PlayerScreen extends StatefulWidget {
   final String sourceId;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) resolveSources;
+
+  /// Optional reader for links that finish resolving AFTER [resolveSources]
+  /// returned. That call comes back on the first usable link so playback starts
+  /// quickly, while the rest keep resolving natively instead of being cancelled;
+  /// this is how the Sources sheet ends up complete without anything having
+  /// waited. Null keeps the previous behaviour exactly.
+  final Future<({List<VideoSource> sources, bool done})> Function(
+    String episodeUrl,
+  )?
+  pollSources;
 
   /// Either pass [episodes] directly, or an [episodesResolver] that the player
   /// awaits behind its branded loader (so navigation is instant — no blocking
@@ -662,6 +673,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       episodes: eps,
       resume: widget.resume,
       resolveSources: widget.resolveSources,
+      pollSources: widget.pollSources,
       dio: sl<Dio>(),
       history: widget.history,
       showTitle: widget.showTitle,

@@ -383,6 +383,38 @@ class CloudStreamProvider implements BaseProvider {
       'loadLinks',
       {'name': hostKey, 'data': episodeUrl, 'fast': fast},
     );
+    return _sourcesFromResult(raw);
+  }
+
+  /// The links resolved so far for [episodeUrl], plus whether more may still
+  /// arrive.
+  ///
+  /// A fast [getVideoSources] returns on the first usable link, but the resolve
+  /// keeps running natively instead of being cancelled — so mirrors that need an
+  /// extra round-trip (whole quality tiers, on some providers) land shortly
+  /// after playback has already started. This reads that growing set. Purely a
+  /// read: it never starts a resolve, so calling it is cheap and safe to repeat.
+  Future<({List<VideoSource> sources, bool done})> pollVideoSources(
+    String episodeUrl,
+  ) async {
+    if (!Platform.isAndroid) {
+      return (sources: const <VideoSource>[], done: true);
+    }
+    final raw = await _csChannel.invokeMethod<Map<dynamic, dynamic>>(
+      'pollLinks',
+      {'name': hostKey, 'data': episodeUrl},
+    );
+    return (
+      sources: _sourcesFromResult(raw),
+      // Absent/!=false means "assume finished", so an older native side that
+      // doesn't send the flag simply stops the polling instead of looping.
+      done: _asMap(raw)['done'] != false,
+    );
+  }
+
+  /// Maps a native links payload into [VideoSource]s. Shared by the one-shot
+  /// resolve and the poll above so the two can never drift apart.
+  List<VideoSource> _sourcesFromResult(Object? raw) {
     final m = _asMap(raw);
 
     // Subtitles are shared across every stream for this episode.

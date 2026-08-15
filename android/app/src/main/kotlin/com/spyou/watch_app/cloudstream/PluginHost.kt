@@ -650,37 +650,120 @@ class PluginHost(private val context: Context) {
         return lr.toDetailMap(apiName, category)
     }
 
+    /** One episode's link resolution, kept alive after the caller has its answer.
+     *
+     *  The resolve emits links over a callback and finishes long after the first
+     *  usable ones arrive — measured on 4khdhub/HDHub4u, every link lands within
+     *  0.3-1.9s while the call itself was still running after 70s. The fast path
+     *  therefore has to return early, and it used to CANCEL the rest, which is
+     *  why the Sources sheet was missing whole quality tiers. Keeping the work
+     *  in a session lets it finish in the background instead of being thrown
+     *  away — the same shape CloudStream uses, where links land in a per-episode
+     *  cache as they resolve rather than being returned in one batch. */
+    private class LinkSession {
+        val links: MutableList<ExtractorLink> =
+            Collections.synchronizedList(mutableListOf())
+        val subs: MutableList<SubtitleFile> =
+            Collections.synchronizedList(mutableListOf())
+
+        @Volatile
+        var job: kotlinx.coroutines.Job? = null
+
+        /** The resolve stopped (finished, capped or cancelled) — no more links. */
+        @Volatile
+        var done = false
+    }
+
+    /** Live sessions keyed by `apiName|data`, newest-used last. Bounded: a stale
+     *  session's job is cancelled when it's evicted so background work can never
+     *  pile up across a browsing session. */
+    private val linkSessions = object :
+        LinkedHashMap<String, LinkSession>(8, 0.75f, true) {
+        override fun removeEldestEntry(
+            eldest: MutableMap.MutableEntry<String, LinkSession>,
+        ): Boolean {
+            val over = size > LINK_SESSIONS_MAX
+            if (over) eldest.value.job?.cancel()
+            return over
+        }
+    }
+
+    /** Own scope so a resolve OUTLIVES the call that started it. It can't live
+     *  inside the `runBlocking` below: that waits for its children, so returning
+     *  early there is only possible by cancelling — which is the very thing that
+     *  loses the mirrors. */
+    private val linkScope =
+        kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + Dispatchers.IO,
+        )
+
+    /** Links gathered so far for an episode, plus whether more may still arrive.
+     *  Read-only: it never starts a resolve, so calling it is always cheap. */
+    fun polledLinks(apiName: String, data: String): Map<String, Any?> {
+        val session = synchronized(linkSessions) { linkSessions["$apiName|$data"] }
+            ?: return mapOf(
+                "sources" to emptyList<Any?>(),
+                "subtitles" to emptyList<Any?>(),
+                "done" to true,
+            )
+        return sessionResult(session, done = session.done)
+    }
+
     fun loadLinks(apiName: String, data: String, fast: Boolean = false): Map<String, Any?> {
         val empty = mapOf("sources" to emptyList<Any?>(), "subtitles" to emptyList<Any?>())
         val api = apiByName(apiName) ?: return empty
-        // Synchronized: the provider emits links from a background coroutine while
-        // the (fast) path reads them to return early.
-        val links = Collections.synchronizedList(mutableListOf<ExtractorLink>())
-        val subs = Collections.synchronizedList(mutableListOf<SubtitleFile>())
-        runBlocking {
-            val job = launch(Dispatchers.IO) {
+        // A fresh session per call; any previous one for this episode is replaced
+        // (and its job cancelled) so a re-open never reads half-stale links.
+        val key = "$apiName|$data"
+        val session = LinkSession()
+        synchronized(linkSessions) {
+            linkSessions.put(key, session)?.job?.cancel()
+        }
+        val links = session.links
+        val subs = session.subs
+
+        // Started on [linkScope], NOT inside the runBlocking below: runBlocking
+        // waits for its own children, so the early return the fast path needs
+        // would force a cancel — throwing away mirrors that were seconds away.
+        // Here the resolve simply carries on filling the session afterwards.
+        // Capped so a call that never finishes (the normal case for these
+        // plugins) can't run forever.
+        session.job = linkScope.launch {
+            withTimeoutOrNull(LINK_SESSION_CAP_MS) {
                 runCatching {
                     api.loadLinks(data, false, { sf -> subs.add(sf) }, { el -> links.add(el) })
                 }.onFailure {
                     android.util.Log.w("PluginHost", "loadLinks failed for $apiName: $it", it)
                 }
             }
+            session.done = true
+        }
+
+        runBlocking {
+            val job = session.job
             if (fast) {
                 // Playback: return as soon as the first link(s) land (+ a short
                 // grace to gather a couple of alternatives) instead of waiting for
-                // EVERY mirror — that's the bulk of the "tap → playing" delay. The
-                // download path keeps fast=false and still waits for all servers.
+                // EVERY mirror — that's the bulk of the "tap → playing" delay.
+                // Timing here is deliberately UNCHANGED, so "tap → playing" is
+                // exactly as quick as before; the difference is only that the
+                // remaining mirrors keep resolving instead of being killed.
                 withTimeoutOrNull(LOADLINKS_FAST_CAP_MS) {
-                    while (links.isEmpty() && job.isActive) delay(50)
+                    while (links.isEmpty() && job?.isActive == true) delay(50)
                     if (links.isNotEmpty()) delay(LOADLINKS_FAST_GRACE_MS)
                 }
-                job.cancel() // stop resolving the remaining (unneeded) mirrors
             } else {
-                job.join() // wait for ALL servers (unchanged behavior)
+                job?.join() // wait for ALL servers (now bounded by the cap above)
             }
         }
-        return mapOf(
-            "sources" to links.toList().map { el ->
+        return sessionResult(session, done = session.done)
+    }
+
+    /** Serialises a session's links + subtitles for the Flutter bridge. Shared by
+     *  [loadLinks] and [polledLinks] so the two can never drift apart. */
+    private fun sessionResult(session: LinkSession, done: Boolean): Map<String, Any?> =
+        mapOf(
+            "sources" to session.links.toList().map { el ->
                 // ClearKey-DRM sources (DrmExtractorLink — e.g. CNC/PlayzTV live
                 // channels' CENC/DASH streams) carry a key id + key. mpv can't
                 // decrypt DRM, so pass them through and let Dart route the source
@@ -697,9 +780,12 @@ class PluginHost(private val context: Context) {
                     "drmKey" to drm?.key,
                 )
             },
-            "subtitles" to subs.toList().map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },
+            "subtitles" to session.subs.toList()
+                .map { sf -> mapOf("lang" to sf.lang, "url" to sf.url) },
+            // Whether more links may still arrive. Callers that only want the
+            // batch (today's behaviour) simply ignore it.
+            "done" to done,
         )
-    }
 
     // A real browser UA for mpv, matching what CloudStream's OkHttp already sends.
     // mpv would otherwise fetch with ffmpeg's default UA, which anti-leech CDNs 403.
@@ -869,5 +955,13 @@ class PluginHost(private val context: Context) {
          * few alternatives before returning, and a hard cap if no link arrives. */
         private const val LOADLINKS_FAST_GRACE_MS = 700L
         private const val LOADLINKS_FAST_CAP_MS = 15000L
+
+        /** How long a resolve may keep running in the background after the caller
+         *  has its answer, and how many episodes' sessions are kept. These
+         *  plugins routinely never finish on their own (measured: still running
+         *  after 70s), so the cap is what stops one browsing session leaving work
+         *  running indefinitely. */
+        private const val LINK_SESSION_CAP_MS = 60_000L
+        private const val LINK_SESSIONS_MAX = 4
     }
 }

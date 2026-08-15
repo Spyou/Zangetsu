@@ -151,6 +151,8 @@ class PlayerCubit extends Cubit<PlayerState> {
     required this.resume,
     required Future<List<VideoSource>> Function(String episodeUrl)
     resolveSources,
+    Future<({List<VideoSource> sources, bool done})> Function(String episodeUrl)?
+    pollSources,
     required Dio dio,
     this.history,
     this.showTitle,
@@ -167,6 +169,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.initialResume = Duration.zero,
     this.onDrmSource,
   }) : _resolveSources = resolveSources,
+       _pollSources = pollSources,
        _dio = dio,
        _activeCategory = category ?? 'sub',
        super(const PlayerState());
@@ -178,6 +181,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   List<Episode> episodes;
   final ResumeStore resume;
   final Future<List<VideoSource>> Function(String episodeUrl) _resolveSources;
+
+  /// Reads the links that have arrived since [_resolveSources] returned.
+  /// Optional — null keeps the previous behaviour exactly (one batch, no poll).
+  ///
+  /// The fast resolve returns on the first usable link so playback starts
+  /// quickly, and the rest keep resolving natively instead of being cancelled.
+  /// This picks those up so the Sources sheet ends up complete without the
+  /// player having waited for them. `done` reports that no more are coming.
+  final Future<({List<VideoSource> sources, bool done})> Function(
+    String episodeUrl,
+  )?
+  _pollSources;
   final Dio _dio;
 
   // Optional show-context for writing the Continue Watching history feed.
@@ -451,6 +466,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       }
       await _open(pick, seekTo: keepPos, gen: gen);
       _applyDefaultQuality();
+      // Same collection after a Sub/Dub switch — it resolves a different
+      // episode URL, so its sheet would otherwise be short of servers too.
+      unawaited(_pollForMoreSources(epUrl));
     } catch (e) {
       if (gen != _gen) return;
       emit(
@@ -459,6 +477,49 @@ class PlayerCubit extends Cubit<PlayerState> {
           error: () => 'Could not load sources: $e',
         ),
       );
+    }
+  }
+
+  /// Picks up the mirrors that finished resolving after playback started, and
+  /// adds them to the Sources list.
+  ///
+  /// Strictly additive and side-effect free: it never touches [state.active],
+  /// never re-picks a default and never reopens anything, so it cannot disturb
+  /// what is playing. Existing entries are kept as the SAME objects — the sheet
+  /// marks the playing row by value equality against `state.active`, and
+  /// rebuilding those could drop the tick off it.
+  ///
+  /// Staleness is judged by EPISODE rather than a generation counter: this runs
+  /// for seconds while `_gen` legitimately advances for unrelated reasons (a
+  /// re-open, a quality switch), and keying on that threw away good results.
+  /// An episode or Sub/Dub switch changes the URL, which does stop it.
+  Future<void> _pollForMoreSources(String epUrl) async {
+    final poll = _pollSources;
+    if (poll == null) return;
+    // Backs off: most providers are done within ~2s, so this is a handful of
+    // cheap reads, not a busy loop. Gives up after the last delay regardless.
+    const delays = [
+      Duration(milliseconds: 900),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+      Duration(seconds: 3),
+      Duration(seconds: 5),
+    ];
+    for (final d in delays) {
+      await Future<void>.delayed(d);
+      if (isClosed) return;
+      // Still the same episode on screen?
+      if (_episodeUrl(currentEpisode) != epUrl) return;
+      final existing = state.sources;
+      if (existing.isEmpty) return; // reset mid-flight; nothing to add to
+      final result = await poll(epUrl);
+      if (isClosed || _episodeUrl(currentEpisode) != epUrl) return;
+      final seen = existing.map((s) => s.url).toSet();
+      final extra = result.sources.where((s) => seen.add(s.url)).toList();
+      if (extra.isNotEmpty) {
+        emit(state.copyWith(sources: [...state.sources, ...extra]));
+      }
+      if (result.done) return; // nothing more is coming
     }
   }
 
@@ -1451,6 +1512,10 @@ class PlayerCubit extends Cubit<PlayerState> {
       }
       await _open(pick, gen: gen);
       _applyDefaultQuality();
+      // Playback is running — collect the mirrors that resolved after the fast
+      // return, so the Sources sheet ends up complete. Started here rather than
+      // alongside the open above so it can't compete with the stream starting.
+      unawaited(_pollForMoreSources(_episodeUrl(currentEpisode)));
       if (roomRole == RoomRole.host) onLocalPlayback?.call('episode', Duration.zero);
     } catch (e) {
       if (gen != _gen) return;

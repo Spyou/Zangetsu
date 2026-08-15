@@ -810,6 +810,21 @@ class MainActivity : FlutterActivity() {
                             }
                         }
                     }
+                    // Links gathered so far for an episode whose resolve is still
+                    // running in the background (see PluginHost.polledLinks).
+                    // Read-only and cheap — it never starts a resolve.
+                    "pollLinks" -> {
+                        val name = call.argument<String>("name")
+                        val data = call.argument<String>("data")
+                        csReadPool.execute {
+                            try {
+                                val res = host.polledLinks(name ?: "", data ?: "")
+                                runOnUiThread { result.success(res) }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("cs_error", e.message, null) }
+                            }
+                        }
+                    }
                     // Does this source's plugin expose its own settings UI?
                     "hasPluginSettings" -> {
                         val name = call.argument<String>("name")

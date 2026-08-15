@@ -637,6 +637,13 @@ class _DetailViewState extends State<_DetailView>
             sourceId: widget.item.sourceId,
             fast: true,
           ),
+          // The resolve above returns on the first usable link so playback
+          // starts fast; the remaining mirrors keep resolving natively. This
+          // lets the Sources sheet pick them up once they land.
+          pollSources: (u) => sl<SourceRepository>().polledSources(
+            u,
+            sourceId: widget.item.sourceId,
+          ),
           history: sl<WatchHistory>(),
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
