@@ -3506,6 +3506,13 @@ class _ControlsOverlay extends StatelessWidget {
           right: 0,
           child: SafeArea(
             bottom: false,
+            // Vertical insets only. Now that the window draws into the display
+            // cutout, the horizontal safe inset is the camera's — and it exists
+            // on one edge only, so honouring it shunts the whole bar sideways
+            // and the margins stop matching. The cutout sits mid-edge; this bar
+            // is pinned to the top, so they never meet.
+            left: false,
+            right: false,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               child: Row(
@@ -3717,6 +3724,13 @@ class _ControlsOverlay extends StatelessWidget {
             curve: Curves.easeOutCubic,
             child: SafeArea(
             top: false,
+            // Vertical inset only — the bottom one keeps the bar clear of the
+            // gesture nav. See the top bar for why the horizontal cutout inset
+            // is skipped: it lands on one edge only and pushed this whole block
+            // sideways, leaving a fat gap on the camera side and a thin one
+            // opposite. The camera sits mid-edge, well clear of this bar.
+            left: false,
+            right: false,
             child: Padding(
               // One margin for the whole block — timestamp, progress bar and
               // both button groups share it, so every edge lines up. Kept wide

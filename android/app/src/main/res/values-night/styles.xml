@@ -5,6 +5,12 @@
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- Match the light theme: draw into the cutout rather than being
+             letterboxed off it. Needed in both files because the launch theme
+             is picked by the OS dark-mode setting, and this one carries the
+             window attribute in dark mode. See values/styles.xml for why it
+             sits on LaunchTheme rather than NormalTheme. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your

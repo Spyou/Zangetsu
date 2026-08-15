@@ -5,6 +5,18 @@
         <!-- Show a splash screen on the activity. Automatically removed when
              the Flutter engine draws its first frame -->
         <item name="android:windowBackground">@drawable/launch_background</item>
+        <!-- Draw into the display cutout instead of letting the system letterbox
+             the window away from it. On a punch-hole phone in landscape that
+             reserved strip is the full height of the camera edge (81px on the
+             test device), which showed up as a black band the player could never
+             fill — no BoxFit reaches it, because those pixels are outside our
+             window entirely. Deliberately on LaunchTheme, not NormalTheme: this
+             is a *window* attribute, resolved when the window is created, and
+             LaunchTheme is what's in force then. Flutter's later swap to
+             NormalTheme doesn't rebuild the window, so setting it there is a
+             no-op. Needs API 27+; older devices ignore attributes they don't
+             know, so no values-v27 split is required. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your
