@@ -3452,6 +3452,9 @@ class _ControlsOverlay extends StatelessWidget {
               ? qualityLabel
               : '$secondaryTitle · $qualityLabel');
     final hasNext = state.currentIndex + 1 < c.episodes.length;
+    // Movies and one-off items have nowhere to step, so they get a lone play
+    // button rather than two arrows that can never do anything.
+    final multiEpisode = c.episodes.length > 1;
 
     return Stack(
       fit: StackFit.expand,
@@ -3672,31 +3675,35 @@ class _ControlsOverlay extends StatelessWidget {
           ),
         ),
 
-        // Center transport.
+        // Centre transport — episode step either side of play/pause. The ±10s
+        // buttons used to live here, but they jumped a hardcoded 10s while
+        // double-tap honoured the user's Double-tap skip setting, so the two
+        // disagreed; seeking is covered by double-tap, drag-to-seek and the
+        // MegaSkip pill, all of which read the same preference.
         Center(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _SeekButton(
-                icon: Icons.replay_10_rounded,
-                forward: false,
-                onTap: () {
-                  c.seekBy(const Duration(seconds: -10));
-                  onInteract();
-                },
-              ),
-              const SizedBox(width: 24),
+              if (multiEpisode) ...[
+                _TransportButton(
+                  icon: Icons.skip_previous_rounded,
+                  label: 'Previous episode',
+                  onTap: onPrev,
+                ),
+                const SizedBox(width: 24),
+              ],
               StreamBuilder<bool>(
                 stream: c.player.stream.buffering,
                 builder: (context, bSnap) {
                   final buffering = bSnap.data ?? c.player.state.buffering;
                   // While buffering, show the spinner IN PLACE OF the play/pause
-                  // button (same 72px footprint so the row doesn't shift) — no
-                  // more spinner-over-button overlap.
+                  // button — no more spinner-over-button overlap. 70px matches
+                  // _AnimatedPlayPause exactly (58px icon + 6px padding a side)
+                  // so the episode arrows don't twitch every time it stalls.
                   if (buffering) {
                     return const SizedBox(
-                      width: 62,
-                      height: 62,
+                      width: 70,
+                      height: 70,
                       child: Center(
                         child: SizedBox(
                           width: 32,
@@ -3724,15 +3731,19 @@ class _ControlsOverlay extends StatelessWidget {
                   );
                 },
               ),
-              const SizedBox(width: 24),
-              _SeekButton(
-                icon: Icons.forward_10_rounded,
-                forward: true,
-                onTap: () {
-                  c.seekBy(const Duration(seconds: 10));
-                  onInteract();
-                },
-              ),
+              if (multiEpisode) ...[
+                const SizedBox(width: 24),
+                _TransportButton(
+                  icon: Icons.skip_next_rounded,
+                  label: 'Next episode',
+                  onTap: hasNext
+                      ? () {
+                          c.playNext();
+                          onInteract();
+                        }
+                      : null,
+                ),
+              ],
             ],
           ),
         ),
@@ -3783,17 +3794,12 @@ class _ControlsOverlay extends StatelessWidget {
                     },
                   ),
                   const SizedBox(height: 2),
-                  // Button row: every control evenly distributed edge-to-edge
-                  // (Previous flush-left, Next flush-right, uniform gaps).
+                  // Button row: the pickers, evenly distributed edge-to-edge.
+                  // Previous/Next moved up to the centre transport — this row
+                  // is all "open a chooser", and episode navigation isn't.
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (onPrev != null)
-                        _ControlButton(
-                          icon: Icons.skip_previous_rounded,
-                          label: 'Previous',
-                          onTap: onPrev!,
-                        ),
                       _ControlButton(
                         icon: Icons.speed_rounded,
                         label: 'Speed',
@@ -3821,15 +3827,6 @@ class _ControlsOverlay extends StatelessWidget {
                         label: zoomLabel,
                         onTap: onZoom,
                       ),
-                      if (hasNext)
-                        _ControlButton(
-                          icon: Icons.skip_next_rounded,
-                          label: 'Next',
-                          onTap: () {
-                            c.playNext();
-                            onInteract();
-                          },
-                        ),
                     ],
                   ),
                 ],
@@ -5843,57 +5840,41 @@ class _AnimatedPlayPause extends StatelessWidget {
   }
 }
 
-/// ±10s seek button — a clean icon (no background) that spins once when tapped
-/// (rewind spins back, forward spins ahead). Apple-style: just the icon.
-class _SeekButton extends StatefulWidget {
-  const _SeekButton({
+/// Episode step either side of play/pause — a clean icon, no background, to
+/// match the play button. A null [onTap] means there's nowhere to step (first
+/// or last episode): the icon dims and stops taking touches, so the tap falls
+/// through and toggles the controls like any other empty patch of screen
+/// rather than dying on a dead button. It stays mounted either way, which is
+/// what keeps play/pause centred instead of sliding as the row shrinks.
+class _TransportButton extends StatelessWidget {
+  const _TransportButton({
     required this.icon,
-    required this.forward,
+    required this.label,
     required this.onTap,
   });
   final IconData icon;
-  final bool forward;
-  final VoidCallback onTap;
-
-  @override
-  State<_SeekButton> createState() => _SeekButtonState();
-}
-
-class _SeekButtonState extends State<_SeekButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 500),
-  );
-  late final Animation<double> _turn = Tween<double>(
-    begin: 0,
-    end: widget.forward ? 1 : -1,
-  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _tap() {
-    _ctrl.forward(from: 0);
-    widget.onTap();
-  }
+  final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return Semantics(
       button: true,
-      label: widget.forward ? 'Forward 10 seconds' : 'Rewind 10 seconds',
-      child: GestureDetector(
-        onTap: _tap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: RotationTransition(
-            turns: _turn,
-            child: Icon(widget.icon, color: Colors.white, size: 34),
+      enabled: enabled,
+      label: label,
+      child: IgnorePointer(
+        ignoring: !enabled,
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Icon(
+              icon,
+              color: Colors.white.withValues(alpha: enabled ? 1 : 0.28),
+              size: 38,
+            ),
           ),
         ),
       ),
