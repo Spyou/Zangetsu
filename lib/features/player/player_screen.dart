@@ -2030,7 +2030,28 @@ class _PlayerScreenState extends State<PlayerScreen> {
         body: _loadingBackdropBody('Loading…'),
       );
     }
-    final scaffold = Scaffold(
+    // One tooltip style for everything in the player, set here rather than on
+    // each Tooltip: the top bar's stock IconButtons build their own from the
+    // `tooltip:` property, so per-widget styling would leave those on Material's
+    // default grey while ours were dark. Theming the whole subtree catches both.
+    final scaffold = TooltipTheme(
+      data: TooltipThemeData(
+        decoration: BoxDecoration(
+          // Same family as the control chips, just opaque enough to stay
+          // readable over a bright frame — 0.3 like the bars would vanish.
+          color: Colors.black.withValues(alpha: 0.82),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        textStyle: AppText.caption.copyWith(
+          color: Colors.white,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          height: 1.2,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        margin: const EdgeInsets.symmetric(horizontal: 12),
+      ),
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: BlocBuilder<PlayerCubit, PlayerState>(
         bloc: _c,
@@ -2397,7 +2418,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 ),
               ),
 
-              // 5. 2x-hold chip (top-center).
+              // 5. 2x-hold chip (top-center). Same translucent-black chip as
+              // the bottom bar rather than the old opaque surface2 block with
+              // accent text. Carried a little more alpha than those, though:
+              // holding for 2x doesn't raise the controls, so this sits on raw
+              // video with no scrim under it to help legibility.
               if (_holding)
                 Positioned(
                   top: 12,
@@ -2406,20 +2431,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Center(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: AppColors.surface2,
-                        borderRadius: BorderRadius.circular(20),
+                        color: Colors.black.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(13),
                       ),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 7,
-                        ),
-                        child: Text(
-                          '2x ▶▶',
-                          style: AppText.caption.copyWith(
-                            color: AppColors.accent,
-                            fontWeight: FontWeight.w700,
-                          ),
+                        padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.fast_forward_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '2×',
+                              style: AppText.caption.copyWith(
+                                color: Colors.white,
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                height: 1.1,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -2683,6 +2719,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           );
         },
+      ),
       ),
     );
     // On TV: wrap with a PopScope so the first Back press hides the bar
@@ -4407,6 +4444,7 @@ class _MegaSkipPill extends StatelessWidget {
     // Deliberately the twin of the timestamp chip it now sits beside — same
     // fill, radius and type. The accent-outlined stadium it used to be was
     // louder than anything else on the bar and read as a stray element.
+    // No tooltip: "+85s" already says what it does.
     return Material(
       color: Colors.black.withValues(alpha: 0.3),
       borderRadius: BorderRadius.circular(13),
@@ -4456,7 +4494,9 @@ class _RoundIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
+    return _withTooltip(
+      semanticLabel,
+      Semantics(
       button: true,
       label: semanticLabel,
       child: Material(
@@ -4471,8 +4511,29 @@ class _RoundIconButton extends StatelessWidget {
           ),
         ),
       ),
+      ),
     );
   }
+}
+
+/// Long-press tooltip for the player's icon-only controls. Most of them lost
+/// their text labels to keep the bars compact, so the tooltip is the only way
+/// to find out what one does without pressing it.
+///
+/// Semantics are excluded by default because these buttons already declare
+/// their own — letting the tooltip add a second label makes a screen reader
+/// announce everything twice. Pass false for a control that has none.
+Widget _withTooltip(
+  String? message,
+  Widget child, {
+  bool excludeSemantics = true,
+}) {
+  if (message == null || message.isEmpty) return child;
+  return Tooltip(
+    message: message,
+    excludeFromSemantics: excludeSemantics,
+    child: child,
+  );
 }
 
 /// Aspect-mode icon. The fit button dropped its text label to keep every
@@ -4518,15 +4579,18 @@ class _BarButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Icon(icon, color: Colors.white, size: 24),
+    return _withTooltip(
+      tooltip,
+      Semantics(
+        button: true,
+        label: tooltip,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Icon(icon, color: Colors.white, size: 24),
+          ),
         ),
       ),
     );
@@ -5883,28 +5947,31 @@ class _AnimatedPlayPause extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: playing ? 'Pause' : 'Play',
-      child: GestureDetector(
-        onTap: onTap,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 220),
-            transitionBuilder: (child, anim) => FadeTransition(
-              opacity: anim,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.72, end: 1).animate(anim),
-                child: child,
+    return _withTooltip(
+      playing ? 'Pause' : 'Play',
+      Semantics(
+        button: true,
+        label: playing ? 'Pause' : 'Play',
+        child: GestureDetector(
+          onTap: onTap,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: const EdgeInsets.all(6),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 220),
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(
+                  scale: Tween<double>(begin: 0.72, end: 1).animate(anim),
+                  child: child,
+                ),
               ),
-            ),
-            child: Icon(
-              playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              key: ValueKey<bool>(playing),
-              color: Colors.white,
-              size: 58,
+              child: Icon(
+                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                key: ValueKey<bool>(playing),
+                color: Colors.white,
+                size: 58,
+              ),
             ),
           ),
         ),
@@ -5932,21 +5999,26 @@ class _TransportButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      label: label,
-      child: IgnorePointer(
-        ignoring: !enabled,
-        child: GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: Icon(
-              icon,
-              color: Colors.white.withValues(alpha: enabled ? 1 : 0.28),
-              size: 38,
+    // No tooltip when it's dimmed — the button ignores pointers then, so a
+    // long press falls straight through and there'd be nothing to trigger it.
+    return _withTooltip(
+      enabled ? label : null,
+      Semantics(
+        button: true,
+        enabled: enabled,
+        label: label,
+        child: IgnorePointer(
+          ignoring: !enabled,
+          child: GestureDetector(
+            onTap: onTap,
+            behavior: HitTestBehavior.opaque,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(
+                icon,
+                color: Colors.white.withValues(alpha: enabled ? 1 : 0.28),
+                size: 38,
+              ),
             ),
           ),
         ),
