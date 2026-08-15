@@ -3464,53 +3464,23 @@ class _ControlsOverlay extends StatelessWidget {
           top: 0,
           left: 0,
           right: 0,
-          height: 120,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xCC000000), Color(0x00000000)],
-              ),
-            ),
-          ),
-        ),
-        // Bottom scrim.
-        const Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: 200,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Color(0xE6000000), Color(0x00000000)],
-              ),
-            ),
-          ),
-        ),
-
-        // Soft gradient scrims so the controls sit on a gentle fade, not a flat
-        // dark wash (YouTube/Dantotsu-style). Non-interactive.
-        const Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 120,
+          height: 110,
           child: IgnorePointer(
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Color(0x99000000), Color(0x00000000)],
+                  colors: [Color(0x59000000), Color(0x00000000)],
                 ),
               ),
             ),
           ),
         ),
+        // Bottom scrim. There were two of these stacked at each end — 0xCC over
+        // 0x99 up top, 0xE6 over 0xB3 down here — which is why showing the
+        // controls dropped a heavy curtain over the video. One gentle pass each
+        // way is plenty to keep white text legible on a bright frame.
         const Positioned(
           bottom: 0,
           left: 0,
@@ -3522,7 +3492,7 @@ class _ControlsOverlay extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Color(0xB3000000), Color(0x00000000)],
+                  colors: [Color(0x8C000000), Color(0x00000000)],
                 ),
               ),
             ),
@@ -3635,17 +3605,10 @@ class _ControlsOverlay extends StatelessWidget {
                       tooltip: 'Sleep timer on',
                       onPressed: onSleep,
                     ),
-                  // Episodes + lock (top-right). PiP/Sleep/Aspect/Snapshot moved
-                  // to the ⋮ More sheet on the bottom row.
-                  if (onEpisodes != null)
-                    IconButton(
-                      icon: const Icon(
-                        Icons.video_library_outlined,
-                        color: Colors.white,
-                      ),
-                      tooltip: 'Episodes',
-                      onPressed: onEpisodes,
-                    ),
+                  // Episodes and ⋮ More live in the bottom bar now — a second
+                  // copy up here just split the same action across two places.
+                  // Lock stays: it's the one control you want reachable without
+                  // looking down at the bar you're about to hide.
                   IconButton(
                     icon: const Icon(
                       Icons.lock_open_rounded,
@@ -3663,12 +3626,6 @@ class _ControlsOverlay extends StatelessWidget {
                       tooltip: 'Chat',
                       onPressed: onChat,
                     ),
-                  // ⋮ More — opens the right-slide overflow panel.
-                  IconButton(
-                    tooltip: 'More',
-                    icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
-                    onPressed: () => _showMore(context),
-                  ),
                 ],
               ),
             ),
@@ -3761,23 +3718,13 @@ class _ControlsOverlay extends StatelessWidget {
             child: SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              // One margin for the whole block — timestamp, progress bar and
+              // both button groups share it, so every edge lines up. Kept wide
+              // so the controls sit clear of the screen edges.
+              padding: const EdgeInsets.fromLTRB(44, 0, 44, 14),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // MegaSkip — manual jump-forward pill, right-aligned just
-                  // above the seek bar (Aniyomi-style). Only when enabled.
-                  if (megaSkipEnabled)
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 8, right: 2),
-                        child: _MegaSkipPill(
-                          seconds: megaSkipSeconds,
-                          onTap: onMegaSkip,
-                        ),
-                      ),
-                    ),
                   // Duration tracker (off-screen listener via StreamBuilder).
                   StreamBuilder<Duration>(
                     stream: c.player.stream.duration,
@@ -3790,42 +3737,73 @@ class _ControlsOverlay extends StatelessWidget {
                         controller: c,
                         duration: d > Duration.zero ? d : duration,
                         onInteract: onInteract,
+                        // MegaSkip — manual jump-forward, riding the timestamp's
+                        // line rather than a row of its own above it.
+                        trailing: megaSkipEnabled
+                            ? _MegaSkipPill(
+                                seconds: megaSkipSeconds,
+                                onTap: onMegaSkip,
+                              )
+                            : null,
                       );
                     },
                   ),
                   const SizedBox(height: 2),
-                  // Button row: the pickers, evenly distributed edge-to-edge.
-                  // Previous/Next moved up to the centre transport — this row
-                  // is all "open a chooser", and episode navigation isn't.
+                  // Control bar under the progress bar: the pickers ride in one
+                  // translucent group on the left, episode list + fit mode in
+                  // another on the right. Two groups rather than seven floating
+                  // chips — the split reads at a glance, and every button is the
+                  // same width so nothing shifts as the video changes.
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _ControlButton(
-                        icon: Icons.speed_rounded,
-                        label: 'Speed',
-                        onTap: onSpeed,
+                      _BarGroup(
+                        children: [
+                          _BarButton(
+                            icon: Icons.speed_rounded,
+                            tooltip: 'Playback speed',
+                            onTap: onSpeed,
+                          ),
+                          _BarButton(
+                            icon: Icons.subtitles_rounded,
+                            tooltip: 'Audio & subtitles',
+                            onTap: onAudioSubs,
+                          ),
+                          if (state.qualities.isNotEmpty ||
+                              c.sourceQualities.length > 1)
+                            _BarButton(
+                              icon: Icons.high_quality_rounded,
+                              tooltip: 'Quality',
+                              onTap: onQuality,
+                            ),
+                          _BarButton(
+                            icon: Icons.layers_rounded,
+                            tooltip: 'Sources',
+                            onTap: onSources,
+                          ),
+                          _BarButton(
+                            icon: Icons.more_vert_rounded,
+                            tooltip: 'More',
+                            onTap: () => _showMore(context),
+                          ),
+                        ],
                       ),
-                      _ControlButton(
-                        icon: Icons.subtitles_rounded,
-                        label: 'Audio & subs',
-                        onTap: onAudioSubs,
-                      ),
-                      if (state.qualities.isNotEmpty ||
-                          c.sourceQualities.length > 1)
-                        _ControlButton(
-                          icon: Icons.high_quality_rounded,
-                          label: 'Quality',
-                          onTap: onQuality,
-                        ),
-                      _ControlButton(
-                        icon: Icons.video_settings_rounded,
-                        label: 'Sources',
-                        onTap: onSources,
-                      ),
-                      _ControlButton(
-                        icon: Icons.aspect_ratio_rounded,
-                        label: zoomLabel,
-                        onTap: onZoom,
+                      const Spacer(),
+                      _BarGroup(
+                        children: [
+                          if (onEpisodes != null)
+                            _BarButton(
+                              icon: Icons.video_library_outlined,
+                              tooltip: 'Episodes',
+                              onTap: onEpisodes!,
+                            ),
+                          _BarButton(
+                            // The icon carries the mode now that the label is
+                            // gone, so the button still says which one you're on.
+                            icon: _fitIcon(zoomLabel),
+                            tooltip: 'Aspect ratio · $zoomLabel',
+                            onTap: onZoom,
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -3849,11 +3827,17 @@ class _SeekRow extends StatefulWidget {
     required this.controller,
     required this.duration,
     required this.onInteract,
+    this.trailing,
   });
 
   final PlayerCubit controller;
   final Duration duration;
   final VoidCallback onInteract;
+
+  /// Sits at the far end of the timestamp's line (the MegaSkip pill). Riding
+  /// the same row costs no extra height — it used to own a line to itself,
+  /// which pushed it well clear of the bar it belongs to.
+  final Widget? trailing;
 
   @override
   State<_SeekRow> createState() => _SeekRowState();
@@ -3963,13 +3947,65 @@ class _SeekRowState extends State<_SeekRow> {
         // Use the drag value while scrubbing, else the live position.
         final value = (_dragMs ?? streamMs).clamp(0.0, max);
         final shownPos = Duration(milliseconds: value.round());
-        return Row(
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _fmt(shownPos),
-              style: AppText.caption.copyWith(color: Colors.white),
+            // Elapsed / total sits above the bar so the bar itself can run the
+            // full width — easier to scrub, and it reads as one clean line.
+            // Tapping still flips the total for a remaining countdown. Anything
+            // passed as [trailing] shares this line at the far end.
+            Row(
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() => _showRemaining = !_showRemaining);
+                    widget.onInteract();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                // Same translucent chip as the button groups, so the whole
+                // bottom block reads as one set of parts.
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    child: Text(
+                      '${_fmt(shownPos)} / ${_showRemaining ? '-${_fmt(widget.duration - shownPos)}' : _fmt(widget.duration)}',
+                      style: AppText.caption.copyWith(
+                        color: Colors.white,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        height: 1.1,
+                        letterSpacing: 0.3,
+                        // Fixed-width digits: without these the label twitches
+                        // every time a 1 ticks past, since 1 is narrower than
+                        // the rest in a proportional face.
+                        fontFeatures: const [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ),
+                ),
+                  ),
+                ),
+                if (widget.trailing != null) ...[
+                  const Spacer(),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: widget.trailing!,
+                  ),
+                ],
+              ],
             ),
-            Expanded(
+            SizedBox(
+              width: double.infinity,
               child: LayoutBuilder(
                 builder: (context, cons) {
                   final w = cons.maxWidth;
@@ -4028,6 +4064,17 @@ class _SeekRowState extends State<_SeekRow> {
                                 min: 0,
                                 max: max,
                                 value: value,
+                                // Replaces the default inset — half the overlay
+                                // width (~18px) horizontally, the overlay height
+                                // vertically, which was most of the dead space
+                                // around the bar. Horizontal is the thumb radius
+                                // exactly: the thumb centres on the track's end,
+                                // so anything less and half the dot hangs past
+                                // the line the chips above and below sit on.
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 6,
+                                ),
                                 onChangeStart: totalMs <= 0
                                     ? null
                                     : (v) {
@@ -4094,22 +4141,6 @@ class _SeekRowState extends State<_SeekRow> {
                     ],
                   );
                 },
-              ),
-            ),
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                setState(() => _showRemaining = !_showRemaining);
-                widget.onInteract();
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-                child: Text(
-                  _showRemaining
-                      ? '-${_fmt(widget.duration - shownPos)}'
-                      : _fmt(widget.duration),
-                  style: AppText.caption.copyWith(color: Colors.white),
-                ),
               ),
             ),
           ],
@@ -4359,34 +4390,35 @@ class _MegaSkipPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Deliberately the twin of the timestamp chip it now sits beside — same
+    // fill, radius and type. The accent-outlined stadium it used to be was
+    // louder than anything else on the bar and read as a stray element.
     return Material(
-      color: Colors.black.withValues(alpha: 0.5),
-      shape: StadiumBorder(
-        side: BorderSide(
-          color: AppColors.accent.withValues(alpha: 0.7),
-          width: 1.2,
-        ),
-      ),
+      color: Colors.black.withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(13),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+          padding: const EdgeInsets.fromLTRB(10, 6, 12, 6),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              const Icon(
                 Icons.keyboard_double_arrow_right_rounded,
-                color: AppColors.accent,
-                size: 17,
+                color: Colors.white,
+                size: 18,
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 5),
               Text(
                 '+${seconds}s',
                 style: AppText.caption.copyWith(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 12.5,
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.1,
+                  letterSpacing: 0.3,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ],
@@ -4429,31 +4461,58 @@ class _RoundIconButton extends StatelessWidget {
   }
 }
 
-class _ControlButton extends StatelessWidget {
-  const _ControlButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+/// Aspect-mode icon. The fit button dropped its text label to keep every
+/// button the same width, so the icon has to carry which mode you're on.
+IconData _fitIcon(String label) => switch (label) {
+  'Fill' => Icons.crop_free_rounded,
+  'Stretch' => Icons.open_in_full_rounded,
+  _ => Icons.fit_screen_rounded,
+};
 
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
+/// One translucent capsule holding a set of [_BarButton]s. Grouping them means
+/// a single soft backdrop behind the row instead of a chip per icon, which is
+/// quieter over video — plain alpha, no BackdropFilter, so it costs nothing to
+/// composite. It's also the Material the buttons' ripples paint onto; without
+/// it they'd splash on the Scaffold underneath and be hidden by this backdrop.
+class _BarGroup extends StatelessWidget {
+  const _BarGroup({required this.children});
+
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+    return Material(
+      color: Colors.black.withValues(alpha: 0.3),
+      borderRadius: BorderRadius.circular(26),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(height: 3),
-            Text(label, style: AppText.caption.copyWith(color: Colors.white)),
-          ],
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Row(mainAxisSize: MainAxisSize.min, children: children),
+      ),
+    );
+  }
+}
+
+/// A single icon button inside a [_BarGroup] — uniform square footprint so the
+/// row never reflows, transparent itself since the group carries the backdrop.
+class _BarButton extends StatelessWidget {
+  const _BarButton({required this.icon, required this.onTap, this.tooltip});
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? tooltip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(icon, color: Colors.white, size: 24),
         ),
       ),
     );
