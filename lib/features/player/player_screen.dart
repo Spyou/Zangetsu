@@ -229,6 +229,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   Timer? _seekDebounceTimer;
   int _pendingSeek = 0;
 
+  // Tap-zone burst tracking. The side zones used to hand double-tap-seek to
+  // GestureDetector.onDoubleTapDown, but that recognizer holds the gesture
+  // arena for kDoubleTapTimeout (300ms) on every FIRST tap — so a plain tap on
+  // the left/right third sat there for 300ms before the controls showed or hid,
+  // while the centre third (tap-only) and the locked screen resolved on lift.
+  // A tap that looks ignored gets retried, and the retry landed inside that
+  // window and became a seek, so the controls never toggled at all. Spotting
+  // the double tap here instead keeps the arena free — see [_tapZone] for how
+  // hide and show are split so a seek never flashes the bars.
+  static const Duration _tapBurstWindow = Duration(milliseconds: 280);
+  DateTime? _lastZoneTapAt;
+  int _lastZoneTapSide = 0; // -1 = left, 0 = centre, +1 = right
+  int _zoneTapCount = 0; // taps so far in the current burst
+  Timer? _showTimer; // queued reveal, dropped if the tap turns into a seek
+
   // ── Pinch-to-zoom (continuous, CloudStream-style: 1×–4×, pan + snap-back) ──
   // Driven by a passive Listener watching raw pointers (NOT a scale recognizer),
   // so the existing 1-finger brightness/volume/scrub gestures stay untouched —
@@ -876,6 +891,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
   @override
   void dispose() {
     _hideTimer?.cancel();
+    _showTimer?.cancel();
     _seekLabelTimer?.cancel();
     _seekDebounceTimer?.cancel();
     _hudTimer?.cancel();
@@ -942,6 +958,53 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _bumpControls() {
     if (!_controlsVisible) setState(() => _controlsVisible = true);
     _scheduleHide();
+  }
+
+  /// A tap landing on one of the three zones — sorts "toggle the controls" from
+  /// "start a double-tap seek" without a recognizer stalling the arena.
+  ///
+  /// Hide and show are handled differently on purpose. Hiding runs on the spot:
+  /// it's the direction you feel, and if the tap turns out to be a seek then
+  /// hidden is where the bars wanted to be anyway. Showing waits out
+  /// [_tapBurstWindow] first, because a reveal that the next tap has to take
+  /// back is the blink you see mid-jump. The centre zone can't seek, so it
+  /// skips the wait entirely and is instant both ways.
+  void _tapZone(int dir) {
+    final now = DateTime.now();
+    final last = _lastZoneTapAt;
+    final chained =
+        last != null &&
+        _lastZoneTapSide == dir &&
+        now.difference(last) < _tapBurstWindow;
+    _lastZoneTapAt = now;
+    _lastZoneTapSide = dir;
+    _zoneTapCount = chained ? _zoneTapCount + 1 : 1;
+
+    if (dir == 0) {
+      _cancelPendingShow();
+      _toggleControls();
+      return;
+    }
+    // Second (or later) tap on the same side: a seek. Rapid taps keep stacking
+    // (−10s, −20s…) YouTube-style via _accumSeek.
+    if (_zoneTapCount >= 2) {
+      _cancelPendingShow();
+      _seekZone(dir);
+      return;
+    }
+    if (_controlsVisible) {
+      _toggleControls();
+    } else {
+      _showTimer?.cancel();
+      _showTimer = Timer(_tapBurstWindow, () {
+        if (mounted) _bumpControls();
+      });
+    }
+  }
+
+  void _cancelPendingShow() {
+    _showTimer?.cancel();
+    _showTimer = null;
   }
 
   /// Double-tap one side to seek; rapid taps accumulate (−10s, −20s, −30s…)
@@ -2197,28 +2260,29 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       // Tap zones — translucent so drags still reach the layer
                       // below. Thirds match the old seek trigger areas. The
                       // SizedBox.expand gives each zone a full-height hit area.
+                      // All three carry a bare onTap (no double-tap recognizer,
+                      // which would hold the arena and stall every single tap by
+                      // 300ms); _tapZone sorts toggle from seek itself.
                       Row(
                         children: [
                           Expanded(
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
-                              onTap: _toggleControls,
-                              onDoubleTapDown: (_) => _seekZone(-1),
+                              onTap: () => _tapZone(-1),
                               child: const SizedBox.expand(),
                             ),
                           ),
                           Expanded(
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
-                              onTap: _toggleControls,
+                              onTap: () => _tapZone(0),
                               child: const SizedBox.expand(),
                             ),
                           ),
                           Expanded(
                             child: GestureDetector(
                               behavior: HitTestBehavior.translucent,
-                              onTap: _toggleControls,
-                              onDoubleTapDown: (_) => _seekZone(1),
+                              onTap: () => _tapZone(1),
                               child: const SizedBox.expand(),
                             ),
                           ),
@@ -3478,45 +3542,52 @@ class _ControlsOverlay extends StatelessWidget {
                     tooltip: 'Back',
                     onPressed: onBack,
                   ),
+                  // Text hit-tests as opaque (RenderParagraph.hitTestSelf is
+                  // true), so the title used to eat taps aimed at the video —
+                  // a wide dead strip across the top where tapping did nothing.
+                  // Nothing here is interactive, so let taps fall through to the
+                  // zones below and toggle the controls like anywhere else.
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
+                    child: IgnorePointer(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  primaryTitle,
+                                  style: AppText.headline.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (ep.filler) ...[
+                                const SizedBox(width: 8),
+                                const TagBadge(
+                                  text: 'FILLER',
+                                  color: AppColors.textTertiary,
+                                ),
+                              ],
+                            ],
+                          ),
+                          if (secondaryLine != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 1),
                               child: Text(
-                                primaryTitle,
-                                style: AppText.headline.copyWith(
-                                  color: Colors.white,
+                                secondaryLine,
+                                style: AppText.caption.copyWith(
+                                  color: Colors.white70,
                                 ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (ep.filler) ...[
-                              const SizedBox(width: 8),
-                              const TagBadge(
-                                text: 'FILLER',
-                                color: AppColors.textTertiary,
-                              ),
-                            ],
-                          ],
-                        ),
-                        if (secondaryLine != null)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 1),
-                            child: Text(
-                              secondaryLine,
-                              style: AppText.caption.copyWith(
-                                color: Colors.white70,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   // Cast button: Android only, shown whenever the Cast framework
