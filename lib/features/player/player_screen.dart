@@ -1230,6 +1230,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   // ── Lock / zoom / up-next ─────────────────────────────────────────────────
 
+  /// The user's control arrangement, re-read each build so a change made in
+  /// Settings is live the moment you come back to the player.
+  PlayerControlsConfig get _barConfig {
+    final p = sl<PlaybackPrefs>();
+    return PlayerControlsConfig(
+      top: p.playerBarTop ?? PlayerControlsConfig.defaultTop,
+      left: p.playerBarLeft ?? PlayerControlsConfig.defaultLeft,
+      right: p.playerBarRight ?? PlayerControlsConfig.defaultRight,
+    ).sanitised();
+  }
+
   /// Settings, from the top bar. Pushed over the player rather than replacing
   /// it, so the session, position and resolved source survive — coming back
   /// picks up exactly where it left off.
@@ -2560,6 +2571,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onSources: _openSourceSheet,
                       onLock: _toggleLock,
                       onSettings: _openSettings,
+                      barConfig: _barConfig,
                       onZoom: _cycleFit,
                       onPip: _pipSupported ? _enterPip : null,
                       onSleep: _openSleepSheet,
@@ -3348,6 +3360,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onSources,
     required this.onLock,
     required this.onSettings,
+    required this.barConfig,
     required this.onZoom,
     required this.zoomLabel,
     required this.onPrev,
@@ -3384,6 +3397,11 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onSources;
   final VoidCallback onLock;
   final VoidCallback onSettings;
+
+  /// The user's control arrangement — which bar each control sits on, in what
+  /// order. Drives both bars; anything not placed is reachable via ⋮ More.
+  final PlayerControlsConfig barConfig;
+
   final VoidCallback onZoom;
   final String zoomLabel;
   final VoidCallback? onPrev; // null = no previous episode
@@ -3534,6 +3552,120 @@ class _ControlsOverlay extends StatelessWidget {
     );
   }
 
+  /// Whether [id] sits on any bar. Used so a control that's already placed
+  /// doesn't also get drawn by one of the player's own conditional buttons.
+  bool _placedAnywhere(String id) =>
+      barConfig.slotOf(id) != ControlSlot.hidden;
+
+  /// Top-bar versions of the arrangeable controls. Plain [IconButton]s rather
+  /// than the bottom bar's chips, so anything moved up here matches the row
+  /// it lands in instead of importing the bottom bar's look.
+  List<Widget> _topButtons(BuildContext context, List<String> ids) {
+    final out = <Widget>[];
+    for (final id in ids) {
+      switch (id) {
+        case 'cast':
+          // Android only, and only where the Cast framework is actually
+          // supported — the setting decides placement, not availability.
+          if (Platform.isAndroid) {
+            out.add(AnimatedBuilder(
+              animation: sl<CastController>(),
+              builder: (context, _) {
+                final castCtrl = sl<CastController>();
+                if (!castCtrl.castSupported) return const SizedBox.shrink();
+                return IconButton(
+                  icon: Icon(
+                    castCtrl.state == CastState.connected
+                        ? Icons.cast_connected
+                        : Icons.cast,
+                    color: Colors.white,
+                  ),
+                  tooltip: 'Cast',
+                  onPressed: () => castCtrl.pickDevice(),
+                );
+              },
+            ));
+          }
+        case 'info':
+          if (onInfo != null) {
+            out.add(IconButton(
+              icon: Icon(
+                Icons.info_outline_rounded,
+                color: infoOpen ? AppColors.accent : Colors.white,
+              ),
+              tooltip: 'Playback stats',
+              onPressed: onInfo,
+            ));
+          }
+        default:
+          final spec = _specFor(context, id);
+          if (spec != null) {
+            out.add(IconButton(
+              icon: Icon(spec.$1, color: Colors.white),
+              tooltip: spec.$2,
+              onPressed: spec.$3,
+            ));
+          }
+      }
+    }
+    return out;
+  }
+
+  /// Icon, tooltip and action for the controls that render the same wherever
+  /// they're placed. Returns null when the control isn't available right now
+  /// (no second quality to pick, a single-episode item, no PiP support).
+  (IconData, String, VoidCallback)? _specFor(BuildContext context, String id) {
+    final c = controller;
+    switch (id) {
+      case 'speed':
+        return (Icons.speed_rounded, 'Playback speed', onSpeed);
+      case 'tracks':
+        return (Icons.subtitles_rounded, 'Audio & subtitles', onAudioSubs);
+      case 'quality':
+        if (state.qualities.isEmpty && c.sourceQualities.length <= 1) {
+          return null;
+        }
+        return (Icons.high_quality_rounded, 'Quality', onQuality);
+      case 'sources':
+        return (Icons.layers_rounded, 'Sources', onSources);
+      case 'more':
+        return (Icons.more_vert_rounded, 'More', () => _showMore(context));
+      case 'episodes':
+        if (onEpisodes == null) return null;
+        return (Icons.video_library_outlined, 'Episodes', onEpisodes!);
+      case 'fit':
+        return (_fitIcon(zoomLabel), 'Aspect ratio · $zoomLabel', onZoom);
+      case 'decoder':
+        return (Icons.memory_rounded, 'Decoder · $decoderLabel', onDecoder);
+      case 'enhance':
+        return (
+          enhanceActive
+              ? Icons.auto_awesome_rounded
+              : Icons.auto_awesome_outlined,
+          'Anime4K enhancement',
+          onEnhance,
+        );
+      case 'colour':
+        return (Icons.palette_outlined, 'Colour', onColorProfile);
+      case 'snapshot':
+        return (Icons.photo_camera_rounded, 'Snapshot', onScreenshot);
+      case 'sleep':
+        return (
+          sleepActive ? Icons.bedtime_rounded : Icons.bedtime_outlined,
+          'Sleep timer',
+          onSleep,
+        );
+      case 'pip':
+        if (onPip == null) return null;
+        return (
+          Icons.picture_in_picture_alt_rounded,
+          'Picture-in-picture',
+          onPip!,
+        );
+    }
+    return null; // unknown id — a layout from a newer build
+  }
+
   /// Turns saved control ids into real buttons.
   ///
   /// The availability rules that were baked into the old fixed row still
@@ -3543,105 +3675,11 @@ class _ControlsOverlay extends StatelessWidget {
   /// Anything unrecognised is skipped rather than crashing, which is what
   /// makes a layout saved by a newer build safe to load.
   List<Widget> _barButtons(BuildContext context, List<String> ids) {
-    final c = controller;
-    final hasQuality =
-        state.qualities.isNotEmpty || c.sourceQualities.length > 1;
-    final out = <Widget>[];
-    for (final id in ids) {
-      switch (id) {
-        case 'speed':
-          out.add(_BarButton(
-            icon: Icons.speed_rounded,
-            tooltip: 'Playback speed',
-            onTap: onSpeed,
-          ));
-        case 'tracks':
-          out.add(_BarButton(
-            icon: Icons.subtitles_rounded,
-            tooltip: 'Audio & subtitles',
-            onTap: onAudioSubs,
-          ));
-        case 'quality':
-          if (hasQuality) {
-            out.add(_BarButton(
-              icon: Icons.high_quality_rounded,
-              tooltip: 'Quality',
-              onTap: onQuality,
-            ));
-          }
-        case 'sources':
-          out.add(_BarButton(
-            icon: Icons.layers_rounded,
-            tooltip: 'Sources',
-            onTap: onSources,
-          ));
-        case 'more':
-          out.add(_BarButton(
-            icon: Icons.more_vert_rounded,
-            tooltip: 'More',
-            onTap: () => _showMore(context),
-          ));
-        case 'episodes':
-          if (onEpisodes != null) {
-            out.add(_BarButton(
-              icon: Icons.video_library_outlined,
-              tooltip: 'Episodes',
-              onTap: onEpisodes!,
-            ));
-          }
-        case 'fit':
-          out.add(_BarButton(
-            // The icon carries the mode now that the label is gone, so the
-            // button still says which one you're on.
-            icon: _fitIcon(zoomLabel),
-            tooltip: 'Aspect ratio · $zoomLabel',
-            onTap: onZoom,
-          ));
-        case 'decoder':
-          out.add(_BarButton(
-            icon: Icons.memory_rounded,
-            tooltip: 'Decoder · $decoderLabel',
-            onTap: onDecoder,
-          ));
-        case 'enhance':
-          out.add(_BarButton(
-            icon: enhanceActive
-                ? Icons.auto_awesome_rounded
-                : Icons.auto_awesome_outlined,
-            tooltip: 'Anime4K enhancement',
-            onTap: onEnhance,
-          ));
-        case 'colour':
-          out.add(_BarButton(
-            icon: Icons.palette_outlined,
-            tooltip: 'Colour',
-            onTap: onColorProfile,
-          ));
-        case 'snapshot':
-          out.add(_BarButton(
-            icon: Icons.photo_camera_rounded,
-            tooltip: 'Snapshot',
-            onTap: onScreenshot,
-          ));
-        case 'sleep':
-          out.add(_BarButton(
-            icon: sleepActive
-                ? Icons.bedtime_rounded
-                : Icons.bedtime_outlined,
-            tooltip: 'Sleep timer',
-            onTap: onSleep,
-          ));
-        case 'pip':
-          if (onPip != null) {
-            out.add(_BarButton(
-              icon: Icons.picture_in_picture_alt_rounded,
-              tooltip: 'Picture-in-picture',
-              onTap: onPip!,
-            ));
-          }
-      }
-    }
-    return out;
+    return [
+      for (final id in ids)
+        if (_specFor(context, id) case (final icon, final tip, final tap))
+          _BarButton(icon: icon, tooltip: tip, onTap: tap),
+    ];
   }
 
   @override
@@ -3805,42 +3843,15 @@ class _ControlsOverlay extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Cast button: Android only, shown whenever the Cast framework
-                  // is supported (like YouTube — always visible once Cast is
-                  // available; tapping opens the chooser + triggers discovery).
-                  if (Platform.isAndroid)
-                    AnimatedBuilder(
-                      animation: sl<CastController>(),
-                      builder: (context, _) {
-                        final castCtrl = sl<CastController>();
-                        if (!castCtrl.castSupported) {
-                          return const SizedBox.shrink();
-                        }
-                        return IconButton(
-                          icon: Icon(
-                            castCtrl.state == CastState.connected
-                                ? Icons.cast_connected
-                                : Icons.cast,
-                            color: Colors.white,
-                          ),
-                          tooltip: 'Cast',
-                          onPressed: () => castCtrl.pickDevice(),
-                        );
-                      },
-                    ),
-                  // Info-panel toggle — the "stats for nerds" overlay.
-                  if (onInfo != null)
-                    IconButton(
-                      icon: Icon(
-                        Icons.info_outline_rounded,
-                        color: infoOpen ? AppColors.accent : Colors.white,
-                      ),
-                      tooltip: 'Playback stats',
-                      onPressed: onInfo,
-                    ),
+                  // Whatever the user put up here, in their order. Cast and
+                  // the ⓘ stats toggle live here by default; anything else in
+                  // the registry can be moved up in Settings.
+                  ..._topButtons(context, barConfig.top),
                   // Sleep timer armed — a visible accent moon; tap to adjust or
-                  // cancel. Only shown while a timer / end-of-episode is set.
-                  if (sleepActive)
+                  // cancel. Only shown while a timer / end-of-episode is set,
+                  // and only when Sleep isn't already placed somewhere, or an
+                  // armed timer would show two of the same button.
+                  if (sleepActive && !_placedAnywhere('sleep'))
                     IconButton(
                       icon: Icon(Icons.bedtime_rounded,
                           color: AppColors.accent),
@@ -4018,17 +4029,8 @@ class _ControlsOverlay extends StatelessWidget {
                       // are the exact layout that shipped before the Settings
                       // screen existed — so nobody's bar moves unless they
                       // move it.
-                      final prefs = sl<PlaybackPrefs>();
-                      final cfg = PlayerControlsConfig(
-                        left:
-                            prefs.playerBarLeft ??
-                            PlayerControlsConfig.defaultLeft,
-                        right:
-                            prefs.playerBarRight ??
-                            PlayerControlsConfig.defaultRight,
-                      ).sanitised();
-                      final left = _barButtons(context, cfg.left);
-                      final right = _barButtons(context, cfg.right);
+                      final left = _barButtons(context, barConfig.left);
+                      final right = _barButtons(context, barConfig.right);
                       return Row(
                         children: [
                           if (left.isNotEmpty) _BarGroup(children: left),
