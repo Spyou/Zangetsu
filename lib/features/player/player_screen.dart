@@ -499,6 +499,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (!mounted) return;
         final inPip = status == PiPStatus.enabled;
         if (inPip != _inPip) setState(() => _inPip = inPip);
+        // Re-push on entry. The stream listeners below only fire on CHANGE,
+        // and playback usually starts before this async setup finishes — so
+        // the playing stream has already emitted and won't again, leaving the
+        // window's icon stuck at whatever the first read happened to catch.
+        // This is the one moment the icon is definitely about to be seen.
+        if (inPip) _pushPipState();
       });
       // Arm auto-PiP-on-leave natively (works on Android 8.0+, unlike the
       // plugin's OnLeavePiP which needs 12+) — gated by the Playback setting.
@@ -521,29 +527,33 @@ class _PlayerScreenState extends State<PlayerScreen> {
         return null;
       });
 
-      // Android bakes the play/pause icon into the window's action list, so
-      // there's no way to update one button — the whole set has to be re-sent
-      // whenever the state changes. Same call carries the video size, which is
-      // what lets the window match the real aspect instead of assuming 16:9.
-      void pushPipState() {
-        if (!mounted) return;
-        _pipChannel.invokeMethod('setState', {
-          'playing': _c.player.state.playing,
-          'width': _c.player.state.width ?? 0,
-          'height': _c.player.state.height ?? 0,
-        }).catchError((_) => null);
-      }
-
-      pushPipState();
+      _pushPipState();
       _pipStateSubs.addAll([
-        _c.player.stream.playing.listen((_) => pushPipState()),
+        _c.player.stream.playing.listen((_) => _pushPipState()),
         // Fires on the first decoded frame and on every source/quality switch,
         // so the window re-sizes when the video actually changes shape.
-        _c.player.stream.height.listen((_) => pushPipState()),
+        _c.player.stream.height.listen((_) => _pushPipState()),
       ]);
     } catch (_) {
       /* PiP just stays off */
     }
+  }
+
+  /// Hand the PiP window the current playback state and video size.
+  ///
+  /// Android bakes the play/pause icon into the window's action list, so there
+  /// is no way to update a single button — the whole set has to be rebuilt and
+  /// re-sent. The size rides along on the same call, which is what lets the
+  /// window match the real aspect instead of assuming 16:9.
+  void _pushPipState() {
+    if (!mounted || !_pipSupported || !_ready) return;
+    _pipChannel
+        .invokeMethod('setState', {
+          'playing': _c.player.state.playing,
+          'width': _c.player.state.width ?? 0,
+          'height': _c.player.state.height ?? 0,
+        })
+        .catchError((_) => null);
   }
 
   /// Enter PiP immediately (the player's PiP button).
