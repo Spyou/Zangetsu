@@ -2182,12 +2182,29 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   /// Filler episode NUMBERS for this show (from Jikan by malId); empty until
-  /// fetched / for non-anime. Drives auto-skip.
-  Set<int> _fillerEps = const {};
+  /// fetched / for non-anime. Drives auto-skip and the FILLER badges.
+  ///
+  /// A notifier rather than a plain field because it lands from a network call
+  /// well after the player is built: the badges have to be told, or they'd only
+  /// appear if something else happened to rebuild them. Sources don't carry
+  /// filler info, so [Episode.filler] is false here — this set is the only
+  /// thing that knows, the same way the detail screen does it.
+  final ValueNotifier<Set<int>> fillerEpisodes = ValueNotifier(const {});
+  Set<int> get _fillerEps => fillerEpisodes.value;
+
   void _ensureFiller() {
     final id = malId;
     if (id == null) return;
-    FillerService.instance.fillerEpisodes(id).then((s) => _fillerEps = s);
+    FillerService.instance.fillerEpisodes(id).then((s) {
+      if (!isClosed) fillerEpisodes.value = s;
+    });
+  }
+
+  /// Whether the episode at [index] is filler, by its episode number.
+  bool isFillerAt(int index) {
+    if (index < 0 || index >= episodes.length) return false;
+    final n = episodes[index].number?.toInt();
+    return n != null && _fillerEps.contains(n);
   }
 
   /// Advance to the next episode. On an AUTO advance (up-next) with "Auto-skip
@@ -2613,6 +2630,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     await _stopTorrent();
     toast.dispose();
     subtitleStyleRev.dispose();
+    fillerEpisodes.dispose();
     await player.dispose();
     return super.close();
   }

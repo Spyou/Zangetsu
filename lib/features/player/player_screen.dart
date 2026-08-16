@@ -1463,6 +1463,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           currentIndex: _c.state.currentIndex,
           cover: widget.cover,
           coverHeaders: widget.coverHeaders,
+          fillerEps: _c.fillerEpisodes.value,
           onSelect: (i) {
             Navigator.pop(ctx);
             if (i != _c.state.currentIndex) _c.openEpisode(i);
@@ -3818,13 +3819,23 @@ class _ControlsOverlay extends StatelessWidget {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              if (ep.filler) ...[
-                                const SizedBox(width: 8),
-                                const TagBadge(
-                                  text: 'FILLER',
-                                  color: AppColors.textTertiary,
-                                ),
-                              ],
+                              // Filler comes from the Jikan lookup, not the
+                              // source — Episode.filler is always false here.
+                              // Listened to because that lookup lands long
+                              // after this is first built.
+                              ValueListenableBuilder<Set<int>>(
+                                valueListenable: c.fillerEpisodes,
+                                builder: (context, _, _) =>
+                                    c.isFillerAt(state.currentIndex)
+                                    ? const Padding(
+                                        padding: EdgeInsets.only(left: 8),
+                                        // No colour passed: TagBadge falls back
+                                        // to the app accent, so the badge
+                                        // follows the user's theme colour.
+                                        child: TagBadge(text: 'FILLER'),
+                                      )
+                                    : const SizedBox.shrink(),
+                              ),
                             ],
                           ),
                           if (secondaryLine != null)
@@ -4871,6 +4882,7 @@ class _EpisodesPanel extends StatefulWidget {
     required this.currentIndex,
     required this.cover,
     required this.coverHeaders,
+    required this.fillerEps,
     required this.onSelect,
   });
 
@@ -4878,6 +4890,13 @@ class _EpisodesPanel extends StatefulWidget {
   final int currentIndex;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Filler episode NUMBERS from the Jikan lookup. Sources don't carry filler
+  /// info, so [Episode.filler] is false here and this set is what the badge
+  /// goes by. Snapshotted when the panel opens — by then the lookup, kicked
+  /// off when playback started, has long since landed.
+  final Set<int> fillerEps;
+
   final void Function(int) onSelect;
 
   @override
@@ -5300,6 +5319,9 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
         ? e.thumbnail!
         : (widget.cover ?? '');
 
+    // From the Jikan lookup, not the source — see [_EpisodesPanel.fillerEps].
+    final isFiller = widget.fillerEps.contains(n);
+
     // Runtime · air date, whichever the source actually gave us.
     final bits = <String>[
       if ((e.runtimeMinutes ?? 0) > 0) '${e.runtimeMinutes} min',
@@ -5402,16 +5424,13 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                          if (bits.isNotEmpty || e.filler)
+                          if (bits.isNotEmpty || isFiller)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Row(
                                 children: [
-                                  if (e.filler) ...[
-                                    const TagBadge(
-                                      text: 'FILLER',
-                                      color: AppColors.textTertiary,
-                                    ),
+                                  if (isFiller) ...[
+                                    const TagBadge(text: 'FILLER'),
                                     const SizedBox(width: 6),
                                   ],
                                   Flexible(

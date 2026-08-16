@@ -3356,11 +3356,7 @@ class _EpisodeRow extends StatelessWidget {
                           children: [
                             if (isResume) const TagBadge(text: 'CONTINUE'),
                             if (isResume && filler) const SizedBox(width: 6),
-                            if (filler)
-                              const TagBadge(
-                                text: 'FILLER',
-                                color: AppColors.textTertiary,
-                              ),
+                            if (filler) const TagBadge(text: 'FILLER'),
                           ],
                         ),
                       ],
