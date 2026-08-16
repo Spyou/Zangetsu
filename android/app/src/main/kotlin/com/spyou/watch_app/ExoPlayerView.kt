@@ -15,6 +15,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
@@ -49,6 +50,11 @@ class ExoPlayerView(
     id: Int,
     messenger: BinaryMessenger,
 ) : PlatformView, MethodChannel.MethodCallHandler {
+
+    // Application context, kept for DefaultDataSource (it needs a ContentResolver
+    // to open content:// downloads). Application-scoped so the view can't leak
+    // the Activity it was created from.
+    private val appContext = context.applicationContext
 
     private val audioSessionId =
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
@@ -209,7 +215,12 @@ class ExoPlayerView(
                             .setUri(url)
                             .setSubtitleConfigurations(subConfigs)
                         if (!mimeType.isNullOrEmpty()) builder.setMimeType(mimeType)
-                        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
+                        // Scheme-aware: file paths and content:// (downloads) open
+                        // through the local readers, http(s) still goes to
+                        // httpFactory with its headers and redirect handling.
+                        val sourceFactory = DefaultMediaSourceFactory(
+                            DefaultDataSource.Factory(appContext, httpFactory),
+                        )
                         if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
                             // Build a LOCAL clearkey session from the kid/key the
                             // plugin resolved (already W3C clearkey JWK form) — no
@@ -245,7 +256,10 @@ class ExoPlayerView(
                 val url = call.argument<String>("url")
                 if (url != null) {
                     val mediaSource = DefaultMediaSourceFactory(
-                        DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+                        DefaultDataSource.Factory(
+                            appContext,
+                            DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
+                        ),
                     ).createMediaSource(MediaItem.fromUri(url))
                     player.setMediaSource(mediaSource)
                     player.prepare()

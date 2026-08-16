@@ -20,6 +20,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -326,7 +327,12 @@ class TvPlayerActivity : Activity() {
         if (!mime.isNullOrEmpty()) builder.setMimeType(mime)
         if (subs != null) builder.setSubtitleConfigurations(subs)
         seekTarget = -1L
-        val sourceFactory = DefaultMediaSourceFactory(httpFactory)
+        // DefaultDataSource picks the reader off the URI scheme: file paths and
+        // content:// (downloads, incl. a custom SAF folder) go to the local
+        // readers, everything else falls through to httpFactory — so streaming
+        // keeps the same headers and redirect handling it always had.
+        val sourceFactory =
+            DefaultMediaSourceFactory(DefaultDataSource.Factory(this, httpFactory))
         // ClearKey DRM (CENC/DASH — CNC/PlayzTV live channels). Non-DRM streams
         // pass null keys → this block is skipped and playback is unchanged.
         if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
