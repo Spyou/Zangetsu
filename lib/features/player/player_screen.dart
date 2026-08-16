@@ -44,6 +44,7 @@ import '../watch_together/ui/room_panel.dart';
 import '../../core/app_mode.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'player_controller.dart';
+import 'player_controls_config.dart';
 import 'player_tv_controls.dart';
 import 'seek_preview.dart';
 import 'color_profiles.dart';
@@ -3497,6 +3498,116 @@ class _ControlsOverlay extends StatelessWidget {
     );
   }
 
+  /// Turns saved control ids into real buttons.
+  ///
+  /// The availability rules that were baked into the old fixed row still
+  /// apply on top of the user's arrangement — Quality with nothing to pick
+  /// between, Episodes on a single-episode item and PiP where the device
+  /// doesn't support it drop out even if they've been placed on the bar.
+  /// Anything unrecognised is skipped rather than crashing, which is what
+  /// makes a layout saved by a newer build safe to load.
+  List<Widget> _barButtons(BuildContext context, List<String> ids) {
+    final c = controller;
+    final hasQuality =
+        state.qualities.isNotEmpty || c.sourceQualities.length > 1;
+    final out = <Widget>[];
+    for (final id in ids) {
+      switch (id) {
+        case 'speed':
+          out.add(_BarButton(
+            icon: Icons.speed_rounded,
+            tooltip: 'Playback speed',
+            onTap: onSpeed,
+          ));
+        case 'tracks':
+          out.add(_BarButton(
+            icon: Icons.subtitles_rounded,
+            tooltip: 'Audio & subtitles',
+            onTap: onAudioSubs,
+          ));
+        case 'quality':
+          if (hasQuality) {
+            out.add(_BarButton(
+              icon: Icons.high_quality_rounded,
+              tooltip: 'Quality',
+              onTap: onQuality,
+            ));
+          }
+        case 'sources':
+          out.add(_BarButton(
+            icon: Icons.layers_rounded,
+            tooltip: 'Sources',
+            onTap: onSources,
+          ));
+        case 'more':
+          out.add(_BarButton(
+            icon: Icons.more_vert_rounded,
+            tooltip: 'More',
+            onTap: () => _showMore(context),
+          ));
+        case 'episodes':
+          if (onEpisodes != null) {
+            out.add(_BarButton(
+              icon: Icons.video_library_outlined,
+              tooltip: 'Episodes',
+              onTap: onEpisodes!,
+            ));
+          }
+        case 'fit':
+          out.add(_BarButton(
+            // The icon carries the mode now that the label is gone, so the
+            // button still says which one you're on.
+            icon: _fitIcon(zoomLabel),
+            tooltip: 'Aspect ratio · $zoomLabel',
+            onTap: onZoom,
+          ));
+        case 'decoder':
+          out.add(_BarButton(
+            icon: Icons.memory_rounded,
+            tooltip: 'Decoder · $decoderLabel',
+            onTap: onDecoder,
+          ));
+        case 'enhance':
+          out.add(_BarButton(
+            icon: enhanceActive
+                ? Icons.auto_awesome_rounded
+                : Icons.auto_awesome_outlined,
+            tooltip: 'Anime4K enhancement',
+            onTap: onEnhance,
+          ));
+        case 'colour':
+          out.add(_BarButton(
+            icon: Icons.palette_outlined,
+            tooltip: 'Colour',
+            onTap: onColorProfile,
+          ));
+        case 'snapshot':
+          out.add(_BarButton(
+            icon: Icons.photo_camera_rounded,
+            tooltip: 'Snapshot',
+            onTap: onScreenshot,
+          ));
+        case 'sleep':
+          out.add(_BarButton(
+            icon: sleepActive
+                ? Icons.bedtime_rounded
+                : Icons.bedtime_outlined,
+            tooltip: 'Sleep timer',
+            onTap: onSleep,
+          ));
+        case 'pip':
+          if (onPip != null) {
+            out.add(_BarButton(
+              icon: Icons.picture_in_picture_alt_rounded,
+              tooltip: 'Picture-in-picture',
+              onTap: onPip!,
+            ));
+          }
+      }
+    }
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = controller;
@@ -3856,58 +3967,32 @@ class _ControlsOverlay extends StatelessWidget {
                   // another on the right. Two groups rather than seven floating
                   // chips — the split reads at a glance, and every button is the
                   // same width so nothing shifts as the video changes.
-                  Row(
-                    children: [
-                      _BarGroup(
+                  Builder(
+                    builder: (context) {
+                      // Rendered from the user's saved arrangement rather than
+                      // a fixed row. Untouched prefs give the defaults, which
+                      // are the exact layout that shipped before the Settings
+                      // screen existed — so nobody's bar moves unless they
+                      // move it.
+                      final prefs = sl<PlaybackPrefs>();
+                      final cfg = PlayerControlsConfig(
+                        left:
+                            prefs.playerBarLeft ??
+                            PlayerControlsConfig.defaultLeft,
+                        right:
+                            prefs.playerBarRight ??
+                            PlayerControlsConfig.defaultRight,
+                      ).sanitised();
+                      final left = _barButtons(context, cfg.left);
+                      final right = _barButtons(context, cfg.right);
+                      return Row(
                         children: [
-                          _BarButton(
-                            icon: Icons.speed_rounded,
-                            tooltip: 'Playback speed',
-                            onTap: onSpeed,
-                          ),
-                          _BarButton(
-                            icon: Icons.subtitles_rounded,
-                            tooltip: 'Audio & subtitles',
-                            onTap: onAudioSubs,
-                          ),
-                          if (state.qualities.isNotEmpty ||
-                              c.sourceQualities.length > 1)
-                            _BarButton(
-                              icon: Icons.high_quality_rounded,
-                              tooltip: 'Quality',
-                              onTap: onQuality,
-                            ),
-                          _BarButton(
-                            icon: Icons.layers_rounded,
-                            tooltip: 'Sources',
-                            onTap: onSources,
-                          ),
-                          _BarButton(
-                            icon: Icons.more_vert_rounded,
-                            tooltip: 'More',
-                            onTap: () => _showMore(context),
-                          ),
+                          if (left.isNotEmpty) _BarGroup(children: left),
+                          const Spacer(),
+                          if (right.isNotEmpty) _BarGroup(children: right),
                         ],
-                      ),
-                      const Spacer(),
-                      _BarGroup(
-                        children: [
-                          if (onEpisodes != null)
-                            _BarButton(
-                              icon: Icons.video_library_outlined,
-                              tooltip: 'Episodes',
-                              onTap: onEpisodes!,
-                            ),
-                          _BarButton(
-                            // The icon carries the mode now that the label is
-                            // gone, so the button still says which one you're on.
-                            icon: _fitIcon(zoomLabel),
-                            tooltip: 'Aspect ratio · $zoomLabel',
-                            onTap: onZoom,
-                          ),
-                        ],
-                      ),
-                    ],
+                      );
+                    },
                   ),
                 ],
               ),

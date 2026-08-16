@@ -216,6 +216,31 @@ class PlaybackPrefs {
   bool get swipeSeek => _box.get('swipeSeek', defaultValue: true) as bool;
   Future<void> setSwipeSeek(bool value) => _box.put('swipeSeek', value);
 
+  /// The player bottom bar's arrangement — which controls sit on the left,
+  /// which on the right. Unset means "never customised", so the defaults apply
+  /// and the bar looks exactly as it did before the screen existed.
+  ///
+  /// Hidden isn't stored: it's whatever isn't in either list. That's what lets
+  /// a control added in a later version land in Hidden on its own, instead of
+  /// needing every saved layout migrated.
+  List<String>? get playerBarLeft =>
+      (_box.get('playerBarLeft') as List?)?.cast<String>();
+  List<String>? get playerBarRight =>
+      (_box.get('playerBarRight') as List?)?.cast<String>();
+
+  Future<void> setPlayerBar(List<String> left, List<String> right) async {
+    await _box.put('playerBarLeft', left);
+    await _box.put('playerBarRight', right);
+  }
+
+  /// Back to the shipped layout — clears the keys rather than writing the
+  /// defaults in, so a future change to those defaults reaches anyone who
+  /// hasn't customised.
+  Future<void> resetPlayerBar() async {
+    await _box.delete('playerBarLeft');
+    await _box.delete('playerBarRight');
+  }
+
   /// Whether long-pressing the video plays at 2× while held.
   bool get holdSpeed => _box.get('holdSpeed', defaultValue: true) as bool;
   Future<void> setHoldSpeed(bool value) => _box.put('holdSpeed', value);

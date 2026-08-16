@@ -62,6 +62,7 @@ import 'tracker_settings_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
+import 'player_controls_screen.dart';
 import 'settings_screen_tv.dart';
 import 'cubit/settings_cubit.dart';
 
@@ -1918,6 +1919,19 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                             ? _prefs.externalPlayerLabel
                             : 'External app'),
                   onTap: _pickPlayer,
+                ),
+                SettingsTile(
+                  icon: Icons.tune_rounded,
+                  title: 'Player controls',
+                  subtitle: 'Reorder or hide the buttons on the player bar',
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const PlayerControlsScreen(),
+                      ),
+                    );
+                    if (mounted) setState(() {});
+                  },
                 ),
               ],
             ),
