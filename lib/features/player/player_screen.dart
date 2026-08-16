@@ -1689,21 +1689,21 @@ class _PlayerScreenState extends State<PlayerScreen> {
   void _openSpeedSheet() {
     const rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
     final current = _c.player.state.rate;
+    // Chips, not a list. Six rows at 52px each came to 388 — on a 393px-tall
+    // landscape phone that's the entire screen, so you were picking a speed
+    // with the video completely hidden behind the sheet. One wrapping row is
+    // about a fifth of that, and you can see what the speed is doing to the
+    // picture while you choose.
     _sheet<void>(
-      _SheetColumn(
+      _SheetChips(
         header: 'Playback Speed',
-        children: [
-          for (final r in rates)
-            _SheetRow(
-              label: r == 1.0 ? 'Normal' : '${r}x',
-              active: (current - r).abs() < 0.01,
-              onTap: () {
-                Navigator.pop(context);
-                _c.setRateRemembered(r);
-                _bumpControls();
-              },
-            ),
-        ],
+        labels: [for (final r in rates) r == 1.0 ? 'Normal' : '${r}x'],
+        selected: rates.indexWhere((r) => (current - r).abs() < 0.01),
+        onSelect: (i) {
+          Navigator.pop(context);
+          _c.setRateRemembered(rates[i]);
+          _bumpControls();
+        },
       ),
     );
   }
@@ -3380,25 +3380,52 @@ class _ControlsOverlay extends StatelessWidget {
       barrierColor: Colors.black54,
       transitionDuration: const Duration(milliseconds: 240),
       pageBuilder: (ctx, _, _) {
-        final w = (MediaQuery.of(ctx).size.width * 0.4).clamp(240.0, 360.0);
+        // Same width and surface as the episodes panel — this slides in from
+        // the same edge with the same motion, so looking different was just
+        // two panels wearing two skins. 40% was wider than it needed to be
+        // for a short list of labels, too.
+        final w = (MediaQuery.of(ctx).size.width * 0.33).clamp(250.0, 360.0);
         return Align(
           alignment: Alignment.centerRight,
           child: Material(
-            color: AppColors.surface,
-            child: SafeArea(
-              left: false,
-              child: SizedBox(
-                width: w,
-                height: double.infinity,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10),
-                      child: Text('More', style: AppText.headline),
-                    ),
-                    const Divider(color: AppColors.hairline, height: 1),
-                    const SizedBox(height: 4),
+            color: Colors.transparent,
+            child: FrostedSurface(
+              blur: true,
+              opacity: 0.88,
+              borderRadius: const BorderRadius.horizontal(
+                left: Radius.circular(20),
+              ),
+              // Left inset dropped for the same reason as the episodes panel:
+              // this is pinned to the RIGHT edge, so padding it away from a
+              // cutout on the opposite side just eats its width.
+              child: SafeArea(
+                left: false,
+                child: SizedBox(
+                  width: w,
+                  height: double.infinity,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 13, 8, 9),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text('More', style: AppText.title),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close_rounded,
+                                color: AppColors.textSecondary,
+                              ),
+                              tooltip: 'Close',
+                              onPressed: () => Navigator.of(ctx).pop(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(color: AppColors.hairline, height: 1),
+                      const SizedBox(height: 4),
                     _MoreRow(
                       icon: Icons.memory_rounded,
                       label: 'Decoder · $decoderLabel',
@@ -3443,16 +3470,17 @@ class _ControlsOverlay extends StatelessWidget {
                         onSleep();
                       },
                     ),
-                    if (onPip != null)
-                      _MoreRow(
-                        icon: Icons.picture_in_picture_alt_rounded,
-                        label: 'Picture-in-picture',
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          onPip!();
-                        },
-                      ),
-                  ],
+                      if (onPip != null)
+                        _MoreRow(
+                          icon: Icons.picture_in_picture_alt_rounded,
+                          label: 'Picture-in-picture',
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            onPip!();
+                          },
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -4642,14 +4670,23 @@ class _MoreRow extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            // Tighter than the old 14 — the panel is narrower now, and these
+            // rows were spaced like a settings screen rather than a menu.
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
             child: Row(
               children: [
-                Icon(icon, color: AppColors.textPrimary, size: 22),
-                const SizedBox(width: 14),
-                Text(
-                  label,
-                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                Icon(icon, color: AppColors.textPrimary, size: 20),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: AppText.body.copyWith(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
@@ -6679,6 +6716,94 @@ class _ColorSheetState extends State<_ColorSheet> {
               _slider('Saturation', 'saturation', _s, (v) => setState(() => _s = v)),
               _slider('Gamma', 'gamma', _g, (v) => setState(() => _g = v)),
               _slider('Hue', 'hue', _h, (v) => setState(() => _h = v)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A sheet whose options are one wrapping row of chips rather than a vertical
+/// list. For short lists of short values — the kind where a full-height list
+/// costs the whole screen for six words. Same grab handle and header as
+/// [_SheetColumn] so the two read as the same family.
+class _SheetChips extends StatelessWidget {
+  const _SheetChips({
+    required this.header,
+    required this.labels,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final String header;
+  final List<String> labels;
+  final int selected; // -1 = nothing matches
+  final ValueChanged<int> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Center(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: const SizedBox(width: 36, height: 4),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 10),
+          child: Text(header, style: AppText.headline),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < labels.length; i++)
+                Material(
+                  color: i == selected
+                      ? AppColors.accent
+                      : Colors.transparent,
+                  shape: StadiumBorder(
+                    side: i == selected
+                        ? BorderSide.none
+                        : BorderSide(
+                            color: Colors.white.withValues(alpha: 0.16),
+                          ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => onSelect(i),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      child: Text(
+                        labels[i],
+                        style: AppText.body.copyWith(
+                          color: i == selected
+                              ? Colors.white
+                              : AppColors.textSecondary,
+                          fontWeight: i == selected
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
