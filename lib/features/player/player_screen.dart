@@ -43,6 +43,7 @@ import '../watch_together/watch_together_controller.dart';
 import '../watch_together/ui/room_panel.dart';
 import '../../core/app_mode.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../settings/settings_screen.dart';
 import 'player_controller.dart';
 import 'player_controls_config.dart';
 import 'player_tv_controls.dart';
@@ -1228,6 +1229,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   // ── Lock / zoom / up-next ─────────────────────────────────────────────────
+
+  /// Settings, from the top bar. Pushed over the player rather than replacing
+  /// it, so the session, position and resolved source survive — coming back
+  /// picks up exactly where it left off.
+  ///
+  /// Playback is paused on the way in: the video is hidden behind the route,
+  /// and audio carrying on under a settings list reads as a bug. It resumes
+  /// on return only if it was actually playing when you left.
+  Future<void> _openSettings() async {
+    final wasPlaying = _c.player.state.playing;
+    if (wasPlaying) _c.togglePlay();
+    // Settings is built for portrait, but the player pins landscape and hides
+    // the system bars — leaving that in place renders it sideways with no
+    // status bar. Hand both back for the trip, then take them again on return.
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+    );
+    if (!mounted) return;
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (!mounted) return;
+    if (wasPlaying && !_c.player.state.playing) _c.togglePlay();
+    _bumpControls();
+  }
 
   void _toggleLock() {
     setState(() {
@@ -2526,6 +2559,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                       onQuality: _openQualitySheet,
                       onSources: _openSourceSheet,
                       onLock: _toggleLock,
+                      onSettings: _openSettings,
                       onZoom: _cycleFit,
                       onPip: _pipSupported ? _enterPip : null,
                       onSleep: _openSleepSheet,
@@ -3313,6 +3347,7 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onQuality,
     required this.onSources,
     required this.onLock,
+    required this.onSettings,
     required this.onZoom,
     required this.zoomLabel,
     required this.onPrev,
@@ -3348,6 +3383,7 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onQuality;
   final VoidCallback onSources;
   final VoidCallback onLock;
+  final VoidCallback onSettings;
   final VoidCallback onZoom;
   final String zoomLabel;
   final VoidCallback? onPrev; // null = no previous episode
@@ -3822,6 +3858,14 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                     tooltip: 'Lock controls',
                     onPressed: onLock,
+                  ),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.settings_rounded,
+                      color: Colors.white,
+                    ),
+                    tooltip: 'Settings',
+                    onPressed: onSettings,
                   ),
                   if (onChat != null)
                     IconButton(
