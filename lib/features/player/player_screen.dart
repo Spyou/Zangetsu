@@ -3113,38 +3113,47 @@ class _AdjustHud extends StatelessWidget {
     // The track fill maps the full range onto 0..1 — volume is half-full at 100%.
     final fill = value.clamp(0.0, 1.0);
     final tint = boosted ? Colors.red : Colors.white;
+    // Same translucent-black capsule as the transport discs and the bottom
+    // chips — this was the last piece of the player still on its own look
+    // (a near-opaque 0.78 slab with a glowing fill).
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.78),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.black.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Percentage on top.
+            // Percentage on top. Tabular digits matter more here than anywhere
+            // else in the player: this number changes continuously under your
+            // thumb, and proportional figures make it jitter the whole way.
             Text(
               '$pct%',
               style: AppText.caption.copyWith(
                 color: tint,
                 fontWeight: FontWeight.w600,
-                fontSize: 13,
+                fontSize: 12.5,
+                height: 1.1,
+                letterSpacing: 0.3,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
-            const SizedBox(height: 12),
-            // Vertical fill track (bottom-anchored) — glides to each value and
-            // the accent fill carries a soft glow.
+            const SizedBox(height: 10),
+            // Vertical fill track (bottom-anchored). Accent, matching the seek
+            // bar's played portion — but no glow: nothing else in the player
+            // glows any more, and it was the loudest thing on screen.
             SizedBox(
-              width: 8,
-              height: 150,
+              width: 6,
+              height: 118,
               child: Stack(
                 children: [
                   Positioned.fill(
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(4),
+                        color: Colors.white.withValues(alpha: 0.22),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
                   ),
@@ -3158,13 +3167,7 @@ class _AdjustHud extends StatelessWidget {
                       child: DecoratedBox(
                         decoration: BoxDecoration(
                           color: fillColor,
-                          borderRadius: BorderRadius.circular(4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: fillColor.withValues(alpha: 0.55),
-                              blurRadius: 8,
-                            ),
-                          ],
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ),
                     ),
@@ -3172,9 +3175,9 @@ class _AdjustHud extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             // Icon at the bottom.
-            Icon(_icon, color: tint, size: 24),
+            Icon(_icon, color: tint, size: 20),
           ],
         ),
       ),
@@ -3718,13 +3721,13 @@ class _ControlsOverlay extends StatelessWidget {
                 builder: (context, bSnap) {
                   final buffering = bSnap.data ?? c.player.state.buffering;
                   // While buffering, show the spinner IN PLACE OF the play/pause
-                  // button — no more spinner-over-button overlap. 70px matches
-                  // _AnimatedPlayPause exactly (58px icon + 6px padding a side)
-                  // so the episode arrows don't twitch every time it stalls.
+                  // button — no more spinner-over-button overlap. 58px matches
+                  // _AnimatedPlayPause's disc exactly, so the episode arrows
+                  // don't twitch every time playback stalls.
                   if (buffering) {
                     return const SizedBox(
-                      width: 70,
-                      height: 70,
+                      width: 58,
+                      height: 58,
                       child: Center(
                         child: SizedBox(
                           width: 32,
@@ -5967,32 +5970,31 @@ class _AnimatedPlayPause extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _withTooltip(
-      playing ? 'Pause' : 'Play',
-      Semantics(
-        button: true,
-        label: playing ? 'Pause' : 'Play',
-        child: GestureDetector(
-          onTap: onTap,
-          behavior: HitTestBehavior.opaque,
-          child: Padding(
-            padding: const EdgeInsets.all(6),
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 220),
-              transitionBuilder: (child, anim) => FadeTransition(
-                opacity: anim,
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.72, end: 1).animate(anim),
-                  child: child,
-                ),
-              ),
-              child: Icon(
-                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                key: ValueKey<bool>(playing),
-                color: Colors.white,
-                size: 58,
-              ),
+    // No tooltip — play/pause needs no explaining, and a bubble over the
+    // middle of the picture is just in the way.
+    return Semantics(
+      button: true,
+      label: playing ? 'Pause' : 'Play',
+      // Larger disc than the episode arrows so the row keeps its hierarchy —
+      // the icon inside is bigger too, so matching discs would have crowded
+      // this one while leaving the arrows swimming in theirs.
+      child: _TransportDisc(
+        size: 58,
+        onTap: onTap,
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 220),
+          transitionBuilder: (child, anim) => FadeTransition(
+            opacity: anim,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.72, end: 1).animate(anim),
+              child: child,
             ),
+          ),
+          child: Icon(
+            playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            key: ValueKey<bool>(playing),
+            color: Colors.white,
+            size: 34,
           ),
         ),
       ),
@@ -6000,12 +6002,62 @@ class _AnimatedPlayPause extends StatelessWidget {
   }
 }
 
-/// Episode step either side of play/pause — a clean icon, no background, to
-/// match the play button. A null [onTap] means there's nowhere to step (first
-/// or last episode): the icon dims and stops taking touches, so the tap falls
-/// through and toggles the controls like any other empty patch of screen
-/// rather than dying on a dead button. It stays mounted either way, which is
-/// what keeps play/pause centred instead of sliding as the row shrinks.
+/// Backdrop for the three centre transport buttons. They sit over the middle
+/// of the picture where barely any scrim reaches, so they carry more alpha
+/// than the bottom capsules' 0.3 — at that level they wash out on a bright
+/// frame. [dimmed] fades the disc along with its icon, otherwise a dead arrow
+/// ends up inside a solid circle and reads as broken rather than unavailable.
+class _TransportDisc extends StatelessWidget {
+  const _TransportDisc({
+    required this.size,
+    required this.child,
+    required this.onTap,
+    this.dimmed = false,
+  });
+
+  final double size;
+  final Widget child;
+  final VoidCallback? onTap;
+  final bool dimmed;
+
+  @override
+  Widget build(BuildContext context) {
+    // The disc is itself the Material the ripple paints onto. A plain
+    // DecoratedBox wouldn't do: ink splashes render on the nearest Material
+    // ancestor, which would be the Scaffold underneath — so the ripple would
+    // spread behind this circle and never be seen. Clipping to the same
+    // CircleBorder keeps the splash inside the disc instead of squaring off.
+    return Material(
+      color: Colors.black.withValues(alpha: dimmed ? 0.18 : 0.45),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const CircleBorder(),
+        // Explicit, because the theme's default splash is tuned for opaque
+        // surfaces and barely shows on a translucent black disc over video.
+        splashColor: Colors.white.withValues(alpha: 0.22),
+        highlightColor: Colors.white.withValues(alpha: 0.10),
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Center(child: child),
+        ),
+      ),
+    );
+  }
+}
+
+/// Episode step either side of play/pause. A null [onTap] means there's
+/// nowhere to step (first or last episode): the button dims and stops taking
+/// touches, so the tap falls through and toggles the controls like any other
+/// empty patch of screen rather than dying on a dead button. It stays mounted
+/// either way, which is what keeps play/pause centred instead of sliding as
+/// the row shrinks.
+///
+/// No tooltip: the three transport controls are the most self-evident thing on
+/// the screen, so a bubble over them is noise. The bottom bar keeps its
+/// tooltips — those buttons lost their text labels and need the help.
 class _TransportButton extends StatelessWidget {
   const _TransportButton({
     required this.icon,
@@ -6019,27 +6071,20 @@ class _TransportButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onTap != null;
-    // No tooltip when it's dimmed — the button ignores pointers then, so a
-    // long press falls straight through and there'd be nothing to trigger it.
-    return _withTooltip(
-      enabled ? label : null,
-      Semantics(
-        button: true,
-        enabled: enabled,
-        label: label,
-        child: IgnorePointer(
-          ignoring: !enabled,
-          child: GestureDetector(
-            onTap: onTap,
-            behavior: HitTestBehavior.opaque,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(
-                icon,
-                color: Colors.white.withValues(alpha: enabled ? 1 : 0.28),
-                size: 38,
-              ),
-            ),
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      label: label,
+      child: IgnorePointer(
+        ignoring: !enabled,
+        child: _TransportDisc(
+          size: 46,
+          dimmed: !enabled,
+          onTap: onTap,
+          child: Icon(
+            icon,
+            color: Colors.white.withValues(alpha: enabled ? 1 : 0.28),
+            size: 26,
           ),
         ),
       ),
