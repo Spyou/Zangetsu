@@ -171,7 +171,9 @@ class MainActivity : FlutterActivity() {
     // Android 12+ we use the seamless setAutoEnterEnabled; on 8.0–11 (no
     // auto-enter API) we trigger PiP from onUserLeaveHint (home press).
     private var autoPipEnabled = false
-    private val pipAspect = Rational(16, 9)
+
+    // Window actions, aspect ratio and enter animation — see PipController.
+    private val pip by lazy { PipController(this) }
 
     // Set in configureFlutterEngine; used by onNewIntent to hand a tapped
     // "new episode" notification to Dart while the app is already running.
@@ -362,27 +364,36 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "setAutoPip" -> {
-                        autoPipEnabled = (call.arguments as? Boolean) ?: false
-                        // Android 12+: seamless auto-enter (survives gesture nav).
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            try {
-                                setPictureInPictureParams(
-                                    PictureInPictureParams.Builder()
-                                        .setAutoEnterEnabled(autoPipEnabled)
-                                        .setAspectRatio(pipAspect)
-                                        .build(),
-                                )
-                            } catch (_: Exception) {}
-                        }
-                        result.success(true)
-                    }
-                    else -> result.notImplemented()
+        val pipChannel =
+            MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/pip")
+        // Same channel both ways now: Dart arms auto-PiP and pushes playback
+        // state down it, and a tapped window button comes back up it.
+        pip.channel = pipChannel
+        pip.register()
+        pipChannel.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setAutoPip" -> {
+                    autoPipEnabled = (call.arguments as? Boolean) ?: false
+                    // Android 12+ only; below that onUserLeaveHint covers it.
+                    pip.autoEnter = autoPipEnabled
+                    result.success(true)
                 }
+                // Playback state + video size, so the window can show the right
+                // play/pause icon and size itself to the actual video instead
+                // of a hardcoded 16:9.
+                "setState" -> {
+                    val a = call.arguments as? Map<*, *>
+                    pip.setState(
+                        (a?.get("playing") as? Boolean) ?: true,
+                        (a?.get("width") as? Int) ?: 0,
+                        (a?.get("height") as? Int) ?: 0,
+                    )
+                    result.success(true)
+                }
+                "enter" -> result.success(pip.enter(null))
+                else -> result.notImplemented()
             }
+        }
 
         // Voice search (TV): open the system speech dialog and hand the
         // recognised phrase back to Dart. Uses ACTION_RECOGNIZE_SPEECH so no
@@ -1038,12 +1049,18 @@ class MainActivity : FlutterActivity() {
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
             !isInPictureInPictureMode
         ) {
-            try {
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder().setAspectRatio(pipAspect).build(),
-                )
-            } catch (_: Exception) {}
+            pip.enter(null)
         }
+    }
+
+    // Re-push the params on entering, so the window opens with its actions
+    // already attached rather than picking them up a frame later.
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) pip.applyParams()
     }
 
     // Known external video players (package -> display label).
@@ -1380,6 +1397,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        pip.unregister()
         releaseRetriever()
         executor.shutdown()
         csExecutor.shutdown()

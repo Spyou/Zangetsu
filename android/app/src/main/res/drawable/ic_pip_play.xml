@@ -1,0 +1,12 @@
+<!-- PiP window action icons. Tinted white by the system against the PiP
+     scrim, so the colour here is only a fallback. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="#FFFFFF">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M8,5v14l11,-7z" />
+</vector>

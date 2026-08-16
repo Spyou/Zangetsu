@@ -345,6 +345,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _pipSupported = false; // device supports PiP + we're on Android
   bool _inPip = false; // currently rendering inside the PiP window
   StreamSubscription<PiPStatus>? _pipSub;
+  // Playing / video-size listeners that keep the PiP window's buttons and
+  // aspect ratio current. PiP-only — they don't feed anything else.
+  final List<StreamSubscription<dynamic>> _pipStateSubs = [];
 
   @override
   void initState() {
@@ -501,6 +504,43 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // plugin's OnLeavePiP which needs 12+) — gated by the Playback setting.
       // The manual PiP button is unaffected by this toggle.
       await _pipChannel.invokeMethod('setAutoPip', sl<PlaybackPrefs>().autoPip);
+
+      // The PiP window's own buttons come back up this channel. They call the
+      // same controller methods the on-screen transport does — no separate
+      // playback path, nothing here changes how the player itself behaves.
+      _pipChannel.setMethodCallHandler((call) async {
+        if (!mounted) return null;
+        switch (call.method) {
+          case 'play_pause':
+            _c.togglePlay();
+          case 'rewind':
+            _c.seekBy(const Duration(seconds: -10));
+          case 'forward':
+            _c.seekBy(const Duration(seconds: 10));
+        }
+        return null;
+      });
+
+      // Android bakes the play/pause icon into the window's action list, so
+      // there's no way to update one button — the whole set has to be re-sent
+      // whenever the state changes. Same call carries the video size, which is
+      // what lets the window match the real aspect instead of assuming 16:9.
+      void pushPipState() {
+        if (!mounted) return;
+        _pipChannel.invokeMethod('setState', {
+          'playing': _c.player.state.playing,
+          'width': _c.player.state.width ?? 0,
+          'height': _c.player.state.height ?? 0,
+        }).catchError((_) => null);
+      }
+
+      pushPipState();
+      _pipStateSubs.addAll([
+        _c.player.stream.playing.listen((_) => pushPipState()),
+        // Fires on the first decoded frame and on every source/quality switch,
+        // so the window re-sizes when the video actually changes shape.
+        _c.player.stream.height.listen((_) => pushPipState()),
+      ]);
     } catch (_) {
       /* PiP just stays off */
     }
@@ -907,9 +947,17 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _pipSub?.cancel();
+    for (final s in _pipStateSubs) {
+      s.cancel();
+    }
+    _pipStateSubs.clear();
     sl<CastController>().removeListener(_onCastStateChanged);
-    // Disarm auto-PiP so leaving the closed player can't trigger it.
-    if (_pipSupported) _pipChannel.invokeMethod('setAutoPip', false);
+    // Disarm auto-PiP so leaving the closed player can't trigger it, and drop
+    // the handler so a stray window button can't reach a dead controller.
+    if (_pipSupported) {
+      _pipChannel.setMethodCallHandler(null);
+      _pipChannel.invokeMethod('setAutoPip', false);
+    }
     // Hand brightness back to the system when leaving the player.
     if (_gesturesEnabled) {
       ScreenBrightness.instance.resetApplicationScreenBrightness().catchError(
