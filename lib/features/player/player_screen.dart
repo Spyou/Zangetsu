@@ -3565,7 +3565,13 @@ class _ControlsOverlay extends StatelessWidget {
             left: false,
             right: false,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              // 32, not the bottom block's 44, and the difference is on
+              // purpose: these are IconButtons, which reserve 12px around the
+              // glyph before it draws (8 default padding, plus 4 stretching the
+              // 40px button out to the 48px minimum touch target). 32 + 12 puts
+              // the back arrow on 44 — the exact line the bottom capsules start
+              // at. Writing 44 here would land it at 56 and overshoot inward.
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 4),
               child: Row(
                 children: [
                   IconButton(
