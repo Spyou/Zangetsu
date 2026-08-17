@@ -91,9 +91,13 @@ bool headerGatedButPlayerCant(Map<String, String>? headers, String pkg) {
 }
 
 /// True when [url] is already served by a local proxy (localhost / 127.0.0.1) —
-/// e.g. a CloudStream extractor's own proxy. Such a URL is already reachable and
-/// header-injected, so it's handed to the external player as-is rather than
-/// wrapped again (double-proxying breaks it).
+/// e.g. a CloudStream extractor's own proxy.
+///
+/// No longer gates the external-player hand-off. It used to: such URLs were
+/// passed through untouched because they were assumed to be header-injected
+/// already. They aren't — an extractor's proxy forwards whatever UA called it,
+/// so VLC's UA reached Cloudflare and drew a 403. They now go through our proxy
+/// like any other header-gated source.
 @visibleForTesting
 bool isLocalStreamUrl(String url) {
   final u = url.toLowerCase();
@@ -604,21 +608,23 @@ class _PlayerScreenState extends State<PlayerScreen> {
         if (mounted) setState(() {});
         return;
       }
-      // Header-gated source + a player that can't forward headers. Three cases:
-      //  • already-local (a CloudStream extractor's own localhost proxy): hand
-      //    it over as-is — it's already reachable + header-injected; wrapping it
-      //    again double-proxies and breaks it.
+      // Header-gated source + a player that can't forward headers. Two cases:
       //  • DASH (.mpd): our proxy only rewrites HLS and external players can't do
       //    header-gated DASH → play in the built-in player (mpv handles it).
-      //  • otherwise (remote header-gated HLS): hand the player our localhost
-      //    proxy URL (no headers — the proxy injects them upstream).
+      //  • otherwise (remote HLS, or an extractor's own localhost proxy): hand
+      //    the player our localhost proxy URL (no headers — the proxy injects
+      //    them upstream).
+      // Extractor-local URLs used to be passed through untouched, on the
+      // assumption they were already header-injected. They aren't: those proxies
+      // forward whatever UA called them, so mpv (source UA) played fine while VLC
+      // (VLC/3.0.23) drew a 403 off Cloudflare and the extractor answered 500.
+      // Fetching through our proxy puts the source UA back on the wire.
       // MX/Just Player (header-forwarding) and non-header-gated sources never
       // reach this branch — the unchanged direct hand-off below covers them.
       final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
       var playUrl = src.url;
       var launchHeaders = src.headers ?? const <String, String>{};
-      if (headerGatedButPlayerCant(src.headers, extPkg) &&
-          !isLocalStreamUrl(src.url)) {
+      if (headerGatedButPlayerCant(src.headers, extPkg)) {
         if (isDashUrl(src.url)) {
           _initInApp(); // DASH → built-in (external can't do header-gated DASH)
           if (mounted) {

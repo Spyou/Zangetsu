@@ -29,6 +29,7 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:enableOnBackInvokedCallback="false">
         <!-- flutter_background_service declares this service but without a
              foregroundServiceType, which Android 14+ requires for dataSync.

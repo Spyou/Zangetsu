@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Loopback-only cleartext exemption.
+
+    Extractors (and our own stream proxies) hand players plain-http URLs on
+    127.0.0.1. Native players reach those fine, but anything going through
+    OkHttp is subject to the platform policy, which blocks cleartext by default
+    from targetSdk 28 on — so proxying an extractor's local URL died with
+    "CLEARTEXT communication to localhost not permitted".
+
+    Only loopback is listed. There's no base-config here, so everything else
+    keeps the platform default: cleartext still refused for real hosts.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
