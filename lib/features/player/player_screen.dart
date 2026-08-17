@@ -109,6 +109,139 @@ bool isLocalStreamUrl(String url) {
 @visibleForTesting
 bool isDashUrl(String url) => url.toLowerCase().split('?').first.endsWith('.mpd');
 
+/// Outcome of [attemptExternalPlayerLaunch]. `launched: true` means the
+/// external app took the stream — the caller should leave the player.
+/// `false` means fall back to the built-in player, optionally showing
+/// [ExternalLaunchOutcome.message] (a SnackBar) explaining why.
+typedef ExternalLaunchOutcome = ({bool launched, String? message});
+
+/// Resolves the start episode, picks its best source, hands it to the user's
+/// configured external player (VLC/MX/etc.) and scrobbles the episode the
+/// same way the in-app player would — the only reliable signal an external
+/// player gives, since it reports no progress back to us.
+///
+/// Shared by [PlayerScreen] and `WatchScreen` so the external-player decision
+/// (and the header-gated / DASH / torrent special-casing around it) can't
+/// drift into two subtly different copies. Touches no `BuildContext` and does
+/// no navigation — the caller decides what "leave" or "fall back to the
+/// built-in player" means for its own screen.
+Future<ExternalLaunchOutcome> attemptExternalPlayerLaunch({
+  required List<Episode> episodes,
+  required Future<List<Episode>> Function()? episodesResolver,
+  required int startIndex,
+  required String? resumeEpisodeId,
+  required double? resumeEpisodeNumber,
+  required Future<List<VideoSource>> Function(String episodeUrl) resolveSources,
+  required String? category,
+  required int? malId,
+  required String? scrobbleTitle,
+  required int? tmdbId,
+  required bool tmdbIsTv,
+  required String? imdbId,
+  required String? showTitle,
+}) async {
+  try {
+    var eps = episodes;
+    if (eps.isEmpty && episodesResolver != null) {
+      eps = await episodesResolver();
+    }
+    if (eps.isEmpty) throw StateError('no episodes');
+    var idx = startIndex;
+    if (resumeEpisodeId != null) {
+      var i = eps.indexWhere((e) => e.id == resumeEpisodeId);
+      if (i < 0 && resumeEpisodeNumber != null) {
+        i = eps.indexWhere((e) => e.number == resumeEpisodeNumber);
+      }
+      if (i >= 0) idx = i;
+    }
+    final ep = eps[idx.clamp(0, eps.length - 1)];
+    final sources = await resolveSources(ep.url);
+    final prefer = category == 'dub' ? AudioKind.dub : AudioKind.sub;
+    final src = pickDefault(sources, prefer: prefer);
+    if (src == null) throw StateError('no source');
+    // A torrent can't be handed to an external player as a magnet — stream it
+    // through our engine via the in-app player instead.
+    if (isTorrentUrl(src.url)) {
+      return (launched: false, message: null);
+    }
+    // Header-gated source + a player that can't forward headers. Three cases:
+    //  • already-local (a CloudStream extractor's own localhost proxy): hand
+    //    it over as-is — it's already reachable + header-injected; wrapping it
+    //    again double-proxies and breaks it.
+    //  • DASH (.mpd): our proxy only rewrites HLS and external players can't do
+    //    header-gated DASH → play in the built-in player (mpv handles it).
+    //  • otherwise (remote header-gated HLS): hand the player our localhost
+    //    proxy URL (no headers — the proxy injects them upstream).
+    // MX/Just Player (header-forwarding) and non-header-gated sources never
+    // reach this branch — the unchanged direct hand-off below covers them.
+    final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
+    var playUrl = src.url;
+    var launchHeaders = src.headers ?? const <String, String>{};
+    if (headerGatedButPlayerCant(src.headers, extPkg) &&
+        !isLocalStreamUrl(src.url)) {
+      if (isDashUrl(src.url)) {
+        return (
+          launched: false,
+          message: 'Using the built-in player for this source.',
+        );
+      }
+      final local = await ExternalPlayer().proxyStreamUrl(src.url, src.headers!);
+      if (local == null) {
+        return (
+          launched: false,
+          message: 'This source needs special headers your external player '
+              'can’t send — using the built-in player.',
+        );
+      }
+      // Play the proxied URL; headers are injected upstream, so none are
+      // needed on the intent (VLC/SPlayer ignore them anyway).
+      playUrl = local;
+      launchHeaders = const <String, String>{};
+    }
+    // External players give no progress callback and the in-app scrobbler
+    // never runs for them — so scrobble the episode at hand-off (the only
+    // reliable signal). Anime-gated + de-duped inside the service.
+    final epNum = ep.number;
+    if (epNum != null && epNum > 0 && epNum == epNum.truncateToDouble()) {
+      sl<TrackerHub>().scrobble(
+        malId: malId,
+        title: scrobbleTitle,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+        imdbId: imdbId,
+        episode: epNum.toInt(),
+      );
+    }
+    final subs = src.subtitles
+        .map((s) => {'url': s.url, 'name': s.label ?? s.lang})
+        .toList();
+    final title = [
+      showTitle,
+      ep.title,
+    ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
+    final res = await ExternalPlayer().launch(
+      url: playUrl,
+      package: extPkg,
+      title: title.isEmpty ? null : title,
+      headers: launchHeaders,
+      subtitles: subs,
+      positionMs: 0,
+    );
+    // If the player LAUNCHED, trust it — it took the stream. Many players
+    // (VLC especially) open the video in their own task and return to us
+    // immediately with no progress report, so `played` is NOT a reliable
+    // failure signal; using it made the app spuriously fall back to the
+    // built-in player (double playback) even while the external player was
+    // playing fine. Only a genuine launch failure (not installed / no
+    // activity) falls back to the built-in player.
+    return res.launched
+        ? (launched: true, message: null)
+        : (launched: false, message: null);
+  } catch (_) {
+    return (launched: false, message: null);
+  }
+}
+
 class PlayerScreen extends StatefulWidget {
   const PlayerScreen({
     super.key,
@@ -587,128 +720,38 @@ class _PlayerScreenState extends State<PlayerScreen> {
   /// Resolve the start episode + its best source and open it in the user's
   /// chosen external player, then pop. The branded loader shows briefly while
   /// resolving. Any failure falls back to the in-app player.
+  ///
+  /// The actual resolve/launch/scrobble decision lives in
+  /// [attemptExternalPlayerLaunch] (shared with `WatchScreen`) — this just
+  /// reacts to the outcome for a full PlayerScreen: start [_initInApp] on a
+  /// fallback, or [_leavePlayer] once the external app has taken the stream.
   Future<void> _launchExternalThenPop() async {
-    try {
-      var eps = widget.episodes;
-      if (eps.isEmpty && widget.episodesResolver != null) {
-        eps = await widget.episodesResolver!();
-      }
-      if (eps.isEmpty) throw StateError('no episodes');
-      var idx = widget.startIndex;
-      if (widget.resumeEpisodeId != null) {
-        var i = eps.indexWhere((e) => e.id == widget.resumeEpisodeId);
-        if (i < 0 && widget.resumeEpisodeNumber != null) {
-          i = eps.indexWhere((e) => e.number == widget.resumeEpisodeNumber);
-        }
-        if (i >= 0) idx = i;
-      }
-      final ep = eps[idx.clamp(0, eps.length - 1)];
-      final sources = await widget.resolveSources(ep.url);
-      final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
-      final src = pickDefault(sources, prefer: prefer);
-      if (src == null) throw StateError('no source');
-      // A torrent can't be handed to an external player as a magnet — stream it
-      // through our engine via the in-app player instead.
-      if (isTorrentUrl(src.url)) {
-        _initInApp();
-        if (mounted) setState(() {});
-        return;
-      }
-      // Header-gated source + a player that can't forward headers. Three cases:
-      //  • already-local (a CloudStream extractor's own localhost proxy): hand
-      //    it over as-is — it's already reachable + header-injected; wrapping it
-      //    again double-proxies and breaks it.
-      //  • DASH (.mpd): our proxy only rewrites HLS and external players can't do
-      //    header-gated DASH → play in the built-in player (mpv handles it).
-      //  • otherwise (remote header-gated HLS): hand the player our localhost
-      //    proxy URL (no headers — the proxy injects them upstream).
-      // MX/Just Player (header-forwarding) and non-header-gated sources never
-      // reach this branch — the unchanged direct hand-off below covers them.
-      final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
-      var playUrl = src.url;
-      var launchHeaders = src.headers ?? const <String, String>{};
-      if (headerGatedButPlayerCant(src.headers, extPkg) &&
-          !isLocalStreamUrl(src.url)) {
-        if (isDashUrl(src.url)) {
-          _initInApp(); // DASH → built-in (external can't do header-gated DASH)
-          if (mounted) {
-            setState(() {});
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Using the built-in player for this source.'),
-              ),
-            );
-          }
-          return;
-        }
-        final local = await ExternalPlayer().proxyStreamUrl(src.url, src.headers!);
-        if (!mounted) return;
-        if (local == null) {
-          _initInApp(); // proxy unavailable → built-in (never a black screen)
-          setState(() {});
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'This source needs special headers your external player can’t '
-                'send — using the built-in player.',
-              ),
-            ),
-          );
-          return;
-        }
-        // Play the proxied URL; headers are injected upstream, so none are
-        // needed on the intent (VLC/SPlayer ignore them anyway).
-        playUrl = local;
-        launchHeaders = const <String, String>{};
-      }
-      // External players give no progress callback and the in-app scrobbler
-      // never runs for them — so scrobble the episode at hand-off (the only
-      // reliable signal). Anime-gated + de-duped inside the service.
-      final epNum = ep.number;
-      if (epNum != null && epNum > 0 && epNum == epNum.truncateToDouble()) {
-        sl<TrackerHub>().scrobble(
-          malId: widget.malId,
-          title: widget.scrobbleTitle,
-          tmdbId: widget.tmdbId,
-          tmdbIsTv: widget.tmdbIsTv,
-          imdbId: widget.imdbId,
-          episode: epNum.toInt(),
-        );
-      }
-      final subs = src.subtitles
-          .map((s) => {'url': s.url, 'name': s.label ?? s.lang})
-          .toList();
-      final title = [
-        widget.showTitle,
-        ep.title,
-      ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
-      final res = await ExternalPlayer().launch(
-        url: playUrl,
-        package: sl<PlaybackPrefs>().externalPlayerPackage,
-        title: title.isEmpty ? null : title,
-        headers: launchHeaders,
-        subtitles: subs,
-        positionMs: 0,
-      );
-      if (!mounted) return;
-      // If the player LAUNCHED, trust it — it took the stream. Many players
-      // (VLC especially) open the video in their own task and return to us
-      // immediately with no progress report, so `played` is NOT a reliable
-      // failure signal; using it made the app spuriously fall back to the
-      // built-in player (double playback) even while the external player was
-      // playing fine. Only a genuine launch failure (not installed / no
-      // activity) falls back to the built-in player.
-      if (res.launched) {
-        _leavePlayer();
-      } else {
-        _initInApp(); // not installed / no activity → built-in
-        setState(() {});
-      }
-    } catch (_) {
-      if (mounted) {
-        _initInApp();
-        setState(() {});
-      }
+    final result = await attemptExternalPlayerLaunch(
+      episodes: widget.episodes,
+      episodesResolver: widget.episodesResolver,
+      startIndex: widget.startIndex,
+      resumeEpisodeId: widget.resumeEpisodeId,
+      resumeEpisodeNumber: widget.resumeEpisodeNumber,
+      resolveSources: widget.resolveSources,
+      category: widget.category,
+      malId: widget.malId,
+      scrobbleTitle: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+      showTitle: widget.showTitle,
+    );
+    if (!mounted) return;
+    if (result.launched) {
+      _leavePlayer();
+      return;
+    }
+    _initInApp();
+    setState(() {});
+    if (result.message != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message!)));
     }
   }
 
