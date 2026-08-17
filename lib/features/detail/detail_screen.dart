@@ -62,7 +62,7 @@ import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
-import '../player/player_screen.dart';
+import '../player/watch_screen.dart';
 import '../player/tv_exo_player_screen.dart';
 import '../player/tv_native_player.dart'; // used by the detail_screen_tv.dart part
 import '../reader/manga_reader_screen.dart';
@@ -634,7 +634,7 @@ class _DetailViewState extends State<_DetailView>
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => WatchScreen(
           sourceId: widget.item.sourceId,
           episodes: episodes,
           startIndex: index,
@@ -644,13 +644,6 @@ class _DetailViewState extends State<_DetailView>
             sourceId: widget.item.sourceId,
             fast: true,
           ),
-          // The resolve above returns on the first usable link so playback
-          // starts fast; the remaining mirrors keep resolving natively. This
-          // lets the Sources sheet pick them up once they land.
-          pollSources: (u) => sl<SourceRepository>().polledSources(
-            u,
-            sourceId: widget.item.sourceId,
-          ),
           history: sl<WatchHistory>(),
           showTitle: detail.title,
           cover: detail.cover ?? widget.item.cover,
@@ -659,9 +652,6 @@ class _DetailViewState extends State<_DetailView>
           category: launchCategory,
           malId: malId,
           scrobbleTitle: scrobbleTitle,
-          tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-          tmdbIsTv: detail.tmdbIsTv,
-          imdbId: detail.imdbId ?? widget.item.imdbId,
           availableCategories: availableCategories,
         ),
       ),

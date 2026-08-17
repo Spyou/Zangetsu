@@ -40,7 +40,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/trailer/trailer_service.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
-import 'package:watch_app/features/player/player_screen.dart';
+import 'package:watch_app/features/player/watch_screen.dart';
 import 'package:watch_app/features/reader/novel_reader_screen.dart';
 
 // ── Minimal stubs — no Hive, no platform channels, no network ───────────────
@@ -261,13 +261,13 @@ const _animeDetail = MediaDetail(
 
 /// Records pushes so the anime-regression test can prove `_openPlayer`'s
 /// original path ran (reached its final `Navigator.push`) WITHOUT actually
-/// building `PlayerScreen`'s STATE — which wires up media_kit + a dozen more
+/// building `WatchScreen`'s STATE — which wires up media_kit + a dozen more
 /// singletons that have no place in a lightweight widget test. `didPush`
 /// fires synchronously as part of `Navigator.push`, before any rebuild, so
 /// checking it right after `tester.tap()` (with no follow-up `pump()`) never
 /// triggers the destination route's build. Storing the route (not just a
 /// count) lets the test call its `builder` directly afterward — that
-/// constructs the `PlayerScreen` WIDGET (a plain field-holding object) without
+/// constructs the `WatchScreen` WIDGET (a plain field-holding object) without
 /// ever creating its `State`, so it's safe to assert the concrete type.
 class _RecordingNavigatorObserver extends NavigatorObserver {
   final List<Route<dynamic>> pushed = [];
@@ -322,7 +322,7 @@ void main() {
     // whenever ReadStore has no local mark, so it must always be registered
     // for a reading title; the dedicated fallback test overrides it.
     sl.registerSingleton<ReadHistory>(_FakeReadHistory());
-    // Only needed for the anime test: building the pushed PlayerScreen WIDGET
+    // Only needed for the anime test: building the pushed WatchScreen WIDGET
     // (not its State — see _RecordingNavigatorObserver) still evaluates every
     // sl<T>() in _openPlayer's constructor-argument list, including this one.
     sl.registerSingleton<WatchHistory>(
@@ -504,13 +504,13 @@ void main() {
 
       // Precise, not just "something got pushed": build the pushed route's
       // widget (never its State — see the class doc above) and assert it's
-      // actually PlayerScreen, so a refactor that pushed some other route
+      // actually WatchScreen, so a refactor that pushed some other route
       // would fail this test.
       final pushedRoute = observer.pushed.last as MaterialPageRoute;
       final pushedWidget = pushedRoute.builder(
         tester.element(find.byType(DetailScreen)),
       );
-      expect(pushedWidget, isA<PlayerScreen>());
+      expect(pushedWidget, isA<WatchScreen>());
     },
   );
 
