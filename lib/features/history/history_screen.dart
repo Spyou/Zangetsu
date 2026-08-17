@@ -18,7 +18,7 @@ import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../detail/detail_screen.dart';
 import '../home/home_screen.dart' show readerFor;
-import '../player/player_screen.dart';
+import '../player/watch_screen.dart';
 
 /// Full history, newest-first and grouped by day (Today / Yesterday / date),
 /// split into three tabs: Anime (watch history, [WatchHistory]) and Manga /
@@ -141,18 +141,32 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Future<void> _resume(HistoryEntry e) async {
+    // WatchScreen only takes a plain startIndex, not
+    // resumeEpisodeId/resumeEpisodeNumber, so resolve the episode list and
+    // find the saved one ourselves before navigating.
+    List<Episode> episodes;
+    try {
+      episodes = await _repo.episodes(
+        e.showUrl,
+        category: e.category,
+        sourceId: e.sourceId,
+      );
+    } catch (_) {
+      episodes = const [];
+    }
+    if (!mounted || episodes.isEmpty) return;
+    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
+    if (idx < 0 && e.episodeNumber != null) {
+      idx = episodes.indexWhere((ep) => ep.number == e.episodeNumber);
+    }
+    if (idx < 0) idx = 0;
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => PlayerScreen(
+        builder: (_) => WatchScreen(
           sourceId: e.sourceId,
-          episodesResolver: () => _repo.episodes(
-            e.showUrl,
-            category: e.category,
-            sourceId: e.sourceId,
-          ),
-          resumeEpisodeId: e.episodeId,
-          resumeEpisodeNumber: e.episodeNumber,
+          episodes: episodes,
+          startIndex: idx,
           resumePosition: e.position,
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
