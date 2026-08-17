@@ -4,26 +4,8 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
-
-    <application>
-        <!-- Debug-only launcher entry, so `flutter run` works.
-             The tool finds the app to start by scanning the manifest for an
-             <activity> carrying MAIN + LAUNCHER — and it does not look at
-             <activity-alias> at all. Our phone launcher lives on the aliases
-             (that's how the app-icon picker switches icons), so the release
-             manifest has no such <activity> and `flutter run` fails with
-             "package identifier or launch activity not found".
-             Adding LAUNCHER to MainActivity for real would put a permanent
-             second icon on the launcher and break the picker, so it goes here
-             instead: the manifest merger only folds this in for debug builds,
-             leaving the release manifest exactly as it was.
-             The cost is a duplicate icon while developing. Debug only — no
-             release anyone installs is affected. -->
-        <activity android:name=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-    </application>
+    <!-- Phone MAIN+LAUNCHER lives on MainActivity in the main manifest so
+         `flutter run` can parse it before any APK exists. Release strips that
+         filter (src/release/AndroidManifest.xml) so the activity-aliases stay
+         the only home-screen icons. -->
 </manifest>
