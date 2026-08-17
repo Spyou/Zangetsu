@@ -256,20 +256,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
     for (final i in window) {
       final p = pages[i];
-      precacheImage(
-        // Mirrors exactly what CachedNetworkImage(memCacheWidth: width,
-        // maxWidthDiskCache: width) builds internally (cached_network_image
-        // wraps its provider in the same ResizeImage), so this precache
-        // lands under the same cache key the visible page will later
-        // resolve to instead of warming a full-res entry nothing reads.
-        ResizeImage.resizeIfNeeded(
-          width,
-          null,
-          CachedNetworkImageProvider(p.url, headers: p.headers, maxWidth: width),
-        ),
-        context,
-        onError: (_, _) {}, // best-effort — a failed prefetch is not fatal
-      );
+      // Warm the bytes on disk, deliberately NOT precacheImage. A page decodes
+      // to width × height × 4 — around 28MB at our decode width — against a
+      // 100MB Flutter image cache, so precaching even a few pages pushed the
+      // already-decoded ones straight back out and the reader paid to decode
+      // them again on the way past. This is the same call CachedNetworkImage
+      // makes for maxWidthDiskCache, so the file lands under the key the
+      // visible page resolves to; only the page you're actually looking at
+      // ends up decoded in memory.
+      DefaultCacheManager()
+          .getImageFile(p.url, headers: p.headers, maxWidth: width)
+          .drain<void>()
+          .catchError((_) {}); // best-effort — a failed prefetch is not fatal
     }
   }
 
