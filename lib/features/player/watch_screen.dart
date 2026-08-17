@@ -429,7 +429,13 @@ class WatchScreenState extends State<WatchScreen> {
                                   ? () => _c.openEpisode(_c.state.currentIndex + 1)
                                   : null,
                               onSeek: (d) { _c.seekTo(d); _bumpControls(); },
-                              onScrub: _bumpControls,
+                              // Suspend the auto-hide for the whole drag (not
+                              // just a per-tick bump) — a thumb held still has
+                              // no onChanged ticks to keep pushing the timer
+                              // back, so without this the controls could hide
+                              // mid-drag and drop the pending seek. onSeek
+                              // above resumes it once the drag commits.
+                              onScrubStart: () => _hide?.cancel(),
                               onFullscreen: _goFullscreen,
                             ),
                           ),

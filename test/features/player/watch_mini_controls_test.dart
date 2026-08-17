@@ -52,4 +52,40 @@ void main() {
     final prev = t.widget<IconButton>(find.byKey(const Key('watch-prev')));
     expect(prev.onPressed, isNull);
   });
+
+  testWidgets(
+    'onSeek fires exactly once, on drag end — never on intermediate ticks',
+    (t) async {
+      var seekCalls = 0;
+      await t.pumpWidget(_host(WatchMiniControls(
+        playing: false,
+        position: Duration.zero,
+        duration: const Duration(minutes: 10),
+        onPlayPause: () {},
+        onPrevious: null,
+        onNext: null,
+        onSeek: (_) => seekCalls++,
+        onFullscreen: () {},
+      )));
+
+      final sliderRect = t.getRect(find.byType(Slider));
+      final gesture = await t.startGesture(
+        sliderRect.centerLeft + const Offset(5, 0),
+      );
+      await t.pump();
+      expect(seekCalls, 0); // drag started — nothing committed yet
+
+      await gesture.moveBy(const Offset(60, 0));
+      await t.pump();
+      expect(seekCalls, 0); // mid-drag tick — thumb moves, no seek
+
+      await gesture.moveBy(const Offset(60, 0));
+      await t.pump();
+      expect(seekCalls, 0); // another mid-drag tick — still no seek
+
+      await gesture.up();
+      await t.pump();
+      expect(seekCalls, 1); // released — committed exactly once
+    },
+  );
 }

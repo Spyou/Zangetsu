@@ -509,7 +509,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // Default external player: hand the stream off to the chosen app and close
     // this screen instead of starting the in-app player. Falls back to in-app
     // if the launch can't be set up, so playback never silently dies.
-    if (Platform.isAndroid &&
+    // Skipped entirely when a cubit was handed in (the fullscreen handoff from
+    // WatchScreen): that owner already made this decision once — re-deciding
+    // here could launch external a second time on top of an already-playing
+    // portrait session (double audio) if the first attempt had fallen back.
+    if (widget.cubit == null &&
+        Platform.isAndroid &&
         sl<PlaybackPrefs>().externalPlayerPackage.isNotEmpty) {
       _launchExternalThenPop();
       return;
