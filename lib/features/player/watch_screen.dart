@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +13,9 @@ import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'player_controller.dart';
+import 'player_screen.dart';
 import 'watch_comments_placeholder.dart';
+import 'watch_mini_controls.dart';
 
 /// Portrait host for an episode: video small at the top, tabs underneath.
 /// Owns the [PlayerCubit] — going fullscreen hands the same cubit to
@@ -59,6 +63,22 @@ class WatchScreen extends StatefulWidget {
 class WatchScreenState extends State<WatchScreen> {
   late final PlayerCubit _c;
 
+  bool _showControls = true;
+  Timer? _hide;
+  StreamSubscription<Duration>? _posSub;
+  StreamSubscription<bool>? _playSub;
+  Duration _pos = Duration.zero;
+  bool _playing = false;
+  bool _inFullscreen = false;
+
+  void _bumpControls() {
+    setState(() => _showControls = true);
+    _hide?.cancel();
+    _hide = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _showControls = false);
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -80,14 +100,54 @@ class WatchScreenState extends State<WatchScreen> {
       initialResume: widget.resumePosition,
     )..init(widget.startIndex);
     allowRotation();
+    _posSub = _c.player.stream.position.listen((p) {
+      if (mounted) setState(() => _pos = p);
+    });
+    _playSub = _c.player.stream.playing.listen((p) {
+      if (mounted) setState(() => _playing = p);
+    });
+    _bumpControls();
   }
 
   /// Empty list = let Android's own auto-rotate setting decide. That's how we
   /// get "sensor only when auto-rotate is on" without reading the setting.
   void allowRotation() => SystemChrome.setPreferredOrientations(const []);
 
+  Future<void> _goFullscreen() async {
+    if (_inFullscreen) return;
+    _inFullscreen = true;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PlayerScreen(
+          cubit: _c,                       // hand over the running player
+          sourceId: widget.sourceId,
+          episodes: widget.episodes,
+          startIndex: _c.state.currentIndex,
+          resume: widget.resume,
+          resolveSources: widget.resolveSources,
+          history: widget.history,
+          showTitle: widget.showTitle,
+          cover: widget.cover,
+          coverHeaders: widget.coverHeaders,
+          showUrl: widget.showUrl,
+          category: widget.category,
+          malId: widget.malId,
+          scrobbleTitle: widget.scrobbleTitle,
+          availableCategories: widget.availableCategories,
+        ),
+      ),
+    );
+    _inFullscreen = false;
+    // PlayerScreen's dispose pins portraitUp. Re-open rotation or turning the
+    // phone will never work again for the rest of this session.
+    if (mounted) allowRotation();
+  }
+
   @override
   void dispose() {
+    _hide?.cancel();
+    _posSub?.cancel();
+    _playSub?.cancel();
     // We created it, so we close it. PlayerScreen never closes an injected one.
     _c.close();
     SystemChrome.setPreferredOrientations(const [DeviceOrientation.portraitUp]);
@@ -100,6 +160,12 @@ class WatchScreenState extends State<WatchScreen> {
   @override
   Widget build(BuildContext context) {
     final multi = widget.episodes.length > 1;
+    // Only fires when Android's auto-rotate is on — with it off, the app is
+    // never handed a landscape constraint in the first place.
+    if (MediaQuery.of(context).orientation == Orientation.landscape &&
+        !_inFullscreen) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _goFullscreen());
+    }
     return DefaultTabController(
       length: multi ? 2 : 1,
       child: Scaffold(
@@ -114,6 +180,37 @@ class WatchScreenState extends State<WatchScreen> {
                   children: [
                     Container(color: Colors.black),
                     Video(controller: _c.videoController, controls: NoVideoControls),
+                    // Double-tap the sides for ±10s, matching the fullscreen player.
+                    Row(children: [
+                      Expanded(child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _bumpControls,
+                        onDoubleTap: () => _c.player.seek(_pos - const Duration(seconds: 10)),
+                      )),
+                      Expanded(child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _bumpControls,
+                        onDoubleTap: () => _c.player.seek(_pos + const Duration(seconds: 10)),
+                      )),
+                    ]),
+                    if (_showControls)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: WatchMiniControls(
+                          playing: _playing,
+                          position: _pos,
+                          duration: _c.player.state.duration,
+                          onPlayPause: () { _c.player.playOrPause(); _bumpControls(); },
+                          onPrevious: _c.state.currentIndex > 0
+                              ? () => _c.openEpisode(_c.state.currentIndex - 1)
+                              : null,
+                          onNext: _c.state.currentIndex < widget.episodes.length - 1
+                              ? () => _c.openEpisode(_c.state.currentIndex + 1)
+                              : null,
+                          onSeek: (d) { _c.player.seek(d); _bumpControls(); },
+                          onFullscreen: _goFullscreen,
+                        ),
+                      ),
                   ],
                 ),
               ),
