@@ -16,7 +16,7 @@ class WatchMiniControls extends StatefulWidget {
     required this.onNext,
     required this.onSeek,
     required this.onFullscreen,
-    this.onScrub,
+    this.onScrubStart,
   });
 
   final bool playing;
@@ -28,11 +28,14 @@ class WatchMiniControls extends StatefulWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onFullscreen;
 
-  /// Fired on every drag tick (no seek attached) — lets the host keep its
-  /// auto-hiding controls up while a scrub is in progress. Optional so the
-  /// existing widget test (which doesn't care about the auto-hide timer)
-  /// keeps compiling unchanged.
-  final VoidCallback? onScrub;
+  /// Fired once when a drag begins — lets the host suspend its auto-hiding
+  /// controls timer for the whole drag (a held-still thumb has no onChanged
+  /// ticks to keep bumping it, so without this the controls can hide mid-drag
+  /// and the pending seek in onChangeEnd never fires). [onSeek] firing at the
+  /// end is what resumes the timer again. Optional so the existing widget
+  /// test (which doesn't care about the auto-hide timer) keeps compiling
+  /// unchanged.
+  final VoidCallback? onScrubStart;
 
   static String _fmt(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -80,10 +83,11 @@ class _WatchMiniControlsState extends State<WatchMiniControls> {
             child: Slider(
               value: sliderValue,
               max: (total == 0 ? 1 : total).toDouble(),
-              onChanged: (v) {
+              onChangeStart: (v) {
                 setState(() => _dragValue = v);
-                widget.onScrub?.call();
+                widget.onScrubStart?.call();
               },
+              onChanged: (v) => setState(() => _dragValue = v),
               onChangeEnd: (v) {
                 setState(() => _dragValue = null);
                 widget.onSeek(Duration(milliseconds: v.round()));
