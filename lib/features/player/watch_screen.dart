@@ -1,18 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/brand_loader.dart';
+import 'drm_player_screen.dart';
 import 'player_controller.dart';
 import 'player_screen.dart';
 import 'watch_comments_placeholder.dart';
@@ -122,10 +126,56 @@ class WatchScreenState extends State<WatchScreen> {
   void initState() {
     super.initState();
     allowRotation();
+    // Default external player: hand the stream off to the chosen app instead
+    // of starting the portrait player. Same decision PlayerScreen makes in its
+    // own initState — reused via attemptExternalPlayerLaunch so the two hosts
+    // can't drift apart (and so fullscreen's own check never fires a second,
+    // double-playing launch on top of this one).
+    if (Platform.isAndroid &&
+        sl<PlaybackPrefs>().externalPlayerPackage.isNotEmpty) {
+      _launchExternalThenLeave();
+      return;
+    }
+    _startInApp();
+  }
+
+  void _startInApp() {
     if (widget.episodes.isEmpty && widget.episodesResolver != null) {
       _resolveThenStart(); // instant nav: resolve behind the branded loader
     } else {
       _startSession(widget.episodes, widget.startIndex);
+    }
+  }
+
+  Future<void> _launchExternalThenLeave() async {
+    final result = await attemptExternalPlayerLaunch(
+      episodes: widget.episodes,
+      episodesResolver: widget.episodesResolver,
+      startIndex: widget.startIndex,
+      resumeEpisodeId: widget.resumeEpisodeId,
+      resumeEpisodeNumber: widget.resumeEpisodeNumber,
+      resolveSources: widget.resolveSources,
+      category: widget.category,
+      malId: widget.malId,
+      scrobbleTitle: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+      showTitle: widget.showTitle,
+    );
+    if (!mounted) return;
+    if (result.launched) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    // Fallback: unlike the initState path above, this runs after the branded
+    // loader's already on screen, so starting the session needs a setState
+    // to actually repaint (matches _resolveThenStart's own wrapping below).
+    setState(_startInApp);
+    if (result.message != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(result.message!)));
     }
   }
 
@@ -176,6 +226,7 @@ class WatchScreenState extends State<WatchScreen> {
       imdbId: widget.imdbId,
       availableCategories: widget.availableCategories,
       initialResume: widget.resumePosition,
+      onDrmSource: _handoffToNativeDrm,
     )..init(startIndex);
     _posSub = _c.player.stream.position.listen((p) {
       if (mounted) setState(() => _pos = p);
@@ -185,6 +236,38 @@ class WatchScreenState extends State<WatchScreen> {
     });
     _bumpControls();
     _ready = true;
+  }
+
+  // A DRM (clearkey CENC/DASH) source can't play in mpv. Mirrors PlayerScreen's
+  // _handoffToNativeDrm exactly: the cubit's onDrmSource is bound once here, at
+  // creation, so this fires regardless of whether the portrait player or the
+  // pushed-on-top fullscreen PlayerScreen (which adopts this same cubit and
+  // never rebinds the callback) is what's currently visible.
+  bool _drmHandedOff = false;
+  Future<void> _handoffToNativeDrm(VideoSource drm) async {
+    if (_drmHandedOff) return; // _open can fire more than once (switch/failover)
+    _drmHandedOff = true;
+    await _c.player.pause(); // don't buffer the idle mpv player behind the DRM one
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DrmPlayerScreen(
+          sources: _c.state.sources,
+          initial: drm,
+          title: widget.showTitle,
+          subtitle: _episodeLabelOrNull(),
+        ),
+      ),
+    );
+    if (mounted) Navigator.of(context).maybePop();
+  }
+
+  String? _episodeLabelOrNull() {
+    final eps = _c.episodes;
+    final i = _c.state.currentIndex;
+    if (i < 0 || i >= eps.length) return null;
+    final e = eps[i];
+    return e.title.isNotEmpty ? e.title : null;
   }
 
   /// Empty list = let Android's own auto-rotate setting decide. That's how we
@@ -269,44 +352,90 @@ class WatchScreenState extends State<WatchScreen> {
             children: [
               AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(color: Colors.black),
-                    Video(controller: _c.videoController, controls: NoVideoControls),
-                    // Double-tap the sides for ±10s, via the same seekBy the
-                    // fullscreen player uses (room-viewer guard + broadcast).
-                    Row(children: [
-                      Expanded(child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _bumpControls,
-                        onDoubleTap: () => _c.seekBy(const Duration(seconds: -10)),
-                      )),
-                      Expanded(child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: _bumpControls,
-                        onDoubleTap: () => _c.seekBy(const Duration(seconds: 10)),
-                      )),
-                    ]),
-                    if (_showControls)
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: WatchMiniControls(
-                          playing: _playing,
-                          position: _pos,
-                          duration: _c.player.state.duration,
-                          onPlayPause: () { _c.togglePlay(); _bumpControls(); },
-                          onPrevious: _c.state.currentIndex > 0
-                              ? () => _c.openEpisode(_c.state.currentIndex - 1)
-                              : null,
-                          onNext: _c.state.currentIndex < episodes.length - 1
-                              ? () => _c.openEpisode(_c.state.currentIndex + 1)
-                              : null,
-                          onSeek: (d) { _c.seekTo(d); _bumpControls(); },
-                          onFullscreen: _goFullscreen,
+                // A failed resolve/playback needs to surface here — without
+                // this, a dead source just leaves a frozen black box that
+                // looks like the app hung. Mirrors PlayerScreen's error state
+                // (icon + message + Try again), scaled to the smaller box.
+                child: BlocBuilder<PlayerCubit, PlayerState>(
+                  bloc: _c,
+                  builder: (context, state) {
+                    if (state.error != null) {
+                      return ColoredBox(
+                        color: Colors.black,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.error_outline,
+                                  size: 28,
+                                  color: AppColors.textTertiary,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  state.error!,
+                                  style: AppText.caption.copyWith(color: Colors.white70),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 8),
+                                TextButton(
+                                  onPressed: () => _c.openEpisode(state.currentIndex),
+                                  child: Text(
+                                    'Try again',
+                                    style: AppText.caption.copyWith(color: AppColors.accent),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                  ],
+                      );
+                    }
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Container(color: Colors.black),
+                        Video(controller: _c.videoController, controls: NoVideoControls),
+                        // Double-tap the sides for ±10s, via the same seekBy the
+                        // fullscreen player uses (room-viewer guard + broadcast).
+                        Row(children: [
+                          Expanded(child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _bumpControls,
+                            onDoubleTap: () => _c.seekBy(const Duration(seconds: -10)),
+                          )),
+                          Expanded(child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _bumpControls,
+                            onDoubleTap: () => _c.seekBy(const Duration(seconds: 10)),
+                          )),
+                        ]),
+                        if (_showControls)
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: WatchMiniControls(
+                              playing: _playing,
+                              position: _pos,
+                              duration: _c.player.state.duration,
+                              onPlayPause: () { _c.togglePlay(); _bumpControls(); },
+                              onPrevious: _c.state.currentIndex > 0
+                                  ? () => _c.openEpisode(_c.state.currentIndex - 1)
+                                  : null,
+                              onNext: _c.state.currentIndex < episodes.length - 1
+                                  ? () => _c.openEpisode(_c.state.currentIndex + 1)
+                                  : null,
+                              onSeek: (d) { _c.seekTo(d); _bumpControls(); },
+                              onScrub: _bumpControls,
+                              onFullscreen: _goFullscreen,
+                            ),
+                          ),
+                      ],
+                    );
+                  },
                 ),
               ),
               TabBar(
