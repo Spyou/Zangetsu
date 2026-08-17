@@ -135,6 +135,7 @@ class PlayerScreen extends StatefulWidget {
     this.imdbId,
     this.availableCategories = const [],
     this.joinRoomCode,
+    this.cubit,
   });
 
   final String sourceId;
@@ -201,12 +202,21 @@ class PlayerScreen extends StatefulWidget {
   /// the session is wired. Used by the Join-from-anywhere flow in the sheet.
   final String? joinRoomCode;
 
+  /// An already-running cubit to adopt instead of creating one. Set by
+  /// [WatchScreen] when going fullscreen so playback carries over untouched.
+  /// Null for every other caller, which keeps their behaviour unchanged.
+  final PlayerCubit? cubit;
+
   @override
   State<PlayerScreen> createState() => _PlayerScreenState();
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
   late final PlayerCubit _c;
+
+  /// True when this screen built its own cubit and must therefore close it.
+  /// False when one was handed in — the owner closes it, not us.
+  bool _ownsCubit = true;
   final WatchTogetherController _room = sl<WatchTogetherController>();
 
   // Stored so we can remove it in dispose() — the singleton outlives this screen.
@@ -746,28 +756,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   void _startSession(List<Episode> eps, int startIndex) {
-    _c = PlayerCubit(
-      sourceId: widget.sourceId,
-      episodes: eps,
-      resume: widget.resume,
-      resolveSources: widget.resolveSources,
-      pollSources: widget.pollSources,
-      dio: sl<Dio>(),
-      history: widget.history,
-      showTitle: widget.showTitle,
-      cover: widget.cover,
-      coverHeaders: widget.coverHeaders,
-      showUrl: widget.showUrl,
-      category: widget.category,
-      malId: widget.malId,
-      scrobbleTitle: widget.scrobbleTitle,
-      tmdbId: widget.tmdbId,
-      tmdbIsTv: widget.tmdbIsTv,
-      imdbId: widget.imdbId,
-      availableCategories: widget.availableCategories,
-      initialResume: widget.resumePosition,
-      onDrmSource: _handoffToNativeDrm,
-    )..init(startIndex);
+    final injected = widget.cubit;
+    _ownsCubit = injected == null;
+    _c = injected ??
+        (PlayerCubit(
+          sourceId: widget.sourceId,
+          episodes: eps,
+          resume: widget.resume,
+          resolveSources: widget.resolveSources,
+          pollSources: widget.pollSources,
+          dio: sl<Dio>(),
+          history: widget.history,
+          showTitle: widget.showTitle,
+          cover: widget.cover,
+          coverHeaders: widget.coverHeaders,
+          showUrl: widget.showUrl,
+          category: widget.category,
+          malId: widget.malId,
+          scrobbleTitle: widget.scrobbleTitle,
+          tmdbId: widget.tmdbId,
+          tmdbIsTv: widget.tmdbIsTv,
+          imdbId: widget.imdbId,
+          availableCategories: widget.availableCategories,
+          initialResume: widget.resumePosition,
+          onDrmSource: _handoffToNativeDrm,
+        )..init(startIndex));
 
     // Bind the wake-lock to playback now that the player exists: on while
     // playing/buffering, released on pause. Set up here (not _initInApp) because
@@ -985,7 +998,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       FlutterVolumeController.updateShowSystemUI(true);
     }
     WakelockPlus.disable();
-    if (_ready) _c.close();
+    if (_ready && _ownsCubit) _c.close();
     // Detach from the app-level party controller (nulls out player hooks and,
     // if this client is host, marks the room lobby). Does NOT leave the party —
     // closing the player keeps the party alive in the background.
