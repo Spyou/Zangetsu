@@ -180,17 +180,18 @@ class WatchScreenState extends State<WatchScreen> {
                   children: [
                     Container(color: Colors.black),
                     Video(controller: _c.videoController, controls: NoVideoControls),
-                    // Double-tap the sides for ±10s, matching the fullscreen player.
+                    // Double-tap the sides for ±10s, via the same seekBy the
+                    // fullscreen player uses (room-viewer guard + broadcast).
                     Row(children: [
                       Expanded(child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: _bumpControls,
-                        onDoubleTap: () => _c.player.seek(_pos - const Duration(seconds: 10)),
+                        onDoubleTap: () => _c.seekBy(const Duration(seconds: -10)),
                       )),
                       Expanded(child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: _bumpControls,
-                        onDoubleTap: () => _c.player.seek(_pos + const Duration(seconds: 10)),
+                        onDoubleTap: () => _c.seekBy(const Duration(seconds: 10)),
                       )),
                     ]),
                     if (_showControls)
@@ -200,14 +201,14 @@ class WatchScreenState extends State<WatchScreen> {
                           playing: _playing,
                           position: _pos,
                           duration: _c.player.state.duration,
-                          onPlayPause: () { _c.player.playOrPause(); _bumpControls(); },
+                          onPlayPause: () { _c.togglePlay(); _bumpControls(); },
                           onPrevious: _c.state.currentIndex > 0
                               ? () => _c.openEpisode(_c.state.currentIndex - 1)
                               : null,
                           onNext: _c.state.currentIndex < widget.episodes.length - 1
                               ? () => _c.openEpisode(_c.state.currentIndex + 1)
                               : null,
-                          onSeek: (d) { _c.player.seek(d); _bumpControls(); },
+                          onSeek: (d) { _c.seekTo(d); _bumpControls(); },
                           onFullscreen: _goFullscreen,
                         ),
                       ),
