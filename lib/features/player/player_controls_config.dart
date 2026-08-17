@@ -35,6 +35,7 @@ const List<PlayerControl> kPlayerControls = [
   PlayerControl('more', 'More', Icons.more_vert_rounded, pinned: true),
   PlayerControl('episodes', 'Episodes', Icons.video_library_outlined),
   PlayerControl('fit', 'Aspect ratio', Icons.fit_screen_rounded),
+  PlayerControl('rotate', 'Portrait', Icons.screen_rotation_rounded),
   PlayerControl('cast', 'Cast', Icons.cast),
   PlayerControl('info', 'Playback stats', Icons.info_outline_rounded),
   PlayerControl('decoder', 'Decoder', Icons.memory_rounded),
@@ -98,7 +99,7 @@ class PlayerControlsConfig {
     'sources',
     'more',
   ];
-  static const List<String> defaultRight = ['episodes', 'fit'];
+  static const List<String> defaultRight = ['episodes', 'rotate', 'fit'];
 
   static const PlayerControlsConfig defaults = PlayerControlsConfig(
     top: defaultTop,

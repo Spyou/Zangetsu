@@ -378,11 +378,32 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _initInApp();
   }
 
+  /// Watching upright (the ⟳ button). Starts false — every episode opens
+  /// landscape, as it always has.
+  bool _portraitMode = false;
+
+  /// The orientation this player holds right now. Single source of truth: the
+  /// screen pins orientation in more than one place (open, and either side of
+  /// the Settings trip), and hardcoding landscape at each of them is what would
+  /// throw you back to landscape after a detour.
+  List<DeviceOrientation> get _orientationLock => _portraitMode
+      ? const [DeviceOrientation.portraitUp]
+      : const [
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ];
+
+  /// Locked either way rather than following the sensor: a phone resting flat
+  /// shouldn't flip the video mid-episode, and this still works for people who
+  /// keep system auto-rotate switched off.
+  void _toggleOrientation() {
+    setState(() => _portraitMode = !_portraitMode);
+    SystemChrome.setPreferredOrientations(_orientationLock);
+    _bumpControls();
+  }
+
   void _initInApp() {
-    SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    SystemChrome.setPreferredOrientations(_orientationLock);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     // Wake-lock is bound to playback in _startSession, once the player exists.
     // The volume swipe sets the real system volume; hide the OS volume bar so
@@ -1335,10 +1356,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
     );
     if (!mounted) return;
-    await SystemChrome.setPreferredOrientations(const [
-      DeviceOrientation.landscapeLeft,
-      DeviceOrientation.landscapeRight,
-    ]);
+    // Back to whichever orientation you were watching in — not landscape by
+    // default, or a portrait session would end up sideways after a settings trip.
+    await SystemChrome.setPreferredOrientations(_orientationLock);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     if (!mounted) return;
     if (wasPlaying && !_c.player.state.playing) _c.togglePlay();
@@ -2637,6 +2657,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         }
                       },
                       onInteract: _bumpControls,
+                      onRotate: _toggleOrientation,
+                      portraitMode: _portraitMode,
                       onBack: () => Navigator.of(context).maybePop(),
                       onSpeed: _openSpeedSheet,
                       onAudioSubs: _openAudioSubsSheet,

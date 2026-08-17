@@ -15,6 +15,8 @@ class _ControlsOverlay extends StatelessWidget {
     required this.onQuality,
     required this.onSources,
     required this.onLock,
+    required this.onRotate,
+    required this.portraitMode,
     required this.onSettings,
     required this.barConfig,
     required this.onZoom,
@@ -52,6 +54,8 @@ class _ControlsOverlay extends StatelessWidget {
   final VoidCallback onQuality;
   final VoidCallback onSources;
   final VoidCallback onLock;
+  final VoidCallback onRotate; // flip between locked landscape and locked portrait
+  final bool portraitMode; // true while watching upright
   final VoidCallback onSettings;
 
   /// The user's control arrangement — which bar each control sits on, in what
@@ -291,6 +295,12 @@ class _ControlsOverlay extends StatelessWidget {
         return (Icons.video_library_outlined, 'Episodes', onEpisodes!);
       case 'fit':
         return (_fitIcon(zoomLabel), 'Aspect ratio · $zoomLabel', onZoom);
+      case 'rotate':
+        return (
+          Icons.screen_rotation_rounded,
+          portraitMode ? 'Landscape' : 'Portrait',
+          onRotate,
+        );
       case 'decoder':
         return (Icons.memory_rounded, 'Decoder · $decoderLabel', onDecoder);
       case 'enhance':
@@ -688,8 +698,8 @@ class _ControlsOverlay extends StatelessWidget {
                   // another on the right. Two groups rather than seven floating
                   // chips — the split reads at a glance, and every button is the
                   // same width so nothing shifts as the video changes.
-                  Builder(
-                    builder: (context) {
+                  LayoutBuilder(
+                    builder: (context, constraints) {
                       // Rendered from the user's saved arrangement rather than
                       // a fixed row. Untouched prefs give the defaults, which
                       // are the exact layout that shipped before the Settings
@@ -697,12 +707,42 @@ class _ControlsOverlay extends StatelessWidget {
                       // move it.
                       final left = _barButtons(context, barConfig.left);
                       final right = _barButtons(context, barConfig.right);
-                      return Row(
-                        children: [
-                          if (left.isNotEmpty) _BarGroup(children: left),
-                          const Spacer(),
-                          if (right.isNotEmpty) _BarGroup(children: right),
-                        ],
+                      // Buttons are a uniform 48 (12 padding + 24 icon + 12)
+                      // and each group adds 8 of its own, so the width the bar
+                      // wants is arithmetic rather than something to measure.
+                      const buttonWidth = 48.0;
+                      const groupPadding = 8.0;
+                      double groupWidth(int n) =>
+                          n == 0 ? 0 : n * buttonWidth + groupPadding;
+                      final wanted =
+                          groupWidth(left.length) + groupWidth(right.length);
+
+                      if (wanted <= constraints.maxWidth) {
+                        return Row(
+                          children: [
+                            if (left.isNotEmpty) _BarGroup(children: left),
+                            const Spacer(),
+                            if (right.isNotEmpty) _BarGroup(children: right),
+                          ],
+                        );
+                      }
+                      // Narrower than the bar wants — portrait, or a bar the
+                      // user has loaded up in Settings. The Spacer pins the
+                      // groups to opposite edges and can't give any width back,
+                      // so the right-hand group would run off-screen and take
+                      // its buttons out of reach. Scroll the pair instead:
+                      // everything stays tappable, and nothing about the
+                      // landscape layout above changes.
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            if (left.isNotEmpty) _BarGroup(children: left),
+                            if (left.isNotEmpty && right.isNotEmpty)
+                              const SizedBox(width: 8),
+                            if (right.isNotEmpty) _BarGroup(children: right),
+                          ],
+                        ),
                       );
                     },
                   ),
