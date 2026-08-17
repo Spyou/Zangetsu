@@ -141,32 +141,18 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Future<void> _resume(HistoryEntry e) async {
-    // WatchScreen only takes a plain startIndex, not
-    // resumeEpisodeId/resumeEpisodeNumber, so resolve the episode list and
-    // find the saved one ourselves before navigating.
-    List<Episode> episodes;
-    try {
-      episodes = await _repo.episodes(
-        e.showUrl,
-        category: e.category,
-        sourceId: e.sourceId,
-      );
-    } catch (_) {
-      episodes = const [];
-    }
-    if (!mounted || episodes.isEmpty) return;
-    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
-    if (idx < 0 && e.episodeNumber != null) {
-      idx = episodes.indexWhere((ep) => ep.number == e.episodeNumber);
-    }
-    if (idx < 0) idx = 0;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WatchScreen(
           sourceId: e.sourceId,
-          episodes: episodes,
-          startIndex: idx,
+          episodesResolver: () => _repo.episodes(
+            e.showUrl,
+            category: e.category,
+            sourceId: e.sourceId,
+          ),
+          resumeEpisodeId: e.episodeId,
+          resumeEpisodeNumber: e.episodeNumber,
           resumePosition: e.position,
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>

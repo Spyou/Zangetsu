@@ -394,22 +394,14 @@ class _HomeViewState extends State<_HomeView>
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    // WatchScreen (unlike PlayerScreen) needs the episode list up front — no
-    // resolver-behind-a-loader, so resolve it here before navigating.
-    List<Episode> episodes;
-    try {
-      episodes = await _repo.episodes(item.url, sourceId: item.sourceId);
-    } catch (_) {
-      episodes = const [];
-    }
-    if (!mounted || episodes.isEmpty) return;
+    // Instant nav — the screen resolves the episode list behind its loader.
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WatchScreen(
           sourceId: item.sourceId,
-          episodes: episodes,
-          startIndex: 0,
+          episodesResolver: () =>
+              _repo.episodes(item.url, sourceId: item.sourceId),
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
               _repo.sources(u, sourceId: item.sourceId, fast: true),
@@ -431,32 +423,18 @@ class _HomeViewState extends State<_HomeView>
   /// player resolves the episode list behind its own branded loader (no blocking
   /// pre-navigation spinner).
   Future<void> _resume(HistoryEntry e) async {
-    // Same resolve-up-front deal as _playFeatured, plus finding the saved
-    // episode ourselves — WatchScreen only takes a plain startIndex, not
-    // resumeEpisodeId/resumeEpisodeNumber.
-    List<Episode> episodes;
-    try {
-      episodes = await _repo.episodes(
-        e.showUrl,
-        category: e.category,
-        sourceId: e.sourceId,
-      );
-    } catch (_) {
-      episodes = const [];
-    }
-    if (!mounted || episodes.isEmpty) return;
-    var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
-    if (idx < 0 && e.episodeNumber != null) {
-      idx = episodes.indexWhere((ep) => ep.number == e.episodeNumber);
-    }
-    if (idx < 0) idx = 0;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WatchScreen(
           sourceId: e.sourceId,
-          episodes: episodes,
-          startIndex: idx,
+          episodesResolver: () => _repo.episodes(
+            e.showUrl,
+            category: e.category,
+            sourceId: e.sourceId,
+          ),
+          resumeEpisodeId: e.episodeId,
+          resumeEpisodeNumber: e.episodeNumber,
           resumePosition: e.position,
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>

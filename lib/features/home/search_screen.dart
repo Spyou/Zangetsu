@@ -6,7 +6,6 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
-import '../../core/models/episode.dart';
 import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
@@ -292,22 +291,13 @@ class _SearchViewState extends State<_SearchView>
     final category =
         sl<TitlePrefsStore>().category(item.sourceId, item.url) ??
         sl<PlaybackPrefs>().defaultCategory;
-    // WatchScreen (unlike PlayerScreen) needs the episode list up front — no
-    // resolver-behind-a-loader, so resolve it here before navigating.
-    List<Episode> episodes;
-    try {
-      episodes = await _repo.episodes(item.url, sourceId: item.sourceId);
-    } catch (_) {
-      episodes = const [];
-    }
-    if (!mounted || episodes.isEmpty) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => WatchScreen(
           sourceId: item.sourceId,
-          episodes: episodes,
-          startIndex: 0,
+          episodesResolver: () =>
+              _repo.episodes(item.url, sourceId: item.sourceId),
           resume: sl<ResumeStore>(),
           resolveSources: (u) =>
               _repo.sources(u, sourceId: item.sourceId, fast: true),
