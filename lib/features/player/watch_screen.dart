@@ -114,6 +114,11 @@ class WatchScreenState extends State<WatchScreen> {
   bool _playing = false;
   bool _inFullscreen = false;
 
+  /// Set when we come back from fullscreen. Blocks the turn-the-phone path
+  /// until the phone is actually portrait again, so backing out while still
+  /// holding it sideways doesn't bounce straight back into fullscreen.
+  bool _armOnPortrait = false;
+
   void _bumpControls() {
     setState(() => _showControls = true);
     _hide?.cancel();
@@ -303,6 +308,11 @@ class WatchScreenState extends State<WatchScreen> {
       ),
     );
     _inFullscreen = false;
+    // Coming back while the phone is still physically sideways would put us
+    // straight back in — the orientation check below sees landscape again the
+    // moment rotation is re-armed. Wait until it's actually portrait before
+    // arming the sensor path again; the button keeps working either way.
+    _armOnPortrait = true;
     // PlayerScreen's dispose pins portraitUp. Re-open rotation or turning the
     // phone will never work again for the rest of this session.
     if (mounted) allowRotation();
@@ -339,8 +349,10 @@ class WatchScreenState extends State<WatchScreen> {
     final multi = episodes.length > 1;
     // Only fires when Android's auto-rotate is on — with it off, the app is
     // never handed a landscape constraint in the first place.
-    if (MediaQuery.of(context).orientation == Orientation.landscape &&
-        !_inFullscreen) {
+    final landscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    if (!landscape) _armOnPortrait = false; // back upright — sensor path is live again
+    if (landscape && !_inFullscreen && !_armOnPortrait) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _goFullscreen());
     }
     return DefaultTabController(

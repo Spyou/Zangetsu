@@ -661,6 +661,12 @@ class _ControlsOverlay extends StatelessWidget {
                 children: [
                   // Duration tracker (off-screen listener via StreamBuilder).
                   StreamBuilder<Duration>(
+                    // Seed from what the player already knows. The stream only
+                    // fires when the duration CHANGES, so a screen that opens
+                    // onto media that's been playing a while never hears it —
+                    // the bar then sits at zero, which draws as full and can't
+                    // be scrubbed.
+                    initialData: c.player.state.duration,
                     stream: c.player.stream.duration,
                     builder: (context, snap) {
                       final d = snap.data ?? duration;
