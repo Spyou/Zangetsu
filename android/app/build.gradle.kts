@@ -8,8 +8,8 @@ plugins {
     // Version scoped here (not in root settings) so it can't clash with the
     // serialization plugin version a Flutter plugin module pins for itself.
     id("org.jetbrains.kotlin.plugin.serialization") version "2.2.20"
-    // Firebase Analytics — consumes android/app/google-services.json.
-    id("com.google.gms.google-services")
+    // Applied at the bottom only when google-services.json is present (gitignored).
+    id("com.google.gms.google-services") apply false
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -273,4 +273,13 @@ dependencies {
     // whose own code disables it on TV by default "because of crashes"). Never
     // touches the phone player or the Flutter platform-view player.
     implementation("io.github.anilbeesetti:nextlib-media3ext:1.7.1-0.9.0")
+}
+
+// google-services.json is gitignored (see android/.gitignore). Dart already
+// no-ops Analytics/FCM when Firebase.initializeApp() fails, so a missing file
+// must not fail the Gradle build — same idea as falling back when
+// key.properties is absent. Drop the real file at android/app/google-services.json
+// (Firebase console → Project settings → Android app) to turn Firebase on.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }
