@@ -33,6 +33,7 @@ import '../../core/torrent/torrent_util.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
+import '../../core/tv/tv_load_error_dialog.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import 'tv_exo_controller.dart';
 import 'tv_track_menu.dart';
@@ -277,10 +278,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     );
   }
 
+  bool _loadErrorDialogOpen = false;
+
   Future<void> _loadEpisode() async {
     final ep = _ep;
     if (ep == null) {
-      setState(() => _error = 'No episode to play.');
+      await _onEpisodeLoadFailed('No episode to play.');
       return;
     }
     _lastSavedMs = 0;
@@ -291,15 +294,28 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
       final src = pickDefault(sources, prefer: prefer);
       if (src == null) {
-        setState(() => _error = 'No playable source.');
+        await _onEpisodeLoadFailed('No playable source.');
         return;
       }
       _sources = sources;
       final mark = widget.resume.get(widget.sourceId, _resumeShowId, ep.id);
       await _open(src, seekToMs: mark?.position.inMilliseconds ?? 0);
     } catch (e) {
-      setState(() => _error = 'Could not load this episode.');
+      await _onEpisodeLoadFailed('Could not load this episode.');
     }
+  }
+
+  Future<void> _onEpisodeLoadFailed(String message) async {
+    if (!mounted) return;
+    setState(() => _error = message);
+    if (_loadErrorDialogOpen) return;
+    _loadErrorDialogOpen = true;
+    await showTvPlaybackLoadError(context);
+    _loadErrorDialogOpen = false;
+    if (!mounted) return;
+    // First-open failure: leave the empty player so the user is back on
+    // Detail. Keep this screen if a previous episode was already playing.
+    if (_activeSource == null) Navigator.of(context).maybePop();
   }
 
   /// Loads [src] into the player (with any side-loaded subtitles) and arms a
