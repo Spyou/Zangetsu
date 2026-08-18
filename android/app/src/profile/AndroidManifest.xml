@@ -4,16 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
-
-    <application>
-        <!-- Same launcher entry as the debug source set, so `flutter run
-             --profile` starts too. See src/debug/AndroidManifest.xml for why
-             this can't live in the real manifest. Profile builds only. -->
-        <activity android:name=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
-            </intent-filter>
-        </activity>
-    </application>
+    <!-- See src/debug/AndroidManifest.xml — the Flutter-tool launcher filter
+         is in the main manifest, not here. -->
 </manifest>

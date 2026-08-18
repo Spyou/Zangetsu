@@ -63,14 +63,24 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
-            <!-- The phone LAUNCHER entry lives on the activity-aliases below, so
-                 the user can switch the home-screen icon (Settings → Appearance).
-                 It is deliberately NOT here: an activity and its alias would both
-                 appear in the launcher.
+            <!-- Flutter's `flutter run` / IDE launch parses THIS file (not the
+                 merged APK) and requires an <activity> with MAIN + LAUNCHER. It
+                 ignores <activity-alias>, so putting the phone launcher only on
+                 the aliases below makes the tool fail with "package identifier
+                 or launch activity not found" whenever no built APK is sitting
+                 in build/ yet (first run, after clean, Cursor/VS Code debug).
+
+                 The aliases remain the real home-screen entries (Settings →
+                 Appearance flips them). src/release/AndroidManifest.xml strips
+                 this filter so a shipped APK does not grow a second icon.
 
                  LEANBACK stays on the activity itself. TV has no icon picker and
                  uses android:banner, and moving this would risk the app losing
                  its home entry on a TV entirely. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
