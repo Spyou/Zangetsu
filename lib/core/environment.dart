@@ -10,11 +10,14 @@ class Environment {
   // Appwrite project id/endpoint above. Override with --dart-define if a
   // build needs a different project (e.g. staging).
   static const String supabaseUrl = String.fromEnvironment(
-      'SUPABASE_URL', defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co');
+    'SUPABASE_URL',
+    defaultValue: 'https://eogwzrlfoercfwcfwlmv.supabase.co',
+  );
   static const String supabaseAnonKey = String.fromEnvironment(
-      'SUPABASE_ANON_KEY',
-      defaultValue:
-          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw');
+    'SUPABASE_ANON_KEY',
+    defaultValue:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvZ3d6cmxmb2VyY2Z3Y2Z3bG12Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzNjgzODIsImV4cCI6MjA5OTk0NDM4Mn0.qr-nHnB9vb7BodP55XJ9-6Rwp__eOGCS6txhLiuWVZw',
+  );
 
   /// Where Appwrite sends the password-recovery link. Appwrite appends
   /// Password-reset landing. Supabase now drives reset (via the auth `site_url`,
@@ -30,10 +33,16 @@ class Environment {
   /// must be an Appwrite Web platform (already added for the reset page).
   static const String siteOpenUrl = '$siteBaseUrl/open/';
 
+  /// TV pairing QR. iPhone Camera only treats http(s) as a link, so the TV
+  /// encodes this URL (not `zangetsu://pair`). The page is the phone login +
+  /// approve flow — same `pair-tv` approve the Android app uses.
+  static const String sitePairUrl = '$siteBaseUrl/pair/';
+
   /// The "open" page redirects to `zangetsu://open?…`; an installed app catches
   /// it (see [OpenLinkService] + the Android manifest intent-filter).
   static const String openLinkScheme = trackerRedirectScheme; // 'zangetsu'
   static const String openLinkHost = 'open';
+  static const String pairLinkHost = 'pair';
 
   // Provisioned backend ids (see docs / setup).
   static const String databaseId = 'main';
@@ -55,23 +64,18 @@ class Environment {
   // AniList — implicit grant (token in URL fragment, 1-year, no secret).
   static const String anilistClientId = '43052';
   static const String anilistRedirectHost = 'anilist-auth';
-  static String get anilistRedirectUri =>
-      '$trackerRedirectScheme://$anilistRedirectHost';
+  static String get anilistRedirectUri => '$trackerRedirectScheme://$anilistRedirectHost';
 
   // MyAnimeList — OAuth2 PKCE (plain), no client secret.
   static const String malClientId = 'ac006943589381143c4c4e54eac93a89';
   static const String malRedirectHost = 'mal-auth';
-  static String get malRedirectUri =>
-      '$trackerRedirectScheme://$malRedirectHost';
+  static String get malRedirectUri => '$trackerRedirectScheme://$malRedirectHost';
 
   // Simkl — OAuth2 authorization-code (needs the secret to exchange the code).
-  static const String simklClientId =
-      '8b847b09206ccdb0b3de4cc1293d6dd7d355821f5c179c57315da8ba9030eb53';
-  static const String simklClientSecret =
-      '34ba8e5ac7c8a5c27926dfdf78205e5b913de9928361cb5a243558239298c96d';
+  static const String simklClientId = '8b847b09206ccdb0b3de4cc1293d6dd7d355821f5c179c57315da8ba9030eb53';
+  static const String simklClientSecret = '34ba8e5ac7c8a5c27926dfdf78205e5b913de9928361cb5a243558239298c96d';
   static const String simklRedirectHost = 'simkl-auth';
-  static String get simklRedirectUri =>
-      '$trackerRedirectScheme://$simklRedirectHost';
+  static String get simklRedirectUri => '$trackerRedirectScheme://$simklRedirectHost';
 
   // Back-compat alias (older AniList code referenced this name).
   static const String anilistRedirectScheme = trackerRedirectScheme;
