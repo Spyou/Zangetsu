@@ -5,6 +5,7 @@ import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_poster_tile.dart';
+import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 import 'cubit/my_list_cubit.dart';
@@ -13,9 +14,10 @@ import 'cubit/my_list_cubit.dart';
 ///
 /// Reuses the phone's cubit/state and [PosterCard] widget unchanged. Only the
 /// interaction model changes: each card is wrapped in [TvFocusable] so the
-/// D-pad navigates the grid and OK opens the Detail screen — matching the phone
-/// tap behaviour. The rail↔content focus bridge in [RootShellTv] already
-/// handles LEFT-at-edge → rail, so no additional navigation plumbing is needed.
+/// D-pad navigates the grid, OK opens the Detail screen, and a held OK opens
+/// the same status/remove sheet as the phone long-press. The rail↔content
+/// focus bridge in [RootShellTv] already handles LEFT-at-edge → rail, so no
+/// additional navigation plumbing is needed.
 ///
 /// The phone [MyListScreen] is byte-identical except for the single
 /// `if (sl<AppMode>().isTv) return const MyListScreenTv();` branch added at
@@ -75,6 +77,14 @@ class MyListScreenTv extends StatelessWidget {
                         imageUrl: entry.item.cover,
                         headers: entry.item.coverHeaders,
                         onTap: () => _openItem(context, entry.item),
+                        onLongPress: () {
+                          final cubit = context.read<MyListCubit>();
+                          showListStatusSheet(
+                            context,
+                            item: entry.item,
+                            onChanged: cubit.reload,
+                          );
+                        },
                       );
                     },
                   );

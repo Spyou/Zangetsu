@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_text.dart';
@@ -22,12 +25,17 @@ enum TvFocusVariant {
 /// Wraps any tappable so it is D-pad focusable on TV: highlights while focused,
 /// scrolls itself into view, and invokes [onTap] on OK/Enter/center. Use
 /// everywhere on TV layouts instead of a bare GestureDetector/InkWell.
+///
+/// When [onLongPress] is set, OK is held to distinguish tap vs long-press
+/// (remote KeyDown is no longer treated as an instant tap). Buttons without
+/// a long-press handler stay immediate on KeyDown.
 class TvFocusable extends StatefulWidget {
   const TvFocusable({
     super.key,
     this.child,
     this.builder,
     required this.onTap,
+    this.onLongPress,
     this.autofocus = false,
     this.scale = 1.08,
     this.focusLabel,
@@ -53,6 +61,11 @@ class TvFocusable extends StatefulWidget {
   final Widget Function(bool focused)? builder;
 
   final VoidCallback onTap;
+
+  /// Optional long-press. On the remote this is a held OK/Select (same
+  /// timeout as a touch long-press). Null keeps the snappy KeyDown tap.
+  final VoidCallback? onLongPress;
+
   final bool autofocus;
   final double scale;
 
@@ -80,6 +93,20 @@ class TvFocusable extends StatefulWidget {
 class _TvFocusableState extends State<TvFocusable> {
   bool _focused = false;
   int _lastActivateMs = 0;
+  Timer? _longPressTimer;
+  bool _okHeld = false;
+  bool _longPressFired = false;
+
+  @override
+  void dispose() {
+    _cancelLongPressTimer();
+    super.dispose();
+  }
+
+  void _cancelLongPressTimer() {
+    _longPressTimer?.cancel();
+    _longPressTimer = null;
+  }
 
   // Single activation path for both the D-pad OK key and the accessibility
   // "click" (Semantics.onTap), deduped within a short window so a press that
@@ -91,16 +118,54 @@ class _TvFocusableState extends State<TvFocusable> {
     widget.onTap();
   }
 
+  void _fireLongPress() {
+    final cb = widget.onLongPress;
+    if (cb == null) return;
+    cb();
+  }
+
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
     // Deliberately NOT gated on accessibleNavigation. Fire TV reports that flag
     // true after returning from the native player even with no screen reader
     // running, and the old gate dead-keyed OK on everything (nothing was left
     // to fire the Semantics.onTap fallback). _activate dedupes if a real screen
     // reader delivers the click on both channels.
-    if (event is KeyDownEvent && okKeys.contains(event.logicalKey)) {
-      _activate();
+    if (!okKeys.contains(event.logicalKey)) return KeyEventResult.ignored;
+
+    final longPress = widget.onLongPress;
+
+    if (event is KeyDownEvent) {
+      if (longPress == null) {
+        _activate();
+        return KeyEventResult.handled;
+      }
+      // Wait for hold vs release — KeyDown used to fire tap immediately, so a
+      // held OK never had a chance to become a long-press.
+      _okHeld = true;
+      _longPressFired = false;
+      _cancelLongPressTimer();
+      _longPressTimer = Timer(kLongPressTimeout, () {
+        if (!mounted || !_okHeld) return;
+        _longPressFired = true;
+        _fireLongPress();
+      });
       return KeyEventResult.handled;
     }
+
+    if (longPress == null) return KeyEventResult.ignored;
+
+    if (event is KeyRepeatEvent) {
+      // Swallow repeats so they cannot be treated as extra taps.
+      return KeyEventResult.handled;
+    }
+
+    if (event is KeyUpEvent) {
+      _okHeld = false;
+      _cancelLongPressTimer();
+      if (!_longPressFired) _activate();
+      return KeyEventResult.handled;
+    }
+
     return KeyEventResult.ignored;
   }
 
@@ -251,6 +316,7 @@ class _TvFocusableState extends State<TvFocusable> {
         button: widget.isButton,
         focused: _focused,
         onTap: _activate,
+        onLongPress: widget.onLongPress,
         child: Focus(
           focusNode: widget.focusNode,
           autofocus: widget.autofocus,
@@ -263,6 +329,9 @@ class _TvFocusableState extends State<TvFocusable> {
                 alignment: 0.5,
                 duration: const Duration(milliseconds: 200),
               );
+            } else {
+              _okHeld = false;
+              _cancelLongPressTimer();
             }
           },
           // Touch support: some Android TVs / TV boxes have a touchscreen. A
@@ -276,6 +345,7 @@ class _TvFocusableState extends State<TvFocusable> {
             behavior: HitTestBehavior.opaque,
             excludeFromSemantics: true,
             onTap: _activate,
+            onLongPress: widget.onLongPress,
             child: box,
           ),
         ),

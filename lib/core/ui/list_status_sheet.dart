@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
@@ -11,6 +12,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_hub.dart';
+import '../tv/tv_focusable.dart';
 
 /// Sentinel popped by [ListStatusSheet] for the "Remove from list" row.
 const String _kRemove = '__remove__';
@@ -44,6 +46,7 @@ Future<void> showListStatusSheet(
 
   final picked = await showModalBottomSheet<Object?>(
     context: context,
+    isScrollControlled: true,
     backgroundColor: AppColors.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -154,60 +157,101 @@ class ListStatusSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final statuses = WatchStatus.values;
     return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 10),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: AppColors.hairline,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Add to your list', style: AppText.headline),
-            ),
-          ),
-          for (final s in WatchStatus.values)
-            ListTile(
-              leading: Icon(
-                _iconFor(s),
-                color: current == s ? AppColors.accent : AppColors.textSecondary,
-              ),
-              title: Text(
-                labelFor(s, reading: reading),
-                style: AppText.body.copyWith(
-                  color: current == s ? AppColors.accent : AppColors.textPrimary,
-                  fontWeight: current == s ? FontWeight.w600 : FontWeight.w400,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.hairline,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              trailing: current == s
-                  ? Icon(Icons.check_rounded, color: AppColors.accent)
-                  : null,
-              onTap: () => Navigator.pop(context, s),
-            ),
-          if (inList) ...[
-            const Divider(height: 1, color: AppColors.hairline),
-            ListTile(
-              leading: Icon(
-                Icons.delete_outline_rounded,
-                color: AppColors.accent,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Add to your list', style: AppText.headline),
+                ),
               ),
-              title: Text(
-                'Remove from list',
-                style: AppText.body.copyWith(color: AppColors.accent),
-              ),
-              onTap: () => Navigator.pop(context, _kRemove),
-            ),
-          ],
-          const SizedBox(height: 8),
-        ],
+              for (var i = 0; i < statuses.length; i++)
+                _row(
+                  autofocus: i == 0,
+                  onTap: () => Navigator.pop(context, statuses[i]),
+                  child: ListTile(
+                    leading: Icon(
+                      _iconFor(statuses[i]),
+                      color: current == statuses[i]
+                          ? AppColors.accent
+                          : AppColors.textSecondary,
+                    ),
+                    title: Text(
+                      labelFor(statuses[i], reading: reading),
+                      style: AppText.body.copyWith(
+                        color: current == statuses[i]
+                            ? AppColors.accent
+                            : AppColors.textPrimary,
+                        fontWeight: current == statuses[i]
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                    trailing: current == statuses[i]
+                        ? Icon(Icons.check_rounded, color: AppColors.accent)
+                        : null,
+                    onTap: () => Navigator.pop(context, statuses[i]),
+                  ),
+                ),
+              if (inList) ...[
+                const Divider(height: 1, color: AppColors.hairline),
+                _row(
+                  onTap: () => Navigator.pop(context, _kRemove),
+                  child: ListTile(
+                    leading: Icon(
+                      Icons.delete_outline_rounded,
+                      color: AppColors.accent,
+                    ),
+                    title: Text(
+                      'Remove from list',
+                      style: AppText.body.copyWith(color: AppColors.accent),
+                    ),
+                    onTap: () => Navigator.pop(context, _kRemove),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Phone keeps the ListTile as-is. TV wraps it so D-pad OK can pick a status
+  /// after a held-OK on a My List poster (ListTile alone has no TV key path).
+  Widget _row({
+    required Widget child,
+    required VoidCallback onTap,
+    bool autofocus = false,
+  }) {
+    if (!sl.isRegistered<AppMode>() || !sl<AppMode>().isTv) return child;
+    return TvFocusable(
+      scale: 1.0,
+      autofocus: autofocus,
+      onTap: onTap,
+      child: Focus(
+        canRequestFocus: false,
+        descendantsAreFocusable: false,
+        child: child,
       ),
     );
   }

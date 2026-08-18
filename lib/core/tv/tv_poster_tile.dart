@@ -15,6 +15,7 @@ class TvPosterTile extends StatelessWidget {
     this.headers,
     this.tags = const [],
     required this.onTap,
+    this.onLongPress,
     this.autofocus = false,
   });
 
@@ -23,6 +24,7 @@ class TvPosterTile extends StatelessWidget {
   final Map<String, String>? headers;
   final List<String> tags;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final bool autofocus;
 
   @override
@@ -38,6 +40,7 @@ class TvPosterTile extends StatelessWidget {
             variant: TvFocusVariant.float,
             scale: 1.04,
             onTap: onTap,
+            onLongPress: onLongPress,
             semanticLabel: title,
             child: PosterCard(
               title: title,
@@ -45,7 +48,8 @@ class TvPosterTile extends StatelessWidget {
               headers: headers,
               tags: tags,
               showTitle: false,
-              // Touch gestures are disabled on TV; TvFocusable handles OK-key.
+              // Touch gestures are disabled on TV; TvFocusable handles OK-key
+              // (including held-OK long-press when [onLongPress] is set).
               onTap: null,
               onLongPress: null,
             ),
