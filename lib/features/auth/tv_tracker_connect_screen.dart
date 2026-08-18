@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/share/pair_link.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/relay/tracker_blob.dart';
@@ -133,12 +134,16 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // QR 1 — the existing phone-app relay. UNCHANGED: an
-                      // installed Zangetsu app catches this deep link, approves,
-                      // and relays its own $_label session to this TV.
+                      // QR 1 — phone-app relay. HTTPS so iPhone Camera treats
+                      // it as a link (custom schemes show "No usable data
+                      // found"). The /pair/ page then opens the app, which
+                      // approves and relays this $_label session to the TV.
                       _qrOption(
-                        data:
-                            'zangetsu://pair?code=$_code&nonce=$_nonce&trackers=1',
+                        data: PairLink.qrData(
+                          code: _code!,
+                          nonce: _nonce,
+                          trackers: true,
+                        ),
                         title: 'Have the app?',
                         subtitle: 'Open Zangetsu on your\nphone and scan',
                       ),

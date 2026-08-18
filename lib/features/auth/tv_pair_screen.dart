@@ -5,6 +5,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/share/pair_link.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tracker/relay/tracker_blob.dart';
@@ -160,8 +161,9 @@ class _TvPairScreenState extends State<TvPairScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: QrImageView(
-              data: 'zangetsu://pair?code=$_code'
-                  '${_nonce != null ? '&nonce=$_nonce' : ''}',
+              // https://… — iPhone Camera rejects custom schemes with
+              // "No usable data found". The /pair/ page is the web login.
+              data: PairLink.qrData(code: _code ?? '', nonce: _nonce),
               size: 220,
               gapless: true,
             ),

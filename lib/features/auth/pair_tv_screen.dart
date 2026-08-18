@@ -11,8 +11,9 @@ import 'auth_cubit.dart';
 import 'tv_pairing_service.dart';
 
 /// Phone: approve a TV pairing. Enter the code shown on the TV (or arrive here
-/// via the `zangetsu://pair` QR deep-link), confirm the device, and sign the TV
-/// into this account. Requires the phone to be signed in.
+/// via the pairing QR — `https://zangetsu.online/pair/?code=…`, forwarded to
+/// `zangetsu://pair`), confirm the device, and sign the TV into this account.
+/// Requires the phone to be signed in.
 class PairTvScreen extends StatefulWidget {
   const PairTvScreen({super.key, this.initialCode, this.nonce});
   final String? initialCode;

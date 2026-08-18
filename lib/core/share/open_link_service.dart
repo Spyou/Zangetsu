@@ -9,15 +9,13 @@ import '../di/injector.dart';
 import '../models/media_item.dart';
 import '../repository/source_repository.dart';
 import '../ui/global_messenger.dart';
+import 'pair_link.dart';
 import 'share_link.dart';
 
-/// Listens for incoming `zangetsu://open?…` share links and opens the shared
-/// title's Detail on its source — or, when that source isn't installed on this
-/// device, tells the user instead of failing silently.
-///
-/// Additive + isolated: it shares the app-wide [AppLinks] stream with the
-/// tracker OAuth listeners and simply ignores any link that isn't
-/// `zangetsu://open` ([ShareLink.parse] returns null), so nothing else changes.
+/// Listens for incoming share links (`zangetsu://open?…`) and pairing links
+/// (`https://zangetsu.online/pair/?…` or `zangetsu://pair?…`) and opens the
+/// matching screen. Tracker OAuth listeners share the same [AppLinks] stream
+/// and ignore anything they don't own.
 class OpenLinkService {
   OpenLinkService() {
     _sub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
@@ -31,14 +29,14 @@ class OpenLinkService {
   StreamSubscription<Uri>? _sub;
 
   void _onLink(Uri uri) {
-    // zangetsu://pair?code=CODE — a TV pairing QR scanned on the phone.
-    if (uri.host == 'pair') {
-      final code = uri.queryParameters['code'];
-      final nonce = uri.queryParameters['nonce'];
-      if (uri.queryParameters['trackers'] == '1') {
-        _openSendTrackers(code, nonce); // Flow B — added in Task 11
+    // HTTPS /pair/?code=… (iPhone Camera) or zangetsu://pair?code=… (site
+    // redirect / Android custom-scheme). Same payload either way.
+    final pair = PairLink.parse(uri);
+    if (pair != null) {
+      if (pair.trackers) {
+        _openSendTrackers(pair.code, pair.nonce);
       } else {
-        _openPair(code, nonce);
+        _openPair(pair.code, pair.nonce);
       }
       return;
     }
