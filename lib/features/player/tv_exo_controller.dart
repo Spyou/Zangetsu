@@ -35,7 +35,10 @@ class TvExoController {
     final rawPosition = e['positionMs'];
     final rawDuration = e['durationMs'];
     position.value = rawPosition is num ? rawPosition.toInt() : 0;
-    duration.value = rawDuration is num ? rawDuration.toInt() : 0;
+    // HLS/DASH often emit 0 until the window is known. Don't clobber a real
+    // duration — that would drop Discord's progress bar and resume seeks.
+    final nextDur = rawDuration is num ? rawDuration.toInt() : 0;
+    if (nextDur > 0) duration.value = nextDur;
     playing.value = e['playing'] == true;
     buffering.value = e['buffering'] == true;
     ended.value = e['ended'] == true;
@@ -136,5 +139,11 @@ class TvExoController {
     ended.dispose();
     audioTracks.dispose();
     textTracks.dispose();
+  }
+
+  /// New source / episode — duration is unknown until the next ready event.
+  void resetTimeline() {
+    position.value = 0;
+    duration.value = 0;
   }
 }

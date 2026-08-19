@@ -22,6 +22,15 @@ void main() {
       c.dispose();
     });
 
+    test('keeps a known duration when a later event still reports 0', () {
+      final c = TvExoController(0);
+      c.applyEvent({'positionMs': 1000, 'durationMs': 90000});
+      c.applyEvent({'positionMs': 2000, 'durationMs': 0});
+      expect(c.duration.value, 90000);
+      expect(c.position.value, 2000);
+      c.dispose();
+    });
+
     test('missing/garbage fields fall back to safe defaults', () {
       final c = TvExoController(0);
       c.applyEvent({'positionMs': 'x', 'playing': null});

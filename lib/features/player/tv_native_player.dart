@@ -1,9 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
+import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/episode_title.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
@@ -72,11 +78,19 @@ class TvNativePlayer {
     List<String> availableCategories = const [],
     int? malId,
     String? scrobbleTitle,
+    int? tmdbId,
+    bool tmdbIsTv = false,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
 
     _resolve = resolveSources;
-    _episodes = episodes;
+    _episodes = await _enrichEpisodes(
+      episodes,
+      malId: malId,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      anime: scrobbleTitle != null || malId != null,
+    );
     _sourceId = sourceId;
     _showUrl = showUrl;
     _showId = showUrl ?? sourceId;
@@ -92,7 +106,7 @@ class TvNativePlayer {
       _handlerBound = true;
     }
 
-    final ep = episodes[startIndex];
+    final ep = _episodes[startIndex];
     final src = await _resolveSource(ep);
     if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
@@ -114,14 +128,20 @@ class TvNativePlayer {
     // Discord Rich Presence: the native Activity runs outside the Flutter
     // engine and can't reach the Dart Discord service, so announce "Watching"
     // from here — mirroring the phone player (player_controller.dart).
-    _announceWatching(ep);
+    // Wait for native STATE_READY when duration is unknown. Sending Watching
+    // with end=null first is often the update Discord keeps (rate-limited).
+    _announceWatching(
+      ep,
+      positionMs: mark?.position.inMilliseconds ?? 0,
+      durationMs: mark?.duration.inMilliseconds ?? 0,
+    );
 
     final res = await _ch.invokeMapMethod<String, dynamic>('launch', {
       ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
       'url': playUrl, // torrent → local stream URL; otherwise unchanged
       'title': _showTitle,
       'episodeLabel': _episodeLabel(ep),
-      'episodeLabels': [for (final e in episodes) _episodeLabel(e)],
+      'episodeLabels': [for (final e in _episodes) _episodeLabel(e)],
       'episodeCount': episodes.length,
       'startIndex': startIndex,
       'category': category,
@@ -153,9 +173,8 @@ class TvNativePlayer {
     final posMs = (res?['positionMs'] as num?)?.toInt() ?? 0;
     final durMs = (res?['durationMs'] as num?)?.toInt() ?? 0;
     _saveProgress(index, posMs, durMs);
-    // Player closed → revert presence to "browsing". The detail screen stays
-    // mounted underneath and won't re-fire it, so we must (mirrors
-    // PlayerController.close()).
+    // Player closed → drop Watching, then restore browsing. The detail screen
+    // stays mounted underneath and won't re-fire it.
     _announceBrowsing();
     return true;
   }
@@ -176,7 +195,11 @@ class TvNativePlayer {
         _category = category;
         final mark = _resume?.get(_sourceId, _showId, ep.id);
         // Episode switch / Next Episode → advance the Discord "Watching" line.
-        _announceWatching(ep);
+        _announceWatching(
+          ep,
+          positionMs: mark?.position.inMilliseconds ?? 0,
+          durationMs: mark?.duration.inMilliseconds ?? 0,
+        );
         return {
           ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
           'url': playUrl,
@@ -184,11 +207,18 @@ class TvNativePlayer {
         };
       case 'saveProgress':
         final args = (call.arguments as Map).cast<String, dynamic>();
-        _saveProgress(
-          (args['index'] as num?)?.toInt() ?? -1,
-          (args['positionMs'] as num?)?.toInt() ?? 0,
-          (args['durationMs'] as num?)?.toInt() ?? 0,
-        );
+        final index = (args['index'] as num?)?.toInt() ?? -1;
+        final posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
+        final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
+        _saveProgress(index, posMs, durMs);
+        if (index >= 0 && index < _episodes.length) {
+          _announceWatching(
+            _episodes[index],
+            positionMs: posMs,
+            durationMs: durMs,
+            playing: args['playing'] as bool? ?? true,
+          );
+        }
         return null;
       case 'setCategory':
         // The native player switched sub/dub — remember it for this title so the
@@ -389,32 +419,56 @@ class TvNativePlayer {
   /// launch and on every episode switch — same shape as the phone player
   /// (player_controller.dart). No-op when Discord isn't wired up / a title is
   /// missing; the service itself also drops it when disabled/incognito.
-  static void _announceWatching(Episode ep) {
+  static void _announceWatching(
+    Episode ep, {
+    int positionMs = 0,
+    int durationMs = 0,
+    bool playing = true,
+  }) {
     if (_showTitle.isEmpty || !sl.isRegistered<DiscordRpc>()) return;
-    final label = _episodeLabel(ep);
-    sl<DiscordRpc>().setWatching(
-      title: _showTitle,
-      episodeLabel: label.isEmpty ? null : label,
-      posterUrl: _cover,
-      startMs: DateTime.now().millisecondsSinceEpoch,
+    if (durationMs <= 0) return;
+    unawaited(
+      sl<DiscordRpc>().setWatching(
+        title: _showTitle,
+        episodeLabel: discordEpisodeLabel(ep),
+        posterUrl: _cover,
+        position: Duration(milliseconds: positionMs),
+        duration: Duration(milliseconds: durationMs),
+        playing: playing,
+      ),
     );
   }
 
-  /// Revert presence to "browsing" when the player exits.
+  /// Drop Watching when the player exits so the profile status actually
+  /// disappears (the detail screen underneath will not re-fire browsing).
   static void _announceBrowsing() {
     if (!sl.isRegistered<DiscordRpc>()) return;
-    sl<DiscordRpc>().setBrowsing(
-      title: _showTitle.isEmpty ? null : _showTitle,
-      posterUrl: _cover,
-    );
+    sl<DiscordRpc>().clear(delay: DiscordRpc.playerExitClearDelay);
   }
 
-  /// Top-left label under the show title, e.g. "Episode 3". Prefers the episode's
-  /// own title, falling back to its number.
-  static String _episodeLabel(Episode ep) {
-    if (ep.title.trim().isNotEmpty) return ep.title.trim();
-    final n = ep.number;
-    return n == null ? '' : 'Episode ${n % 1 == 0 ? n.toInt() : n}';
+  /// Top-left label under the show title, e.g. "Episode 3 · Real Name".
+  static String _episodeLabel(Episode ep) =>
+      episodePresenceDetails(ep) ?? '';
+
+  static Future<List<Episode>> _enrichEpisodes(
+    List<Episode> episodes, {
+    int? malId,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    bool anime = false,
+  }) async {
+    if (!sl.isRegistered<EpisodeMetadataService>()) return episodes;
+    try {
+      return await sl<EpisodeMetadataService>().enrich(
+        episodes: episodes,
+        type: anime ? ProviderType.anime : ProviderType.movie,
+        malId: malId,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+      );
+    } catch (_) {
+      return episodes;
+    }
   }
 
   /// Same container→MIME hinting the Flutter player uses (tokenized URLs have no

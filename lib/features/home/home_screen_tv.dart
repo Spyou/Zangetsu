@@ -116,6 +116,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         ],
         malId: item.malId,
         scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+        tmdbId: item.tmdbId,
+        tmdbIsTv: item.tmdbIsTv,
       );
       if (mounted) setState(() {});
       return;
@@ -140,6 +142,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           ],
           malId: item.malId,
           scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+          tmdbId: item.tmdbId,
+          tmdbIsTv: item.tmdbIsTv,
         ),
       ),
     );
@@ -181,6 +185,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         coverHeaders: e.coverHeaders,
         category: e.category,
         malId: e.malId,
+        scrobbleTitle: e.malId != null ? e.showTitle : null,
       );
       if (mounted) setState(() {});
       return;
