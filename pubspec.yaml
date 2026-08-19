@@ -16,7 +16,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.9.6+11102
+version: 1.9.7+11103
 
 environment:
   sdk: ^3.11.5
@@ -137,7 +137,10 @@ dependencies:
   open_filex: ^4.5.0
   # Read the device's supported ABIs so the updater downloads the matching
   # per-ABI APK (smaller/faster than the fat universal) instead of guessing.
-  device_info_plus: ^12.4.0
+  # 12.4.0 calls NSProcessInfo.isiOSAppOnVision, which only exists in the
+  # Xcode 26.1 SDK. This machine is on Xcode 26.0.1, so stay on 12.3.0
+  # until Xcode is updated. Do not use ^12.3.0 — that still pulls 12.4.0.
+  device_info_plus: 12.3.0
   flutter_colorpicker: ^1.1.0
   firebase_core: ^4.12.1
   firebase_analytics: ^12.4.5
