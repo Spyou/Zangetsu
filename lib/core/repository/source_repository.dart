@@ -1,6 +1,7 @@
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_manager.dart';
+import '../logging/app_logger.dart';
 import '../mihon/mihon_filters.dart';
 import '../mihon/mihon_manager.dart';
 import '../mihon/mihon_provider.dart';
@@ -690,8 +691,36 @@ class SourceRepository {
   /// Drop the cached fast-resolution for an episode so the next [sources] call
   /// re-scrapes fresh links. Called when every mirror stalls — the cached links
   /// have likely expired. No-op when the episode isn't cached (e.g. downloads).
-  void invalidateSources(String episodeUrl, {String? sourceId}) {
-    _resolved.remove(_prefetchKey(episodeUrl, sourceId));
+  ///
+  /// [includePrefetch] also drops an in-flight/complete prefetch for the same
+  /// episode. Off by default: the stall path wants the prefetch kept, since it
+  /// may be the thing about to succeed. A user asking to reload links wants it
+  /// gone — the next fast call consumes the prefetch before it ever looks at
+  /// [_resolved], so leaving it would hand back the same stale links and make
+  /// the reload look like it did nothing.
+  void invalidateSources(
+    String episodeUrl, {
+    String? sourceId,
+    bool includePrefetch = false,
+  }) {
+    final key = _prefetchKey(episodeUrl, sourceId);
+    final hadResolved = _resolved.remove(key) != null;
+    final hadPrefetch = includePrefetch && _prefetch.remove(key) != null;
+    // Logged because there is otherwise no way to tell a working reload from a
+    // no-op: the caches are in-memory, and a reload that cleared nothing looks
+    // exactly like one that cleared everything.
+    AppLogger.instance.log(
+      '[links] invalidate ${_short(episodeUrl)} '
+      'resolved=${hadResolved ? "cleared" : "none"} '
+      'prefetch=${hadPrefetch ? "cleared" : includePrefetch ? "none" : "kept"}',
+    );
+  }
+
+  /// Tail of a URL — enough to tell two episodes apart in a log without
+  /// printing signed query strings.
+  static String _short(String url) {
+    final path = url.split('?').first;
+    return path.length <= 42 ? path : '…${path.substring(path.length - 42)}';
   }
 
   /// Fire-and-forget background resolution for [episodeUrl] (the episode the

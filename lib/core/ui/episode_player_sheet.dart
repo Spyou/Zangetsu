@@ -8,6 +8,77 @@ import '../theme/app_text.dart';
 /// once. An empty [package] means the built-in player.
 typedef PlayerChoice = ({String package, String label});
 
+/// What the long-press menu was asked to do. The player pick is its own sheet,
+/// so this only carries the actions that don't need further input.
+enum EpisodeAction {
+  /// Open the "play this episode with" sheet.
+  pickPlayer,
+
+  /// Drop this episode's cached links and play again. For when a mirror has
+  /// expired and every attempt fails on links that looked fine 20 minutes ago.
+  reloadLinks,
+}
+
+/// The long-press menu itself. Kept separate from the player sheet so the
+/// player list doesn't push the actions off-screen once several players are
+/// installed.
+Future<EpisodeAction?> showEpisodeActionSheet(
+  BuildContext context, {
+  required String episodeLabel,
+  required String currentPlayerLabel,
+}) {
+  return showModalBottomSheet<EpisodeAction>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.hairline,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                episodeLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.headline,
+              ),
+            ),
+          ),
+          _PlayerRow(
+            icon: Icons.play_circle_outline_rounded,
+            label: 'Play with…',
+            trailingText: currentPlayerLabel,
+            onTap: () =>
+                Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
+          ),
+          _PlayerRow(
+            icon: Icons.refresh_rounded,
+            label: 'Reload links',
+            subtitle: 'Fetch fresh streams if playback keeps failing',
+            onTap: () =>
+                Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Long-press an episode → pick where it plays, for this episode only.
 ///
 /// Deliberately doesn't touch [PlaybackPrefs.externalPlayerPackage]: Settings
@@ -117,29 +188,40 @@ class _PlayerRow extends StatelessWidget {
   const _PlayerRow({
     required this.icon,
     required this.label,
-    required this.isDefault,
     required this.onTap,
+    this.isDefault = false,
+    this.subtitle,
+    this.trailingText,
   });
 
   final IconData icon;
   final String label;
+  final VoidCallback onTap;
 
   /// Marks the row a plain tap would have used. Marked rather than sorted to
   /// the top, so the list doesn't reshuffle when the Settings default changes.
   final bool isDefault;
-  final VoidCallback onTap;
+  final String? subtitle;
+  final String? trailingText;
 
   @override
   Widget build(BuildContext context) {
+    final trailing = trailingText ?? (isDefault ? 'Default' : null);
     return ListTile(
       leading: Icon(icon, color: AppColors.textSecondary),
       title: Text(label, style: AppText.body),
-      trailing: isDefault
-          ? Text(
-              'Default',
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
               style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            )
-          : null,
+            ),
+      trailing: trailing == null
+          ? null
+          : Text(
+              trailing,
+              style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            ),
       onTap: onTap,
     );
   }

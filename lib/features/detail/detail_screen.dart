@@ -567,15 +567,59 @@ class _DetailViewState extends State<_DetailView>
   ) async {
     if (index < 0 || index >= episodes.length) return;
     final ep = episodes[index];
-    final choice = await showEpisodePlayerSheet(
+    final label = ep.title.trim().isNotEmpty
+        ? ep.title.trim()
+        : 'Episode ${ep.number?.toInt() ?? index + 1}';
+    final prefs = sl<PlaybackPrefs>();
+
+    final action = await showEpisodeActionSheet(
       context,
-      episodeLabel: ep.title.trim().isNotEmpty
-          ? ep.title.trim()
-          : 'Episode ${ep.number?.toInt() ?? index + 1}',
-      defaultPackage: sl<PlaybackPrefs>().externalPlayerPackage,
+      episodeLabel: label,
+      currentPlayerLabel: prefs.externalPlayerPackage.isEmpty
+          ? 'Built-in'
+          : (prefs.externalPlayerLabel.isEmpty
+                ? 'External'
+                : prefs.externalPlayerLabel),
     );
-    if (choice == null || !mounted) return;
-    await _openPlayer(episodes, index, detail, category, playerOverride: choice);
+    if (action == null || !mounted) return;
+
+    switch (action) {
+      case EpisodeAction.pickPlayer:
+        final choice = await showEpisodePlayerSheet(
+          context,
+          episodeLabel: label,
+          defaultPackage: prefs.externalPlayerPackage,
+        );
+        if (choice == null || !mounted) return;
+        await _openPlayer(
+          episodes,
+          index,
+          detail,
+          category,
+          playerOverride: choice,
+        );
+      case EpisodeAction.reloadLinks:
+        // Drop the prefetch too, or the next fast resolve consumes it before
+        // it ever looks at the resolved cache and hands back the same dead
+        // links — the reload would look like it did nothing.
+        sl<SourceRepository>().invalidateSources(
+          ep.url,
+          sourceId: widget.item.sourceId,
+          includePrefetch: true,
+        );
+        // Deliberately no playback: you reload because the links died, and the
+        // next thing you usually want is a different mirror. Auto-playing
+        // takes that choice away and tends to fail again on the same source.
+        // Re-primes in the background so the play you do make is still quick.
+        sl<SourceRepository>().prefetch(
+          ep.url,
+          sourceId: widget.item.sourceId,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Links reloaded')));
+    }
   }
 
   Future<void> _openPlayer(
