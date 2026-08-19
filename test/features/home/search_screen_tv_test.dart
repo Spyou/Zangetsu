@@ -29,6 +29,26 @@ class _StubSearchHistory extends SearchHistory {
   Future<void> clear() async {}
 }
 
+/// [SearchHistory] stub with a mutable list so Clear can be asserted.
+class _MutableSearchHistory extends SearchHistory {
+  _MutableSearchHistory(this._recent);
+  List<String> _recent;
+
+  @override
+  List<String> recent() => List.unmodifiable(_recent);
+
+  @override
+  Future<void> add(String query) async {}
+
+  @override
+  Future<void> remove(String query) async {}
+
+  @override
+  Future<void> clear() async {
+    _recent = [];
+  }
+}
+
 /// [SearchPrefs] stub: no Hive dependency, returns safe defaults.
 /// Only the getters that [SearchBloc._restoredState] calls are overridden.
 class _StubSearchPrefs extends SearchPrefs {
@@ -104,9 +124,10 @@ class _FakeSearchBloc extends SearchBloc {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-Widget _buildUnderTest(_FakeSearchBloc bloc) => BlocProvider<SearchBloc>.value(
+Widget _buildUnderTest(_FakeSearchBloc bloc, {SearchHistory? history}) =>
+    BlocProvider<SearchBloc>.value(
       value: bloc,
-      child: const MaterialApp(home: SearchScreenTv()),
+      child: MaterialApp(home: SearchScreenTv(history: history)),
     );
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -156,11 +177,15 @@ void main() {
 
       expect(find.text('Search for something to watch'), findsOneWidget);
       // The scope chips are always visible (2 TvFocusables), but no result
-      // cards exist in idle state.
+      // cards exist in idle state. Clear history is hidden until recents exist.
       expect(find.byType(TvFocusable), findsNWidgets(2));
       expect(
         find.byKey(const ValueKey('tv-search-scope-current')),
         findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('tv-search-clear-history')),
+        findsNothing,
       );
     },
   );
@@ -319,6 +344,50 @@ void main() {
         tester.binding.focusManager.primaryFocus,
         isNot(same(fieldNode)),
       );
+    },
+  );
+
+  testWidgets(
+    'SearchScreenTv idle lists recent searches and a Clear button',
+    (tester) async {
+      final bloc =
+          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+      addTearDown(bloc.close);
+      final history = _MutableSearchHistory(['Naruto', 'One Piece']);
+
+      await tester.pumpWidget(_buildUnderTest(bloc, history: history));
+      await tester.pump();
+
+      expect(find.text('Recent searches'), findsOneWidget);
+      expect(find.text('Naruto'), findsOneWidget);
+      expect(find.text('One Piece'), findsOneWidget);
+      expect(find.text('Clear'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('tv-search-clear-history')),
+        findsOneWidget,
+      );
+      expect(find.text('Search for something to watch'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'SearchScreenTv Clear wipes recents and returns to the empty idle prompt',
+    (tester) async {
+      final bloc =
+          _FakeSearchBloc(SearchState(status: SearchStatus.idle));
+      addTearDown(bloc.close);
+      final history = _MutableSearchHistory(['Naruto']);
+
+      await tester.pumpWidget(_buildUnderTest(bloc, history: history));
+      await tester.pump();
+
+      await tester.tap(find.byKey(const ValueKey('tv-search-clear-history')));
+      await tester.pump();
+
+      expect(history.recent(), isEmpty);
+      expect(find.text('Recent searches'), findsNothing);
+      expect(find.byKey(const ValueKey('tv-search-clear-history')), findsNothing);
+      expect(find.text('Search for something to watch'), findsOneWidget);
     },
   );
 }

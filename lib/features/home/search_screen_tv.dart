@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/models/media_item.dart';
+import '../../core/playback/search_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -30,8 +31,12 @@ import '../search/bloc/search_state.dart';
 /// `if (sl<AppMode>().isTv) return SearchScreenTv(...)` branch added in its
 /// [SearchScreen.build] method.
 class SearchScreenTv extends StatefulWidget {
-  const SearchScreenTv({super.key, this.initialQuery});
+  const SearchScreenTv({super.key, this.initialQuery, this.history});
   final String? initialQuery;
+
+  /// Recent search terms. Production [SearchScreen] passes the injector
+  /// singleton; tests pass a stub (or omit it) so they don't need GetIt.
+  final SearchHistory? history;
 
   @override
   State<SearchScreenTv> createState() => _SearchScreenTvState();
@@ -307,10 +312,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                   }
                   switch (state.status) {
                     case SearchStatus.idle:
-                      return const EmptyState(
-                        icon: Icons.search_rounded,
-                        message: 'Search for something to watch',
-                      );
+                      return _idleView();
                     case SearchStatus.loading:
                       return Padding(
                         padding: const EdgeInsets.fromLTRB(40, 8, 40, 40),
@@ -335,6 +337,104 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           ],
         ),
       ),
+    );
+  }
+
+  // ── Idle (recent searches + empty prompt) ───────────────────────────────────
+
+  /// Idle body: recent terms with a D-pad-focusable Clear, matching the phone
+  /// landing page. Falls back to the empty prompt when there's nothing stored
+  /// (tests that omit [SearchScreenTv.history] hit this path too).
+  Widget _idleView() {
+    final history = widget.history;
+    final recent = history?.recent() ?? const <String>[];
+    if (history == null || recent.isEmpty) {
+      return const EmptyState(
+        icon: Icons.search_rounded,
+        message: 'Search for something to watch',
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(48, 8, 48, 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Recent searches', style: AppText.overline),
+              ),
+              TvFocusable(
+                key: const ValueKey('tv-search-clear-history'),
+                variant: TvFocusVariant.pill,
+                scale: 1.0,
+                semanticLabel: 'Clear search history',
+                onTap: () async {
+                  await history.clear();
+                  if (mounted) setState(() {});
+                },
+                builder: (focused) {
+                  final fg = focused ? Colors.black : AppColors.accent;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Text(
+                      'Clear',
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+        for (final q in recent)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
+            child: TvFocusable(
+              scale: 1.0,
+              onTap: () {
+                _controller.value = TextEditingValue(
+                  text: q,
+                  selection: TextSelection.collapsed(offset: q.length),
+                );
+                context.read<SearchBloc>().add(SearchRunRequested(q));
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.history_rounded,
+                      size: 18,
+                      color: AppColors.textTertiary,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Text(
+                        q,
+                        style: AppText.body.copyWith(
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 

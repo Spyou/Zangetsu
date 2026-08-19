@@ -79,7 +79,10 @@ class SearchScreen extends StatelessWidget {
       // above is still the provider for both paths — SearchScreenTv reads the
       // same SearchBloc from context, so no duplication of bloc creation.
       child: sl<AppMode>().isTv
-          ? SearchScreenTv(initialQuery: initialQuery)
+          ? SearchScreenTv(
+              initialQuery: initialQuery,
+              history: sl<SearchHistory>(),
+            )
           : _SearchView(
               initialQuery: initialQuery,
               showBack: showBack,
