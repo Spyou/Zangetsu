@@ -109,7 +109,7 @@ dependencies:
   # CloudStream-style volume swipe: the right-half drag drives the REAL Android
   # system media volume for 0–100% (then mpv `af=volume` boosts beyond 100%),
   # exactly like CloudStream's slider. System UI is suppressed (we draw our HUD).
-  flutter_volume_controller: ^2.0.1
+  flutter_volume_controller: ^2.0.2
   # Offline downloads — true background downloads with a progress notification,
   # pause/resume, and move-to-shared-storage (public Downloads folder).
   # Pinned to 9.5.5 — 9.5.7's Android/Kotlin code fails to compile here
