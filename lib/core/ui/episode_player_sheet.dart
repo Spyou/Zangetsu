@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../models/video_source.dart';
 import '../playback/external_player.dart';
+import '../playback/source_selection.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 
@@ -26,6 +28,10 @@ enum EpisodeAction {
   /// mid-season" case, where marking twelve episodes one at a time is the
   /// reason people give up and edit their list on the website instead.
   markAboveWatched,
+
+  /// Resolve the episode's mirrors and pick one before anything plays, rather
+  /// than starting on whichever the app chose and switching afterwards.
+  playMirror,
 }
 
 /// The long-press menu itself. Kept separate from the player sheet so the
@@ -81,6 +87,12 @@ Future<EpisodeAction?> showEpisodeActionSheet(
             trailingText: currentPlayerLabel,
             onTap: () =>
                 Navigator.pop(sheetContext, EpisodeAction.pickPlayer),
+          ),
+          _PlayerRow(
+            icon: Icons.swap_horiz_rounded,
+            label: 'Play mirror',
+            subtitle: 'Choose the source before it starts',
+            onTap: () => Navigator.pop(sheetContext, EpisodeAction.playMirror),
           ),
           _PlayerRow(
             icon: Icons.refresh_rounded,
@@ -210,6 +222,89 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                     ),
                   ),
                 ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Pick one of an episode's resolved mirrors.
+///
+/// Takes already-resolved sources rather than resolving itself: the caller
+/// shows its own progress while scraping, and a sheet that opens empty and
+/// fills in later is worse than one that opens with the answer.
+Future<VideoSource?> showMirrorSheet(
+  BuildContext context, {
+  required String episodeLabel,
+  required List<VideoSource> sources,
+}) {
+  final kinds = availableKinds(sources);
+  return showModalBottomSheet<VideoSource>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    isScrollControlled: true,
+    builder: (sheetContext) => SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.75,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 10),
+              Container(
+                width: 36,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.hairline,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 2),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Play mirror', style: AppText.headline),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    episodeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ),
+              for (final k in kinds)
+                for (final s in sortByQuality(sourcesForKind(sources, k)))
+                  _PlayerRow(
+                    icon: Icons.play_arrow_rounded,
+                    // Same shape the player's own Sources sheet uses: the
+                    // provider's mirror name when it has one, otherwise the
+                    // audio kind — and never a stray "UNKNOWN •" for sources
+                    // that don't declare sub/dub.
+                    label: s.label?.trim().isNotEmpty == true
+                        ? s.label!.trim()
+                        : '${k != AudioKind.unknown ? '${k.name.toUpperCase()} • ' : ''}'
+                              '${s.quality ?? s.container.name.toUpperCase()}',
+                    subtitle: s.label?.trim().isNotEmpty == true
+                        ? s.quality
+                        : null,
+                    onTap: () => Navigator.pop(sheetContext, s),
+                  ),
               const SizedBox(height: 8),
             ],
           ),

@@ -140,7 +140,13 @@ class PlayerScreen extends StatefulWidget {
     this.availableCategories = const [],
     this.joinRoomCode,
     this.playerOverride,
+    this.initialSource,
   });
+
+  /// A mirror picked from the episode list's long-press menu, opened instead
+  /// of the adaptive default. One-shot: the cubit clears it after the first
+  /// episode so nothing later is affected.
+  final VideoSource? initialSource;
 
   /// Set by the episode list's long-press sheet: play this one episode here,
   /// ignoring the Settings default. Empty string means the built-in player
@@ -810,6 +816,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       imdbId: widget.imdbId,
       availableCategories: widget.availableCategories,
       initialResume: widget.resumePosition,
+      initialSource: widget.initialSource,
       onDrmSource: _handoffToNativeDrm,
     )..init(startIndex);
 

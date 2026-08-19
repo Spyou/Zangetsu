@@ -555,6 +555,33 @@ class _DetailViewState extends State<_DetailView>
 
   // ── Cross-source player launch — PRESERVED EXACTLY ────────────────────────
 
+  /// Resolve every mirror for an episode, behind a blocking spinner.
+  ///
+  /// Deliberately not the fast path. Fast returns on the first usable link and
+  /// leaves the rest resolving in the background, so a chooser built from it
+  /// often shows one server out of several — you'd be picking from a list that
+  /// isn't finished. Waiting costs a few seconds and shows the real choice.
+  Future<List<VideoSource>> _resolveWithProgress(Episode ep) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    try {
+      return await sl<SourceRepository>().sources(
+        ep.url,
+        sourceId: widget.item.sourceId,
+        fast: false,
+      );
+    } catch (_) {
+      // A dead source shouldn't leave a spinner on screen; the caller reports
+      // the empty result as "no sources found".
+      return const [];
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
+  }
+
   /// Push a manual watched mark out to whichever trackers are connected.
   ///
   /// Only whole episode numbers: tracker progress is an integer, so a "12.5"
@@ -644,6 +671,36 @@ class _DetailViewState extends State<_DetailView>
           context,
         ).showSnackBar(const SnackBar(content: Text('Links reloaded')));
 
+      case EpisodeAction.playMirror:
+        // Scraping takes seconds, unlike every other row here, so the wait is
+        // shown rather than left as a dead long-press.
+        final sources = await _resolveWithProgress(ep);
+        if (!mounted) return;
+        if (sources.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No sources found for this episode')),
+          );
+          return;
+        }
+        final picked = await showMirrorSheet(
+          context,
+          episodeLabel: label,
+          sources: sources,
+        );
+        if (picked == null || !mounted) return;
+        // The pick applies to this episode and nothing else — no label saved.
+        // Remembering it meant re-finding the mirror by label on the next
+        // open, and when that list came back without it the language fallback
+        // quietly started a different server: pick vidplay, get vidstream.
+        // Choosing again per episode is the honest trade.
+        await _openPlayer(
+          episodes,
+          index,
+          detail,
+          category,
+          initialSource: picked,
+        );
+
       case EpisodeAction.toggleWatched:
         final nowWatched =
             !(resume
@@ -700,6 +757,10 @@ class _DetailViewState extends State<_DetailView>
     /// Set only by the long-press sheet: play this one episode in this player,
     /// ignoring the Settings default. Null keeps the existing behaviour.
     PlayerChoice? playerOverride,
+
+    /// A mirror picked from the long-press menu, opened instead of the
+    /// adaptive default. One-shot — the cubit clears it after this episode.
+    VideoSource? initialSource,
   }) async {
     // Reading types never touch the player — route to the reader instead.
     // Both tap paths (Play button + episode-row onTap) call this same
@@ -778,6 +839,7 @@ class _DetailViewState extends State<_DetailView>
       MaterialPageRoute(
         builder: (_) => PlayerScreen(
           playerOverride: playerOverride?.package,
+          initialSource: initialSource,
           sourceId: widget.item.sourceId,
           episodes: episodes,
           startIndex: index,

@@ -167,6 +167,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.imdbId,
     this.availableCategories = const [],
     this.initialResume = Duration.zero,
+    this.initialSource,
     this.onDrmSource,
   }) : _resolveSources = resolveSources,
        _pollSources = pollSources,
@@ -245,6 +246,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// despite knowing exactly where the user left off). Zeroed after use so
   /// later source/quality switches keep the live position instead.
   Duration initialResume;
+
+  /// A mirror the user picked on the episode list, to open instead of the
+  /// adaptive default. Cleared after the first open, so later episodes and
+  /// source switches behave normally.
+  ///
+  /// Held as the source itself rather than a saved label. The label round-trip
+  /// isn't reliable here: the player re-resolves after the pick, the fast path
+  /// returns as soon as it has one usable link, and a mirror that was in the
+  /// picker can be missing from that second list. The exact match then fails
+  /// and [_preferredSource]'s language fallback quietly opens a different
+  /// server — picking vidplay and landing on vidstream.
+  VideoSource? initialSource;
 
   /// Watch Together: `none` for all normal playback (the hooks below are inert).
   RoomRole roomRole = RoomRole.none;
@@ -1501,9 +1514,23 @@ class PlayerCubit extends Cubit<PlayerState> {
       _buildQualityMenu(
         gen,
       ); // populate Auto/1080p/720p from the HLS master, if any
-      // Prefer the source the user picked for this title (e.g. Hindi), else the
+      // A mirror picked on the episode list wins outright, and is consumed
+      // here so it only applies to the episode it was chosen for. Matched by
+      // url against this resolve, falling back to the picked source itself
+      // when the re-resolve hasn't produced it yet — the whole point is that
+      // the two lists don't always agree.
+      final chosen = initialSource;
+      initialSource = null;
+      final fromPick = chosen == null
+          ? null
+          : resolved.firstWhere(
+              (s) => s.url == chosen.url,
+              orElse: () => chosen,
+            );
+      // Otherwise the source remembered for this title (e.g. Hindi), else the
       // adaptive default.
-      final pick = _preferredSource(resolved) ?? pickDefault(resolved);
+      final pick =
+          fromPick ?? _preferredSource(resolved) ?? pickDefault(resolved);
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),
