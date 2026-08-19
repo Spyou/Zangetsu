@@ -55,7 +55,10 @@ class TvNativePlayer {
   static ResumeStore? _resume;
   static String? _torrentId; // active torrent stream (stopped on switch/close)
 
-  static Future<void> play({
+  /// Returns `false` when the episode could not be resolved or started (no
+  /// sources, torrent blocked, etc.). Callers should surface that to the user;
+  /// this method itself has no UI.
+  static Future<bool> play({
     required String sourceId,
     required List<Episode> episodes,
     required int startIndex,
@@ -70,7 +73,7 @@ class TvNativePlayer {
     int? malId,
     String? scrobbleTitle,
   }) async {
-    if (startIndex < 0 || startIndex >= episodes.length) return;
+    if (startIndex < 0 || startIndex >= episodes.length) return false;
 
     _resolve = resolveSources;
     _episodes = episodes;
@@ -91,9 +94,9 @@ class TvNativePlayer {
 
     final ep = episodes[startIndex];
     final src = await _resolveSource(ep);
-    if (src == null) return;
+    if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
-    if (playUrl == null) return; // torrent failed / Wi-Fi-only
+    if (playUrl == null) return false; // torrent failed / Wi-Fi-only
     final mark = resume.get(sourceId, _showId, ep.id);
 
     // Full subtitle style, computed the SAME way as the Flutter PlatformView TV
@@ -154,6 +157,7 @@ class TvNativePlayer {
     // mounted underneath and won't re-fire it, so we must (mirrors
     // PlayerController.close()).
     _announceBrowsing();
+    return true;
   }
 
   /// Handles native→Dart calls while the player is on screen.

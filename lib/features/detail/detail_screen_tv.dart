@@ -186,12 +186,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }
 
   // ── Player launch (mirrors _DetailViewState._openPlayer exactly) ──────────
-  void _openPlayer(
+  Future<void> _openPlayer(
     List<Episode> episodes,
     int index,
     MediaDetail detail,
     String category,
-  ) {
+  ) async {
     final available = <String>[
       if ((detail.subCount ?? 0) > 0) 'sub',
       if ((detail.dubCount ?? 0) > 0) 'dub',
@@ -211,7 +211,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     // Beta: fully-native TV player (real-window SurfaceView) for TVs that
     // black-screen the Flutter platform-view player. Opt-in; phone unaffected.
     if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      TvNativePlayer.play(
+      final started = await TvNativePlayer.play(
         sourceId: widget.item.sourceId,
         episodes: episodes,
         startIndex: index,
@@ -226,6 +226,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         malId: detail.malId ?? widget.item.malId,
         scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
       );
+      if (!started && mounted) await showTvPlaybackLoadError(context);
       return;
     }
     // TV default: native ExoPlayer via a Flutter platform view — smooth even at
