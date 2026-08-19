@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/discord/discord_presence.dart';
+import 'package:watch_app/core/models/episode.dart';
 
 void main() {
   final now = DateTime.fromMillisecondsSinceEpoch(1_700_000_000_000);
@@ -36,6 +37,37 @@ void main() {
       );
       expect(ts.startMs, isNull);
       expect(ts.endMs, isNull);
+    });
+  });
+
+  group('discordEpisodeLabel', () {
+    Episode ep({
+      String title = '',
+      double? number,
+      String? metaTitle,
+    }) =>
+        Episode(id: '1', title: title, url: 'u', number: number, metaTitle: metaTitle);
+
+    test('number plus real title', () {
+      expect(
+        discordEpisodeLabel(ep(title: 'Episode 47: The Two Chakra Beasts', number: 47)),
+        'Episode 47 · The Two Chakra Beasts',
+      );
+    });
+
+    test('generic source title uses AniZip/TMDB metaTitle', () {
+      expect(
+        discordEpisodeLabel(ep(title: 'Episode 47', number: 47, metaTitle: 'The Two Chakra Beasts')),
+        'Episode 47 · The Two Chakra Beasts',
+      );
+    });
+
+    test('generic title with no meta is number only', () {
+      expect(discordEpisodeLabel(ep(title: 'Episode 4', number: 4)), 'Episode 4');
+    });
+
+    test('title only when number is missing', () {
+      expect(discordEpisodeLabel(ep(title: 'Movie')), 'Movie');
     });
   });
 

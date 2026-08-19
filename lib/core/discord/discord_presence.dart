@@ -1,3 +1,15 @@
+import '../models/episode.dart';
+import '../models/episode_title.dart';
+
+/// Presence "details" line: episode number plus a real title when we have one.
+/// Discord caps [details] at 128 characters.
+String? discordEpisodeLabel(Episode ep, {int? fallbackNumber}) {
+  final out = episodePresenceDetails(ep, fallbackNumber: fallbackNumber);
+  if (out == null) return null;
+  if (out.length <= 128) return out;
+  return '${out.substring(0, 127)}…';
+}
+
 /// Unix-ms timestamps Discord uses to draw a Rich Presence progress bar.
 ///
 /// Both [startMs] and [endMs] must be set for a bar; start-only is elapsed

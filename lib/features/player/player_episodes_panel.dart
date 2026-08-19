@@ -1,19 +1,8 @@
 // Episodes side panel.
 part of 'player_screen.dart';
 
-String stripEpisodePrefix(String title, int n) {
-  final t = title.trim();
-  final word = RegExp(
-    '^(?:episode|ep\\.?|e)\\s*0*$n(?![0-9])\\s*[:\\-–—.)\\]]*\\s*',
-    caseSensitive: false,
-  );
-  final bare = RegExp('^0*$n(?![0-9])\\s*[:\\-–—.)\\]]+\\s*');
-  final m = word.firstMatch(t) ?? bare.firstMatch(t);
-  if (m == null) return t;
-  final rest = t.substring(m.end).trim();
-  // Nothing but the marker — let the caller fall back to showing just "E2".
-  return rest;
-}
+String stripEpisodePrefix(String title, int n) =>
+    stripGenericEpisodePrefix(title, n);
 
 // One row in the panel — either a "SEASON n" header or an episode (with its
 // global index into the flat episode list).
@@ -464,8 +453,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
   Widget _card(Episode e, int i, double thumbH, double s, double pad) {
     final cur = i == widget.currentIndex;
     final n = e.number?.toInt() ?? (i + 1);
-    final raw = e.title.trim();
-    final title = stripEpisodePrefix(_multiSeason ? cleanTitle(raw) : raw, n);
+    final title = episodeDisplayTitle(e, number: n) ?? '';
     final hasTitle = title.isNotEmpty;
     final thumb = (e.thumbnail != null && e.thumbnail!.isNotEmpty)
         ? e.thumbnail!

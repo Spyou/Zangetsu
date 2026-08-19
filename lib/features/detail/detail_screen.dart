@@ -23,6 +23,7 @@ import '../../core/share/share_link.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/episode_title.dart';
 import '../../core/models/media_detail.dart';
 import 'chapter_meta.dart';
 import 'episode_filter.dart';
