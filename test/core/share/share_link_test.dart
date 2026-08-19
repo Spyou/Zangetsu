@@ -16,7 +16,7 @@ void main() {
   test('forItem builds a short /open/ link that parse() round-trips', () {
     final webUrl = ShareLink.forItem(item);
     expect(webUrl, contains('/open/'));
-    // Short link: no base64 blob, just the four query params.
+    // Short link: plain query params, no base64 blob.
     expect(webUrl, isNot(contains('d=')));
 
     // The site forwards the same query params into a zangetsu://open link.
@@ -29,6 +29,29 @@ void main() {
     expect(parsed.sourceId, item.sourceId);
     expect(parsed.title, item.title);
     expect(parsed.type, item.type);
+    // Carried so the opened Detail has art before the source's detail call
+    // returns — and at all, for a source that omits the cover there.
+    expect(parsed.cover, item.cover);
+  });
+
+  test('a link shared without a cover still parses', () {
+    const noCover = MediaItem(
+      id: 'abc123',
+      title: 'Bleach: Thousand-Year Blood War',
+      url: 'https://example.com/anime/bleach',
+      type: ProviderType.anime,
+      sourceId: 'allanime',
+    );
+    final web = Uri.parse(ShareLink.forItem(noCover));
+    expect(web.queryParameters.containsKey('c'), isFalse);
+
+    final parsed = ShareLink.parse(
+      Uri.parse('zangetsu://open').replace(queryParameters: web.queryParameters),
+    );
+    // Older builds shared links without `c`; Detail falls back to the source.
+    expect(parsed, isNotNull);
+    expect(parsed!.cover, isNull);
+    expect(parsed.url, noCover.url);
   });
 
   test('parse ignores links that are not zangetsu://open', () {

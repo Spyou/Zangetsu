@@ -6,7 +6,7 @@ import '../models/provider_info.dart';
 /// `zangetsu://open?…` deep link back into a [MediaItem].
 ///
 /// The shared link is an HTTPS URL to the site's `/open/` page:
-///   `https://…/Zangetsu-Site/open/?s=<source>&u=<url>&t=<title>&y=<a|m>`
+///   `https://…/Zangetsu-Site/open/?s=<source>&u=<url>&t=<title>&y=<a|m>&c=<cover>`
 /// Only the fields needed to re-open the title are carried — the Detail
 /// re-fetches everything else — which keeps the link short. When installed, the
 /// app catches it via `zangetsu://open?…`; otherwise the page offers the app.
@@ -15,11 +15,18 @@ class ShareLink {
 
   /// The short web link to share for [item].
   static String forItem(MediaItem item) {
+    final cover = item.cover;
     return Uri.parse(Environment.siteOpenUrl).replace(queryParameters: {
       's': item.sourceId,
       'u': item.url,
       't': item.title,
       'y': item.type == ProviderType.movie ? 'm' : 'a',
+      // Carried so an opened link has art straight away. Detail otherwise has
+      // nothing to draw until the source's own detail call returns, and for a
+      // source that omits the cover there it never appears at all.
+      // Only the URL: covers needing a Referer are a minority and would bloat
+      // every link with headers to rescue them.
+      if (cover != null && cover.isNotEmpty) 'c': cover,
     }).toString();
   }
 
@@ -37,12 +44,16 @@ class ShareLink {
     final q = uri.queryParameters;
     final s = q['s'], u = q['u'];
     if (s == null || s.isEmpty || u == null || u.isEmpty) return null;
+    final c = q['c'];
     return MediaItem(
       id: u, // stable key; the source addresses the title by url anyway
       title: q['t'] ?? '',
       url: u,
       type: q['y'] == 'm' ? ProviderType.movie : ProviderType.anime,
       sourceId: s,
+      // Absent on links shared by older builds, which is why Detail still
+      // falls back to whatever the source's detail call returns.
+      cover: (c != null && c.isNotEmpty) ? c : null,
     );
   }
 }
