@@ -1525,7 +1525,14 @@ class _DetailViewState extends State<_DetailView>
                 _IconAction(
                   icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
                   active: _inMyList,
-                  label: _status?.shortLabel ?? 'My List',
+                  // Reading-aware: a manga on your list is "Reading", not
+                  // "Watching". Display only — the stored status is still
+                  // WatchStatus.watching, so My List and the trackers are
+                  // untouched, and reading:false returns the plain label
+                  // unchanged for anime.
+                  label: _status == null
+                      ? 'My List'
+                      : shortLabelFor(_status!, reading: isReading),
                   tooltip: _inMyList ? 'Change status' : 'Add to My List',
                   onTap: () => _openListSheet(detail),
                 ),
