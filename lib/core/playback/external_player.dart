@@ -105,13 +105,21 @@ class ExternalPlayer {
       final m = res is Map ? Map<String, dynamic>.from(res) : const {};
       final launched = m['launched'] == true;
       final played = m['played'] == true;
+      // `played` is not a failure signal and never has been: VLC and friends
+      // hand playback to their own task and return immediately, so a perfectly
+      // healthy launch reports played=false. The caller keys off `launched`
+      // alone — see PlayerScreen's launch handler, which leaves this screen on
+      // launched=true and only opens the built-in player when the launch
+      // itself failed. Logged at info for that reason; this line used to claim
+      // a fallback that the code doesn't do, and reading it as gospel sent a
+      // debugging session hunting through fallback logic while the real fault
+      // was upstream of the player entirely.
       AppLogger.instance.log(
         '[ext-player] result launched=$launched played=$played '
         'pos=${(m['positionMs'] as num?)?.toInt() ?? 0}'
-        '${launched && !played ? " — opened but reported no playback "
-            "(header-gated HLS in a player that ignores headers?); "
-            "falling back to built-in" : ""}',
-        level: launched && !played ? 'E' : 'I',
+        '${launched && !played ? " — handed off; the player reports no "
+            "progress of its own, which is normal" : ""}',
+        level: launched ? 'I' : 'E',
       );
       return (
         launched: launched,
