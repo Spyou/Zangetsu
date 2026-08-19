@@ -29,8 +29,7 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
-import '../player/tv_exo_player_screen.dart';
-import '../player/tv_native_player.dart';
+import '../player/tv_playback_launch.dart';
 import '../sources/providers_hub_screen.dart';
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
@@ -96,52 +95,24 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       sourceId: item.sourceId,
       fast: true,
     );
-    // Beta: fully-native TV player (real-window SurfaceView) for TVs that
-    // black-screen the Flutter platform-view player. Opt-in; phone unaffected.
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      await TvNativePlayer.play(
-        sourceId: item.sourceId,
-        episodes: episodes,
-        startIndex: 0,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: item.url,
-        showTitle: item.title,
-        cover: item.cover,
-        coverHeaders: item.coverHeaders,
-        category: category,
-        availableCategories: [
-          if ((item.subCount ?? 0) > 0) 'sub',
-          if ((item.dubCount ?? 0) > 0) 'dub',
-        ],
-        malId: item.malId,
-        scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: item.sourceId,
-          episodes: episodes,
-          startIndex: 0,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showTitle: item.title,
-          showUrl: item.url,
-          cover: item.cover,
-          coverHeaders: item.coverHeaders,
-          category: category,
-          availableCategories: [
-            if ((item.subCount ?? 0) > 0) 'sub',
-            if ((item.dubCount ?? 0) > 0) 'dub',
-          ],
-          malId: item.malId,
-          scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
-        ),
-      ),
+    await launchTvPlayback(
+      context: context,
+      sourceId: item.sourceId,
+      episodes: episodes,
+      startIndex: 0,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: item.url,
+      showTitle: item.title,
+      cover: item.cover,
+      coverHeaders: item.coverHeaders,
+      category: category,
+      availableCategories: [
+        if ((item.subCount ?? 0) > 0) 'sub',
+        if ((item.dubCount ?? 0) > 0) 'dub',
+      ],
+      malId: item.malId,
+      scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
     );
     if (mounted) setState(() {});
   }
@@ -168,41 +139,20 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       sourceId: e.sourceId,
       fast: true,
     );
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      await TvNativePlayer.play(
-        sourceId: e.sourceId,
-        episodes: episodes,
-        startIndex: idx,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: e.showUrl,
-        showTitle: e.showTitle,
-        cover: e.cover,
-        coverHeaders: e.coverHeaders,
-        category: e.category,
-        malId: e.malId,
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: e.sourceId,
-          episodes: episodes,
-          startIndex: idx,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showTitle: e.showTitle,
-          showUrl: e.showUrl,
-          cover: e.cover,
-          coverHeaders: e.coverHeaders,
-          category: e.category,
-          malId: e.malId,
-          scrobbleTitle: e.malId != null ? e.showTitle : null,
-        ),
-      ),
+    await launchTvPlayback(
+      context: context,
+      sourceId: e.sourceId,
+      episodes: episodes,
+      startIndex: idx,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: e.showUrl,
+      showTitle: e.showTitle,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      category: e.category,
+      malId: e.malId,
+      scrobbleTitle: e.malId != null ? e.showTitle : null,
     );
     if (mounted) setState(() {});
   }

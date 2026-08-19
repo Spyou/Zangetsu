@@ -208,51 +208,24 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       sourceId: widget.item.sourceId,
       fast: true,
     );
-    // Beta: fully-native TV player (real-window SurfaceView) for TVs that
-    // black-screen the Flutter platform-view player. Opt-in; phone unaffected.
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      TvNativePlayer.play(
-        sourceId: widget.item.sourceId,
-        episodes: episodes,
-        startIndex: index,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: widget.item.url,
-        showTitle: detail.title,
-        cover: detail.cover ?? widget.item.cover,
-        coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        category: launchCategory,
-        availableCategories: availableCategories,
-        malId: detail.malId ?? widget.item.malId,
-        scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
-      );
-      return;
-    }
-    // TV default: native ExoPlayer via a Flutter platform view — smooth even at
-    // 4K where the media_kit texture player lags. media_kit stays phone-only.
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: widget.item.sourceId,
-          episodes: episodes,
-          startIndex: index,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showUrl: widget.item.url,
-          showTitle: detail.title,
-          cover: detail.cover ?? widget.item.cover,
-          coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-          category: launchCategory,
-          availableCategories: availableCategories,
-          malId: detail.malId ?? widget.item.malId,
-          scrobbleTitle: detail.type == ProviderType.anime
-              ? detail.title
-              : null,
-          tmdbId: detail.tmdbId ?? widget.item.tmdbId,
-          tmdbIsTv: detail.tmdbIsTv,
-          imdbId: detail.imdbId ?? widget.item.imdbId,
-        ),
-      ),
+    launchTvPlayback(
+      context: context,
+      sourceId: widget.item.sourceId,
+      episodes: episodes,
+      startIndex: index,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: widget.item.url,
+      showTitle: detail.title,
+      cover: detail.cover ?? widget.item.cover,
+      coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
+      category: launchCategory,
+      availableCategories: availableCategories,
+      malId: detail.malId ?? widget.item.malId,
+      scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+      tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+      tmdbIsTv: detail.tmdbIsTv,
+      imdbId: detail.imdbId ?? widget.item.imdbId,
     );
   }
 
