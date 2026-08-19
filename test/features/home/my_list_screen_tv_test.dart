@@ -94,6 +94,10 @@ void main() {
 
       // The very first TvFocusable (first poster card) has autofocus=true.
       expect(focusables.first.autofocus, isTrue);
+
+      // Held OK on a card must have a long-press handler (status / remove),
+      // matching phone long-press. Without this, TvFocusable treats OK as tap.
+      expect(focusables.first.onLongPress, isNotNull);
     },
   );
 

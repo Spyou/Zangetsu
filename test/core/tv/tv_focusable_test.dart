@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +19,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(taps, 1);
   });
+
+  testWidgets(
+    'with onLongPress, a short OK press still fires onTap (not long-press)',
+    (tester) async {
+      var taps = 0;
+      var longs = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: TvFocusable(
+          autofocus: true,
+          onTap: () => taps++,
+          onLongPress: () => longs++,
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(taps, 0);
+      expect(longs, 0);
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(taps, 1);
+      expect(longs, 0);
+    },
+  );
+
+  testWidgets(
+    'with onLongPress, holding OK past the long-press timeout fires onLongPress only',
+    (tester) async {
+      var taps = 0;
+      var longs = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: TvFocusable(
+          autofocus: true,
+          onTap: () => taps++,
+          onLongPress: () => longs++,
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      expect(longs, 1);
+      expect(taps, 0);
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(longs, 1);
+      expect(taps, 0);
+    },
+  );
 
   testWidgets(
     'TvFocusable focused border is a white outline',

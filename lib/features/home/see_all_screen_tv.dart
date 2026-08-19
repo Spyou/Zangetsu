@@ -161,6 +161,9 @@ class _SeeAllScreenTvState extends State<SeeAllScreenTv> {
                 headers: item.coverHeaders,
                 tags: widget.tagsFor?.call(item) ?? const [],
                 onTap: () => widget.onTap(item),
+                onLongPress: widget.onLongPress == null
+                    ? null
+                    : () => widget.onLongPress!(item),
               );
             },
           ),

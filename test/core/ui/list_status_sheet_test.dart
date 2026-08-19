@@ -9,6 +9,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -317,6 +318,38 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fake.lastRemoveKind, MediaKind.manga);
+    },
+  );
+
+  testWidgets(
+    'does not overflow on a 720p landscape TV with every row present',
+    (tester) async {
+      sl.registerSingleton<AppMode>(const AppMode(isTv: true));
+      await sl<MyListStore>().add(_animeItem);
+
+      tester.view.physicalSize = const Size(1280, 720);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () =>
+                    showListStatusSheet(context, item: _animeItem),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add to your list'), findsOneWidget);
+      expect(find.text('Remove from list'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     },
   );
 }
