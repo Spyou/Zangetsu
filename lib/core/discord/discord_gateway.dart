@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'discord_config.dart';
@@ -33,15 +34,20 @@ class DiscordGateway {
   void _open() {
     _cleanupSocket();
     _ready = false;
+    debugPrint('[discord] gateway opening ${DiscordConfig.gatewayUrl}');
     try {
       _ch = WebSocketChannel.connect(Uri.parse(DiscordConfig.gatewayUrl));
       _sub = _ch!.stream.listen(
         _onMessage,
         onDone: _onDone,
-        onError: (_) => _onDone(),
+        onError: (e, st) {
+          debugPrint('[discord] gateway socket error: $e');
+          _onDone();
+        },
         cancelOnError: true,
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[discord] gateway connect failed: $e');
       _scheduleReconnect();
     }
   }
@@ -50,7 +56,8 @@ class DiscordGateway {
     Map<String, dynamic> msg;
     try {
       msg = jsonDecode(raw as String) as Map<String, dynamic>;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[discord] gateway bad json: $e');
       return;
     }
     if (msg['s'] != null) _seq = (msg['s'] as num).toInt();
@@ -58,6 +65,7 @@ class DiscordGateway {
       case 10: // HELLO
         final interval =
             ((msg['d'] as Map)['heartbeat_interval'] as num).toInt();
+        debugPrint('[discord] gateway HELLO heartbeat=${interval}ms — identifying');
         _startHeartbeat(interval);
         _identify();
       case 11: // heartbeat ACK
@@ -65,17 +73,25 @@ class DiscordGateway {
       case 1: // server requested a heartbeat
         _sendHeartbeat();
       case 7: // must reconnect
+        debugPrint('[discord] gateway requested reconnect (op 7)');
+        _reconnect();
       case 9: // invalid session
+        debugPrint('[discord] gateway invalid session (op 9) — token/identify rejected');
         _reconnect();
       case 0: // dispatch
-        if (msg['t'] == 'READY') {
+        final t = msg['t'] as String?;
+        if (t == 'READY') {
           _ready = true;
+          final user = (msg['d'] as Map?)?['user'] as Map?;
+          final name = user?['username'] ?? user?['global_name'] ?? '?';
+          debugPrint('[discord] gateway READY as $name — pushing presence');
           _sendPresence(_pending);
         }
     }
   }
 
   void _identify() {
+    debugPrint('[discord] gateway IDENTIFY');
     _send({
       'op': 2,
       'd': {
@@ -100,18 +116,34 @@ class DiscordGateway {
   /// Set (or clear, with null) the presence. Buffered until READY.
   void setPresence(DiscordActivity? activity) {
     _pending = activity;
-    if (_ready) _sendPresence(activity);
+    if (_ready) {
+      _sendPresence(activity);
+    } else {
+      debugPrint(
+        '[discord] presence queued until READY: ${activity == null ? "clear" : "type=${activity.type} ${activity.name}"}',
+      );
+    }
+  }
+
+  /// Push an empty activity list, wait for the frame to flush, then drop the
+  /// socket. Closing without this leaves the last Rich Presence on the profile.
+  Future<void> clearThenClose() async {
+    if (_closed) return;
+    setPresence(null);
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    await close();
   }
 
   void _sendPresence(DiscordActivity? a) {
+    debugPrint(
+      a == null
+          ? '[discord] sending presence clear'
+          : '[discord] sending presence type=${a.type} name="${a.name}" '
+              'details=${a.details} start=${a.startMs} end=${a.endMs}',
+    );
     _send({
       'op': 3,
-      'd': {
-        'since': null,
-        'activities': a == null ? <dynamic>[] : [a.toJson(DiscordConfig.applicationId)],
-        'status': 'online',
-        'afk': false,
-      },
+      'd': discordPresenceUpdate(a, DiscordConfig.applicationId),
     });
   }
 
@@ -120,7 +152,8 @@ class DiscordGateway {
     _acked = true;
     _heartbeat = Timer.periodic(Duration(milliseconds: intervalMs), (_) {
       if (!_acked) {
-        _reconnect(); // zombie connection — no ACK since last beat
+        debugPrint('[discord] gateway heartbeat missed — reconnecting');
+        _reconnect();
         return;
       }
       _sendHeartbeat();
@@ -135,16 +168,20 @@ class DiscordGateway {
   void _send(Map<String, dynamic> data) {
     try {
       _ch?.sink.add(jsonEncode(data));
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[discord] gateway send failed: $e');
+    }
   }
 
   void _onDone() {
+    debugPrint('[discord] gateway socket closed ready=$_ready closed=$_closed');
     if (!_closed) _scheduleReconnect();
   }
 
   void _scheduleReconnect() {
     _cleanupSocket();
     if (_closed) return;
+    debugPrint('[discord] gateway reconnect in 5s');
     Future<void>.delayed(const Duration(seconds: 5), () {
       if (!_closed) _open();
     });

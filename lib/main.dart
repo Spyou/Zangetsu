@@ -214,9 +214,12 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       discord?.onForeground();
       _syncOnResume();
-    } else if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      discord?.onBackground();
+    } else if (state == AppLifecycleState.paused) {
+      // Opening the in-app player (native surface / immersive) fires paused
+      // even though the user is still watching. Do not drop Rich Presence.
+      discord?.onPaused();
+    } else if (state == AppLifecycleState.detached) {
+      discord?.onDetached();
     }
   }
 
