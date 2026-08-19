@@ -60,6 +60,11 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     ('serif', 'Serif'),
     ('system', 'System'),
   ];
+  static const List<(String, String)> _textDirectionOptions = [
+    ('auto', 'Auto'),
+    ('ltr', 'Left to right'),
+    ('rtl', 'Right to left'),
+  ];
   static const List<(String, String)> _themeOptions = [
     ('dark', 'Dark'),
     ('black', 'Black'),
@@ -390,6 +395,13 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                   await prefs.setTextAlignJustify(v);
                   if (mounted) setState(() {});
                 },
+              ),
+              _pickerRow(
+                icon: Icons.format_textdirection_r_to_l_rounded,
+                title: 'Text direction',
+                options: _textDirectionOptions,
+                current: prefs.textDirection,
+                onPicked: prefs.setTextDirection,
               ),
               _sliderRow(
                 icon: Icons.view_stream_outlined,
