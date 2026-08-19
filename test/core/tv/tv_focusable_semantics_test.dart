@@ -28,6 +28,9 @@ void main() {
         isFocusable: true,
         isFocused: true,
         hasTapAction: true,
+        // Framework-supplied for anything focusable; matchesSemantics fails on
+        // any action it wasn't told to expect.
+        hasFocusAction: true,
       ),
     );
 
@@ -48,7 +51,12 @@ void main() {
     final node = tester.getSemantics(find.byType(TvFocusable));
     expect(
       node,
-      matchesSemantics(isButton: true, isFocusable: true, hasTapAction: true),
+      matchesSemantics(
+        isButton: true,
+        isFocusable: true,
+        hasTapAction: true,
+        hasFocusAction: true,
+      ),
     );
 
     handle.dispose();

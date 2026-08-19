@@ -134,6 +134,9 @@ void main() {
           isButton: true,
           isFocusable: true,
           hasTapAction: true,
+          // Framework-supplied for anything focusable; matchesSemantics fails
+          // on any action it wasn't told to expect.
+          hasFocusAction: true,
         ),
       );
 
