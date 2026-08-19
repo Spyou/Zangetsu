@@ -433,6 +433,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // to maxScrollExtent) once the chapter's actually been scrolled to the
     // bottom.
     final showNext = _atEnd && hasNext;
+    final direction = resolveNovelDirection(prefs, text.html);
 
     // Lazy sliver HTML instead of a paragraph-per-ListView-item — a long
     // chapter with a few huge paragraphs used to still lay those out (and
@@ -441,68 +442,79 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // progress/resume/mark-read (all pixels/maxScrollExtent based) are
     // untouched — <img> tags render via the package's own bundled
     // cached-network-image support, no wiring needed here.
+    //
+    // Wrapped in [Directionality] so Arabic (and other RTL-script) chapters
+    // read right-to-left: 'text-align: start' below then resolves to right
+    // instead of left, and HtmlWidget mirrors block layout to match.
     return SafeArea(
-      child: CustomScrollView(
-        controller: _scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverPadding(
-            padding: EdgeInsets.symmetric(
-              horizontal: prefs.marginWidth,
-              vertical: 32,
+      child: Directionality(
+        textDirection: direction,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: EdgeInsets.symmetric(
+                horizontal: prefs.marginWidth,
+                vertical: 32,
+              ),
+              sliver: HtmlWidget(
+                cleanNovelHtml(text.html),
+                renderMode: RenderMode.sliverList,
+                textStyle: base,
+                // HtmlWidget caches its built tree and only re-renders when the
+                // HTML or one of these triggers changes — a changed `textStyle`
+                // alone does NOT re-render it. So every setting that feeds `base`
+                // (font size/family/line height/colour) or `customStylesBuilder`
+                // (spacing/alignment/direction) has to be listed here, or the
+                // slider moves but the text doesn't.
+                rebuildTriggers: [
+                  prefs.fontSize,
+                  prefs.fontFamily,
+                  prefs.lineHeight,
+                  theme.text,
+                  prefs.paragraphSpacing,
+                  prefs.textAlignJustify,
+                  direction,
+                ],
+                customStylesBuilder: (element) {
+                  // Force font size + line height as CSS on every element so a
+                  // source that baked its own sizing in can't win over the
+                  // reader's setting (textStyle alone loses to inline CSS).
+                  final styles = <String, String>{
+                    'font-size': '${prefs.fontSize}px',
+                    'line-height': '${prefs.lineHeight}',
+                    'direction': direction == TextDirection.rtl
+                        ? 'rtl'
+                        : 'ltr',
+                  };
+                  if (element.localName == 'p' || element.localName == 'div') {
+                    styles['margin'] = '0 0 ${prefs.paragraphSpacing}px 0';
+                    styles['text-align'] = prefs.textAlignJustify
+                        ? 'justify'
+                        : 'start';
+                  }
+                  return styles;
+                },
+              ),
             ),
-            sliver: HtmlWidget(
-              cleanNovelHtml(text.html),
-              renderMode: RenderMode.sliverList,
-              textStyle: base,
-              // HtmlWidget caches its built tree and only re-renders when the
-              // HTML or one of these triggers changes — a changed `textStyle`
-              // alone does NOT re-render it. So every setting that feeds `base`
-              // (font size/family/line height/colour) or `customStylesBuilder`
-              // (spacing/alignment) has to be listed here, or the slider moves
-              // but the text doesn't.
-              rebuildTriggers: [
-                prefs.fontSize,
-                prefs.fontFamily,
-                prefs.lineHeight,
-                theme.text,
-                prefs.paragraphSpacing,
-                prefs.textAlignJustify,
-              ],
-              customStylesBuilder: (element) {
-                // Force font size + line height as CSS on every element so a
-                // source that baked its own sizing in can't win over the
-                // reader's setting (textStyle alone loses to inline CSS).
-                final styles = <String, String>{
-                  'font-size': '${prefs.fontSize}px',
-                  'line-height': '${prefs.lineHeight}',
-                };
-                if (element.localName == 'p' || element.localName == 'div') {
-                  styles['margin'] = '0 0 ${prefs.paragraphSpacing}px 0';
-                  styles['text-align'] = prefs.textAlignJustify
-                      ? 'justify'
-                      : 'start';
-                }
-                return styles;
-              },
-            ),
-          ),
-          if (showNext)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 28, bottom: 40),
-                child: Center(
-                  child: TextButton(
-                    onPressed: () => _goToChapter(_index + 1),
-                    child: Text(
-                      'Next chapter →',
-                      style: AppText.body.copyWith(color: AppColors.accent),
+            if (showNext)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 28, bottom: 40),
+                  child: Center(
+                    child: TextButton(
+                      onPressed: () => _goToChapter(_index + 1),
+                      child: Text(
+                        'Next chapter →',
+                        style: AppText.body.copyWith(color: AppColors.accent),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -551,50 +563,57 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       height: prefs.lineHeight,
       color: theme.text,
     );
+    final direction = resolveNovelDirection(prefs, text.html);
     return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // The page's text area, matching the item padding below exactly
-          // (horizontal margin each side, 32 top + 32 bottom) so a paginated
-          // page fills the view without ever overflowing it.
-          final pageSize = Size(
-            (constraints.maxWidth - prefs.marginWidth * 2).clamp(
-              1.0,
-              double.infinity,
-            ),
-            (constraints.maxHeight - 64).clamp(1.0, double.infinity),
-          );
-          _ensurePaginated(text.html, base, pageSize);
-          final pages = _pages;
-          return GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (d) =>
-                _handlePageTap(d.localPosition.dx, constraints.maxWidth),
-            child: PageView.builder(
-              controller: _pageController,
-              itemCount: pages.isEmpty ? 1 : pages.length,
-              onPageChanged: _onPageChanged,
-              itemBuilder: (context, index) {
-                if (pages.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: prefs.marginWidth,
-                    vertical: 32,
-                  ),
-                  child: Align(
-                    alignment: Alignment.topLeft,
-                    child: Text.rich(
-                      pages[index],
-                      textAlign: prefs.textAlignJustify
-                          ? TextAlign.justify
-                          : TextAlign.start,
+      child: Directionality(
+        // Same auto/user-forced direction as the scroll reader. `textAlign:
+        // start` and `AlignmentDirectional.topStart` below then resolve
+        // against it, so an RTL chapter's pages read right-to-left.
+        textDirection: direction,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // The page's text area, matching the item padding below exactly
+            // (horizontal margin each side, 32 top + 32 bottom) so a paginated
+            // page fills the view without ever overflowing it.
+            final pageSize = Size(
+              (constraints.maxWidth - prefs.marginWidth * 2).clamp(
+                1.0,
+                double.infinity,
+              ),
+              (constraints.maxHeight - 64).clamp(1.0, double.infinity),
+            );
+            _ensurePaginated(text.html, base, pageSize);
+            final pages = _pages;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (d) =>
+                  _handlePageTap(d.localPosition.dx, constraints.maxWidth),
+              child: PageView.builder(
+                controller: _pageController,
+                itemCount: pages.isEmpty ? 1 : pages.length,
+                onPageChanged: _onPageChanged,
+                itemBuilder: (context, index) {
+                  if (pages.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: prefs.marginWidth,
+                      vertical: 32,
                     ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
+                    child: Align(
+                      alignment: AlignmentDirectional.topStart,
+                      child: Text.rich(
+                        pages[index],
+                        textAlign: prefs.textAlignJustify
+                            ? TextAlign.justify
+                            : TextAlign.start,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -808,6 +827,11 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             (value: 'left', label: 'Left'),
             (value: 'justify', label: 'Justify'),
           ];
+          const directionOptions = <({String value, String label})>[
+            (value: 'auto', label: 'Auto'),
+            (value: 'ltr', label: 'LTR'),
+            (value: 'rtl', label: 'RTL'),
+          ];
 
           return ReaderSheetShell(
             child: SafeArea(
@@ -885,6 +909,16 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                 () =>
                                     prefs.setTextAlignJustify(v == 'justify'),
                               ),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.format_textdirection_r_to_l_rounded,
+                            label: 'Direction',
+                            child: ReaderSegmentedControl(
+                              options: directionOptions,
+                              selected: prefs.textDirection,
+                              onSelect: (v) =>
+                                  apply(() => prefs.setTextDirection(v)),
                             ),
                           ),
                           readerSheetRow(
@@ -1182,6 +1216,41 @@ String cleanNovelHtml(String html) {
         '',
       )
       .replaceAll(RegExp(r'</?font[^>]*>', caseSensitive: false), '');
+}
+
+/// Matches characters from RTL scripts (Arabic + its supplement/presentation
+/// blocks, plus Hebrew) so [resolveNovelDirection] can auto-detect direction
+/// straight from chapter text — no per-source configuration needed.
+final RegExp _rtlChar = RegExp(
+  r'[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]',
+);
+
+/// True if at least a third of a sample of the chapter's letters are from an
+/// RTL script. A ratio (not "any match") avoids false positives on chapters
+/// that are mostly Latin text with the odd Arabic name or quote embedded.
+bool _looksRtl(String html) {
+  final plain = html
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .substring(0, html.length < 4000 ? html.length : 4000);
+  final letters = plain.replaceAll(RegExp(r'[^\p{L}]', unicode: true), '');
+  if (letters.isEmpty) return false;
+  final rtlCount = _rtlChar.allMatches(letters).length;
+  return rtlCount / letters.length > 0.33;
+}
+
+/// Resolves the effective [TextDirection] for a chapter: an explicit user
+/// choice in Settings wins outright, otherwise it's auto-detected from the
+/// chapter's own text so Arabic (and other RTL) novels default to reading
+/// right-to-left without a manual per-source toggle.
+TextDirection resolveNovelDirection(ReaderPrefs prefs, String html) {
+  switch (prefs.textDirection) {
+    case 'rtl':
+      return TextDirection.rtl;
+    case 'ltr':
+      return TextDirection.ltr;
+    default:
+      return _looksRtl(html) ? TextDirection.rtl : TextDirection.ltr;
+  }
 }
 
 List<InlineSpan> novelSpans(

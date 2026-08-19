@@ -166,4 +166,12 @@ class ReaderPrefs {
       _box.get('novelPaginated', defaultValue: false) as bool;
   Future<void> setNovelPaginated(bool value) =>
       _box.put('novelPaginated', value);
+
+  /// Novel text direction: 'auto' | 'ltr' | 'rtl'. 'auto' detects RTL scripts
+  /// (Arabic, Hebrew, ...) from the chapter text itself so Arabic novels read
+  /// right-to-left without the user having to flip a setting per source.
+  String get textDirection =>
+      _box.get('textDirection', defaultValue: 'auto') as String;
+  Future<void> setTextDirection(String value) =>
+      _box.put('textDirection', value);
 }
