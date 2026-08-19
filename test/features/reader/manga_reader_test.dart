@@ -415,12 +415,13 @@ Future<void> settle(WidgetTester tester) async {
 /// between triggering it and checking here.
 ///
 /// [width] must be the same `readerDecodeWidth` result the reader itself
-/// computed (via [_decodeWidthFor]) — the reader now precaches through a
-/// `ResizeImage`-wrapped, `maxWidth`-bounded provider (so the eventual
-/// on-screen `CachedNetworkImage`'s `memCacheWidth`/`maxWidthDiskCache`
-/// resolves to the very entry `_preload` warmed, instead of decoding the
-/// page a second time), which changes the provider's cache key from a bare
-/// `CachedNetworkImageProvider(url)`.
+/// computed (via [_decodeWidthFor]), since the on-screen page resolves
+/// through a `ResizeImage`-wrapped, `maxWidth`-bounded provider — a
+/// different cache key from a bare `CachedNetworkImageProvider(url)`.
+///
+/// Preloading no longer shows up here at all: it warms the disk cache
+/// rather than decoding into memory, so these checks are now about what
+/// should be *absent* from the image cache.
 Future<bool> _imageTracked(String url, int width) async {
   final key = await ResizeImage.resizeIfNeeded(
     width,
@@ -958,7 +959,7 @@ void main() {
     );
 
     testWidgets(
-      'landing on a page precaches exactly the next 3 pages, not more',
+      'landing on a page leaves preloaded pages out of the image cache',
       (tester) async {
         await tester.runAsync(() => sl<ReaderPrefs>().setDirection('ltr'));
         final sixPages = pages(6);
@@ -968,32 +969,37 @@ void main() {
         await settle(tester);
         final width = _decodeWidthFor(tester);
 
-        // preloadWindow(0, 6) == [1, 2, 3] — those, and only those, should be
-        // registered in Flutter's global image cache.
+        // Preloading warms the disk cache and nothing else. It used to call
+        // precacheImage, which decoded each page into the global image cache —
+        // roughly 28MB a page against a 100MB budget, so a few pages ahead
+        // evicted the ones already decoded and the reader paid to decode them
+        // again on the way past. Only the page on screen belongs in there now.
         expect(
           await _imageTracked(sixPages[1].url, width),
-          isTrue,
-          reason: 'page 1 should be preloaded',
-        );
-        expect(
-          await _imageTracked(sixPages[2].url, width),
-          isTrue,
-          reason: 'page 2 should be preloaded',
-        );
-        expect(
-          await _imageTracked(sixPages[3].url, width),
-          isTrue,
-          reason: 'page 3 should be preloaded',
+          isFalse,
+          reason: 'preload warms disk, not the image cache',
         );
         expect(
           await _imageTracked(sixPages[4].url, width),
           isFalse,
-          reason: 'page 4 is outside the 3-page preload window',
+          reason: 'well outside the window either way',
         );
 
         await disposeHarness(tester);
       },
     );
+
+    test('preloadWindow stays ahead of the page and inside the chapter', () {
+      // The bounds the widget test can no longer observe now that preloading
+      // is invisible to the image cache.
+      expect(preloadWindow(0, 6, count: 3), [1, 2, 3]);
+      expect(preloadWindow(15, 20, count: 3), [16, 17, 18]);
+      // Never past the last page, and never the page you're already on.
+      expect(preloadWindow(18, 20, count: 3), [19]);
+      expect(preloadWindow(19, 20, count: 3), isEmpty);
+      // The shipped default reaches further than the three it started with.
+      expect(preloadWindow(0, 20, count: 6), [1, 2, 3, 4, 5, 6]);
+    });
 
     // ── Slider drag throttling (paged + vertical) ────────────────────────
     //
@@ -1054,25 +1060,14 @@ void main() {
           1,
           reason: 'one save for the whole drag, not one per tick',
         );
-        // preloadWindow(15, 20) == [16, 17, 18] — the final position only.
-        expect(await _imageTracked(twentyPages[16].url, width), isTrue);
-        expect(await _imageTracked(twentyPages[17].url, width), isTrue);
-        expect(await _imageTracked(twentyPages[18].url, width), isTrue);
-        // preloadWindow(2, 20) == [3, 4, 5] and preloadWindow(3, 20) ==
-        // [4, 5, 6] — page 5/6 are only reachable via one of those leaking.
+        // The save count above is what proves the drag was throttled. Preload
+        // used to be checked here too, by looking for mid-drag pages in the
+        // image cache — it warms the disk cache now, so nothing from any tick
+        // lands there. `preloadWindow` covers the bounds separately.
         expect(
-          await _imageTracked(twentyPages[5].url, width),
+          await _imageTracked(twentyPages[16].url, width),
           isFalse,
-          reason:
-              'would be tracked if the page-2 mid-drag tick had leaked '
-              'a preload',
-        );
-        expect(
-          await _imageTracked(twentyPages[6].url, width),
-          isFalse,
-          reason:
-              'would be tracked if the page-3 mid-drag tick had leaked '
-              'a preload',
+          reason: 'preload warms disk, not the image cache',
         );
 
         await disposeHarness(tester);
@@ -1128,13 +1123,15 @@ void main() {
           1,
           reason: 'one save for the whole drag, not one per tick',
         );
-        // preloadWindow(15, 20) == [16, 17, 18] — proves _commitSeek's
-        // preload actually fires (positive check; see the comment above for
-        // why a negative "nothing else got preloaded" check isn't reliable
-        // here).
-        expect(await _imageTracked(twentyPages[16].url, width), isTrue);
-        expect(await _imageTracked(twentyPages[17].url, width), isTrue);
-        expect(await _imageTracked(twentyPages[18].url, width), isTrue);
+        // This used to prove _commitSeek's preload fired, by finding the
+        // window's pages in the image cache. Preload warms the disk cache
+        // now, so nothing lands there — the save count above is what shows
+        // the seek committed, and `preloadWindow` covers the bounds.
+        expect(
+          await _imageTracked(twentyPages[16].url, width),
+          isFalse,
+          reason: 'preload warms disk, not the image cache',
+        );
 
         await disposeHarness(tester);
       },
