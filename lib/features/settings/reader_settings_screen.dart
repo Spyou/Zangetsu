@@ -60,7 +60,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     ('serif', 'Serif'),
     ('system', 'System'),
   ];
-  static const List<(String, String)> _directionOptions = [
+  static const List<(String, String)> _textDirectionOptions = [
     ('auto', 'Auto'),
     ('ltr', 'Left to right'),
     ('rtl', 'Right to left'),
@@ -399,7 +399,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               _pickerRow(
                 icon: Icons.format_textdirection_r_to_l_rounded,
                 title: 'Text direction',
-                options: _directionOptions,
+                options: _textDirectionOptions,
                 current: prefs.textDirection,
                 onPicked: prefs.setTextDirection,
               ),
