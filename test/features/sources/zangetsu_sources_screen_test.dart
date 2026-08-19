@@ -99,6 +99,9 @@ void main() {
           isFocusable: true,
           isFocused: true,
           hasTapAction: true,
+          // Framework-supplied for anything focusable; matchesSemantics fails
+          // on any action it wasn't told to expect.
+          hasFocusAction: true,
         ),
       );
       // Each of these is a single announced node — no leftover sibling
