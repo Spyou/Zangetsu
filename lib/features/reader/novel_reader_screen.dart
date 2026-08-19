@@ -1229,9 +1229,15 @@ final RegExp _rtlChar = RegExp(
 /// RTL script. A ratio (not "any match") avoids false positives on chapters
 /// that are mostly Latin text with the odd Arabic name or quote embedded.
 bool _looksRtl(String html) {
-  final plain = html
-      .replaceAll(RegExp(r'<[^>]*>'), ' ')
-      .substring(0, html.length < 4000 ? html.length : 4000);
+  // Clamp against the stripped text, not the html it came from: each tag
+  // collapses to a single space, so `plain` is the shorter of the two, and
+  // slicing it to the html's length overran the end on any chapter shorter
+  // than the sample size.
+  final stripped = html.replaceAll(RegExp(r'<[^>]*>'), ' ');
+  final plain = stripped.substring(
+    0,
+    stripped.length < 4000 ? stripped.length : 4000,
+  );
   final letters = plain.replaceAll(RegExp(r'[^\p{L}]', unicode: true), '');
   if (letters.isEmpty) return false;
   final rtlCount = _rtlChar.allMatches(letters).length;
