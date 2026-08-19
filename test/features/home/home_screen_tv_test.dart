@@ -131,6 +131,9 @@ void main() {
 
       // Hero Play / My List / Info buttons each carry their visible label,
       // and read as a focusable button with a tap action. Play autofocuses.
+      // The focus action comes from the framework for anything focusable —
+      // matchesSemantics asserts every action it isn't told about is absent,
+      // so it has to be named here or the whole matcher fails.
       for (final label in ['Play', 'My List', 'Info']) {
         expect(
           tester.getSemantics(find.bySemanticsLabel(label)),
@@ -140,6 +143,7 @@ void main() {
             isFocusable: true,
             isFocused: label == 'Play',
             hasTapAction: true,
+            hasFocusAction: true,
           ),
         );
       }
@@ -154,6 +158,7 @@ void main() {
           isButton: true,
           isFocusable: true,
           hasTapAction: true,
+          hasFocusAction: true,
         ),
       );
 
