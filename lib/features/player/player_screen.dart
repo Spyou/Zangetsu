@@ -139,7 +139,14 @@ class PlayerScreen extends StatefulWidget {
     this.imdbId,
     this.availableCategories = const [],
     this.joinRoomCode,
+    this.playerOverride,
   });
+
+  /// Set by the episode list's long-press sheet: play this one episode here,
+  /// ignoring the Settings default. Empty string means the built-in player
+  /// even when an external one is configured. Null keeps today's behaviour of
+  /// reading [PlaybackPrefs.externalPlayerPackage].
+  final String? playerOverride;
 
   final String sourceId;
   final ResumeStore resume;
@@ -210,6 +217,16 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen> {
+  /// Which player this screen should hand off to: the episode list's one-off
+  /// pick when there is one, otherwise the standing Settings default.
+  ///
+  /// Resolved in a single place because three separate branches consult it —
+  /// the initState hand-off, the header-gated proxy path, and the launch call.
+  /// Reading prefs directly in each is how an override gets honoured by two of
+  /// them and silently dropped by the third.
+  String get _chosenPlayer =>
+      widget.playerOverride ?? sl<PlaybackPrefs>().externalPlayerPackage;
+
   late final PlayerCubit _c;
   final WatchTogetherController _room = sl<WatchTogetherController>();
 
@@ -371,7 +388,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // this screen instead of starting the in-app player. Falls back to in-app
     // if the launch can't be set up, so playback never silently dies.
     if (Platform.isAndroid &&
-        sl<PlaybackPrefs>().externalPlayerPackage.isNotEmpty) {
+        _chosenPlayer.isNotEmpty) {
       _launchExternalThenPop();
       return;
     }
@@ -642,7 +659,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Fetching through our proxy puts the source UA back on the wire.
       // MX/Just Player (header-forwarding) and non-header-gated sources never
       // reach this branch — the unchanged direct hand-off below covers them.
-      final extPkg = sl<PlaybackPrefs>().externalPlayerPackage;
+      final extPkg = _chosenPlayer;
       var playUrl = src.url;
       var launchHeaders = src.headers ?? const <String, String>{};
       if (headerGatedButPlayerCant(src.headers, extPkg)) {
@@ -701,7 +718,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       ].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
       final res = await ExternalPlayer().launch(
         url: playUrl,
-        package: sl<PlaybackPrefs>().externalPlayerPackage,
+        package: _chosenPlayer,
         title: title.isEmpty ? null : title,
         headers: launchHeaders,
         subtitles: subs,

@@ -25,6 +25,7 @@ class _EpisodesTab extends StatefulWidget {
     required this.hasAnyMark,
     this.trackerProgress,
     required this.onOpen,
+    this.onPickPlayer,
     required this.onInfo,
     this.onRefresh,
     required this.onDownload,
@@ -51,6 +52,10 @@ class _EpisodesTab extends StatefulWidget {
   /// below it render as watched (grey-out), merged with local playback marks.
   final int? trackerProgress;
   final void Function(int fullIndex) onOpen;
+
+  /// Long-press an episode → pick which player opens it, this once. Null on
+  /// the reading path: a chapter opens the reader, so there's nothing to pick.
+  final void Function(int fullIndex)? onPickPlayer;
 
   /// Opens the small circular ⓘ button → jumps to the Details tab.
   final VoidCallback onInfo;
@@ -298,6 +303,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isResume: st.resume,
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
+            onLongPress: widget.onPickPlayer == null
+                ? null
+                : () => widget.onPickPlayer!(fullIndex),
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
             showId: widget.showId,
@@ -333,6 +341,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             highlight: _highlightEpId == ep.id,
             fraction: st.fraction,
             onTap: () => widget.onOpen(fullIndex),
+            onLongPress: widget.onPickPlayer == null
+                ? null
+                : () => widget.onPickPlayer!(fullIndex),
           );
         },
       ),
@@ -661,6 +672,7 @@ class _EpisodeGridTile extends StatelessWidget {
     required this.highlight,
     required this.fraction,
     required this.onTap,
+    this.onLongPress,
   });
 
   final int number;
@@ -671,6 +683,11 @@ class _EpisodeGridTile extends StatelessWidget {
   final bool highlight;
   final double fraction;
   final VoidCallback onTap;
+
+  /// Long-press opens the "play this episode with" sheet. Optional so the
+  /// reading path can leave it off — a chapter opens the reader, where a
+  /// player picker has nothing to say.
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -695,6 +712,7 @@ class _EpisodeGridTile extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Stack(
           children: [
             Center(
@@ -974,6 +992,7 @@ class _EpisodeRow extends StatelessWidget {
     required this.isResume,
     required this.fraction,
     required this.onTap,
+    this.onLongPress,
     required this.onDownload,
     required this.sourceId,
     required this.showId,
@@ -992,6 +1011,11 @@ class _EpisodeRow extends StatelessWidget {
   final bool isResume;
   final double fraction;
   final VoidCallback onTap;
+
+  /// Long-press opens the "play this episode with" sheet. Optional because the
+  /// reading path reuses none of this — a chapter opens the reader, where a
+  /// player picker has nothing to say.
+  final VoidCallback? onLongPress;
   final VoidCallback onDownload;
   final bool showDownload;
   final String sourceId;
@@ -1038,6 +1062,7 @@ class _EpisodeRow extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
+      onLongPress: onLongPress,
       splashColor: AppColors.accentSoft,
       highlightColor: AppColors.surface,
       child: Padding(
