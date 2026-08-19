@@ -555,6 +555,24 @@ class _DetailViewState extends State<_DetailView>
 
   // ── Cross-source player launch — PRESERVED EXACTLY ────────────────────────
 
+  /// Push a manual watched mark out to whichever trackers are connected.
+  ///
+  /// Only whole episode numbers: tracker progress is an integer, so a "12.5"
+  /// recap or special would either round into a real episode or be rejected.
+  /// Same fan-out the player uses when you finish an episode normally.
+  Future<void> _scrobbleUpTo(Episode ep, MediaDetail detail) async {
+    final n = ep.number;
+    if (n == null || n <= 0 || n != n.truncateToDouble()) return;
+    await sl<TrackerHub>().scrobble(
+      malId: detail.malId ?? widget.item.malId,
+      title: detail.type == ProviderType.anime ? detail.title : null,
+      tmdbId: widget.item.tmdbId,
+      tmdbIsTv: widget.item.tmdbIsTv,
+      imdbId: widget.item.imdbId,
+      episode: n.toInt(),
+    );
+  }
+
   /// Long-press an episode → choose where it plays, this once. Settings keeps
   /// owning the standing default, so trying VLC on one episode doesn't quietly
   /// rewire every later tap. Dismissing plays nothing — a long-press that
@@ -572,6 +590,8 @@ class _DetailViewState extends State<_DetailView>
         : 'Episode ${ep.number?.toInt() ?? index + 1}';
     final prefs = sl<PlaybackPrefs>();
 
+    final resume = sl<ResumeStore>();
+    final hub = sl<TrackerHub>();
     final action = await showEpisodeActionSheet(
       context,
       episodeLabel: label,
@@ -580,6 +600,10 @@ class _DetailViewState extends State<_DetailView>
           : (prefs.externalPlayerLabel.isEmpty
                 ? 'External'
                 : prefs.externalPlayerLabel),
+      isWatched:
+          resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
+          false,
+      tracksToServices: hub.anyConnected,
     );
     if (action == null || !mounted) return;
 
@@ -619,6 +643,52 @@ class _DetailViewState extends State<_DetailView>
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Links reloaded')));
+
+      case EpisodeAction.toggleWatched:
+        final nowWatched =
+            !(resume
+                    .get(widget.item.sourceId, widget.item.url, ep.id)
+                    ?.finished ??
+                false);
+        await resume.setWatched(
+          widget.item.sourceId,
+          widget.item.url,
+          ep.id,
+          watched: nowWatched,
+        );
+        // Only forward when marking. Trackers store a high-water mark, not a
+        // set, so there's no "unwatch episode 12" to send — dropping progress
+        // back would be a guess at what the user wanted their list to say.
+        if (nowWatched) await _scrobbleUpTo(ep, detail);
+        if (!mounted) return;
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(nowWatched ? 'Marked as watched' : 'Marked unwatched'),
+          ),
+        );
+
+      case EpisodeAction.markAboveWatched:
+        // Everything up to and including the one held: you came back
+        // mid-season and want the backlog cleared, and excluding the episode
+        // you pressed would mean marking it separately every time.
+        for (var i = 0; i <= index; i++) {
+          await resume.setWatched(
+            widget.item.sourceId,
+            widget.item.url,
+            episodes[i].id,
+            watched: true,
+          );
+        }
+        // One tracker write for the highest episode, not one per episode —
+        // progress is a high-water mark, so the rest are implied and firing
+        // twelve updates would just rate-limit the account.
+        await _scrobbleUpTo(ep, detail);
+        if (!mounted) return;
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Marked ${index + 1} episodes as watched')),
+        );
     }
   }
 

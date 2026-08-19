@@ -17,6 +17,15 @@ enum EpisodeAction {
   /// Drop this episode's cached links and play again. For when a mirror has
   /// expired and every attempt fails on links that looked fine 20 minutes ago.
   reloadLinks,
+
+  /// Flip this episode's watched state by hand, and move any connected
+  /// tracker with it.
+  toggleWatched,
+
+  /// Mark this episode and everything before it watched — the "came back
+  /// mid-season" case, where marking twelve episodes one at a time is the
+  /// reason people give up and edit their list on the website instead.
+  markAboveWatched,
 }
 
 /// The long-press menu itself. Kept separate from the player sheet so the
@@ -26,6 +35,14 @@ Future<EpisodeAction?> showEpisodeActionSheet(
   BuildContext context, {
   required String episodeLabel,
   required String currentPlayerLabel,
+
+  /// Drives the watched row's wording — the same row unmarks when the episode
+  /// is already watched, so a mis-tap isn't a one-way door.
+  required bool isWatched,
+
+  /// Whether any tracker is linked. Only used for the subtitle, so nobody is
+  /// surprised that marking an episode moved their AniList progress.
+  required bool tracksToServices,
 }) {
   return showModalBottomSheet<EpisodeAction>(
     context: context,
@@ -71,6 +88,24 @@ Future<EpisodeAction?> showEpisodeActionSheet(
             subtitle: 'Fetch fresh streams if playback keeps failing',
             onTap: () =>
                 Navigator.pop(sheetContext, EpisodeAction.reloadLinks),
+          ),
+          Divider(height: 1, color: AppColors.hairline),
+          _PlayerRow(
+            icon: isWatched
+                ? Icons.remove_done_rounded
+                : Icons.check_circle_outline_rounded,
+            label: isWatched ? 'Mark as unwatched' : 'Mark as watched',
+            subtitle: tracksToServices
+                ? 'Also updates your connected trackers'
+                : null,
+            onTap: () =>
+                Navigator.pop(sheetContext, EpisodeAction.toggleWatched),
+          ),
+          _PlayerRow(
+            icon: Icons.done_all_rounded,
+            label: 'Mark this and all above as watched',
+            onTap: () =>
+                Navigator.pop(sheetContext, EpisodeAction.markAboveWatched),
           ),
           const SizedBox(height: 8),
         ],
