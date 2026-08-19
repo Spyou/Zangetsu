@@ -41,6 +41,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/ui/episode_player_sheet.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/tracker_sync_sheet.dart';
+import '../../core/tracker/airing_countdown.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_binding_store.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -363,6 +364,12 @@ class _DetailViewState extends State<_DetailView>
   // Tracker-driven episode grey-out: the connected tracker's watched-episode
   // count, fetched once after the detail loads (null until then / no match).
   int? _trackerProgress;
+
+  /// Next episode to air, from the tracker entry fetched for progress. Null
+  /// for a finished show, a movie, or a title with no tracker match — the row
+  /// hides rather than claiming it doesn't know.
+  int? _nextAiringEpisode;
+  DateTime? _nextAiringAt;
   bool _trackerFetchStarted = false;
 
   /// Fetch the connected tracker's episode progress once, so episodes already
@@ -390,9 +397,27 @@ class _DetailViewState extends State<_DetailView>
           novel: detail.type == ProviderType.novel,
         )
         .then((e) {
+      if (!mounted) return;
+      // Same response the progress comes from — the airing fields were already
+      // being fetched and thrown away, so showing them costs no extra request.
+      // Both null for a finished show, a movie, or a title we couldn't match.
+      final ep = e?.nextAiringEpisode;
+      final at = e?.nextAiringAt;
       final p = e?.progress;
-      if (!mounted || p == null || p <= 0) return;
-      setState(() => _trackerProgress = p);
+      if (p == null || p <= 0) {
+        if (ep != null && at != null) {
+          setState(() {
+            _nextAiringEpisode = ep;
+            _nextAiringAt = at;
+          });
+        }
+        return;
+      }
+      setState(() {
+        _trackerProgress = p;
+        _nextAiringEpisode = ep;
+        _nextAiringAt = at;
+      });
     });
   }
 
@@ -1591,7 +1616,12 @@ class _DetailViewState extends State<_DetailView>
               indicatorSize: TabBarIndicatorSize.label,
               indicator: UnderlineTabIndicator(
                 borderSide: BorderSide(color: AppColors.accent, width: 2.5),
-                insets: EdgeInsets.symmetric(horizontal: 2),
+                // Bottom inset lifts the line toward the label. A Tab is 46
+                // high for 15px text, so the indicator otherwise draws at the
+                // bottom of that box with a visible gap under the word.
+                // Raising the line rather than shortening the tab keeps the
+                // tap target at its full height.
+                insets: EdgeInsets.only(left: 2, right: 2, bottom: 8),
               ),
               // Remove the full-width underline divider under the bar.
               dividerColor: Colors.transparent,
@@ -1633,6 +1663,8 @@ class _DetailViewState extends State<_DetailView>
             resumeIndex: _resumeIndex,
             hasAnyMark: hasAnyMark,
             trackerProgress: _trackerProgress,
+            nextAiringEpisode: _nextAiringEpisode,
+            nextAiringAt: _nextAiringAt,
             onOpen: (fullIndex) =>
                 _openPlayer(eps, fullIndex, detail, category),
             // Reading types resolve to a reader, so there's no player to pick.
@@ -1640,7 +1672,6 @@ class _DetailViewState extends State<_DetailView>
                 ? null
                 : (fullIndex) =>
                       _pickPlayerFor(eps, fullIndex, detail, category),
-            onInfo: () => _tabController.animateTo(3),
             onRefresh: cubit.refresh,
             onDownload: (ep) => _downloadSingle(ep, detail, category),
             showDownload: !isReading,

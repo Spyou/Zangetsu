@@ -24,9 +24,10 @@ class _EpisodesTab extends StatefulWidget {
     required this.resumeIndex,
     required this.hasAnyMark,
     this.trackerProgress,
+    this.nextAiringEpisode,
+    this.nextAiringAt,
     required this.onOpen,
     this.onPickPlayer,
-    required this.onInfo,
     this.onRefresh,
     required this.onDownload,
     this.showDownload = true,
@@ -51,14 +52,17 @@ class _EpisodesTab extends StatefulWidget {
   /// The connected tracker's watched-episode count, or null. Episodes at or
   /// below it render as watched (grey-out), merged with local playback marks.
   final int? trackerProgress;
+
+  /// Next episode to air and when. Both null unless the title matched a
+  /// tracker and is still airing, which is what keeps the row off finished
+  /// shows and movies instead of showing an empty countdown.
+  final int? nextAiringEpisode;
+  final DateTime? nextAiringAt;
   final void Function(int fullIndex) onOpen;
 
   /// Long-press an episode → pick which player opens it, this once. Null on
   /// the reading path: a chapter opens the reader, so there's nothing to pick.
   final void Function(int fullIndex)? onPickPlayer;
-
-  /// Opens the small circular ⓘ button → jumps to the Details tab.
-  final VoidCallback onInfo;
 
   /// Force-refresh the list past the 10-min source cache (header ↻ button).
   /// Null hides the button.
@@ -226,7 +230,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             seasons: widget.seasonSet.toList()..sort(),
             currentSeason: widget.currentSeason,
             onSelectSeason: widget.onSelectSeason,
-            onInfo: widget.onInfo,
             onRefresh: widget.onRefresh,
             grid: _grid,
             onToggleView: () => setState(() => _grid = !_grid),
@@ -234,6 +237,35 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             isReading: widget.isReading,
           ),
         ),
+        // Only when the tracker says the show is still airing. Sits under the
+        // header so it reads as part of the episode list rather than another
+        // thing competing with the hero.
+        if (widget.nextAiringEpisode != null && widget.nextAiringAt != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: RichText(
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                text: TextSpan(
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
+                  children: [
+                    TextSpan(text: 'Episode ${widget.nextAiringEpisode} '),
+                    const TextSpan(text: 'airs in '),
+                    // The countdown carries the weight — it's the part worth
+                    // glancing at; the rest is scaffolding around it.
+                    TextSpan(
+                      text: airsIn(widget.nextAiringAt!, long: true),
+                      style: AppText.body.copyWith(
+                        color: AppColors.accent,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         if (showRanges)
           SliverToBoxAdapter(
             child: _RangeChips(
@@ -362,7 +394,6 @@ class _EpisodesHeader extends StatelessWidget {
     required this.seasons,
     required this.currentSeason,
     required this.onSelectSeason,
-    required this.onInfo,
     this.onRefresh,
     required this.grid,
     required this.onToggleView,
@@ -374,7 +405,6 @@ class _EpisodesHeader extends StatelessWidget {
   final List<int> seasons;
   final int currentSeason;
   final ValueChanged<int> onSelectSeason;
-  final VoidCallback onInfo;
 
   /// Force-refresh the list past the source cache (header ↻); null hides it.
   final Future<void> Function()? onRefresh;
@@ -507,11 +537,9 @@ class _EpisodesHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
               ],
-              _circle(
-                Icons.info_outline_rounded,
-                onInfo,
-                semanticLabel: 'Episode info',
-              ),
+              // The ⓘ that used to sit here jumped to the Details tab — which
+              // is a tap away in the tab bar directly above it. Two controls,
+              // same destination, inches apart.
             ],
           ),
         ],

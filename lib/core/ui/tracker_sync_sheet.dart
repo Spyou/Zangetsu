@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../app_mode.dart';
 import '../di/injector.dart';
 import '../models/watch_status.dart';
+import '../tracker/airing_countdown.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
@@ -290,7 +291,7 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
             ),
             const SizedBox(width: 6),
             Text(
-              'Ep $_nextEp airs in ${_airsIn(_nextAt!)}',
+              'Ep $_nextEp airs in ${airsIn(_nextAt!)}',
               style: AppText.caption,
             ),
           ],
@@ -470,16 +471,6 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
     );
   }
 
-  static String _airsIn(DateTime at) {
-    final d = at.difference(DateTime.now());
-    if (d.isNegative) return 'now';
-    final days = d.inDays;
-    final hours = d.inHours % 24;
-    final mins = d.inMinutes % 60;
-    if (days > 0) return '${days}d ${hours}h';
-    if (hours > 0) return '${hours}h ${mins}m';
-    return '${mins}m';
-  }
 }
 
 /// Search each connected tracker for the correct entry and return the picked
