@@ -215,8 +215,11 @@ class _FakeRepo implements SourceRepository {
   }) => throw UnimplementedError();
 
   @override
-  void invalidateSources(String episodeUrl, {String? sourceId}) =>
-      throw UnimplementedError();
+  void invalidateSources(
+    String episodeUrl, {
+    String? sourceId,
+    bool includePrefetch = false,
+  }) => throw UnimplementedError();
 
   @override
   void prefetch(String episodeUrl, {String? sourceId}) =>
