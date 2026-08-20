@@ -23,6 +23,7 @@ import 'subtitle_style.dart';
 import 'subtitle_font_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/source_selection.dart';
@@ -35,8 +36,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/brand_loader.dart';
 import '../../core/ui/frosted_surface.dart';
 import '../../core/ui/subtitle_language_picker.dart';
-import '../detail/cubit/detail_cubit.dart'
-    show seasonOf, seasonsOf, cleanTitle;
+import '../detail/cubit/detail_cubit.dart' show seasonOf, seasonsOf;
 import '../../core/cast/cast_controller.dart';
 import '../../core/cast/cast_proxy.dart';
 import '../watch_together/watch_together_controller.dart';

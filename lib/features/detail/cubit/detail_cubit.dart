@@ -11,6 +11,8 @@ import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
 import '../../../core/repository/source_repository.dart';
 
+export '../../../core/models/episode_title.dart' show cleanTitle;
+
 /// Lifecycle of the detail load. Mirrors Sozo Read's `DetailStatus`
 /// (we drop `initial` — the cubit starts in `loading` since `load()`
 /// fires immediately on construction).
@@ -357,12 +359,6 @@ Set<int> seasonsOf(List<Episode> eps) {
     if (s != null) result.add(s);
   }
   return result;
-}
-
-/// Strip a leading season+episode prefix from a title so the episode
-/// row shows a clean title without redundant numbering.
-String cleanTitle(String title) {
-  return title.replaceFirst(RegExp(r'^S\d+\s+E\d+\s*[-–—]?\s*'), '').trim();
 }
 
 /// Whether to show the Sub/Dub toggle:

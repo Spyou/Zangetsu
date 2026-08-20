@@ -1076,14 +1076,7 @@ class _EpisodeRow extends StatelessWidget {
     // "Episode N" (or nothing); keep the source's own title when it has a real
     // one.
     final srcTitle = displayTitle.trim();
-    final isGenericSrc =
-        srcTitle.isEmpty ||
-        srcTitle.toLowerCase() == 'episode $epNum' ||
-        srcTitle.toLowerCase() == 'episode ${epNum.toString().padLeft(2, '0')}';
-    final metaTitle = ep.metaTitle?.trim();
-    final titleText = (isGenericSrc && metaTitle != null && metaTitle.isNotEmpty)
-        ? metaTitle
-        : srcTitle;
+    final titleText = episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
     final heading = titleText.isNotEmpty
         ? '$epNum. $titleText'
         : 'Episode $epNum';

@@ -14,9 +14,12 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/discord/discord_presence.dart';
 import '../../core/discord/discord_rpc.dart';
+import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/models/episode.dart';
+import '../../core/models/provider_info.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -345,6 +348,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   final List<StreamSubscription> _subs = [];
   Duration _lastPos = Duration.zero;
   Duration _lastDur = Duration.zero;
+  bool _playing = true;
   // The resume position we still need to reach. Set when a resume mark is
   // applied on open and cleared once playback actually reaches it. While set, a
   // re-open (e.g. the default-quality switch that fires right after resume, when
@@ -395,6 +399,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   bool _markedWatching = false;
   bool _defaultRateApplied = false; // default speed applied once per session
   bool _libassNoticeShown = false; // libass "disable if no subs" hint shown once
+  Timer? _discordPauseTimer;
+  bool _discordPaused = false;
 
   Episode get currentEpisode => episodes[state.currentIndex];
 
@@ -793,6 +799,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     // (HLS fake-extension relaxation, reconnect, …) are in effect for the file.
     unawaited(_mpvConfigured);
     _ensureFiller(); // background filler lookup for auto-skip (anime only)
+    unawaited(_enrichEpisodeTitles());
     emit(state.copyWith(tracks: player.state.tracks));
     _subs.add(
       player.stream.tracks.listen((t) {
@@ -813,7 +820,28 @@ class PlayerCubit extends Cubit<PlayerState> {
       }),
     );
     _subs.add(
+      player.stream.playing.listen((v) {
+        _playing = v;
+        if (v) {
+          _discordPaused = false;
+          _discordPauseTimer?.cancel();
+          _pushDiscordWatching();
+          return;
+        }
+        // Seek/buffer briefly reports not-playing. Only freeze Discord after
+        // a real pause holds.
+        _discordPauseTimer?.cancel();
+        _discordPauseTimer = Timer(const Duration(milliseconds: 600), () {
+          if (!_playing) {
+            _discordPaused = true;
+            _pushDiscordWatching();
+          }
+        });
+      }),
+    );
+    _subs.add(
       player.stream.position.listen((p) {
+        final jumped = (p - _lastPos).abs() > const Duration(seconds: 3);
         _lastPos = p;
         // Keep the resume target as a FLOOR for re-opens until we're safely past
         // it (NOT the instant it's touched — a re-open firing right then would
@@ -858,6 +886,8 @@ class PlayerCubit extends Cubit<PlayerState> {
         // write every ~5s. NOT gated on duration — downloaded HLS (concatenated
         // TS) often reports no duration, and we still want resume to work.
         final now = DateTime.now().millisecondsSinceEpoch;
+        if (jumped) _pushDiscordWatching();
+
         if (now - _lastHistoryMs >= 5000) {
           _lastHistoryMs = now;
           _persist();
@@ -880,6 +910,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     _subs.add(
       player.stream.duration.listen((d) {
         _lastDur = d;
+        if (d > Duration.zero) _pushDiscordWatching();
         // The duration arriving is mpv's "ready" signal (its STATE_READY): only
         // now is the stream reliably seekable. A remote MP4 reports duration
         // only after its moov atom loads, and any seek issued before that is
@@ -2014,17 +2045,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     );
     if (g != _gen) return; // superseded mid-open
     // Discord Rich Presence: announce the episode now playing.
-    final discordTitle = showTitle ?? scrobbleTitle;
-    if (discordTitle != null &&
-        discordTitle.isNotEmpty &&
-        sl.isRegistered<DiscordRpc>()) {
-      sl<DiscordRpc>().setWatching(
-        title: discordTitle,
-        episodeLabel: 'Episode ${currentEpisode.number}',
-        posterUrl: cover,
-        startMs: DateTime.now().millisecondsSinceEpoch,
-      );
-    }
+    _pushDiscordWatching();
     // Some streams ignore Media.start (the seek-on-open doesn't take), so the
     // user lands back at 0. Verify a moment later and re-seek if needed.
     if (start > Duration.zero) {
@@ -2627,6 +2648,49 @@ class PlayerCubit extends Cubit<PlayerState> {
     );
   }
 
+  /// Push "Watching {title}" with timestamps Discord interpolates into a
+  /// progress bar. Waits for a known duration so Discord doesn't keep a first
+  /// payload with no end time (rate-limited).
+  void _pushDiscordWatching() {
+    final discordTitle = showTitle ?? scrobbleTitle;
+    if (discordTitle == null ||
+        discordTitle.isEmpty ||
+        _lastDur <= Duration.zero ||
+        !sl.isRegistered<DiscordRpc>()) {
+      return;
+    }
+    unawaited(
+      sl<DiscordRpc>().setWatching(
+        title: discordTitle,
+        episodeLabel: discordEpisodeLabel(
+          currentEpisode,
+          fallbackNumber: state.currentIndex + 1,
+        ),
+        posterUrl: cover,
+        position: _lastPos,
+        duration: _lastDur,
+        playing: !_discordPaused,
+      ),
+    );
+  }
+
+  Future<void> _enrichEpisodeTitles() async {
+    if (!sl.isRegistered<EpisodeMetadataService>()) return;
+    try {
+      final next = await sl<EpisodeMetadataService>().enrich(
+        episodes: episodes,
+        type: (scrobbleTitle != null || malId != null)
+            ? ProviderType.anime
+            : ProviderType.movie,
+        malId: malId,
+        tmdbId: tmdbId,
+        tmdbIsTv: tmdbIsTv,
+      );
+      if (isClosed || identical(next, episodes)) return;
+      episodes = next;
+    } catch (_) {/* keep source titles */}
+  }
+
   /// Client-mode: apply the host's state without re-broadcasting. Seeks only on
   /// meaningful drift (the controller already gates with needsCorrection).
   Future<void> applyRemote(
@@ -2644,15 +2708,18 @@ class PlayerCubit extends Cubit<PlayerState> {
   @override
   Future<void> close() async {
     await _persist(flush: true);
-    // Leaving the player → drop the "Watching" presence back to browsing.
+    // Leaving the player → drop Watching. Do not immediately restore a
+    // "Playing" browse status; that is what kept the profile occupied after
+    // the episode ended. Detail screens set browsing on their own init.
     if (sl.isRegistered<DiscordRpc>()) {
-      sl<DiscordRpc>().setBrowsing(title: showTitle, posterUrl: cover);
+      sl<DiscordRpc>().clear(delay: DiscordRpc.playerExitClearDelay);
     }
     for (final s in _subs) {
       s.cancel();
     }
     _stallTimer?.cancel();
     _toastTimer?.cancel();
+    _discordPauseTimer?.cancel();
     // Stop any active torrent stream + delete its buffered pieces.
     await _stopTorrent();
     toast.dispose();

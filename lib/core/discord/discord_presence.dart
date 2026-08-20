@@ -1,3 +1,48 @@
+import '../models/episode.dart';
+import '../models/episode_title.dart';
+
+/// Presence "details" line: episode number plus a real title when we have one.
+/// Discord caps [details] at 128 characters.
+String? discordEpisodeLabel(Episode ep, {int? fallbackNumber}) {
+  final out = episodePresenceDetails(ep, fallbackNumber: fallbackNumber);
+  if (out == null) return null;
+  if (out.length <= 128) return out;
+  return '${out.substring(0, 127)}…';
+}
+
+/// Unix-ms timestamps Discord uses to draw a Rich Presence progress bar.
+///
+/// Both [startMs] and [endMs] must be set for a bar; start-only is elapsed
+/// time; omitting both (paused / unknown) shows no timer so the bar cannot
+/// keep marching on wall-clock time after a pause.
+({int? startMs, int? endMs}) discordPlaybackTimestamps({
+  required Duration position,
+  required Duration duration,
+  required bool playing,
+  DateTime? now,
+}) {
+  if (!playing) return (startMs: null, endMs: null);
+  final nowMs = (now ?? DateTime.now()).millisecondsSinceEpoch;
+  final posMs = position.inMilliseconds < 0 ? 0 : position.inMilliseconds;
+  final startMs = nowMs - posMs;
+  if (duration <= Duration.zero) return (startMs: startMs, endMs: null);
+  return (startMs: startMs, endMs: startMs + duration.inMilliseconds);
+}
+
+/// Gateway `op: 3` presence payload. A null [activity] is an explicit clear
+/// (`activities: []`) — dropping the socket without this leaves the last
+/// Rich Presence stuck on the profile.
+Map<String, dynamic> discordPresenceUpdate(DiscordActivity? activity, String appId) {
+  return {
+    'since': null,
+    'activities': activity == null
+        ? <dynamic>[]
+        : [activity.toJson(appId)],
+    'status': 'online',
+    'afk': false,
+  };
+}
+
 /// A Discord activity (Rich Presence). [type]: 0 Playing · 2 Listening ·
 /// 3 Watching. For Watching, [name] is what renders after "Watching ".
 class DiscordActivity {

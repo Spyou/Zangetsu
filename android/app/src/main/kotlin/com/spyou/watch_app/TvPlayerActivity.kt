@@ -126,6 +126,8 @@ class TvPlayerActivity : Activity() {
     private data class Skip(val start: Long, val end: Long, val type: String)
     private var skipIntervals: List<Skip> = emptyList()
     private var skipsFetchedFor = -1 // episode index skips were fetched for
+    private var timingReportedFor = -1 // episode index Dart was told duration for
+    private var userPaused = false // true only after an explicit pause press
     private var activeSkipEnd = -1L  // end of the interval currently offered
 
     private lateinit var root: View
@@ -190,7 +192,10 @@ class TvPlayerActivity : Activity() {
     private val commitSeek = Runnable {
         val t = seekTarget
         seekTarget = -1L
-        if (t >= 0) player?.seekTo(t)
+        if (t >= 0) {
+            player?.seekTo(t)
+            reportTiming(positionMs = t)
+        }
     }
     private val ticker = object : Runnable {
         override fun run() {
@@ -277,6 +282,7 @@ class TvPlayerActivity : Activity() {
                 }
                 // Duration is known once ready → fetch AniSkip for this episode.
                 if (state == Player.STATE_READY && skipsFetchedFor != currentIndex) fetchSkips()
+                if (state == Player.STATE_READY) reportTimingIfNeeded()
                 // Autoplay the next episode when this one finishes.
                 if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
                     loadEpisode(currentIndex + 1)
@@ -313,6 +319,7 @@ class TvPlayerActivity : Activity() {
         drmKey: String? = null,
     ) {
         val p = player ?: return
+        userPaused = false
         currentUrl = url
         currentHeaders = headers
         currentMime = mime
@@ -400,6 +407,7 @@ class TvPlayerActivity : Activity() {
         currentIndex = index
         skipIntervals = emptyList()
         skipsFetchedFor = -1
+        timingReportedFor = -1
         autoSkipped.clear() // new episode → its OP/ED may auto-skip again
         hideSkip()
         loadStream(
@@ -437,6 +445,30 @@ class TvPlayerActivity : Activity() {
         btnNext.isFocusable = hasNext
         btnNext.alpha = if (hasNext) 1f else 0.35f
     }
+
+    /** Push position+duration to Dart (Discord bar + resume). */
+    private fun reportTiming(
+        positionMs: Long? = null,
+        playing: Boolean? = null,
+        onlyOncePerEpisode: Boolean = false,
+    ) {
+        val p = player ?: return
+        if (p.duration <= 0) return
+        if (onlyOncePerEpisode && timingReportedFor == currentIndex) return
+        timingReportedFor = currentIndex
+        MainActivity.tvBridge?.invokeMethod(
+            "saveProgress",
+            mapOf(
+                "index" to currentIndex,
+                "positionMs" to (positionMs ?: p.currentPosition).coerceAtLeast(0L),
+                "durationMs" to p.duration,
+                "playing" to (playing ?: !userPaused),
+            ),
+        )
+    }
+
+    /** First time this episode is ready — Discord needs an end timestamp. */
+    private fun reportTimingIfNeeded() = reportTiming(onlyOncePerEpisode = true)
 
     private fun toastFail() = android.widget.Toast.makeText(
         this, "Couldn't load that episode", android.widget.Toast.LENGTH_SHORT,
@@ -501,6 +533,7 @@ class TvPlayerActivity : Activity() {
         autoSkipped.add(iv.start)
         hideSkip()
         p.seekTo(iv.end)
+        reportTiming(positionMs = iv.end)
         return true
     }
 
@@ -1105,7 +1138,12 @@ class TvPlayerActivity : Activity() {
         skipButton.onFocusChangeListener =
             View.OnFocusChangeListener { v, has -> applyPillFocus(v as TextView, has) }
         skipButton.setOnClickListener {
-            if (activeSkipEnd > 0) { player?.seekTo(activeSkipEnd); seekTarget = -1L }
+            if (activeSkipEnd > 0) {
+                val end = activeSkipEnd
+                player?.seekTo(end)
+                seekTarget = -1L
+                reportTiming(positionMs = end)
+            }
             hideSkip()
         }
     }
@@ -1197,7 +1235,15 @@ class TvPlayerActivity : Activity() {
     // ── Playback actions ─────────────────────────────────────────────────────
     private fun togglePlayPause() {
         val p = player ?: return
-        if (p.isPlaying) p.pause() else p.play()
+        if (p.playWhenReady) {
+            p.pause()
+            userPaused = true
+            reportTiming(playing = false)
+        } else {
+            p.play()
+            userPaused = false
+            reportTiming(playing = true)
+        }
         bumpControls()
     }
 

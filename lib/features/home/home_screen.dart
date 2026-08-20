@@ -413,6 +413,8 @@ class _HomeViewState extends State<_HomeView>
           category: category,
           malId: item.malId,
           scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+          tmdbId: item.tmdbId,
+          tmdbIsTv: item.tmdbIsTv,
         ),
       ),
     );

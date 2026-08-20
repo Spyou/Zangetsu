@@ -225,6 +225,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         availableCategories: availableCategories,
         malId: detail.malId ?? widget.item.malId,
         scrobbleTitle: detail.type == ProviderType.anime ? detail.title : null,
+        tmdbId: detail.tmdbId ?? widget.item.tmdbId,
+        tmdbIsTv: detail.tmdbIsTv,
       );
       if (!started && mounted) await showTvPlaybackLoadError(context);
       return;
