@@ -164,6 +164,15 @@ class PlaybackPrefs {
   Future<void> setAutoAddToMyList(bool value) =>
       _box.put('autoAddToMyList', value);
 
+  /// Push progress to the connected trackers (AniList / MAL / Simkl) as you
+  /// watch — the title goes "watching" when playback starts and the episode
+  /// count follows once you've finished one. Off means the accounts stay
+  /// connected and readable, but nothing is written unless you ask for it from
+  /// the Tracking sheet or a long-press "Mark as watched". On by default, so
+  /// this changes nothing until someone turns it off.
+  bool get autoTrack => _box.get('autoTrack', defaultValue: true) as bool;
+  Future<void> setAutoTrack(bool value) => _box.put('autoTrack', value);
+
   /// How closing the player is guarded against accidental exits:
   ///  • 'double_back' = first back shows a "press back again" hint, second back
   ///    within 2s exits. DEFAULT.

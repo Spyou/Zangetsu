@@ -761,6 +761,18 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
+              _toggleRow(
+                icon: Icons.sync_rounded,
+                title: 'Auto-track',
+                subtitle:
+                    'Update AniList, MyAnimeList and Simkl as you watch. '
+                    'Off still lets you track a title by hand',
+                value: _prefs.autoTrack,
+                onChanged: (v) async {
+                  await _prefs.setAutoTrack(v);
+                  if (mounted) setState(() {});
+                },
+              ),
               SettingsTile(
                 icon: Icons.exit_to_app_outlined,
                 title: 'Close confirmation',

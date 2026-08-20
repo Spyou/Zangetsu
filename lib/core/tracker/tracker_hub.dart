@@ -1,5 +1,7 @@
+import '../di/injector.dart';
 import '../mode/content_mode.dart';
 import '../models/watch_status.dart';
+import '../playback/playback_prefs.dart';
 import '../privacy/incognito_mode.dart';
 import 'tracker.dart';
 
@@ -29,6 +31,12 @@ class TrackerHub {
   Iterable<Tracker> connectedForMode(ContentMode mode) =>
       forMode(mode).where((t) => t.isConnected);
 
+  /// Whether the "as you watch" writes are allowed through. Reads defensively
+  /// so a context without [PlaybackPrefs] registered (tests, early startup)
+  /// behaves as it always did rather than silently going quiet.
+  static bool get _autoTrackOn =>
+      !sl.isRegistered<PlaybackPrefs>() || sl<PlaybackPrefs>().autoTrack;
+
   Future<void> markWatching({
     int? malId,
     String? title,
@@ -37,6 +45,8 @@ class TrackerHub {
     String? imdbId,
     MediaKind kind = MediaKind.anime,
   }) async {
+    // Only ever called on playback start, so there's no manual path to spare.
+    if (!_autoTrackOn) return;
     if (IncognitoMode.on) return; // incognito: pause auto-tracking
     await _fan(
       (t) => t.markWatching(
@@ -59,7 +69,11 @@ class TrackerHub {
     required int episode,
     MediaKind kind = MediaKind.anime,
     bool novel = false,
+    bool auto = true,
   }) async {
+    // [auto] false = the user asked for this one by hand ("Mark as watched"),
+    // so the auto-track preference doesn't apply. Incognito still does.
+    if (auto && !_autoTrackOn) return;
     if (IncognitoMode.on) return; // incognito: pause auto-scrobble
     await _fan(
       (t) => t.scrobble(

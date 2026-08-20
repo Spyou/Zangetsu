@@ -623,6 +623,8 @@ class _DetailViewState extends State<_DetailView>
       tmdbIsTv: widget.item.tmdbIsTv,
       imdbId: widget.item.imdbId,
       episode: n.toInt(),
+      // Asked for by hand, so it goes out even with auto-tracking off.
+      auto: false,
     );
   }
 
