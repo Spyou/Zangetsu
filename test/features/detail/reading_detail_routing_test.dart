@@ -685,9 +685,11 @@ void main() {
         findsOneWidget,
       );
 
-      // …and the numbered heading the episode row has always rendered.
-      expect(find.text('1. Episode 1'), findsOneWidget);
-      expect(find.text('2. Episode 2'), findsOneWidget);
+      // …and the episode heading. A source title that is only a generic
+      // "Episode N" collapses to that alone — the row used to double it up
+      // as "1. Episode 1". A real title still reads "1. Real Name".
+      expect(find.text('Episode 1'), findsOneWidget);
+      expect(find.text('Episode 2'), findsOneWidget);
     },
   );
 }

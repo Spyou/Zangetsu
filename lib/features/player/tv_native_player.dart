@@ -450,6 +450,10 @@ class TvNativePlayer {
   static String _episodeLabel(Episode ep) =>
       episodePresenceDetails(ep) ?? '';
 
+  /// How long playback will wait on episode-name metadata before giving up.
+  /// Warm cache returns instantly; this only bites on a cold, slow fetch.
+  static const Duration _metaWait = Duration(seconds: 2);
+
   static Future<List<Episode>> _enrichEpisodes(
     List<Episode> episodes, {
     int? malId,
@@ -459,13 +463,19 @@ class TvNativePlayer {
   }) async {
     if (!sl.isRegistered<EpisodeMetadataService>()) return episodes;
     try {
-      return await sl<EpisodeMetadataService>().enrich(
-        episodes: episodes,
-        type: anime ? ProviderType.anime : ProviderType.movie,
-        malId: malId,
-        tmdbId: tmdbId,
-        tmdbIsTv: tmdbIsTv,
-      );
+      // Playback waits on this (the native Activity gets its episode labels
+      // once, at open), so keep it short — a cold cache on a slow TV would
+      // otherwise sit on a black screen. Timing out throws into the catch
+      // below and we play with the source's own titles.
+      return await sl<EpisodeMetadataService>()
+          .enrich(
+            episodes: episodes,
+            type: anime ? ProviderType.anime : ProviderType.movie,
+            malId: malId,
+            tmdbId: tmdbId,
+            tmdbIsTv: tmdbIsTv,
+          )
+          .timeout(_metaWait);
     } catch (_) {
       return episodes;
     }

@@ -310,15 +310,20 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Future<List<Episode>> _enrichList(List<Episode> episodes) async {
     if (!sl.isRegistered<EpisodeMetadataService>()) return episodes;
     try {
-      return await sl<EpisodeMetadataService>().enrich(
-        episodes: episodes,
-        type: widget.scrobbleTitle != null || widget.malId != null
-            ? ProviderType.anime
-            : ProviderType.movie,
-        malId: widget.malId,
-        tmdbId: widget.tmdbId,
-        tmdbIsTv: widget.tmdbIsTv,
-      );
+      // _loadEpisode() waits on this before it starts playing, so cap it —
+      // a cold cache on slow TV wifi shouldn't hold up the video. Timing out
+      // lands in the catch below and we keep the source's own titles.
+      return await sl<EpisodeMetadataService>()
+          .enrich(
+            episodes: episodes,
+            type: widget.scrobbleTitle != null || widget.malId != null
+                ? ProviderType.anime
+                : ProviderType.movie,
+            malId: widget.malId,
+            tmdbId: widget.tmdbId,
+            tmdbIsTv: widget.tmdbIsTv,
+          )
+          .timeout(const Duration(seconds: 2));
     } catch (_) {
       return episodes;
     }
