@@ -19,6 +19,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/media_extras.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/models/watch_status.dart';
+import 'package:watch_app/core/playback/filler_service.dart';
 import 'package:watch_app/core/playback/list_status_store.dart';
 import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/resume_store.dart';
@@ -706,6 +707,56 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
       await tester.pumpAndSettle();
       expect(tester.binding.focusManager.primaryFocus, same(playFocus));
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv shows FILLER badge for Jikan-marked episode numbers',
+    (tester) async {
+      FillerService.instance.debugSeedCache(21, {2});
+      addTearDown(FillerService.instance.debugClearCache);
+
+      const detail = MediaDetail(
+        id: 'filler-show',
+        title: 'Filler Anime',
+        url: 'http://test/filler',
+        type: ProviderType.anime,
+        sourceId: 'test',
+        malId: 21,
+        episodes: [
+          Episode(id: 'e1', title: 'Canon', url: '/e1', number: 1),
+          Episode(id: 'e2', title: 'Filler Ep', url: '/e2', number: 2),
+          Episode(id: 'e3', title: 'Canon Again', url: '/e3', number: 3),
+        ],
+      );
+      const item = MediaItem(
+        id: 'filler-show',
+        title: 'Filler Anime',
+        url: 'http://test/filler',
+        type: ProviderType.anime,
+        sourceId: 'test',
+        malId: 21,
+      );
+
+      await cubit.close();
+      cubit = DetailCubit(
+        repo: _StubSourceRepository(detail),
+        url: item.url,
+        sourceId: item.sourceId,
+        prefs: _FakeTitlePrefs(),
+      );
+      await cubit.load();
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(home: DetailScreenTv(item: item)),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(); // let _ensureFiller setState land
+
+      expect(find.text('FILLER'), findsOneWidget);
     },
   );
 }
