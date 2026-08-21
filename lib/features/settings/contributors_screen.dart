@@ -34,6 +34,13 @@ class _ContributorsScreenState extends State<ContributorsScreen> {
               children: [_ContributorTile(member: m)],
             ),
           const SettingsSectionLabel('Community Contributors', muted: true),
+          // Hand-listed first — people with no commits to their name, so the
+          // GitHub fetch below can't turn them up.
+          for (final m in kFixedCommunity)
+            SettingsCard(
+              margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              children: [_ContributorTile(member: m)],
+            ),
           FutureBuilder<List<TeamMember>>(
             future: _community,
             builder: (context, snap) {
@@ -50,7 +57,14 @@ class _ContributorsScreenState extends State<ContributorsScreen> {
                 );
               }
               final list = snap.data ?? const <TeamMember>[];
-              if (list.isEmpty) return const _CommunityEmpty();
+              // "No contributors yet" would contradict the hand-listed rows
+              // sitting right above it, so it only stands in for an empty
+              // section as a whole.
+              if (list.isEmpty) {
+                return kFixedCommunity.isEmpty
+                    ? const _CommunityEmpty()
+                    : const SizedBox.shrink();
+              }
               return Column(
                 children: [
                   for (final m in list)

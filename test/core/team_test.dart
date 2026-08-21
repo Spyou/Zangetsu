@@ -28,14 +28,27 @@ void main() {
     expect(parseCommunity(json), isEmpty);
   });
 
-  test('the core team lists Krishna, Ombryal (dual role) and Riyoc', () {
+  test('the core team lists Krishna, NeighborhoodNerd and Ombryal (dual role)',
+      () {
     expect(kCoreTeam.map((m) => m.name), [
       'Krishna Vishwakarma',
+      'NeighborhoodNerd',
       'Ombryal',
-      'Riyoc',
     ]);
-    expect(kCoreTeam[1].role, contains('Discord Head Admin'));
-    expect(kCoreTeam[1].role, contains('Contributor'));
+    expect(kCoreTeam[2].role, contains('Discord Head Admin'));
+    expect(kCoreTeam[2].role, contains('Contributor'));
+  });
+
+  test('a core member is not repeated under Community Contributors', () {
+    for (final m in kCoreTeam) {
+      final gh = m.github;
+      if (gh != null) expect(kExcludedFromCommunity, contains(gh));
+    }
+  });
+
+  test('Riyoc is listed by hand, since no commit carries his name', () {
+    expect(kFixedCommunity.map((m) => m.name), contains('Riyoc'));
+    expect(kFixedCommunity.single.github, isNull);
   });
 
   test('TeamMember.avatar falls back to the GitHub avatar, then empty', () {
