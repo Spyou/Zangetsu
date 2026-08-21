@@ -7,6 +7,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.SoundEffectConstants
 import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
@@ -31,6 +33,7 @@ import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
+import androidx.media3.ui.TimeBar
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import io.flutter.plugin.common.MethodChannel
@@ -179,6 +182,8 @@ class TvPlayerActivity : Activity() {
     private var controlsVisible = false
     private var focusZone = 0 // 0 = none (OK=play/pause, ◀▶=seek), 1 = top actions, 2 = bottom
     private val rowFocused get() = focusZone != 0
+    /** True while the user is dragging the time bar — blocks auto-hide + progress fight. */
+    private var scrubbing = false
     private var speedEngaged = false
     private var menuOpen = false
     private var menuOpener: View? = null // the row button that opened the panel
@@ -1092,16 +1097,20 @@ class TvPlayerActivity : Activity() {
             textSize = 16.5f
             if (selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
             isFocusable = true
-            isFocusableInTouchMode = true
             setPadding(dp(16), dp(11), dp(16), dp(11))
             background = pillBg(0x00000000)
-            setOnClickListener { lastFocusLabel = label; onSelect(); closeMenu() }
             onFocusChangeListener = View.OnFocusChangeListener { v, has ->
                 v.background = pillBg(if (has) accent else 0x00000000)
                 (v as TextView).setTextColor(
                     if (has) android.graphics.Color.WHITE
                     else if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt()
                 )
+            }
+            // Single-tap on touchscreens: highlight + select (not focus-then-click).
+            bindSingleTapActivate {
+                lastFocusLabel = label
+                onSelect()
+                closeMenu()
             }
         }
         if (selected && firstSelectedRow == null) firstSelectedRow = row
@@ -1160,35 +1169,63 @@ class TvPlayerActivity : Activity() {
         // Accent-tinted, clean loading spinner (premium, not the grey default).
         (loading as? android.widget.ProgressBar)?.indeterminateTintList =
             android.content.res.ColorStateList.valueOf(accent)
-        // The seek bar is display-only on TV (◀▶ keys drive seeking), so it must
-        // never steal focus from the button row.
+        // Not D-pad focusable (◀▶ keys still seek) but touch-scrubbable below.
         timeBar.isFocusable = false
+        timeBar.addListener(object : TimeBar.OnScrubListener {
+            override fun onScrubStart(bar: TimeBar, position: Long) {
+                scrubbing = true
+                seekTarget = -1L
+                handler.removeCallbacks(commitSeek)
+                cancelAutoHide()
+                showControls()
+                positionText.text = fmt(position)
+            }
+
+            override fun onScrubMove(bar: TimeBar, position: Long) {
+                positionText.text = fmt(position)
+            }
+
+            override fun onScrubStop(bar: TimeBar, position: Long, canceled: Boolean) {
+                scrubbing = false
+                if (!canceled) {
+                    seekTarget = -1L
+                    player?.seekTo(position)
+                    reportTiming(positionMs = position)
+                }
+                bumpControls()
+            }
+        })
 
         for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnMegaskip)) {
-            b.isClickable = true
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
-            b.isFocusableInTouchMode = true
             applyPillFocus(b, false)
             b.onFocusChangeListener = View.OnFocusChangeListener { v, hasFocus ->
                 applyPillFocus(v as TextView, hasFocus)
-                if (hasFocus) cancelAutoHide()
+                if (hasFocus) {
+                    // Keep zone in sync for touch focus (D-pad uses enterZone).
+                    focusZone = when (v.id) {
+                        R.id.btn_quality, R.id.btn_sources, R.id.btn_audio_subs -> 1
+                        else -> 2 // episodes / next / megaskip bottom row
+                    }
+                    cancelAutoHide()
+                }
             }
         }
-        // Phase-2 wiring lands in later tasks; for now the buttons are focusable
-        // and highlight, so the layout + D-pad model can be verified end to end.
-        btnEpisodes.setOnClickListener { openEpisodes() }
-        btnQuality.setOnClickListener { openQualityMenu() }
-        btnSources.setOnClickListener { openSourcesMenu() }
-        btnAudioSubs.setOnClickListener { openAvMenu() }
-        btnNext.setOnClickListener { loadEpisode(nextAutoplayIndex()) }
-        btnMegaskip.setOnClickListener { seekBy(megaSkipSecs * 1000L) }
+        // Single-tap on touchscreens: highlight + fire (focusableInTouchMode alone
+        // would eat the first tap for focus only). Next uses nextAutoplayIndex so
+        // autoSkipFiller applies to the button as well as binge autoplay.
+        btnEpisodes.bindSingleTapActivate { openEpisodes() }
+        btnQuality.bindSingleTapActivate { openQualityMenu() }
+        btnSources.bindSingleTapActivate { openSourcesMenu() }
+        btnAudioSubs.bindSingleTapActivate { openAvMenu() }
+        btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
+        btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
 
-        skipButton.isFocusableInTouchMode = true
         applyPillFocus(skipButton, false)
         skipButton.onFocusChangeListener =
             View.OnFocusChangeListener { v, has -> applyPillFocus(v as TextView, has) }
-        skipButton.setOnClickListener {
+        skipButton.bindSingleTapActivate {
             if (activeSkipEnd > 0) {
                 val end = activeSkipEnd
                 player?.seekTo(end)
@@ -1196,6 +1233,44 @@ class TvPlayerActivity : Activity() {
                 reportTiming(positionMs = end)
             }
             hideSkip()
+        }
+
+        // Touchscreen TVs: tap empty video / chrome to show or hide controls.
+        // Wired on playerView (controls GONE) and controls (controls VISIBLE) so
+        // we never attach a click listener to the focusable root — that would
+        // collide with D-pad OK play/pause.
+        playerView.setOnClickListener { toggleControlsFromTouch() }
+        controls.isFocusable = false
+        controls.setOnClickListener { toggleControlsFromTouch() }
+    }
+
+    /**
+     * focusableInTouchMode + OnClickListener normally needs two taps on a
+     * touchscreen (1st focuses, 2nd clicks). Consume the touch and on UP both
+     * request focus (pill highlight) and performClick so one tap does both.
+     * D-pad OK still goes through the normal click / key path.
+     */
+    private fun View.bindSingleTapActivate(onActivate: () -> Unit) {
+        isClickable = true
+        isFocusable = true
+        isFocusableInTouchMode = true
+        setOnClickListener { onActivate() }
+        setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> true
+                MotionEvent.ACTION_CANCEL -> true
+                MotionEvent.ACTION_UP -> {
+                    if (event.x >= 0f && event.x < v.width &&
+                        event.y >= 0f && event.y < v.height
+                    ) {
+                        v.requestFocus()
+                        v.playSoundEffect(SoundEffectConstants.CLICK)
+                        v.performClick()
+                    }
+                    true
+                }
+                else -> false
+            }
         }
     }
 
@@ -1219,7 +1294,7 @@ class TvPlayerActivity : Activity() {
     }
 
     private fun hideControls() {
-        if (rowFocused) return // never yank the row out from under the user
+        if (rowFocused || scrubbing) return // never yank chrome mid-row / mid-scrub
         controls.visibility = View.GONE
         controlsVisible = false
     }
@@ -1231,7 +1306,26 @@ class TvPlayerActivity : Activity() {
         if (menuOpen) return
         showControls()
         handler.removeCallbacks(hideRunnable)
-        if (!rowFocused && player?.isPlaying == true) handler.postDelayed(hideRunnable, AUTO_HIDE_MS)
+        if (!rowFocused && !scrubbing && player?.isPlaying == true) {
+            handler.postDelayed(hideRunnable, AUTO_HIDE_MS)
+        }
+    }
+
+    /** Touch on empty video/chrome:
+     *  - side menu open → dismiss the menu
+     *  - controls visible → play/pause (same as remote OK; shows center glyph)
+     *  - controls hidden → show controls
+     *  Menu rows / control pills still consume their own taps. */
+    private fun toggleControlsFromTouch() {
+        if (menuOpen) {
+            closeMenu()
+            return
+        }
+        if (controls.visibility == View.VISIBLE) {
+            togglePlayPause()
+        } else {
+            bumpControls()
+        }
     }
 
     private fun cancelAutoHide() = handler.removeCallbacks(hideRunnable)
@@ -1249,9 +1343,12 @@ class TvPlayerActivity : Activity() {
         // to the old position between presses and the commit.
         val pos = if (seekTarget >= 0) seekTarget else p.currentPosition.coerceAtLeast(0)
         timeBar.setDuration(dur)
-        timeBar.setPosition(pos)
+        // Don't fight the finger — DefaultTimeBar owns position while scrubbing.
+        if (!scrubbing) {
+            timeBar.setPosition(pos)
+            positionText.text = fmt(pos)
+        }
         timeBar.setBufferedPosition(p.bufferedPosition.coerceAtLeast(0))
-        positionText.text = fmt(pos)
         durationText.text = fmt(dur)
     }
 
