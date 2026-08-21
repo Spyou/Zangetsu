@@ -143,6 +143,38 @@ class TrackerHub {
     MediaKind kind = MediaKind.anime,
     bool novel = false,
   }) async {
+    final results = await fetchEntries(
+      malId: malId,
+      title: title,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+      pinnedIds: pinnedIds,
+      kind: kind,
+      novel: novel,
+    );
+    for (final r in results) {
+      if (r.onList) return r;
+    }
+    return results.isEmpty ? null : results.first;
+  }
+
+  /// Every connected tracker's entry for one title, in connection order, with
+  /// the ones that answered nothing dropped.
+  ///
+  /// [fetchEntry] collapses this to a single entry — the combined sheet needs
+  /// them all so it can say when two trackers disagree instead of silently
+  /// overwriting one with the other.
+  Future<List<TrackerEntry>> fetchEntries({
+    int? malId,
+    String? title,
+    int? tmdbId,
+    bool tmdbIsTv = false,
+    String? imdbId,
+    Map<String, String>? pinnedIds,
+    MediaKind kind = MediaKind.anime,
+    bool novel = false,
+  }) async {
     final results = await Future.wait(
       connected.map((t) async {
         try {
@@ -161,10 +193,10 @@ class TrackerHub {
         }
       }),
     );
-    for (final r in results) {
-      if (r != null && r.onList) return r;
-    }
-    return results.firstWhere((r) => r != null, orElse: () => null);
+    return [
+      for (final r in results)
+        if (r != null) r,
+    ];
   }
 
   /// Write status/score/progress for one title to EVERY connected tracker at

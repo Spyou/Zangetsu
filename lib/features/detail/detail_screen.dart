@@ -41,6 +41,7 @@ import '../../core/privacy/incognito_mode.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/ui/episode_player_sheet.dart';
 import '../../core/ui/list_status_sheet.dart';
+import '../../core/ui/tracker_list_sheet.dart';
 import '../../core/ui/tracker_sync_sheet.dart';
 import '../../core/tracker/airing_countdown.dart';
 import '../../core/tracker/tracker.dart';
@@ -441,15 +442,15 @@ class _DetailViewState extends State<_DetailView>
     return simklOn && hasId;
   }
 
-  /// Open the tracker sync sheet — status, score and episode/chapter
-  /// progress in one place, applied to every connected tracker at once. Anime
-  /// resolves by MAL id or title; movies/TV via Simkl's tmdb/imdb id; manga/
-  /// novel resolves by malId or title too (AniList/MAL manga lists). The
-  /// sheet returns the applied progress so grey-out can update immediately.
+  /// Open the tracker list — one row per connected tracker, showing what each
+  /// one matched, with "Sync all at once" for the original write-to-everything
+  /// editor. Anime resolves by MAL id or title; movies/TV via Simkl's
+  /// tmdb/imdb id; manga/novel by malId or title (AniList/MAL manga lists).
+  /// Returns the applied progress so grey-out can update immediately.
   Future<void> _openTrackingSheet(MediaDetail detail) async {
     final reading = detail.type == ProviderType.manga ||
         detail.type == ProviderType.novel;
-    final applied = await showTrackerSyncSheet(
+    final applied = await showTrackerListSheet(
       context,
       title: detail.title,
       isAnime: detail.type == ProviderType.anime,

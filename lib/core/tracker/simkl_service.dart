@@ -450,6 +450,7 @@ class SimklService extends ChangeNotifier implements Tracker {
         return TrackerEntry(
           trackerName: displayName,
           onList: true,
+          title: it.item.title,
           status: it.status,
           score: it.score,
           progress: it.progress,

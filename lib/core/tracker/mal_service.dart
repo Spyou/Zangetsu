@@ -750,6 +750,9 @@ class MalService extends ChangeNotifier implements Tracker {
       return TrackerEntry(
         trackerName: displayName,
         onList: ls != null,
+        // MAL returns id/title/main_picture whether or not `fields` asks for
+        // them, so this needs no change to the request path.
+        title: (d['title'] as String?)?.trim(),
         status: malWatchStatus(ls?['status'] as String?),
         score: (score == null || score == 0) ? null : score,
         progress: (ls?[malProgressReadField(kind)] as num?)?.toInt(),

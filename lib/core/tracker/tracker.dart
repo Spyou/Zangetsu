@@ -44,6 +44,7 @@ class TrackerEntry {
   const TrackerEntry({
     required this.trackerName,
     this.onList = false,
+    this.title,
     this.status,
     this.score,
     this.progress,
@@ -58,6 +59,11 @@ class TrackerEntry {
 
   /// Whether the title is on the user's list at all.
   final bool onList;
+
+  /// What this tracker actually matched, so the sheet can show it and the user
+  /// can tell a wrong auto-match from a right one. Null when the tracker can't
+  /// supply it — the row then reads as unmatched rather than guessing.
+  final String? title;
 
   final WatchStatus? status;
 

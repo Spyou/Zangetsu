@@ -547,9 +547,15 @@ class AniListService extends ChangeNotifier implements Tracker {
     final airAt = (na is Map) ? (na['airingAt'] as num?)?.toInt() : null;
     final rawScore =
         (entry is Map) ? (entry['score'] as num?)?.toDouble() : null;
+    final t = m['title'];
+    final tEnglish = (t is Map) ? t['english'] as String? : null;
+    final tRomaji = (t is Map) ? t['romaji'] as String? : null;
     return TrackerEntry(
       trackerName: displayName,
       onList: entry is Map,
+      // English first, romaji second — the same order the search picker uses,
+      // so a row and its match candidates read the same way.
+      title: (tEnglish?.isNotEmpty == true) ? tEnglish : tRomaji,
       status: (entry is Map)
           ? watchStatusFromAniList(entry['status'] as String?)
           : null,

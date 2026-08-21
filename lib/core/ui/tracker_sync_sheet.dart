@@ -35,6 +35,7 @@ Future<int?> showTrackerSyncSheet(
   bool tmdbIsTv = false,
   String? imdbId,
   String? bindingKey,
+  Tracker? tracker,
 }) {
   return showModalBottomSheet<int?>(
     context: context,
@@ -52,6 +53,7 @@ Future<int?> showTrackerSyncSheet(
       tmdbIsTv: tmdbIsTv,
       imdbId: imdbId,
       bindingKey: bindingKey,
+      tracker: tracker,
     ),
   );
 }
@@ -67,6 +69,7 @@ class TrackerSyncSheet extends StatefulWidget {
     this.tmdbIsTv = false,
     this.imdbId,
     this.bindingKey,
+    this.tracker,
   });
 
   final String title;
@@ -85,6 +88,11 @@ class TrackerSyncSheet extends StatefulWidget {
   /// persistence — a picked match still applies for this session).
   final String? bindingKey;
 
+  /// Edit one tracker instead of all of them. Null keeps the original
+  /// behaviour — read whichever tracker answers first, write to every
+  /// connected one — which is what the TV screen and "Sync all" rely on.
+  final Tracker? tracker;
+
   @override
   State<TrackerSyncSheet> createState() => _TrackerSyncSheetState();
 }
@@ -99,6 +107,15 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
   // Manual match corrections: {trackerName: native id}. Loaded from the binding
   // store, updated by "Change match". Empty = automatic malId/title resolution.
   Map<String, String> _pinnedIds = const {};
+
+  /// What the tracker matched this to, for the "is this even the right show?"
+  /// line. Null when the tracker didn't say (or found nothing).
+  String? _matchedTitle;
+
+  /// Trackers holding DIFFERENT progress for this title, in combined mode.
+  /// Empty when they agree (or only one has it), which is the normal case.
+  /// Applying used to silently drag the higher one back down to the lower.
+  List<TrackerEntry> _conflicts = const [];
 
   // Current (editable) values.
   WatchStatus? _status;
@@ -130,8 +147,11 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
     _load();
   }
 
-  Future<void> _load() async {
-    final entry = await _hub.fetchEntry(
+  /// Combined mode: read every tracker, note any progress disagreement, and
+  /// return the same entry [TrackerHub.fetchEntry] would have — first one
+  /// that's on a list, else the first that answered at all.
+  Future<TrackerEntry?> _loadCombined() async {
+    final all = await _hub.fetchEntries(
       malId: widget.malId,
       title: (widget.isAnime || widget.reading) ? widget.title : null,
       tmdbId: widget.tmdbId,
@@ -140,17 +160,56 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       pinnedIds: _pinnedIds,
       kind: _kind,
     );
+    // Only entries actually on a list can disagree — a tracker that's never
+    // seen the title has no opinion to conflict with.
+    _conflicts = [
+      for (final e in all)
+        if (e.onList && e.progress != null && e.progress! > 0) e,
+    ];
+    if (_conflicts.map((e) => e.progress).toSet().length < 2) {
+      _conflicts = const [];
+    }
+    for (final e in all) {
+      if (e.onList) return e;
+    }
+    return all.isEmpty ? null : all.first;
+  }
+
+  Future<void> _load() async {
+    final one = widget.tracker;
+    final entry = one != null
+        ? await one.fetchEntry(
+            malId: widget.malId,
+            title: (widget.isAnime || widget.reading) ? widget.title : null,
+            tmdbId: widget.tmdbId,
+            tmdbIsTv: widget.tmdbIsTv,
+            imdbId: widget.imdbId,
+            pinnedId: _pinnedIds[one.displayName],
+            kind: _kind,
+          )
+        : await _loadCombined();
     if (!mounted) return;
     setState(() {
+      _matchedTitle = entry?.title;
       _status = entry?.status;
       _score = (entry?.score ?? 0).round().clamp(0, 10);
-      _progress = entry?.progress ?? 0;
+      // When trackers disagree, start from the furthest along — pulling the
+      // others up is recoverable, dragging someone backwards isn't.
+      _progress = _conflicts.isEmpty
+          ? (entry?.progress ?? 0)
+          : _conflicts
+              .map((e) => e.progress ?? 0)
+              .reduce((a, b) => a > b ? a : b);
       _maxEpisodes = widget.reading ? entry?.chapters : entry?.maxEpisodes;
       _nextEp = entry?.nextAiringEpisode;
       _nextAt = entry?.nextAiringAt;
       _initStatus = _status;
       _initScore = _score;
-      _initProgress = _progress;
+      // Baseline is what we READ, not what we pre-filled. With a conflict the
+      // two differ on purpose, so Apply sees a change and actually levels the
+      // trackers up — baselining the pre-filled value made Apply a no-op and
+      // left the behind tracker behind.
+      _initProgress = entry?.progress ?? 0;
       _loading = false;
     });
   }
@@ -164,20 +223,37 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       return;
     }
     setState(() => _saving = true);
-    await _hub.updateEntry(
-      malId: widget.malId,
-      title: (widget.isAnime || widget.reading) ? widget.title : null,
-      tmdbId: widget.tmdbId,
-      tmdbIsTv: widget.tmdbIsTv,
-      imdbId: widget.imdbId,
-      pinnedIds: _pinnedIds,
-      status: statusChanged ? _status : null,
-      score: scoreChanged ? _score.toDouble() : null,
-      progress: progressChanged ? _progress : null,
-      kind: _kind,
-    );
+    final one = widget.tracker;
+    if (one != null) {
+      await one.updateEntry(
+        malId: widget.malId,
+        title: (widget.isAnime || widget.reading) ? widget.title : null,
+        tmdbId: widget.tmdbId,
+        tmdbIsTv: widget.tmdbIsTv,
+        imdbId: widget.imdbId,
+        pinnedId: _pinnedIds[one.displayName],
+        status: statusChanged ? _status : null,
+        score: scoreChanged ? _score.toDouble() : null,
+        progress: progressChanged ? _progress : null,
+        kind: _kind,
+      );
+    } else {
+      await _hub.updateEntry(
+        malId: widget.malId,
+        title: (widget.isAnime || widget.reading) ? widget.title : null,
+        tmdbId: widget.tmdbId,
+        tmdbIsTv: widget.tmdbIsTv,
+        imdbId: widget.imdbId,
+        pinnedIds: _pinnedIds,
+        status: statusChanged ? _status : null,
+        score: scoreChanged ? _score.toDouble() : null,
+        progress: progressChanged ? _progress : null,
+        kind: _kind,
+      );
+    }
     if (!mounted) return;
-    final names = _hub.connected.map((t) => t.displayName).join(', ');
+    final names = one?.displayName ??
+        _hub.connected.map((t) => t.displayName).join(', ');
     showGlobalSnack('Synced to $names');
     Navigator.pop(context, progressChanged ? _progress : null);
   }
@@ -188,6 +264,9 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
     final picked = await showTrackerMatchPicker(
       context,
       initialQuery: widget.title,
+      // Editing one tracker → only offer that tracker's candidates, so picking
+      // a match can't quietly rebind a tracker you weren't looking at.
+      tracker: widget.tracker,
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -246,8 +325,45 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
     );
   }
 
+  /// Shown when two trackers hold different progress. Applying writes ONE
+  /// value to all of them, so the user should see what they're about to
+  /// flatten before pressing the button, not afterwards.
+  Widget _conflictBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            'Your trackers disagree',
+            style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          for (final e in _conflicts)
+            Text(
+              '${e.trackerName}  ·  ${widget.reading ? "ch" : "ep"} ${e.progress}',
+              style: AppText.caption,
+            ),
+          const SizedBox(height: 4),
+          Text(
+            'Applying sets them all to the number below.',
+            style: AppText.caption,
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _editor() {
     return [
+      if (_conflicts.isNotEmpty) _conflictBanner(),
       _sectionLabel('STATUS'),
       const SizedBox(height: 10),
       Wrap(
@@ -299,7 +415,9 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       ],
       const SizedBox(height: 24),
       _applyButton(),
-      if (widget.isAnime) ...[
+      // Reading titles get this too — a manga matched to the wrong entry was
+      // previously stuck that way, since this row only rendered for anime.
+      if (widget.isAnime || widget.reading) ...[
         const SizedBox(height: 8),
         _focusable(
           onTap: _changeMatch,
@@ -308,9 +426,25 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
           child: Container(
             height: 42,
             alignment: Alignment.center,
-            child: Text(
-              'Wrong title?  Change match',
-              style: AppText.body.copyWith(color: AppColors.textSecondary),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Naming the match is the whole point — without it there's no
+                // way to tell a wrong auto-match from a right one.
+                if (_matchedTitle != null)
+                  Text(
+                    'Matched: ${_matchedTitle!}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption,
+                  ),
+                Text(
+                  'Wrong title?  Change match',
+                  style: AppText.body.copyWith(color: AppColors.textSecondary),
+                ),
+              ],
             ),
           ),
         ),
@@ -325,6 +459,12 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
   /// (e.g. source_health_screen.dart's "Not searched" caption), not a new
   /// pattern. Non-reading items keep the original plain joined-name Text.
   Widget _connectedLine() {
+    // Editing one tracker → name only that one. Listing every connected
+    // account here read as though Apply would write to all of them.
+    final one = widget.tracker;
+    if (one != null) {
+      return Text(one.displayName, style: AppText.caption);
+    }
     final names = _hub.connected.map((t) => t.displayName).toList();
     if (!widget.reading) {
       return Text(names.join('  ·  '), style: AppText.caption);
@@ -478,6 +618,8 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
 Future<TrackerSearchResult?> showTrackerMatchPicker(
   BuildContext context, {
   required String initialQuery,
+  Tracker? tracker,
+  MediaKind kind = MediaKind.anime,
 }) {
   return showModalBottomSheet<TrackerSearchResult>(
     context: context,
@@ -486,13 +628,26 @@ Future<TrackerSearchResult?> showTrackerMatchPicker(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => _TrackerMatchPicker(initialQuery: initialQuery),
+    builder: (_) => _TrackerMatchPicker(
+      initialQuery: initialQuery,
+      tracker: tracker,
+      kind: kind,
+    ),
   );
 }
 
 class _TrackerMatchPicker extends StatefulWidget {
-  const _TrackerMatchPicker({required this.initialQuery});
+  const _TrackerMatchPicker({
+    required this.initialQuery,
+    this.tracker,
+    this.kind = MediaKind.anime,
+  });
   final String initialQuery;
+
+  /// Search only this tracker. Null searches every connected one, which is
+  /// what the combined sheet has always done.
+  final Tracker? tracker;
+  final MediaKind kind;
 
   @override
   State<_TrackerMatchPicker> createState() => _TrackerMatchPickerState();
@@ -524,7 +679,14 @@ class _TrackerMatchPickerState extends State<_TrackerMatchPicker> {
     final q = _controller.text.trim();
     if (q.isEmpty) return;
     setState(() => _searching = true);
-    final r = await _hub.searchEntries(q);
+    final one = widget.tracker;
+    // One tracker failing its own search shouldn't leave the sheet spinning —
+    // the hub path already swallows per-tracker errors the same way.
+    final r = one != null
+        ? await one
+            .searchEntries(q, kind: widget.kind)
+            .catchError((_) => const <TrackerSearchResult>[])
+        : await _hub.searchEntries(q, kind: widget.kind);
     if (!mounted) return;
     setState(() {
       _results = r;

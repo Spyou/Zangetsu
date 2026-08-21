@@ -13,8 +13,11 @@ const _malIdAnimeGolden =
     r'query($idMal:Int){ Media(idMal:$idMal, type:ANIME){ id episodes } }';
 const _searchAnimeGolden =
     r'query($search:String){ Media(search:$search, type:ANIME){ id episodes } }';
+// `title` was added so the sync sheet can show WHICH entry a tracker matched —
+// without it a wrong auto-match is invisible and unfixable.
 const _entryAnimeGolden =
     r'query($id:Int){ Media(id:$id){ episodes '
+    r'title{ romaji english } '
     r'nextAiringEpisode{ episode airingAt } '
     r'mediaListEntry{ status score(format:POINT_10) progress } } }';
 const _searchMediaAnimeGolden =

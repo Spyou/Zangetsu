@@ -30,6 +30,7 @@ String mediaBySearchQuery(MediaKind kind) {
 /// AniList's own [mediaId] is unambiguous across anime/manga, unlike idMal.
 String mediaEntryQuery(MediaKind kind) {
   return 'query(\$id:Int){ Media(id:\$id){ ${_totalCountFields(kind)} '
+      'title{ romaji english } '
       'nextAiringEpisode{ episode airingAt } '
       'mediaListEntry{ status score(format:POINT_10) progress } } }';
 }
