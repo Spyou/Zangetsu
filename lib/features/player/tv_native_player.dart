@@ -11,6 +11,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/filler_service.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -136,6 +137,27 @@ class TvNativePlayer {
       durationMs: mark?.duration.inMilliseconds ?? 0,
     );
 
+    // Filler flags: use warm cache immediately so launch isn't blocked; push an
+    // update over the channel if the Jikan fetch lands after the player is up.
+    final warm = malId != null
+        ? FillerService.instance.peekCache(malId)
+        : null;
+    final fillerFlags = _fillerFlags(_episodes, warm ?? const {});
+    if (malId != null) {
+      unawaited(
+        FillerService.instance.fillerEpisodes(malId).then((s) async {
+          if (s.isEmpty && warm == null) return;
+          final flags = _fillerFlags(_episodes, s);
+          try {
+            await _ch.invokeMethod<void>('setFillerInfo', {
+              'fillerFlags': flags,
+              'autoSkipFiller': prefs.autoSkipFiller,
+            });
+          } catch (_) {}
+        }),
+      );
+    }
+
     final res = await _ch.invokeMapMethod<String, dynamic>('launch', {
       ..._streamPayload(src, mark?.position.inMilliseconds ?? 0),
       'url': playUrl, // torrent → local stream URL; otherwise unchanged
@@ -163,6 +185,8 @@ class TvNativePlayer {
       'skipIntro': prefs.skipIntro,
       'autoSkipOp': prefs.autoSkipOp,
       'autoSkipEd': prefs.autoSkipEd,
+      'autoSkipFiller': prefs.autoSkipFiller,
+      'fillerFlags': fillerFlags,
     });
 
     // Player closed — stop any active torrent stream.
@@ -449,6 +473,16 @@ class TvNativePlayer {
   /// Top-left label under the show title, e.g. "Episode 3 · Real Name".
   static String _episodeLabel(Episode ep) =>
       episodePresenceDetails(ep) ?? '';
+
+  /// Per-index filler flags for the native player (Jikan episode numbers).
+  static List<bool> _fillerFlags(List<Episode> episodes, Set<int> fillers) {
+    if (fillers.isEmpty) {
+      return List<bool>.filled(episodes.length, false);
+    }
+    return [
+      for (final e in episodes) fillers.contains(e.number?.toInt()),
+    ];
+  }
 
   /// How long playback will wait on episode-name metadata before giving up.
   /// Warm cache returns instantly; this only bites on a cold, slow fetch.
