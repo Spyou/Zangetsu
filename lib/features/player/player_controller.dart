@@ -2259,18 +2259,13 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// filler" on, jumps past consecutive filler episodes — but never strands the
   /// user (if everything left is filler, it just plays the next one).
   Future<void> playNext({bool auto = false}) async {
-    final immediate = state.currentIndex + 1;
-    if (immediate >= episodes.length) return;
-    var target = immediate;
-    if (auto &&
-        sl<PlaybackPrefs>().autoSkipFiller &&
-        _fillerEps.isNotEmpty) {
-      while (target < episodes.length &&
-          _fillerEps.contains(episodes[target].number?.toInt())) {
-        target++;
-      }
-      if (target >= episodes.length) target = immediate;
-    }
+    final target = nextAutoplayIndex(
+      currentIndex: state.currentIndex,
+      episodes: episodes,
+      fillerEps: _fillerEps,
+      autoSkipFiller: auto && sl<PlaybackPrefs>().autoSkipFiller,
+    );
+    if (target == null) return;
     await openEpisode(target);
   }
 
