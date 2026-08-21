@@ -365,7 +365,8 @@ class PlaybackPrefs {
   int get colorHue => (_box.get('colorHue', defaultValue: 0) as num).toInt();
   Future<void> setColorHue(int v) => _box.put('colorHue', v);
 
-  /// Skip filler episodes on auto-advance (anime only; needs MAL/filler data).
+  /// Skip filler episodes when advancing to the next one (anime only; needs
+  /// MAL/filler data). Applies to autoplay and the Next button.
   /// Off by default.
   bool get autoSkipFiller =>
       _box.get('autoSkipFiller', defaultValue: false) as bool;

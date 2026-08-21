@@ -16,6 +16,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/filler_service.dart';
 import '../../core/playback/hls.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
@@ -38,6 +39,7 @@ import '../../core/tracker/tracker_hub.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
+import '../../core/ui/badge.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import 'tv_exo_controller.dart';
 import 'tv_track_menu.dart';
@@ -160,6 +162,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Timer? _controlsHideTimer;
   bool _holdingSpeed = false; // D-pad RIGHT held → temporary 2× (YouTube-style)
 
+  /// Filler episode NUMBERS from Jikan (same as phone player). Empty until
+  /// fetched / for non-anime. Drives auto-skip and FILLER badges.
+  final ValueNotifier<Set<int>> _fillerEps = ValueNotifier(const {});
+
   // One remote Back press can arrive TWICE: the overlay's key handler closes
   // it on key-DOWN, then the press still falls through as a route pop, whose
   // ladder — seeing the overlay already closed — would eat the NEXT rung and
@@ -191,7 +197,24 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // devices don't drop into a screensaver/daydream mid-episode. Gated by the
     // same user pref; released in dispose().
     if (sl<PlaybackPrefs>().keepScreenOn) WakelockPlus.enable();
+    _ensureFiller();
   }
+
+  void _ensureFiller() {
+    final id = widget.malId;
+    if (id == null) return;
+    FillerService.instance.fillerEpisodes(id).then((s) {
+      if (mounted) _fillerEps.value = s;
+    });
+  }
+
+  /// Index the up-next / autoplay path will open (honours auto-skip filler).
+  int? get _autoNextIndex => nextAutoplayIndex(
+        currentIndex: _index,
+        episodes: _episodes,
+        fillerEps: _fillerEps.value,
+        autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
+      );
 
   Episode? get _ep => _episodes.isEmpty ? null : _episodes[_index];
 
@@ -1250,7 +1273,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       if (next <= 0) {
         t.cancel();
         _cancelUpNext();
-        _next();
+        _next(auto: true);
       } else {
         setState(() => _upNextCountdown = next);
       }
@@ -1265,9 +1288,17 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _rootFocus.requestFocus(); // hand D-pad back to the player
   }
 
-  void _next() {
-    if (_index >= _episodes.length - 1) return;
-    setState(() => _index++);
+  /// Advance to the next episode. When auto-skip filler is on, jumps past
+  /// consecutive fillers for both up-next and the Next button.
+  void _next({bool auto = false}) {
+    final target = nextAutoplayIndex(
+      currentIndex: _index,
+      episodes: _episodes,
+      fillerEps: _fillerEps.value,
+      autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
+    );
+    if (target == null) return;
+    setState(() => _index = target);
     _loadEpisode();
   }
 
@@ -1440,6 +1471,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       n.dispose();
     }
     _episodesScope.dispose();
+    _fillerEps.dispose();
     super.dispose();
   }
 
@@ -1614,7 +1646,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     },
                   ),
                 ),
-              if (_upNextCountdown != null && _index < _episodes.length - 1)
+              if (_upNextCountdown != null && _autoNextIndex != null)
                 Positioned(
                   right: 40,
                   bottom: 160,
@@ -1624,7 +1656,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                       if (e is! KeyDownEvent) return KeyEventResult.ignored;
                       if (okKeys.contains(e.logicalKey)) {
                         _cancelUpNext();
-                        _next();
+                        _next(auto: true);
                         return KeyEventResult.handled;
                       }
                       if (e.logicalKey == LogicalKeyboardKey.goBack ||
@@ -1634,34 +1666,45 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                       }
                       return KeyEventResult.ignored;
                     },
-                    child: Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.85),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.accent, width: 2),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Up next: ${_episodes[_index + 1].title.isNotEmpty ? _episodes[_index + 1].title : 'Episode ${_index + 2}'}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                            ),
+                    child: Builder(
+                      builder: (context) {
+                        final nextIdx = _autoNextIndex!;
+                        final nextEp = _episodes[nextIdx];
+                        final n = nextEp.number?.toInt() ?? (nextIdx + 1);
+                        final nextTitle =
+                            episodeDisplayTitle(nextEp, number: n) ??
+                            'Episode $n';
+                        return Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.85),
+                            borderRadius: BorderRadius.circular(12),
+                            border:
+                                Border.all(color: AppColors.accent, width: 2),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Playing in $_upNextCountdown…  (OK to play now, Back to cancel)',
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Up next: $nextTitle',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Playing in $_upNextCountdown…  (OK to play now, Back to cancel)',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                   ),
                 ),
@@ -1746,12 +1789,27 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                 ),
                 if (epLabel != null) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    epLabel,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 16,
-                    ),
+                  ValueListenableBuilder<Set<int>>(
+                    valueListenable: _fillerEps,
+                    builder: (context, fillers, _) {
+                      final n = ep?.number?.toInt();
+                      final isFiller = n != null && fillers.contains(n);
+                      return Row(
+                        children: [
+                          Text(
+                            epLabel,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                              fontSize: 16,
+                            ),
+                          ),
+                          if (isFiller) ...[
+                            const SizedBox(width: 8),
+                            const TagBadge(text: 'FILLER'),
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ],
               ],
@@ -1952,59 +2010,69 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
             Expanded(
               child: FocusScope(
                 node: _episodesScope,
-                child: ListView.builder(
-                  // Big cache so D-pad traversal can reach off-screen rows.
-                  cacheExtent: 2000,
-                  itemCount: _episodes.length,
-                  itemBuilder: (context, i) {
-                    final ep = _episodes[i];
-                    final n = ep.number?.toInt() ?? (i + 1);
-                    final title =
-                        episodeDisplayTitle(ep, number: n) ?? 'Episode $n';
-                    final current = i == _index;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: TvFocusable(
-                        autofocus: current,
-                        scale: 1.0,
-                        onTap: () => _playEpisodeAt(i),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 14,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.06),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Row(
-                            children: [
-                              if (current) ...[
-                                const Icon(
-                                  Icons.play_arrow_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              Expanded(
-                                child: Text(
-                                  '${i + 1}. $title',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: current
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                  ),
-                                ),
+                child: ValueListenableBuilder<Set<int>>(
+                  valueListenable: _fillerEps,
+                  builder: (context, fillers, _) {
+                    return ListView.builder(
+                      // Big cache so D-pad traversal can reach off-screen rows.
+                      cacheExtent: 2000,
+                      itemCount: _episodes.length,
+                      itemBuilder: (context, i) {
+                        final ep = _episodes[i];
+                        final n = ep.number?.toInt() ?? (i + 1);
+                        final title =
+                            episodeDisplayTitle(ep, number: n) ?? 'Episode $n';
+                        final current = i == _index;
+                        final isFiller = fillers.contains(n);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: TvFocusable(
+                            autofocus: current,
+                            scale: 1.0,
+                            onTap: () => _playEpisodeAt(i),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 14,
                               ),
-                            ],
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                children: [
+                                  if (current) ...[
+                                    const Icon(
+                                      Icons.play_arrow_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Expanded(
+                                    child: Text(
+                                      '${i + 1}. $title',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 16,
+                                        fontWeight: current
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  if (isFiller) ...[
+                                    const SizedBox(width: 8),
+                                    const TagBadge(text: 'FILLER'),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
                     );
                   },
                 ),

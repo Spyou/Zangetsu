@@ -39,6 +39,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   // leanback keyboard, applies on Done/submit, and hands focus back cleanly.
   String _epQuery = '';
 
+  // Filler episode numbers (from Jikan by MAL id), for the "FILLER" badge —
+  // mirrors phone [_DetailViewState._fillerEps].
+  Set<int> _fillerEps = const {};
+  int? _fillerForMal;
+  void _ensureFiller(int? malId) {
+    if (malId == null || malId == _fillerForMal) return;
+    _fillerForMal = malId;
+    FillerService.instance.fillerEpisodes(malId).then((s) {
+      if (mounted && s.isNotEmpty) setState(() => _fillerEps = s);
+    });
+  }
+
   Future<void> _openEpisodeSearch() async {
     final ctrl = TextEditingController(text: _epQuery);
     final result = await showDialog<String>(
@@ -546,6 +558,8 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final category = state.category;
     final eps = detail.episodes;
     final store = sl<ResumeStore>();
+    // Kick the (cached, once-per-malId) filler lookup for the FILLER badge.
+    _ensureFiller(detail.malId ?? item.malId);
     // Once-per-detail tracker-progress lookup for episode grey-out.
     _maybeFetchTrackerProgress(detail);
 
@@ -873,6 +887,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 key: const ValueKey('tv-detail-episodes'),
                                 eps: eps,
                                 seasonEps: seasonEps,
+                                fillerEps: _fillerEps,
                                 query: _epQuery,
                                 hasMultipleSeasons: hasMultipleSeasons,
                                 seasonSet: seasonSet,
@@ -955,6 +970,7 @@ class _TvEpisodeList extends StatelessWidget {
     super.key,
     required this.eps,
     required this.seasonEps,
+    required this.fillerEps,
     required this.hasMultipleSeasons,
     required this.seasonSet,
     required this.currentSeason,
@@ -974,6 +990,7 @@ class _TvEpisodeList extends StatelessWidget {
 
   final List<Episode> eps;
   final List<Episode> seasonEps;
+  final Set<int> fillerEps;
   final bool hasMultipleSeasons;
   final Set<int> seasonSet;
   final int currentSeason;
@@ -1072,6 +1089,7 @@ class _TvEpisodeList extends StatelessWidget {
                   ep: ep,
                   epNum: epNum,
                   displayTitle: displayTitle,
+                  filler: widget.fillerEps.contains(epNum),
                   coverUrl: widget.coverUrl,
                   coverHeaders: widget.coverHeaders,
                   isWatched: watched,

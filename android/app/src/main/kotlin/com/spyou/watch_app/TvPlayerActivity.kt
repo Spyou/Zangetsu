@@ -89,6 +89,8 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_SKIP_INTRO = "skipIntro"
         const val EXTRA_AUTO_SKIP_OP = "autoSkipOp"
         const val EXTRA_AUTO_SKIP_ED = "autoSkipEd"
+        const val EXTRA_AUTO_SKIP_FILLER = "autoSkipFiller"
+        const val EXTRA_FILLER_FLAGS = "fillerFlags"
         // Result extras read back in MainActivity.onActivityResult.
         const val RESULT_POSITION = "positionMs"
         const val RESULT_DURATION = "durationMs"
@@ -99,6 +101,11 @@ class TvPlayerActivity : Activity() {
         private const val HOLD_MS = 500L
         private const val DEFAULT_ACCENT = 0xFFFF4D5E.toInt()
         private const val UNFOCUSED_PILL = 0x59101014 // subtle dark glass (premium)
+
+        /** Foreground native player, so Dart can push late filler info. */
+        @JvmStatic
+        @Volatile
+        var active: TvPlayerActivity? = null
     }
 
     private var player: ExoPlayer? = null
@@ -155,11 +162,16 @@ class TvPlayerActivity : Activity() {
     // Jump past the OP/ED without a press (Settings toggles, both off by default).
     private var autoSkipOp = false
     private var autoSkipEd = false
+    // Auto-skip filler episodes on binge advance (Settings toggle).
+    private var autoSkipFiller = false
+    // Per-index filler flags from Jikan (via Dart). Empty until launch / update.
+    private var fillerFlags: BooleanArray = BooleanArray(0)
     // Interval starts already auto-skipped for the current episode, so seeking
     // back into an opening you meant to watch doesn't bounce you out again.
     private val autoSkipped = HashSet<Long>()
     // Live subtitle size multiplier (seeded from prefs; changeable in-player).
     private var subScale = 1f
+    private lateinit var fillerBadge: TextView
 
     private lateinit var menuPanel: View
     private lateinit var menuContent: android.widget.LinearLayout
@@ -221,12 +233,15 @@ class TvPlayerActivity : Activity() {
         skipIntroEnabled = intent.getBooleanExtra(EXTRA_SKIP_INTRO, true)
         autoSkipOp = intent.getBooleanExtra(EXTRA_AUTO_SKIP_OP, false)
         autoSkipEd = intent.getBooleanExtra(EXTRA_AUTO_SKIP_ED, false)
+        autoSkipFiller = intent.getBooleanExtra(EXTRA_AUTO_SKIP_FILLER, false)
+        fillerFlags = intent.getBooleanArrayExtra(EXTRA_FILLER_FLAGS) ?: BooleanArray(0)
         subScale = intent.getFloatExtra(EXTRA_SUB_SCALE, 1f)
         subtitleApiKeySet = intent.getBooleanExtra(EXTRA_SUB_HAS_KEY, false)
 
         setContentView(R.layout.tv_player)
         bindViews()
         styleControls()
+        active = this
         // Android 13+ (the tester's Bravia) routes Back through the predictive-back
         // dispatcher — the app opts in app-wide via enableOnBackInvokedCallback=true
         // — which finishes this Activity WITHOUT ever calling dispatchKeyEvent or
@@ -283,9 +298,10 @@ class TvPlayerActivity : Activity() {
                 // Duration is known once ready → fetch AniSkip for this episode.
                 if (state == Player.STATE_READY && skipsFetchedFor != currentIndex) fetchSkips()
                 if (state == Player.STATE_READY) reportTimingIfNeeded()
-                // Autoplay the next episode when this one finishes.
+                // Autoplay the next episode when this one finishes. Honour
+                // auto-skip filler the same way the Flutter player does.
                 if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
-                    loadEpisode(currentIndex + 1)
+                    loadEpisode(nextAutoplayIndex())
                 }
             }
         })
@@ -440,10 +456,42 @@ class TvPlayerActivity : Activity() {
             text = label
             visibility = if (label.isBlank()) View.GONE else View.VISIBLE
         }
+        val isFiller = currentIndex < fillerFlags.size && fillerFlags[currentIndex]
+        fillerBadge.visibility = if (isFiller) View.VISIBLE else View.GONE
         val hasNext = currentIndex < episodeCount - 1
         btnNext.isEnabled = hasNext
         btnNext.isFocusable = hasNext
         btnNext.alpha = if (hasNext) 1f else 0.35f
+    }
+
+    /** Late filler info from Dart (Jikan fetch finished after launch). */
+    fun applyFillerInfo(flags: BooleanArray?, autoSkip: Boolean?) {
+        runOnUiThread {
+            if (flags != null) fillerFlags = flags
+            if (autoSkip != null) autoSkipFiller = autoSkip
+            updateEpisodeUi()
+        }
+    }
+
+    /**
+     * Next index when advancing (autoplay or Next button). When
+     * [autoSkipFiller] is on, jumps past consecutive fillers — but never
+     * strands the user (if everything left is filler, returns immediate next).
+     * Mirrors Dart [nextAutoplayIndex].
+     */
+    private fun nextAutoplayIndex(): Int {
+        val immediate = currentIndex + 1
+        if (immediate >= episodeCount) return immediate
+        if (!autoSkipFiller || fillerFlags.isEmpty()) return immediate
+        var target = immediate
+        while (target < episodeCount &&
+            target < fillerFlags.size &&
+            fillerFlags[target]
+        ) {
+            target++
+        }
+        if (target >= episodeCount) return immediate
+        return target
     }
 
     /** Push position+duration to Dart (Discord bar + resume). */
@@ -694,7 +742,9 @@ class TvPlayerActivity : Activity() {
         sectionHeader("Episodes")
         for (i in 0 until episodeCount) {
             val label = episodeLabels.getOrNull(i) ?: "Episode ${i + 1}"
-            option(label, selected = i == currentIndex) { if (i != currentIndex) loadEpisode(i) }
+            val isFiller = i < fillerFlags.size && fillerFlags[i]
+            val row = if (isFiller) "$label  · FILLER" else label
+            option(row, selected = i == currentIndex) { if (i != currentIndex) loadEpisode(i) }
         }
         showPanel()
         // Land focus on the current episode (row index = currentIndex + 1 header).
@@ -1093,6 +1143,7 @@ class TvPlayerActivity : Activity() {
         btnAudioSubs = findViewById(R.id.btn_audio_subs)
         btnNext = findViewById(R.id.btn_next)
         btnMegaskip = findViewById(R.id.btn_megaskip)
+        fillerBadge = findViewById(R.id.filler_badge)
         // MegaSkip pill: label + visibility from the megaSkip prefs (launch extras).
         megaSkipSecs = intent.getIntExtra(EXTRA_MEGASKIP_SECS, 85)
         btnMegaskip.text = "+${megaSkipSecs}s"
@@ -1100,7 +1151,7 @@ class TvPlayerActivity : Activity() {
             if (intent.getBooleanExtra(EXTRA_MEGASKIP, true)) View.VISIBLE else View.GONE
 
         findViewById<TextView>(R.id.title).text = intent.getStringExtra(EXTRA_TITLE) ?: ""
-        // episode_label is set by updateEpisodeUi (drives off episodeLabels).
+        // episode_label / filler badge are set by updateEpisodeUi.
     }
 
     private fun styleControls() {
@@ -1130,7 +1181,7 @@ class TvPlayerActivity : Activity() {
         btnQuality.setOnClickListener { openQualityMenu() }
         btnSources.setOnClickListener { openSourcesMenu() }
         btnAudioSubs.setOnClickListener { openAvMenu() }
-        btnNext.setOnClickListener { loadEpisode(currentIndex + 1) }
+        btnNext.setOnClickListener { loadEpisode(nextAutoplayIndex()) }
         btnMegaskip.setOnClickListener { seekBy(megaSkipSecs * 1000L) }
 
         skipButton.isFocusableInTouchMode = true
@@ -1510,6 +1561,7 @@ class TvPlayerActivity : Activity() {
     }
 
     override fun onDestroy() {
+        if (active === this) active = null
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
         try { loudness?.release() } catch (_: Exception) {}

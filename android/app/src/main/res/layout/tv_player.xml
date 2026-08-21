@@ -111,6 +111,23 @@
                 android:layout_marginTop="2dp"
                 android:textColor="#CCFFFFFF"
                 android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/filler_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/tv_filler_badge"
+                android:paddingLeft="8dp"
+                android:paddingRight="8dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:text="FILLER"
+                android:textColor="#FFFF4D5E"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                tools:ignore="HardcodedText" />
         </LinearLayout>
 
         <!-- Top-right header quick actions (JioHotstar-style small buttons) -->

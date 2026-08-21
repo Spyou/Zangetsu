@@ -795,7 +795,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.fast_forward_outlined,
                 title: 'Auto-skip filler episodes',
-                subtitle: 'On autoplay, jump past filler (anime only)',
+                subtitle: 'Jump past filler when going to the next episode '
+                    '(anime only)',
                 value: _prefs.autoSkipFiller,
                 onChanged: (v) async {
                   await _prefs.setAutoSkipFiller(v);

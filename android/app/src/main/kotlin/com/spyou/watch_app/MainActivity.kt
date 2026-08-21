@@ -315,6 +315,13 @@ class MainActivity : FlutterActivity() {
                 ch.setMethodCallHandler { call, result ->
                     when (call.method) {
                         "launch" -> launchTvPlayer(call, result)
+                        "setFillerInfo" -> {
+                            val flags = call.argument<List<*>>("fillerFlags")
+                                ?.map { it == true }?.toBooleanArray()
+                            val auto = call.argument<Boolean>("autoSkipFiller")
+                            TvPlayerActivity.active?.applyFillerInfo(flags, auto)
+                            result.success(null)
+                        }
                         else -> result.notImplemented()
                     }
                 }
@@ -1210,6 +1217,16 @@ class MainActivity : FlutterActivity() {
             intent.putExtra(TvPlayerActivity.EXTRA_SKIP_INTRO, call.argument<Boolean>("skipIntro") ?: true)
             intent.putExtra(TvPlayerActivity.EXTRA_AUTO_SKIP_OP, call.argument<Boolean>("autoSkipOp") ?: false)
             intent.putExtra(TvPlayerActivity.EXTRA_AUTO_SKIP_ED, call.argument<Boolean>("autoSkipEd") ?: false)
+            intent.putExtra(
+                TvPlayerActivity.EXTRA_AUTO_SKIP_FILLER,
+                call.argument<Boolean>("autoSkipFiller") ?: false,
+            )
+            call.argument<List<*>>("fillerFlags")?.let { raw ->
+                intent.putExtra(
+                    TvPlayerActivity.EXTRA_FILLER_FLAGS,
+                    raw.map { it == true }.toBooleanArray(),
+                )
+            }
 
             val headers = call.argument<Map<String, String>>("headers")
             if (!headers.isNullOrEmpty()) {

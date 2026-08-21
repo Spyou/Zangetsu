@@ -1,6 +1,34 @@
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+
+import '../models/episode.dart';
+
+/// Next episode index when advancing. When [autoSkipFiller] is on and
+/// [fillerEps] is non-empty, jumps past consecutive filler episodes — but
+/// never strands the user (if everything left is filler, returns [currentIndex]
+/// + 1). Returns null when there is no next episode.
+///
+/// Used for both autoplay and the Next control when the pref is on; pick a
+/// specific episode from the list to still play filler.
+int? nextAutoplayIndex({
+  required int currentIndex,
+  required List<Episode> episodes,
+  required Set<int> fillerEps,
+  required bool autoSkipFiller,
+}) {
+  final immediate = currentIndex + 1;
+  if (immediate >= episodes.length) return null;
+  if (!autoSkipFiller || fillerEps.isEmpty) return immediate;
+  var target = immediate;
+  while (target < episodes.length &&
+      fillerEps.contains(episodes[target].number?.toInt())) {
+    target++;
+  }
+  if (target >= episodes.length) return immediate;
+  return target;
+}
 
 /// Fetches the set of FILLER episode numbers for an anime from Jikan (the MAL
 /// API): `api.jikan.moe/v4/anime/{malId}/episodes` returns a `filler` boolean
@@ -31,6 +59,22 @@ class FillerService {
       _inflight.remove(malId);
     });
   }
+
+  /// Warm the in-memory cache without a network call (tests).
+  @visibleForTesting
+  void debugSeedCache(int malId, Set<int> fillers) {
+    _cache[malId] = fillers;
+  }
+
+  /// Drop the in-memory cache (tests).
+  @visibleForTesting
+  void debugClearCache() {
+    _cache.clear();
+    _inflight.clear();
+  }
+
+  /// Synchronous peek of a warm cache entry (null if not fetched yet).
+  Set<int>? peekCache(int malId) => _cache[malId];
 
   Future<Set<int>> _fetch(int malId) async {
     final fillers = <int>{};
