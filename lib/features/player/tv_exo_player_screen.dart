@@ -1288,14 +1288,14 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     _rootFocus.requestFocus(); // hand D-pad back to the player
   }
 
-  /// Advance to the next episode. [auto] true (up-next / binge) honours
-  /// auto-skip filler; the on-screen Next button stays manual.
+  /// Advance to the next episode. When auto-skip filler is on, jumps past
+  /// consecutive fillers for both up-next and the Next button.
   void _next({bool auto = false}) {
     final target = nextAutoplayIndex(
       currentIndex: _index,
       episodes: _episodes,
       fillerEps: _fillerEps.value,
-      autoSkipFiller: auto && sl<PlaybackPrefs>().autoSkipFiller,
+      autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
     );
     if (target == null) return;
     setState(() => _index = target);

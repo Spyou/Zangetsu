@@ -5,13 +5,13 @@ import 'package:flutter/foundation.dart';
 
 import '../models/episode.dart';
 
-/// Next episode index for binge autoplay. When [autoSkipFiller] is on and
+/// Next episode index when advancing. When [autoSkipFiller] is on and
 /// [fillerEps] is non-empty, jumps past consecutive filler episodes — but
 /// never strands the user (if everything left is filler, returns [currentIndex]
 /// + 1). Returns null when there is no next episode.
 ///
-/// Manual Next should call this with [autoSkipFiller] false so fillers stay
-/// reachable; only auto-advance / up-next passes true (and the pref).
+/// Used for both autoplay and the Next control when the pref is on; pick a
+/// specific episode from the list to still play filler.
 int? nextAutoplayIndex({
   required int currentIndex,
   required List<Episode> episodes,

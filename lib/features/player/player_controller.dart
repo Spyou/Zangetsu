@@ -2255,15 +2255,16 @@ class PlayerCubit extends Cubit<PlayerState> {
     return n != null && _fillerEps.contains(n);
   }
 
-  /// Advance to the next episode. On an AUTO advance (up-next) with "Auto-skip
-  /// filler" on, jumps past consecutive filler episodes — but never strands the
-  /// user (if everything left is filler, it just plays the next one).
+  /// Advance to the next episode. When "Auto-skip filler" is on, jumps past
+  /// consecutive filler episodes — but never strands the user (if everything
+  /// left is filler, it just plays the next one). Same rule for autoplay and
+  /// the Next button; pick an episode from the list to still watch filler.
   Future<void> playNext({bool auto = false}) async {
     final target = nextAutoplayIndex(
       currentIndex: state.currentIndex,
       episodes: episodes,
       fillerEps: _fillerEps,
-      autoSkipFiller: auto && sl<PlaybackPrefs>().autoSkipFiller,
+      autoSkipFiller: sl<PlaybackPrefs>().autoSkipFiller,
     );
     if (target == null) return;
     await openEpisode(target);

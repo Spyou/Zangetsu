@@ -474,9 +474,10 @@ class TvPlayerActivity : Activity() {
     }
 
     /**
-     * Next index for binge autoplay. When [autoSkipFiller] is on, jumps past
-     * consecutive fillers — but never strands the user (if everything left is
-     * filler, returns immediate next). Mirrors Dart [nextAutoplayIndex].
+     * Next index when advancing (autoplay or Next button). When
+     * [autoSkipFiller] is on, jumps past consecutive fillers — but never
+     * strands the user (if everything left is filler, returns immediate next).
+     * Mirrors Dart [nextAutoplayIndex].
      */
     private fun nextAutoplayIndex(): Int {
         val immediate = currentIndex + 1
@@ -1180,7 +1181,7 @@ class TvPlayerActivity : Activity() {
         btnQuality.setOnClickListener { openQualityMenu() }
         btnSources.setOnClickListener { openSourcesMenu() }
         btnAudioSubs.setOnClickListener { openAvMenu() }
-        btnNext.setOnClickListener { loadEpisode(currentIndex + 1) }
+        btnNext.setOnClickListener { loadEpisode(nextAutoplayIndex()) }
         btnMegaskip.setOnClickListener { seekBy(megaSkipSecs * 1000L) }
 
         skipButton.isFocusableInTouchMode = true
