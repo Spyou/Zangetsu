@@ -160,6 +160,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Timer? _upNextTimer;
   bool _controlsVisible = true; // bottom controls; auto-hide after inactivity
   Timer? _controlsHideTimer;
+  /// Touch-dragging the seek slider — keep chrome up and drive the thumb locally.
+  bool _scrubbing = false;
+  int? _scrubMs;
   bool _holdingSpeed = false; // D-pad RIGHT held → temporary 2× (YouTube-style)
 
   /// Filler episode NUMBERS from Jikan (same as phone player). Empty until
@@ -251,11 +254,34 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           !_menuOpen &&
           !_episodesOpen &&
           !_controlRowFocused &&
+          !_scrubbing &&
           _searchResults == null &&
           _upNextCountdown == null) {
         setState(() => _controlsVisible = false);
       }
     });
+  }
+
+  /// Touch on empty video/chrome:
+  /// - side menu open → dismiss the menu
+  /// - controls visible → play/pause (same as remote OK)
+  /// - controls hidden → show controls
+  void _toggleControlsFromTouch() {
+    if (_menuOpen) {
+      _closeMenu();
+      return;
+    }
+    if (_searchResults != null) {
+      setState(() => _searchResults = null);
+      _rootFocus.requestFocus();
+      return;
+    }
+    if (_episodesOpen || _upNextCountdown != null) return;
+    if (_controlsVisible) {
+      _togglePlay();
+    } else {
+      _bumpControls();
+    }
   }
 
   void _onPlayingChanged() {
@@ -1556,6 +1582,15 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                   },
                 ),
               ),
+              // Touchscreen: tap empty video to show/hide chrome. Sits above the
+              // PlatformView and under the controls overlay so visible pills still
+              // receive taps.
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _toggleControlsFromTouch,
+                ),
+              ),
               if (_error != null)
                 Center(
                   child: Text(
@@ -1760,143 +1795,216 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         (icon: Icons.skip_next_rounded, label: 'Next Episode', onTap: _next),
     ];
     return Positioned.fill(
-      child: Column(
+      child: Stack(
         children: [
-          // ── Top scrim + title / episode ────────────────────────────────────
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(48, 36, 48, 56),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Colors.black87, Colors.transparent],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  widget.showTitle ?? '',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w700,
+          Column(
+            children: [
+              // ── Top scrim + title / episode ────────────────────────────────────
+              GestureDetector(
+                onTap: _toggleControlsFromTouch,
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(48, 36, 48, 56),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black87, Colors.transparent],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.showTitle ?? '',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      if (epLabel != null) ...[
+                        const SizedBox(height: 4),
+                        ValueListenableBuilder<Set<int>>(
+                          valueListenable: _fillerEps,
+                          builder: (context, fillers, _) {
+                            final n = ep?.number?.toInt();
+                            final isFiller = n != null && fillers.contains(n);
+                            return Row(
+                              children: [
+                                Text(
+                                  epLabel,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                if (isFiller) ...[
+                                  const SizedBox(width: 8),
+                                  const TagBadge(text: 'FILLER'),
+                                ],
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                if (epLabel != null) ...[
-                  const SizedBox(height: 4),
-                  ValueListenableBuilder<Set<int>>(
-                    valueListenable: _fillerEps,
-                    builder: (context, fillers, _) {
-                      final n = ep?.number?.toInt();
-                      final isFiller = n != null && fillers.contains(n);
-                      return Row(
-                        children: [
-                          Text(
-                            epLabel,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                              fontSize: 16,
-                            ),
-                          ),
-                          if (isFiller) ...[
-                            const SizedBox(width: 8),
-                            const TagBadge(text: 'FILLER'),
-                          ],
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const Spacer(),
-          // ── Bottom scrim + scrubber + button row ───────────────────────────
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(48, 44, 48, 34),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                colors: [Colors.black, Colors.transparent],
               ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ValueListenableBuilder<int>(
-                  valueListenable: c.position,
-                  builder: (_, pos, _) => ValueListenableBuilder<int>(
-                    valueListenable: c.duration,
-                    builder: (_, dur, _) {
-                      final frac = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
-                      return Row(
-                        children: [
-                          Text(
-                            _fmt(pos),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              // Read-only label+value — NOT slider:true, so
-                              // this stays a display node, not a focusable
-                              // seek control.
-                              child: Semantics(
-                                label: 'Seek bar',
-                                value: '${_fmt(pos)} of ${_fmt(dur)}',
-                                child: LinearProgressIndicator(
-                                  value: frac,
-                                  minHeight: 6,
-                                  backgroundColor: Colors.white24,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    AppColors.accent,
+              // Empty mid-video: tap play/pauses while chrome is up.
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: _toggleControlsFromTouch,
+                ),
+              ),
+              // ── Bottom scrim + scrubber + button row ───────────────────────────
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(48, 44, 48, 34),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [Colors.black, Colors.transparent],
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ValueListenableBuilder<int>(
+                      valueListenable: c.position,
+                      builder: (_, pos, _) => ValueListenableBuilder<int>(
+                        valueListenable: c.duration,
+                        builder: (_, dur, _) {
+                          final displayPos = _scrubMs ?? pos;
+                          final frac = dur > 0
+                              ? (displayPos / dur).clamp(0.0, 1.0)
+                              : 0.0;
+                          return Row(
+                            children: [
+                              Text(
+                                _fmt(displayPos),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                // ExcludeFocus: D-pad must not land on the
+                                // slider (◀▶ still seek from the root).
+                                child: ExcludeFocus(
+                                  child: SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 6,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 8,
+                                      ),
+                                      overlayShape:
+                                          const RoundSliderOverlayShape(
+                                            overlayRadius: 14,
+                                          ),
+                                      activeTrackColor: AppColors.accent,
+                                      inactiveTrackColor: Colors.white24,
+                                      thumbColor: AppColors.accent,
+                                      overlayColor: AppColors.accent
+                                          .withValues(alpha: 0.25),
+                                    ),
+                                    child: Slider(
+                                      value: frac.toDouble(),
+                                      onChangeStart: dur > 0
+                                          ? (_) {
+                                              _controlsHideTimer?.cancel();
+                                              setState(() {
+                                                _scrubbing = true;
+                                                _scrubMs = displayPos;
+                                              });
+                                            }
+                                          : null,
+                                      onChanged: dur > 0
+                                          ? (v) {
+                                              setState(() {
+                                                _scrubMs = (v * dur).round();
+                                              });
+                                            }
+                                          : null,
+                                      onChangeEnd: dur > 0
+                                          ? (v) {
+                                              final target = (v * dur).round();
+                                              c.seek(target);
+                                              setState(() {
+                                                _scrubbing = false;
+                                                _scrubMs = null;
+                                              });
+                                              _bumpControls();
+                                            }
+                                          : null,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Text(
-                            _fmt(dur),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < buttons.length; i++)
-                      _controlRowButton(
-                        i,
-                        buttons.length,
-                        buttons[i].icon,
-                        buttons[i].label,
-                        buttons[i].onTap,
+                              const SizedBox(width: 8),
+                              Text(
+                                _fmt(dur),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        for (var i = 0; i < buttons.length; i++)
+                          _controlRowButton(
+                            i,
+                            buttons.length,
+                            buttons[i].icon,
+                            buttons[i].label,
+                            buttons[i].onTap,
+                          ),
+                      ],
+                    ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
+          ),
+          // Center play glyph while paused (matches native remote OK feedback).
+          ValueListenableBuilder<bool>(
+            valueListenable: c.playing,
+            builder: (_, playing, _) {
+              if (playing) return const SizedBox.shrink();
+              return IgnorePointer(
+                child: Center(
+                  child: Container(
+                    width: 86,
+                    height: 86,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 48,
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -1950,37 +2058,44 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         child: Builder(
           builder: (context) {
             final focused = Focus.of(context).hasFocus;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 18,
-                vertical: 11,
-              ),
-              decoration: BoxDecoration(
-                color: focused
-                    ? AppColors.accent
-                    : Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 20, color: Colors.white),
-                  const SizedBox(width: 8),
-                  // The Semantics above already announces the label —
-                  // exclude this sibling so TalkBack doesn't say it twice.
-                  ExcludeSemantics(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
+            return GestureDetector(
+              onTap: () {
+                setState(() => _controlRowFocused = true);
+                _rowFocusNodes[index].requestFocus();
+                onTap();
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                margin: const EdgeInsets.symmetric(horizontal: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 11,
+                ),
+                decoration: BoxDecoration(
+                  color: focused
+                      ? AppColors.accent
+                      : Colors.white.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 20, color: Colors.white),
+                    const SizedBox(width: 8),
+                    // The Semantics above already announces the label —
+                    // exclude this sibling so TalkBack doesn't say it twice.
+                    ExcludeSemantics(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -2104,7 +2219,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         builder: (context) {
           final focused = Focus.of(context).hasFocus;
           return GestureDetector(
-            onTap: onTap,
+            onTap: () {
+              Focus.of(context).requestFocus();
+              onTap();
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
               decoration: BoxDecoration(
