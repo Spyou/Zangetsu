@@ -293,6 +293,10 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   int? _trackerProgress;
   bool _trackerFetchStarted = false;
 
+  /// Whether any connected tracker has this title on a list — drives the
+  /// Tracking action's icon. Mirrors the phone view.
+  bool _tracked = false;
+
   void _maybeFetchTrackerProgress(MediaDetail detail) {
     if (_trackerFetchStarted) return;
     _trackerFetchStarted = true;
@@ -311,9 +315,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
           pinnedIds: pins.isEmpty ? null : pins,
         )
         .then((e) {
+      if (!mounted) return;
       final p = e?.progress;
-      if (!mounted || p == null || p <= 0) return;
-      setState(() => _trackerProgress = p);
+      setState(() {
+        _tracked = e?.onList ?? false;
+        if (p != null && p > 0) _trackerProgress = p;
+      });
     });
   }
 
@@ -348,6 +355,11 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     if (applied != null && mounted && applied > (_trackerProgress ?? 0)) {
       setState(() => _trackerProgress = applied);
     }
+    // Re-read: the sheet may have added or removed tracking, and a removal
+    // applies nothing for [applied] to report.
+    if (!mounted) return;
+    _trackerFetchStarted = false;
+    _maybeFetchTrackerProgress(detail);
   }
 
   Future<void> _openDownloadSheet({
@@ -801,9 +813,16 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     semanticLabel: 'Tracking',
                                     child: ExcludeSemantics(
                                       child: _IconAction(
-                                        icon: Icons.sync_rounded,
+                                        icon: _tracked
+                                            ? Icons
+                                                .published_with_changes_rounded
+                                            : Icons.sync_rounded,
+                                        active: _tracked,
                                         label: 'Tracking',
-                                        tooltip: 'Sync status, score & progress',
+                                        tooltip: _tracked
+                                            ? 'Tracked — edit status, score '
+                                                '& progress'
+                                            : 'Sync status, score & progress',
                                         onTap: () => _openTrackingSheet(detail),
                                       ),
                                     ),

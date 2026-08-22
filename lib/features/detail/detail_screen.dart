@@ -367,6 +367,11 @@ class _DetailViewState extends State<_DetailView>
   // count, fetched once after the detail loads (null until then / no match).
   int? _trackerProgress;
 
+  /// Whether any connected tracker has this title on a list. Drives the
+  /// Tracking action's icon — separate from [_trackerProgress] because a title
+  /// can be tracked at episode 0 (Planning), which is still "tracked".
+  bool _tracked = false;
+
   /// Next episode to air, from the tracker entry fetched for progress. Null
   /// for a finished show, a movie, or a title with no tracker match — the row
   /// hides rather than claiming it doesn't know.
@@ -406,16 +411,19 @@ class _DetailViewState extends State<_DetailView>
       final ep = e?.nextAiringEpisode;
       final at = e?.nextAiringAt;
       final p = e?.progress;
+      final onList = e?.onList ?? false;
       if (p == null || p <= 0) {
-        if (ep != null && at != null) {
-          setState(() {
+        setState(() {
+          _tracked = onList;
+          if (ep != null && at != null) {
             _nextAiringEpisode = ep;
             _nextAiringAt = at;
-          });
-        }
+          }
+        });
         return;
       }
       setState(() {
+        _tracked = onList;
         _trackerProgress = p;
         _nextAiringEpisode = ep;
         _nextAiringAt = at;
@@ -467,6 +475,11 @@ class _DetailViewState extends State<_DetailView>
     if (applied != null && mounted && applied > (_trackerProgress ?? 0)) {
       setState(() => _trackerProgress = applied);
     }
+    // The sheet can add tracking or remove it, so the icon has to be re-read
+    // rather than inferred from [applied] (a removal applies nothing).
+    if (!mounted) return;
+    _trackerFetchStarted = false;
+    _maybeFetchTrackerProgress(detail);
   }
 
   /// Open a related title. Relations come from a metadata API (not tied to a
@@ -1579,9 +1592,14 @@ class _DetailViewState extends State<_DetailView>
                   ),
                 if (_trackingAvailable(detail))
                   _IconAction(
-                    icon: Icons.sync_rounded,
+                    icon: _tracked
+                        ? Icons.published_with_changes_rounded
+                        : Icons.sync_rounded,
+                    active: _tracked,
                     label: 'Tracking',
-                    tooltip: 'Sync status, score & progress',
+                    tooltip: _tracked
+                        ? 'Tracked — edit status, score & progress'
+                        : 'Sync status, score & progress',
                     onTap: () => _openTrackingSheet(detail),
                   ),
                 _IconAction(
