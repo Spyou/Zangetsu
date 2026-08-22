@@ -175,23 +175,20 @@ MediaDetail mediaDetailFromSManga(
 /// The source `url` (Mihon's opaque chapter key) is stored in [Episode.url]
 /// and passed back verbatim to getPages.
 ///
-/// `scanlator` has no *display* field: [Episode] carries no scanlator/group
-/// concept (it wasn't added for this task — see the report's self-review) and
-/// isn't surfaced anywhere in the returned [Episode], per the constraint
-/// against editing shared models. It IS folded into [Episode.id] below,
-/// though — a scanlator-less id collides across scanlation groups (MangaDex
-/// and friends routinely have several groups release the same chapter
-/// number on one source), which would silently merge two distinct chapters'
-/// read progress under one id. Disambiguating the id is a `String` I build in
-/// this file, not a model change, so it doesn't trip the "no shared model
-/// edits" constraint the way adding a field to [Episode] would.
+/// `scanlator` is used twice. It's folded into [Episode.id] — a scanlator-less
+/// id collides across scanlation groups (MangaDex and friends routinely have
+/// several groups release the same chapter number on one source), which would
+/// silently merge two distinct chapters' read progress under one id. And it's
+/// carried on [Episode.scanlator] so the chapter row can name the group and
+/// the list can filter by it; without that, several groups' releases of the
+/// same number just read as "1, 1, 2, 2" with nothing to tell them apart.
 ///
 /// Expected JSON keys (from `MihonJson.chapterToJson`):
 ///   url            — String  (opaque chapter key; passed to getPages)
 ///   name           — String  (chapter title, e.g. "Chapter 1")
 ///   chapter_number — double  (use -1.0 / negative to signal "unset")
 ///   date_upload    — int     (Unix millis; 0 = unset)
-///   scanlator      — String? (folded into id only — see above; not displayed)
+///   scanlator      — String? (folded into the id AND carried for display)
 Episode episodeFromSChapter(Map<String, dynamic> j) {
   final url = (j['url'] as String?) ?? '';
   final rawNum = (j['chapter_number'] as num?)?.toDouble();
@@ -231,6 +228,9 @@ Episode episodeFromSChapter(Map<String, dynamic> j) {
     number: chapterNum,
     url: url,
     date: dateStr,
+    // Normalised for display only — the id above keeps the raw value so
+    // chapter ids (and the read progress keyed to them) don't shift.
+    scanlator: scanlatorLabel(scanlator),
   );
 }
 

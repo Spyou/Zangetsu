@@ -3,6 +3,25 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'episode.g.dart';
 
+/// A scanlation group name fit to show, or null when there isn't really one.
+///
+/// Sources don't reliably use an empty string for "no group": one Mihon source
+/// sets the field to a single ZERO WIDTH SPACE (U+200B). Dart's `trim()` won't
+/// touch it — Unicode doesn't call it whitespace — so it survives as a
+/// non-empty name and renders as an invisible chip and a stray leading `·` on
+/// every chapter row. Strip the invisible characters first, then decide.
+///
+/// Use this for DISPLAY only. `episodeFromSChapter` folds the RAW value into
+/// the chapter id to keep two groups' releases apart, and normalising there
+/// would rewrite existing ids and lose people's read progress.
+String? scanlatorLabel(String? raw) {
+  if (raw == null) return null;
+  // Zero-width space/non-joiner/joiner, BOM, and the LTR/RTL marks — all
+  // invisible, all things sources leave lying around in a "blank" field.
+  final cleaned = raw.replaceAll(RegExp(r'[\u200B-\u200F\uFEFF]'), '').trim();
+  return cleaned.isEmpty ? null : cleaned;
+}
+
 /// One episode within a series. The video-native analogue of Sozo Read's
 /// `Chapter` — same wire keys (`id/title/number/url/date`) plus two video
 /// extras.
@@ -35,6 +54,17 @@ class Episode extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? metaTitle;
 
+  /// Which scanlation group released this chapter (manga; a couple of novel
+  /// sources too). Null for anime and for sources that don't say.
+  ///
+  /// Several groups routinely release the SAME chapter number, which is why a
+  /// chapter list can show 1, 1, 2, 2 — they're genuinely different chapters,
+  /// not duplicates. The group was already folded into [id] to keep their read
+  /// progress apart; this is the same value kept as a display field so the row
+  /// can name it and the list can filter by it. Not serialized, like [season].
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? scanlator;
+
   /// Per-episode rating (0–10, AniZip/TMDB) and runtime in minutes. Not
   /// serialized — filled fresh on each detail load, like [description].
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -51,6 +81,7 @@ class Episode extends Equatable {
     this.thumbnail,
     this.filler = false,
     this.season,
+    this.scanlator,
     this.description,
     this.metaTitle,
     this.rating,
@@ -77,6 +108,7 @@ class Episode extends Equatable {
         thumbnail: thumbnail ?? this.thumbnail,
         filler: filler,
         season: season,
+        scanlator: scanlator,
         description: description ?? this.description,
         metaTitle: metaTitle ?? this.metaTitle,
         rating: rating ?? this.rating,
@@ -93,6 +125,7 @@ class Episode extends Equatable {
         thumbnail,
         filler,
         season,
+        scanlator,
         description,
         metaTitle,
         rating,

@@ -236,12 +236,16 @@ class LnReaderProvider implements BaseProvider, ReadingProvider {
     final path = (j['path'] as String?) ?? '';
     final chapterNumber = (j['chapterNumber'] as num?)?.toDouble();
     final releaseTime = j['releaseTime'];
+    // Only a couple of novel plugins report one (RLIB, rezerowebnovelfr), but
+    // it's the same field the manga path uses, so they get the label for free.
+    final scanlator = scanlatorLabel(j['scanlator'] as String?);
     return Episode(
       id: path.isNotEmpty ? path : 'ch-$index',
       title: (j['name'] as String?) ?? '',
       number: chapterNumber ?? (index + 1).toDouble(),
       url: path,
       date: (releaseTime is String && releaseTime.isNotEmpty) ? releaseTime : null,
+      scanlator: scanlator,
     );
   }
 

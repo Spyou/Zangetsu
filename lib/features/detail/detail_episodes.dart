@@ -91,6 +91,11 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   static const int _chunk = 50;
 
   bool _grid = false;
+
+  /// Selected scanlation group, or null for "All". Several groups release the
+  /// same chapter number, so an unfiltered list legitimately reads 1, 1, 2, 2
+  /// — picking a group is what makes it a single readable run.
+  String? _scanlator;
   int _rangeIndex = 0;
   String? _highlightEpId; // outlines a grid tile right after a jump
 
@@ -116,11 +121,35 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   int _initialRange() {
     if (!widget.hasAnyMark || widget.seasonEps.isEmpty) return 0;
     final resumeEp = widget.eps[widget.resumeIndex(widget.eps)];
-    final local = widget.seasonEps.indexOf(resumeEp);
+    // Against the FILTERED list — the range index addresses what's on screen,
+    // and a scanlator filter makes that a different list to seasonEps.
+    final local = _filteredEps.indexOf(resumeEp);
     return local < 0 ? 0 : local ~/ _chunk;
   }
 
-  int get _rangeCount => (widget.seasonEps.length / _chunk).ceil();
+  int get _rangeCount => (_filteredEps.length / _chunk).ceil();
+
+  /// Scanlation groups on offer, first-seen order (which is the source's own
+  /// ordering, so the group a reader is following tends to come first).
+  List<String> get _scanlators {
+    final seen = <String>[];
+    for (final e in widget.seasonEps) {
+      final s = e.scanlator?.trim();
+      if (s != null && s.isNotEmpty && !seen.contains(s)) seen.add(s);
+    }
+    return seen;
+  }
+
+  /// The chapters actually shown. Identical to the source list when no group
+  /// is picked, so nothing changes for the titles that have only one.
+  List<Episode> get _filteredEps {
+    final want = _scanlator;
+    if (want == null) return widget.seasonEps;
+    return [
+      for (final e in widget.seasonEps)
+        if (e.scanlator?.trim() == want) e,
+    ];
+  }
 
   String _numLabel(Episode e, int fallback) =>
       (e.number?.toInt() ?? fallback).toString();
@@ -193,14 +222,17 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       builder: (_) => const _JumpDialog(),
     );
     if (n == null || !mounted) return;
-    // Match by episode number; fall back to a 1-based position.
-    var local = widget.seasonEps.indexWhere((e) => e.number?.toInt() == n);
-    if (local < 0 && n >= 1 && n <= widget.seasonEps.length) local = n - 1;
+    // Match by episode number; fall back to a 1-based position. Searched in
+    // the FILTERED list, so jumping while a scanlator is picked lands on that
+    // group's chapter rather than a position in the unfiltered run.
+    final eps = _filteredEps;
+    var local = eps.indexWhere((e) => e.number?.toInt() == n);
+    if (local < 0 && n >= 1 && n <= eps.length) local = n - 1;
     if (local < 0) return;
     setState(() {
       _rangeIndex = local ~/ _chunk;
       _grid = true; // the grid makes the jumped-to episode easy to spot
-      _highlightEpId = widget.seasonEps[local].id;
+      _highlightEpId = eps[local].id;
     });
   }
 
@@ -213,11 +245,17 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       );
     }
     final store = sl<ResumeStore>();
-    final total = widget.seasonEps.length;
-    final start = (_rangeIndex * _chunk).clamp(0, total);
+    final eps = _filteredEps;
+    final total = eps.length;
+    // A group with fewer chapters than the one before it can leave the range
+    // index past the end, so clamp before slicing.
+    final maxRange = _rangeCount == 0 ? 0 : _rangeCount - 1;
+    final rangeIndex = _rangeIndex.clamp(0, maxRange);
+    final start = (rangeIndex * _chunk).clamp(0, total);
     final end = (start + _chunk).clamp(0, total);
-    final visible = widget.seasonEps.sublist(start, end);
+    final visible = eps.sublist(start, end);
     final showRanges = _rangeCount > 1;
+    final groups = _scanlators;
 
     // One scrollable (slivers): the header + chips scroll with the list so the
     // tab can never overflow when the NestedScrollView hands it a tiny height
@@ -266,16 +304,31 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               ),
             ),
           ),
+        // Only when a title actually has more than one group — a single
+        // scanlator needs no picker, and most titles have exactly one.
+        if (groups.length > 1)
+          SliverToBoxAdapter(
+            child: _RangeChips(
+              count: groups.length + 1,
+              selected: _scanlator == null ? 0 : groups.indexOf(_scanlator!) + 1,
+              labelFor: (i) => i == 0 ? 'All' : groups[i - 1],
+              onSelect: (i) => setState(() {
+                _scanlator = i == 0 ? null : groups[i - 1];
+                _rangeIndex = 0;
+                _highlightEpId = null;
+              }),
+            ),
+          ),
         if (showRanges)
           SliverToBoxAdapter(
             child: _RangeChips(
               count: _rangeCount,
-              selected: _rangeIndex,
+              selected: rangeIndex,
               labelFor: (i) {
                 final s = (i * _chunk).clamp(0, total - 1);
                 final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
-                return '${_numLabel(widget.seasonEps[s], s + 1)}'
-                    '–${_numLabel(widget.seasonEps[e], e + 1)}';
+                return '${_numLabel(eps[s], s + 1)}'
+                    '–${_numLabel(eps[e], e + 1)}';
               },
               onSelect: (i) => setState(() {
                 _rangeIndex = i;

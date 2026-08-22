@@ -2,19 +2,16 @@ import '../../core/models/episode.dart';
 
 /// Line 2 of a chapter row in reading (manga/novel) mode.
 ///
-/// The design calls for `scanlator · relative date`, but [Episode] is shared
-/// with the video path and carries no scanlator — Mihon's `SChapter.scanlator`
-/// is folded into [Episode.id] by `episodeFromSChapter` and never surfaced as
-/// a display field (adding one would mean editing a shared model). So today
-/// this is the date half only. The seam is the list below: when a scanlator
-/// ever reaches the model, add it as the first entry and the join handles the
-/// rest, including the "drop the half we don't have" behaviour.
+/// Reads `scanlator · relative date`, dropping whichever half is missing —
+/// most sources have no scanlator, plenty have no usable date, and a row with
+/// neither loses the line entirely.
 ///
 /// Returns null when there's nothing to show, so the caller can drop the whole
 /// line and let the row shrink.
 String? chapterMetaLine(Episode ep, {DateTime? now}) {
   final parts = <String>[
-    // ?scanlator,   ← the seam (see above)
+    // Already normalised at ingest by [scanlatorLabel] — null means no group.
+    ?ep.scanlator,
     ?relativeDate(ep.date, now: now),
   ];
   return parts.isEmpty ? null : parts.join('  ·  ');

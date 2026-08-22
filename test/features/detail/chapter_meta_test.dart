@@ -5,8 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/features/detail/chapter_meta.dart';
 
-Episode chapter({String? date}) =>
-    Episode(id: 'c1', title: 'Chapter 1', url: '/c1', number: 1, date: date);
+Episode chapter({String? date, String? scanlator}) => Episode(
+      id: 'c1',
+      title: 'Chapter 1',
+      url: '/c1',
+      number: 1,
+      date: date,
+      scanlator: scanlator,
+    );
 
 void main() {
   final now = DateTime(2026, 8, 7, 12);
@@ -14,6 +20,79 @@ void main() {
         now.subtract(ago).toIso8601String(),
         now: now,
       );
+
+  group('scanlator on the meta line', () {
+    // Several groups release the same chapter number, so a list can honestly
+    // read 1, 1, 2, 2 — the group name is what tells them apart.
+    test('shows group and date together', () {
+      expect(
+        chapterMetaLine(
+          chapter(scanlator: 'Asura Scans', date: now.toIso8601String()),
+          now: now,
+        ),
+        'Asura Scans  ·  Today',
+      );
+    });
+
+    test('group alone when the source gives no date', () {
+      expect(
+        chapterMetaLine(chapter(scanlator: 'Hades Scans'), now: now),
+        'Hades Scans',
+      );
+    });
+
+    test('date alone when there is no group — unchanged from before', () {
+      expect(
+        chapterMetaLine(chapter(date: now.toIso8601String()), now: now),
+        'Today',
+      );
+    });
+
+    test('an invisible group name counts as no group at all', () {
+      // Found on a real Mihon source: scanlator was a single ZERO WIDTH SPACE,
+      // which trim() leaves alone, so it rendered as an empty filter chip and
+      // put a stray leading separator on every chapter row.
+      expect(scanlatorLabel('\u200B'), isNull);
+      expect(scanlatorLabel('\uFEFF'), isNull);
+      expect(scanlatorLabel('\u200E'), isNull); // LTR mark
+      expect(scanlatorLabel('  \u200B  '), isNull);
+      expect(scanlatorLabel(''), isNull);
+      expect(scanlatorLabel(null), isNull);
+      // A real name survives, including one padded with invisibles.
+      expect(scanlatorLabel('Asura Scans'), 'Asura Scans');
+      expect(scanlatorLabel('\u200EAsura Scans '), 'Asura Scans');
+
+      expect(
+        chapterMetaLine(
+          chapter(scanlator: scanlatorLabel('\u200B'), date: now.toIso8601String()),
+          now: now,
+        ),
+        'Today',
+        reason: 'no phantom leading separator',
+      );
+    });
+
+    test('blank or whitespace group is not shown as an empty segment', () {
+      // Episode.scanlator is normalised at ingest by [scanlatorLabel], so the
+      // meta line trusts it — go through the same door a real chapter does
+      // rather than hand-building a value the mappers can never produce.
+      expect(
+        chapterMetaLine(chapter(scanlator: scanlatorLabel('   ')), now: now),
+        isNull,
+      );
+      expect(
+        chapterMetaLine(
+          chapter(scanlator: scanlatorLabel('  '), date: now.toIso8601String()),
+          now: now,
+        ),
+        'Today',
+      );
+    });
+
+    test('a chapter with neither loses the line entirely', () {
+      expect(chapterMetaLine(chapter(), now: now), isNull);
+    });
+  });
 
   group('relativeDate', () {
     test('null / empty / whitespace gives nothing to show', () {
