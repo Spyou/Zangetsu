@@ -128,6 +128,11 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           _label('MOTION'),
           const SizedBox(height: 12),
           _listAnimTile(),
+          // The style picker only makes sense while the animation is on.
+          if (AnimationPrefs.listAnimations) ...[
+            const SizedBox(height: 10),
+            _animStylePicker(),
+          ],
 
           // ── App icon ──────────────────────────────────────────────────────
           // Android-only: iOS has an unrelated API and TV has no icon picker.
@@ -284,6 +289,58 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               if (mounted) setState(() {});
             },
           ),
+        ],
+      ),
+    );
+  }
+
+  /// Three entrances to choose between. Rise is the default and what most
+  /// people should leave it on; Fade is the quietest thing that still counts
+  /// as an animation, Zoom the most obvious.
+  Widget _animStylePicker() {
+    const options = [
+      (ListAnimStyle.rise, 'Rise', 'Lifts and fades in'),
+      (ListAnimStyle.fade, 'Fade', 'Fades in, no movement'),
+      (ListAnimStyle.zoom, 'Zoom', 'Scales up as it appears'),
+    ];
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        children: [
+          for (final (style, name, blurb) in options)
+            InkWell(
+              onTap: () async {
+                await AnimationPrefs.setStyle(style);
+                if (mounted) setState(() {});
+              },
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(name, style: AppText.headline),
+                          const SizedBox(height: 2),
+                          Text(blurb, style: AppText.caption),
+                        ],
+                      ),
+                    ),
+                    if (AnimationPrefs.style == style)
+                      Icon(
+                        Icons.check_circle_rounded,
+                        color: AppColors.accent,
+                        size: 22,
+                      ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
