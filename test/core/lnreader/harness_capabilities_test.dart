@@ -71,6 +71,27 @@ void main() {
     expect(eval("new URL('/x','https://a.b/c/d').href"), 'https://a.b/x');
   });
 
+  test('response headers are readable, and case-insensitively', () {
+    // Sites and plugins disagree on capitalisation of the same header —
+    // 'X-WP-TotalPages' and 'X-Wp-Totalpages' both appear in the catalogue.
+    // Six sources either break outright or silently truncate their chapter
+    // list when this reads null.
+    expect(
+      eval(
+        "var h = __headers({'Content-Type':'application/json','X-WP-TotalPages':'12'});"
+        "[h.get('content-type'), h.get('Content-Type'),"
+        " h.get('x-wp-totalpages'), h.get('X-WP-TotalPages'),"
+        " String(h.get('nope')), String(h.has('X-Wp-TotalPages'))].join('|');",
+      ),
+      'application/json|application/json|12|12|null|true',
+    );
+  });
+
+  test('a response with no headers reads null instead of throwing', () {
+    expect(eval("String(__headers(undefined).get('content-type'))"), 'null');
+    expect(eval("String(__headers({}).get('content-type'))"), 'null');
+  });
+
   test('AES-GCM decrypts what it encrypts, the way WTR-LAB drives it', () {
     expect(
       eval("""

@@ -59,8 +59,17 @@ import UIKit
           let status = http?.statusCode ?? 0
           let finalUrl = http?.url?.absoluteString ?? urlStr
           let bodyStr = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+          // Response headers travel too: some plugins read a page count,
+          // content-type or token off them and fail without one.
+          var respHeaders: [String: String] = [:]
+          for (k, v) in http?.allHeaderFields ?? [:] {
+            if let key = k as? String { respHeaders[key] = String(describing: v) }
+          }
           DispatchQueue.main.async {
-            result(["status": status, "body": bodyStr, "url": finalUrl])
+            result([
+              "status": status, "body": bodyStr, "url": finalUrl,
+              "headers": respHeaders,
+            ])
           }
         }
         task.resume()

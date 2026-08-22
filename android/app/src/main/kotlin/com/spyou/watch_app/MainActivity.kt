@@ -912,9 +912,16 @@ class MainActivity : FlutterActivity() {
                 val body = call.argument<String>("body")
                 CoroutineScope(Dispatchers.IO).launch {
                     try {
-                        val (status, respBody, finalUrl) = NovelHttp.request(url, method, headers, body)
+                        val resp = NovelHttp.request(url, method, headers, body)
                         runOnUiThread {
-                            result.success(mapOf("status" to status, "body" to respBody, "url" to finalUrl))
+                            result.success(
+                                mapOf(
+                                    "status" to resp.status,
+                                    "body" to resp.body,
+                                    "url" to resp.url,
+                                    "headers" to resp.headers,
+                                ),
+                            )
                         }
                     } catch (e: Exception) {
                         runOnUiThread { result.error("novel_http_failed", e.message, null) }

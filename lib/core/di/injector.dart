@@ -476,6 +476,11 @@ Future<void> initDependencies() async {
               status: (res['status'] as num?)?.toInt() ?? 0,
               body: res['body'] as String? ?? '',
               url: res['url'] as String? ?? url,
+              headers: res['headers'] is Map
+                  ? (res['headers'] as Map).map(
+                      (k, v) => MapEntry(k.toString(), v.toString()),
+                    )
+                  : const {},
             );
           }
         } catch (_) {
@@ -500,6 +505,11 @@ Future<void> initDependencies() async {
         status: res.statusCode ?? 0,
         body: res.data ?? '',
         url: res.realUri.toString(),
+        // Dio hands back a list per header (a name may repeat); join them the
+        // way HTTP does rather than keeping only the first.
+        headers: res.headers.map.map(
+          (k, v) => MapEntry(k, v.join(', ')),
+        ),
       );
     },
   );

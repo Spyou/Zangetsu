@@ -10,11 +10,17 @@ class LnReaderHttpResponse {
     required this.status,
     required this.body,
     required this.url,
+    this.headers = const {},
   });
 
   final int status;
   final String body;
   final String url;
+
+  /// Response headers, as sent by the site. Optional: anything that can't
+  /// supply them (an older native path, a test double) leaves this empty and
+  /// the plugin simply reads null — exactly what it got before this existed.
+  final Map<String, String> headers;
 }
 
 /// Isolated, lazily-built QuickJS runtime that runs LNReader (CommonJS)
@@ -146,7 +152,7 @@ class LnReaderRuntime {
         _fetch(url, init)
             .then((resp) {
               rt.evaluate(
-                '__resolveFetch(${jsonEncode(reqId)}, ${jsonEncode(jsonEncode({'status': resp.status, 'body': resp.body, 'url': resp.url}))});',
+                '__resolveFetch(${jsonEncode(reqId)}, ${jsonEncode(jsonEncode({'status': resp.status, 'body': resp.body, 'url': resp.url, 'headers': resp.headers}))});',
               );
             })
             .catchError((Object e) {

@@ -80,13 +80,38 @@ function __rawFetch(url, init) {
     globalThis.__outbox.push({ id: id, url: String(url), init: init });
   });
 }
+// Minimal Headers: what the seven plugins that read a response header use.
+function __headers(raw) {
+  var map = {};
+  if (raw) {
+    for (var k in raw) {
+      if (Object.prototype.hasOwnProperty.call(raw, k)) {
+        map[String(k).toLowerCase()] = String(raw[k]);
+      }
+    }
+  }
+  return {
+    get: function (name) {
+      var v = map[String(name).toLowerCase()];
+      return v === undefined ? null : v;
+    },
+    has: function (name) {
+      return Object.prototype.hasOwnProperty.call(map, String(name).toLowerCase());
+    },
+  };
+}
+
 function fetchApi(url, init) {
   return __rawFetch(url, init).then(function (r) {
     return {
       ok: r.status >= 200 && r.status < 300,
       status: r.status,
       url: r.url || String(url),
-      headers: { get: function () { return null; } },
+      // Header names are case-insensitive per HTTP, and plugins spell them
+      // inconsistently — one source reads 'X-WP-TotalPages', another
+      // 'X-Wp-Totalpages' for the same header. Match on lowercase or half of
+      // them would still read null.
+      headers: __headers(r.headers),
       text: function () { return Promise.resolve(r.body); },
       json: function () { return Promise.resolve(JSON.parse(r.body)); },
     };

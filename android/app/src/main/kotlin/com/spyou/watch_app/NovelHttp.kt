@@ -54,13 +54,23 @@ object NovelHttp {
             .build()
     }
 
-    /** Runs the call off the calling thread; returns (status, body, finalUrl). */
+    /** What a novel fetch answers with. Response headers are carried because
+     *  some plugins read a page count / content-type / token off them and
+     *  throw without it. */
+    data class Response(
+        val status: Int,
+        val body: String,
+        val url: String,
+        val headers: Map<String, String>,
+    )
+
+    /** Runs the call off the calling thread. */
     suspend fun request(
         url: String,
         method: String,
         headers: Map<String, String>,
         body: String?,
-    ): Triple<Int, String, String> = withContext(Dispatchers.IO) {
+    ): Response = withContext(Dispatchers.IO) {
         val verb = method.uppercase()
         val reqBody = when {
             body != null -> body.toRequestBody(null)
@@ -73,7 +83,12 @@ object NovelHttp {
 
         client.newCall(requestBuilder.build()).execute().use { response ->
             val respBody = response.body?.string() ?: ""
-            Triple(response.code, respBody, response.request.url.toString())
+            // A header can legitimately repeat (Set-Cookie); join the way HTTP
+            // itself does so nothing is silently dropped.
+            val respHeaders = response.headers.names().associateWith { name ->
+                response.headers.values(name).joinToString(", ")
+            }
+            Response(response.code, respBody, response.request.url.toString(), respHeaders)
         }
     }
 }
