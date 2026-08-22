@@ -36,5 +36,14 @@ class TrackerBindingStore {
     await _box.put(key, next);
   }
 
+  /// Drop only [trackerName]'s pin for a show, leaving the other trackers'
+  /// pins in place. Used when one tracker's entry is removed — keeping the pin
+  /// would re-bind the next fetch to an entry that no longer exists.
+  Future<void> remove(String key, String trackerName) async {
+    final next = Map<String, String>.from(get(key));
+    if (next.remove(trackerName) == null) return;
+    next.isEmpty ? await _box.delete(key) : await _box.put(key, next);
+  }
+
   Future<void> clear(String key) => _box.delete(key);
 }

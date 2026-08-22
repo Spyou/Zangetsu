@@ -73,6 +73,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    String? pinnedId,
     MediaKind kind = MediaKind.anime,
   }) async {}
 

@@ -52,6 +52,7 @@ class TrackerEntry {
     this.chapters,
     this.nextAiringEpisode,
     this.nextAiringAt,
+    this.url,
   });
 
   /// Which tracker this came from, e.g. "AniList".
@@ -64,6 +65,12 @@ class TrackerEntry {
   /// can tell a wrong auto-match from a right one. Null when the tracker can't
   /// supply it — the row then reads as unmatched rather than guessing.
   final String? title;
+
+  /// This entry's page on the tracker's own site, for "Open in browser" /
+  /// "Copy link". Null when the tracker didn't resolve a match (nothing to
+  /// link to) — the menu greys those actions out rather than opening a
+  /// half-built url.
+  final String? url;
 
   final WatchStatus? status;
 
@@ -189,12 +196,19 @@ abstract interface class Tracker implements Listenable {
   });
 
   /// Remove the title from the user's list.
+  ///
+  /// [pinnedId] behaves as it does in [fetchEntry]: when the user has fixed a
+  /// wrong match by hand, it overrides malId/title resolution. Passing it
+  /// MATTERS here — without it a corrected match resolves back to the entry
+  /// the app originally guessed, and the delete lands on the wrong title in
+  /// the user's list.
   Future<void> removeFromList({
     int? malId,
     String? title,
     int? tmdbId,
     bool tmdbIsTv,
     String? imdbId,
+    String? pinnedId,
     MediaKind kind = MediaKind.anime,
   });
 

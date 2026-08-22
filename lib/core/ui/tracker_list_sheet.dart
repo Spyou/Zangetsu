@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../di/injector.dart';
 import '../mode/content_mode.dart';
@@ -8,6 +10,7 @@ import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_binding_store.dart';
 import '../tracker/tracker_hub.dart';
+import 'global_messenger.dart';
 import 'tracker_badge.dart';
 import 'tracker_sync_sheet.dart';
 
@@ -116,8 +119,7 @@ class _TrackerListSheetState extends State<TrackerListSheet> {
 
   Future<void> _load() async {
     final key = widget.bindingKey;
-    _pinnedIds =
-        key == null ? const {} : sl<TrackerBindingStore>().get(key);
+    _pinnedIds = key == null ? const {} : sl<TrackerBindingStore>().get(key);
 
     final trackers = _hub.connectedForMode(_mode).toList();
     // Each tracker answers for itself; one failing must not blank the others,
@@ -188,6 +190,116 @@ class _TrackerListSheetState extends State<TrackerListSheet> {
     if (!mounted) return;
     if (applied != null) _applied = applied;
     Navigator.pop(context, _applied);
+  }
+
+  Future<void> _openInBrowser(_Row r) async {
+    final url = r.entry?.url;
+    if (url == null) return;
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+
+  void _copyLink(_Row r) {
+    final url = r.entry?.url;
+    if (url == null) return;
+    Clipboard.setData(ClipboardData(text: url));
+    // Global, not a local ScaffoldMessenger: the sheet may be popped by the
+    // time this shows, taking its messenger with it.
+    showGlobalSnack('Link copied');
+  }
+
+  /// Delete this show from ONE tracker's list, after confirming. Unlike the
+  /// combined sheet this touches no other tracker, and nothing local — the
+  /// app's own history and progress are untouched.
+  Future<void> _remove(_Row r) async {
+    final name = r.tracker.displayName;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Remove from $name?', style: AppText.title),
+        content: Text(
+          '${widget.title} will be taken off your $name list. '
+          'Your progress in the app stays as it is.',
+          style: AppText.body.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _loading = true);
+    await r.tracker.removeFromList(
+      malId: widget.malId,
+      title: widget.title,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+      // Without this a hand-fixed match would resolve back to the entry the
+      // app first guessed, and the delete would hit the wrong title.
+      pinnedId: _pinnedIds[name],
+      kind: _kind,
+    );
+    // Drop the pin too — keeping it would re-bind the next read to an entry
+    // that no longer exists.
+    final key = widget.bindingKey;
+    if (key != null) await sl<TrackerBindingStore>().remove(key, name);
+    if (!mounted) return;
+    await _load();
+  }
+
+  /// Per-tracker overflow. The two link actions need a resolved match to point
+  /// at, and there's nothing to remove until the title is actually on a list.
+  Widget _rowMenu(_Row r) {
+    final hasUrl = r.entry?.url != null;
+    final onList = r.entry?.onList ?? false;
+    return PopupMenuButton<String>(
+      icon: Icon(
+        Icons.more_vert_rounded,
+        color: AppColors.textSecondary,
+        size: 20,
+      ),
+      color: AppColors.surface,
+      tooltip: '${r.tracker.displayName} options',
+      onSelected: (v) async {
+        switch (v) {
+          case 'open':
+            await _openInBrowser(r);
+          case 'copy':
+            _copyLink(r);
+          case 'remove':
+            await _remove(r);
+        }
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(
+          value: 'open',
+          enabled: hasUrl,
+          child: const Text('Open in browser'),
+        ),
+        PopupMenuItem<String>(
+          value: 'copy',
+          enabled: hasUrl,
+          child: const Text('Copy link'),
+        ),
+        if (onList)
+          PopupMenuItem<String>(
+            value: 'remove',
+            child: Text(
+              'Remove tracking',
+              style: TextStyle(color: AppColors.accent),
+            ),
+          ),
+      ],
+    );
   }
 
   /// "Watching · 5/12 · 8" — whatever this tracker actually knows.
@@ -326,9 +438,7 @@ class _TrackerListSheetState extends State<TrackerListSheet> {
                       if (e == null)
                         Text(
                           'Add tracking',
-                          style: AppText.body.copyWith(
-                            color: AppColors.accent,
-                          ),
+                          style: AppText.body.copyWith(color: AppColors.accent),
                         )
                       else ...[
                         if (matched != null)
@@ -343,11 +453,7 @@ class _TrackerListSheetState extends State<TrackerListSheet> {
                     ],
                   ),
                 ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary,
-                  size: 20,
-                ),
+                _rowMenu(r),
               ],
             ),
           ),

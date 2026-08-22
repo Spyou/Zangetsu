@@ -513,13 +513,17 @@ class AniListService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    String? pinnedId,
     MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final media = await _resolveMedia(malId, title, kind);
-    if (media == null) return;
-    await _api.deleteEntry(media.id);
-    await _store.setScrobbledProgress(media.id, 0);
+    // A pinned id wins over title/malId resolution — same precedence as
+    // fetchEntry, so a corrected match is deleted instead of the guess.
+    final mediaId = int.tryParse(pinnedId ?? '') ??
+        (await _resolveMedia(malId, title, kind))?.id;
+    if (mediaId == null) return;
+    await _api.deleteEntry(mediaId);
+    await _store.setScrobbledProgress(mediaId, 0);
   }
 
   // ── Single-entry read/write + search (sync sheet + match-fixer) ─────────────
@@ -553,6 +557,8 @@ class AniListService extends ChangeNotifier implements Tracker {
     return TrackerEntry(
       trackerName: displayName,
       onList: entry is Map,
+      url: 'https://anilist.co/'
+          '${kind == MediaKind.manga ? 'manga' : 'anime'}/$mediaId',
       // English first, romaji second — the same order the search picker uses,
       // so a row and its match candidates read the same way.
       title: (tEnglish?.isNotEmpty == true) ? tEnglish : tRomaji,

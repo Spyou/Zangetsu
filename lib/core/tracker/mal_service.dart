@@ -647,22 +647,26 @@ class MalService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    String? pinnedId,
     MediaKind kind = MediaKind.anime,
   }) async {
     if (!isConnected) return;
-    final a = await _resolveFor(kind, malId, title);
-    if (a == null) return;
+    // A pinned id wins over title/malId resolution — same precedence as
+    // fetchEntry, so a corrected match is deleted instead of the guess.
+    final id = int.tryParse(pinnedId ?? '') ??
+        (await _resolveFor(kind, malId, title))?.id;
+    if (id == null) return;
     final token = await _validToken();
     if (token == null) return;
     try {
       await _dio.delete<dynamic>(
-        '$_api/${malListStatusPath(kind, a.id)}',
+        '$_api/${malListStatusPath(kind, id)}',
         options: Options(
           headers: {'Authorization': 'Bearer $token'},
           validateStatus: (s) => s != null && s < 500,
         ),
       );
-      await _setScrobbled(a.id, kind, 0);
+      await _setScrobbled(id, kind, 0);
     } catch (_) {}
   }
 
@@ -750,6 +754,7 @@ class MalService extends ChangeNotifier implements Tracker {
       return TrackerEntry(
         trackerName: displayName,
         onList: ls != null,
+        url: 'https://myanimelist.net/${reading ? 'manga' : 'anime'}/$id',
         // MAL returns id/title/main_picture whether or not `fields` asks for
         // them, so this needs no change to the request path.
         title: (d['title'] as String?)?.trim(),

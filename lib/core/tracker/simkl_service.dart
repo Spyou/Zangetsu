@@ -285,11 +285,17 @@ class SimklService extends ChangeNotifier implements Tracker {
     int? tmdbId,
     bool tmdbIsTv = false,
     String? imdbId,
+    String? pinnedId,
     MediaKind kind = MediaKind.anime,
   }) async {
     if (kind == MediaKind.manga) return; // Simkl has no manga/novel API
     if (!isConnected) return;
-    final t = _target(malId, tmdbId, tmdbIsTv, imdbId);
+    // A pinned id wins over id resolution, exactly as in updateEntry — without
+    // it a corrected match removes whatever the app originally guessed.
+    final pinned = int.tryParse(pinnedId ?? '');
+    final ({String bucket, Map<String, dynamic> ids})? t = pinned != null
+        ? (bucket: 'shows', ids: <String, dynamic>{'simkl': '$pinned'})
+        : _target(malId, tmdbId, tmdbIsTv, imdbId);
     if (t == null) return;
     await _post('/sync/history/remove', _body(t, {'ids': t.ids}));
   }
@@ -447,9 +453,16 @@ class SimklService extends ChangeNotifier implements Tracker {
       final matchesPinned =
           pinned != null && it.item.id == 'tracker:simkl:$pinned';
       if (matchesMal || matchesPinned) {
+        // Library ids are stored as `tracker:simkl:<id>`; the trailing id is
+        // what simkl.com puts in a url. Anything else shape-wise → no link.
+        const prefix = 'tracker:simkl:';
+        final simklId = it.item.id.startsWith(prefix)
+            ? it.item.id.substring(prefix.length)
+            : null;
         return TrackerEntry(
           trackerName: displayName,
           onList: true,
+          url: simklId == null ? null : 'https://simkl.com/anime/$simklId',
           title: it.item.title,
           status: it.status,
           score: it.score,
