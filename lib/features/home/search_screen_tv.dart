@@ -114,6 +114,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   }
 
   List<String> _tagsFor(MediaItem m) {
+    // Quality is NOT here — it has its own top-right corner on the card.
     final t = <String>[];
     if ((m.dubCount ?? 0) > 0) t.add('DUB');
     if ((m.subCount ?? 0) > 0 && t.length < 2) t.add('SUB');
@@ -469,6 +470,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           imageUrl: item.cover,
           headers: item.coverHeaders,
           tags: _tagsFor(item),
+          qualityBadge: item.quality,
           onTap: () => _openDetail(item),
         );
       },
@@ -553,6 +555,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                         imageUrl: item.cover,
                         headers: item.coverHeaders,
                         tags: _tagsFor(item),
+                        qualityBadge: item.quality,
                         onTap: () => _openDetail(item),
                       ),
                     ),

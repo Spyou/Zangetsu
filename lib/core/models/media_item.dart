@@ -21,6 +21,16 @@ class MediaItem extends Equatable {
   final String url;
   final ProviderType type;
   final String sourceId;
+  /// Release quality the source claims for this title — "4K", "HD", "CAM"…
+  /// Shown as a poster badge. CloudStream is the only ecosystem that reports
+  /// one, and plenty of its providers leave it unset, so null is the norm.
+  ///
+  /// Deliberately not serialized: it's a browse-time hint, not something My
+  /// List needs to remember, and keeping it out means the stored shape (and
+  /// the generated (de)serializer) is untouched.
+  @JsonKey(includeFromJson: false, includeToJson: false)
+  final String? quality;
+
   final int? subCount;
   final int? dubCount;
 
@@ -60,6 +70,7 @@ class MediaItem extends Equatable {
     required this.url,
     required this.type,
     required this.sourceId,
+    this.quality,
     this.subCount,
     this.dubCount,
     this.malId,
@@ -90,6 +101,7 @@ class MediaItem extends Equatable {
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
+    quality: quality,
     subCount: subCount ?? this.subCount,
     dubCount: dubCount ?? this.dubCount,
     malId: malId ?? this.malId,
@@ -108,6 +120,7 @@ class MediaItem extends Equatable {
     url,
     type,
     sourceId,
+    quality,
     subCount,
     dubCount,
     malId,

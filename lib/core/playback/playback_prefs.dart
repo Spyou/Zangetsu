@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
@@ -465,6 +466,24 @@ class PlaybackPrefs {
       _box.get('alwaysShowQuality', defaultValue: false) as bool;
   Future<void> setAlwaysShowQuality(bool value) =>
       _box.put('alwaysShowQuality', value);
+
+  /// Show the source's claimed release quality as a poster badge — 4K / HD /
+  /// CAM and so on. Only CloudStream reports one, so the badge appears on some
+  /// results and not others; on by default, matching what CloudStream itself
+  /// does. Note it's the provider's claim, not something we verify.
+  bool get qualityBadges =>
+      _box.get('qualityBadges', defaultValue: true) as bool;
+
+  /// Bumped ONLY by [setQualityBadges], so the badge on a poster can rebuild
+  /// itself the moment the switch flips. Same shape as
+  /// `ThemeController.revision`. Nothing else touches it, so no other setting
+  /// — and no navigation — can make a poster rebuild through this.
+  static final ValueNotifier<int> badgeRevision = ValueNotifier<int>(0);
+
+  Future<void> setQualityBadges(bool value) async {
+    await _box.put('qualityBadges', value);
+    badgeRevision.value++;
+  }
 
   /// Whether to show the accurate AniSkip "Skip opening/ending" button (anime,
   /// when real OP/ED timings are detected).

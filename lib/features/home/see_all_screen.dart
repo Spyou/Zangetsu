@@ -153,6 +153,7 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
               imageUrl: item.cover,
               headers: item.coverHeaders,
               tags: widget.tagsFor?.call(item) ?? const [],
+              qualityBadge: item.quality,
               cellWidth: cellW,
               onTap: () => widget.onTap(item),
               onLongPress: widget.onLongPress == null

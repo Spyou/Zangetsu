@@ -1,6 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../di/injector.dart';
+import '../playback/playback_prefs.dart';
+
 import 'image_fade.dart';
 import '../aniyomi/aniyomi_image_provider.dart';
 import '../mihon/mihon_image_provider.dart';
@@ -18,6 +21,7 @@ class PosterCard extends StatefulWidget {
     this.tags = const [],
     this.cellWidth = 180,
     this.showTitle = true,
+    this.qualityBadge,
   });
   final String title;
   final String? imageUrl;
@@ -27,6 +31,17 @@ class PosterCard extends StatefulWidget {
 
   /// Small overlay badges drawn at the bottom-left of the art (e.g. SUB/DUB).
   final List<String> tags;
+
+  /// Release quality ("4K", "HD", "CAM"), drawn in the TOP-RIGHT corner —
+  /// its own spot, so it reads at a glance and never competes with the
+  /// SUB/DUB tags along the bottom. Null for the many sources that don't
+  /// report one, and the corner stays empty.
+  ///
+  /// Pass the raw label; whether it's actually SHOWN is decided here, against
+  /// the user's setting, inside a listener scoped to this one badge. That way
+  /// flipping the switch repaints the corner and nothing else — no screen
+  /// rebuild, and no listener that anything else can trip.
+  final String? qualityBadge;
   final double cellWidth;
 
   /// When false, render only the poster art (no title below). Used on TV so the
@@ -36,6 +51,17 @@ class PosterCard extends StatefulWidget {
 
   @override
   State<PosterCard> createState() => _PosterCardState();
+}
+
+/// The user's "Quality badges" setting, read defensively: poster rows get
+/// built in widget tests with no PlaybackPrefs registered, and a badge is not
+/// worth throwing over.
+bool get _showBadges {
+  try {
+    return sl<PlaybackPrefs>().qualityBadges;
+  } catch (_) {
+    return true;
+  }
 }
 
 class _PosterCardState extends State<PosterCard> {
@@ -137,6 +163,17 @@ class _PosterCardState extends State<PosterCard> {
                       const DecoratedBox(
                         decoration: BoxDecoration(gradient: AppColors.scrim),
                       ),
+                      if (widget.qualityBadge != null)
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: PlaybackPrefs.badgeRevision,
+                            builder: (_, _, _) => _showBadges
+                                ? _PosterTag(widget.qualityBadge!)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
                       if (widget.tags.isNotEmpty)
                         Positioned(
                           left: 6,

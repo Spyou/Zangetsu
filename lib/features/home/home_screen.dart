@@ -641,6 +641,7 @@ class _HomeViewState extends State<_HomeView>
           imageUrl: items[i].cover,
           headers: items[i].coverHeaders,
           cellWidth: 140,
+          qualityBadge: items[i].quality,
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
         ),

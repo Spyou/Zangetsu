@@ -781,9 +781,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         section: 'Interface',
         icon: Icons.palette_outlined,
         title: 'Appearance',
-        subtitle: 'Accent colour',
+        subtitle: 'Accent colour, poster badges',
         keywords:
-            'appearance accent colour color theme highlight personalise',
+            'appearance accent colour color theme highlight personalise '
+            'quality badge poster 4k hd cam',
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

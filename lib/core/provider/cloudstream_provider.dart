@@ -11,6 +11,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_extras.dart';
 import '../models/media_item.dart';
+import '../models/search_quality.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
@@ -611,6 +612,9 @@ class CloudStreamProvider implements BaseProvider {
       url: url,
       type: itemType(m['type'] as String?),
       sourceId: sourceId,
+      // Only CloudStream reports this, and plenty of its providers don't set
+      // it either — null just means no badge.
+      quality: qualityBadgeLabel(m['quality'] as String?),
     );
   }
 

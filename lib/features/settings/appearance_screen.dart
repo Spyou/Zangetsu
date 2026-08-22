@@ -3,6 +3,8 @@ import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 import '../../core/app_icon/app_icon_service.dart';
+import '../../core/di/injector.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
@@ -114,6 +116,12 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           _label('BACKGROUND'),
           const SizedBox(height: 12),
           _amoledTile(),
+
+          const SizedBox(height: 28),
+          // ── Posters ───────────────────────────────────────────────────────
+          _label('POSTERS'),
+          const SizedBox(height: 12),
+          _qualityBadgeTile(),
 
           const SizedBox(height: 28),
           // ── Motion ────────────────────────────────────────────────────────
@@ -237,6 +245,50 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
 
   /// Toggle for the list/grid reveal. Phone/iOS only — the reveal
   /// self-disables on TV regardless, so this switch simply governs touch devices.
+  /// The 4K / HD / CAM badge drawn in a poster's top-right corner. Only
+  /// CloudStream reports a quality, and many of its providers don't set one
+  /// either, so plenty of posters show nothing either way.
+  Widget _qualityBadgeTile() {
+    final on = sl<PlaybackPrefs>().qualityBadges;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.high_quality_outlined,
+            color: AppColors.textSecondary,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Quality badges', style: AppText.headline),
+                const SizedBox(height: 2),
+                Text(
+                  'Show 4K, HD or CAM on a poster when the source says so.',
+                  style: AppText.caption,
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: on,
+            activeThumbColor: AppColors.accent,
+            onChanged: (v) async {
+              await sl<PlaybackPrefs>().setQualityBadges(v);
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _listAnimTile() {
     final on = AnimationPrefs.listAnimations;
     return Container(

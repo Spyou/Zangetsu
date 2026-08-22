@@ -855,6 +855,10 @@ class PluginHost(private val context: Context) {
         "posterHeaders" to posterHeaders,
         "type" to type?.name,
         "apiName" to apiName,
+        // What the provider scraped off the listing — Cam / HD / FourK and so
+        // on. Sent as the raw enum name; Dart turns it into a badge label.
+        // Null for the many providers that never set it.
+        "quality" to quality?.name,
     )
 
     private fun LoadResponse.toDetailMap(apiName: String, category: String = "sub"): Map<String, Any?> {
