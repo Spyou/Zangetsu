@@ -2306,8 +2306,16 @@ class PlayerCubit extends Cubit<PlayerState> {
     final prefs = sl<PlaybackPrefs>();
     final op = prefs.autoSkipOp;
     final ed = prefs.autoSkipEd;
-    if (!op && !ed) return;
-    final iv = autoSkipAt(_skips, pos, op: op, ed: ed, fired: _autoSkipped);
+    final recap = prefs.autoSkipRecap;
+    if (!op && !ed && !recap) return;
+    final iv = autoSkipAt(
+      _skips,
+      pos,
+      op: op,
+      ed: ed,
+      recap: recap,
+      fired: _autoSkipped,
+    );
     if (iv == null) return;
     _autoSkipped.add(iv.start.inMilliseconds);
     seekTo(iv.end);

@@ -640,12 +640,14 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final prefs = sl<PlaybackPrefs>();
     final op = prefs.autoSkipOp;
     final ed = prefs.autoSkipEd;
-    if (!op && !ed) return;
+    final recap = prefs.autoSkipRecap;
+    if (!op && !ed && !recap) return;
     final iv = autoSkipAt(
       _skips,
       Duration(milliseconds: c.position.value),
       op: op,
       ed: ed,
+      recap: recap,
       fired: _autoSkipped,
     );
     if (iv == null) return;
@@ -663,7 +665,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // Auto-skip needs the same timings the manual button does, so fetch when
     // either feature is on — not just the button.
     final prefs = sl<PlaybackPrefs>();
-    if (!prefs.skipIntro && !prefs.autoSkipOp && !prefs.autoSkipEd) return;
+    if (!prefs.skipIntro &&
+        !prefs.autoSkipOp &&
+        !prefs.autoSkipEd &&
+        !prefs.autoSkipRecap) {
+      return;
+    }
     final title = widget.showTitle;
     if (title == null || title.isEmpty) return;
     final epNum = (ep.number ?? (_index + 1)).toInt();
@@ -1646,7 +1653,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                       if (skip != null) {
                         children.add(
                           _pillButton(
-                            skip.type == 'ed' ? 'Skip Ending' : 'Skip Opening',
+                            skipLabel(skip.type),
                             () => _c?.seek(skip.end.inMilliseconds),
                           ),
                         );

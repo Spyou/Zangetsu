@@ -481,6 +481,14 @@ class PlaybackPrefs {
   bool get autoSkipEd => _box.get('autoSkipEd', defaultValue: false) as bool;
   Future<void> setAutoSkipEd(bool value) => _box.put('autoSkipEd', value);
 
+  /// Same for the "previously on..." recap some episodes open with. Its own
+  /// toggle rather than riding on [autoSkipOp]: a recap is content you might
+  /// actually want, and unlike an opening it can start at 0:00.
+  bool get autoSkipRecap =>
+      _box.get('autoSkipRecap', defaultValue: false) as bool;
+  Future<void> setAutoSkipRecap(bool value) =>
+      _box.put('autoSkipRecap', value);
+
   /// MegaSkip — a manual "jump forward N seconds" button shown in the player
   /// (Aniyomi-style), independent of the accurate AniSkip OP/ED skip above.
   /// [megaSkip] toggles the button; [megaSkipSeconds] is the jump size, clamped

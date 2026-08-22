@@ -846,6 +846,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_rounded,
+                title: 'Auto-skip recap',
+                subtitle: "Jump past the \"previously on\" recap, no tap",
+                value: _prefs.autoSkipRecap,
+                onChanged: (v) async {
+                  await _prefs.setAutoSkipRecap(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
+                icon: Icons.fast_forward_rounded,
                 title: 'Auto-skip ending',
                 subtitle: 'Jump past the ED on its own, no tap',
                 value: _prefs.autoSkipEd,

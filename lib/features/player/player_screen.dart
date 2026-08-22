@@ -26,6 +26,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/resume_store.dart';
+import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_search_service.dart';
@@ -1416,7 +1417,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
       // Hide a beat before the interval ends so it doesn't flicker at the edge.
       if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) {
         return _SkipButton(
-          label: 'Skip',
+          // Only a recap is named. An opening/ending keeps the plain "Skip"
+          // it has always had — no reason to reword what already works.
+          label: isRecapSkip(iv.type) ? 'Skip Recap' : 'Skip',
           onTap: () {
             _c.seekTo(iv.end);
             _bumpControls();
@@ -2391,7 +2394,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         if (pos >= iv.start &&
                             pos < iv.end - const Duration(seconds: 1)) {
                           return (
-                            label: iv.type == 'ed'
+                            label: isRecapSkip(iv.type)
+                                ? 'Skip recap'
+                                : iv.type == 'ed'
                                 ? 'Skip ending'
                                 : 'Skip opening',
                             onSkip: () => _c.seekTo(iv.end),

@@ -92,6 +92,7 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_SKIP_INTRO = "skipIntro"
         const val EXTRA_AUTO_SKIP_OP = "autoSkipOp"
         const val EXTRA_AUTO_SKIP_ED = "autoSkipEd"
+        const val EXTRA_AUTO_SKIP_RECAP = "autoSkipRecap"
         const val EXTRA_AUTO_SKIP_FILLER = "autoSkipFiller"
         const val EXTRA_FILLER_FLAGS = "fillerFlags"
         // Result extras read back in MainActivity.onActivityResult.
@@ -165,6 +166,7 @@ class TvPlayerActivity : Activity() {
     // Jump past the OP/ED without a press (Settings toggles, both off by default).
     private var autoSkipOp = false
     private var autoSkipEd = false
+    private var autoSkipRecap = false
     // Auto-skip filler episodes on binge advance (Settings toggle).
     private var autoSkipFiller = false
     // Per-index filler flags from Jikan (via Dart). Empty until launch / update.
@@ -238,6 +240,7 @@ class TvPlayerActivity : Activity() {
         skipIntroEnabled = intent.getBooleanExtra(EXTRA_SKIP_INTRO, true)
         autoSkipOp = intent.getBooleanExtra(EXTRA_AUTO_SKIP_OP, false)
         autoSkipEd = intent.getBooleanExtra(EXTRA_AUTO_SKIP_ED, false)
+        autoSkipRecap = intent.getBooleanExtra(EXTRA_AUTO_SKIP_RECAP, false)
         autoSkipFiller = intent.getBooleanExtra(EXTRA_AUTO_SKIP_FILLER, false)
         fillerFlags = intent.getBooleanArrayExtra(EXTRA_FILLER_FLAGS) ?: BooleanArray(0)
         subScale = intent.getFloatExtra(EXTRA_SUB_SCALE, 1f)
@@ -576,10 +579,16 @@ class TvPlayerActivity : Activity() {
      */
     private fun maybeAutoSkip(p: ExoPlayer): Boolean {
         if (skipIntervals.isEmpty() || switching) return false
-        if (!autoSkipOp && !autoSkipEd) return false
+        if (!autoSkipOp && !autoSkipEd && !autoSkipRecap) return false
         val pos = p.currentPosition
         val iv = skipIntervals.firstOrNull {
-            val on = if (it.type.endsWith("ed")) autoSkipEd else autoSkipOp
+            // "recap" is checked first: it doesn't end in "ed", so without its
+            // own branch it would ride on the opening toggle.
+            val on = when {
+                it.type == "recap" -> autoSkipRecap
+                it.type.endsWith("ed") -> autoSkipEd
+                else -> autoSkipOp
+            }
             // Leave the last second alone — skipping there saves nothing.
             on && it.start !in autoSkipped && pos >= it.start && pos < it.end - 1000L
         } ?: return false
@@ -610,7 +619,11 @@ class TvPlayerActivity : Activity() {
             return
         }
         activeSkipEnd = iv.end
-        skipButton.text = if (iv.type == "ed") "Skip Ending" else "Skip Intro"
+        skipButton.text = when {
+            iv.type == "recap" -> "Skip Recap"
+            iv.type.endsWith("ed") -> "Skip Ending"
+            else -> "Skip Intro"
+        }
         if (skipButton.visibility != View.VISIBLE) {
             skipButton.visibility = View.VISIBLE
             // Auto-focus once so OK skips immediately. The D-pad can then move off it

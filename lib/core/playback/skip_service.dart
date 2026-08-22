@@ -9,13 +9,34 @@ class SkipInterval {
   });
   final Duration start;
   final Duration end;
-  final String type; // 'op' (opening) | 'ed' (ending)
+  final String type; // 'op' (opening) | 'ed' (ending) | 'recap'
 }
 
 /// Whether [type] names an ending. AniSkip also returns `mixed-ed`, and
 /// `endsWith` keeps that on the ending side without catching `mixed-op`
 /// (which `contains('ed')` would, since "mixed" itself contains "ed").
 bool isEndingSkip(String type) => type.endsWith('ed');
+
+/// Whether [type] names a recap — the "previously on..." replay some episodes
+/// open with. Checked BEFORE [isEndingSkip]: 'recap' doesn't end in 'ed', so
+/// without its own branch it falls through to the opening toggle and gets
+/// skipped by anyone who turned on auto-skip opening.
+bool isRecapSkip(String type) => type == 'recap';
+
+/// Which of the three toggles governs [type].
+bool _skipEnabled(String type, bool op, bool ed, bool recap) =>
+    isRecapSkip(type)
+        ? recap
+        : isEndingSkip(type)
+            ? ed
+            : op;
+
+/// Button text for an interval — a recap reads wrong as "Skip Opening".
+String skipLabel(String type) => isRecapSkip(type)
+    ? 'Skip Recap'
+    : isEndingSkip(type)
+        ? 'Skip Ending'
+        : 'Skip Opening';
 
 /// The interval to auto-skip at [pos], or null when nothing should fire.
 ///
@@ -31,10 +52,11 @@ SkipInterval? autoSkipAt(
   Duration pos, {
   required bool op,
   required bool ed,
+  required bool recap,
   required Set<int> fired,
 }) {
   for (final iv in intervals) {
-    if (!(isEndingSkip(iv.type) ? ed : op)) continue;
+    if (!_skipEnabled(iv.type, op, ed, recap)) continue;
     if (fired.contains(iv.start.inMilliseconds)) continue;
     if (pos >= iv.start && pos < iv.end - const Duration(seconds: 1)) return iv;
   }
@@ -85,7 +107,7 @@ class SkipService {
     return mal;
   }
 
-  /// OP/ED intervals for [episode] of the anime named [title]. [duration] is the
+  /// OP/ED/recap intervals for [episode] of the anime named [title]. [duration] is the
   /// episode length (improves accuracy; 0 is tolerated). Empty when not anime
   /// or not in the AniSkip DB.
   Future<List<SkipInterval>> skipTimes({
@@ -99,7 +121,7 @@ class SkipService {
       final res = await _dio.getUri<dynamic>(
         Uri.parse(
           'https://api.aniskip.com/v2/skip-times/$mal/$episode'
-          '?types=op&types=ed&episodeLength=${duration.inSeconds}',
+          '?types=op&types=ed&types=recap&episodeLength=${duration.inSeconds}',
         ),
         options: Options(validateStatus: (s) => s != null && s < 500),
       );

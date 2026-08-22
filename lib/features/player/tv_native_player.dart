@@ -185,6 +185,7 @@ class TvNativePlayer {
       'skipIntro': prefs.skipIntro,
       'autoSkipOp': prefs.autoSkipOp,
       'autoSkipEd': prefs.autoSkipEd,
+      'autoSkipRecap': prefs.autoSkipRecap,
       'autoSkipFiller': prefs.autoSkipFiller,
       'fillerFlags': fillerFlags,
     });
