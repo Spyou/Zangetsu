@@ -40,9 +40,25 @@ List<VideoSource> sourcesForKind(List<VideoSource> sources, AudioKind kind) =>
 VideoSource? pickDefault(
   List<VideoSource> sources, {
   AudioKind prefer = AudioKind.sub,
+  String? pref,
 }) {
   if (sources.isEmpty) return null;
-  final preferred = sortByQuality(sourcesForKind(sources, prefer));
-  if (preferred.isNotEmpty) return preferred.first;
-  return sortByQuality(sources).first;
+  final pool = sourcesForKind(sources, prefer);
+  final qualities = sortByQuality(pool.isNotEmpty ? pool : sources);
+
+  if (pref == null || pref.isEmpty || pref == 'auto' || pref == 'highest') {
+    return qualities.first;
+  }
+
+  final rank = qualityRank(pref);
+  if (rank <= 0) return qualities.first;
+
+  for (final q in qualities) {
+    if (qualityRank(q.quality) == rank) return q;
+  }
+
+  final nearbyRank = qualities.where((q) => qualityRank(q.quality) >= rank).toList();
+  if (nearbyRank.isNotEmpty) return nearbyRank.last;
+
+  return qualities.first;
 }
