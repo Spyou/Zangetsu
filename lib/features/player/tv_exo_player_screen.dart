@@ -688,10 +688,22 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   Future<void> _loadQualities(VideoSource src) async {
     var qs = const <HlsVariant>[];
-    final u = src.url.toLowerCase();
-    if (u.contains('.m3u8')) {
+    // Same three rungs as the phone: the plugin's tag, then the url, then an
+    // actual look. TV used to test the url only, so a tagged-HLS source whose
+    // url hides the extension behind a token got no quality list here while
+    // the phone found one — the two players disagreed on the same stream.
+    final tagged = src.container == SourceContainer.hls;
+    final byUrl = looksLikeHlsUrl(src.url);
+    final torrent = src.container == SourceContainer.torrent;
+    final drm = src.drmKid != null && src.drmKid!.isNotEmpty;
+    if (!torrent && !drm) {
       try {
-        qs = await fetchHlsVariants(src.url, src.headers ?? const {}, _dio);
+        qs = await fetchHlsVariants(
+          src.url,
+          src.headers ?? const {},
+          _dio,
+          sniff: !tagged && !byUrl,
+        );
       } catch (_) {}
     }
     if (!mounted) return;

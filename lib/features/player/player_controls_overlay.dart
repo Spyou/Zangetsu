@@ -282,7 +282,9 @@ class _ControlsOverlay extends StatelessWidget {
       case 'tracks':
         return (Icons.subtitles_rounded, 'Audio & subtitles', onAudioSubs);
       case 'quality':
-        if (state.qualities.isEmpty && c.sourceQualities.length <= 1) {
+        if (state.qualities.isEmpty &&
+            c.mediaVideoTracks.length <= 1 &&
+            c.sourceQualities.length <= 1) {
           return null;
         }
         return (Icons.high_quality_rounded, 'Quality', onQuality);

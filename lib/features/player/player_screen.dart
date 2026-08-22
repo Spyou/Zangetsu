@@ -2070,6 +2070,22 @@ class _PlayerScreenState extends State<PlayerScreen> {
             },
           ),
       ];
+    } else if (_c.mediaVideoTracks.length > 1) {
+      // No HLS ladder, but mpv found renditions inside the stream itself —
+      // this is how a DASH (.mpd) source gets a quality list, since it has no
+      // #EXT-X-STREAM-INF lines for us to parse.
+      rows = [
+        for (final t in _c.mediaVideoTracks)
+          _SheetRow(
+            label: '${t.h}p',
+            active: _c.selectedVideoTrack?.id == t.id,
+            onTap: () {
+              Navigator.pop(context);
+              _c.selectVideoTrack(t);
+              _bumpControls();
+            },
+          ),
+      ];
     } else {
       rows = [
         for (final q in _c.sourceQualities)

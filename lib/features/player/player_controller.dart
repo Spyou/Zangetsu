@@ -1098,6 +1098,67 @@ class PlayerCubit extends Cubit<PlayerState> {
   List<AudioTrack> get mediaAudioTracks =>
       state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
 
+  /// The video renditions mpv found inside the open media, best first.
+  ///
+  /// This is the fallback for streams our own HLS-master parsing can't read —
+  /// notably DASH (`.mpd`), which has no `#EXT-X-STREAM-INF` lines at all, so
+  /// [state.qualities] comes back empty and the Quality button hides itself.
+  /// mpv demuxes the manifest anyway and reports each rendition as a track, so
+  /// asking the player what it found covers whatever it can play, not just the
+  /// one format we taught ourselves to parse.
+  ///
+  /// Only consulted when the HLS list is empty — a stream that already yields
+  /// variants keeps the existing path, including its `hls-bitrate` pinning.
+  List<VideoTrack> get mediaVideoTracks {
+    final seen = <int>{};
+    final out = <VideoTrack>[];
+    for (final t in state.tracks.video) {
+      if (t.id == 'auto' || t.id == 'no') continue;
+      final h = t.h ?? 0;
+      if (h <= 0) continue; // no resolution to label it with
+      if (!seen.add(h)) continue; // one entry per rung
+      out.add(t);
+    }
+    out.sort((a, b) => (b.h ?? 0).compareTo(a.h ?? 0));
+    return out;
+  }
+
+  /// Switch to one of [mediaVideoTracks]. Unlike [selectQuality] this doesn't
+  /// reopen anything — mpv swaps the rendition in place.
+  Future<void> selectVideoTrack(VideoTrack t) async {
+    _selectedVideoTrack = t;
+    try {
+      await player.setVideoTrack(t);
+    } catch (e) {
+      debugPrint('[quality] setVideoTrack failed: $e');
+    }
+  }
+
+  VideoTrack? _selectedVideoTrack;
+
+  /// The rendition currently on screen — what the Quality sheet should tick.
+  ///
+  /// Not just the user's last pick: before they've chosen anything mpv has
+  /// already auto-selected a rung, and with nothing ticked the sheet looked
+  /// like nothing was selected at all. Ask the player first, and fall back to
+  /// the frame size it reports, since an auto-selected track comes back as the
+  /// synthetic id 'auto' that matches nothing in the list.
+  VideoTrack? get selectedVideoTrack {
+    final tracks = mediaVideoTracks;
+    if (tracks.isEmpty) return null;
+    final current = player.state.track.video.id;
+    for (final t in tracks) {
+      if (t.id == current) return t;
+    }
+    final h = player.state.height;
+    if (h != null && h > 0) {
+      for (final t in tracks) {
+        if (t.h == h) return t;
+      }
+    }
+    return _selectedVideoTrack;
+  }
+
   /// Embedded subtitle tracks for the open media (excludes auto/no). Also
   /// excludes externally `sub-add`ed tracks — a source soft-sub applied via
   /// SubtitleTrack.uri shows up in mpv's track list with its URL as the id,
@@ -1731,22 +1792,63 @@ class PlayerCubit extends Cubit<PlayerState> {
   void _buildQualityMenu(int gen) {
     emit(state.copyWith(qualities: const [], activeQuality: () => null));
     _hlsMaster = null;
-    VideoSource? master;
+
+    // `container` is only as good as the plugin that set it: MovieBox and
+    // friends serve a real HLS master but never set the m3u8 flag, so trusting
+    // the tag alone meant giving up before even looking and the Quality button
+    // hid itself. CloudStream doesn't notice because ExoPlayer sniffs the
+    // stream rather than reading the plugin's paperwork.
+    //
+    // So try three rungs, cheapest first, and stop at the first that yields a
+    // ladder: the tag, then the url, then an actual look at the bytes.
+    bool playable(VideoSource s) =>
+        s.container != SourceContainer.torrent &&
+        (s.drmKid == null || s.drmKid!.isEmpty);
+
+    VideoSource? tagged;
+    VideoSource? byUrl;
     for (final s in state.sources) {
-      if (s.container == SourceContainer.hls) {
-        master = s;
-        break;
-      }
+      if (!playable(s)) continue;
+      if (tagged == null && s.container == SourceContainer.hls) tagged = s;
+      if (byUrl == null && looksLikeHlsUrl(s.url)) byUrl = s;
     }
-    if (master == null) return;
-    _hlsMaster = master;
-    final m = master;
-    fetchHlsVariants(m.url, m.headers, _dio).then((vs) {
+    // Last resort: whatever is actually playing. Sniffed, so a non-playlist
+    // costs one ranged request and is dropped.
+    final active = state.active;
+    final guess = (active != null && playable(active))
+        ? active
+        : state.sources.where(playable).firstOrNull;
+
+    final candidate = tagged ?? byUrl ?? guess;
+    if (candidate == null) return;
+    _hlsMaster = candidate;
+    // Only the last rung is a guess; the first two are known playlists and
+    // keep issuing exactly the request they always did.
+    final sniff = tagged == null && byUrl == null;
+    // Once per episode open. Kept because this line (plus the status below)
+    // is what identified a DASH stream being fed to an HLS-only parser —
+    // reading the code twice had produced two wrong answers.
+    debugPrint(
+      '[quality] candidate=${candidate.label ?? candidate.url} '
+      'container=${candidate.container.name} sniff=$sniff',
+    );
+    fetchHlsVariants(
+      candidate.url,
+      candidate.headers,
+      _dio,
+      sniff: sniff,
+    ).then((vs) {
+      debugPrint('[quality] variants=${vs.length} '
+          '${vs.map((v) => v.quality).join(",")}');
       if (gen == _gen && vs.length > 1) {
         emit(state.copyWith(qualities: vs));
         // Variants arrive async (after the initial open), so re-apply the
         // default-quality pref now that the HLS ladder is known.
         _applyDefaultQuality();
+      } else if (vs.length <= 1) {
+        // Not a ladder after all — don't leave a non-HLS source pinned as the
+        // master, or selectQuality would reopen the wrong thing.
+        if (gen == _gen && sniff) _hlsMaster = null;
       }
     });
   }

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 /// One selectable quality from an HLS master playlist.
 class HlsVariant {
@@ -73,26 +74,49 @@ class _RankedVariant extends HlsVariant {
   final int rank;
 }
 
+/// Whether [url] names a playlist by its path. Query-aware: plenty of CDNs
+/// hang `?token=...` off the end, and a few put `.m3u8` in a query value only,
+/// which doesn't count.
+bool looksLikeHlsUrl(String url) {
+  final path = Uri.tryParse(url)?.path.toLowerCase() ?? url.toLowerCase();
+  return path.contains('.m3u8');
+}
+
 /// Fetches [masterUrl] and parses it into variants. Returns `[]` on any error or
 /// if it's not a master playlist.
+///
+/// [sniff] is for a source we only SUSPECT is HLS — a plugin that never set its
+/// m3u8 flag and whose url doesn't say either. It asks for the first 64 KB
+/// instead of the whole body (the url could turn out to be a multi-GB mp4) and
+/// insists on the `#EXTM3U` signature before parsing. Left false for a source
+/// already known to be HLS, so that path issues exactly the request it always
+/// did — a Range header some CDNs answer with a 416 would break what works.
 Future<List<HlsVariant>> fetchHlsVariants(
   String masterUrl,
   Map<String, String>? headers,
-  Dio dio,
-) async {
+  Dio dio, {
+  bool sniff = false,
+}) async {
   try {
     final resp = await dio.getUri<String>(
       Uri.parse(masterUrl),
       options: Options(
         responseType: ResponseType.plain,
-        headers: headers,
+        headers: sniff
+            ? {...?headers, 'Range': 'bytes=0-65535'}
+            : headers,
         receiveTimeout: const Duration(seconds: 8),
         validateStatus: (s) => s != null && s < 500,
       ),
     );
     final body = resp.data ?? '';
+    debugPrint(
+      '[quality] fetch status=${resp.statusCode} len=${body.length}',
+    );
+    if (sniff && !body.trimLeft().startsWith('#EXTM3U')) return const [];
     return parseHlsMaster(body, masterUrl);
-  } catch (_) {
+  } catch (e) {
+    debugPrint('[quality] fetch failed: $e');
     return const [];
   }
 }
