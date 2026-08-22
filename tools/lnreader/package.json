@@ -6,6 +6,7 @@
     "build": "./build.sh"
   },
   "dependencies": {
+    "@noble/ciphers": "2.3.0",
     "buffer": "^6.0.3",
     "cheerio": "^1.0.0",
     "dayjs": "^1.11.13",

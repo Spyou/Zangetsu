@@ -4,6 +4,24 @@ if (!globalThis.process) globalThis.process = { env: {}, nextTick: function (f) 
 globalThis.global = globalThis;
 if (!globalThis.atob) globalThis.atob = function (b64) { return Buffer.from(String(b64), 'base64').toString('binary'); };
 if (!globalThis.btoa) globalThis.btoa = function (s) { return Buffer.from(String(s), 'binary').toString('base64'); };
+if (!globalThis.TextEncoder) {
+  globalThis.TextEncoder = function TextEncoder() { this.encoding = 'utf-8'; };
+  globalThis.TextEncoder.prototype.encode = function (s) {
+    return new Uint8Array(Buffer.from(s == null ? '' : String(s), 'utf8'));
+  };
+}
+if (!globalThis.TextDecoder) {
+  globalThis.TextDecoder = function TextDecoder(enc) { this.encoding = enc || 'utf-8'; };
+  globalThis.TextDecoder.prototype.decode = function (input) {
+    if (input == null) return '';
+    var u8 = input instanceof Uint8Array
+      ? input
+      : (input.buffer
+          ? new Uint8Array(input.buffer, input.byteOffset || 0, input.byteLength)
+          : new Uint8Array(input));
+    return Buffer.from(u8).toString('utf8');
+  };
+}
 if (!globalThis.URL) {
   globalThis.URL = function URL(url, base) {
     var u = String(url);
@@ -23,6 +41,8 @@ if (!globalThis.URL) {
     this.search = m[4] || '';
     this.hash = m[5] || '';
     this.origin = (m[1] || '') + '//' + (m[2] || '');
+    // Real URLs expose this; plugins call new URL(x).searchParams.get(...).
+    this.searchParams = new globalThis.URLSearchParams(this.search);
   };
   globalThis.URL.prototype.toString = function () { return this.href; };
 }

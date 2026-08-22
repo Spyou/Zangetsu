@@ -50,6 +50,11 @@ __FormData.prototype.delete = function (k) {
 };
 globalThis.FormData = __FormData;
 
+// A couple of plugins (ixdzs8, rainofsnow) call the bare global fetch()
+// instead of importing @libs/fetch. QuickJS has no fetch, so they'd throw
+// mid-call; point it at the same bridge.
+if (!globalThis.fetch) globalThis.fetch = function (url, init) { return fetchApi(url, init); };
+
 function __rawFetch(url, init) {
   init = init || {};
   // A FormData body can't cross the JSON outbox — serialise it to
@@ -89,6 +94,35 @@ function fetchApi(url, init) {
 }
 
 // ── @libs + node-module shims LNReader plugins require() ─────────────────────
+
+// Defined once and handed out under every name LNReader exposes them by:
+// the older '@libs/novelStatus' + '@libs/defaultCover', and the newer
+// '@/types/constants' that re-exports both. Newer plugins (Novel Fire,
+// Novel Phoenix) import the latter, and an unknown module name throws at
+// LOAD time — before a single request — which surfaces as the misleading
+// "source isn't responding".
+var __NOVEL_STATUS = {
+  Unknown: 'Unknown', Ongoing: 'Ongoing', Completed: 'Completed',
+  Licensed: 'Licensed', PublishingFinished: 'Publishing Finished',
+  Cancelled: 'Cancelled', OnHiatus: 'On Hiatus',
+  STUB: 'STUB', Inactive: 'Inactive',
+};
+var __DEFAULT_COVER = 'https://placehold.co/300x400';
+
+// A storage object with LNReader's shape. In-memory only and NOT persisted
+// across runs — enough for plugins that cache an id mid-session, not enough
+// for anything that expects it to survive a restart.
+function __memStore() {
+  var data = {};
+  return {
+    get: function (k) { return data[k]; },
+    set: function (k, v) { data[k] = v; },
+    delete: function (k) { delete data[k]; },
+    clearAll: function () { data = {}; },
+    getAllKeys: function () { return Object.keys(data); },
+  };
+}
+
 function __require(name) {
   switch (name) {
     case 'cheerio': return globalThis.__cheerio;
@@ -98,13 +132,21 @@ function __require(name) {
     // it they throw 'unknown module: dayjs' before any fetch → "isn't responding".
     case 'dayjs': return globalThis.__dayjs;
     case '@libs/fetch': return { fetchApi: fetchApi, fetchFile: fetchApi };
-    case '@libs/novelStatus': return { NovelStatus: {
-      Unknown: 'Unknown', Ongoing: 'Ongoing', Completed: 'Completed',
-      Licensed: 'Licensed', PublishingFinished: 'Publishing Finished',
-      Cancelled: 'Cancelled', OnHiatus: 'On Hiatus' } };
+    case '@libs/novelStatus': return { NovelStatus: __NOVEL_STATUS };
     case '@libs/isAbsoluteUrl': return { isUrlAbsolute: function (u) { return /^https?:\/\//.test(u); } };
-    case '@libs/defaultCover': return { defaultCover: 'https://placehold.co/300x400' };
-    case '@libs/storage': return { storage: { get: function () {}, set: function () {} }, localStorage: {}, sessionStorage: {} };
+    case '@libs/defaultCover': return { defaultCover: __DEFAULT_COVER };
+    // Newer path that re-exports both of the above.
+    case '@/types/constants':
+      return { NovelStatus: __NOVEL_STATUS, defaultCover: __DEFAULT_COVER };
+    // AES-GCM, from the same @noble/ciphers the real LNReader uses (bundled
+    // as __aesGcm). WTR-LAB decrypts its chapter payloads with it.
+    case '@libs/aes': return { gcm: globalThis.__aesGcm };
+    // All three are no-op stores (nothing persists), but they must at least
+    // carry the get/set shape: RLIB calls localStorage.get() at LOAD time and
+    // died on a bare {}.
+    case '@libs/storage': return {
+      storage: __memStore(), localStorage: __memStore(), sessionStorage: __memStore(),
+    };
     case '@libs/filterInputs': return { FilterTypes: {} };
     default: throw new Error('unknown module: ' + name);
   }
