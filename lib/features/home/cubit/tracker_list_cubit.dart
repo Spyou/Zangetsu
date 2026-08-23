@@ -108,7 +108,10 @@ class TrackerListCubit extends Cubit<TrackerListState> {
       final entries = [
         for (final t in raw)
           MyListEntry(t.item, t.status,
-              progress: t.progress, score: t.score, tmdbIsTv: t.tmdbIsTv),
+              progress: t.progress,
+              score: t.score,
+              tmdbIsTv: t.tmdbIsTv,
+              updatedAt: t.updatedAt),
       ];
       _cache[tracker] = entries;
       // Ignore a result that lands after the user switched away.

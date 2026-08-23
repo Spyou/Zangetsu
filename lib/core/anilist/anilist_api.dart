@@ -56,6 +56,7 @@ String mediaListCollectionQuery(MediaKind kind) {
   final formatField = kind == MediaKind.manga ? ' format' : '';
   return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
       'lists { status entries { status progress score(format:POINT_10) '
+      'updatedAt '
       'media { idMal title { romaji english }$formatField coverImage { large } } } } } }';
 }
 

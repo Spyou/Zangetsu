@@ -4,7 +4,7 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/prefs/list_sort.dart';
 import 'package:watch_app/features/home/cubit/my_list_cubit.dart';
 
-MyListEntry e(String title, {double? score}) => MyListEntry(
+MyListEntry e(String title, {double? score, DateTime? updated}) => MyListEntry(
       MediaItem(
         id: title,
         title: title,
@@ -14,6 +14,7 @@ MyListEntry e(String title, {double? score}) => MyListEntry(
       ),
       null,
       score: score,
+      updatedAt: updated,
     );
 
 void main() {
@@ -69,6 +70,37 @@ void main() {
           ['high', 'low', 'none']);
       expect(sortLibrary(src, ListSort.score, false).map((x) => x.item.title),
           ['low', 'high', 'none']);
+    });
+  });
+
+  group('last updated', () {
+    final old = DateTime(2020, 1, 1);
+    final mid = DateTime(2023, 6, 1);
+    final recent = DateTime(2026, 8, 1);
+
+    test('recent first, and reversed the other way', () {
+      final src = [e('mid', updated: mid), e('old', updated: old),
+                   e('new', updated: recent)];
+      expect(sortLibrary(src, ListSort.updated, true).map((x) => x.item.title),
+          ['new', 'mid', 'old']);
+      expect(sortLibrary(src, ListSort.updated, false).map((x) => x.item.title),
+          ['old', 'mid', 'new']);
+    });
+
+    test('entries with no date sink to the bottom BOTH ways', () {
+      // A tracker that didn't report a date isn't "the oldest" — it's unknown,
+      // and shouldn't lead the oldest-first order.
+      final src = [e('none'), e('new', updated: recent), e('old', updated: old)];
+      expect(sortLibrary(src, ListSort.updated, true).map((x) => x.item.title),
+          ['new', 'old', 'none']);
+      expect(sortLibrary(src, ListSort.updated, false).map((x) => x.item.title),
+          ['old', 'new', 'none']);
+    });
+
+    test('is offered on tracker lists but not on your own', () {
+      // The own list stores no such timestamp, so the option would do nothing.
+      expect(optionsFor(isMyList: false), contains(ListSort.updated));
+      expect(optionsFor(isMyList: true), isNot(contains(ListSort.updated)));
     });
   });
 

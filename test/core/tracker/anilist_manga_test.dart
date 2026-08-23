@@ -24,12 +24,19 @@ const _searchMediaAnimeGolden =
     r'query($q:String,$n:Int){ Page(perPage:$n){ media(search:$q,type:ANIME){ '
     r'id idMal episodes format seasonYear '
     r'title{ romaji english } coverImage{ medium } } } }';
-// anilist_service.dart:352-355 — the fetchList() library read, verbatim from
-// the pre-manga source. `format` is NOT selected here: it only exists on the
-// manga variant, so the anime request must not grow a field.
+// anilist_service.dart — the fetchList() library read. `format` is NOT
+// selected here: it only exists on the manga variant, so the anime request
+// must not grow a field through the manga path (the reason this golden
+// exists).
+//
+// `updatedAt` was added deliberately, like `title` above: the library screen
+// sorts by when a tracker last changed an entry, and nothing else reports it.
+// It's on MediaList itself, not on `media`, so it's identical for both kinds
+// and can't skew the manga/anime split this file guards.
 const _listCollectionAnimeGolden =
     r'query($u:String){ MediaListCollection(userName:$u, type:ANIME){ '
     r'lists { status entries { status progress score(format:POINT_10) '
+    r'updatedAt '
     r'media { idMal title { romaji english } coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists

@@ -388,7 +388,15 @@ class SimklService extends ChangeNotifier implements Tracker {
           final rawScore = _asDouble(e['user_rating']);
           final score = (rawScore == null || rawScore <= 0) ? null : rawScore;
 
+          // Simkl dates arrive as strings; last_watched_at is the meaningful
+          // "updated", with the watchlist-added date as the fallback for
+          // something planned but never watched.
+          final updatedRaw = (e['last_watched_at'] ?? e['added_to_watchlist_at'])
+              ?.toString();
           out.add(TrackerListItem(
+            updatedAt: updatedRaw == null
+                ? null
+                : DateTime.tryParse(updatedRaw.replaceFirst(' ', 'T')),
             item: MediaItem(
               id: 'tracker:simkl:${simklId ?? malId ?? tmdbId ?? out.length}',
               title: title,

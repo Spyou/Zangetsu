@@ -74,7 +74,12 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
       // Reading kinds get their own id namespace for the same id-space-overlap
       // reason as `seen`; anime keeps the original, unprefixed id.
       final key = malId ?? idx;
+      // AniList reports updatedAt in unix SECONDS; 0 means never set.
+      final updatedSec = (e['updatedAt'] as num?)?.toInt();
       out.add(TrackerListItem(
+        updatedAt: (updatedSec == null || updatedSec <= 0)
+            ? null
+            : DateTime.fromMillisecondsSinceEpoch(updatedSec * 1000),
         item: MediaItem(
           id: kind == MediaKind.manga
               ? 'tracker:anilist:manga:$key'

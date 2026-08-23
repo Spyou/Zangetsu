@@ -122,8 +122,12 @@ List<TrackerListItem> parseMalListPage(Object? body, MediaKind kind) {
     final pic = node['main_picture'] as Map?;
     final cover = (pic?['large'] as String?) ?? (pic?['medium'] as String?);
     final score = (ls['score'] as num?)?.toDouble();
+    // MAL returns updated_at inside list_status by default, so this needs no
+    // change to the request — it was simply being dropped.
+    final updated = DateTime.tryParse('${ls['updated_at'] ?? ''}');
     out.add(
       TrackerListItem(
+        updatedAt: updated,
         item: MediaItem(
           // Reading kinds get their own id namespace — MAL's anime and manga
           // id spaces overlap, so `tracker:mal:21` would otherwise name two

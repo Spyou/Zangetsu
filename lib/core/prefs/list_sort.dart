@@ -17,6 +17,10 @@ enum ListSort {
 
   /// The user's score on a tracker. Tracker lists only.
   score,
+
+  /// When the tracker last changed the entry. Tracker lists only — the own
+  /// list keeps no such timestamp.
+  updated,
 }
 
 /// Labels, worded for the field rather than a generic ascending/descending —
@@ -25,18 +29,20 @@ String listSortLabel(ListSort s) => switch (s) {
       ListSort.title => 'Title',
       ListSort.added => 'Recently added',
       ListSort.score => 'Score',
+      ListSort.updated => 'Last updated',
     };
 
 String listSortDirectionLabel(ListSort s, bool desc) => switch (s) {
       ListSort.title => desc ? 'Z → A' : 'A → Z',
       ListSort.added => desc ? 'Newest first' : 'Oldest first',
       ListSort.score => desc ? 'High → Low' : 'Low → High',
+      ListSort.updated => desc ? 'Recent first' : 'Oldest first',
     };
 
 /// What a given list can honestly sort by.
 List<ListSort> optionsFor({required bool isMyList}) => isMyList
     ? const [ListSort.added, ListSort.title]
-    : const [ListSort.score, ListSort.title];
+    : const [ListSort.score, ListSort.updated, ListSort.title];
 
 /// The default for a list that hasn't been sorted before: your own list keeps
 /// the order you built it in, a tracker list leads with your best-rated.
@@ -64,6 +70,13 @@ List<MyListEntry> sortLibrary(
     case ListSort.title:
       out.sort((a, b) =>
           a.item.title.toLowerCase().compareTo(b.item.title.toLowerCase()));
+    case ListSort.updated:
+      // Entries the tracker gave no date for sink to the bottom either way,
+      // for the same reason an unscored title does: "unknown" isn't "ancient".
+      final dated = out.where((e) => e.updatedAt != null).toList()
+        ..sort((a, b) => b.updatedAt!.compareTo(a.updatedAt!));
+      final undated = out.where((e) => e.updatedAt == null).toList();
+      return [...(desc ? dated : dated.reversed), ...undated];
     case ListSort.score:
       // Unscored titles sink to the bottom either way — a missing score is
       // "not rated", not "rated zero", so it shouldn't lead an ascending sort.

@@ -9,7 +9,7 @@ import '../../../core/playback/my_list.dart';
 /// status, e.g. a legacy bookmark).
 class MyListEntry {
   const MyListEntry(this.item, this.status,
-      {this.progress, this.score, this.tmdbIsTv = false});
+      {this.progress, this.score, this.tmdbIsTv = false, this.updatedAt});
   final MediaItem item;
   final WatchStatus? status;
 
@@ -17,6 +17,10 @@ class MyListEntry {
   /// MAL / Simkl), which read these back per entry. Always null for the own list.
   final int? progress;
   final double? score;
+
+  /// When the tracker last changed this entry — drives the "Last updated"
+  /// sort. Null for the own list, which keeps no such timestamp.
+  final DateTime? updatedAt;
 
   /// Simkl movies/TV are resolved by TMDB id; this marks TV shows so an edit
   /// writes to the right Simkl bucket. False for anime and the own list.

@@ -26,10 +26,19 @@ class TrackerListItem {
     this.progress,
     this.score,
     this.tmdbIsTv = false,
+    this.updatedAt,
   });
 
   final MediaItem item;
   final WatchStatus status; // planning | watching | completed | paused | dropped
+
+  /// When this entry last changed on the tracker, for the "Last updated" sort.
+  ///
+  /// Each service words it differently — AniList sends unix seconds, MAL an
+  /// ISO string, Simkl the date it was last watched — so it's normalised to a
+  /// DateTime here. Null when the service didn't say, which sinks the entry to
+  /// the bottom of that sort rather than pretending it's ancient.
+  final DateTime? updatedAt;
   final int? progress; // episodes watched (optional, for display)
   final double? score; // user score 0–10 (optional, for display)
 
