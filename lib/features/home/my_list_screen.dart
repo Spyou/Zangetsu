@@ -9,6 +9,7 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
+import '../../core/prefs/list_sort.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
 import '../../core/playback/my_list.dart';
@@ -61,6 +62,22 @@ class _MyListView extends StatefulWidget {
 class _MyListViewState extends State<_MyListView> {
   WatchStatus? _statusFilter; // null = All
   ProviderType? _typeFilter; // null = All
+
+  /// Null until the user picks one — the default then depends on which list is
+  /// showing (your own keeps insertion order, a tracker leads with score), and
+  /// that can change under us when the source switcher moves.
+  ListSort? _sort = ListSortPrefs.sortBy;
+  bool _sortDesc = ListSortPrefs.descending;
+
+  ListSort _sortFor({required bool isMyList}) {
+    final chosen = _sort;
+    // A saved sort that this list can't do (score on your own list, which has
+    // none) falls back rather than showing an empty-looking order.
+    if (chosen != null && optionsFor(isMyList: isMyList).contains(chosen)) {
+      return chosen;
+    }
+    return defaultSortFor(isMyList: isMyList);
+  }
 
   Future<void> _openItem(BuildContext context, MediaItem item) async {
     final cubit = context.read<MyListCubit>();
@@ -177,6 +194,13 @@ class _MyListViewState extends State<_MyListView> {
                         active: _typeFilter != null,
                       ),
                       const SizedBox(width: 8),
+                      _pillIcon(
+                        Icons.sort_rounded,
+                        'Sort',
+                        () => _openSortSheet(context),
+                        active: _sort != null,
+                      ),
+                      const SizedBox(width: 8),
                       _accountsButton(context, hub),
                     ],
                   ),
@@ -186,6 +210,76 @@ class _MyListViewState extends State<_MyListView> {
           ),
         );
       },
+    );
+  }
+
+  /// Sort options for whichever list is showing. Tapping the active one flips
+  /// its direction, which is how the reference apps do it and saves a second
+  /// control.
+  void _openSortSheet(BuildContext context) {
+    final isMyList = context.read<TrackerListCubit>().state.isMyList;
+    final options = optionsFor(isMyList: isMyList);
+    final active = _sortFor(isMyList: isMyList);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Text('Sort by', style: AppText.title),
+            ),
+            for (final o in options)
+              ListTile(
+                title: Text(
+                  listSortLabel(o),
+                  style: AppText.body.copyWith(
+                    color: o == active
+                        ? AppColors.accent
+                        : AppColors.textPrimary,
+                    fontWeight: o == active ? FontWeight.w700 : null,
+                  ),
+                ),
+                subtitle: o == active
+                    ? Text(
+                        listSortDirectionLabel(o, _sortDesc),
+                        style: AppText.caption,
+                      )
+                    : null,
+                trailing: o == active
+                    ? Icon(
+                        _sortDesc
+                            ? Icons.arrow_downward_rounded
+                            : Icons.arrow_upward_rounded,
+                        color: AppColors.accent,
+                        size: 18,
+                      )
+                    : null,
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  setState(() {
+                    // Same option again → flip direction; a new one starts in
+                    // the direction people expect (best/newest/A-Z first).
+                    if (o == active) {
+                      _sortDesc = !_sortDesc;
+                    } else {
+                      _sort = o;
+                      _sortDesc = o != ListSort.title;
+                    }
+                  });
+                  ListSortPrefs.save(_sortFor(isMyList: isMyList), _sortDesc);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 
@@ -725,13 +819,23 @@ class _MyListViewState extends State<_MyListView> {
       return true;
     }).toList();
 
+    // Display order only. `filtered` is already a throwaway copy and
+    // sortLibrary returns another — the saved list in Hive is never touched,
+    // so no sort can reorder or lose what's stored.
+    final isMyList = context.read<TrackerListCubit>().state.isMyList;
+    final shown = sortLibrary(
+      filtered,
+      _sortFor(isMyList: isMyList),
+      _sortDesc,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _statusTabs(modeEntries, presentStatuses),
         const SizedBox(height: 8),
         Expanded(
-          child: filtered.isEmpty
+          child: shown.isEmpty
               ? EmptyState(
                   icon: Icons.filter_list_off_rounded,
                   message: myListFilteredEmptyMessage(mode),
@@ -750,9 +854,9 @@ class _MyListViewState extends State<_MyListView> {
                     crossAxisSpacing: 12,
                     mainAxisSpacing: 16,
                   ),
-                  itemCount: filtered.length,
+                  itemCount: shown.length,
                   itemBuilder: (context, i) {
-                    final entry = filtered[i];
+                    final entry = shown[i];
                     return PosterCard(
                       title: entry.item.title,
                       imageUrl: entry.item.cover,
