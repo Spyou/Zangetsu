@@ -29,6 +29,7 @@ class PlayerTvControls extends StatefulWidget {
     required this.onSpeed,
     required this.onAudioSubs,
     required this.onQuality,
+    this.showQuality = true,
     required this.onSources,
     required this.onFit,
     required this.onBack,
@@ -54,6 +55,10 @@ class PlayerTvControls extends StatefulWidget {
   final VoidCallback onSpeed;
   final VoidCallback onAudioSubs;
   final VoidCallback onQuality;
+
+  /// False when the playing stream has no renditions to switch between, so the
+  /// button is left out entirely instead of opening an empty menu.
+  final bool showQuality;
   final VoidCallback onSources;
 
   /// Cycles the video fit mode ([_PlayerScreenState._cycleFit]).
@@ -258,7 +263,8 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
     final buttons = <(IconData, String, VoidCallback)>[
       (Icons.speed, 'Speed', widget.onSpeed),
       (Icons.subtitles_rounded, 'Audio & subs', widget.onAudioSubs),
-      (Icons.high_quality, 'Quality', widget.onQuality),
+      if (widget.showQuality)
+        (Icons.high_quality, 'Quality', widget.onQuality),
       (Icons.video_settings, 'Sources', widget.onSources),
       (Icons.aspect_ratio_rounded, 'Fit', widget.onFit),
       if (widget.onNext != null) (Icons.skip_next, 'Next', widget.onNext!),

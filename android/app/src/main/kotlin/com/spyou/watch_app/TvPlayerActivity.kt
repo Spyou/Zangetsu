@@ -788,9 +788,9 @@ class TvPlayerActivity : Activity() {
         return null
     }
 
-    /** Quality menu — mirrors the phone: adaptive HLS variants when the current
-     *  stream is a multi-variant master, otherwise the distinct per-source
-     *  resolutions (providers that ship one stream per quality). */
+    /** Quality menu — mirrors the phone: the renditions of the stream that is
+     *  playing (an adaptive HLS/DASH master's video tracks), else the single
+     *  resolution it decodes at. Never other sources' labels. */
     private fun buildQualityMenu() {
         val p = player ?: return
         val groups = p.currentTracks.groups
@@ -815,25 +815,15 @@ class TvPlayerActivity : Activity() {
                 }
             }
         } else {
-            // Distinct per-source resolutions (mobile's sourceQualities).
-            val seen = HashSet<String>()
-            val perQuality = episodeSources.mapIndexedNotNull { i, s ->
-                val q = (s["quality"] as? String)?.trim().orEmpty()
-                if (q.isEmpty() || !seen.add(q)) null else q to i
-            }
-            if (perQuality.isNotEmpty()) {
-                sectionHeader("Quality")
-                for ((q, i) in perQuality) {
-                    option(q, selected = (episodeSources.getOrNull(i)?.get("url") as? String) == currentUrl) {
-                        loadSource(i)
-                    }
-                }
-            }
-        }
-
-        if (menuContent.childCount == 0) {
+            // One video track: nothing to switch inside this stream. Show what
+            // is actually playing, measured from the decoded format rather than
+            // whatever the provider claimed. The other resolved sources are
+            // separate files on separate servers and live under Sources — this
+            // menu used to list them by quality label, which meant picking
+            // "720p" jumped to some other mirror's file, audio and subtitles.
+            val h = p.videoFormat?.height ?: 0
             sectionHeader("Quality")
-            option("Auto", selected = true) {}
+            option(if (h > 0) "${h}p" else "Auto", selected = true) {}
         }
     }
 

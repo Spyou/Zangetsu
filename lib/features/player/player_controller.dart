@@ -476,7 +476,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       if (gen != _gen) return;
       emit(state.copyWith(sources: resolved, loadingSources: false));
       _buildQualityMenu(gen);
-      final pick = pickDefault(resolved);
+      final pick = pickDefault(resolved, preferQuality: _preferredQuality());
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),
@@ -1086,7 +1086,11 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// Switch to the best source of the given audio [k] (Sub/Dub), preserving
   /// the live position.
   Future<void> switchAudio(AudioKind k) async {
-    final s = pickDefault(state.sources, prefer: k);
+    final s = pickDefault(
+      state.sources,
+      prefer: k,
+      preferQuality: _preferredQuality(),
+    );
     if (s != null) await switchSource(s);
   }
 
@@ -1622,7 +1626,9 @@ class PlayerCubit extends Cubit<PlayerState> {
       // Otherwise the source remembered for this title (e.g. Hindi), else the
       // adaptive default.
       final pick =
-          fromPick ?? _preferredSource(resolved) ?? pickDefault(resolved);
+          fromPick ??
+          _preferredSource(resolved) ??
+          pickDefault(resolved, preferQuality: _preferredQuality());
       if (pick == null) {
         emit(
           state.copyWith(error: () => 'No playable sources for this episode.'),
@@ -1656,65 +1662,45 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// quality by label, falling back to the current default when absent.
   void _applyDefaultQuality() {
     // Per-title remembered quality wins over the global default.
-    final url = showUrl;
-    final pref =
-        (url != null && url.isNotEmpty
-            ? sl<TitlePrefsStore>().quality(sourceId, url)
-            : null) ??
-        sl<PlaybackPrefs>().defaultQuality;
+    final pref = _preferredQuality();
     if (pref == 'auto') return;
 
+    // HLS variants only. Those are renditions of the stream that's already
+    // playing, so applying one keeps the same file, server and audio. A
+    // provider that ships one stream per quality is handled where the source
+    // is CHOSEN instead ([pickDefault]'s preferQuality) — swapping streams
+    // mid-playback would land on a different file entirely.
     final variants = state.qualities; // already sorted high→low
-    final srcQualities = sourceQualities; // already sorted high→low
+    if (variants.isEmpty) return;
 
     if (pref == 'highest') {
-      if (variants.isNotEmpty) {
-        selectQuality(variants.first);
-      } else if (srcQualities.isNotEmpty) {
-        selectSourceQuality(srcQualities.first);
-      }
+      selectQuality(variants.first);
       return;
     }
 
-    // Exact resolution match: an HLS variant by label, else a source quality.
     for (final v in variants) {
       if (v.quality == pref) {
         selectQuality(v);
         return;
       }
     }
-    if (srcQualities.contains(pref)) {
-      selectSourceQuality(pref);
-      return;
-    }
 
-    // Fallback: the preferred resolution isn't offered → pick the NEAREST
-    // available (e.g. 1080p wanted but only 4K/720p → closest, higher on a tie),
-    // instead of silently leaving it on the adaptive default.
-    final wanted = _resPx(pref);
+    // The preferred resolution isn't offered → nearest available (e.g. 1080p
+    // wanted but only 4K/720p → closest, higher on a tie).
+    final wanted = resolutionPx(pref);
     if (wanted == null) return;
     final nearVar = _nearestByRes(variants, (v) => v.quality, wanted);
-    if (nearVar != null) {
-      selectQuality(nearVar);
-      return;
-    }
-    final nearSrc = _nearestByRes(srcQualities, (q) => q, wanted);
-    if (nearSrc != null) selectSourceQuality(nearSrc);
+    if (nearVar != null) selectQuality(nearVar);
   }
 
-  /// Approximate vertical resolution (px) parsed from a quality label, for the
-  /// nearest-available fallback. Handles 4K/2K/FHD/HD shorthand + bare numbers.
-  static int? _resPx(String label) {
-    final l = label.toLowerCase();
-    if (l.contains('2160') || l.contains('4k') || l.contains('uhd')) return 2160;
-    if (l.contains('1440') || l.contains('2k')) return 1440;
-    if (l.contains('1080') || l.contains('fhd')) return 1080;
-    if (l.contains('720')) return 720;
-    if (l.contains('480')) return 480;
-    if (l.contains('360')) return 360;
-    if (l.contains('240')) return 240;
-    final m = RegExp(r'(\d{3,4})').firstMatch(l);
-    return m != null ? int.tryParse(m.group(1)!) : null;
+  /// The resolution preference for the current title: its remembered pick if it
+  /// has one, else the global default.
+  String _preferredQuality() {
+    final url = showUrl;
+    return (url != null && url.isNotEmpty
+            ? sl<TitlePrefsStore>().quality(sourceId, url)
+            : null) ??
+        sl<PlaybackPrefs>().defaultQuality;
   }
 
   /// The item whose label-resolution is closest to [wanted]. Inputs are sorted
@@ -1727,7 +1713,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     T? best;
     var bestDiff = 1 << 30;
     for (final it in items) {
-      final px = _resPx(labelOf(it) ?? '');
+      final px = resolutionPx(labelOf(it));
       if (px == null) continue;
       final d = (px - wanted).abs();
       if (d < bestDiff) {
@@ -1903,50 +1889,12 @@ class PlayerCubit extends Cubit<PlayerState> {
     await selectQuality(v);
   }
 
-  /// User explicitly chose a per-source quality label: remember it, then apply.
-  Future<void> chooseSourceQuality(String q) async {
-    _rememberQuality(q);
-    await selectSourceQuality(q);
-  }
-
-  // ── Source-based quality (when there's no multi-variant HLS master) ───────
-  // AllAnime etc. return several distinct sources that each carry a resolution
-  // label but no HLS master playlist, so [qualities] is empty. Surface those
-  // per-source qualities as selectable options instead.
-
-  /// Distinct non-empty quality labels among the resolved sources for the
-  /// active audio kind, high→low.
-  List<String> get sourceQualities {
-    final kind = state.active?.kind;
-    final seen = <String>{};
-    final out = <String>[];
-    for (final s in sortByQuality(state.sources)) {
-      if (kind != null && s.kind != kind) continue;
-      final q = (s.quality ?? '').trim();
-      if (q.isEmpty || seen.contains(q)) continue;
-      seen.add(q);
-      out.add(q);
-    }
-    return out;
-  }
-
-  /// The quality label of the currently-playing source (for the active check).
-  String? get activeSourceQuality =>
-      (state.active?.quality ?? '').trim().isEmpty
-      ? null
-      : state.active!.quality!.trim();
-
-  /// Switch to the best source matching quality label [q] (same audio kind),
-  /// preserving the live position.
-  Future<void> selectSourceQuality(String q) async {
-    final kind = state.active?.kind;
-    for (final s in sortByQuality(state.sources)) {
-      if ((s.quality ?? '').trim() == q && (kind == null || s.kind == kind)) {
-        await switchSource(s);
-        return;
-      }
-    }
-  }
+  // Quality means renditions of the stream that's playing — the HLS ladder
+  // above, or the tracks mpv found inside it ([mediaVideoTracks]). It used to
+  // ALSO list the distinct quality labels across every resolved source, but
+  // those are separate files on separate servers: picking one swapped the
+  // stream, its audio and its subtitles for whichever mirror happened to carry
+  // that label. Choosing between mirrors is what the Sources sheet is for.
 
   // Active torrent stream (Phase 1: one at a time). Null for normal playback.
   String? _activeTorrentId;
@@ -2236,7 +2184,11 @@ class PlayerCubit extends Cubit<PlayerState> {
     final remaining = state.sources
         .where((s) => !_tried.contains(s.url))
         .toList();
-    final next = pickDefault(remaining, prefer: failed?.kind ?? AudioKind.sub);
+    final next = pickDefault(
+      remaining,
+      prefer: failed?.kind ?? AudioKind.sub,
+      preferQuality: _preferredQuality(),
+    );
     if (next != null) {
       await _open(next, seekTo: _lastPos);
       _applyDefaultQuality(); // honor the quality pref on the fallback source too
@@ -2265,7 +2217,11 @@ class PlayerCubit extends Cubit<PlayerState> {
     final remaining = state.sources
         .where((s) => !_tried.contains(s.url))
         .toList();
-    final next = pickDefault(remaining, prefer: dead?.kind ?? AudioKind.sub);
+    final next = pickDefault(
+      remaining,
+      prefer: dead?.kind ?? AudioKind.sub,
+      preferQuality: _preferredQuality(),
+    );
     if (next != null) {
       _toast('Switching server…');
       await _open(next, seekTo: _lastPos);

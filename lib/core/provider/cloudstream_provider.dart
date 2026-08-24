@@ -85,6 +85,10 @@ String _csRepoTag(String repoUrl) {
 /// Identified by `cs:<name>` where `<name>` is the CloudStream source name with
 /// NO prefix — the native side keys plugins by that bare name, so every channel
 /// call passes [name] (not [sourceId]).
+/// CloudStream's `Qualities.Unknown.value` — the sentinel an extractor sets
+/// when it could not determine a resolution.
+const int _csQualityUnknown = 400;
+
 class CloudStreamProvider implements BaseProvider {
   CloudStreamProvider({
     required this.name,
@@ -415,6 +419,9 @@ class CloudStreamProvider implements BaseProvider {
 
   /// Maps a native links payload into [VideoSource]s. Shared by the one-shot
   /// resolve and the poll above so the two can never drift apart.
+  @visibleForTesting
+  List<VideoSource> sourcesFromResult(Object? raw) => _sourcesFromResult(raw);
+
   List<VideoSource> _sourcesFromResult(Object? raw) {
     final m = _asMap(raw);
 
@@ -473,7 +480,15 @@ class CloudStreamProvider implements BaseProvider {
         sources.add(
           VideoSource(
             url: streamUrl,
-            quality: quality > 0 ? '${quality}p' : 'auto',
+            // 0 is CloudStream's "Auto"; 400 is its `Qualities.Unknown`,
+            // which CloudStream's own UI renders as blank. Passing 400 through
+            // invented a "400p" that no stream has, and it then sorted as if it
+            // sat between 360p and 480p.
+            quality: switch (quality) {
+              0 => 'auto',
+              _csQualityUnknown => null,
+              _ => '${quality}p',
+            },
             label: (sm['name'] as String?),
             container: isTorrent
                 ? SourceContainer.torrent

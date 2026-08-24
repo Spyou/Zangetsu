@@ -2087,19 +2087,13 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
       ];
     } else {
-      rows = [
-        for (final q in _c.sourceQualities)
-          _SheetRow(
-            label: q,
-            active: _c.activeSourceQuality == q,
-            onTap: () {
-              Navigator.pop(context);
-              _c.chooseSourceQuality(q);
-              _bumpControls();
-            },
-          ),
-      ];
+      // Neither an HLS ladder nor renditions inside the stream: this file has
+      // exactly one video track, so there is no quality to switch. The other
+      // resolved sources are separate files on separate servers — they belong
+      // in the Sources sheet, not here.
+      return;
     }
+    if (rows.isEmpty) return;
     _sheet<void>(_SheetColumn(header: 'Quality', children: rows));
   }
 
@@ -2391,6 +2385,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                     onSpeed: _openSpeedSheet,
                     onAudioSubs: _openAudioSubsSheet,
                     onQuality: _openQualitySheet,
+                    showQuality:
+                        state.qualities.isNotEmpty ||
+                        _c.mediaVideoTracks.length > 1,
                     onSources: _openSourceSheet,
                     onFit: _cycleFit,
                     onNext: state.currentIndex + 1 < _c.episodes.length

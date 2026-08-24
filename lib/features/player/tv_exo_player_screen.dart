@@ -710,6 +710,9 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     setState(() {
       _qualities = qs;
       _activeQuality = null; // Auto after a fresh load
+      // Track ids index into the OLD stream's groups, so a stale pin would
+      // tick the wrong row (or none) on the new one.
+      _activeVideoTrackId = null;
     });
     // Apply the user's default-quality pref (HLS only).
     final v = decideDefaultQuality(
@@ -753,19 +756,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   /// Sources for the active sub/dub kind, or all sources when the content
-  /// isn't kind-split (movies / unknown). The per-source quality menu and its
-  /// selection both draw from this same pool so a label can never resolve to a
-  /// source of the opposite kind.
+  /// isn't kind-split (movies / unknown). Backs the Servers menu.
   List<VideoSource> _qualityPool() {
     final kind = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
     final pool = sourcesForKind(_sources, kind);
     return pool.isNotEmpty ? pool : _sources;
-  }
-
-  void _selectSourceQuality(String label) {
-    final match = _qualityPool().where((s) => s.quality == label).toList();
-    if (match.isEmpty) return;
-    _open(match.first, seekToMs: _c?.position.value ?? 0);
   }
 
   /// Human label for a source mirror in the Servers menu — the provider's own
@@ -780,6 +775,14 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           : label;
     }
     return (q != null && q.isNotEmpty) ? q : s.container.name;
+  }
+
+  /// The rendition the user pinned, or null while ExoPlayer is adapting freely.
+  String? _activeVideoTrackId;
+
+  void _selectVideoTrack(TvTrack? t) {
+    setState(() => _activeVideoTrackId = t?.id);
+    _c?.selectVideoTrack(t?.id);
   }
 
   void _selectAudio(TvTrack t) => _c?.selectAudioTrack(t.id);
@@ -875,21 +878,34 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           ),
         );
       }
-    } else {
-      final labels = <String>{
-        for (final s in _qualityPool())
-          if ((s.quality ?? '').isNotEmpty) s.quality!,
-      }.toList()..sort((a, b) => qualityHeight(b).compareTo(qualityHeight(a)));
-      for (final label in labels) {
+    } else if (c.videoTracks.value.length > 1) {
+      // No parsed HLS master, but ExoPlayer found a ladder inside the stream
+      // itself — a DASH manifest, or an HLS one our own parser couldn't read.
+      // Same deal as the phone: these are renditions of the file that is
+      // already playing, so switching is a track override, not a reload.
+      final tracks = c.videoTracks.value;
+      final overridden = tracks.any((t) => t.id == _activeVideoTrackId);
+      qOptions.add(
+        TvMenuOption(
+          label: 'Auto',
+          selected: !overridden,
+          onSelect: () => _selectVideoTrack(null),
+        ),
+      );
+      for (final t in tracks) {
         qOptions.add(
           TvMenuOption(
-            label: label,
-            selected: _activeSource?.quality == label,
-            onSelect: () => _selectSourceQuality(label),
+            label: '${t.height}p',
+            selected: overridden && t.id == _activeVideoTrackId,
+            onSelect: () => _selectVideoTrack(t),
           ),
         );
       }
     }
+    // Anything else has one video track: nothing to switch inside it, so the
+    // section is left out. The other sources are separate files on separate
+    // servers — they live under Sources, where switching to one looks like what
+    // it is.
     if (qOptions.isNotEmpty) {
       sections.add(TvMenuSection(title: 'Quality', options: qOptions));
     }

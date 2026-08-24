@@ -254,8 +254,7 @@ class _InfoOverlayState extends State<_InfoOverlay> {
           final l = c.state.active?.label?.trim();
           out[key] = (l != null && l.isNotEmpty) ? l : '—';
         case 'quality':
-          out[key] =
-              c.activeSourceQuality ?? c.state.active?.quality ?? 'auto';
+          out[key] = c.state.active?.quality ?? 'auto';
         case 'buffer':
           out[key] = '${st.buffer.inSeconds}s';
         case 'decoder':

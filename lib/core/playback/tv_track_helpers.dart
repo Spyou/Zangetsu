@@ -6,18 +6,24 @@ import 'subtitle_language.dart';
 /// PlayerCubit; they are duplicated here (not shared) to keep the phone player
 /// untouched, and unify in SP1d.
 
-/// One audio or text track as reported by the native player.
+/// One audio, text or video track as reported by the native player.
 class TvTrack {
   const TvTrack({
     required this.id,
     required this.language,
     this.label,
     this.selected = false,
+    this.height,
   });
   final String id; // "<groupIndex>:<trackIndex>"
   final String language;
   final String? label;
   final bool selected;
+
+  /// Vertical resolution, video renditions only — null for audio and text.
+  /// This is the decoded format's own height, so it's measured rather than
+  /// whatever a provider claimed the stream was.
+  final int? height;
 }
 
 /// A side-loaded (source-provided) subtitle handed to the native player.

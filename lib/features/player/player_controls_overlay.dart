@@ -282,9 +282,9 @@ class _ControlsOverlay extends StatelessWidget {
       case 'tracks':
         return (Icons.subtitles_rounded, 'Audio & subtitles', onAudioSubs);
       case 'quality':
-        if (state.qualities.isEmpty &&
-            c.mediaVideoTracks.length <= 1 &&
-            c.sourceQualities.length <= 1) {
+        // Nothing to switch inside the stream that's playing -> no button,
+        // rather than a menu of other servers pretending to be qualities.
+        if (state.qualities.isEmpty && c.mediaVideoTracks.length <= 1) {
           return null;
         }
         return (Icons.high_quality_rounded, 'Quality', onQuality);

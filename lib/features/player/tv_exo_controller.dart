@@ -30,6 +30,14 @@ class TvExoController {
   final audioTracks = ValueNotifier<List<TvTrack>>(const []);
   final textTracks = ValueNotifier<List<TvTrack>>(const []);
 
+  /// Video renditions inside the open stream, tallest first. More than one means
+  /// there is a real quality choice; anything less and there is nothing to
+  /// switch, whatever other sources might offer.
+  final videoTracks = ValueNotifier<List<TvTrack>>(const []);
+
+  /// Height of the frame actually on screen, 0 until the first one decodes.
+  final videoHeight = ValueNotifier<int>(0);
+
   /// Pure event→state mapping (unit-tested). Tolerates missing/garbage fields.
   void applyEvent(Map<String, dynamic> e) {
     final rawPosition = e['positionMs'];
@@ -50,6 +58,17 @@ class TvExoController {
       final t = _parseTracks(e['textTracks']);
       if (!_tracksEqual(textTracks.value, t)) textTracks.value = t;
     }
+    if (e.containsKey('videoTracks')) {
+      // Copy before sorting: _parseTracks hands back a const [] for a
+      // malformed payload, and sorting that throws.
+      final v = [..._parseTracks(e['videoTracks'])]
+        ..sort((a, b) => (b.height ?? 0).compareTo(a.height ?? 0));
+      if (!_tracksEqual(videoTracks.value, v)) videoTracks.value = v;
+    }
+    final rawHeight = e['videoHeight'];
+    if (rawHeight is num && rawHeight.toInt() != videoHeight.value) {
+      videoHeight.value = rawHeight.toInt();
+    }
   }
 
   static List<TvTrack> _parseTracks(dynamic raw) {
@@ -58,11 +77,13 @@ class TvExoController {
     for (final item in raw) {
       if (item is Map) {
         final label = '${item['label'] ?? ''}';
+        final h = item['height'];
         out.add(TvTrack(
           id: '${item['id'] ?? ''}',
           language: '${item['language'] ?? ''}',
           label: label.isEmpty ? null : label,
           selected: item['selected'] == true,
+          height: h is num && h > 0 ? h.toInt() : null,
         ));
       }
     }
@@ -116,6 +137,11 @@ class TvExoController {
       _method.invokeMethod('selectTextTrack', {'id': id});
   Future<void> setMaxVideoBitrate(int bandwidth) =>
       _method.invokeMethod('setMaxVideoBitrate', {'bandwidth': bandwidth});
+
+  /// Pick a rendition inside the current stream; null hands the ladder back to
+  /// ExoPlayer. Never reopens anything, so position and server are untouched.
+  Future<void> selectVideoTrack(String? id) =>
+      _method.invokeMethod('selectVideoTrack', {'id': id});
   Future<void> applyCaptionStyle(TvCaptionStyle s, {String? fontPath}) =>
       _method.invokeMethod('setCaptionStyle', {
         'scale': s.scale,

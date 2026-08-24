@@ -123,4 +123,55 @@ void main() {
       );
     });
   });
+
+  // Video renditions inside the open stream — the only thing the TV Quality
+  // menu is allowed to offer. Other sources are separate files on separate
+  // servers and belong under Sources.
+  group('video tracks', () {
+    test('parses renditions and sorts them tallest first', () {
+      final c = TvExoController(0);
+      c.applyEvent({
+        'videoTracks': [
+          {'id': '0:1', 'label': '', 'language': '', 'selected': false, 'height': 720},
+          {'id': '0:2', 'label': '', 'language': '', 'selected': true, 'height': 1080},
+          {'id': '0:0', 'label': '', 'language': '', 'selected': false, 'height': 480},
+        ],
+      });
+      expect(c.videoTracks.value.map((t) => t.height).toList(), [1080, 720, 480]);
+      expect(c.videoTracks.value.first.id, '0:2');
+      c.dispose();
+    });
+
+    test('a rendition with no usable height is dropped, not shown as 0p', () {
+      final c = TvExoController(0);
+      c.applyEvent({
+        'videoTracks': [
+          {'id': '0:0', 'selected': false, 'height': 1080},
+          {'id': '0:1', 'selected': false},
+        ],
+      });
+      expect(c.videoTracks.value.map((t) => t.height).toList(), [1080, null]);
+      // One real rendition -> the menu's `length > 1` gate is what keeps a
+      // single-track stream from showing a quality choice.
+      c.dispose();
+    });
+
+    test('garbage and absence leave it empty rather than throwing', () {
+      final c = TvExoController(0);
+      c.applyEvent({'positionMs': 1});
+      expect(c.videoTracks.value, isEmpty);
+      c.applyEvent({'videoTracks': 'nope'});
+      expect(c.videoTracks.value, isEmpty);
+      c.dispose();
+    });
+
+    test('videoHeight tracks the frame actually on screen', () {
+      final c = TvExoController(0);
+      c.applyEvent({'videoHeight': 1080});
+      expect(c.videoHeight.value, 1080);
+      c.applyEvent({'positionMs': 1});
+      expect(c.videoHeight.value, 1080); // absent field doesn't clobber it
+      c.dispose();
+    });
+  });
 }

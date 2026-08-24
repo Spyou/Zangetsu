@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.View
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -111,6 +112,10 @@ class ExoPlayerView(
         val s = sink ?: return
         val audio = mutableListOf<Map<String, Any?>>()
         val text = mutableListOf<Map<String, Any?>>()
+        // Video renditions INSIDE the open stream (an HLS/DASH ladder), which is
+        // the only honest meaning of "quality": switching one is a track
+        // override on the same media, not a jump to another server's file.
+        val video = mutableListOf<Map<String, Any?>>()
         val groups = player.currentTracks.groups
         groups.forEachIndexed { gi, g ->
             for (ti in 0 until g.length) {
@@ -124,6 +129,14 @@ class ExoPlayerView(
                 when (g.type) {
                     C.TRACK_TYPE_AUDIO -> audio.add(entry)
                     C.TRACK_TYPE_TEXT -> text.add(entry)
+                    C.TRACK_TYPE_VIDEO -> if (g.isTrackSupported(ti)) {
+                        // Height is what labels the row, so a rendition that
+                        // doesn't report one is no use as a choice.
+                        val h = f.height
+                        if (h != Format.NO_VALUE && h > 0) {
+                            video.add(entry + mapOf("height" to h, "width" to f.width))
+                        }
+                    }
                 }
             }
         }
@@ -136,6 +149,10 @@ class ExoPlayerView(
                 "ended" to (player.playbackState == Player.STATE_ENDED),
                 "audioTracks" to audio,
                 "textTracks" to text,
+                "videoTracks" to video,
+                // Null until the first frame is decoded; lets the menu show what
+                // is actually on screen when there is nothing to switch.
+                "videoHeight" to (player.videoFormat?.height ?: 0),
             ),
         )
     }
@@ -280,6 +297,19 @@ class ExoPlayerView(
                     .buildUpon()
                     .setMaxVideoBitrate(if (bw > 0) bw else Int.MAX_VALUE)
                     .build()
+                result.success(null)
+            }
+            "selectVideoTrack" -> {
+                val id = call.argument<String>("id")
+                if (id == null) {
+                    // Auto — hand the ladder back to ExoPlayer's own adaptation.
+                    player.trackSelectionParameters = player.trackSelectionParameters
+                        .buildUpon()
+                        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+                        .build()
+                } else {
+                    applyTrackOverride(C.TRACK_TYPE_VIDEO, id)
+                }
                 result.success(null)
             }
             "selectAudioTrack" -> {
