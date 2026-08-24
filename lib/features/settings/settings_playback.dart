@@ -752,6 +752,18 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 },
               ),
               _toggleRow(
+                icon: Icons.visibility_outlined,
+                title: 'Ask before jumping',
+                subtitle:
+                    'Opening something other than where you left off offers to '
+                    'look without moving your progress',
+                value: _prefs.askOnJump,
+                onChanged: (v) async {
+                  await _prefs.setAskOnJump(v);
+                  if (mounted) setState(() {});
+                },
+              ),
+              _toggleRow(
                 icon: Icons.playlist_add_check_rounded,
                 title: 'Auto-add to My List',
                 subtitle: 'Add a title to My List when you start watching it',

@@ -138,6 +138,7 @@ class PlayerScreen extends StatefulWidget {
     this.tmdbId,
     this.tmdbIsTv = false,
     this.imdbId,
+    this.peek = false,
     this.availableCategories = const [],
     this.joinRoomCode,
     this.playerOverride,
@@ -206,6 +207,10 @@ class PlayerScreen extends StatefulWidget {
   /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
   final int? tmdbId;
   final bool tmdbIsTv;
+
+  /// Opened just to look, not as the current place — nothing is persisted.
+  /// Passed straight through to the cubit, which owns every write.
+  final bool peek;
 
   /// IMDb id (movies/series) for Simkl tracking when no TMDB id is exposed.
   final String? imdbId;
@@ -815,6 +820,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
       tmdbId: widget.tmdbId,
       tmdbIsTv: widget.tmdbIsTv,
       imdbId: widget.imdbId,
+      peek: widget.peek,
       availableCategories: widget.availableCategories,
       initialResume: widget.resumePosition,
       initialSource: widget.initialSource,

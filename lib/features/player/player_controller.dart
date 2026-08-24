@@ -168,6 +168,7 @@ class PlayerCubit extends Cubit<PlayerState> {
     this.tmdbId,
     this.tmdbIsTv = false,
     this.imdbId,
+    this.peek = false,
     this.availableCategories = const [],
     this.initialResume = Duration.zero,
     this.initialSource,
@@ -217,6 +218,12 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// TMDB id (movies/series) for Simkl tracking; [tmdbIsTv] selects namespace.
   final int? tmdbId;
   final bool tmdbIsTv;
+
+  /// Opened as a look-ahead (or look-back) rather than as the current place:
+  /// nothing is persisted. Guards [_persist], which is the one funnel for the
+  /// resume mark, the Continue Watching entry AND the tracker scrobble, plus
+  /// [_markWatching] so a peek can't flip the title to "watching" either.
+  final bool peek;
 
   /// IMDb id (movies/series) for Simkl tracking when no TMDB id is exposed.
   final String? imdbId;
@@ -2603,6 +2610,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   }
 
   Future<void> _persist({bool flush = false}) async {
+    if (peek) return; // just looking — leave saved progress alone
     // Nothing watched yet — don't overwrite a real mark with position 0.
     if (_lastPos <= Duration.zero) return;
     // Ignore a clearly bogus position (mpv occasionally emits a spurious huge
@@ -2667,6 +2675,7 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// [scrobbleTitle]. Whole-numbered episodes only.
   /// Mark the anime CURRENT on AniList the instant playback starts.
   void _markWatching() {
+    if (peek) return;
     if (malId == null &&
         (scrobbleTitle == null || scrobbleTitle!.isEmpty) &&
         tmdbId == null &&

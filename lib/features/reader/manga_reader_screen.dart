@@ -36,6 +36,7 @@ class MangaReaderScreen extends StatefulWidget {
     required this.startIndex,
     this.malId,
     this.resolveChapters = false,
+    this.peek = false,
   });
 
   final String sourceId;
@@ -44,6 +45,14 @@ class MangaReaderScreen extends StatefulWidget {
   final String? cover;
   final List<Episode> chapters;
   final int startIndex;
+
+  /// Opened as a look-ahead (or look-back) rather than as your current place:
+  /// nothing is persisted. Every write lives behind [_saveProgress] — the
+  /// per-chapter mark, the Continue entry AND the tracker scrobble — so one
+  /// guard there covers all three. The mark matters as much as the rest,
+  /// because the detail screen derives "where you left off" from the highest
+  /// marked chapter; a peek mark alone would move your place.
+  final bool peek;
 
   /// MAL id, when known — identifies the title for tracker chapter scrobble
   /// (AniList/MAL manga list). Falls back to [showTitle] when null/unmatched.
@@ -378,6 +387,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// actually scrolled — used when they explicitly move ON to the next chapter,
   /// which is a "done with this one" signal even if they skipped the tail.
   void _saveProgress({required bool flush, bool complete = false}) {
+    if (widget.peek) return; // just looking — leave saved progress alone
     final pages = _pages;
     if (pages == null || pages.isEmpty) return; // nothing loaded yet
     final ep = _chapter;
