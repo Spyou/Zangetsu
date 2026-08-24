@@ -20,6 +20,7 @@ import 'core/notify/push_service.dart';
 import 'core/ui/route_observer.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
+import 'core/playback/category_store.dart';
 import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
@@ -232,6 +233,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
+    // My List categories ride the same trigger — two small SELECTs, and they
+    // have to arrive with the list they label.
+    unawaited(sl<CategoryStore>().pullFromCloud());
     unawaited(sl<MyListStore>().retryPending());
   }
 
@@ -272,6 +276,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
+          sl<CategoryStore>().pullFromCloud(),
         ]).timeout(const Duration(seconds: 6));
         // Self-heal: push up any local My List adds that never reached the cloud
         // (e.g. a past write outage). No-op when nothing is pending, so it makes

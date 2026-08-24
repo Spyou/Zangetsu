@@ -9,6 +9,8 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
+import '../../core/playback/category_store.dart';
+import '../../core/ui/global_messenger.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -61,6 +63,16 @@ class _MyListView extends StatefulWidget {
 
 class _MyListViewState extends State<_MyListView> {
   WatchStatus? _statusFilter; // null = All
+
+  /// Selected user category, or null when a status tab is picked. The two are
+  /// mutually exclusive: the tab row holds both, and only one tab is active.
+  String? _categoryFilter;
+
+  /// Null when the store isn't registered. Widget tests build this screen with
+  /// a minimal DI set, and a library view is not worth an exception over an
+  /// optional feature — no store simply means no categories.
+  CategoryStore? get _cats =>
+      sl.isRegistered<CategoryStore>() ? sl<CategoryStore>() : null;
   ProviderType? _typeFilter; // null = All
 
   /// Null until the user picks one — the default then depends on which list is
@@ -281,6 +293,134 @@ class _MyListViewState extends State<_MyListView> {
         ),
       ),
     );
+  }
+
+  /// Name a new category. Duplicate names are refused by the store (two tabs
+  /// reading the same would be indistinguishable), so say so rather than
+  /// failing silently.
+  Future<void> _createCategory(BuildContext context) async {
+    final controller = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('New category', style: AppText.title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: AppText.body.copyWith(color: AppColors.textPrimary),
+          decoration: const InputDecoration(hintText: 'Persona, Gym, …'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || !mounted) return;
+    final made = await sl<CategoryStore>().create(name);
+    if (!mounted) return;
+    if (made == null) {
+      showGlobalSnack(
+        name.trim().isEmpty ? 'Give it a name' : 'You already have that one',
+      );
+      return;
+    }
+    setState(() => _categoryFilter = made.id); // land on the new tab
+  }
+
+  /// Rename or delete a category (long-press its tab). Deleting keeps every
+  /// title — it only drops the label.
+  Future<void> _manageCategory(BuildContext context, ListCategory c) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 6),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(c.name, style: AppText.title),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined,
+                  color: AppColors.textSecondary),
+              title: const Text('Rename'),
+              onTap: () => Navigator.pop(ctx, 'rename'),
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline_rounded,
+                  color: AppColors.accent),
+              title: Text('Delete category',
+                  style: TextStyle(color: AppColors.accent)),
+              subtitle: const Text('Your titles stay — only the label goes'),
+              onTap: () => Navigator.pop(ctx, 'delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == null || !mounted) return;
+
+    if (action == 'delete') {
+      await sl<CategoryStore>().delete(c.id);
+      if (!mounted) return;
+      setState(() {
+        // Don't leave the tab row pointing at a category that's gone.
+        if (_categoryFilter == c.id) _categoryFilter = null;
+      });
+      return;
+    }
+
+    final controller = TextEditingController(text: c.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text('Rename category', style: AppText.title),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: AppText.body.copyWith(color: AppColors.textPrimary),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || !mounted) return;
+    final ok = await sl<CategoryStore>().rename(c.id, name);
+    if (!mounted) return;
+    if (!ok) {
+      showGlobalSnack('That name is taken');
+      return;
+    }
+    setState(() {});
   }
 
   Widget _pillIcon(IconData icon, String tooltip, VoidCallback onTap,
@@ -715,7 +855,8 @@ class _MyListViewState extends State<_MyListView> {
           context,
           entries,
           onTap: (item) => _openItem(context, item),
-          onMore: (entry) => showListStatusSheet(context, item: entry.item),
+          onMore: (entry) =>
+              showListStatusSheet(context, item: entry.item),
         );
       },
     );
@@ -813,7 +954,17 @@ class _MyListViewState extends State<_MyListView> {
         .where((s) => modeEntries.any((e) => e.status == s))
         .toList();
 
+    // Which list is on screen. Gates the category tabs and their filter, and
+    // picks the sort defaults below — the tracker lists share this widget.
+    final isMyList = context.read<TrackerListCubit>().state.isMyList;
+
     final filtered = modeEntries.where((e) {
+      final cats = _cats;
+      if (isMyList &&
+          _categoryFilter != null &&
+          (cats == null || !cats.isIn(e.item, _categoryFilter!))) {
+        return false;
+      }
       if (_statusFilter != null && e.status != _statusFilter) return false;
       if (_typeFilter != null && e.item.type != _typeFilter) return false;
       return true;
@@ -822,7 +973,6 @@ class _MyListViewState extends State<_MyListView> {
     // Display order only. `filtered` is already a throwaway copy and
     // sortLibrary returns another — the saved list in Hive is never touched,
     // so no sort can reorder or lose what's stored.
-    final isMyList = context.read<TrackerListCubit>().state.isMyList;
     final shown = sortLibrary(
       filtered,
       _sortFor(isMyList: isMyList),
@@ -832,7 +982,7 @@ class _MyListViewState extends State<_MyListView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _statusTabs(modeEntries, presentStatuses),
+        _statusTabs(modeEntries, presentStatuses, isMyList: isMyList),
         const SizedBox(height: 8),
         Expanded(
           child: shown.isEmpty
@@ -887,7 +1037,14 @@ class _MyListViewState extends State<_MyListView> {
 
   // ── Status tabs (counts baked into the labels) ─────────────────────────────
 
-  Widget _statusTabs(List<MyListEntry> entries, List<WatchStatus> present) {
+  /// [isMyList] gates the category tabs and the + button. The row is shared
+  /// with the tracker lists, and categories are ours alone — AniList and MAL
+  /// have no idea they exist, so offering them there is meaningless.
+  Widget _statusTabs(
+    List<MyListEntry> entries,
+    List<WatchStatus> present, {
+    required bool isMyList,
+  }) {
     int countOf(WatchStatus? s) =>
         s == null ? entries.length : entries.where((e) => e.status == s).length;
 
@@ -940,15 +1097,50 @@ class _MyListViewState extends State<_MyListView> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.only(left: 16),
           children: [
-            tab('All', _statusFilter == null, countOf(null),
-                () => setState(() => _statusFilter = null)),
+            tab('All', _statusFilter == null && _categoryFilter == null,
+                countOf(null),
+                () => setState(() {
+                      _statusFilter = null;
+                      _categoryFilter = null;
+                    })),
             for (final s in present)
               tab(
                   shortLabelFor(s,
                       reading: sl<ContentModeCubit>().state.isReading),
-                  _statusFilter == s,
+                  _statusFilter == s && _categoryFilter == null,
                   countOf(s),
-                  () => setState(() => _statusFilter = s)),
+                  () => setState(() {
+                        _statusFilter = s;
+                        _categoryFilter = null;
+                      })),
+            // User-made categories come after the statuses, in their own
+            // order. Long-press one to rename, delete or reorder it.
+            for (final c
+                in isMyList ? (_cats?.all() ?? const <ListCategory>[]) : const <ListCategory>[])
+              GestureDetector(
+                onLongPress: () => _manageCategory(context, c),
+                child: tab(
+                  c.name,
+                  _categoryFilter == c.id,
+                  _cats?.countIn(c.id) ?? 0,
+                  () => setState(() {
+                    _categoryFilter = c.id;
+                    // A category is its own view; a status tab would fight it.
+                    _statusFilter = null;
+                  }),
+                ),
+              ),
+            // Last, so adding one never shifts the tabs already there.
+            if (isMyList && _cats != null)
+              GestureDetector(
+                onTap: () => _createCategory(context),
+              child: Container(
+                margin: const EdgeInsets.only(right: 22),
+                padding: const EdgeInsets.only(top: 8, bottom: 10),
+                  child: Icon(Icons.add_rounded,
+                      size: 20, color: AppColors.textSecondary),
+                ),
+              ),
           ],
         ),
       ),

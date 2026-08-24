@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../announce/announcement.dart';
 import '../announce/announcement_service.dart';
+import '../playback/category_store.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
 import '../playback/playback_prefs.dart';
@@ -221,6 +222,16 @@ Future<void> initDependencies() async {
   // deliberately-local status store in sync without either importing the other).
   await ListStatusStore.init();
   sl.registerSingleton<ListStatusStore>(ListStatusStore());
+  // User-made categories for My List. Its own box, beside the status store and
+  // for the same reason: a cloud pull clears the list box, and a category must
+  // not go with it.
+  await CategoryStore.init();
+  sl.registerSingleton<CategoryStore>(
+    CategoryStore(
+      remote: CategoryRemote(sl<SupabaseService>()),
+      currentUserId: currentUserId,
+    ),
+  );
   await MyListStore.init();
   sl.registerSingleton<MyListStore>(
     MyListStore(

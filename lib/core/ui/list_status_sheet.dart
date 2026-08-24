@@ -6,6 +6,8 @@ import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../playback/list_status_store.dart';
+import '../playback/category_store.dart';
+import 'category_picker_sheet.dart';
 import '../playback/my_list.dart';
 import '../repository/source_repository.dart';
 import '../theme/app_colors.dart';
@@ -16,6 +18,11 @@ import '../tv/tv_focusable.dart';
 
 /// Sentinel popped by [ListStatusSheet] for the "Remove from list" row.
 const String _kRemove = '__remove__';
+
+/// Sentinel for the "Categories" row. Shown wherever the category store is
+/// registered, so a title can be filed from anywhere it can be added — detail,
+/// home rows, history, My List — rather than only from the library screen.
+const String _kCategories = '__categories__';
 
 /// Show the Add-to-List status picker for [item] and apply the choice
 /// everywhere: My List membership, the local [WatchStatus], and a push to every
@@ -51,10 +58,24 @@ Future<void> showListStatusSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) =>
-        ListStatusSheet(current: current, inList: inList, reading: reading),
+    builder: (_) => ListStatusSheet(
+      current: current,
+      inList: inList,
+      reading: reading,
+      showCategories: sl.isRegistered<CategoryStore>(),
+    ),
   );
   if (picked == null) return;
+
+  if (picked == _kCategories) {
+    // Adding to a category implies the title belongs in the list at all.
+    if (!inList) {
+      await myList.add(item);
+      onChanged?.call();
+    }
+    if (context.mounted) await showCategoryPicker(context, item);
+    return;
+  }
 
   final isAnime = item.type == ProviderType.anime;
 
@@ -143,7 +164,11 @@ class ListStatusSheet extends StatelessWidget {
     required this.current,
     required this.inList,
     required this.reading,
+    this.showCategories = false,
   });
+
+  /// Adds the "Categories" row. Off unless the caller wired it up.
+  final bool showCategories;
 
   final WatchStatus? current;
   final bool inList;
@@ -211,6 +236,20 @@ class ListStatusSheet extends StatelessWidget {
                     onTap: () => Navigator.pop(context, statuses[i]),
                   ),
                 ),
+              if (showCategories) ...[
+                const Divider(height: 1, color: AppColors.hairline),
+                _row(
+                  onTap: () => Navigator.pop(context, _kCategories),
+                  child: ListTile(
+                    leading: const Icon(Icons.folder_outlined,
+                        color: AppColors.textSecondary),
+                    title: const Text('Categories'),
+                    trailing: const Icon(Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary, size: 20),
+                    onTap: () => Navigator.pop(context, _kCategories),
+                  ),
+                ),
+              ],
               if (inList) ...[
                 const Divider(height: 1, color: AppColors.hairline),
                 _row(
