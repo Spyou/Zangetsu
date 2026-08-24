@@ -4,7 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/source_switcher.dart';
 
 /// Full-screen D-pad-navigable source picker for TV.
@@ -16,7 +16,7 @@ import '../../core/ui/source_switcher.dart';
 /// Data comes from [categorizedSources()] — same bucket function the phone
 /// uses, so newly-installed providers appear here automatically.
 /// The list is grouped (Anime / Movies & Series / NSFW), mirrors the phone's
-/// "All" tab layout, with each source row wrapped in [TvFocusable].
+/// "All" tab layout, with each source row wrapped in [TvListFocusable].
 class TvSourcePicker extends StatelessWidget {
   const TvSourcePicker({super.key, required this.currentId});
 
@@ -90,10 +90,11 @@ class TvSourcePicker extends StatelessWidget {
 
                   final isActive = row.sourceId == currentId;
 
-                  return TvFocusable(
+                  return TvListFocusable(
                     // The currently-active row gets autofocus so focus lands
                     // on it when the picker opens, not on the first item.
                     autofocus: index == activeIndex,
+                    semanticLabel: row.label,
                     onTap: () {
                       context
                           .read<ActiveSourceCubit>()

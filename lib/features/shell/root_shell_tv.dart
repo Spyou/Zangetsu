@@ -22,6 +22,14 @@ import 'tv_source_picker.dart';
 const double _kNavCollapsed = 74;
 const double _kNavExpanded = 312;
 
+/// Horizontal inset inside the rail column (room for pill focus chrome).
+const double _kRailHPad = 6;
+
+/// Width of the icon/logo column. Sized so icons sit dead-centre in the
+/// *visible* collapsed rail: the column has [_kRailHPad] on each side, so
+/// using full [_kNavCollapsed] here would shift every icon to the right.
+const double _kIconSlot = _kNavCollapsed - 2 * _kRailHPad;
+
 /// TV-only navigation shell: a collapsing left drawer over an [IndexedStack].
 ///
 /// Rendered when [AppMode.isTv] is true (gated in [RootShell.build]). The phone
@@ -378,10 +386,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   Widget _brand() {
     return Row(
       children: [
-        // Logo centered in a slot the exact width of the collapsed rail, so it
-        // sits dead-centre when collapsed and lines up with the icons below.
+        // Logo centered in the icon slot so it sits dead-centre when collapsed
+        // and lines up with the nav icons below.
         SizedBox(
-          width: _kNavCollapsed,
+          width: _kIconSlot,
           child: Center(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(7),
@@ -438,7 +446,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
               child: Row(
                 children: [
                   SizedBox(
-                    width: _kNavCollapsed,
+                    width: _kIconSlot,
                     child: Center(
                       child: Icon(Icons.swap_horiz_rounded,
                           size: 26, color: iconColor),
@@ -502,7 +510,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
           child: Row(
             children: [
               SizedBox(
-                width: _kNavCollapsed,
+                width: _kIconSlot,
                 child: Center(
                   child: Icon(
                     selected ? item.selectedIcon : item.icon,
@@ -596,7 +604,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             child: Row(
               children: [
                 SizedBox(
-                  width: _kNavCollapsed,
+                  width: _kIconSlot,
                   child: Center(
                     child: CircleAvatar(
                       radius: 19,
@@ -662,33 +670,39 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     return SafeArea(
       left: false,
       right: false,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 20),
-          _brand(), // Zangetsu wordmark, revealed when open
-          const SizedBox(height: 12),
-          _avatarBlock(), // profile
-          const SizedBox(height: 4),
-          _sourceIndicator(), // source switch right under the profile
-          const SizedBox(height: 8),
-          const Divider(
-              height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
-          const SizedBox(height: 8),
-          // Nav items in a flexible scroller so the column never overflows.
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < _kRailItems.length; i++)
-                    _navItem(i, _kRailItems[i]),
-                ],
+      // Inset so pill scale (~1.04) + shadow stay inside the drawer bounds when
+      // the parent uses Clip.none (avoids cropped focus chrome).
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: _kRailHPad, vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            _brand(), // Zangetsu wordmark, revealed when open
+            const SizedBox(height: 12),
+            _avatarBlock(), // profile
+            const SizedBox(height: 4),
+            _sourceIndicator(), // source switch right under the profile
+            const SizedBox(height: 8),
+            const Divider(
+                height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
+            const SizedBox(height: 8),
+            // Nav items in a flexible scroller so the column never overflows.
+            Expanded(
+              child: SingleChildScrollView(
+                clipBehavior: Clip.none,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < _kRailItems.length; i++)
+                      _navItem(i, _kRailItems[i]),
+                  ],
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -719,9 +733,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                   focusNode: _contentScope,
                   onKeyEvent: _onContentKey,
                   child: Padding(
-                    // Overscan-safe inset (TVs crop edges). Left handled by the
-                    // rail inset above.
-                    padding: const EdgeInsets.fromLTRB(0, 24, 24, 16),
+                    // Overscan-safe inset. Extra left gap so page content
+                    // (esp. Settings cards) doesn't sit flush against the rail.
+                    padding: const EdgeInsets.fromLTRB(28, 24, 24, 16),
                     child: IndexedStack(
                       index: _index,
                       children: [
@@ -772,7 +786,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
-                    clipBehavior: Clip.antiAlias,
+                    // When collapsed, must clip so OverflowBox labels don't spill.
+                    // When open (D-pad on the rail), Clip.none so pill scale/shadow
+                    // isn't cropped by the rounded drawer.
+                    clipBehavior: _navOpen ? Clip.none : Clip.antiAlias,
                     child: OverflowBox(
                       minWidth: _kNavExpanded,
                       maxWidth: _kNavExpanded,
