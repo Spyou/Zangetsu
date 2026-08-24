@@ -630,6 +630,10 @@ class CloudStreamProvider implements BaseProvider {
       // Only CloudStream reports this, and plenty of its providers don't set
       // it either — null just means no badge.
       quality: qualityBadgeLabel(m['quality'] as String?),
+      // Anime listings only; movies and TV have no dub notion at all.
+      dubBadge: dubBadgeLabel(
+        (m['dubStatus'] as List?)?.map((e) => '$e').toList(),
+      ),
     );
   }
 

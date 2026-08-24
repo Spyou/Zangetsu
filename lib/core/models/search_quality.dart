@@ -30,3 +30,18 @@ String? qualityBadgeLabel(String? raw) {
     _ => v.toUpperCase(),
   };
 }
+
+/// Poster badge text for a CloudStream anime listing's `DubStatus` set.
+///
+/// "Subbed"/"Dubbed" in, "SUB"/"DUB"/"SUB DUB" out. `None` is CloudStream's
+/// "not applicable" member rather than a real state, so it is ignored — a set
+/// containing only None means the source told us nothing and gets no badge.
+String? dubBadgeLabel(List<String>? raw) {
+  if (raw == null || raw.isEmpty) return null;
+  final sub = raw.contains('Subbed');
+  final dub = raw.contains('Dubbed');
+  if (sub && dub) return 'SUB DUB';
+  if (dub) return 'DUB';
+  if (sub) return 'SUB';
+  return null;
+}

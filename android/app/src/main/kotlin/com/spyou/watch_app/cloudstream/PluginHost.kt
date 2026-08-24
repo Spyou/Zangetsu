@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.MovieLoadResponse
+import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvSeriesLoadResponse
@@ -875,6 +876,13 @@ class PluginHost(private val context: Context) {
         // on. Sent as the raw enum name; Dart turns it into a badge label.
         // Null for the many providers that never set it.
         "quality" to quality?.name,
+        // Whether a listing is subbed, dubbed or both. Lives on
+        // AnimeSearchResponse only — every other type has no such notion, so
+        // this is null for movies/TV and for anime sources that don't set it.
+        // The one thing on a poster you'd otherwise have to open the title to
+        // learn, which is why it earns a badge when year/score didn't.
+        "dubStatus" to (this as? AnimeSearchResponse)
+            ?.dubStatus?.map { it.name }?.sorted(),
     )
 
     private fun LoadResponse.toDetailMap(apiName: String, category: String = "sub"): Map<String, Any?> {

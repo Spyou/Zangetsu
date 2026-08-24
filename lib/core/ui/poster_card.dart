@@ -22,6 +22,7 @@ class PosterCard extends StatefulWidget {
     this.cellWidth = 180,
     this.showTitle = true,
     this.qualityBadge,
+    this.dubBadge,
   });
   final String title;
   final String? imageUrl;
@@ -42,6 +43,11 @@ class PosterCard extends StatefulWidget {
   /// flipping the switch repaints the corner and nothing else — no screen
   /// rebuild, and no listener that anything else can trip.
   final String? qualityBadge;
+
+  /// "SUB" / "DUB" / "SUB DUB" for anime listings that report it. Sits opposite
+  /// the quality badge and rides the SAME setting — one switch for poster
+  /// badges, not one per kind.
+  final String? dubBadge;
   final double cellWidth;
 
   /// When false, render only the poster art (no title below). Used on TV so the
@@ -53,7 +59,7 @@ class PosterCard extends StatefulWidget {
   State<PosterCard> createState() => _PosterCardState();
 }
 
-/// The user's "Quality badges" setting, read defensively: poster rows get
+/// The user's "Poster badges" setting, read defensively: poster rows get
 /// built in widget tests with no PlaybackPrefs registered, and a badge is not
 /// worth throwing over.
 bool get _showBadges {
@@ -171,6 +177,17 @@ class _PosterCardState extends State<PosterCard> {
                             valueListenable: PlaybackPrefs.badgeRevision,
                             builder: (_, _, _) => _showBadges
                                 ? _PosterTag(widget.qualityBadge!)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                      if (widget.dubBadge != null)
+                        Positioned(
+                          top: 6,
+                          left: 6,
+                          child: ValueListenableBuilder<int>(
+                            valueListenable: PlaybackPrefs.badgeRevision,
+                            builder: (_, _, _) => _showBadges
+                                ? _PosterTag(widget.dubBadge!)
                                 : const SizedBox.shrink(),
                           ),
                         ),

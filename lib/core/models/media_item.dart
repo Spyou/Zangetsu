@@ -31,6 +31,11 @@ class MediaItem extends Equatable {
   @JsonKey(includeFromJson: false, includeToJson: false)
   final String? quality;
 
+  /// "SUB", "DUB" or "SUB DUB" — what an anime listing offers, for the poster
+  /// badge. CloudStream anime sources only; null everywhere else, which is the
+  /// normal case rather than a failure.
+  final String? dubBadge;
+
   final int? subCount;
   final int? dubCount;
 
@@ -71,6 +76,7 @@ class MediaItem extends Equatable {
     required this.type,
     required this.sourceId,
     this.quality,
+    this.dubBadge,
     this.subCount,
     this.dubCount,
     this.malId,
@@ -102,6 +108,7 @@ class MediaItem extends Equatable {
     type: type,
     sourceId: sourceId ?? this.sourceId,
     quality: quality,
+    dubBadge: dubBadge,
     subCount: subCount ?? this.subCount,
     dubCount: dubCount ?? this.dubCount,
     malId: malId ?? this.malId,
