@@ -73,6 +73,14 @@ class PluginHost(private val context: Context) {
         // path that previously crashed — never changes a working one.
         com.lagradost.api.setContext(java.lang.ref.WeakReference<Any>(context))
 
+        // Tell plugins what kind of device this actually is. They gate real work
+        // on it, not just cosmetics: CNC Verse's openInExternalBrowser (the
+        // net22.cc/verify2 session step its Netflix/Disney/Hotstar sources need)
+        // checks isLayout first, because a TV has nowhere to open a browser.
+        // While we claimed to be a TV that verification silently never ran, and
+        // the source served a placeholder video instead of the episode.
+        com.lagradost.cloudstream3.ui.settings.Globals.resolveFrom(context)
+
         // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
         // cookie jar, so cookies never persist between requests. Give it a
         // CookieManager-backed jar: the WebView CF solver writes cf_clearance to

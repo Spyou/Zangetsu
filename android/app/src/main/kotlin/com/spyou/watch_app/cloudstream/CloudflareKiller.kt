@@ -162,6 +162,23 @@ class CloudflareKiller : Interceptor {
 internal object CfWebViewSolver {
     data class Result(val cookie: String, val userAgent: String)
 
+    /** How long the branded cover stays up before the real challenge is shown.
+     *  Long enough that a self-clearing JS challenge is never seen by anyone,
+     *  short enough that an interactive one isn't a mystery wait. */
+    private const val REVEAL_AFTER_MS = 4_000L
+
+    /** Total wait when nobody is interacting — unchanged from before, because a
+     *  provider typically spreads work over SEVERAL hosts (CNC Verse alone uses
+     *  net22.cc, net52.cc, netmirror.gg, imgcdn.kim) and each one that challenges
+     *  gets its own solver in turn. Making every failure wait longer multiplies
+     *  straight through that list. */
+    private const val SOLVE_TIMEOUT_SECONDS = 30L
+
+    /** Extended wait, allowed ONLY once the challenge has actually been touched.
+     *  Someone working through a captcha needs longer than a script; someone who
+     *  isn't looking shouldn't be made to wait for one. */
+    private const val INTERACTED_TIMEOUT_SECONDS = 90L
+
     fun solve(url: String): Result? {
         android.util.Log.i("CfSolver", "solve() host=${runCatching { android.net.Uri.parse(url).host }.getOrNull()}")
         // Prefer the foreground Activity: the solver WebView must be attached to
@@ -177,6 +194,11 @@ internal object CfWebViewSolver {
         // wrap it in a container and lay a branded "Verifying…" overlay ON TOP —
         // CF's JS still executes underneath; the user just sees a clean screen.
         val containerRef = AtomicReference<android.view.View?>()
+        // The "Verifying…" cover, kept so it can be REMOVED if the challenge
+        // turns out to need a person (see below).
+        val overlayRef = AtomicReference<android.view.View?>()
+        // Set once the revealed challenge is touched — see the two timeouts.
+        val touched = java.util.concurrent.atomic.AtomicBoolean(false)
 
         fun captureIfReady() {
             CookieManager.getInstance().flush()
@@ -195,10 +217,26 @@ internal object CfWebViewSolver {
             }
         }
 
+        val startedAt = android.os.SystemClock.uptimeMillis()
         val poll = object : Runnable {
             override fun run() {
                 captureIfReady()
-                if (ref.get() == null) main.postDelayed(this, 300)
+                if (ref.get() != null) return
+                // A plain JS challenge clears itself in a second or two. Anything
+                // still unsolved after this needs a PERSON — Cloudflare's
+                // "Verify you are human" checkbox — and the cover we put over the
+                // WebView makes that impossible: it's opaque AND swallows taps,
+                // so the challenge was invisible and unclickable and every such
+                // host simply failed. Take the cover away and let them tap it.
+                // netmirror.gg (CNC Verse's Hotstar/Disney) is exactly this: it
+                // hands an unverified client a placeholder video rather than an
+                // error, so the blocked solve looked like anything but a captcha.
+                if (android.os.SystemClock.uptimeMillis() - startedAt > REVEAL_AFTER_MS) {
+                    overlayRef.getAndSet(null)?.let { ov ->
+                        (ov.parent as? android.view.ViewGroup)?.removeView(ov)
+                    }
+                }
+                main.postDelayed(this, 300)
             }
         }
 
@@ -221,6 +259,13 @@ internal object CfWebViewSolver {
                     .replace(Regex("Version/\\d+\\.\\d+ "), "") // and the WebView-only token
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+                // Touching the challenge means a person is working on it, so the
+                // wait may be extended past the unattended timeout.
+                wv.setOnTouchListener { v, _ ->
+                    touched.set(true)
+                    v.performClick()
+                    false
+                }
                 wv.webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, finishedUrl: String?) {
                         captureIfReady()
@@ -242,8 +287,10 @@ internal object CfWebViewSolver {
                             wv,
                             android.widget.FrameLayout.LayoutParams(mp, mp),
                         )
+                        val overlay = buildVerifyingOverlay(context)
+                        overlayRef.set(overlay)
                         container.addView(
-                            buildVerifyingOverlay(context),
+                            overlay,
                             android.widget.FrameLayout.LayoutParams(mp, mp),
                         )
                         containerRef.set(container)
@@ -265,7 +312,16 @@ internal object CfWebViewSolver {
         }
 
         val solved = try {
-            latch.await(30, TimeUnit.SECONDS)
+            latch.await(SOLVE_TIMEOUT_SECONDS, TimeUnit.SECONDS) ||
+                // Still going and someone is tapping at it — give them the rest
+                // of the long window rather than yanking it away mid-captcha.
+                (
+                    touched.get() &&
+                        latch.await(
+                            INTERACTED_TIMEOUT_SECONDS - SOLVE_TIMEOUT_SECONDS,
+                            TimeUnit.SECONDS,
+                        )
+                    )
         } catch (_: InterruptedException) {
             false
         }
