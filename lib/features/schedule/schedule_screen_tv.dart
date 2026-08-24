@@ -24,7 +24,7 @@ String _fmtTime(DateTime d) {
   return (text: 'in ${diff.inDays}d', bg: Colors.black54, fg: Colors.white);
 }
 
-const _monShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const _monShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 String _monthDay(DateTime d) => '${_monShort[d.month - 1]} ${d.day}, ${d.year}';
 
 /// TV Schedule: D-pad "New & Hot" — focusable top chips (Anime / Movies & TV /
@@ -74,19 +74,25 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
                 children: [
                   TvFocusable(
                     autofocus: true,
-                    variant: TvFocusVariant.pill,
+                    variant: TvFocusVariant.float,
+                    scale: 1.0,
+                    borderRadius: 20,
                     onTap: () => setState(() => _tab = 0),
                     child: _Chip(label: 'Anime', selected: _tab == 0),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
-                    variant: TvFocusVariant.pill,
+                    variant: TvFocusVariant.float,
+                    scale: 1.0,
+                    borderRadius: 20,
                     onTap: () => setState(() => _tab = 1),
                     child: _Chip(label: 'Movies & TV', selected: _tab == 1),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
-                    variant: TvFocusVariant.pill,
+                    variant: TvFocusVariant.float,
+                    scale: 1.0,
+                    borderRadius: 20,
                     onTap: () => setState(() => _tab = 2),
                     child: _Chip(label: 'My List', selected: _tab == 2),
                   ),
@@ -95,11 +101,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
             ),
             const SizedBox(height: 16),
             if (showDays) ...[
-              _DayChipRow(
-                days: days,
-                selectedDay: _selectedDay,
-                onSelect: (d) => setState(() => _selectedDay = d),
-              ),
+              _DayChipRow(days: days, selectedDay: _selectedDay, onSelect: (d) => setState(() => _selectedDay = d)),
               const SizedBox(height: 8),
             ],
             Expanded(child: _body(state)),
@@ -120,9 +122,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
         ? Center(child: CircularProgressIndicator(color: AppColors.accent))
         : _AiringRail(
             entries: byDay[_selectedDay] ?? const <AiringEntry>[],
-            emptyMessage: _tab == 2
-                ? 'None of the anime you follow air on this day.'
-                : 'Nothing airing on this day.',
+            emptyMessage: _tab == 2 ? 'None of the anime you follow air on this day.' : 'Nothing airing on this day.',
           );
   }
 }
@@ -134,24 +134,21 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: selected ? AppColors.accent : AppColors.surface2,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: AppText.headline.copyWith(color: AppColors.textPrimary, fontSize: 15),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+    decoration: BoxDecoration(
+      color: selected ? AppColors.accent.withValues(alpha: 0.18) : AppColors.surface2,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: selected ? AppColors.accent : Colors.transparent, width: 2),
+    ),
+    child: Text(
+      label,
+      style: AppText.headline.copyWith(color: selected ? AppColors.accent : AppColors.textSecondary, fontSize: 15),
+    ),
+  );
 }
 
 class _DayChipRow extends StatelessWidget {
-  const _DayChipRow({
-    required this.days,
-    required this.selectedDay,
-    required this.onSelect,
-  });
+  const _DayChipRow({required this.days, required this.selectedDay, required this.onSelect});
   final List<DateTime> days;
   final DateTime selectedDay;
   final ValueChanged<DateTime> onSelect;
@@ -172,12 +169,18 @@ class _DayChipRow extends StatelessWidget {
           final selected = d == selectedDay;
           return Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: TvFocusable(
-              variant: TvFocusVariant.pill,
-              onTap: () => onSelect(d),
-              child: _Chip(
-                label: i == 0 ? 'Today' : '${_wd[d.weekday - 1]} ${d.day}',
-                selected: selected,
+            // Horizontal ListView stretches children to the 64px cross-axis;
+            // Align so the focus ring hugs the chip instead of the full row.
+            child: Align(
+              child: TvFocusable(
+                variant: TvFocusVariant.float,
+                scale: 1.0,
+                borderRadius: 20,
+                onTap: () => onSelect(d),
+                child: _Chip(
+                  label: i == 0 ? 'Today' : '${_wd[d.weekday - 1]} ${d.day}',
+                  selected: selected,
+                ),
               ),
             ),
           );
@@ -223,10 +226,7 @@ class _MoviesRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) {
-      return Center(
-        child: Text("Couldn't load coming soon — pull to refresh.",
-            style: AppText.caption),
-      );
+      return Center(child: Text("Couldn't load coming soon — pull to refresh.", style: AppText.caption));
     }
     return _Rail(
       count: entries.length,
@@ -264,10 +264,7 @@ class _Rail extends StatelessWidget {
         // instead of hugging the card.
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(right: 16),
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: builder(context, i),
-          ),
+          child: Align(alignment: Alignment.topCenter, child: builder(context, i)),
         ),
       ),
     );
@@ -333,23 +330,22 @@ class _PosterTile extends StatelessWidget {
                         ),
                       ),
                       if (imageUrl != null)
-                        Image.network(imageUrl!, fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => const SizedBox.shrink()),
+                        Image.network(imageUrl!, fit: BoxFit.cover, errorBuilder: (_, _, _) => const SizedBox.shrink()),
                       if (pill != null)
                         Positioned(
                           left: 6,
                           top: 6,
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: pill!.bg,
-                              borderRadius: BorderRadius.circular(999),
+                            decoration: BoxDecoration(color: pill!.bg, borderRadius: BorderRadius.circular(999)),
+                            child: Text(
+                              pill!.text,
+                              style: AppText.caption.copyWith(
+                                color: pill!.fg,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10.5,
+                              ),
                             ),
-                            child: Text(pill!.text,
-                                style: AppText.caption.copyWith(
-                                    color: pill!.fg,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 10.5)),
                           ),
                         ),
                     ],
@@ -359,10 +355,7 @@ class _PosterTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppText.caption.copyWith(fontSize: 11)),
+          Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppText.caption.copyWith(fontSize: 11)),
         ],
       ),
     );
