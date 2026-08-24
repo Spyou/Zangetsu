@@ -11,6 +11,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/playback/category_store.dart';
+import '../../core/ui/reveal_item.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
@@ -1041,6 +1042,10 @@ class _MyListViewState extends State<_MyListView> {
                   message: myListFilteredEmptyMessage(mode),
                 )
               : GridView.builder(
+                  key: ValueKey(
+                    '${_statusFilter?.name}|$_categoryFilter|'
+                    '$_customListFilter|${_sort?.name}|$_sortDesc',
+                  ),
                   // Bottom: clear the floating dock (its height arrives as
                   // MediaQuery bottom padding thanks to extendBody).
                   padding: EdgeInsets.fromLTRB(
@@ -1057,16 +1062,19 @@ class _MyListViewState extends State<_MyListView> {
                   itemCount: shown.length,
                   itemBuilder: (context, i) {
                     final entry = shown[i];
-                    return PosterCard(
-                      title: entry.item.title,
-                      imageUrl: entry.item.cover,
-                      headers: entry.item.coverHeaders,
-                      cellWidth: cellW,
-                      onTap: () => onTap(entry.item),
-                      // Long-press opens the per-card edit sheet (own list →
-                      // status/remove; tracker → the tracker editor).
-                      onLongPress:
-                          onMore == null ? null : () => onMore(entry),
+                    return RevealItem(
+                      index: i,
+                      child: PosterCard(
+                        title: entry.item.title,
+                        imageUrl: entry.item.cover,
+                        headers: entry.item.coverHeaders,
+                        cellWidth: cellW,
+                        onTap: () => onTap(entry.item),
+                        // Long-press opens the per-card edit sheet (own list →
+                        // status/remove; tracker → the tracker editor).
+                        onLongPress:
+                            onMore == null ? null : () => onMore(entry),
+                      ),
                     );
                   },
                 ),
