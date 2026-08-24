@@ -3,12 +3,13 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import 'tv_keys.dart';
 
 /// Visual style of the D-pad focus highlight.
 enum TvFocusVariant {
-  /// White outline + faint tint box — the default focus for buttons, rows and
+  /// White outline + translucent tint box — the default focus for buttons, rows and
   /// tiles that don't opt into another variant. Premium, no accent glow.
   box,
 
@@ -17,9 +18,17 @@ enum TvFocusVariant {
   /// while focused.
   pill,
 
-  /// Poster "float" — scale up + lift + a deep drop shadow and a faint accent
-  /// bloom, no ring. For posters, tiles and cards.
+  /// Accent border + translucent accent fill — settings / provider-style list
+  /// rows (matches the Providers source row halo). Text stays light; no invert.
+  row,
+
+  /// Poster "float" — scale up + lift + a deep drop shadow and a white
+  /// outline painted *outside* the child (so opaque / stadium fills don't
+  /// cover the ring). For posters, tiles, chips and cards.
   float,
+
+  /// No focus highlight.
+  none,
 }
 
 /// Wraps any tappable so it is D-pad focusable on TV: highlights while focused,
@@ -44,10 +53,8 @@ class TvFocusable extends StatefulWidget {
     this.focusNode,
     this.semanticLabel,
     this.isButton = true,
-  }) : assert(
-          child != null || builder != null,
-          'TvFocusable needs either child or builder',
-        );
+    this.borderRadius = 10,
+  }) : assert(child != null || builder != null, 'TvFocusable needs either child or builder');
 
   /// Optional external focus node, so a parent can programmatically move focus
   /// here (e.g. land on the current page's nav item when entering the rail).
@@ -85,6 +92,11 @@ class TvFocusable extends StatefulWidget {
   /// Whether this reads as a "button" to TalkBack. Almost everything wrapped
   /// in TvFocusable is tap-to-activate, so this defaults on.
   final bool isButton;
+
+  /// Corner radius of the focus chrome. Match the child's decoration so the
+  /// outline hugs stadium pills, rounded chips, and poster tiles alike.
+  /// Defaults to 10 (poster / card language).
+  final double borderRadius;
 
   @override
   State<TvFocusable> createState() => _TvFocusableState();
@@ -187,9 +199,7 @@ class _TvFocusableState extends State<TvFocusable> {
             bottom: 6,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 120),
-              padding: _focused
-                  ? const EdgeInsets.symmetric(horizontal: 8, vertical: 3)
-                  : EdgeInsets.zero,
+              padding: _focused ? const EdgeInsets.symmetric(horizontal: 8, vertical: 3) : EdgeInsets.zero,
               decoration: BoxDecoration(
                 color: _focused ? Colors.white : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
@@ -201,9 +211,7 @@ class _TvFocusableState extends State<TvFocusable> {
                 style: AppText.caption.copyWith(
                   color: _focused ? Colors.black : Colors.white,
                   fontWeight: FontWeight.w600,
-                  shadows: _focused
-                      ? null
-                      : const [Shadow(color: Colors.black, blurRadius: 4)],
+                  shadows: _focused ? null : const [Shadow(color: Colors.black, blurRadius: 4)],
                 ),
               ),
             ),
@@ -214,90 +222,115 @@ class _TvFocusableState extends State<TvFocusable> {
 
     final Widget box;
     switch (widget.variant) {
+      case TvFocusVariant.none:
+        box = inner;
+        break;
       case TvFocusVariant.box:
         // Premium neutral focus: a clean WHITE outline + a faint white fill and
         // a soft black shadow (no accent tint) — consistent with the float
         // variant used by posters.
-        final bool useForeground =
-            widget.foregroundHighlight || widget.scale == 1.0;
+        final bool useForeground = widget.foregroundHighlight || widget.scale == 1.0;
         box = AnimatedScale(
           scale: _focused ? widget.scale : 1.0,
           duration: const Duration(milliseconds: 120),
           child: DecoratedBox(
-            position: useForeground
-                ? DecorationPosition.foreground
-                : DecorationPosition.background,
+            position: useForeground ? DecorationPosition.foreground : DecorationPosition.background,
             decoration: BoxDecoration(
               color: _focused ? Colors.white.withValues(alpha: 0.08) : null,
-              border: Border.all(
-                color: _focused ? Colors.white : Colors.transparent,
-                width: 2.5,
-              ),
-              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _focused ? Colors.white : Colors.transparent, width: 2.5),
+              borderRadius: BorderRadius.circular(widget.borderRadius),
               boxShadow: _focused
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
+                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 14, offset: const Offset(0, 6))]
                   : null,
             ),
             child: inner,
           ),
         );
       case TvFocusVariant.pill:
+        // Honour [scale] so dense list rows can pass 1.0 (fill only) while the
+        // nav rail keeps a light grow. Default widget.scale is 1.08; rail-style
+        // call sites that want the classic pill bump pass ~1.04 explicitly.
+        final pillScale = widget.scale == 1.08 ? 1.04 : widget.scale;
         box = AnimatedScale(
-          scale: _focused ? 1.04 : 1.0,
+          scale: _focused ? pillScale : 1.0,
           duration: const Duration(milliseconds: 120),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             decoration: BoxDecoration(
               color: _focused ? Colors.white : Colors.transparent,
               borderRadius: BorderRadius.circular(14),
-              boxShadow: _focused
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.35),
-                        blurRadius: 22,
-                        offset: const Offset(0, 8),
-                      ),
-                    ]
+              boxShadow: _focused && pillScale > 1.0
+                  ? [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 22, offset: const Offset(0, 8))]
                   : null,
             ),
             child: inner,
           ),
         );
+      case TvFocusVariant.row:
+        // Providers-style halo as an overlay sibling (not foregroundDecoration
+        // on an ancestor) so ListTile ink/Material assertions stay happy, while
+        // opaque child surfaces still show the accent wash.
+        box = ClipRRect(
+          borderRadius: BorderRadius.circular(widget.borderRadius),
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              inner,
+              if (_focused)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.10),
+                        border: Border.all(color: AppColors.accent.withValues(alpha: 0.55), width: 2),
+                        borderRadius: BorderRadius.circular(widget.borderRadius),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
       case TvFocusVariant.float:
-        // Premium focus: scale up, a clean WHITE outline over the edge, and a
-        // neutral (never accent-tinted) drop shadow for depth.
+        // Premium focus: scale up + white outline OUTSIDE the child.
+        // An inset foregroundDecoration is covered by opaque/stadium children
+        // on the flat edges (only corner ticks remain). An outer ring needs
+        // ancestors with Clip.none (ListViews / rounded cards) so scale and
+        // the ring aren't shaved off. Radius matches [borderRadius] so the
+        // ring hugs pills and posters alike (outer = child + outline width).
+        const outline = 3.0;
+        final radius = widget.borderRadius;
         box = AnimatedScale(
           scale: _focused ? widget.scale : 1.0,
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: _focused
-                  ? [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              if (_focused)
+                Positioned(
+                  left: -outline,
+                  top: -outline,
+                  right: -outline,
+                  bottom: -outline,
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(radius + outline),
+                        border: Border.all(color: Colors.white, width: outline),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            blurRadius: 22,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
                       ),
-                    ]
-                  : null,
-            ),
-            foregroundDecoration: _focused
-                ? BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white, width: 3),
-                  )
-                : null,
-            child: inner,
+                    ),
+                  ),
+                ),
+              inner,
+            ],
           ),
         );
     }
@@ -324,11 +357,7 @@ class _TvFocusableState extends State<TvFocusable> {
           onFocusChange: (f) {
             setState(() => _focused = f);
             if (f) {
-              Scrollable.ensureVisible(
-                context,
-                alignment: 0.5,
-                duration: const Duration(milliseconds: 200),
-              );
+              Scrollable.ensureVisible(context, alignment: 0.5, duration: const Duration(milliseconds: 200));
             } else {
               _okHeld = false;
               _cancelLongPressTimer();

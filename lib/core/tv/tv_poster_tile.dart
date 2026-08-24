@@ -44,6 +44,7 @@ class TvPosterTile extends StatelessWidget {
             autofocus: autofocus,
             variant: TvFocusVariant.float,
             scale: 1.04,
+            borderRadius: 12,
             onTap: onTap,
             onLongPress: onLongPress,
             semanticLabel: title,
