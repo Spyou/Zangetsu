@@ -9,7 +9,11 @@ import '../../../core/playback/my_list.dart';
 /// status, e.g. a legacy bookmark).
 class MyListEntry {
   const MyListEntry(this.item, this.status,
-      {this.progress, this.score, this.tmdbIsTv = false, this.updatedAt});
+      {this.progress,
+      this.score,
+      this.tmdbIsTv = false,
+      this.updatedAt,
+      this.customLists = const []});
   final MediaItem item;
   final WatchStatus? status;
 
@@ -21,6 +25,10 @@ class MyListEntry {
   /// When the tracker last changed this entry — drives the "Last updated"
   /// sort. Null for the own list, which keeps no such timestamp.
   final DateTime? updatedAt;
+
+  /// AniList's OWN custom lists this entry is in. Empty everywhere else —
+  /// MAL and Simkl have no such concept. Not the app's local categories.
+  final List<String> customLists;
 
   /// Simkl movies/TV are resolved by TMDB id; this marks TV shows so an edit
   /// writes to the right Simkl bucket. False for anime and the own list.

@@ -74,9 +74,29 @@ List<TrackerListItem> parseAniListCollection(Object? data, MediaKind kind) {
       // Reading kinds get their own id namespace for the same id-space-overlap
       // reason as `seen`; anime keeps the original, unprefixed id.
       final key = malId ?? idx;
+      // `customLists(asArray:true)` does NOT return the names this entry is
+      // in — it returns EVERY custom list as {name, enabled}, and membership
+      // is the flag. Reading it as a list of strings matched nothing, so all
+      // 296 entries parsed as "in no list" while the website showed otherwise.
+      final rawLists = e['customLists'];
+      final lists = <String>[];
+      if (rawLists is List) {
+        for (final entry in rawLists) {
+          if (entry is Map) {
+            if (entry['enabled'] == true && entry['name'] is String) {
+              lists.add(entry['name'] as String);
+            }
+          } else if (entry is String) {
+            // Tolerate a plain-name shape too, in case the API ever returns
+            // the form the docs describe.
+            lists.add(entry);
+          }
+        }
+      }
       // AniList reports updatedAt in unix SECONDS; 0 means never set.
       final updatedSec = (e['updatedAt'] as num?)?.toInt();
       out.add(TrackerListItem(
+        customLists: lists,
         updatedAt: (updatedSec == null || updatedSec <= 0)
             ? null
             : DateTime.fromMillisecondsSinceEpoch(updatedSec * 1000),
@@ -529,6 +549,73 @@ class AniListService extends ChangeNotifier implements Tracker {
     if (mediaId == null) return;
     await _api.deleteEntry(mediaId);
     await _store.setScrobbledProgress(mediaId, 0);
+  }
+
+  // ── Custom lists (AniList only) ─────────────────────────────────────────
+
+  /// The custom lists this user has defined, in their own order.
+  ///
+  /// Deliberately NOT on the [Tracker] interface: MAL's API has no such
+  /// concept and Simkl's lists are a fixed set, so putting it there would mean
+  /// two trackers implementing a permanent no-op — and every test fake growing
+  /// a method for a feature one tracker has. Callers ask for it with an
+  /// `is AniListService` check instead.
+  Future<List<String>> customListNames({
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    if (!isConnected) return const [];
+    try {
+      return await _api.customListNames(kind);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Create a custom list on the user's AniList account and return the new
+  /// full set, or null on failure.
+  ///
+  /// The underlying field is the whole array, so the API layer reads before it
+  /// writes — see [AniListApi.addCustomList]. Getting this wrong deletes
+  /// someone's lists, so failures return null rather than guessing.
+  Future<List<String>?> createCustomList(
+    String name, {
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    if (!isConnected) return null;
+    try {
+      return await _api.addCustomList(kind, name);
+    } catch (e) {
+      debugPrint('[AniList] createCustomList failed: $e');
+      return null;
+    }
+  }
+
+  /// Put a title into exactly [names] — AniList treats this as the whole
+  /// membership, so a name left out is removed from that list.
+  ///
+  /// The media is resolved the same way every other write here resolves it, so
+  /// a caller only needs what it already has.
+  Future<bool> setCustomLists({
+    int? malId,
+    String? title,
+    String? pinnedId,
+    required List<String> names,
+    MediaKind kind = MediaKind.anime,
+  }) async {
+    if (!isConnected) return false;
+    final mediaId = int.tryParse(pinnedId ?? '') ??
+        (await _resolveMedia(malId, title, kind))?.id;
+    if (mediaId == null) {
+      debugPrint('[AniList] setCustomLists: could not resolve media '
+          '(malId=$malId title="$title")');
+      return false;
+    }
+    try {
+      return await _api.saveCustomLists(mediaId, names);
+    } catch (e) {
+      debugPrint('[AniList] setCustomLists failed: $e');
+      return false;
+    }
   }
 
   // ── Single-entry read/write + search (sync sheet + match-fixer) ─────────────

@@ -27,10 +27,19 @@ class TrackerListItem {
     this.score,
     this.tmdbIsTv = false,
     this.updatedAt,
+    this.customLists = const [],
   });
 
   final MediaItem item;
   final WatchStatus status; // planning | watching | completed | paused | dropped
+
+  /// Names of the tracker's OWN custom lists this entry belongs to.
+  ///
+  /// AniList only — it's the one tracker of the three that has the concept.
+  /// MAL's API has no equivalent and Simkl's list names are a fixed set, so
+  /// both always leave this empty. Distinct from the app's local categories,
+  /// which no tracker ever sees.
+  final List<String> customLists;
 
   /// When this entry last changed on the tracker, for the "Last updated" sort.
   ///

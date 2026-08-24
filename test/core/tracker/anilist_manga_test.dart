@@ -31,12 +31,15 @@ const _searchMediaAnimeGolden =
 //
 // `updatedAt` was added deliberately, like `title` above: the library screen
 // sorts by when a tracker last changed an entry, and nothing else reports it.
-// It's on MediaList itself, not on `media`, so it's identical for both kinds
-// and can't skew the manga/anime split this file guards.
+//
+// `customLists(asArray:true)` likewise — AniList is the only tracker of the
+// three with user-defined lists, and this is how the app reads which ones an
+// entry is in. Both sit on MediaList itself, not on `media`, so they're
+// identical for anime and manga and can't skew the split this file guards.
 const _listCollectionAnimeGolden =
     r'query($u:String){ MediaListCollection(userName:$u, type:ANIME){ '
     r'lists { status entries { status progress score(format:POINT_10) '
-    r'updatedAt '
+    r'updatedAt customLists(asArray:true) '
     r'media { idMal title { romaji english } coverImage { large } } } } } }';
 
 /// A `MediaListCollection` response shaped exactly like AniList's — two lists

@@ -2,11 +2,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../app_mode.dart';
+import '../anilist/anilist_service.dart';
 import '../di/injector.dart';
 import '../models/watch_status.dart';
+import '../models/provider_info.dart';
+import '../models/media_item.dart';
 import '../tracker/airing_countdown.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'anilist_custom_lists_sheet.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_binding_store.dart';
 import '../tracker/tracker_hub.dart';
@@ -449,6 +453,64 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
           ),
         ),
       ],
+      ..._customListsRow(),
+    ];
+  }
+
+  /// AniList's own custom lists, reachable from the detail screen's Tracking
+  /// sheet as well as the library — this is where someone lands right after
+  /// adding a title, which is exactly when they'd want to file it.
+  ///
+  /// AniList only, via an `is` check: MAL's API has no such concept and
+  /// Simkl's lists are a fixed set, so the row simply isn't there for them.
+  List<Widget> _customListsRow() {
+    final t = widget.tracker;
+    if (t is! AniListService) return const [];
+    return [
+      const SizedBox(height: 6),
+      InkWell(
+        onTap: () async {
+          final rootContext =
+              Navigator.of(context, rootNavigator: true).context;
+          Navigator.pop(context);
+          await showAniListCustomListsSheet(
+            rootContext,
+            t,
+            // This sheet carries a title + ids rather than a MediaItem, and
+            // the picker only needs enough to resolve the AniList media —
+            // which is exactly malId/title, the same pair every other write
+            // here resolves with.
+            MediaItem(
+              id: widget.title,
+              title: widget.title,
+              url: '',
+              type: widget.reading ? ProviderType.manga : ProviderType.anime,
+              sourceId: '',
+              malId: widget.malId,
+            ),
+            const [],
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.playlist_add_rounded,
+                  size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'AniList custom lists',
+                  style:
+                      AppText.body.copyWith(color: AppColors.textSecondary),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded,
+                  size: 20, color: AppColors.textSecondary),
+            ],
+          ),
+        ),
+      ),
     ];
   }
 

@@ -2,10 +2,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../models/media_item.dart';
+import '../anilist/anilist_service.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import 'anilist_custom_lists_sheet.dart';
 import '../tracker/tracker.dart';
 
 /// Per-card editor for ONE tracker's library entry (AniList / MAL). Unlike the
@@ -24,6 +26,7 @@ Future<void> showTrackerEntrySheet(
   bool tmdbIsTv = false,
   VoidCallback? onFind,
   VoidCallback? onChanged,
+  List<String> customLists = const [],
 }) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -34,6 +37,7 @@ Future<void> showTrackerEntrySheet(
     ),
     builder: (_) => _TrackerEntrySheet(
       tracker: tracker,
+      customLists: customLists,
       item: item,
       status: status,
       progress: progress,
@@ -48,6 +52,7 @@ Future<void> showTrackerEntrySheet(
 class _TrackerEntrySheet extends StatefulWidget {
   const _TrackerEntrySheet({
     required this.tracker,
+    required this.customLists,
     required this.item,
     required this.status,
     required this.progress,
@@ -58,6 +63,10 @@ class _TrackerEntrySheet extends StatefulWidget {
   });
 
   final Tracker tracker;
+
+  /// Which of the tracker's own custom lists this entry is in. AniList only —
+  /// the row below doesn't appear for the others, which have no such concept.
+  final List<String> customLists;
   final MediaItem item;
   final WatchStatus? status;
   final int? progress;
@@ -159,6 +168,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
             const Divider(height: 1, thickness: 1, color: AppColors.hairline),
             const SizedBox(height: 18),
             _statusChips(),
+            _customListsRow(context),
             const SizedBox(height: 20),
             _stepperRow(
               _reading ? 'Chapters' : 'Episodes',
@@ -263,6 +273,43 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Only AniList has user-defined lists. An `is` check rather than a method
+  /// on the Tracker interface, which would make MAL and Simkl implement a
+  /// permanent no-op.
+  Widget _customListsRow(BuildContext context) {
+    final service = widget.tracker;
+    if (service is! AniListService) return const SizedBox.shrink();
+    final n = widget.customLists.length;
+    return ListTile(
+      leading: const Icon(Icons.playlist_add_rounded,
+          color: AppColors.textSecondary),
+      title: const Text('Custom lists'),
+      subtitle: Text(
+        n == 0 ? 'Not in any' : widget.customLists.join(', '),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppText.caption,
+      ),
+      trailing: const Icon(Icons.chevron_right_rounded,
+          color: AppColors.textSecondary, size: 20),
+      onTap: () async {
+        // Grab the navigator's own context BEFORE popping. Using `context`
+        // after the pop passes a dead one to the picker, whose first
+        // `context.mounted` check then bails — the sheet closed and nothing
+        // opened, which looked exactly like the row doing nothing.
+        final rootContext = Navigator.of(context, rootNavigator: true).context;
+        Navigator.pop(context);
+        await showAniListCustomListsSheet(
+          rootContext,
+          service,
+          widget.item,
+          widget.customLists,
+        );
+        widget.onChanged?.call();
+      },
     );
   }
 

@@ -9,8 +9,10 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
+import '../../core/anilist/anilist_service.dart';
 import '../../core/playback/category_store.dart';
 import '../../core/ui/global_messenger.dart';
+import '../../core/ui/anilist_custom_lists_sheet.dart';
 import '../../core/prefs/list_sort.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/models/watch_status.dart';
@@ -63,6 +65,12 @@ class _MyListView extends StatefulWidget {
 
 class _MyListViewState extends State<_MyListView> {
   WatchStatus? _statusFilter; // null = All
+
+  /// Selected AniList custom list, or null. Separate from [_categoryFilter]:
+  /// that one is ours and local, this one is AniList's own and lives on their
+  /// servers. They can never both be active — categories only exist on My
+  /// List, custom lists only on the AniList tab.
+  String? _customListFilter;
 
   /// Selected user category, or null when a status tab is picked. The two are
   /// mutually exclusive: the tab row holds both, and only one tab is active.
@@ -295,6 +303,26 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
+  /// Create a list on the user's AniList account from the tab row, then
+  /// refresh so the new tab appears.
+  Future<void> _createAniListList(
+    BuildContext context,
+    AniListService service,
+  ) async {
+    final mode = sl<ContentModeCubit>().state;
+    final made = await promptCreateAniListList(
+      context,
+      service,
+      mode.isReading ? MediaKind.manga : MediaKind.anime,
+    );
+    if (made == null || !mounted) return;
+    // The names are cached per tracker; creating one is the only thing that
+    // changes them, so drop it before re-reading.
+    final cubit = this.context.read<TrackerListCubit>();
+    cubit.invalidateCustomListNames();
+    await cubit.refresh();
+  }
+
   /// Name a new category. Duplicate names are refused by the store (two tabs
   /// reading the same would be indistinguishable), so say so rather than
   /// failing silently.
@@ -390,7 +418,7 @@ class _MyListViewState extends State<_MyListView> {
 
     final controller = TextEditingController(text: c.name);
     final name = await showDialog<String>(
-      context: context,
+      context: this.context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
         title: Text('Rename category', style: AppText.title),
@@ -895,6 +923,7 @@ class _MyListViewState extends State<_MyListView> {
                   progress: entry.progress,
                   score: entry.score,
                   tmdbIsTv: entry.tmdbIsTv,
+                  customLists: entry.customLists,
                   onFind: () => _openTrackerItem(context, entry.item),
                   onChanged: () =>
                       context.read<TrackerListCubit>().refresh(),
@@ -956,9 +985,25 @@ class _MyListViewState extends State<_MyListView> {
 
     // Which list is on screen. Gates the category tabs and their filter, and
     // picks the sort defaults below — the tracker lists share this widget.
-    final isMyList = context.read<TrackerListCubit>().state.isMyList;
+    final trackerState = context.read<TrackerListCubit>().state;
+    final isMyList = trackerState.isMyList;
+
+    // The account's own list names first — a list created but not yet filled
+    // still deserves a tab. Anything an entry claims to be in is unioned on
+    // top, so a stale name-fetch can't hide a tab that clearly has titles.
+    final customLists = <String>[...trackerState.customListNames];
+    for (final e in modeEntries) {
+      for (final name in e.customLists) {
+        if (!customLists.contains(name)) customLists.add(name);
+      }
+    }
+    customLists.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
 
     final filtered = modeEntries.where((e) {
+      if (_customListFilter != null &&
+          !e.customLists.contains(_customListFilter)) {
+        return false;
+      }
       final cats = _cats;
       if (isMyList &&
           _categoryFilter != null &&
@@ -982,7 +1027,12 @@ class _MyListViewState extends State<_MyListView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _statusTabs(modeEntries, presentStatuses, isMyList: isMyList),
+        _statusTabs(modeEntries, presentStatuses,
+            isMyList: isMyList,
+            customLists: customLists,
+            anilist: trackerState.tracker is AniListService
+                ? trackerState.tracker as AniListService
+                : null),
         const SizedBox(height: 8),
         Expanded(
           child: shown.isEmpty
@@ -1044,6 +1094,8 @@ class _MyListViewState extends State<_MyListView> {
     List<MyListEntry> entries,
     List<WatchStatus> present, {
     required bool isMyList,
+    List<String> customLists = const [],
+    AniListService? anilist,
   }) {
     int countOf(WatchStatus? s) =>
         s == null ? entries.length : entries.where((e) => e.status == s).length;
@@ -1097,11 +1149,16 @@ class _MyListViewState extends State<_MyListView> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.only(left: 16),
           children: [
-            tab('All', _statusFilter == null && _categoryFilter == null,
+            tab(
+                'All',
+                _statusFilter == null &&
+                    _categoryFilter == null &&
+                    _customListFilter == null,
                 countOf(null),
                 () => setState(() {
                       _statusFilter = null;
                       _categoryFilter = null;
+                      _customListFilter = null;
                     })),
             for (final s in present)
               tab(
@@ -1112,6 +1169,7 @@ class _MyListViewState extends State<_MyListView> {
                   () => setState(() {
                         _statusFilter = s;
                         _categoryFilter = null;
+                        _customListFilter = null;
                       })),
             // User-made categories come after the statuses, in their own
             // order. Long-press one to rename, delete or reorder it.
@@ -1127,7 +1185,33 @@ class _MyListViewState extends State<_MyListView> {
                     _categoryFilter = c.id;
                     // A category is its own view; a status tab would fight it.
                     _statusFilter = null;
+                    _customListFilter = null;
                   }),
+                ),
+              ),
+            // AniList's own custom lists. Only ever non-empty on that tab —
+            // MAL and Simkl have no such concept, and My List uses categories
+            // instead.
+            for (final name in customLists)
+              tab(
+                name,
+                _customListFilter == name,
+                entries.where((e) => e.customLists.contains(name)).length,
+                () => setState(() {
+                  _customListFilter = name;
+                  _statusFilter = null;
+                }),
+              ),
+            // The AniList tab gets its own +, creating a list on the account
+            // rather than a local category. Same gesture, different home.
+            if (!isMyList && anilist != null)
+              GestureDetector(
+                onTap: () => _createAniListList(context, anilist),
+                child: Container(
+                  margin: const EdgeInsets.only(right: 22),
+                  padding: const EdgeInsets.only(top: 8, bottom: 10),
+                  child: Icon(Icons.add_rounded,
+                      size: 20, color: AppColors.textSecondary),
                 ),
               ),
             // Last, so adding one never shifts the tabs already there.

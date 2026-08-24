@@ -56,7 +56,7 @@ String mediaListCollectionQuery(MediaKind kind) {
   final formatField = kind == MediaKind.manga ? ' format' : '';
   return 'query(\$u:String){ MediaListCollection(userName:\$u, type:${_anilistType(kind)}){ '
       'lists { status entries { status progress score(format:POINT_10) '
-      'updatedAt '
+      'updatedAt customLists(asArray:true) '
       'media { idMal title { romaji english }$formatField coverImage { large } } } } } }';
 }
 
@@ -117,6 +117,77 @@ class AniListApi {
   }
 
   /// The signed-in user, or null when the token is missing/invalid.
+  /// The custom lists the user has defined for [kind], in their own order.
+  ///
+  /// These are defined in AniList's list settings, not here: the per-entry
+  /// field only says which of them a title is in, so a name that isn't in this
+  /// set can't be written to. Empty when the user has none (the common case).
+  Future<List<String>> customListNames(MediaKind kind) async {
+    final field = kind == MediaKind.manga ? 'mangaList' : 'animeList';
+    final d = await _gql(
+      'query{ Viewer{ mediaListOptions{ $field{ customLists } } } }',
+      const {},
+      auth: true,
+    );
+    final opts = (d?['Viewer'] as Map?)?['mediaListOptions'];
+    final list = (opts is Map) ? opts[field] : null;
+    final names = (list is Map) ? list['customLists'] : null;
+    if (names is! List) return const [];
+    return names.whereType<String>().toList();
+  }
+
+  /// Add [name] to the user's custom lists for [kind] and return the new full
+  /// set, or null if it couldn't be done.
+  ///
+  /// DANGEROUS FIELD: AniList's `customLists` on the user options is the WHOLE
+  /// array, so writing just the new name would DELETE every existing list on
+  /// the account. This reads the current set first, appends, and writes both —
+  /// and bails out entirely if the read fails, because writing a partial set
+  /// would destroy the user's lists.
+  Future<List<String>?> addCustomList(MediaKind kind, String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+
+    final existing = await customListNames(kind);
+    // A failed read is indistinguishable from "no lists" here, and guessing
+    // wrong wipes the account. Only the caller knows it asked for a create, so
+    // an empty result is treated as legitimate ONLY when the query succeeded —
+    // customListNames returns [] on error too, so re-run it strictly.
+    final probe = await _gql(
+      'query{ Viewer{ id } }',
+      const {},
+      auth: true,
+    );
+    if (probe?['Viewer'] is! Map) return null; // not signed in / API down
+
+    if (existing.any((e) => e.toLowerCase() == trimmed.toLowerCase())) {
+      return existing; // already there — nothing to write
+    }
+    final next = [...existing, trimmed];
+    final field = kind == MediaKind.manga ? 'mangaListOptions' : 'animeListOptions';
+    final d = await _gql(
+      'mutation(\$lists:[String]){'
+      ' UpdateUser($field:{ customLists:\$lists }){ id } }',
+      {'lists': next},
+      auth: true,
+    );
+    return d?['UpdateUser'] is Map ? next : null;
+  }
+
+  /// Replace which custom lists [mediaId] belongs to. [names] is the FULL set
+  /// it should be in — AniList treats this as the whole membership, so
+  /// omitting a name removes it. Names must already exist in the user's
+  /// settings; unknown ones are ignored by AniList rather than created.
+  Future<bool> saveCustomLists(int mediaId, List<String> names) async {
+    final d = await _gql(
+      'mutation(\$mediaId:Int,\$lists:[String]){'
+      ' SaveMediaListEntry(mediaId:\$mediaId, customLists:\$lists){ id } }',
+      {'mediaId': mediaId, 'lists': names},
+      auth: true,
+    );
+    return d?['SaveMediaListEntry'] is Map;
+  }
+
   Future<AniListViewer?> viewer() async {
     final d = await _gql(
       'query{ Viewer{ id name avatar{ medium large } } }',

@@ -124,7 +124,7 @@ void main() {
     });
 
     test('a category missing from the order is kept, not dropped', () async {
-      final a = (await store.create('A'))!;
+      await store.create('A');
       final b = (await store.create('B'))!;
       await store.reorder([b.id]); // stale list, missing A
       expect(store.all().map((x) => x.name), ['B', 'A']);
