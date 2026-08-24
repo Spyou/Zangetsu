@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.storage.StorageManager
 import android.speech.RecognizerIntent
 import android.util.Log
@@ -28,7 +29,10 @@ import com.spyou.watch_app.mihon.MihonBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import io.flutter.embedding.android.FlutterActivity
+import androidx.appcompat.app.AppCompatActivity
+import io.flutter.embedding.android.FlutterEngineConfigurator
+import io.flutter.embedding.android.FlutterFragment
+import io.flutter.embedding.engine.plugins.util.GeneratedPluginRegister
 import java.util.concurrent.TimeUnit
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -41,7 +45,25 @@ import java.util.concurrent.Executors
 /// frame at a given timestamp via [MediaMetadataRetriever] — the same technique
 /// native players (CloudStream etc.) use for seek-bar thumbnails. No second
 /// player, no video surface: just URL + time -> JPEG bytes.
-class MainActivity : FlutterActivity() {
+class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
+
+    // Flutter runs in a fragment rather than us extending FlutterActivity,
+    // because this activity has to BE an androidx AppCompatActivity.
+    //
+    // CloudStream plugins are handed a Context in `load()`, cast it to
+    // AppCompatActivity, keep it in a static field and later show their own
+    // dialogs on it — CNC Verse's Cloudflare screen works exactly that way, and
+    // so do its subscription/Telegram popups. FlutterActivity descends from
+    // android.app.Activity, so that cast could never succeed; we used to load
+    // such plugins against a throwaway AppCompatActivity that finished
+    // immediately, which left them holding a DEAD activity. Every dialog they
+    // tried to show then died on `BadTokenException` and was swallowed, so the
+    // Cloudflare step silently never ran and the source served a placeholder
+    // stream instead of the real one. CloudStream itself is plain
+    // `MainActivity : AppCompatActivity()`, which is why it never had this
+    // problem. Hosting Flutter in a fragment gets us the same thing: one real,
+    // long-lived AppCompatActivity that plugins can safely hold on to.
+    private lateinit var flutterFragment: FlutterFragment
     private val channelName = "zangetsu/seek_preview"
     private val executor = Executors.newSingleThreadExecutor()
 
@@ -107,6 +129,9 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val TAG = "SeekPreview"
         private const val EXT_PLAYER_REQUEST = 7001
+        private const val TAG_FLUTTER = "flutter_fragment"
+        private const val NORMAL_THEME_META_DATA_KEY =
+            "io.flutter.embedding.android.NormalTheme"
         private const val TV_PLAYER_REQUEST = 7002
         private const val VOICE_SEARCH_REQUEST = 7003
         // Bidirectional bridge to the native TV player: TvPlayerActivity invokes
@@ -121,6 +146,72 @@ class MainActivity : FlutterActivity() {
          * WebView renders). Weak ref; null while backgrounded. */
         @Volatile
         var current: java.lang.ref.WeakReference<android.app.Activity>? = null
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        // FlutterActivity did this for us, before its own super.onCreate: swap the
+        // splash LaunchTheme for NormalTheme once the process is up, so the window
+        // background behind Flutter is the flat app colour rather than the splash
+        // drawable. Without it we'd sit on LaunchTheme forever and the splash art
+        // would show through wherever Flutter doesn't paint (transitions, PiP).
+        // The manifest meta-data is unchanged; we just have to read it ourselves.
+        switchLaunchThemeForNormalTheme()
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+        // Survives configuration changes / process death: re-attaching a second
+        // fragment would spin up a second FlutterEngine and run the app twice.
+        val existing =
+            supportFragmentManager.findFragmentByTag(TAG_FLUTTER) as? FlutterFragment
+        flutterFragment = existing ?: FlutterFragment.withNewEngine()
+            .shouldAttachEngineToActivity(true)
+            // Flutter owns the back gesture, same as under FlutterActivity.
+            .shouldAutomaticallyHandleOnBackPressed(true)
+            .build<FlutterFragment>()
+            .also {
+                supportFragmentManager.beginTransaction()
+                    .add(R.id.flutter_container, it, TAG_FLUTTER)
+                    .commit()
+            }
+    }
+
+    /** Mirrors FlutterActivity's own launch->normal theme swap, reading the same
+     *  `io.flutter.embedding.android.NormalTheme` manifest meta-data. */
+    private fun switchLaunchThemeForNormalTheme() {
+        try {
+            val activityInfo = packageManager.getActivityInfo(
+                componentName,
+                android.content.pm.PackageManager.GET_META_DATA,
+            )
+            val normalThemeRID =
+                activityInfo.metaData?.getInt(NORMAL_THEME_META_DATA_KEY, -1) ?: -1
+            if (normalThemeRID != -1) setTheme(normalThemeRID)
+        } catch (e: Exception) {
+            Log.w(TAG, "could not read NormalTheme meta-data: ${e.message}")
+        }
+    }
+
+    // ── FlutterFragment lifecycle forwarding ────────────────────────────────
+    // FlutterActivity did all of this internally. A fragment host has to pass
+    // the callbacks down by hand, or Flutter misses them (PiP on home press,
+    // permission results, plugin Activity results, low-memory trims).
+
+    override fun onPostResume() {
+        super.onPostResume()
+        flutterFragment.onPostResume()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        flutterFragment.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        flutterFragment.onTrimMemory(level)
     }
 
     override fun onResume() {
@@ -144,6 +235,7 @@ class MainActivity : FlutterActivity() {
     // forward its payload to Dart so it opens that show's Detail.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        flutterFragment.onNewIntent(intent)
         setIntent(intent)
         intent.getStringExtra("notif_payload")?.let { payload ->
             notifChannel?.invokeMethod("openShow", payload)
@@ -186,8 +278,17 @@ class MainActivity : FlutterActivity() {
     // Dart. Set in configureFlutterEngine.
     private var csChannel: MethodChannel? = null
 
+    /** Required by [FlutterEngineConfigurator]. Everything we register in
+     *  [configureFlutterEngine] is torn down in onDestroy already, and the engine
+     *  dies with this activity, so there is nothing extra to undo here. */
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {}
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
+        // FlutterActivity.configureFlutterEngine did this for us; FlutterFragment
+        // only forwards to the host, and FlutterEngine registers nothing on its
+        // own, so without this line NO plugin (shared_preferences, path_provider,
+        // media_kit …) would be attached and the app would come up dead.
+        GeneratedPluginRegister.registerGeneratedPlugins(flutterEngine)
 
         // Bridge mega-repo plugins → our repo list: when a plugin's load() calls
         // RepositoryManager.addRepository(...), forward each URL to Dart so it
@@ -1058,6 +1159,7 @@ class MainActivity : FlutterActivity() {
     // setAutoEnterEnabled above, so we skip it here to avoid a double trigger.
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
+        flutterFragment.onUserLeaveHint()
         if (autoPipEnabled &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
@@ -1297,6 +1399,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        // Flutter plugins (SAF folder picker, image picks) get their results
+        // through the fragment; our own request codes are handled below.
+        flutterFragment.onActivityResult(requestCode, resultCode, data)
         if (requestCode == TV_PLAYER_REQUEST) {
             val pos = if (data != null) longExtra(data, TvPlayerActivity.RESULT_POSITION) else -1L
             val dur = if (data != null) longExtra(data, TvPlayerActivity.RESULT_DURATION) else -1L

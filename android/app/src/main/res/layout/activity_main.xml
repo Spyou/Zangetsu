@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Container for the FlutterFragment that renders the whole app. Exists only
+     because MainActivity has to BE an androidx AppCompatActivity: CloudStream
+     plugins cast the Context they are loaded with to AppCompatActivity and then
+     show their own dialogs on it (CNC Verse's Cloudflare screen, subscription
+     and Telegram popups). FlutterActivity descends from android.app.Activity,
+     so it can never satisfy that cast — hosting Flutter in a fragment is how we
+     get a real, long-lived AppCompatActivity to hand them. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/flutter_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" />
