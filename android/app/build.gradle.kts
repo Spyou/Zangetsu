@@ -221,6 +221,14 @@ dependencies {
     // parseAs()/decodeFromJsonResponse() decode JSON straight off the OkHttp
     // BufferedSource — this is the only kotlinx-serialization piece not already present.
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json-okio:1.9.0")
+    // MANGA Plus (and other Shueisha sources) speak protobuf, not JSON: they ask
+    // Injekt for a ProtoBuf instance, and Injekt resolves the type by REFLECTION
+    // (FullTypeReference -> getGenericSuperclass -> Class.forName). With the class
+    // absent that threw inside the extension's static initialiser, on a coroutine
+    // the extension launched itself — nothing of ours could catch it, so searching
+    // with MANGA Plus installed killed the whole app. Same version line as the
+    // json artifacts above so the serialization core stays consistent.
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-protobuf:1.9.0")
     // CloudStream (v4.8.0/pre-release) added Ktor, and plugins' extractors now use
     // it for URL parsing — e.g. HDhub4u/FourKHDHub's VidStack calls
     // io.ktor.http.URLUtilsKt/Url/URLProtocol/CodecsKt. This build shipped no Ktor,
