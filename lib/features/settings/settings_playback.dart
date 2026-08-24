@@ -1,8 +1,6 @@
 // Playback settings: quality, autoplay, speed, subtitles.
 part of 'settings_screen.dart';
 
-
-
 // ---------------------------------------------------------------------------
 // Playback
 // ---------------------------------------------------------------------------
@@ -66,9 +64,9 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       _shadersReady = ok;
     });
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Shader download failed — check network')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Shader download failed — check network')));
     } else {
       // Default to Sharpen so the download has an immediate, visible effect.
       if (_prefs.videoShaderStyle == 'off') {
@@ -99,7 +97,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     await _prefs.setVideoShaderTier(picked);
     if (mounted) setState(() {});
   }
-
 
   Future<void> _loadCacheSize() async {
     final n = await MediaCache.sizeBytes();
@@ -155,9 +152,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       context: context,
       backgroundColor: AppColors.surface,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) => SafeArea(
           child: Column(
@@ -239,10 +234,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     ('480p', '480p'),
   ];
 
-  static const List<(String, String)> _audioOptions = [
-    ('sub', 'Sub'),
-    ('dub', 'Dub'),
-  ];
+  static const List<(String, String)> _audioOptions = [('sub', 'Sub'), ('dub', 'Dub')];
 
   static const List<(double, String)> _speedOptions = [
     (0.5, '0.5x'),
@@ -253,12 +245,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     (2.0, '2x'),
   ];
 
-  static const List<(int, String)> _skipOptions = [
-    (5, '5s'),
-    (10, '10s'),
-    (15, '15s'),
-    (30, '30s'),
-  ];
+  static const List<(int, String)> _skipOptions = [(5, '5s'), (10, '10s'), (15, '15s'), (30, '30s')];
 
   static const List<(String, String)> _decoderOptions = [
     ('copy', 'Hardware+ (recommended)'),
@@ -292,20 +279,68 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     return fallback;
   }
 
-  /// Bottom sheet listing [options]; returns the value the user tapped, or
-  /// null if dismissed. Mirrors the active-source picker on the Settings list.
-  Future<T?> _pick<T>({
-    required String title,
-    required List<(T, String)> options,
-    required T current,
-  }) {
+  /// Option picker: bottom sheet on phone, D-pad dialog on TV (Material sheet
+  /// focus paints behind opaque rows and is invisible at 10 feet).
+  Future<T?> _pick<T>({required String title, required List<(T, String)> options, required T current}) {
+    if (sl<AppMode>().isTv) {
+      return showDialog<T>(
+        context: context,
+        barrierColor: Colors.black54,
+        builder: (ctx) => Dialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+          child: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                  child: Text(title, style: AppText.title.copyWith(color: AppColors.textPrimary)),
+                ),
+                const Divider(height: 1, color: AppColors.hairline),
+                Flexible(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
+                    child: ListView(
+                      shrinkWrap: true,
+                      clipBehavior: Clip.none,
+                      padding: const EdgeInsets.only(bottom: 12),
+                      children: [
+                        for (final (value, label) in options)
+                          TvListFocusable(
+                            autofocus: value == current,
+                            semanticLabel: label,
+                            onTap: () => Navigator.pop(ctx, value),
+                            child: ExcludeSemantics(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                child: Row(
+                                  children: [
+                                    Expanded(child: Text(label, style: AppText.headline)),
+                                    if (value == current) Icon(Icons.check, color: AppColors.accent, size: 20),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: true,
       backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -327,15 +362,9 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
             ),
             const Divider(color: AppColors.hairline, height: 1),
-            // Scroll a long option list (e.g. the ~25-language "Translate to"
-            // picker) instead of overflowing the sheet. Short lists
-            // (quality/decoder) stay shorter than the cap, so shrinkWrap sizes
-            // them to their content and they look unchanged.
             Flexible(
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.6,
-                ),
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.6),
                 child: ListView(
                   shrinkWrap: true,
                   padding: const EdgeInsets.only(bottom: 8),
@@ -343,15 +372,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     for (final (value, label) in options)
                       ListTile(
                         onTap: () => Navigator.pop(ctx, value),
-                        title: Text(
-                          label,
-                          style: AppText.body.copyWith(
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        trailing: value == current
-                            ? Icon(Icons.check, color: AppColors.accent)
-                            : null,
+                        title: Text(label, style: AppText.body.copyWith(color: AppColors.textPrimary)),
+                        trailing: value == current ? Icon(Icons.check, color: AppColors.accent) : null,
                       ),
                   ],
                 ),
@@ -375,55 +397,35 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickDecoder() async {
-    final picked = await _pick<String>(
-      title: 'Video decoder',
-      options: _decoderOptions,
-      current: _prefs.videoDecoder,
-    );
+    final picked = await _pick<String>(title: 'Video decoder', options: _decoderOptions, current: _prefs.videoDecoder);
     if (picked == null) return;
     await _prefs.setVideoDecoder(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickRenderer() async {
-    final picked = await _pick<String>(
-      title: 'Video renderer',
-      options: _rendererOptions,
-      current: _prefs.videoOutput,
-    );
+    final picked = await _pick<String>(title: 'Video renderer', options: _rendererOptions, current: _prefs.videoOutput);
     if (picked == null) return;
     await _prefs.setVideoOutput(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickAudio() async {
-    final picked = await _pick<String>(
-      title: 'Default audio',
-      options: _audioOptions,
-      current: _prefs.defaultCategory,
-    );
+    final picked = await _pick<String>(title: 'Default audio', options: _audioOptions, current: _prefs.defaultCategory);
     if (picked == null) return;
     await _prefs.setDefaultCategory(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickSpeed() async {
-    final picked = await _pick<double>(
-      title: 'Default speed',
-      options: _speedOptions,
-      current: _prefs.defaultSpeed,
-    );
+    final picked = await _pick<double>(title: 'Default speed', options: _speedOptions, current: _prefs.defaultSpeed);
     if (picked == null) return;
     await _prefs.setDefaultSpeed(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickSkip() async {
-    final picked = await _pick<int>(
-      title: 'Double-tap skip',
-      options: _skipOptions,
-      current: _prefs.doubleTapSeconds,
-    );
+    final picked = await _pick<int>(title: 'Double-tap skip', options: _skipOptions, current: _prefs.doubleTapSeconds);
     if (picked == null) return;
     await _prefs.setDoubleTapSeconds(picked);
     if (mounted) setState(() {});
@@ -468,10 +470,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   Future<void> _pickPlayer() async {
     final players = await ExternalPlayer().installed();
     if (!mounted) return;
-    final options = <(String, String)>[
-      ('', 'Built-in player'),
-      for (final p in players) (p.package, p.label),
-    ];
+    final options = <(String, String)>[('', 'Built-in player'), for (final p in players) (p.package, p.label)];
     if (players.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -488,9 +487,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       current: _prefs.externalPlayerPackage,
     );
     if (picked == null) return;
-    final label = options
-        .firstWhere((o) => o.$1 == picked, orElse: () => ('', ''))
-        .$2;
+    final label = options.firstWhere((o) => o.$1 == picked, orElse: () => ('', '')).$2;
     await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
     if (mounted) setState(() {});
   }
@@ -535,11 +532,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           children: [
             Row(
               children: [
-                Icon(
-                  Icons.timer_outlined,
-                  color: AppColors.textSecondary,
-                  size: 22,
-                ),
+                Icon(Icons.timer_outlined, color: AppColors.textSecondary, size: 22),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
@@ -553,11 +546,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
                 Text(
                   '${val.round()}s',
-                  style: AppText.headline.copyWith(
-                    color: AppColors.accent,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
+                  style: AppText.headline.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ],
             ),
@@ -569,16 +558,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: AppColors.accent,
                       thumbColor: AppColors.accent,
-                      inactiveTrackColor: AppColors.textSecondary.withValues(
-                        alpha: 0.3,
-                      ),
+                      inactiveTrackColor: AppColors.textSecondary.withValues(alpha: 0.3),
                       overlayColor: AppColors.accent.withValues(alpha: 0.2),
                     ),
                     child: Slider(
                       min: PlaybackPrefs.megaSkipMin.toDouble(),
                       max: PlaybackPrefs.megaSkipMax.toDouble(),
-                      divisions:
-                          PlaybackPrefs.megaSkipMax - PlaybackPrefs.megaSkipMin,
+                      divisions: PlaybackPrefs.megaSkipMax - PlaybackPrefs.megaSkipMin,
                       value: val,
                       label: '${val.round()}s',
                       onChanged: (v) => setLocal(() => val = v),
@@ -604,6 +590,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Playback'),
       body: ListView(
+        clipBehavior: Clip.none,
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
           // ── Quality & audio ─────────────────────────────────────────────
@@ -611,33 +598,22 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           SettingsCard(
             children: [
               SettingsTile(
+                autofocus: true,
                 icon: Icons.high_quality_outlined,
                 title: 'Default quality',
-                subtitle: _labelFor(
-                  _qualityOptions,
-                  _prefs.defaultQuality,
-                  _prefs.defaultQuality,
-                ),
+                subtitle: _labelFor(_qualityOptions, _prefs.defaultQuality, _prefs.defaultQuality),
                 onTap: _pickQuality,
               ),
               SettingsTile(
                 icon: Icons.translate_rounded,
                 title: 'Default audio (anime sub/dub)',
-                subtitle: _labelFor(
-                  _audioOptions,
-                  _prefs.defaultCategory,
-                  _prefs.defaultCategory,
-                ),
+                subtitle: _labelFor(_audioOptions, _prefs.defaultCategory, _prefs.defaultCategory),
                 onTap: _pickAudio,
               ),
               SettingsTile(
                 icon: Icons.speed_outlined,
                 title: 'Default speed',
-                subtitle: _labelFor(
-                  _speedOptions,
-                  _prefs.defaultSpeed,
-                  '${_prefs.defaultSpeed}x',
-                ),
+                subtitle: _labelFor(_speedOptions, _prefs.defaultSpeed, '${_prefs.defaultSpeed}x'),
                 onTap: _pickSpeed,
               ),
               // Video decoder + Anime4K are mpv-renderer-only — the native TV
@@ -646,11 +622,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.memory_outlined,
                   title: 'Video decoder',
-                  subtitle: _labelFor(
-                    _decoderOptions,
-                    _prefs.videoDecoder,
-                    'Hardware+ (recommended)',
-                  ),
+                  subtitle: _labelFor(_decoderOptions, _prefs.videoDecoder, 'Hardware+ (recommended)'),
                   onTap: _pickDecoder,
                 ),
               // Escape hatch for black video with working audio — see
@@ -660,11 +632,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.display_settings_outlined,
                   title: 'Video renderer',
-                  subtitle: _labelFor(
-                    _rendererOptions,
-                    _prefs.videoOutput,
-                    'Auto (recommended)',
-                  ),
+                  subtitle: _labelFor(_rendererOptions, _prefs.videoOutput, 'Auto (recommended)'),
                   onTap: _pickRenderer,
                 ),
               // Anime4K GLSL upscaling — downloaded on demand. One row = Off /
@@ -677,23 +645,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                       ? 'Downloading… ${(_shaderProgress * 100).round()}%'
                       : (!_shadersReady
                             ? 'Tap to download shaders (~0.8 MB)'
-                            : ShaderPresets.styleById(
-                                _prefs.videoShaderStyle,
-                              ).label),
+                            : ShaderPresets.styleById(_prefs.videoShaderStyle).label),
                   trailing: _shaderDownloading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : null,
-                  onTap: _shaderDownloading
-                      ? null
-                      : (!_shadersReady ? _downloadShaders : _pickShaderStyle),
+                  onTap: _shaderDownloading ? null : (!_shadersReady ? _downloadShaders : _pickShaderStyle),
                 ),
-              if (!sl<AppMode>().isTv &&
-                  _shadersReady &&
-                  _prefs.videoShaderStyle != 'off')
+              if (!sl<AppMode>().isTv && _shadersReady && _prefs.videoShaderStyle != 'off')
                 SettingsTile(
                   icon: Icons.speed_outlined,
                   title: 'Anime4K GPU tier',
@@ -715,9 +673,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   title: 'Default player',
                   subtitle: _prefs.externalPlayerPackage.isEmpty
                       ? 'Built-in'
-                      : (_prefs.externalPlayerLabel.isNotEmpty
-                            ? _prefs.externalPlayerLabel
-                            : 'External app'),
+                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : 'External app'),
                   onTap: _pickPlayer,
                 ),
                 SettingsTile(
@@ -725,11 +681,9 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   title: 'Player controls',
                   subtitle: 'Reorder or hide the buttons on the player bar',
                   onTap: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const PlayerControlsScreen(),
-                      ),
-                    );
+                    await Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute<void>(builder: (_) => const PlayerControlsScreen()));
                     if (mounted) setState(() {});
                   },
                 ),
@@ -795,7 +749,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.fast_forward_outlined,
                 title: 'Auto-skip filler episodes',
-                subtitle: 'Jump past filler when going to the next episode '
+                subtitle:
+                    'Jump past filler when going to the next episode '
                     '(anime only)',
                 value: _prefs.autoSkipFiller,
                 onChanged: (v) async {
@@ -816,7 +771,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.high_quality_outlined,
                 title: 'Play trailers in HD',
-                subtitle: 'Up to 1080p when available — falls back to standard '
+                subtitle:
+                    'Up to 1080p when available — falls back to standard '
                     'if not. Uses more data',
                 value: _prefs.trailerHd,
                 onChanged: (v) async {
@@ -898,7 +854,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 _toggleRow(
                   icon: Icons.tv_outlined,
                   title: 'Native TV player',
-                  subtitle: 'Recommended. Turn off only if you prefer the old '
+                  subtitle:
+                      'Recommended. Turn off only if you prefer the old '
                       'player',
                   value: _prefs.nativeTvPlayer,
                   onChanged: (v) async {
@@ -910,7 +867,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 _toggleRow(
                   icon: Icons.surround_sound_outlined,
                   title: 'Software audio (Dolby/DTS)',
-                  subtitle: 'Turn on only if Dolby/DTS audio is silent — may be '
+                  subtitle:
+                      'Turn on only if Dolby/DTS audio is silent — may be '
                       'unstable on some TVs',
                   value: _prefs.tvSoftwareDecoding,
                   onChanged: (v) async {
@@ -967,51 +925,47 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
           // ── Gestures (touch-only — hidden on TV) ────────────────────────
           if (!sl<AppMode>().isTv) ...[
-          const SettingsSectionLabel('Gestures'),
-          SettingsCard(
-            children: [
-              SettingsTile(
-                icon: Icons.touch_app_outlined,
-                title: 'Double-tap skip',
-                subtitle: _labelFor(
-                  _skipOptions,
-                  _prefs.doubleTapSeconds,
-                  '${_prefs.doubleTapSeconds}s',
+            const SettingsSectionLabel('Gestures'),
+            SettingsCard(
+              children: [
+                SettingsTile(
+                  icon: Icons.touch_app_outlined,
+                  title: 'Double-tap skip',
+                  subtitle: _labelFor(_skipOptions, _prefs.doubleTapSeconds, '${_prefs.doubleTapSeconds}s'),
+                  onTap: _pickSkip,
                 ),
-                onTap: _pickSkip,
-              ),
-              _toggleRow(
-                icon: Icons.swipe_outlined,
-                title: 'Gesture controls',
-                subtitle: 'Swipe left for brightness, right for volume',
-                value: _prefs.gestureControls,
-                onChanged: (v) async {
-                  await _prefs.setGestureControls(v);
-                  if (mounted) setState(() {});
-                },
-              ),
-              _toggleRow(
-                icon: Icons.swap_horiz_rounded,
-                title: 'Swipe to seek',
-                subtitle: 'Drag left or right across the video to scrub',
-                value: _prefs.swipeSeek,
-                onChanged: (v) async {
-                  await _prefs.setSwipeSeek(v);
-                  if (mounted) setState(() {});
-                },
-              ),
-              _toggleRow(
-                icon: Icons.fast_forward_rounded,
-                title: 'Hold for 2× speed',
-                subtitle: 'Long-press the video to play at 2× while held',
-                value: _prefs.holdSpeed,
-                onChanged: (v) async {
-                  await _prefs.setHoldSpeed(v);
-                  if (mounted) setState(() {});
-                },
-              ),
-            ],
-          ),
+                _toggleRow(
+                  icon: Icons.swipe_outlined,
+                  title: 'Gesture controls',
+                  subtitle: 'Swipe left for brightness, right for volume',
+                  value: _prefs.gestureControls,
+                  onChanged: (v) async {
+                    await _prefs.setGestureControls(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                _toggleRow(
+                  icon: Icons.swap_horiz_rounded,
+                  title: 'Swipe to seek',
+                  subtitle: 'Drag left or right across the video to scrub',
+                  value: _prefs.swipeSeek,
+                  onChanged: (v) async {
+                    await _prefs.setSwipeSeek(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                _toggleRow(
+                  icon: Icons.fast_forward_rounded,
+                  title: 'Hold for 2× speed',
+                  subtitle: 'Long-press the video to play at 2× while held',
+                  value: _prefs.holdSpeed,
+                  onChanged: (v) async {
+                    await _prefs.setHoldSpeed(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ],
+            ),
           ],
 
           // ── Cache (buffering + clear) ───────────────────────────────────
@@ -1021,21 +975,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               SettingsTile(
                 icon: Icons.memory_rounded,
                 title: 'Video buffer size',
-                subtitle: _labelFor(
-                  _bufferSizeOptions,
-                  _prefs.videoBufferSize,
-                  'Default (128 MB)',
-                ),
+                subtitle: _labelFor(_bufferSizeOptions, _prefs.videoBufferSize, 'Default (128 MB)'),
                 onTap: _pickBufferSize,
               ),
               SettingsTile(
                 icon: Icons.timelapse_rounded,
                 title: 'Video buffer length',
-                subtitle: _labelFor(
-                  _bufferLengthOptions,
-                  _prefs.videoBufferLength,
-                  'Default (60s)',
-                ),
+                subtitle: _labelFor(_bufferLengthOptions, _prefs.videoBufferLength, 'Default (60s)'),
                 onTap: _pickBufferLength,
               ),
               SettingsTile(
@@ -1057,7 +1003,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 _toggleRow(
                   icon: Icons.subtitles_outlined,
                   title: 'Styled subtitles (libass)',
-                  subtitle: 'Real .ass styling — fonts, positions, karaoke, '
+                  subtitle:
+                      'Real .ass styling — fonts, positions, karaoke, '
                       'signs. Best for anime. Applies from the next episode.',
                   value: _prefs.styledSubtitles,
                   onChanged: (v) async {
@@ -1068,15 +1015,12 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               SettingsTile(
                 icon: Icons.text_fields_rounded,
                 title: 'Subtitle style',
-                subtitle: 'Font, colour, outline, opacity, size, position — '
+                subtitle:
+                    'Font, colour, outline, opacity, size, position — '
                     'with live preview',
-                onTap: () => openSubtitleStyleSheet(
-                  context,
-                  null,
-                  () {
-                    if (mounted) setState(() {});
-                  },
-                ),
+                onTap: () => openSubtitleStyleSheet(context, null, () {
+                  if (mounted) setState(() {});
+                }),
               ),
               SettingsTile(
                 icon: Icons.vpn_key_outlined,
@@ -1100,8 +1044,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.download_outlined,
                 title: 'Auto-download subtitles',
-                subtitle:
-                    'When the source has no subtitle in your language',
+                subtitle: 'When the source has no subtitle in your language',
                 value: _prefs.autoDownloadSubtitles,
                 onChanged: (v) async {
                   await _prefs.setAutoDownloadSubtitles(v);
@@ -1111,8 +1054,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               _toggleRow(
                 icon: Icons.translate_outlined,
                 title: 'Auto-translate subtitles',
-                subtitle:
-                    'Translate to your language on play (when the source has none)',
+                subtitle: 'Translate to your language on play (when the source has none)',
                 value: _prefs.autoTranslateSubtitles,
                 onChanged: (v) async {
                   await _prefs.setAutoTranslateSubtitles(v);
@@ -1125,8 +1067,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   title: 'Translate subtitles to',
                   subtitle: _prefs.translateSubtitleTo.isEmpty
                       ? 'Pick a language'
-                      : (languageByPref(_prefs.translateSubtitleTo)?.name ??
-                            _prefs.translateSubtitleTo.toUpperCase()),
+                      : (languageByPref(_prefs.translateSubtitleTo)?.name ?? _prefs.translateSubtitleTo.toUpperCase()),
                   onTap: _pickTranslateLanguage,
                 ),
             ],
@@ -1148,10 +1089,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickSubtitleLanguage() async {
-    final picked = await showSubtitleLanguagePicker(
-      context,
-      _prefs.subtitlePreference,
-    );
+    final picked = await showSubtitleLanguagePicker(context, _prefs.subtitlePreference);
     if (picked == null) return; // dismissed
     await _prefs.setSubtitlePreference(picked);
     if (mounted) setState(() {});
@@ -1168,5 +1106,4 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     await _prefs.setSubtitleApiKey(key.trim());
     if (mounted) setState(() {});
   }
-
 }

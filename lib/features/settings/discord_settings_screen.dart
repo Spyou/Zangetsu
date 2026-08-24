@@ -92,6 +92,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
             SettingsCard(
               children: [
                 SettingsTile(
+                  autofocus: true,
                   icon: Icons.link_rounded,
                   title: _busy ? 'Connecting…' : 'Connect Discord',
                   subtitle: _busy
@@ -112,9 +113,14 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
             SettingsCard(
               children: [
                 SettingsTile(
+                  autofocus: true,
                   icon: Icons.gamepad_outlined,
                   title: 'Rich Presence',
                   subtitle: "Show what you're watching on your profile",
+                  onTap: () async {
+                    await _rpc.setEnabled(!_rpc.enabled);
+                    if (mounted) setState(() {});
+                  },
                   trailing: Switch.adaptive(
                     value: _rpc.enabled,
                     activeThumbColor: AppColors.accent,

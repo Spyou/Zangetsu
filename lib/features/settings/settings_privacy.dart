@@ -140,9 +140,11 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           SettingsCard(
             children: [
               SettingsTile(
+                autofocus: true,
                 icon: Icons.visibility_off_outlined,
                 title: 'Incognito mode',
                 subtitle: 'Pause history, tracking & Discord presence',
+                onTap: () => IncognitoMode.set(!IncognitoMode.on),
                 trailing: ValueListenableBuilder<bool>(
                   valueListenable: IncognitoMode.notifier,
                   builder: (_, on, _) => Switch.adaptive(
@@ -168,6 +170,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 icon: Icons.shield_outlined,
                 title: 'Enable NSFW sources',
                 subtitle: 'Show sources marked 18+',
+                onTap: () => _onNsfwChanged(!_nsfw),
                 trailing: Switch.adaptive(
                   value: _nsfw,
                   activeThumbColor: AppColors.accent,
@@ -178,6 +181,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 icon: Icons.extension_outlined,
                 title: 'Show NSFW sources',
                 subtitle: 'Adult Aniyomi extensions',
+                onTap: () => _onNsfwAniChanged(!_nsfwAni),
                 trailing: Switch.adaptive(
                   value: _nsfwAni,
                   activeThumbColor: AppColors.accent,
