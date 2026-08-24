@@ -369,7 +369,9 @@ class TvNativePlayer {
     final cat = category ?? _category;
     try {
       final sources = await _resolve!(tvEpisodeUrl(ep.url, cat));
-      return pickDefault(sources, prefer: cat == 'dub' ? AudioKind.dub : AudioKind.sub);
+      final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
+      final defaultQuality = sl<PlaybackPrefs>().defaultQuality;
+      return pickDefault(sources, prefer: prefer, pref: defaultQuality);
     } catch (_) {
       return null;
     }

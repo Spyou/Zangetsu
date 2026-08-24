@@ -391,7 +391,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         tvEpisodeUrl(ep.url, _category),
       );
       final prefer = _category == 'dub' ? AudioKind.dub : AudioKind.sub;
-      final src = pickDefault(sources, prefer: prefer);
+      final defaultQuality = sl<PlaybackPrefs>().defaultQuality;
+      final src = pickDefault(sources, prefer: prefer, pref: defaultQuality);
       if (src == null) {
         await _onEpisodeLoadFailed('No playable source.');
         return;
@@ -814,7 +815,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         }
         final sources = await widget.resolveSources(epUrl);
         final prefer = cat == 'dub' ? AudioKind.dub : AudioKind.sub;
-        final src = pickDefault(sources, prefer: prefer);
+        final defaultQuality = sl<PlaybackPrefs>().defaultQuality;
+        final src = pickDefault(sources, prefer: prefer, pref: defaultQuality);
         if (src == null) return;
         _sources = sources;
         _episodes = newEpisodes;

@@ -30,6 +30,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.platform.PlatformView
+import androidx.core.net.toUri
 
 /**
  * A PlatformView hosting an ExoPlayer + [PlayerView] (SurfaceView → hardware
@@ -67,6 +68,16 @@ class ExoPlayerView(
         useController = false // Flutter draws the controls on top
         // keepScreenOn is managed by syncKeepScreenOn() below — on while
         // playing/buffering, released on pause — not pinned on for the session.
+
+        /*
+         Clear the SurfaceView when the player stops/resets. The default (true)
+         retains the last decoded frame — on Android TV's hardware-overlay
+         SurfaceView this means a quality/server switch renders the new video on
+         TOP of the stale old frame (appearing as a smaller, overlapping video
+         with the old one stuttering behind it). False lets stop() actually wipe
+         the surface, so the new source starts clean.
+         */
+        setKeepContentOnPlayerReset(false)
     }
     private val channel = MethodChannel(messenger, "zangetsu/exoplayer_$id")
     private val events = EventChannel(messenger, "zangetsu/exoplayer_events_$id")
@@ -200,12 +211,22 @@ class ExoPlayerView(
                 val drmKey = call.argument<String>("drmKey")
                 if (url != null) {
                     try {
+                        player.stop()
+                        player.clearMediaItems()
+                        // Reset track selection so overrides from the previous source
+                        // (bitrate cap, audio/text track picks) don't bleed into the
+                        // new one and cause a mismatched decoder configuration.
+                        player.trackSelectionParameters = player.trackSelectionParameters
+                            .buildUpon()
+                            .clearOverrides()
+                            .setMaxVideoBitrate(Int.MAX_VALUE)
+                            .build()
                         val httpFactory = DefaultHttpDataSource.Factory()
                             .setAllowCrossProtocolRedirects(true)
                         if (headers.isNotEmpty()) httpFactory.setDefaultRequestProperties(headers)
                         val subConfigs = subs.mapNotNull { m ->
                             val su = m["url"] ?: return@mapNotNull null
-                            MediaItem.SubtitleConfiguration.Builder(Uri.parse(su))
+                            MediaItem.SubtitleConfiguration.Builder(su.toUri())
                                 .setMimeType(m["mime"])
                                 .setLanguage(m["lang"])
                                 .setLabel(m["label"])
@@ -261,6 +282,8 @@ class ExoPlayerView(
                             DefaultHttpDataSource.Factory().setAllowCrossProtocolRedirects(true),
                         ),
                     ).createMediaSource(MediaItem.fromUri(url))
+                    player.stop()
+                    player.clearMediaItems()
                     player.setMediaSource(mediaSource)
                     player.prepare()
                     player.playWhenReady = true

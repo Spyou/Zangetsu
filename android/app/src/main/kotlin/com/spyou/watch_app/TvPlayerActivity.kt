@@ -266,6 +266,9 @@ class TvPlayerActivity : Activity() {
         playerView.useController = false
         // keepScreenOn is managed by syncKeepScreenOn() — on while playing or
         // buffering, released on pause — not pinned on for the whole session.
+        // Clear the SurfaceView when the player stops/resets so a source or
+        // quality switch doesn't leave the old frame behind the new video.
+        playerView.setKeepContentOnPlayerReset(false)
 
         val exo = ExoPlayer.Builder(this, renderersFactory()).build()
         player = exo
@@ -376,6 +379,16 @@ class TvPlayerActivity : Activity() {
                 .build(LocalMediaDrmCallback(json.toByteArray(Charsets.UTF_8)))
             sourceFactory.setDrmSessionManagerProvider { drmManager }
         }
+        // Stop + clear before loading the new source so the SurfaceView drops
+        // the previous frame (relies on keepContentOnPlayerReset = false above)
+        // and old track overrides (bitrate cap, audio pick) don't bleed across.
+        p.stop()
+        p.clearMediaItems()
+        p.trackSelectionParameters = p.trackSelectionParameters
+            .buildUpon()
+            .clearOverrides()
+            .setMaxVideoBitrate(Int.MAX_VALUE)
+            .build()
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         if (positionMs > 0) p.seekTo(positionMs)
         p.prepare()

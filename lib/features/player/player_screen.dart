@@ -644,7 +644,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
       final ep = eps[idx.clamp(0, eps.length - 1)];
       final sources = await widget.resolveSources(ep.url);
       final prefer = widget.category == 'dub' ? AudioKind.dub : AudioKind.sub;
-      final src = pickDefault(sources, prefer: prefer);
+      final defaultQuality = sl<PlaybackPrefs>().defaultQuality;
+      final src = pickDefault(sources, prefer: prefer, pref: defaultQuality);
       if (src == null) throw StateError('no source');
       // A torrent can't be handed to an external player as a magnet — stream it
       // through our engine via the in-app player instead.
