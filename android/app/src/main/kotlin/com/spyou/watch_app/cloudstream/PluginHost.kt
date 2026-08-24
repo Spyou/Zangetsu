@@ -156,7 +156,23 @@ class PluginHost(private val context: Context) {
      *   passes itself (an AppCompatActivity) to satisfy plugins that cast the load
      *   context — the classloader parent stays the app either way.
      */
-    fun loadPlugin(file: File, loadCtx: Context = context): Boolean {
+    /** The Context a plugin is loaded with — the live foreground Activity when
+     *  there is one, else the application context.
+     *
+     *  This matters long after loading: a plugin keeps whatever it is handed in
+     *  `load()` and shows its own dialogs on it later (CNC Verse's Cloudflare
+     *  screen, its subscription and Telegram popups). The application context
+     *  cannot host a dialog at all, and the throwaway AppCompatActivity we used
+     *  to fall back to had already finished by then — either way the dialog died
+     *  on BadTokenException, the plugin swallowed it, and the source quietly
+     *  served a placeholder stream instead of the real one.
+     *
+     *  Background loads (SubscriptionWorker) have no activity and fall back to
+     *  the application context, exactly as before — nothing can show UI there. */
+    private fun loadContext(): Context =
+        com.spyou.watch_app.MainActivity.current?.get() ?: context
+
+    fun loadPlugin(file: File, loadCtx: Context = loadContext()): Boolean {
         if (loaded.contains(file.absolutePath)) return true
         return try {
             // Android 8+ refuses to load a dex/.cs3 the app can WRITE to (W^X
