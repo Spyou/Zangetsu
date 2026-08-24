@@ -119,6 +119,7 @@ class _CsTvViewState extends State<_CsTvView> {
                 ),
                 Expanded(
                   child: ListView(
+                    clipBehavior: Clip.none,
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
                     children: _tab == 0
                         ? [
@@ -130,8 +131,7 @@ class _CsTvViewState extends State<_CsTvView> {
                             _CsScreenTvReposContent(query: _query),
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: TvFocusable(
-                                scale: 1.0,
+                              child: TvListFocusable(
                                 onTap: _showAddCsRepoDialog,
                                 semanticLabel: 'Add CS repo',
                                 child: ExcludeSemantics(
@@ -203,7 +203,9 @@ class _CsTvTabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      scale: 1.04,
+      variant: TvFocusVariant.float,
+      scale: 1.0,
+      borderRadius: 20,
       autofocus: autofocus,
       onTap: onTap,
       semanticLabel: title,
@@ -309,8 +311,7 @@ class _CsScreenTvInstalledGroupState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Group header — OK toggles expand.
-        TvFocusable(
-          scale: 1.0,
+        TvListFocusable(
           onTap: () => setState(() => _expanded = !_expanded),
           semanticLabel: '$title, ${sources.length} installed',
           child: ExcludeSemantics(
@@ -356,7 +357,7 @@ class _CsScreenTvInstalledGroupState
           child: !_expanded
               ? const SizedBox(width: double.infinity)
               : Container(
-                  clipBehavior: Clip.antiAlias,
+                  clipBehavior: Clip.none,
                   decoration: BoxDecoration(
                     color: AppColors.surface,
                     borderRadius: BorderRadius.circular(14),
@@ -413,8 +414,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
         children: [
           // Row body — OK sets this as the active source.
           Expanded(
-            child: TvFocusable(
-              scale: 1.0,
+            child: TvListFocusable(
               onTap: () {
                 context.read<ActiveSourceCubit>().setSource(source.sourceId);
                 ScaffoldMessenger.of(context)
@@ -453,8 +453,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
             ),
           ),
           // Enable/disable toggle — OK flips the state.
-          TvFocusable(
-            scale: 1.0,
+          TvListFocusable(
             onTap: () => manager.setEnabled(source.sourceId, !enabled),
             semanticLabel:
                 '${source.displayName}, ${enabled ? 'on' : 'off'}',
@@ -469,8 +468,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
             ),
           ),
           // Settings gear.
-          TvFocusable(
-            scale: 1.0,
+          TvListFocusable(
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (_) => SourceSettingsScreen(
@@ -698,7 +696,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      clipBehavior: Clip.antiAlias,
+      clipBehavior: Clip.none,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(14),
@@ -715,8 +713,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
               runSpacing: 8,
               children: [
                 // Expand/collapse toggle.
-                TvFocusable(
-                  scale: 1.0,
+                TvListFocusable(
                   onTap: () => setState(() => _expanded = !_expanded),
                   semanticLabel: '$title, $subtitle',
                   child: ExcludeSemantics(
@@ -754,8 +751,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                 ),
                 // Update pill — apply all updates for this repo.
                 if (updates.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: _applyUpdates,
                     semanticLabel: '$title, apply ${updates.length == 1 ? '1 update' : '${updates.length} updates'}',
                     child: ExcludeSemantics(
@@ -780,8 +776,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                   ),
                 // "Check updates" — real repos only (no synthetic Other group).
                 if (group.url.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: _checkUpdates,
                     semanticLabel: '$title, check updates',
                     child: ExcludeSemantics(
@@ -796,8 +791,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                   ),
                 // "Remove repo" — real repos only.
                 if (group.url.isNotEmpty)
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: _removeRepo,
                     semanticLabel: '$title, remove repo',
                     child: ExcludeSemantics(
@@ -1027,77 +1021,27 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
               ),
             )
           else if (installed && widget.update != null)
-            TvFocusable(
-              scale: 1.0,
+            TvActionChip(
               autofocus: widget.autofocus,
+              label: 'Update → v${widget.update!.onlineVersion}',
               onTap: _update,
               semanticLabel:
                   '${widget.plugin.name}, update to v${widget.update!.onlineVersion}',
-              child: ExcludeSemantics(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Update → v${widget.update!.onlineVersion}',
-                    style: AppText.caption.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
             )
           else if (installed)
-            TvFocusable(
-              scale: 1.0,
+            TvActionChip(
               autofocus: widget.autofocus,
+              label: 'Installed',
+              emphasized: false,
               onTap: _uninstall,
               semanticLabel: '${widget.plugin.name}, uninstall',
-              child: ExcludeSemantics(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    border: Border.all(
-                      color: AppColors.textSecondary.withValues(alpha: 0.4),
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Installed',
-                    style: AppText.caption.copyWith(
-                        color: AppColors.textSecondary),
-                  ),
-                ),
-              ),
             )
           else
-            TvFocusable(
-              scale: 1.0,
+            TvActionChip(
               autofocus: widget.autofocus,
+              label: 'Install',
               onTap: _install,
               semanticLabel: '${widget.plugin.name}, install',
-              child: ExcludeSemantics(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: AppColors.accent,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Install',
-                    style: AppText.caption.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
             ),
         ],
       ),
@@ -1151,8 +1095,7 @@ Future<bool> _csScreenTvConfirm(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   // Cancel — autofocused so D-pad lands here first.
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
                     semanticLabel: 'Cancel',
@@ -1170,8 +1113,7 @@ Future<bool> _csScreenTvConfirm(
                   ),
                   const SizedBox(width: 4),
                   // Confirm action.
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: () => Navigator.pop(ctx, true),
                     semanticLabel: confirmLabel,
                     child: ExcludeSemantics(
@@ -1255,8 +1197,7 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
         ),
       ),
       actions: [
-        TvFocusable(
-          scale: 1.0,
+        TvListFocusable(
           onTap: () => Navigator.of(context).pop(),
           semanticLabel: 'Cancel',
           child: ExcludeSemantics(
@@ -1269,8 +1210,7 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
             ),
           ),
         ),
-        TvFocusable(
-          scale: 1.0,
+        TvListFocusable(
           onTap: _submit,
           semanticLabel: 'Add',
           child: ExcludeSemantics(
