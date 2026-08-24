@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 import '../app_mode.dart';
 import '../di/injector.dart';
@@ -14,7 +15,6 @@ import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
 import '../tracker/tracker.dart';
 import '../tracker/tracker_hub.dart';
-import '../tv/tv_focusable.dart';
 
 /// Sentinel popped by [ListStatusSheet] for the "Remove from list" row.
 const String _kRemove = '__remove__';
@@ -283,8 +283,7 @@ class ListStatusSheet extends StatelessWidget {
     bool autofocus = false,
   }) {
     if (!sl.isRegistered<AppMode>() || !sl<AppMode>().isTv) return child;
-    return TvFocusable(
-      scale: 1.0,
+    return TvListFocusable(
       autofocus: autofocus,
       onTap: onTap,
       child: Focus(

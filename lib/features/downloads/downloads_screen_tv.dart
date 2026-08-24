@@ -11,6 +11,7 @@ import '../../core/download/download_record.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/states.dart';
 import '../settings/download_location_screen.dart' show folderLabelFromUri;
 import 'downloads_screen.dart';
@@ -181,7 +182,7 @@ class _TvShowGroup extends StatelessWidget {
         ),
         // ── Episode tiles ───────────────────────────────────────────────────
         for (var j = 0; j < records.length; j++)
-          TvFocusable(scale: 1.0,
+          TvListFocusable(
             // First tile of the first group is the initial D-pad target.
             autofocus: autofocusFirst && j == 0,
             // OK opens the action dialog for the row's current status
@@ -233,8 +234,9 @@ class _TvShowGroup extends StatelessWidget {
                 ),
               ),
               const Divider(height: 1, color: AppColors.hairline),
-              TvFocusable(
+              TvListFocusable(
                 autofocus: true,
+                semanticLabel: 'Cancel',
                 onTap: () => Navigator.of(dctx).pop(),
                 child: const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -248,7 +250,8 @@ class _TvShowGroup extends StatelessWidget {
                   ),
                 ),
               ),
-              TvFocusable(
+              TvListFocusable(
+                semanticLabel: 'Delete all',
                 onTap: () {
                   Navigator.of(dctx).pop();
                   unawaited(manager.deleteAll(records));
@@ -338,8 +341,9 @@ class _TvDownloadActions extends StatelessWidget {
             ),
             const Divider(height: 1, color: AppColors.hairline),
             for (int i = 0; i < actions.length; i++)
-              TvFocusable(
+              TvListFocusable(
                 autofocus: i == 0,
+                semanticLabel: actions[i].$1,
                 onTap: () {
                   Navigator.of(context).pop();
                   actions[i].$3();
@@ -388,7 +392,7 @@ class _TvLocationHeaderState extends State<_TvLocationHeader> {
         'Download › Zangetsu';
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
-      child: TvFocusable(
+      child: TvListFocusable(
         autofocus: widget.autofocus,
         semanticLabel: 'Change download folder',
         onTap: () async {
@@ -491,8 +495,9 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
     bool selected = false,
   }) {
     final tint = selected ? AppColors.accent : AppColors.textPrimary;
-    return TvFocusable(
+    return TvListFocusable(
       autofocus: autofocus,
+      semanticLabel: title,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),

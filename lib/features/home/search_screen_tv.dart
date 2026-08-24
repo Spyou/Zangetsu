@@ -7,6 +7,7 @@ import '../../core/playback/search_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/tv/tv_poster_tile.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
@@ -368,7 +369,6 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
               TvFocusable(
                 key: const ValueKey('tv-search-clear-history'),
                 variant: TvFocusVariant.pill,
-                scale: 1.0,
                 semanticLabel: 'Clear search history',
                 onTap: () async {
                   await history.clear();
@@ -398,8 +398,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
         for (final q in recent)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
-            child: TvFocusable(
-              scale: 1.0,
+            child: TvListFocusable(
               onTap: () {
                 _controller.value = TextEditingValue(
                   text: q,
@@ -587,8 +586,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
         // overlap the field above (tester report).
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 2),
-          child: TvFocusable(
-            scale: 1.0,
+          child: TvListFocusable(
             onTap: () {
               _controller.value = TextEditingValue(
                 text: s,

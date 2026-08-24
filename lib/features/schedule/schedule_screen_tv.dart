@@ -74,16 +74,19 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
                 children: [
                   TvFocusable(
                     autofocus: true,
+                    variant: TvFocusVariant.pill,
                     onTap: () => setState(() => _tab = 0),
                     child: _Chip(label: 'Anime', selected: _tab == 0),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
+                    variant: TvFocusVariant.pill,
                     onTap: () => setState(() => _tab = 1),
                     child: _Chip(label: 'Movies & TV', selected: _tab == 1),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
+                    variant: TvFocusVariant.pill,
                     onTap: () => setState(() => _tab = 2),
                     child: _Chip(label: 'My List', selected: _tab == 2),
                   ),
@@ -170,6 +173,7 @@ class _DayChipRow extends StatelessWidget {
           return Padding(
             padding: const EdgeInsets.only(right: 12),
             child: TvFocusable(
+              variant: TvFocusVariant.pill,
               onTap: () => onSelect(d),
               child: _Chip(
                 label: i == 0 ? 'Today' : '${_wd[d.weekday - 1]} ${d.day}',
@@ -307,6 +311,8 @@ class _PosterTile extends StatelessWidget {
           SizedBox(
             height: imageHeight,
             child: TvFocusable(
+              variant: TvFocusVariant.float,
+              scale: 1.06,
               onTap: onTap,
               focusLabel: title,
               child: ClipRRect(

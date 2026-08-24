@@ -223,14 +223,21 @@ class _TvPairScreenState extends State<TvPairScreen> {
         const SizedBox(height: 28),
         TvFocusable(
           autofocus: true,
-          scale: 1.0,
+          variant: TvFocusVariant.pill,
           onTap: _create,
-          child: Container(
+          semanticLabel: 'Get a new code',
+          builder: (focused) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             decoration: BoxDecoration(
-                color: AppColors.accent, borderRadius: BorderRadius.circular(12)),
-            child: Text('Get a new code',
-                style: AppText.headline.copyWith(color: Colors.white)),
+              color: focused ? Colors.white : AppColors.accent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Get a new code',
+              style: AppText.headline.copyWith(
+                color: focused ? Colors.black : Colors.white,
+              ),
+            ),
           ),
         ),
       ],

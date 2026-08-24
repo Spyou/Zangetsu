@@ -7,7 +7,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 /// Fetch the announcements feed and, if something new arrived, pop the newest
 /// one as a bottom sheet over the running UI. [context] must be a live widget
@@ -217,6 +217,6 @@ class _AnnouncementSheet extends StatelessWidget {
           );
     if (!isTv) return button;
     // On TV the D-pad drives focus; TvFocusable handles OK-key activation.
-    return TvFocusable(scale: 1.0, autofocus: autofocus, onTap: onTap, child: button);
+    return TvListFocusable( autofocus: autofocus, onTap: onTap, child: button);
   }
 }
