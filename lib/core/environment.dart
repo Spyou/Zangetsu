@@ -33,9 +33,9 @@ class Environment {
   /// must be an Appwrite Web platform (already added for the reset page).
   static const String siteOpenUrl = '$siteBaseUrl/open/';
 
-  /// TV pairing QR. iPhone Camera only treats http(s) as a link, so the TV
-  /// encodes this URL (not `zangetsu://pair`). The page is the phone login +
-  /// approve flow — same `pair-tv` approve the Android app uses.
+  /// TV pairing page on the website. Used when someone opens a shared/https
+  /// pair link in a browser; the page can hand off to the app via
+  /// `zangetsu://pair`. App-facing TV QRs encode the deeplink directly.
   static const String sitePairUrl = '$siteBaseUrl/pair/';
 
   /// The "open" page redirects to `zangetsu://open?…`; an installed app catches

@@ -161,9 +161,8 @@ class _TvPairScreenState extends State<TvPairScreen> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: QrImageView(
-              // https://… — iPhone Camera rejects custom schemes with
-              // "No usable data found". The /pair/ page is the web login.
-              data: PairLink.qrData(code: _code ?? '', nonce: _nonce),
+              // Deeplink so an installed phone app opens Pair a TV directly.
+              data: PairLink.deepLink(code: _code ?? '', nonce: _nonce),
               size: 220,
               gapless: true,
             ),

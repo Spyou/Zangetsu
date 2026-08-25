@@ -1,8 +1,7 @@
 import '../environment.dart';
 
-/// Encodes the TV pairing QR as an HTTPS URL (iPhone Camera rejects custom
-/// schemes with "No usable data found") and parses incoming pair links from
-/// either the website or the `zangetsu://pair` redirect it fires.
+/// Encodes TV pairing links and parses incoming pair URLs from either the
+/// website (`https://zangetsu.online/pair/…`) or the `zangetsu://pair` deeplink.
 class PairLink {
   const PairLink({this.code, this.nonce, this.trackers = false});
 
@@ -12,8 +11,7 @@ class PairLink {
   /// When true this is the trackers-only QR (Flow B), not account sign-in.
   final bool trackers;
 
-  /// Payload printed in the TV QR. An http(s) URL so iPhone Camera treats it
-  /// as a link instead of "No usable data found".
+  /// HTTPS pair URL for web/share links (browser → optional app handoff).
   static String qrData({
     required String code,
     String? nonce,
@@ -24,8 +22,8 @@ class PairLink {
     ).toString();
   }
 
-  /// Custom-scheme link the `/pair/` landing page (and Android intent-filters)
-  /// hand off to [OpenLinkService].
+  /// Custom-scheme deeplink for TV "have the app" QRs and Android intent-filters.
+  /// Handled by [OpenLinkService].
   static String deepLink({
     required String code,
     String? nonce,
