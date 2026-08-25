@@ -134,12 +134,11 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // QR 1 — phone-app relay. HTTPS so iPhone Camera treats
-                      // it as a link (custom schemes show "No usable data
-                      // found"). The /pair/ page then opens the app, which
-                      // approves and relays this $_label session to the TV.
+                      // QR 1 — phone-app relay via deeplink. Opens the installed
+                      // app directly so it can approve and relay this $_label
+                      // session to the TV.
                       _qrOption(
-                        data: PairLink.qrData(
+                        data: PairLink.deepLink(
                           code: _code!,
                           nonce: _nonce,
                           trackers: true,

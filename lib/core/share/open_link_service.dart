@@ -13,7 +13,7 @@ import 'pair_link.dart';
 import 'share_link.dart';
 
 /// Listens for incoming share links (`zangetsu://open?…`) and pairing links
-/// (`https://zangetsu.online/pair/?…` or `zangetsu://pair?…`) and opens the
+/// (`zangetsu://pair?…` or `https://zangetsu.online/pair/?…`) and opens the
 /// matching screen. Tracker OAuth listeners share the same [AppLinks] stream
 /// and ignore anything they don't own.
 class OpenLinkService {
@@ -29,8 +29,8 @@ class OpenLinkService {
   StreamSubscription<Uri>? _sub;
 
   void _onLink(Uri uri) {
-    // HTTPS /pair/?code=… (iPhone Camera) or zangetsu://pair?code=… (site
-    // redirect / Android custom-scheme). Same payload either way.
+    // zangetsu://pair?code=… (TV QR) or HTTPS /pair/?code=… (web share /
+    // landing page). Same payload either way.
     final pair = PairLink.parse(uri);
     if (pair != null) {
       if (pair.trackers) {
