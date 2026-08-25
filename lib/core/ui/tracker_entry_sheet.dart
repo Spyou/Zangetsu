@@ -1,12 +1,16 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
+import '../di/injector.dart';
 import '../models/media_item.dart';
 import '../anilist/anilist_service.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_focusable.dart';
+import '../tv/tv_list_focusable.dart';
 import 'anilist_custom_lists_sheet.dart';
 import '../tracker/tracker.dart';
 
@@ -142,72 +146,87 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     if (mounted) Navigator.pop(context);
   }
 
+  bool get _isTv =>
+      sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
   @override
   Widget build(BuildContext context) {
+    // Cap height + scroll so status chips / steppers / actions don't overflow
+    // the bottom sheet on TV (extra TvFocusable chrome) or short phone screens.
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 10),
-            Center(
-              child: Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.hairline,
-                  borderRadius: BorderRadius.circular(2),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 10),
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.hairline,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
+                _header(),
+                const Divider(
+                    height: 1, thickness: 1, color: AppColors.hairline),
+                const SizedBox(height: 18),
+                _statusChips(),
+                _customListsRow(context),
+                const SizedBox(height: 20),
+                _stepperRow(
+                  _reading ? 'Chapters' : 'Episodes',
+                  _progress.toString(),
+                  onMinus: _progress > 0
+                      ? () => setState(() => _progress--)
+                      : null,
+                  onPlus: () => setState(() => _progress++),
+                ),
+                const SizedBox(height: 16),
+                _stepperRow(
+                  'Score',
+                  _score == 0 ? 'Not rated' : '$_score / 10',
+                  onMinus:
+                      _score > 0 ? () => setState(() => _score--) : null,
+                  onPlus:
+                      _score < 10 ? () => setState(() => _score++) : null,
+                ),
+                const SizedBox(height: 24),
+                _applyButton(),
+                const SizedBox(height: 6),
+                if (widget.onFind != null)
+                  _actionRow(
+                    Icons.search_rounded,
+                    'Find to watch',
+                    color: AppColors.textPrimary,
+                    onTap: _busy
+                        ? null
+                        : () {
+                            Navigator.pop(context);
+                            widget.onFind!.call();
+                          },
+                  ),
+                _actionRow(
+                  Icons.delete_outline_rounded,
+                  'Remove from ${widget.tracker.displayName}',
+                  color: AppColors.accent,
+                  onTap: _busy ? null : _remove,
+                ),
+                const SizedBox(height: 10),
+              ],
             ),
-            _header(),
-            const Divider(height: 1, thickness: 1, color: AppColors.hairline),
-            const SizedBox(height: 18),
-            _statusChips(),
-            _customListsRow(context),
-            const SizedBox(height: 20),
-            _stepperRow(
-              _reading ? 'Chapters' : 'Episodes',
-              _progress.toString(),
-              onMinus: _progress > 0
-                  ? () => setState(() => _progress--)
-                  : null,
-              onPlus: () => setState(() => _progress++),
-            ),
-            const SizedBox(height: 16),
-            _stepperRow(
-              'Score',
-              _score == 0 ? 'Not rated' : '$_score / 10',
-              onMinus: _score > 0 ? () => setState(() => _score--) : null,
-              onPlus: _score < 10 ? () => setState(() => _score++) : null,
-            ),
-            const SizedBox(height: 24),
-            _applyButton(),
-            const SizedBox(height: 6),
-            if (widget.onFind != null)
-              _actionRow(
-                Icons.search_rounded,
-                'Find to watch',
-                color: AppColors.textPrimary,
-                onTap: _busy
-                    ? null
-                    : () {
-                        Navigator.pop(context);
-                        widget.onFind!.call();
-                      },
-              ),
-            _actionRow(
-              Icons.delete_outline_rounded,
-              'Remove from ${widget.tracker.displayName}',
-              color: AppColors.accent,
-              onTap: _busy ? null : _remove,
-            ),
-            const SizedBox(height: 10),
-          ],
+          ),
         ),
       ),
     );
@@ -215,7 +234,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
 
   Widget _actionRow(IconData icon, String label,
       {required Color color, required VoidCallback? onTap}) {
-    return InkWell(
+    final row = InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -226,6 +245,29 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
             Text(label, style: AppText.body.copyWith(color: color)),
           ],
         ),
+      ),
+    );
+    return _tvRow(
+      onTap: onTap ?? () {},
+      child: row,
+    );
+  }
+
+  /// Phone keeps InkWell/ListTile as-is. TV wraps so D-pad OK can activate
+  /// after a held-OK on a My List tracker poster.
+  Widget _tvRow({
+    required Widget child,
+    required VoidCallback onTap,
+    bool autofocus = false,
+  }) {
+    if (!_isTv) return child;
+    return TvListFocusable(
+      autofocus: autofocus,
+      onTap: onTap,
+      child: Focus(
+        canRequestFocus: false,
+        descendantsAreFocusable: false,
+        child: child,
       ),
     );
   }
@@ -283,33 +325,38 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     final service = widget.tracker;
     if (service is! AniListService) return const SizedBox.shrink();
     final n = widget.customLists.length;
-    return ListTile(
-      leading: const Icon(Icons.playlist_add_rounded,
-          color: AppColors.textSecondary),
-      title: const Text('Custom lists'),
-      subtitle: Text(
-        n == 0 ? 'Not in any' : widget.customLists.join(', '),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: AppText.caption,
+    Future<void> openLists() async {
+      // Grab the navigator's own context BEFORE popping. Using `context`
+      // after the pop passes a dead one to the picker, whose first
+      // `context.mounted` check then bails — the sheet closed and nothing
+      // opened, which looked exactly like the row doing nothing.
+      final rootContext = Navigator.of(context, rootNavigator: true).context;
+      Navigator.pop(context);
+      await showAniListCustomListsSheet(
+        rootContext,
+        service,
+        widget.item,
+        widget.customLists,
+      );
+      widget.onChanged?.call();
+    }
+
+    return _tvRow(
+      onTap: openLists,
+      child: ListTile(
+        leading: const Icon(Icons.playlist_add_rounded,
+            color: AppColors.textSecondary),
+        title: const Text('Custom lists'),
+        subtitle: Text(
+          n == 0 ? 'Not in any' : widget.customLists.join(', '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.caption,
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded,
+            color: AppColors.textSecondary, size: 20),
+        onTap: openLists,
       ),
-      trailing: const Icon(Icons.chevron_right_rounded,
-          color: AppColors.textSecondary, size: 20),
-      onTap: () async {
-        // Grab the navigator's own context BEFORE popping. Using `context`
-        // after the pop passes a dead one to the picker, whose first
-        // `context.mounted` check then bails — the sheet closed and nothing
-        // opened, which looked exactly like the row doing nothing.
-        final rootContext = Navigator.of(context, rootNavigator: true).context;
-        Navigator.pop(context);
-        await showAniListCustomListsSheet(
-          rootContext,
-          service,
-          widget.item,
-          widget.customLists,
-        );
-        widget.onChanged?.call();
-      },
     );
   }
 
@@ -329,30 +376,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final s in WatchStatus.values)
-                GestureDetector(
-                  onTap: () => setState(() => _status = s),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _status == s
-                          ? AppColors.accent
-                          : AppColors.surface2,
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    child: Text(
-                      s.shortLabel,
-                      style: AppText.body.copyWith(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w600,
-                        color: _status == s
-                            ? Colors.white
-                            : AppColors.textSecondary,
-                      ),
-                    ),
-                  ),
-                ),
+              for (final s in WatchStatus.values) _statusChip(s),
             ],
           ),
         ],
@@ -360,23 +384,68 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
     );
   }
 
+  Widget _statusChip(WatchStatus s) {
+    final selected = _status == s;
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: selected ? AppColors.accent : AppColors.surface2,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Text(
+        s.shortLabel,
+        style: AppText.body.copyWith(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+          color: selected ? Colors.white : AppColors.textSecondary,
+        ),
+      ),
+    );
+    if (_isTv) {
+      // Accent-selected chips need a white outline (float/box), not the
+      // accent row wash — same rationale as [TvActionChip].
+      return TvFocusable(
+        variant: selected ? TvFocusVariant.float : TvFocusVariant.box,
+        scale: 1.0,
+        borderRadius: 18,
+        onTap: () => setState(() => _status = s),
+        child: chip,
+      );
+    }
+    return GestureDetector(
+      onTap: () => setState(() => _status = s),
+      child: chip,
+    );
+  }
+
   Widget _stepperRow(String label, String value,
       {VoidCallback? onMinus, VoidCallback? onPlus}) {
-    Widget btn(IconData icon, VoidCallback? onTap) => GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon,
-                size: 18,
-                color:
-                    onTap == null ? AppColors.textTertiary : AppColors.accent),
-          ),
-        );
+    Widget btn(IconData icon, VoidCallback? onTap, String semantic) {
+      final face = Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: AppColors.surface2,
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon,
+            size: 18,
+            color: onTap == null ? AppColors.textTertiary : AppColors.accent),
+      );
+      if (!_isTv) {
+        return GestureDetector(onTap: onTap, child: face);
+      }
+      if (onTap == null) return face;
+      return TvFocusable(
+        variant: TvFocusVariant.box,
+        scale: 1.12,
+        borderRadius: 17,
+        semanticLabel: semantic,
+        onTap: onTap,
+        child: face,
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       child: Row(
@@ -384,7 +453,7 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
           Text(label,
               style: AppText.body.copyWith(color: AppColors.textPrimary)),
           const Spacer(),
-          btn(Icons.remove_rounded, onMinus),
+          btn(Icons.remove_rounded, onMinus, 'Decrease $label'),
           SizedBox(
             width: 92,
             child: Text(value,
@@ -393,37 +462,55 @@ class _TrackerEntrySheetState extends State<_TrackerEntrySheet> {
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w700)),
           ),
-          btn(Icons.add_rounded, onPlus),
+          btn(Icons.add_rounded, onPlus, 'Increase $label'),
         ],
       ),
     );
   }
 
   Widget _applyButton() {
+    // Plain accent face (not FilledButton) so TV focus chrome isn't fighting
+    // Material's own focus node. Accent fill → white outline ([TvFocusVariant.box]),
+    // never [TvListFocusable]/row — the red wash is invisible on a red button.
+    final face = Container(
+      width: double.infinity,
+      height: 48,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.accent,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: _busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white),
+            )
+          : Text('Apply changes',
+              style: AppText.body.copyWith(
+                  color: Colors.white, fontWeight: FontWeight.w700)),
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14)),
-          ),
-          onPressed: _busy ? null : _apply,
-          child: _busy
-              ? const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white),
-                )
-              : Text('Apply changes',
-                  style: AppText.body.copyWith(
-                      color: Colors.white, fontWeight: FontWeight.w700)),
-        ),
-      ),
+      child: _isTv
+          ? TvFocusable(
+              autofocus: true,
+              variant: TvFocusVariant.box,
+              scale: 1.03,
+              borderRadius: 14,
+              semanticLabel: 'Apply changes',
+              onTap: _busy ? () {} : _apply,
+              child: face,
+            )
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _busy ? null : _apply,
+                borderRadius: BorderRadius.circular(14),
+                child: face,
+              ),
+            ),
     );
   }
 }
