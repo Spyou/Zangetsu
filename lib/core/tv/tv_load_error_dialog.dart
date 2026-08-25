@@ -42,7 +42,6 @@ Future<void> showTvPlaybackLoadError(BuildContext context) {
               Align(
                 alignment: Alignment.centerRight,
                 child: TvFocusable(
-                  scale: 1.0,
                   autofocus: true,
                   variant: TvFocusVariant.pill,
                   onTap: () => Navigator.pop(ctx),

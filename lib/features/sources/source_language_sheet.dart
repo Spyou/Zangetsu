@@ -4,7 +4,7 @@ import '../../core/i18n/source_languages.dart';
 import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 /// Multi-select language picker for the Mihon/Aniyomi catalogs. One row per
 /// filterable language ([sortedSourceLangCodes]); toggling writes straight
@@ -121,9 +121,8 @@ Future<void> showSourceLanguageSheetTv(BuildContext context, LangPrefs prefs) {
                               vertical: 3,
                               horizontal: 4,
                             ),
-                            child: TvFocusable(
+                            child: TvListFocusable(
                               autofocus: i == 0,
-                              scale: 1.0,
                               semanticLabel: sourceLangLabel(codes[i]),
                               onTap: () {
                                 final next = {...enabled};

@@ -8,7 +8,7 @@ import '../../core/notify/subscription_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
 
@@ -76,17 +76,16 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
                           'when a new episode is out.',
                     )
                   : ListView.separated(
+                      clipBehavior: Clip.none,
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       itemCount: subs.length,
                       separatorBuilder: (_, _) =>
                           const Divider(height: 1, color: AppColors.hairline),
                       itemBuilder: (context, i) {
                         final s = subs[i];
-                        // Reuse the existing row widget verbatim, wrapped in
-                        // TvFocusable so D-pad up/down navigates and OK opens
-                        // the same Detail screen as the phone tap.
-                        return TvFocusable(scale: 1.0, 
+                        return TvListFocusable(
                           autofocus: i == 0,
+                          semanticLabel: s.title,
                           onTap: () => _openDetail(s),
                           child: ListTile(
                             leading: ClipRRect(

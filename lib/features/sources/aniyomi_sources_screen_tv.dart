@@ -122,6 +122,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                 ),
                 Expanded(
                   child: ListView(
+                    clipBehavior: Clip.none,
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 48),
                     children: _tab == 0
                         ? [
@@ -137,8 +138,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                             ),
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
-                              child: TvFocusable(
-                                scale: 1.0,
+                              child: TvListFocusable(
                                 onTap: widget.onAddRepo,
                                 semanticLabel: 'Add Aniyomi repo',
                                 child: ExcludeSemantics(
@@ -210,7 +210,9 @@ class _AniTvTabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusable(
-      scale: 1.04,
+      variant: TvFocusVariant.float,
+      scale: 1.0,
+      borderRadius: 20,
       autofocus: autofocus,
       onTap: onTap,
       semanticLabel: title,
@@ -341,8 +343,7 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
     final lang = source is AniyomiProvider ? source.info.lang : '';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
-      child: TvFocusable(
-        scale: 1.0,
+      child: TvListFocusable(
         onTap: () {
           context.read<ActiveSourceCubit>().setSource(source.sourceId);
           ScaffoldMessenger.of(context)
@@ -392,8 +393,7 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
                 ),
               ),
               if (_hasSettings)
-                TvFocusable(
-                  scale: 1.0,
+                TvListFocusable(
                   onTap: _openSettings,
                   semanticLabel: '${source.displayName}, settings',
                   child: const Padding(
@@ -583,8 +583,7 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TvFocusable(
-            scale: 1.0,
+          TvListFocusable(
             onTap: () => setState(() => _expanded = !_expanded),
             semanticLabel: '$_repoDisplayName, '
                 '${_fetching ? 'loading' : _fetchError != null ? 'error' : '${entries.length} extensions'}',
@@ -629,8 +628,7 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: widget.onRemove,
                     semanticLabel: '$_repoDisplayName, remove repo',
                     child: const Icon(
@@ -746,8 +744,7 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
     final installed = widget.installed;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
-      child: TvFocusable(
-        scale: 1.0,
+      child: TvListFocusable(
         onTap: installed ? _uninstall : _install,
         semanticLabel: '${entry.name}, ${installed ? 'uninstall' : 'install'}',
         child: ExcludeSemantics(
@@ -890,8 +887,7 @@ Future<bool> _aniScreenTvConfirm(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   // Cancel — autofocused so D-pad lands here first.
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
                     semanticLabel: 'Cancel',
@@ -909,8 +905,7 @@ Future<bool> _aniScreenTvConfirm(
                   ),
                   const SizedBox(width: 4),
                   // Confirm action.
-                  TvFocusable(
-                    scale: 1.0,
+                  TvListFocusable(
                     onTap: () => Navigator.pop(ctx, true),
                     semanticLabel: confirmLabel,
                     child: ExcludeSemantics(
@@ -994,8 +989,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
         ),
       ),
       actions: [
-        TvFocusable(
-          scale: 1.0,
+        TvListFocusable(
           onTap: () => Navigator.of(context).pop(),
           semanticLabel: 'Cancel',
           child: ExcludeSemantics(
@@ -1008,8 +1002,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
             ),
           ),
         ),
-        TvFocusable(
-          scale: 1.0,
+        TvListFocusable(
           onTap: _submit,
           semanticLabel: 'Add',
           child: ExcludeSemantics(

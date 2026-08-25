@@ -6,12 +6,14 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen_tv.dart';
@@ -55,6 +57,8 @@ class _StubProviderRegistry implements ProviderRegistry {
 /// rendered in tests.
 void _registerStubs() {
   final sl = GetIt.instance;
+  // SettingsTile / SettingsCard gate TV focus chrome on AppMode.isTv.
+  sl.registerSingleton<AppMode>(const AppMode(isTv: true));
   sl.registerSingleton<SearchPrefs>(_StubSearchPrefs());
   sl.registerSingleton<ProviderRegistry>(_StubProviderRegistry());
 }
@@ -135,10 +139,11 @@ void main() {
       expect(find.text('Downloads'), findsOneWidget);
       expect(find.text('Search layout'), findsOneWidget);
 
-      // At least several tiles are wrapped in TvFocusable.
+      // At least several tiles are wrapped in TvFocusable (via TvListFocusable).
       final focusables =
           tester.widgetList<TvFocusable>(find.byType(TvFocusable)).toList();
       expect(focusables.length, greaterThanOrEqualTo(5));
+      expect(find.byType(TvListFocusable), findsWidgets);
 
       // The very first TvFocusable (the Sign-in / account tile) carries
       // autofocus=true so the D-pad lands on it when the Settings page opens.

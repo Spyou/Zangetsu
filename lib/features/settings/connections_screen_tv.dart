@@ -7,7 +7,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../auth/tv_tracker_connect_screen.dart';
 
 /// TV-native tracker Connections: each of AniList / MAL / Simkl with its status
@@ -51,6 +51,7 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
         children: [
           Expanded(
             child: ListView.separated(
+              clipBehavior: Clip.none,
               padding: const EdgeInsets.fromLTRB(40, 8, 40, 40),
               itemCount: _rows.length,
               separatorBuilder: (_, _) => const SizedBox(height: 14),
@@ -60,10 +61,9 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                 final who = connected
                     ? (r.t.viewerName != null ? 'Connected as ${r.t.viewerName}' : 'Connected')
                     : 'Not connected';
-                return TvFocusable(
+                return TvListFocusable(
                   autofocus: i == 0,
-                  scale: 1.0,
-                  foregroundHighlight: true,
+                  semanticLabel: '${r.label}, $who',
                   onTap: () => connected ? _disconnect(r.t) : _connect(r.id),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
@@ -77,17 +77,31 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(r.label, style: AppText.headline.copyWith(fontSize: 17)),
+                              Text(
+                                r.label,
+                                style: AppText.headline.copyWith(fontSize: 17),
+                              ),
                               const SizedBox(height: 3),
-                              Text(who, style: AppText.caption.copyWith(
-                                  color: connected ? AppColors.textSecondary : AppColors.textTertiary)),
+                              Text(
+                                who,
+                                style: AppText.caption.copyWith(
+                                  color: connected
+                                      ? AppColors.textSecondary
+                                      : AppColors.textTertiary,
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                        Text(connected ? 'Disconnect' : 'Connect',
-                            style: AppText.body.copyWith(
-                                color: connected ? Colors.redAccent : AppColors.textPrimary,
-                                fontWeight: FontWeight.w700)),
+                        Text(
+                          connected ? 'Disconnect' : 'Connect',
+                          style: AppText.body.copyWith(
+                            color: connected
+                                ? Colors.redAccent
+                                : AppColors.textPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ],
                     ),
                   ),
