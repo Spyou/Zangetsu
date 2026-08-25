@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
@@ -22,8 +23,21 @@ class AppearanceScreen extends StatefulWidget {
 }
 
 class _AppearanceScreenState extends State<AppearanceScreen> {
-  bool get _accentIsCustom => !ThemeController.accentPresets
-      .any((p) => p.$2.toARGB32() == AppColors.accent.toARGB32());
+  /// Android 12+ only. Resolved once; the row stays hidden everywhere else
+  /// rather than showing a switch that couldn't do anything.
+  bool _wallpaperSupported = false;
+
+  @override
+  void initState() {
+    super.initState();
+    ThemeController.supported().then((ok) {
+      if (mounted && ok) setState(() => _wallpaperSupported = true);
+    });
+  }
+
+  bool get _accentIsCustom => !ThemeController.accentPresets.any(
+    (p) => p.$2.toARGB32() == AppColors.accent.toARGB32(),
+  );
 
   Future<void> _pickCustom() async {
     var temp = AppColors.accent;
@@ -46,7 +60,10 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, temp),
@@ -68,84 +85,120 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Appearance'),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
+        padding: const EdgeInsets.only(top: 4, bottom: 32),
         children: [
-          // ── Theme colour ──────────────────────────────────────────────────
-          _label('THEME COLOUR'),
-          const SizedBox(height: 6),
-          Text(
+          // ── Accent colour ─────────────────────────────────────────────────
+          // The swatch strip stays exactly as it was, and stays first.
+          const SettingsSectionLabel('Accent colour', first: true),
+          _blurb(
             'The highlight colour used across buttons, chips, progress and '
             'selected items.',
-            style: AppText.caption,
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 100,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.zero,
-              clipBehavior: Clip.none,
-              itemCount: presets.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (_, i) {
-                if (i == presets.length) {
-                  return _CustomCard(
-                    selected: _accentIsCustom,
-                    currentColor: AppColors.accent,
-                    onTap: _pickCustom,
+          Opacity(
+            // Dimmed while the wallpaper is choosing — the swatches still work,
+            // and tapping one takes you back to picking by hand.
+            opacity: ThemeController.materialYou ? 0.4 : 1,
+            child: SizedBox(
+              height: 100,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                // Align with SettingsCard's margin so the strip lines up with
+                // the cards below it.
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                clipBehavior: Clip.none,
+                itemCount: presets.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (_, i) {
+                  if (i == presets.length) {
+                    return _CustomCard(
+                      selected: _accentIsCustom,
+                      currentColor: AppColors.accent,
+                      onTap: () {
+                        if (_blockedByMaterialYou()) return;
+                        _pickCustom();
+                      },
+                    );
+                  }
+                  final (name, color) = presets[i];
+                  return _AccentCard(
+                    name: name,
+                    color: color,
+                    selected:
+                        !_accentIsCustom &&
+                        AppColors.accent.toARGB32() == color.toARGB32(),
+                    isDefault: ThemeController.isDefault(color),
+                    onTap: () async {
+                      if (_blockedByMaterialYou()) return;
+                      await ThemeController.setAccent(color);
+                      if (mounted) setState(() {});
+                    },
                   );
-                }
-                final (name, color) = presets[i];
-                return _AccentCard(
-                  name: name,
-                  color: color,
-                  selected: !_accentIsCustom &&
-                      AppColors.accent.toARGB32() == color.toARGB32(),
-                  isDefault: ThemeController.isDefault(color),
-                  onTap: () async {
-                    await ThemeController.setAccent(color);
-                    if (mounted) setState(() {});
-                  },
-                );
-              },
+                },
+              ),
             ),
           ),
+          // ── Theme ─────────────────────────────────────────────────────────
+          const SettingsSectionLabel('Theme'),
+          SettingsCard(
+            children: [
+              if (_wallpaperSupported)
+                _switchTile(
+                  icon: Icons.palette_outlined,
+                  title: 'Material You',
+                  // Doubles as the hint that the strip above still works.
+                  subtitle: 'Colours from your wallpaper',
+                  value: ThemeController.materialYou,
+                  onChanged: ThemeController.setMaterialYou,
+                ),
+              _switchTile(
+                icon: Icons.dark_mode_outlined,
+                title: 'Pure black background',
+                subtitle: 'True black for OLED',
+                value: ThemeController.amoled,
+                onChanged: ThemeController.setAmoled,
+              ),
+            ],
+          ),
 
-          const SizedBox(height: 28),
-          // ── Background ────────────────────────────────────────────────────
-          _label('BACKGROUND'),
-          const SizedBox(height: 12),
-          _amoledTile(),
-
-          const SizedBox(height: 28),
-          // ── Posters ───────────────────────────────────────────────────────
-          _label('POSTERS'),
-          const SizedBox(height: 12),
-          _qualityBadgeTile(),
-
-          const SizedBox(height: 28),
-          // ── Motion ────────────────────────────────────────────────────────
-          _label('MOTION'),
-          const SizedBox(height: 12),
-          _listAnimTile(),
-          // The style picker only makes sense while the animation is on.
-          if (AnimationPrefs.listAnimations) ...[
-            const SizedBox(height: 10),
-            _animStylePicker(),
-          ],
+          // ── Display ───────────────────────────────────────────────────────
+          const SettingsSectionLabel('Display'),
+          SettingsCard(
+            children: [
+              _switchTile(
+                icon: Icons.sell_outlined,
+                title: 'Poster badges',
+                subtitle: 'Quality and Sub/Dub badges',
+                value: sl<PlaybackPrefs>().qualityBadges,
+                onChanged: sl<PlaybackPrefs>().setQualityBadges,
+              ),
+              _switchTile(
+                icon: Icons.auto_awesome_motion_outlined,
+                title: 'Animate lists',
+                subtitle: 'Cards fade in as you scroll',
+                value: AnimationPrefs.listAnimations,
+                onChanged: AnimationPrefs.setListAnimations,
+              ),
+              // Only meaningful while the animation is on.
+              if (AnimationPrefs.listAnimations)
+                SettingsTile(
+                  icon: Icons.animation_outlined,
+                  title: 'Animation style',
+                  subtitle: _animStyleBlurb,
+                  trailing: Text(_animStyleName, style: AppText.caption),
+                  onTap: _pickAnimStyle,
+                ),
+            ],
+          ),
 
           // ── App icon ──────────────────────────────────────────────────────
           // Android-only: iOS has an unrelated API and TV has no icon picker.
           if (_icons.supported) ...[
-            const SizedBox(height: 28),
-            _label('APP ICON'),
-            const SizedBox(height: 6),
-            Text(
+            const SettingsSectionLabel('App icon'),
+            _blurb(
               'The icon on your home screen. Zangetsu closes when you change '
               'it — Android has to swap the launcher entry.',
-              style: AppText.caption,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 10),
             _iconPicker(),
           ],
         ],
@@ -153,7 +206,118 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
   }
 
-  Widget _label(String text) => Text(text, style: AppText.overline);
+  /// True when the wallpaper is choosing the accent, so a swatch tap can't
+  /// apply. Says so rather than doing nothing — the swatches are dimmed, but a
+  /// dim control that swallows taps is still confusing.
+  bool _blockedByMaterialYou() {
+    if (!ThemeController.materialYou) return false;
+    // FToast, matching the shell's exit toast — the app doesn't use SnackBars.
+    (FToast()..init(context)).showToast(
+      gravity: ToastGravity.BOTTOM,
+      toastDuration: const Duration(seconds: 2),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 40),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xF01C1C1E),
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Text(
+          'Turn off Material You to pick a colour yourself',
+          style: TextStyle(color: Colors.white, fontSize: 14),
+        ),
+      ),
+    );
+    return true;
+  }
+
+  /// Section description under a [SettingsSectionLabel], indented to match it.
+  Widget _blurb(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(28, 0, 22, 10),
+    child: Text(text, style: AppText.caption),
+  );
+
+  /// A [SettingsTile] with a switch. The whole row toggles, which is how the
+  /// rest of Settings behaves — the switch alone was a small target.
+  Widget _switchTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Future<void> Function(bool) onChanged,
+  }) {
+    Future<void> flip(bool v) async {
+      await onChanged(v);
+      if (mounted) setState(() {});
+    }
+
+    return SettingsTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      onTap: () => flip(!value),
+      trailing: Switch.adaptive(
+        value: value,
+        activeThumbColor: AppColors.accent,
+        onChanged: flip,
+      ),
+    );
+  }
+
+  static const List<(ListAnimStyle, String, String)> _animStyles = [
+    (ListAnimStyle.rise, 'Rise', 'Lifts and fades in'),
+    (ListAnimStyle.fade, 'Fade', 'Fades in, no movement'),
+    (ListAnimStyle.zoom, 'Zoom', 'Scales up as it appears'),
+  ];
+
+  (ListAnimStyle, String, String) get _animStyle => _animStyles.firstWhere(
+    (o) => o.$1 == AnimationPrefs.style,
+    orElse: () => _animStyles.first,
+  );
+  String get _animStyleName => _animStyle.$2;
+  String get _animStyleBlurb => _animStyle.$3;
+
+  /// Style picker. Was three rows always on the page; a sheet keeps the screen
+  /// short and matches how the other settings pickers behave.
+  Future<void> _pickAnimStyle() async {
+    final picked = await showModalBottomSheet<ListAnimStyle>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                children: [Text('Animation style', style: AppText.headline)],
+              ),
+            ),
+            const Divider(color: AppColors.hairline, height: 1),
+            for (final (style, name, blurb) in _animStyles)
+              ListTile(
+                onTap: () => Navigator.pop(ctx, style),
+                title: Text(
+                  name,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
+                subtitle: Text(blurb, style: AppText.caption),
+                trailing: AnimationPrefs.style == style
+                    ? Icon(Icons.check, color: AppColors.accent)
+                    : null,
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await AnimationPrefs.setStyle(picked);
+    if (mounted) setState(() {});
+  }
 
   final _icons = AppIconService();
 
@@ -162,10 +326,12 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
   Widget _iconPicker() {
     final current = _icons.selectedId;
     return SizedBox(
-      height: 116,
+      height: 100,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: EdgeInsets.zero,
+        // Same inset as SettingsCard's margin, so the row lines up with the
+        // cards and section labels above it.
+        padding: const EdgeInsets.symmetric(horizontal: 16),
         clipBehavior: Clip.none,
         itemCount: AppIconService.options.length,
         separatorBuilder: (_, _) => const SizedBox(width: 10),
@@ -208,184 +374,6 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     if (ok != true) return;
     await _icons.select(o.id);
     if (mounted) setState(() {});
-  }
-
-  Widget _amoledTile() {
-    final on = ThemeController.amoled;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          const Icon(Icons.dark_mode_outlined, color: AppColors.textSecondary),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Pure black background', style: AppText.headline),
-                const SizedBox(height: 2),
-                Text(
-                  'True-black for OLED screens — deeper look, saves battery.',
-                  style: AppText.caption,
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: on,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) async {
-              await ThemeController.setAmoled(v);
-              if (mounted) setState(() {});
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Toggle for the list/grid reveal. Phone/iOS only — the reveal
-  /// self-disables on TV regardless, so this switch simply governs touch devices.
-  /// The little labels drawn in a poster's top corners — quality on the right,
-  /// Sub/Dub on the left. Only CloudStream reports either, and many of its
-  /// providers set neither, so plenty of posters show nothing either way.
-  Widget _qualityBadgeTile() {
-    final on = sl<PlaybackPrefs>().qualityBadges;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.sell_outlined,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Poster badges', style: AppText.headline),
-                const SizedBox(height: 2),
-                Text(
-                  'Show quality (4K, HD, CAM) and Sub/Dub on posters, '
-                  'when the source tells us.',
-                  style: AppText.caption,
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: on,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) async {
-              await sl<PlaybackPrefs>().setQualityBadges(v);
-              if (mounted) setState(() {});
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Three entrances to choose between. Rise is the default and what most
-  /// people should leave it on; Fade is the quietest thing that still counts
-  /// as an animation, Zoom the most obvious.
-  Widget _animStylePicker() {
-    const options = [
-      (ListAnimStyle.rise, 'Rise', 'Lifts and fades in'),
-      (ListAnimStyle.fade, 'Fade', 'Fades in, no movement'),
-      (ListAnimStyle.zoom, 'Zoom', 'Scales up as it appears'),
-    ];
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        children: [
-          for (final (style, name, blurb) in options)
-            InkWell(
-              onTap: () async {
-                await AnimationPrefs.setStyle(style);
-                if (mounted) setState(() {});
-              },
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(name, style: AppText.headline),
-                          const SizedBox(height: 2),
-                          Text(blurb, style: AppText.caption),
-                        ],
-                      ),
-                    ),
-                    if (AnimationPrefs.style == style)
-                      Icon(
-                        Icons.check_circle_rounded,
-                        color: AppColors.accent,
-                        size: 22,
-                      ),
-                  ],
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _listAnimTile() {
-    final on = AnimationPrefs.listAnimations;
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.auto_awesome_motion_outlined,
-            color: AppColors.textSecondary,
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Animate lists', style: AppText.headline),
-                const SizedBox(height: 2),
-                Text(
-                  'Cards fade and slide in as they scroll into view.',
-                  style: AppText.caption,
-                ),
-              ],
-            ),
-          ),
-          Switch.adaptive(
-            value: on,
-            activeThumbColor: AppColors.accent,
-            onChanged: (v) async {
-              await AnimationPrefs.setListAnimations(v);
-              if (mounted) setState(() {});
-            },
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -433,8 +421,9 @@ class _AccentCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(
-                  color:
-                      selected ? AppColors.textPrimary : AppColors.textSecondary,
+                  color: selected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -520,8 +509,9 @@ class _CustomCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(
-                  color:
-                      selected ? AppColors.textPrimary : AppColors.textSecondary,
+                  color: selected
+                      ? AppColors.textPrimary
+                      : AppColors.textSecondary,
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -534,75 +524,75 @@ class _CustomCard extends StatelessWidget {
 }
 
 Widget _preview(Color color, bool selected) => Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          height: double.infinity,
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(10),
+  children: [
+    Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.all(9),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Container(
+            height: 5,
+            width: 34,
+            decoration: BoxDecoration(
+              color: AppColors.textTertiary,
+              borderRadius: BorderRadius.circular(3),
+            ),
           ),
-          padding: const EdgeInsets.all(9),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          Row(
             children: [
               Container(
-                height: 5,
-                width: 34,
+                width: 40,
+                height: 13,
                 decoration: BoxDecoration(
-                  color: AppColors.textTertiary,
-                  borderRadius: BorderRadius.circular(3),
+                  color: color,
+                  borderRadius: BorderRadius.circular(7),
                 ),
               ),
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(7),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 13,
-                    height: 13,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.22),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                ],
-              ),
+              const SizedBox(width: 6),
               Container(
-                height: 4,
-                width: 58,
+                width: 13,
+                height: 13,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(3),
+                  color: color.withValues(alpha: 0.22),
+                  shape: BoxShape.circle,
                 ),
               ),
             ],
           ),
-        ),
-        if (selected)
-          Positioned(
-            top: 3,
-            right: 3,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                color: color,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.surface2, width: 2),
-              ),
-              child: const Icon(Icons.check_rounded, color: Colors.white, size: 11),
+          Container(
+            height: 4,
+            width: 58,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(3),
             ),
           ),
-      ],
-    );
+        ],
+      ),
+    ),
+    if (selected)
+      Positioned(
+        top: 3,
+        right: 3,
+        child: Container(
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.surface2, width: 2),
+          ),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 11),
+        ),
+      ),
+  ],
+);
 
 /// A launcher-icon choice: preview, name, and a tick when it's the active one.
 /// Mirrors [_AccentCard]'s shape so the two pickers read as one screen.

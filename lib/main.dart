@@ -215,6 +215,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       discord?.onForeground();
       _syncOnResume();
+      // The wallpaper may have changed while we were away. No-op unless
+      // Material You is on, and only rebuilds if the colours actually moved.
+      ThemeController.refresh();
     } else if (state == AppLifecycleState.paused) {
       // Opening the in-app player (native surface / immersive) fires paused
       // even though the user is still watching. Do not drop Rich Presence.
