@@ -1,9 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
+import '../di/injector.dart';
 import '../models/media_detail.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_focusable.dart';
 
 /// Netflix-style "more info" card shown on long-press of any row item.
 ///
@@ -103,12 +106,12 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
   bool _togglingList = false;
 
   String? _statusLabel(MediaStatus s) => switch (s) {
-        MediaStatus.ongoing => 'Ongoing',
-        MediaStatus.completed => 'Completed',
-        MediaStatus.hiatus => 'Hiatus',
-        MediaStatus.cancelled => 'Cancelled',
-        MediaStatus.unknown => null,
-      };
+    MediaStatus.ongoing => 'Ongoing',
+    MediaStatus.completed => 'Completed',
+    MediaStatus.hiatus => 'Hiatus',
+    MediaStatus.cancelled => 'Cancelled',
+    MediaStatus.unknown => null,
+  };
 
   bool get _hasCover => widget.cover != null && widget.cover!.isNotEmpty;
 
@@ -155,8 +158,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
               fit: BoxFit.cover,
               alignment: const Alignment(0, -0.25),
               placeholder: (_, _) => ColoredBox(color: AppColors.surface2),
-              errorWidget: (_, _, _) =>
-                  ColoredBox(color: AppColors.surface2),
+              errorWidget: (_, _, _) => ColoredBox(color: AppColors.surface2),
             )
           else
             ColoredBox(color: AppColors.surface2),
@@ -168,12 +170,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [
-                  Color(0x33000000),
-                  Color(0x00000000),
-                  Color(0xCC16161C),
-                  Color(0xFF16161C),
-                ],
+                colors: [Color(0x33000000), Color(0x00000000), Color(0xCC16161C), Color(0xFF16161C)],
                 stops: [0.0, 0.4, 0.82, 1.0],
               ),
             ),
@@ -196,10 +193,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
           // Title + meta overlaid at the bottom.
           Align(
             alignment: Alignment.bottomLeft,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 16),
-              child: _heroTitle(),
-            ),
+            child: Padding(padding: const EdgeInsets.fromLTRB(18, 0, 18, 16), child: _heroTitle()),
           ),
         ],
       ),
@@ -213,17 +207,11 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
       children: [
         Text(
           widget.title,
-          style: AppText.largeTitle.copyWith(
-            fontSize: 23,
-            height: 1.08,
-            color: Colors.white,
-          ),
+          style: AppText.largeTitle.copyWith(fontSize: 23, height: 1.08, color: Colors.white),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
-        if (widget.englishTitle != null &&
-            widget.englishTitle!.isNotEmpty &&
-            widget.englishTitle != widget.title) ...[
+        if (widget.englishTitle != null && widget.englishTitle!.isNotEmpty && widget.englishTitle != widget.title) ...[
           const SizedBox(height: 4),
           Text(
             widget.englishTitle!,
@@ -240,12 +228,9 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
             final parts = <String>[
               if (d?.year != null && d!.year!.isNotEmpty) d.year!,
               if (widget.typeLabel != null) widget.typeLabel!,
-              if (d != null && _statusLabel(d.status) != null)
-                _statusLabel(d.status)!,
+              if (d != null && _statusLabel(d.status) != null) _statusLabel(d.status)!,
             ];
-            if (parts.isEmpty &&
-                (widget.subCount ?? 0) == 0 &&
-                (widget.dubCount ?? 0) == 0) {
+            if (parts.isEmpty && (widget.subCount ?? 0) == 0 && (widget.dubCount ?? 0) == 0) {
               return const SizedBox.shrink();
             }
             return Row(
@@ -259,14 +244,8 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                if ((widget.subCount ?? 0) > 0) ...[
-                  const SizedBox(width: 8),
-                  _miniBadge('SUB'),
-                ],
-                if ((widget.dubCount ?? 0) > 0) ...[
-                  const SizedBox(width: 6),
-                  _miniBadge('DUB'),
-                ],
+                if ((widget.subCount ?? 0) > 0) ...[const SizedBox(width: 8), _miniBadge('SUB')],
+                if ((widget.dubCount ?? 0) > 0) ...[const SizedBox(width: 6), _miniBadge('DUB')],
               ],
             );
           },
@@ -287,10 +266,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
             if (widget.progressLabel != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 7),
-                child: Text(
-                  widget.progressLabel!,
-                  style: AppText.caption.copyWith(color: AppColors.textSecondary),
-                ),
+                child: Text(widget.progressLabel!, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
               ),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
@@ -315,11 +291,7 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
               // non-genre noise in); preserve order, cap the count.
               // Dedupe, trim, and drop URL-like / over-long noise some
               // providers stuff into the genres field (e.g. "4KHDHub.com").
-              bool looksLikeGenre(String g) =>
-                  g.isNotEmpty &&
-                  g.length <= 20 &&
-                  !g.contains('.') &&
-                  !g.contains('/');
+              bool looksLikeGenre(String g) => g.isNotEmpty && g.length <= 20 && !g.contains('.') && !g.contains('/');
               final genres = d == null
                   ? const <String>[]
                   : (<String>{
@@ -330,17 +302,11 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (genres.isNotEmpty) ...[
-                    Wrap(
-                      spacing: 7,
-                      runSpacing: 7,
-                      children: genres.map((g) => _genrePill(g)).toList(),
-                    ),
+                    Wrap(spacing: 7, runSpacing: 7, children: genres.map((g) => _genrePill(g)).toList()),
                     const SizedBox(height: 14),
                   ],
                   Text(
-                    (desc != null && desc.isNotEmpty)
-                        ? desc
-                        : 'No description available.',
+                    (desc != null && desc.isNotEmpty) ? desc : 'No description available.',
                     style: AppText.body.copyWith(height: 1.4),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
@@ -362,84 +328,107 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
     );
   }
 
+  bool get _isTv => sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
+  /// D-pad focusable on TV; InkWell on phone.
+  Widget _focusable({
+    required Widget child,
+    required VoidCallback onTap,
+    String? semantic,
+    bool autofocus = false,
+    TvFocusVariant variant = TvFocusVariant.float,
+    double scale = 1.04,
+    double borderRadius = 12,
+  }) {
+    if (_isTv) {
+      return TvFocusable(
+        onTap: onTap,
+        autofocus: autofocus,
+        variant: variant,
+        scale: scale,
+        borderRadius: borderRadius,
+        semanticLabel: semantic,
+        child: child,
+      );
+    }
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(borderRadius: BorderRadius.circular(borderRadius), onTap: onTap, child: child),
+    );
+  }
+
   // ── Actions: glowing Play + circular icon chips ───────────────────────────
   Widget _actions() {
+    void play() {
+      Navigator.pop(context);
+      widget.onPlay();
+    }
+
+    final playChild = Container(
+      height: 46,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.3), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.play_arrow_rounded, color: AppColors.bg, size: 24),
+            const SizedBox(width: 6),
+            Text(widget.playLabel ?? 'Play', style: AppText.button.copyWith(color: AppColors.bg)),
+          ],
+        ),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-      child: Column(
-        children: [
-          // Play / Resume — white button (JioHotstar-style) with dark content.
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                Navigator.pop(context);
-                widget.onPlay();
-              },
-              child: Container(
-                height: 46,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.play_arrow_rounded,
-                          color: AppColors.bg, size: 24),
-                      const SizedBox(width: 6),
-                      Text(
-                        widget.playLabel ?? 'Play',
-                        style: AppText.button.copyWith(color: AppColors.bg),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+      child: FocusTraversalGroup(
+        child: Column(
+          children: [
+            // Play / Resume — white button (JioHotstar-style) with dark content.
+            _focusable(
+              onTap: play,
+              autofocus: true,
+              semantic: widget.playLabel ?? 'Play',
+              borderRadius: 12,
+              child: playChild,
             ),
-          ),
-          const SizedBox(height: 14),
-          // Secondary actions — circular icon chips, evenly spread.
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _IconAction(
-                icon: _inList ? Icons.check_rounded : Icons.add_rounded,
-                label: 'My List',
-                active: _inList,
-                busy: _togglingList,
-                onTap: _toggleList,
-              ),
-              _IconAction(
-                icon: Icons.info_outline_rounded,
-                label: 'Details',
-                onTap: () {
-                  Navigator.pop(context);
-                  widget.onOpenDetail();
-                },
-              ),
-              if (widget.onRemoveFromContinue != null)
+            const SizedBox(height: 14),
+            // Secondary actions — circular icon chips, evenly spread.
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
                 _IconAction(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Remove',
-                  destructive: true,
+                  icon: _inList ? Icons.check_rounded : Icons.add_rounded,
+                  label: 'My List',
+                  active: _inList,
+                  busy: _togglingList,
+                  onTap: _toggleList,
+                ),
+                _IconAction(
+                  icon: Icons.info_outline_rounded,
+                  label: 'Details',
                   onTap: () {
                     Navigator.pop(context);
-                    widget.onRemoveFromContinue!();
+                    widget.onOpenDetail();
                   },
                 ),
-            ],
-          ),
-        ],
+                if (widget.onRemoveFromContinue != null)
+                  _IconAction(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Remove',
+                    destructive: true,
+                    onTap: () {
+                      Navigator.pop(context);
+                      widget.onRemoveFromContinue!();
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -457,48 +446,38 @@ class _MediaInfoSheetState extends State<_MediaInfoSheet> {
   }
 
   Widget _miniBadge(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: AppColors.accentSoft,
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
-        ),
-        child: Text(
-          text,
-          style: AppText.overline.copyWith(
-            color: AppColors.accent,
-            fontSize: 10,
-            letterSpacing: 0.6,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: AppColors.accentSoft,
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
+    ),
+    child: Text(text, style: AppText.overline.copyWith(color: AppColors.accent, fontSize: 10, letterSpacing: 0.6)),
+  );
 
   Widget _genrePill(String text) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppColors.hairline),
-        ),
-        child: Text(
-          text,
-          style: AppText.caption.copyWith(color: AppColors.textSecondary),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: AppColors.hairline),
+    ),
+    child: Text(text, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+  );
 
   Widget _metaLine(String label, String value) => RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: '$label  ',
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
-            ),
-            TextSpan(
-              text: value,
-              style: AppText.caption.copyWith(color: AppColors.textSecondary),
-            ),
-          ],
+    text: TextSpan(
+      children: [
+        TextSpan(
+          text: '$label  ',
+          style: AppText.caption.copyWith(color: AppColors.textTertiary),
         ),
-      );
+        TextSpan(
+          text: value,
+          style: AppText.caption.copyWith(color: AppColors.textSecondary),
+        ),
+      ],
+    ),
+  );
 }
 
 /// A circular icon chip + label, Netflix-style. No surrounding box — the chip
@@ -525,46 +504,48 @@ class _IconAction extends StatelessWidget {
     final accentish = active || destructive;
     final iconColor = accentish ? AppColors.accent : AppColors.textPrimary;
     final chipColor = active ? AppColors.accentSoft : AppColors.surface2;
-    return InkWell(
-      borderRadius: BorderRadius.circular(40),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: chipColor,
-                shape: BoxShape.circle,
-                border: active
-                    ? Border.all(color: AppColors.accent.withValues(alpha: 0.5))
-                    : null,
-              ),
-              child: busy
-                  ? Padding(
-                      padding: EdgeInsets.all(11),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.accent,
-                      ),
-                    )
-                  : Icon(icon, color: iconColor, size: 20),
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: chipColor,
+              shape: BoxShape.circle,
+              border: active ? Border.all(color: AppColors.accent.withValues(alpha: 0.5)) : null,
             ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: AppText.caption.copyWith(
-                fontSize: 12,
-                color: accentish ? AppColors.accent : AppColors.textSecondary,
-              ),
+            child: busy
+                ? Padding(
+                    padding: EdgeInsets.all(11),
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.accent),
+                  )
+                : Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: AppText.caption.copyWith(
+              fontSize: 12,
+              color: accentish ? AppColors.accent : AppColors.textSecondary,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+    if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+      return TvFocusable(
+        onTap: onTap,
+        variant: TvFocusVariant.float,
+        scale: 1.08,
+        borderRadius: 10,
+        semanticLabel: label,
+        child: content,
+      );
+    }
+    return InkWell(borderRadius: BorderRadius.circular(40), onTap: onTap, child: content);
   }
 }
 
@@ -575,24 +556,15 @@ class _SynopsisSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget bar(double w) => Container(
-          width: w,
-          height: 12,
-          margin: const EdgeInsets.only(bottom: 9),
-          decoration: BoxDecoration(
-            color: AppColors.surface2,
-            borderRadius: BorderRadius.circular(6),
-          ),
-        );
+      width: w,
+      height: 12,
+      margin: const EdgeInsets.only(bottom: 9),
+      decoration: BoxDecoration(color: AppColors.surface2, borderRadius: BorderRadius.circular(6)),
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            bar(70),
-            const SizedBox(width: 7),
-            bar(54),
-          ],
-        ),
+        Row(children: [bar(70), const SizedBox(width: 7), bar(54)]),
         bar(double.infinity),
         bar(double.infinity),
         bar(220),
