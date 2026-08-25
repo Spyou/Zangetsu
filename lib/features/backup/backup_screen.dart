@@ -169,23 +169,20 @@ class _BackupScreenState extends State<BackupScreen> {
               autofocus: i == 0,
               onTap: () => Navigator.pop(ctx, files[i]),
               semanticLabel: _backupLabel(files[i]),
-              builder: (focused) => Padding(
+              // Row focus is an accent wash over the dark surface, not a white
+              // pill — keep the text and icon light or they disappear into it.
+              child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
                   children: [
-                    Icon(Icons.description_outlined,
-                        color: focused
-                            ? Colors.black54
-                            : AppColors.textSecondary),
+                    const Icon(Icons.description_outlined,
+                        color: AppColors.textSecondary),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         _backupLabel(files[i]),
-                        style: AppText.body.copyWith(
-                          color: focused
-                              ? Colors.black
-                              : AppColors.textPrimary,
-                        ),
+                        style: AppText.body
+                            .copyWith(color: AppColors.textPrimary),
                       ),
                     ),
                   ],

@@ -113,7 +113,6 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
             SettingsCard(
               children: [
                 SettingsTile(
-                  autofocus: true,
                   icon: Icons.gamepad_outlined,
                   title: 'Rich Presence',
                   subtitle: "Show what you're watching on your profile",
