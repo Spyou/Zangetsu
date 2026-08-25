@@ -38,7 +38,7 @@ class StorageSettingsScreen extends StatelessWidget {
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Storage'),
       body: ListView(
-        clipBehavior: Clip.none,
+        clipBehavior: sl<AppMode>().isTv ? Clip.none : Clip.hardEdge,
         padding: const EdgeInsets.only(top: 8),
         children: [
           SettingsCard(

@@ -590,7 +590,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Playback'),
       body: ListView(
-        clipBehavior: Clip.none,
+        // TV focus chrome paints outside the row, so it must not be clipped.
+        // Phone has no focus ring — keep the normal clip so rows don't bleed
+        // past the list edge while scrolling.
+        clipBehavior: sl<AppMode>().isTv ? Clip.none : Clip.hardEdge,
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
           // ── Quality & audio ─────────────────────────────────────────────
