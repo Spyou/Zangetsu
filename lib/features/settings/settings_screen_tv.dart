@@ -67,8 +67,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
   ProviderRegistry get _registry => sl<ProviderRegistry>();
   CloudStreamManager get _csManager => sl<CloudStreamManager>();
 
-  Future<void> _push(Widget screen) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  Future<void> _push(Widget screen) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
 
   String _activeLabel(String activeId) {
     if (activeId.startsWith('cs:')) {
@@ -123,22 +122,15 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
   }
 
   Future<void> _addCloudStreamRepo() async {
-    final url = await showDialog<String>(
-      context: context,
-      builder: (_) => const _TvAddRepoDialog(),
-    );
+    final url = await showDialog<String>(context: context, builder: (_) => const _TvAddRepoDialog());
     if (url == null || url.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final count = await _csManager.addRepo(url);
-      messenger.showSnackBar(
-        SnackBar(content: Text('Added — $count CloudStream source(s) available')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('Added — $count CloudStream source(s) available')));
       if (mounted) setState(() {});
     } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text('Failed to add repository: $e')),
-      );
+      messenger.showSnackBar(SnackBar(content: Text('Failed to add repository: $e')));
     }
   }
 
@@ -146,9 +138,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
         if (auth.isLoggedIn) {
-          final initial = auth.displayName.isNotEmpty
-              ? auth.displayName[0].toUpperCase()
-              : '?';
+          final initial = auth.displayName.isNotEmpty ? auth.displayName[0].toUpperCase() : '?';
           return SettingsCard(
             children: [
               TvListFocusable(
@@ -157,17 +147,12 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                 onTap: () => _push(const ProfileScreen()),
                 child: ExcludeSemantics(
                   child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 6),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     leading: CircleAvatar(
                       radius: 22,
                       backgroundColor: AppColors.surface2,
-                      backgroundImage: auth.avatarUrl != null
-                          ? CachedNetworkImageProvider(auth.avatarUrl!)
-                          : null,
-                      child: auth.avatarUrl == null
-                          ? Text(initial, style: AppText.headline)
-                          : null,
+                      backgroundImage: auth.avatarUrl != null ? CachedNetworkImageProvider(auth.avatarUrl!) : null,
+                      child: auth.avatarUrl == null ? Text(initial, style: AppText.headline) : null,
                     ),
                     title: Text(
                       auth.displayName,
@@ -181,11 +166,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    trailing: const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.textTertiary,
-                      size: 22,
-                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary, size: 22),
                   ),
                 ),
               ),
@@ -225,10 +206,10 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
               child: ListView(
                 clipBehavior: Clip.none,
                 padding: const EdgeInsets.only(top: 4, bottom: 24),
-                
+
                 children: [
                   _accountCard(context),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -239,7 +220,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ),
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -281,7 +262,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ],
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -312,15 +293,13 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         SettingsTile(
                           icon: Icons.notifications_none_rounded,
                           title: 'Notifications',
-                          subtitle:
-                              'New-episode alerts for subscribed shows',
+                          subtitle: 'New-episode alerts for subscribed shows',
                           onTap: () => _push(const SubscriptionsScreen()),
                         ),
                         SettingsTile(
                           icon: Icons.update_rounded,
                           title: 'Source updates',
-                          subtitle:
-                              'Notify when installed sources have updates',
+                          subtitle: 'Notify when installed sources have updates',
                           onTap: () async {
                             final cm = sl<CloudStreamManager>();
                             await cm.setNotifyUpdates(!cm.notifyUpdates);
@@ -330,8 +309,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                             value: sl<CloudStreamManager>().notifyUpdates,
                             activeThumbColor: AppColors.accent,
                             onChanged: (v) async {
-                              await sl<CloudStreamManager>()
-                                  .setNotifyUpdates(v);
+                              await sl<CloudStreamManager>().setNotifyUpdates(v);
                               if (mounted) setState(() {});
                             },
                           ),
@@ -339,8 +317,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         SettingsTile(
                           icon: Icons.science_outlined,
                           title: 'Beta updates',
-                          subtitle:
-                              'Get pre-release builds early — may be unstable',
+                          subtitle: 'Get pre-release builds early — may be unstable',
                           subtitleMaxLines: null,
                           onTap: () async {
                             final v = !_betaUpdates;
@@ -371,7 +348,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ],
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -381,7 +358,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ),
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -413,7 +390,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ),
                     ],
                   ),
-
+                  const SizedBox(height: 8),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -427,11 +404,9 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: 'Check for updates',
                         subtitle: 'Get the latest version from GitHub',
                         onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Checking for updates…'),
-                            ),
-                          );
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(const SnackBar(content: Text('Checking for updates…')));
                           maybeShowUpdateDialog(context, manual: true);
                         },
                       ),
@@ -439,8 +414,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         SettingsTile(
                           icon: Icons.speed_rounded,
                           title: 'ExoPlayer spike (dev)',
-                          subtitle:
-                              'SP0 — test SurfaceView playback smoothness',
+                          subtitle: 'SP0 — test SurfaceView playback smoothness',
                           onTap: () => _push(const TvExoSpikeScreen()),
                         ),
                       SettingsTile(
@@ -463,12 +437,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
 
 /// D-pad option picker dialog (DNS / search layout).
 class _TvOptionPicker<T> extends StatelessWidget {
-  const _TvOptionPicker({
-    super.key,
-    required this.title,
-    required this.options,
-    required this.current,
-  });
+  const _TvOptionPicker({super.key, required this.title, required this.options, required this.current});
 
   final String title;
   final List<(T, String)> options;
@@ -488,10 +457,7 @@ class _TvOptionPicker<T> extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-              child: Text(
-                title,
-                style: AppText.title.copyWith(color: AppColors.textPrimary),
-              ),
+              child: Text(title, style: AppText.title.copyWith(color: AppColors.textPrimary)),
             ),
             const Divider(height: 1, color: AppColors.hairline),
             for (int i = 0; i < options.length; i++)
@@ -501,19 +467,11 @@ class _TvOptionPicker<T> extends StatelessWidget {
                 semanticLabel: options[i].$2,
                 child: ExcludeSemantics(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                     child: Row(
                       children: [
-                        Expanded(
-                          child: Text(options[i].$2, style: AppText.headline),
-                        ),
-                        if (options[i].$1 == current)
-                          Icon(
-                            Icons.check,
-                            color: AppColors.accent,
-                            size: 20,
-                          ),
+                        Expanded(child: Text(options[i].$2, style: AppText.headline)),
+                        if (options[i].$1 == current) Icon(Icons.check, color: AppColors.accent, size: 20),
                       ],
                     ),
                   ),
@@ -561,10 +519,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
               keyboardType: TextInputType.url,
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Repository URL',
-                hintText: 'https://.../repo.json',
-              ),
+              decoration: const InputDecoration(labelText: 'Repository URL', hintText: 'https://.../repo.json'),
               onSubmitted: (v) => Navigator.pop(context, v.trim()),
             ),
           ],
@@ -580,9 +535,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
               onPressed: () => Navigator.pop(context),
               child: Text(
                 'Cancel',
-                style: AppText.body.copyWith(
-                  color: focused ? Colors.black : AppColors.textSecondary,
-                ),
+                style: AppText.body.copyWith(color: focused ? Colors.black : AppColors.textSecondary),
               ),
             ),
           ),
@@ -594,12 +547,10 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
           builder: (focused) => ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    focused ? Colors.black : AppColors.accent,
+                backgroundColor: focused ? Colors.black : AppColors.accent,
                 foregroundColor: Colors.white,
               ),
-              onPressed: () =>
-                  Navigator.pop(context, _controller.text.trim()),
+              onPressed: () => Navigator.pop(context, _controller.text.trim()),
               child: const Text('Add'),
             ),
           ),
