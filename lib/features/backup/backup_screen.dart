@@ -12,7 +12,7 @@ import '../../core/di/injector.dart';
 import '../../core/supabase/supabase_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
@@ -32,17 +32,6 @@ class _BackupScreenState extends State<BackupScreen> {
   BackupCloud _cloud() => BackupCloud(sl<SupabaseService>());
 
   bool get _isTv => sl<AppMode>().isTv;
-
-  /// On TV, make [child] D-pad focusable (OK runs [onTap]); on phone, return it
-  /// unchanged so the phone render/behaviour is byte-identical.
-  Widget _tvWrap({
-    required Widget child,
-    required VoidCallback? onTap,
-    bool autofocus = false,
-  }) {
-    if (!_isTv) return child;
-    return TvFocusable(autofocus: autofocus, onTap: onTap ?? () {}, child: child);
-  }
 
   Future<void> _backupToCloud() async {
     if (!requireLogin(context, action: 'back up to the cloud')) return;
@@ -176,9 +165,12 @@ class _BackupScreenState extends State<BackupScreen> {
         title: Text('Pick a backup', style: AppText.headline),
         children: [
           for (var i = 0; i < files.length; i++)
-            TvFocusable(
+            TvListFocusable(
               autofocus: i == 0,
               onTap: () => Navigator.pop(ctx, files[i]),
+              semanticLabel: _backupLabel(files[i]),
+              // Row focus is an accent wash over the dark surface, not a white
+              // pill — keep the text and icon light or they disappear into it.
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                 child: Row(
@@ -271,20 +263,16 @@ class _BackupScreenState extends State<BackupScreen> {
             _selected.add(bundle);
           }
         });
-    // On TV, render as a SettingsTile (a check-box icon reflects selection) so
-    // every row on this screen — and every row across the TV Settings — shares
-    // one focus-highlight shape. Phones keep the Material CheckboxListTile.
+    // On TV, SettingsTile is already D-pad focusable (white pill). Phones keep
+    // the Material CheckboxListTile.
     if (_isTv) {
-      return _tvWrap(
+      return SettingsTile(
+        icon: selected
+            ? Icons.check_box_rounded
+            : Icons.check_box_outline_blank_rounded,
+        title: label,
+        subtitle: subtitle,
         onTap: _busy ? null : toggle,
-        child: SettingsTile(
-          icon: selected
-              ? Icons.check_box_rounded
-              : Icons.check_box_outline_blank_rounded,
-          title: label,
-          subtitle: subtitle,
-          onTap: _busy ? null : toggle,
-        ),
       );
     }
     // Transparent Material so the tile's ink/splash paints above the
@@ -350,47 +338,35 @@ class _BackupScreenState extends State<BackupScreen> {
               const SettingsSectionLabel('Create a backup'),
               SettingsCard(
                 children: [
-                  _tvWrap(
+                  SettingsTile(
                     autofocus: true,
+                    icon: Icons.save_alt_outlined,
+                    title: 'Save to a file',
+                    subtitle: 'Save a backup file to your Downloads folder',
                     onTap: _busy ? null : _saveToFile,
-                    child: SettingsTile(
-                      icon: Icons.save_alt_outlined,
-                      title: 'Save to a file',
-                      subtitle: 'Save a backup file to your Downloads folder',
-                      onTap: _busy ? null : _saveToFile,
-                    ),
                   ),
-                  _tvWrap(
+                  SettingsTile(
+                    icon: Icons.cloud_upload_outlined,
+                    title: 'Back up to cloud',
+                    subtitle: 'Save a copy to your account · needs sign-in',
                     onTap: _busy ? null : _backupToCloud,
-                    child: SettingsTile(
-                      icon: Icons.cloud_upload_outlined,
-                      title: 'Back up to cloud',
-                      subtitle: 'Save a copy to your account · needs sign-in',
-                      onTap: _busy ? null : _backupToCloud,
-                    ),
                   ),
                 ],
               ),
               const SettingsSectionLabel('Restore a backup'),
               SettingsCard(
                 children: [
-                  _tvWrap(
+                  SettingsTile(
+                    icon: Icons.folder_open_outlined,
+                    title: 'Restore from a file',
+                    subtitle: 'Pick a backup file you saved earlier',
                     onTap: _busy ? null : _restoreFromFile,
-                    child: SettingsTile(
-                      icon: Icons.folder_open_outlined,
-                      title: 'Restore from a file',
-                      subtitle: 'Pick a backup file you saved earlier',
-                      onTap: _busy ? null : _restoreFromFile,
-                    ),
                   ),
-                  _tvWrap(
+                  SettingsTile(
+                    icon: Icons.cloud_download_outlined,
+                    title: 'Restore from cloud',
+                    subtitle: 'Bring back your latest cloud backup',
                     onTap: _busy ? null : _restoreFromCloud,
-                    child: SettingsTile(
-                      icon: Icons.cloud_download_outlined,
-                      title: 'Restore from cloud',
-                      subtitle: 'Bring back your latest cloud backup',
-                      onTap: _busy ? null : _restoreFromCloud,
-                    ),
                   ),
                 ],
               ),

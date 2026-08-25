@@ -55,6 +55,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
           SettingsCard(
             children: [
               SettingsTile(
+                autofocus: true,
                 icon: Icons.group_rounded,
                 title: 'Contributors',
                 onTap: () => _push(const ContributorsScreen()),

@@ -38,11 +38,13 @@ class StorageSettingsScreen extends StatelessWidget {
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar('Storage'),
       body: ListView(
+        clipBehavior: sl<AppMode>().isTv ? Clip.none : Clip.hardEdge,
         padding: const EdgeInsets.only(top: 8),
         children: [
           SettingsCard(
             children: [
               SettingsTile(
+                autofocus: true,
                 icon: Icons.image_outlined,
                 title: 'Clear image cache',
                 onTap: () => _clearImageCache(context),

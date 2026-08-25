@@ -74,6 +74,86 @@ class _RankedVariant extends HlsVariant {
   final int rank;
 }
 
+/// One alternate audio rendition (`#EXT-X-MEDIA:TYPE=AUDIO`) from a master.
+class HlsAudioRendition {
+  HlsAudioRendition({
+    required this.uri,
+    required this.lang,
+    required this.name,
+    required this.isDefault,
+  });
+  final String uri;
+  final String lang;
+  final String name;
+  final bool isDefault;
+}
+
+/// Value of [key] in an `#EXT-X-...` attribute list, quoted or bare.
+String? hlsAttr(String line, String key) {
+  final m = RegExp('$key=(?:"([^"]*)"|([^,]*))').firstMatch(line);
+  return m?.group(1) ?? m?.group(2);
+}
+
+/// Alternate audio tracks named by a master playlist, in file order.
+///
+/// FFmpeg (so mpv) opens EVERY one of these and downloads a couple of segments
+/// from each just to learn its codec — 18 of them on a Netflix-style stream is
+/// half a minute before the first frame. ExoPlayer reads the same attributes
+/// and downloads nothing, which is why CloudStream starts quickly on the exact
+/// same link. Parsing them here lets us hand mpv a master with one audio track
+/// and attach the rest on demand.
+List<HlsAudioRendition> parseHlsAudioRenditions(
+  String playlist,
+  String masterUrl,
+) {
+  final out = <HlsAudioRendition>[];
+  for (final raw in playlist.split(RegExp(r'\r?\n'))) {
+    final line = raw.trim();
+    if (!line.startsWith('#EXT-X-MEDIA:')) continue;
+    if (hlsAttr(line, 'TYPE') != 'AUDIO') continue;
+    final uri = hlsAttr(line, 'URI');
+    if (uri == null || uri.isEmpty) continue;
+    out.add(
+      HlsAudioRendition(
+        uri: _resolve(uri, masterUrl),
+        lang: hlsAttr(line, 'LANGUAGE') ?? '',
+        name: hlsAttr(line, 'NAME') ?? '',
+        isDefault: (hlsAttr(line, 'DEFAULT') ?? '').toUpperCase() == 'YES',
+      ),
+    );
+  }
+  return out;
+}
+
+/// [playlist] rewritten to keep every video variant but only the audio
+/// rendition whose resolved URI is [keepUri]. All URIs are made absolute so the
+/// result plays from a local file. Returns null if [keepUri] isn't in there.
+String? buildTrimmedMaster(String playlist, String masterUrl, String keepUri) {
+  final lines = playlist.split(RegExp(r'\r?\n'));
+  final out = <String>[];
+  var kept = false;
+  for (final raw in lines) {
+    final line = raw.trim();
+    if (line.startsWith('#EXT-X-MEDIA:') && hlsAttr(line, 'TYPE') == 'AUDIO') {
+      final uri = hlsAttr(line, 'URI');
+      if (uri == null) continue;
+      final abs = _resolve(uri, masterUrl);
+      if (abs != keepUri) continue; // the 17 we never play
+      out.add(line.replaceFirst('URI="$uri"', 'URI="$abs"'));
+      kept = true;
+      continue;
+    }
+    // A bare line after a STREAM-INF is a variant URI — absolutise it.
+    if (line.isNotEmpty && !line.startsWith('#')) {
+      out.add(_resolve(line, masterUrl));
+      continue;
+    }
+    out.add(raw);
+  }
+  if (!kept) return null;
+  return out.join('\n');
+}
+
 /// Whether [url] names a playlist by its path. Query-aware: plenty of CDNs
 /// hang `?token=...` off the end, and a few put `.m3u8` in a query value only,
 /// which doesn't count.

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../app_mode.dart';
+import '../di/injector.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../tv/tv_list_focusable.dart';
 
 /// Compact, flat app bar for pushed settings screens — an 18px title with a
 /// bottom hairline, matching the in-tab section header so drilling deeper keeps
@@ -18,10 +21,16 @@ PreferredSizeWidget settingsAppBar(String title, {List<Widget>? actions}) {
   );
 }
 
+bool _isTvDevice() =>
+    sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+
 /// One settings list row inside a [SettingsCard]: a rounded tinted icon tile +
 /// title with an optional description under it + trailing chevron / switch /
 /// value. Set [destructive] for the danger tint, or [iconAccent] to tint the
 /// icon tile with the accent (used for a card's lead row).
+///
+/// On TV, tappable rows are wrapped in [TvListFocusable] (white pill) so D-pad
+/// focus sits on top of the opaque card — bare [InkWell] focus is invisible.
 class SettingsTile extends StatelessWidget {
   const SettingsTile({
     super.key,
@@ -33,6 +42,7 @@ class SettingsTile extends StatelessWidget {
     this.destructive = false,
     this.subtitleMaxLines = 1,
     this.iconAccent = false,
+    this.autofocus = false,
   });
 
   final IconData icon;
@@ -54,86 +64,120 @@ class SettingsTile extends StatelessWidget {
   /// Accent-tint the icon tile (a card's lead row).
   final bool iconAccent;
 
+  /// TV only: land D-pad focus here first (typically the first row on a page).
+  final bool autofocus;
+
   @override
   Widget build(BuildContext context) {
+    final isTv = _isTvDevice();
+    final tap = onTap;
+
+    if (isTv && tap != null) {
+      return TvListFocusable(
+        autofocus: autofocus,
+        semanticLabel: title,
+        onTap: tap,
+        child: ExcludeSemantics(
+          child: _row(
+            // Row activation owns the tap; disable InkWell under the focusable.
+            onTap: null,
+            // Switch / chevron must not steal D-pad traversal.
+            wrapTrailing: true,
+          ),
+        ),
+      );
+    }
+
+    return _row(onTap: tap, wrapTrailing: false);
+  }
+
+  Widget _row({
+    required VoidCallback? onTap,
+    required bool wrapTrailing,
+  }) {
     final fg = destructive ? AppColors.accent : null;
     final accented = destructive || iconAccent;
-    final trailingWidget =
-        trailing ??
-        (onTap == null
-            ? null
-            : const Icon(
-                Icons.chevron_right_rounded,
-                color: AppColors.textTertiary,
-                size: 20,
-              ));
+
+    Widget? trailingWidget;
+    if (trailing != null) {
+      // Switches / custom trailings must not steal D-pad traversal on TV.
+      trailingWidget = wrapTrailing ? ExcludeFocus(child: trailing!) : trailing;
+    } else if (this.onTap != null) {
+      trailingWidget = const Icon(
+        Icons.chevron_right_rounded,
+        color: AppColors.textTertiary,
+        size: 20,
+      );
+    }
+
+    final body = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: accented
+                  ? AppColors.accent.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              icon,
+              color: accented ? AppColors.accent : AppColors.textSecondary,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: AppText.headline.copyWith(
+                    color: fg ?? AppColors.textPrimary,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15.5,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                      fontSize: 12.8,
+                    ),
+                    maxLines: subtitleMaxLines,
+                    overflow: subtitleMaxLines == null
+                        ? TextOverflow.clip
+                        : TextOverflow.ellipsis,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (trailingWidget != null) ...[
+            const SizedBox(width: 12),
+            trailingWidget,
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return body;
+
     return InkWell(
       onTap: onTap,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        child: Row(
-          children: [
-            // Icon in a rounded tinted tile — accent on a lead/destructive row.
-            Container(
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: accented
-                    ? AppColors.accent.withValues(alpha: 0.14)
-                    : Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                icon,
-                color: accented ? AppColors.accent : AppColors.textSecondary,
-                size: 19,
-              ),
-            ),
-            const SizedBox(width: 14),
-            // Title + description stacked, so the trailing widget always lands
-            // cleanly on the right regardless of subtitle length.
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: AppText.headline.copyWith(
-                      color: fg ?? AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 15.5,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle!,
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textSecondary,
-                        fontSize: 12.8,
-                      ),
-                      maxLines: subtitleMaxLines,
-                      overflow: subtitleMaxLines == null
-                          ? TextOverflow.clip
-                          : TextOverflow.ellipsis,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (trailingWidget != null) ...[
-              const SizedBox(width: 12),
-              trailingWidget,
-            ],
-          ],
-        ),
-      ),
+      child: body,
     );
   }
 }
@@ -141,6 +185,10 @@ class SettingsTile extends StatelessWidget {
 /// Groups its rows into one rounded surface card with inset hairline dividers
 /// between them (iOS-grouped style). Category separation comes from the
 /// [SettingsSectionLabel] above it.
+///
+/// On TV, [clipBehavior] is [Clip.none] so [TvListFocusable] / [TvFocusable]
+/// focus chrome is not cropped at the card edges (phone keeps antiAlias so
+/// Material ripples stay rounded).
 class SettingsCard extends StatelessWidget {
   const SettingsCard({super.key, required this.children, this.margin});
 
@@ -149,6 +197,7 @@ class SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTv = _isTvDevice();
     final rows = <Widget>[];
     for (var i = 0; i < children.length; i++) {
       if (i > 0) {
@@ -163,13 +212,19 @@ class SettingsCard extends StatelessWidget {
       rows.add(children[i]);
     }
     return Container(
-      margin: margin ?? const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      clipBehavior: Clip.antiAlias,
+      margin: margin ??
+          (isTv
+              ? const EdgeInsets.fromLTRB(28, 0, 20, 0)
+              : const EdgeInsets.fromLTRB(16, 0, 16, 0)),
+      // TV focus pills/borders paint outside the row bounds — do not clip.
+      clipBehavior: isTv ? Clip.none : Clip.antiAlias,
       decoration: BoxDecoration(
         // Dark card fill; icon tiles use a light overlay to still read on it.
         color: AppColors.settingsCard,
         borderRadius: BorderRadius.circular(16),
       ),
+      // Tiny inset so first/last pill fills aren't flush against the card edge.
+      padding: isTv ? const EdgeInsets.symmetric(vertical: 4) : EdgeInsets.zero,
       child: Column(mainAxisSize: MainAxisSize.min, children: rows),
     );
   }

@@ -701,6 +701,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-play'),
                                   autofocus: true,
+                                  variant: TvFocusVariant.pill,
                                   onTap: eps.isNotEmpty
                                       ? () => _openPlayer(
                                           eps,
@@ -732,6 +733,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 // Download button
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-download'),
+                                  variant: TvFocusVariant.pill,
                                   onTap: () => _openDownloadSheet(
                                     detail: detail,
                                     category: category,
@@ -760,6 +762,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 // filter is applied.
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-ep-search'),
+                                  variant: TvFocusVariant.pill,
                                   onTap: _openEpisodeSearch,
                                   semanticLabel: _epQuery.isEmpty
                                       ? 'Search episodes'
@@ -784,6 +787,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                 // My List button (same icon-over-label as phone)
                                 TvFocusable(
                                   key: const ValueKey('tv-detail-mylist'),
+                                  variant: TvFocusVariant.pill,
                                   onTap: () => _openListSheet(detail),
                                   semanticLabel:
                                       _status?.shortLabel ?? 'My List',
@@ -809,6 +813,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   // pushed to every connected tracker.
                                   TvFocusable(
                                     key: const ValueKey('tv-detail-tracking'),
+                                    variant: TvFocusVariant.pill,
                                     onTap: () => _openTrackingSheet(detail),
                                     semanticLabel: 'Tracking',
                                     child: ExcludeSemantics(
@@ -1093,14 +1098,9 @@ class _TvEpisodeList extends StatelessWidget {
           final heading = displayTitle.isNotEmpty
               ? '$epNum. $displayTitle'
               : 'Episode $epNum';
-          return TvFocusable(
+          return TvListFocusable(
             key: ValueKey('tv-ep-$fullIndex'),
             onTap: () => widget.onOpen(fullIndex),
-            // Full-width row: draw the highlight as a foreground frame (not a
-            // strip behind the content) and don't scale outward under the poster.
-            // Same treatment for series and movies.
-            scale: 1.0,
-            foregroundHighlight: true,
             semanticLabel: heading,
             child: ExcludeSemantics(
               child: RepaintBoundary(

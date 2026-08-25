@@ -139,7 +139,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
     void onTap() =>
         Navigator.pop(context, (chosen: s, all: _sources ?? <VideoSource>[s]));
     if (sl<AppMode>().isTv) {
-      return TvFocusable(
+      return TvListFocusable(
         autofocus: i == 0,
         onTap: onTap,
         semanticLabel: '$label, $sub',
@@ -1236,8 +1236,7 @@ class _DownloadSheetState extends State<_DownloadSheet> {
       // checked radio; focus = TvFocusable's ring.
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
-        child: TvFocusable(
-          scale: 1.0, // full-width row — scaling overflows the sheet edges
+        child: TvListFocusable( // full-width row — scaling overflows the sheet edges
           onTap: onTap,
           semanticLabel: hasQuality ? '$label, ${s.quality!.trim()}' : label,
           child: Material(

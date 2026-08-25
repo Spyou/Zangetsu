@@ -4,8 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_config.dart';
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 /// Support / Donate screen — a short message and a few ways to tip:
 /// Buy Me a Coffee, PayPal (international) and UPI (India).
@@ -130,25 +134,49 @@ class DonateScreen extends StatelessWidget {
           // Tap the ID to copy — handy on desktop or when the button can't
           // reach a UPI app.
           Center(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(8),
-              onTap: () => _copyUpi(context),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _upiId,
-                      style: AppText.caption.copyWith(color: AppColors.textSecondary),
+            child: (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
+                ? TvListFocusable(
+                    semanticLabel: 'Copy UPI ID',
+                    onTap: () => _copyUpi(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _upiId,
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.copy_rounded,
+                              size: 14, color: AppColors.textTertiary),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    Icon(Icons.copy_rounded,
-                        size: 14, color: AppColors.textTertiary),
-                  ],
-                ),
-              ),
-            ),
+                  )
+                : InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => _copyUpi(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _upiId,
+                            style: AppText.caption
+                                .copyWith(color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.copy_rounded,
+                              size: 14, color: AppColors.textTertiary),
+                        ],
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
@@ -174,44 +202,54 @@ class _DonateButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+    final button = Container(
+      height: 54,
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: bg.withValues(alpha: 0.3),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: fg, size: 22),
+            const SizedBox(width: 10),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: 'Inter',
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                letterSpacing: -0.2,
+                color: fg,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (isTv) {
+      return TvFocusable(
+        variant: TvFocusVariant.pill,
+        semanticLabel: label,
+        onTap: onTap,
+        child: button,
+      );
+    }
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
-        child: Container(
-          height: 54,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [
-              BoxShadow(
-                color: bg.withValues(alpha: 0.3),
-                blurRadius: 18,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, color: fg, size: 22),
-                const SizedBox(width: 10),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    letterSpacing: -0.2,
-                    color: fg,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        child: button,
       ),
     );
   }

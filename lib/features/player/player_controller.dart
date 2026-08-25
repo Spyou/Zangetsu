@@ -386,6 +386,68 @@ class PlayerCubit extends Cubit<PlayerState> {
   // pulled segment) buffers forever — _onPlaybackError won't cycle it (it bails
   // once started). When buffering persists with no position progress we fail
   // over to the next untried mirror at the same position.
+  /// Alternate audio tracks parsed out of the master we trimmed, so the player
+  /// can attach one on demand instead of mpv probing every one up front.
+  List<HlsAudioRendition> _audioRenditions = const [];
+
+  /// The one rendition written into the trimmed master — mpv already lists it,
+  /// so it must not also appear as an attachable track.
+  String? _keptAudioUri;
+
+  /// Fetches [s]'s master playlist and, when it names 3+ alternate audio
+  /// tracks, writes a copy carrying just the wanted one. Returns the local
+  /// path, or null to open [s] exactly as before (fewer tracks, fetch failed,
+  /// not a master — every path that isn't a clear win).
+  Future<String?> _trimMasterAudio(VideoSource s) async {
+    try {
+      final resp = await _dio.getUri<String>(
+        Uri.parse(s.url),
+        options: Options(
+          responseType: ResponseType.plain,
+          headers: s.headers,
+          receiveTimeout: const Duration(seconds: 8),
+          validateStatus: (c) => c != null && c < 500,
+        ),
+      );
+      final body = resp.data ?? '';
+      if (!body.trimLeft().startsWith('#EXTM3U')) return null;
+      final auds = parseHlsAudioRenditions(body, s.url);
+      if (auds.length < 3) return null;
+      _audioRenditions = auds;
+      // Keep the language this title was last watched in, so the common case
+      // needs no second fetch. Otherwise the playlist's own DEFAULT, which is
+      // what every other player starts on.
+      final url = showUrl;
+      final want = (url != null && url.isNotEmpty)
+          ? sl<TitlePrefsStore>().audioTrack(sourceId, url)?.toLowerCase()
+          : null;
+      HlsAudioRendition? pick;
+      if (want != null && want.isNotEmpty) {
+        for (final a in auds) {
+          if (a.lang.toLowerCase() == want || a.name.toLowerCase() == want) {
+            pick = a;
+            break;
+          }
+        }
+      }
+      pick ??= auds.firstWhere((a) => a.isDefault, orElse: () => auds.first);
+      final text = buildTrimmedMaster(body, s.url, pick.uri);
+      if (text == null) return null;
+      _keptAudioUri = pick.uri;
+      final dir = await getTemporaryDirectory();
+      final f = File('${dir.path}/zg_master_${s.url.hashCode}.m3u8');
+      await f.writeAsString(text);
+      debugPrint(
+        '[audio] ${auds.length} tracks in master, opening with '
+        '${pick.lang.isEmpty ? pick.name : pick.lang} only',
+      );
+      return f.path;
+    } catch (e) {
+      debugPrint('[audio] master trim skipped, opening as-is: $e');
+      return null;
+    }
+  }
+
   Timer? _stallTimer;
   Duration _stallAnchorPos = Duration.zero;
   // Streams served by a local proxy (127.0.0.1 — Aniyomi's Cloudflare video
@@ -1106,8 +1168,22 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   /// Embedded audio tracks for the open media (excludes the synthetic
   /// auto/no entries media_kit always reports).
-  List<AudioTrack> get mediaAudioTracks =>
-      state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+  List<AudioTrack> get mediaAudioTracks {
+    final loaded =
+        state.tracks.audio.where((t) => t.id != 'auto' && t.id != 'no').toList();
+    if (_audioRenditions.isEmpty) return loaded;
+    // The languages we kept OUT of the master aren't tracks until they're
+    // picked, so list them as uri tracks. Choosing one attaches that single
+    // stream (mpv `audio-add`) instead of reopening — the same load-on-demand
+    // ExoPlayer does, which is why we can skip 17 of these at open time.
+    final have = loaded.map((t) => t.id).toSet();
+    return [
+      ...loaded,
+      for (final r in _audioRenditions)
+        if (r.uri != _keptAudioUri && !have.contains(r.uri))
+          AudioTrack.uri(r.uri, title: r.name, language: r.lang),
+    ];
+  }
 
   /// The video renditions mpv found inside the open media, best first.
   ///
@@ -2046,15 +2122,39 @@ class PlayerCubit extends Cubit<PlayerState> {
     // a progressive MP4 makes file-hosts throttle/drop it mid-stream (a fresh
     // TCP per read) — the "movie freezes in the middle" report. So apply that
     // string only to HLS; let MP4 use persistent connections (mpv's default).
+    var playUrl = playUrlOverride ?? s.url;
+    // Netflix-style masters name ~18 alternate audio tracks. FFmpeg opens all
+    // of them and pulls segments from each before it will show a frame (~31s
+    // measured on CNC). Hand mpv one audio track and attach the rest on demand,
+    // which is what ExoPlayer does natively. Any failure keeps the original url.
+    _audioRenditions = const [];
+    _keptAudioUri = null;
+    var trimmedLocal = false;
+    if (playUrlOverride == null && s.container == SourceContainer.hls) {
+      final trimmed = await _trimMasterAudio(s);
+      if (trimmed != null) {
+        playUrl = trimmed;
+        trimmedLocal = true;
+      }
+    }
     final plat = player.platform;
     if (plat is NativePlayer) {
       final isHls = s.container == SourceContainer.hls;
+      // Opening a LOCAL playlist makes FFmpeg clamp nested protocols to
+      // 'file,crypto,data', so the https renditions inside it are refused
+      // ("Protocol 'https' not on whitelist"). Re-allow them for that case only.
+      // mpv splits this option on commas, so a value that CONTAINS commas has
+      // to use its %n% length escape or the whole string is rejected (-4).
+      const protos = 'file,crypto,data,http,https,tcp,tls';
+      final whitelist = ',protocol_whitelist=%${protos.length}%$protos';
       await plat.setProperty(
         'demuxer-lavf-o',
-        isHls
-            ? 'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
-                  'analyzeduration=2000000'
-            : 'extension_picky=0,allowed_extensions=ALL,analyzeduration=2000000',
+        (isHls
+                ? 'extension_picky=0,allowed_extensions=ALL,http_persistent=0,'
+                      'analyzeduration=2000000'
+                : 'extension_picky=0,allowed_extensions=ALL,'
+                      'analyzeduration=2000000') +
+            (trimmedLocal ? whitelist : ''),
       );
       // Progressive MP4 file hosts often drop the connection right after a
       // range-request seek (resume / scrub), which stalls playback at the seek
@@ -2081,7 +2181,6 @@ class PlayerCubit extends Cubit<PlayerState> {
             : '0',
       );
     }
-    final playUrl = playUrlOverride ?? s.url;
     _isProxiedStream = playUrl.startsWith('http://127.0.0.1');
     // A direct Aniyomi stream can hang on Cloudflare without a clean mpv error —
     // arm a start watchdog to swap to its hidden proxy fallback if it never

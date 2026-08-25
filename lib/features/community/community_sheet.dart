@@ -8,7 +8,7 @@ import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 const _telegramUrl = 'https://t.me/ZangetsuStream';
 const _discordUrl = kDiscordInviteUrl;
@@ -172,7 +172,7 @@ class _CommunitySheet extends StatelessWidget {
     );
     if (!isTv) return button;
     // On TV the D-pad drives focus; TvFocusable handles OK-key activation.
-    return TvFocusable(scale: 1.0, autofocus: autofocus, onTap: go, child: button);
+    return TvListFocusable( autofocus: autofocus, onTap: go, child: button);
   }
 
   Widget _laterButton(BuildContext context, {required bool isTv}) {
@@ -183,6 +183,6 @@ class _CommunitySheet extends StatelessWidget {
           style: AppText.body.copyWith(color: AppColors.textTertiary)),
     );
     if (!isTv) return button;
-    return TvFocusable(scale: 1.0, onTap: dismiss, child: button);
+    return TvListFocusable( onTap: dismiss, child: button);
   }
 }

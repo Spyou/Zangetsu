@@ -16,7 +16,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_back_button.dart';
-import '../../core/tv/tv_focusable.dart';
+import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/source_switcher.dart';
 import 'aniyomi_sources_screen.dart';
 import 'bloc/sources_state.dart';
@@ -542,9 +542,9 @@ class _HubTvViewState extends State<_HubTvView> {
       autofocusAssigned = true;
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: TvFocusable(
-          scale: 1.02,
+        child: TvListFocusable(
           autofocus: autofocus,
+          semanticLabel: title,
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
@@ -576,7 +576,11 @@ class _HubTvViewState extends State<_HubTvView> {
                     ],
                   ),
                 ),
-                _kChevron,
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.textTertiary,
+                  size: 22,
+                ),
               ],
             ),
           ),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/ui/settings_widgets.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/playback/search_source_prefs.dart';
 import '../../core/models/media_item.dart';
@@ -10,6 +11,7 @@ import '../../core/playback/source_health_store.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_list_focusable.dart';
 
 /// "Test sources" — probes every enabled source concurrently and shows, per
 /// source, whether it's Working / Slow / Dead (with the reason). A probe asks
@@ -320,11 +322,25 @@ class _HealthRow extends StatelessWidget {
               ),
             )
           else if (_isDead && onDisable != null && searchIncluded)
-            TextButton(
-              onPressed: onDisable,
-              style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-              child: const Text('Remove'),
-            ),
+            (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
+                ? TvListFocusable(
+                    semanticLabel: 'Remove ${result.name}',
+                    onTap: onDisable!,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Text(
+                        'Remove',
+                        style: AppText.body.copyWith(color: AppColors.accent),
+                      ),
+                    ),
+                  )
+                : TextButton(
+                    onPressed: onDisable,
+                    style: TextButton.styleFrom(
+                        foregroundColor: AppColors.accent),
+                    child: const Text('Remove'),
+                  ),
         ],
       ),
     );

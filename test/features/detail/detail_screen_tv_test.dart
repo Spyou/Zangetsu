@@ -30,6 +30,7 @@ import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/detail/cubit/detail_cubit.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
 
@@ -290,17 +291,23 @@ void main() {
       // 'Play' text inside the Play button.
       expect(find.text('Play'), findsWidgets);
 
-      // Three episode tiles should each be wrapped in TvFocusable.
+      // Three episode tiles should each be wrapped in TvListFocusable.
       expect(find.byKey(const ValueKey('tv-ep-0')), findsOneWidget);
       expect(find.byKey(const ValueKey('tv-ep-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('tv-ep-2')), findsOneWidget);
 
-      // Every keyed episode tile is a TvFocusable.
+      // Every keyed episode tile is D-pad focusable: a TvListFocusable that
+      // renders a TvFocusable underneath.
       for (int i = 0; i < 3; i++) {
-        final w = tester.widget<TvFocusable>(
-          find.byKey(ValueKey('tv-ep-$i')),
+        final key = ValueKey('tv-ep-$i');
+        expect(tester.widget(find.byKey(key)), isA<TvListFocusable>());
+        expect(
+          find.descendant(
+            of: find.byKey(key),
+            matching: find.byType(TvFocusable),
+          ),
+          findsOneWidget,
         );
-        expect(w, isA<TvFocusable>());
       }
 
       // At least the Play + Download + My List + 4 tabs + 3 episodes are focusable.
