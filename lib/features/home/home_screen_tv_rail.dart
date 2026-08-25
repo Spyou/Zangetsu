@@ -12,12 +12,17 @@ class TvRail extends StatelessWidget {
     super.key,
     required this.section,
     required this.onTap,
+    this.onLongPress,
     this.onSeeAll,
     this.firstAutofocus = false,
   });
 
   final HomeSection section;
   final ValueChanged<MediaItem> onTap;
+
+  /// Held OK on a poster — mirrors phone row long-press (info / My List sheet).
+  /// Null keeps the snappy KeyDown tap (see [TvFocusable.onLongPress]).
+  final ValueChanged<MediaItem>? onLongPress;
   final VoidCallback? onSeeAll;
   final bool firstAutofocus;
 
@@ -128,6 +133,11 @@ class TvRail extends StatelessWidget {
                           variant: TvFocusVariant.float,
                           scale: 1.06,
                           onTap: () => onTap(item),
+                          // Touch gestures stay on PosterCard null — TvFocusable
+                          // owns OK (and held-OK when [onLongPress] is set).
+                          onLongPress: onLongPress == null
+                              ? null
+                              : () => onLongPress!(item),
                           semanticLabel: item.title,
                           child: SizedBox(
                             width: _cardWidth,

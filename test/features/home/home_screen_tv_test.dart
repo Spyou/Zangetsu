@@ -110,6 +110,13 @@ void main() {
 
       // The very first TvFocusable (hero Play button) carries autofocus=true.
       expect(focusables.first.autofocus, isTrue);
+
+      // Poster rail cards must wire held-OK long-press (info sheet). Without
+      // this, TvFocusable treats OK as an immediate tap and long-hold is dead.
+      final poster = focusables.firstWhere(
+        (f) => f.semanticLabel == 'Anime Two',
+      );
+      expect(poster.onLongPress, isNotNull);
     },
   );
 
@@ -158,6 +165,7 @@ void main() {
           isButton: true,
           isFocusable: true,
           hasTapAction: true,
+          hasLongPressAction: true,
           hasFocusAction: true,
         ),
       );
