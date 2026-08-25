@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
@@ -805,6 +806,30 @@ class _DetailViewState extends State<_DetailView>
     /// adaptive default. One-shot — the cubit clears it after this episode.
     VideoSource? initialSource,
   }) async {
+    // Opening something other than where they left off? Offer to look at it
+    // without moving their place. Asked here, before the reading/video split,
+    // so all three kinds behave the same. Dismissing means "never mind" —
+    // neither answer is assumed, and nothing opens.
+    final reading =
+        detail.type == ProviderType.novel ||
+        detail.type == ProviderType.manga ||
+        widget.item.type == ProviderType.novel ||
+        widget.item.type == ProviderType.manga;
+    final resume = reading
+        ? _readResumeIndex(episodes)
+        : (index: _resumeIndex(episodes), hasResume: _hasVideoResume(episodes));
+    var peek = false;
+    if (shouldAskBeforeJump(
+      resumeIndex: resume.index,
+      targetIndex: index,
+      hasResume: resume.hasResume,
+      askEnabled: jumpPromptEnabled,
+    )) {
+      final choice = await showJumpPrompt(context, reading: reading);
+      if (choice == null || !mounted) return; // dismissed — open nothing
+      peek = choice == JumpChoice.peek;
+    }
+
     // Reading types never touch the player — route to the reader instead.
     // Both tap paths (Play button + episode-row onTap) call this same
     // function, so gating it here covers both in one place. Safety-critical:
@@ -826,7 +851,7 @@ class _DetailViewState extends State<_DetailView>
         _myList.add(widget.item);
         _listStatus.setStatus(widget.item, WatchStatus.watching);
       }
-      _openReader(episodes, index, detail);
+      _openReader(episodes, index, detail, peek: peek);
       return;
     }
 
@@ -911,6 +936,7 @@ class _DetailViewState extends State<_DetailView>
           tmdbIsTv: detail.tmdbIsTv,
           imdbId: detail.imdbId ?? widget.item.imdbId,
           availableCategories: availableCategories,
+          peek: peek,
         ),
       ),
     );
@@ -922,7 +948,12 @@ class _DetailViewState extends State<_DetailView>
   /// `widget.item.type` for the disagreeing-provider-JSON case the guard
   /// above also covers, so a mismatch still lands on the right reader
   /// instead of silently doing nothing.
-  void _openReader(List<Episode> chapters, int index, MediaDetail detail) {
+  void _openReader(
+    List<Episode> chapters,
+    int index,
+    MediaDetail detail, {
+    bool peek = false,
+  }) {
     final readingType =
         (detail.type == ProviderType.novel || detail.type == ProviderType.manga)
         ? detail.type
@@ -939,6 +970,7 @@ class _DetailViewState extends State<_DetailView>
               chapters: chapters,
               startIndex: index,
               malId: detail.malId ?? widget.item.malId,
+              peek: peek,
             ),
           ),
         );
@@ -954,6 +986,7 @@ class _DetailViewState extends State<_DetailView>
               chapters: chapters,
               startIndex: index,
               malId: detail.malId ?? widget.item.malId,
+              peek: peek,
             ),
           ),
         );
@@ -984,6 +1017,20 @@ class _DetailViewState extends State<_DetailView>
     final epNum = first.number?.toInt() ?? 1;
     if (hasMultipleSeasons) return 'Download S$currentSeason:E$epNum';
     return 'Download E$epNum';
+  }
+
+  /// Whether video progress exists at all for this title — the jump prompt has
+  /// nothing to protect on a title that's never been opened, and
+  /// [_resumeIndex] alone can't say, since it returns 0 both for "start over"
+  /// and for "you stopped in episode 1".
+  bool _hasVideoResume(List<Episode> eps) {
+    final store = sl<ResumeStore>();
+    for (final e in eps) {
+      if (store.get(widget.item.sourceId, widget.item.url, e.id) != null) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// Walk episodes and return the best resume target index. PRESERVED.

@@ -22,7 +22,9 @@ import android.app.Application
 import android.content.Context
 import android.util.Log
 import eu.kanade.tachiyomi.network.NetworkHelper
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.protobuf.ProtoBuf
 import okhttp3.OkHttpClient
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.InjektModule
@@ -67,6 +69,8 @@ object AniyomiInjektModules {
      * One-time log marker emitted on first registration — used externally to verify
      * that the graph is NOT initialised during cold start.
      */
+    // ProtoBuf is still marked experimental upstream; Mihon opts in the same way.
+    @OptIn(ExperimentalSerializationApi::class)
     fun ensureRegistered(context: Context) {
         if (registered) return
         synchronized(this) {
@@ -117,6 +121,15 @@ object AniyomiInjektModules {
                     addSingleton(app)
                     addSingleton(NetworkHelper(app, extensionClient))
                     addSingleton(Json { ignoreUnknownKeys = true })
+                    // Shueisha's MANGA Plus and friends are protobuf APIs and ask
+                    // for this exactly the way they ask for Json. Upstream Mihon
+                    // registers it here too. Having the class on the classpath is
+                    // not enough on its own — the extension wants an INSTANCE.
+                    // Explicit <ProtoBuf>: addSingleton is `reified T`, and the
+                    // bare `ProtoBuf` expression is the COMPANION object, so
+                    // inference registers it as ProtoBuf.Default while the
+                    // extension asks Injekt for ProtoBuf — and misses.
+                    addSingleton<ProtoBuf>(ProtoBuf)
                     addSingleton(
                         SourcePreferences(
                             app.getSharedPreferences("zangetsu_aniyomi", Context.MODE_PRIVATE),

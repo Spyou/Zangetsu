@@ -156,6 +156,16 @@ class PlaybackPrefs {
   bool get autoResume => _box.get('autoResume', defaultValue: true) as bool;
   Future<void> setAutoResume(bool value) => _box.put('autoResume', value);
 
+  /// Ask before opening something that isn't where you left off, so a look at
+  /// a later chapter/episode doesn't quietly move your place — or, jumping
+  /// backwards, drag the tracker count DOWN to whatever you re-opened.
+  ///
+  /// OFF by default: it puts a dialog in front of a very common tap, and an
+  /// existing install should keep behaving exactly as it did until someone
+  /// asks for this.
+  bool get askOnJump => _box.get('askOnJump', defaultValue: false) as bool;
+  Future<void> setAskOnJump(bool value) => _box.put('askOnJump', value);
+
   /// Auto-add a title to My List (as "Watching"/"Reading") the first time you
   /// open it — mirrors the tracker auto-scrobble. On by default; anyone who's
   /// explicitly flipped this keeps their own choice, this only changes what a

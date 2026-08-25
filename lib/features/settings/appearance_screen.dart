@@ -250,9 +250,9 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
 
   /// Toggle for the list/grid reveal. Phone/iOS only — the reveal
   /// self-disables on TV regardless, so this switch simply governs touch devices.
-  /// The 4K / HD / CAM badge drawn in a poster's top-right corner. Only
-  /// CloudStream reports a quality, and many of its providers don't set one
-  /// either, so plenty of posters show nothing either way.
+  /// The little labels drawn in a poster's top corners — quality on the right,
+  /// Sub/Dub on the left. Only CloudStream reports either, and many of its
+  /// providers set neither, so plenty of posters show nothing either way.
   Widget _qualityBadgeTile() {
     final on = sl<PlaybackPrefs>().qualityBadges;
     return Container(
@@ -264,7 +264,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       child: Row(
         children: [
           const Icon(
-            Icons.high_quality_outlined,
+            Icons.sell_outlined,
             color: AppColors.textSecondary,
           ),
           const SizedBox(width: 14),
@@ -272,10 +272,11 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Quality badges', style: AppText.headline),
+                Text('Poster badges', style: AppText.headline),
                 const SizedBox(height: 2),
                 Text(
-                  'Show 4K, HD or CAM on a poster when the source says so.',
+                  'Show quality (4K, HD, CAM) and Sub/Dub on posters, '
+                  'when the source tells us.',
                   style: AppText.caption,
                 ),
               ],

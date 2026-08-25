@@ -11,6 +11,7 @@ import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.MovieLoadResponse
+import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvSeriesLoadResponse
@@ -71,6 +72,14 @@ class PluginHost(private val context: Context) {
         // links. Additive: it was unset (null) before, so this only enables a
         // path that previously crashed — never changes a working one.
         com.lagradost.api.setContext(java.lang.ref.WeakReference<Any>(context))
+
+        // Tell plugins what kind of device this actually is. They gate real work
+        // on it, not just cosmetics: CNC Verse's openInExternalBrowser (the
+        // net22.cc/verify2 session step its Netflix/Disney/Hotstar sources need)
+        // checks isLayout first, because a TV has nowhere to open a browser.
+        // While we claimed to be a TV that verification silently never ran, and
+        // the source served a placeholder video instead of the episode.
+        com.lagradost.cloudstream3.ui.settings.Globals.resolveFrom(context)
 
         // NiceHttp's shared client (com.lagradost.cloudstream3.app) ships with NO
         // cookie jar, so cookies never persist between requests. Give it a
@@ -875,6 +884,13 @@ class PluginHost(private val context: Context) {
         // on. Sent as the raw enum name; Dart turns it into a badge label.
         // Null for the many providers that never set it.
         "quality" to quality?.name,
+        // Whether a listing is subbed, dubbed or both. Lives on
+        // AnimeSearchResponse only — every other type has no such notion, so
+        // this is null for movies/TV and for anime sources that don't set it.
+        // The one thing on a poster you'd otherwise have to open the title to
+        // learn, which is why it earns a badge when year/score didn't.
+        "dubStatus" to (this as? AnimeSearchResponse)
+            ?.dubStatus?.map { it.name }?.sorted(),
     )
 
     private fun LoadResponse.toDetailMap(apiName: String, category: String = "sub"): Map<String, Any?> {

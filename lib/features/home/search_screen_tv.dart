@@ -412,6 +412,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           headers: item.coverHeaders,
           tags: _tagsFor(item),
           qualityBadge: item.quality,
+          dubBadge: item.dubBadge,
           onTap: () => _openDetail(item),
         );
       },
@@ -482,6 +483,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                         headers: item.coverHeaders,
                         tags: _tagsFor(item),
                         qualityBadge: item.quality,
+                        dubBadge: item.dubBadge,
                         onTap: () => _openDetail(item),
                       ),
                     ),

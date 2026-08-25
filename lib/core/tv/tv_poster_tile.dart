@@ -15,6 +15,7 @@ class TvPosterTile extends StatelessWidget {
     this.headers,
     this.tags = const [],
     this.qualityBadge,
+    this.dubBadge,
     required this.onTap,
     this.onLongPress,
     this.autofocus = false,
@@ -27,6 +28,7 @@ class TvPosterTile extends StatelessWidget {
 
   /// Release quality drawn in the poster's top-right corner. See [PosterCard].
   final String? qualityBadge;
+  final String? dubBadge;
 
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
@@ -54,6 +56,7 @@ class TvPosterTile extends StatelessWidget {
               headers: headers,
               tags: tags,
               qualityBadge: qualityBadge,
+              dubBadge: dubBadge,
               showTitle: false,
               // Touch gestures are disabled on TV; TvFocusable handles OK-key
               // (including held-OK long-press when [onLongPress] is set).

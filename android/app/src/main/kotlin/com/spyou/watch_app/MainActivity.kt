@@ -27,6 +27,8 @@ import com.spyou.watch_app.cloudstream.RepoManager
 import com.spyou.watch_app.cloudstream.SubscriptionWorker
 import com.spyou.watch_app.mihon.MihonBridge
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.appcompat.app.AppCompatActivity
@@ -277,6 +279,30 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
     // Stored so RepositoryManager (mega-repo plugins) can push added repos to
     // Dart. Set in configureFlutterEngine.
     private var csChannel: MethodChannel? = null
+
+    /**
+     * Scope for an extension bridge: a failure inside third-party extension code
+     * must not take the app down with it.
+     *
+     * MANGA Plus proved this the hard way — its static initialiser threw
+     * `ExceptionInInitializerError` while resolving a class we didn't ship, on a
+     * coroutine our `runCatching` never saw, and the default handler killed the
+     * process mid-search. Extensions are arbitrary third-party code; any of them
+     * can reference something we don't have.
+     *
+     * SupervisorJob so one failed call doesn't cancel the rest of the bridge, and
+     * a handler so an escaped throwable is logged instead of fatal. The call that
+     * failed this way never delivers its result — that request just hangs rather
+     * than answering — but one stuck source in a fan-out beats the whole app
+     * dying, and the log says which one it was.
+     */
+    private fun extensionScope(tag: String): CoroutineScope = CoroutineScope(
+        SupervisorJob() +
+            Dispatchers.IO +
+            CoroutineExceptionHandler { _, e ->
+                Log.e(TAG, "uncaught in $tag extension: ${e::class.java.name}: ${e.message}", e)
+            },
+    )
 
     /** Required by [FlutterEngineConfigurator]. Everything we register in
      *  [configureFlutterEngine] is torn down in onDestroy already, and the engine
@@ -981,13 +1007,13 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // and expose them to the Flutter layer for browse/search/play. Mirrors the
         // CloudStream channel registration style above.
         val aniyomiChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/aniyomi")
-        AniyomiBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(aniyomiChannel)
+        AniyomiBridge(applicationContext, extensionScope("aniyomi")).attach(aniyomiChannel)
 
         // Mihon channel: same idea for manga — load Mihon manga-extension APKs,
         // register sources, and expose them for browse/search/read. Separate
         // bridge and separate source registry from Aniyomi's; nothing shared.
         val mihonChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/mihon")
-        MihonBridge(applicationContext, CoroutineScope(Dispatchers.IO)).attach(mihonChannel)
+        MihonBridge(applicationContext, extensionScope("mihon")).attach(mihonChannel)
 
         // Novel-fetch channel: routes the LNReader plugin's HTTP requests
         // through native OkHttp (see NovelHttp.kt) instead of Dio/dart:io.

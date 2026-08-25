@@ -642,6 +642,7 @@ class _HomeViewState extends State<_HomeView>
           headers: items[i].coverHeaders,
           cellWidth: 140,
           qualityBadge: items[i].quality,
+                  dubBadge: items[i].dubBadge,
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
         ),
