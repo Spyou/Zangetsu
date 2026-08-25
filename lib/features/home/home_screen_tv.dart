@@ -10,6 +10,7 @@ import '../../core/di/injector.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
+import '../../core/models/media_detail.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
@@ -23,6 +24,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
+import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/poster_card.dart';
 import '../auth/auth_cubit.dart';
 import '../../core/mode/content_mode.dart';
@@ -257,6 +259,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           title: section.title,
           items: section.items,
           onTap: _openDetail,
+          onLongPress: _showInfo,
           onLoadMore: section.more == null
               ? null
               : (page) =>
@@ -266,6 +269,92 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     ).then((_) {
       if (mounted) setState(() {});
     });
+  }
+
+  String _typeLabel(ProviderType t) =>
+      t == ProviderType.movie ? 'Movie' : 'Anime';
+
+  Future<MediaDetail?> _detailOf(String url, String sourceId) async {
+    try {
+      return await sl<SourceRepository>().detail(url, sourceId: sourceId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Netflix-style long-press info card for a browse-row item — same sheet the
+  /// phone home opens on long-press. Held OK on [TvFocusable] is the TV path.
+  void _showInfo(MediaItem item) {
+    showMediaInfoSheet(
+      context,
+      title: item.title,
+      englishTitle: item.englishTitle,
+      cover: item.cover,
+      headers: item.coverHeaders,
+      typeLabel: _typeLabel(item.type),
+      subCount: item.subCount,
+      dubCount: item.dubCount,
+      detail: _detailOf(item.url, item.sourceId),
+      inMyList: _inList(item),
+      onPlay: () => _play(item),
+      onOpenDetail: () => _openDetail(item),
+      onToggleMyList: () async {
+        await showListStatusSheet(
+          context,
+          item: item,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
+        return _inList(item);
+      },
+    );
+  }
+
+  /// Long-press info card for a Continue Watching item — Resume + Remove + My
+  /// List, matching the phone home continue long-press.
+  void _showContinueInfo(HistoryEntry e) {
+    final stub = MediaItem(
+      id: e.showId,
+      title: e.showTitle,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      url: e.showUrl,
+      type: ProviderType.anime,
+      sourceId: e.sourceId,
+    );
+    final pct = (e.progress * 100).round();
+    showMediaInfoSheet(
+      context,
+      title: e.showTitle,
+      cover: e.cover,
+      headers: e.coverHeaders,
+      detail: _detailOf(e.showUrl, e.sourceId),
+      inMyList: _inList(stub),
+      playLabel: 'Resume',
+      progress: e.progress,
+      progressLabel: e.episodeNumber != null
+          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
+          : '$pct% watched',
+      onPlay: () => _resume(e),
+      onOpenDetail: () => _openDetail(stub),
+      onToggleMyList: () async {
+        await showListStatusSheet(
+          context,
+          item: stub,
+          onChanged: () {
+            if (mounted) setState(() {});
+          },
+        );
+        return _inList(stub);
+      },
+      onRemoveFromContinue: () async {
+        try {
+          await sl<WatchHistory>().remove(e.sourceId, e.showId);
+        } catch (_) {}
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   /// Button decorator injected into [FeaturedHero.wrapButton]: wraps each hero
@@ -357,6 +446,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               child: _TvContinueRail(
                 history: history,
                 onResume: _resume,
+                onLongPress: _showContinueInfo,
                 firstAutofocus: heroItem == null,
               ),
             ),
@@ -367,6 +457,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
               child: TvRail(
                 section: sections[i],
                 onTap: _openDetail,
+                onLongPress: _showInfo,
                 onSeeAll: () => _openSeeAll(sections[i]),
                 // Autofocus the first rail's first card only when nothing above
                 // it (hero or Continue Watching) can take the initial focus.

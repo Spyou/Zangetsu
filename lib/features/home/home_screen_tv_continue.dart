@@ -11,11 +11,13 @@ class _TvContinueRail extends StatelessWidget {
   const _TvContinueRail({
     required this.history,
     required this.onResume,
+    this.onLongPress,
     this.firstAutofocus = false,
   });
 
   final List<HistoryEntry> history;
   final void Function(HistoryEntry) onResume;
+  final void Function(HistoryEntry)? onLongPress;
   final bool firstAutofocus;
 
   // Landscape (16:9) art reads better than the phone's portrait ContinueCard on
@@ -62,6 +64,9 @@ class _TvContinueRail extends StatelessWidget {
                       width: _cardWidth,
                       autofocus: firstAutofocus && index == 0,
                       onResume: () => onResume(e),
+                      onLongPress: onLongPress == null
+                          ? null
+                          : () => onLongPress!(e),
                     ),
                   ),
                 );
@@ -83,11 +88,13 @@ class _TvContinueCard extends StatelessWidget {
     required this.entry,
     required this.width,
     required this.onResume,
+    this.onLongPress,
     this.autofocus = false,
   });
   final HistoryEntry entry;
   final double width;
   final VoidCallback onResume;
+  final VoidCallback? onLongPress;
   final bool autofocus;
 
   @override
@@ -108,6 +115,7 @@ class _TvContinueCard extends StatelessWidget {
             variant: TvFocusVariant.float,
             scale: 1.05,
             onTap: onResume,
+            onLongPress: onLongPress,
             semanticLabel: '${e.showTitle}, $sub',
             child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
