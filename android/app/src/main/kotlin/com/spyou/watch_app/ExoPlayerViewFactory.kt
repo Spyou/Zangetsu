@@ -11,6 +11,8 @@ import io.flutter.plugin.platform.PlatformViewFactory
 class ExoPlayerViewFactory(
     private val messenger: BinaryMessenger,
 ) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
+    // args = the Dart side's creationParams (buffer preset values). Optional —
+    // a null/empty map leaves ExoPlayer on its own defaults.
     override fun create(context: Context, id: Int, args: Any?): PlatformView =
-        ExoPlayerView(context, id, messenger)
+        ExoPlayerView(context, id, messenger, args as? Map<*, *>)
 }

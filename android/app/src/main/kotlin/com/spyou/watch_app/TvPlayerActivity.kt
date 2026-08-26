@@ -75,6 +75,12 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_SUB_LABELS = "subLabels"
         const val EXTRA_SW_DECODE = "softwareDecoding"
         const val EXTRA_ACCENT = "accentColor"
+        // Buffer preset (Settings → Playback), resolved Dart-side. Absent/0 =
+        // ExoPlayer defaults, which is what this activity used before.
+        const val EXTRA_BUF_MIN_MS = "minBufferMs"
+        const val EXTRA_BUF_MAX_MS = "maxBufferMs"
+        const val EXTRA_BUF_BYTES = "targetBufferBytes"
+        const val EXTRA_BUF_BACK_MS = "backBufferMs"
         const val EXTRA_SPEED = "defaultSpeed"
         const val EXTRA_VOLUME = "volumeBoost"
         const val EXTRA_SUB_SCALE = "subtitleScale"
@@ -321,7 +327,16 @@ class TvPlayerActivity : Activity() {
         // keepScreenOn is managed by syncKeepScreenOn() — on while playing or
         // buffering, released on pause — not pinned on for the whole session.
 
-        val exo = ExoPlayer.Builder(this, renderersFactory()).build()
+        val exo = ExoPlayer.Builder(this, renderersFactory())
+            .setLoadControl(
+                BufferPresets.loadControl(
+                    intent.getIntExtra(EXTRA_BUF_MIN_MS, 0),
+                    intent.getIntExtra(EXTRA_BUF_MAX_MS, 0),
+                    intent.getIntExtra(EXTRA_BUF_BYTES, 0),
+                    intent.getIntExtra(EXTRA_BUF_BACK_MS, 0),
+                ),
+            )
+            .build()
         player = exo
         playerView.player = exo
 

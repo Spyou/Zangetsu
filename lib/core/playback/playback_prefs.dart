@@ -447,6 +447,55 @@ class PlaybackPrefs {
     }
   }
 
+  // ── The same presets, translated for ExoPlayer (TV players + the phone's
+  // ClearKey DRM screen) ─────────────────────────────────────────────────────
+  // mpv and ExoPlayer buffer through completely different knobs, so the presets
+  // have to be mapped twice. Until this existed the TV players built ExoPlayer
+  // with no LoadControl at all and silently sat on the library default (~50s),
+  // which meant moving this setting to High did nothing whatsoever on a TV —
+  // the device most likely to be on far-away Wi-Fi in the first place.
+
+  /// ExoPlayer `maxBufferMs` for the length preset — the mpv seconds in ms, so
+  /// both engines buffer the same amount of media for a given preset.
+  static int exoMaxBufferMsFor(String preset) => bufferSecsFor(preset) * 1000;
+
+  /// ExoPlayer `minBufferMs`: the library default (50s), except that
+  /// DefaultLoadControl requires min <= max, which 'low' (15s) would violate.
+  static int exoMinBufferMsFor(String preset) {
+    const exoDefaultMin = 50000;
+    final max = exoMaxBufferMsFor(preset);
+    return max < exoDefaultMin ? max : exoDefaultMin;
+  }
+
+  /// ExoPlayer `targetBufferBytes` — the memory ceiling, mirroring the mpv
+  /// size preset so "High" means the same thing on both engines. ExoPlayer
+  /// stops buffering at whichever of this and [exoMaxBufferMsFor] comes first.
+  static int exoTargetBufferBytesFor(String preset) {
+    switch (preset) {
+      case 'low':
+        return 32 * 1024 * 1024;
+      case 'high':
+        return 512 * 1024 * 1024;
+      default:
+        return 128 * 1024 * 1024;
+    }
+  }
+
+  /// ExoPlayer back-buffer: keeps recently played media so a small seek back
+  /// doesn't re-download. Off on 'low', where the point is to save memory.
+  static int exoBackBufferMsFor(String preset) => preset == 'low' ? 0 : 30000;
+
+  /// The four values above for the current settings, shaped for the
+  /// `zangetsu/exoplayer_view` PlatformView's `creationParams` and for the
+  /// native TV player's launch arguments. One accessor so every ExoPlayer entry
+  /// point sends the same thing and none of them can drift.
+  Map<String, dynamic> get exoBufferParams => <String, dynamic>{
+    'minBufferMs': exoMinBufferMsFor(videoBufferLength),
+    'maxBufferMs': exoMaxBufferMsFor(videoBufferLength),
+    'targetBufferBytes': exoTargetBufferBytesFor(videoBufferSize),
+    'backBufferMs': exoBackBufferMsFor(videoBufferSize),
+  };
+
   /// Home hero banner animation: 'cinematic' (cross-fade + Ken-Burns) or
   /// 'parallax' (parallax slide). A/B while we settle on the final one.
   String get heroStyle =>

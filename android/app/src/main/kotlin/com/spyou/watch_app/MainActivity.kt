@@ -1395,6 +1395,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             }
             intent.putExtra(TvPlayerActivity.EXTRA_SPEED, (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat())
             intent.putExtra(TvPlayerActivity.EXTRA_VOLUME, (call.argument<Number>("volumeBoost") ?: 100).toInt())
+            // Buffer preset → ExoPlayer LoadControl. Defaulting to 0 leaves the
+            // media3 defaults in place, so an older Dart caller behaves as before.
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_MIN_MS, (call.argument<Number>("minBufferMs") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_MAX_MS, (call.argument<Number>("maxBufferMs") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_BYTES, (call.argument<Number>("targetBufferBytes") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_BACK_MS, (call.argument<Number>("backBufferMs") ?: 0).toInt())
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_SCALE, (call.argument<Number>("subtitleScale") ?: 1.0).toFloat())
             // Subtitle style is pre-computed Dart-side (captionStyleFromPrefs) so
             // both TV players render identically — pass the finished values.

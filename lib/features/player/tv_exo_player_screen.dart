@@ -1888,7 +1888,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                             id: params.id,
                             viewType: 'zangetsu/exoplayer_view',
                             layoutDirection: TextDirection.ltr,
-                            creationParams: const <String, dynamic>{},
+                            creationParams: sl<PlaybackPrefs>().exoBufferParams,
                             creationParamsCodec: const StandardMessageCodec(),
                             onFocus: () => params.onFocusChanged(true),
                           )

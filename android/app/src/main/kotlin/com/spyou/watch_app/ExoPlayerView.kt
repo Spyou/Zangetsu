@@ -53,6 +53,9 @@ class ExoPlayerView(
     context: Context,
     id: Int,
     messenger: BinaryMessenger,
+    // Buffer preset from Settings → Playback, resolved Dart-side. Null keeps
+    // ExoPlayer's own defaults, which is what this view did before.
+    creationParams: Map<*, *>? = null,
 ) : PlatformView, MethodChannel.MethodCallHandler {
 
     // Application context, kept for DefaultDataSource (it needs a ContentResolver
@@ -62,9 +65,10 @@ class ExoPlayerView(
 
     private val audioSessionId =
         (context.getSystemService(Context.AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
-    private val player = ExoPlayer.Builder(context).build().apply {
-        setAudioSessionId(audioSessionId)
-    }
+    private val player = ExoPlayer.Builder(context)
+        .setLoadControl(BufferPresets.fromMap(creationParams))
+        .build()
+        .apply { setAudioSessionId(audioSessionId) }
     private var loudness: LoudnessEnhancer? = null
     private val playerView = PlayerView(context).apply {
         player = this@ExoPlayerView.player
