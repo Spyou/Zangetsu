@@ -8,6 +8,8 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/filler_service.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -65,6 +67,7 @@ class _TvAvPlayerScreenState extends State<TvAvPlayerScreen> {
   Duration _pos = Duration.zero;
   Duration _dur = Duration.zero;
   bool _isPlaying = false;
+  Set<int> _fillerEps = const {};
 
   String get _showId => widget.showUrl ?? widget.sourceId;
 
@@ -73,8 +76,17 @@ class _TvAvPlayerScreenState extends State<TvAvPlayerScreen> {
     super.initState();
     _index = widget.startIndex;
     WakelockPlus.enable();
+    _ensureFiller();
     _open(_index);
     _saveTimer = Timer.periodic(const Duration(seconds: 8), (_) => _save());
+  }
+
+  void _ensureFiller() {
+    final id = widget.malId;
+    if (id == null) return;
+    FillerService.instance.fillerEpisodes(id).then((s) {
+      if (mounted) _fillerEps = s;
+    });
   }
 
   @override
@@ -101,7 +113,7 @@ class _TvAvPlayerScreenState extends State<TvAvPlayerScreen> {
     if (!_duration.isClosed) _duration.add(_dur);
     if (c.value.position >= c.value.duration &&
         c.value.duration > Duration.zero) {
-      _playNext();
+      _playNext(auto: true);
     }
   }
 
@@ -210,10 +222,16 @@ class _TvAvPlayerScreenState extends State<TvAvPlayerScreen> {
     await c.seekTo(next);
   }
 
-  void _playNext() {
-    if (_index + 1 >= widget.episodes.length) return;
+  void _playNext({bool auto = false}) {
+    final target = nextAutoplayIndex(
+      currentIndex: _index,
+      episodes: widget.episodes,
+      fillerEps: _fillerEps,
+      autoSkipFiller: auto && sl<PlaybackPrefs>().autoSkipFiller,
+    );
+    if (target == null) return;
     _save();
-    _open(_index + 1);
+    _open(target);
   }
 
   void _setSpeed(double speed) {

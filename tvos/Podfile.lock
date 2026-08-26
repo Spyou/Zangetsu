@@ -12,7 +12,7 @@ PODS:
   - firebase_analytics_tvos (0.0.1):
     - Firebase/Analytics (~> 12.15.0)
     - firebase_core_tvos
-  - firebase_core_tvos (0.0.1):
+  - firebase_core_tvos (0.0.2):
     - Firebase/CoreOnly (~> 12.15.0)
   - firebase_messaging_tvos (0.0.1):
     - Firebase/Messaging (~> 12.15.0)
@@ -55,7 +55,6 @@ PODS:
     - GoogleUtilities/Reachability (~> 8.1)
     - GoogleUtilities/UserDefaults (~> 8.1)
     - nanopb (~> 3.30910.0)
-  - flutter_js_tvos (0.0.1)
   - GoogleAppMeasurement/Core (12.15.0):
     - GoogleUtilities/AppDelegateSwizzler (~> 8.1)
     - GoogleUtilities/MethodSwizzler (~> 8.1)
@@ -114,14 +113,15 @@ PODS:
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
   - PromisesObjC (2.4.1)
+  - sqflite_tvos (0.0.1)
   - video_player_tvos (0.0.1)
   - wakelock_plus_tvos (0.0.1)
 
 DEPENDENCIES:
   - firebase_analytics_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_analytics_tvos-0.0.1/tvos`)
-  - firebase_core_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.1/tvos`)
+  - firebase_core_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.2/tvos`)
   - firebase_messaging_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_messaging_tvos-0.0.1/tvos`)
-  - flutter_js_tvos (from `/Users/nathenbrewer/Documents/Repos/Zangetsu/packages/flutter_js_tvos/tvos`)
+  - sqflite_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/sqflite_tvos-0.0.2/tvos`)
   - video_player_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/video_player_tvos-0.0.1/tvos`)
   - wakelock_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/wakelock_plus_tvos-0.0.1/tvos`)
 
@@ -143,11 +143,11 @@ EXTERNAL SOURCES:
   firebase_analytics_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_analytics_tvos-0.0.1/tvos"
   firebase_core_tvos:
-    :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.1/tvos"
+    :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.2/tvos"
   firebase_messaging_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_messaging_tvos-0.0.1/tvos"
-  flutter_js_tvos:
-    :path: "/Users/nathenbrewer/Documents/Repos/Zangetsu/packages/flutter_js_tvos/tvos"
+  sqflite_tvos:
+    :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/sqflite_tvos-0.0.2/tvos"
   video_player_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/video_player_tvos-0.0.1/tvos"
   wakelock_plus_tvos:
@@ -156,19 +156,19 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
   firebase_analytics_tvos: 012d09cdcb80260d8f79886ae21c5c4a5fceff7f
-  firebase_core_tvos: de5af9a947048d7d5fc13d80cb0facb4b475560e
+  firebase_core_tvos: d48bfabffaf0dcf8a2ffc07ce2859858823f80a0
   firebase_messaging_tvos: cc823dbc371c1a9313b1ebb9156e4f9f092dfc23
   FirebaseAnalytics: 9c9fa7915fc52ea03077000d5a7b6a8947b2d76e
   FirebaseCore: 2e86a4ea1684d4381707069e4a6d89ac808e901e
   FirebaseCoreInternal: 6ab6a02c94446c026d2cf35cf5383842ebaa4992
   FirebaseInstallations: eb29ccbf64eaedf86fd5b2ccc7fabde567660b52
   FirebaseMessaging: 40017d7bc8457ee295b0f41d480a80fdabc9994e
-  flutter_js_tvos: 8e71a568e5eb499f1244000a6a168da64921d273
   GoogleAppMeasurement: a6d37949071d456e9147dac6789c4342e0e7a8c5
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
+  sqflite_tvos: c473ff0295bc0c18f416393eed404091eb1598a5
   video_player_tvos: d8ff3846a49c5603dfcb49c91a6921aef9ce5d46
   wakelock_plus_tvos: 0f67f6936faa0d7548e9bb2d950154a84cf601a3
 

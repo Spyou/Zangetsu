@@ -14,6 +14,7 @@ import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
+import 'core/platform/apple_tv.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
@@ -75,6 +76,11 @@ Future<void> main() async {
     } catch (e, st) {
       AppLogger.instance.logError(e, st);
     }
+    // Resolve Apple TV before Supabase / media_kit — Dart reports tvOS as iOS,
+    // and the version string often has no "tvos" token, so we ask the native
+    // runner. Must run before Supabase: its default auth deep-link observer uses
+    // app_links, which has no tvOS plugin (MissingPluginException).
+    final appleTv = await resolveAppleTv();
     // Bounded + guarded like Firebase/MediaKit: on a dead/slow network the
     // session-restore inside initialize can HANG (a hang never throws, so a
     // try/catch alone wouldn't save us), and this runs BEFORE runApp — an
@@ -87,6 +93,10 @@ Future<void> main() async {
       await Supabase.initialize(
         url: Environment.supabaseUrl,
         anonKey: Environment.supabaseAnonKey,
+        // TV auth uses QR pairing, not OAuth redirect deep links.
+        authOptions: FlutterAuthClientOptions(
+          detectSessionInUri: !appleTv,
+        ),
       ).timeout(const Duration(seconds: 8));
       supabaseOk = true;
     } catch (e, st) {
@@ -95,15 +105,16 @@ Future<void> main() async {
     // Boot init failed (dead/slow network) → keep retrying in the background so
     // login + cloud sync self-heal when the network returns, no restart needed.
     if (!supabaseOk) unawaited(_retrySupabaseInit());
-    // The media_kit mpv fork's native init throws on some old Android 8 / Fire TV
-    // devices (its newer native libs don't load there). Uncaught, that throw
-    // skips runApp below and the whole app black-screens with no widget tree —
-    // which is exactly what those devices showed. Guard it so the UI always
-    // renders; playback may be unavailable on that hardware, but the app works.
-    try {
-      MediaKit.ensureInitialized();
-    } catch (e, st) {
-      AppLogger.instance.logError(e, st);
+    // media_kit (libmpv) has no tvOS libs — Apple TV plays via AVPlayer instead.
+    // Calling ensureInitialized here prints + throws and used to derail boot.
+    // On old Android 8 / Fire TV the native libs can also fail to load; guard
+    // those so the UI still comes up (playback may be unavailable there).
+    if (!appleTv) {
+      try {
+        MediaKit.ensureInitialized();
+      } catch (e, st) {
+        AppLogger.instance.logError(e, st);
+      }
     }
     // Dependency init happens inside the boot gate so the splash shows
     // immediately instead of a blank screen.
@@ -137,6 +148,9 @@ Future<void> _retrySupabaseInit() async {
       await Supabase.initialize(
         url: Environment.supabaseUrl,
         anonKey: Environment.supabaseAnonKey,
+        authOptions: FlutterAuthClientOptions(
+          detectSessionInUri: !isAppleTv,
+        ),
       ).timeout(const Duration(seconds: 8));
       break; // initialized
     } catch (_) {

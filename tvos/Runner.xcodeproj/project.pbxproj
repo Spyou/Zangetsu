@@ -127,7 +127,7 @@
 				AAF10000000000000000F00D /* Embed App.framework */,
 				9740EEB31CF901A200538489 /* Copy flutter_assets */,
 				AAF50000000000000000F00D /* Sign Flutter.framework */,
-				E1DEFC3DADD778CE88C8541C /* [CP] Embed Pods Frameworks */,
+				033CA522AE75F4F4A7DB80E4 /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -191,6 +191,23 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		033CA522AE75F4F4A7DB80E4 /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
 		9740EEB31CF901A200538489 /* Copy flutter_assets */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -261,23 +278,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "#!/bin/sh\n# Code-sign the Flutter engine embedded via the FlutterFramework Swift package.\n# Xcode auto-embeds the dynamic Flutter.framework that is pulled in transitively\n# through the static FlutterGeneratedPluginSwiftPackage umbrella, but it does NOT\n# code-sign it (Flutter.framework is not an explicit \"Embed & Sign\" product on this\n# target). The engine artifact ships ORIGIN-signed by flutter-tvos — that origin\n# signature is what satisfies App Store review's ITMS-91065 commonly-used-SDK\n# check (an app-identity re-sign does not). Re-sign the embedded copy here with\n# the app's own identity, the same way CocoaPods' embed script did, so device\n# installs don't carry nested code signed by a foreign team. Runs for build,\n# run, AND archive.\n#\n# Order matters: check whether signing is needed at all FIRST, so the simulator\n# and other no-signing builds skip silently. On a build that DOES sign, a\n# missing Flutter.framework is not \"nothing to do\" — it means the SPM embed did\n# not happen and the app would ship without the engine (or with one signed by a\n# foreign team), which only surfaces at device install or review. Fail loudly.\n# Use CODESIGNING_FOLDER_PATH (the bundle being signed), not ${PRODUCT_NAME}.app,\n# which is wrong whenever the product name is overridden.\nFRAMEWORK=\"${CODESIGNING_FOLDER_PATH}/Frameworks/Flutter.framework\"\nif [ \"${CODE_SIGNING_REQUIRED}\" = \"NO\" ] || [ -z \"${EXPANDED_CODE_SIGN_IDENTITY}\" ]; then\n  echo \"Skipping Flutter.framework signing (code signing not required for this build).\"\nelif [ ! -d \"${FRAMEWORK}\" ]; then\n  echo \"error: Flutter.framework was not embedded at ${FRAMEWORK}. Regenerate the tvOS project (flutter-tvos create .).\"\n  exit 1\nelse\n  echo \"Codesigning Flutter.framework with ${EXPANDED_CODE_SIGN_IDENTITY}...\"\n  codesign --force --sign \"${EXPANDED_CODE_SIGN_IDENTITY}\" --timestamp=none --generate-entitlement-der \"${FRAMEWORK}\"\nfi\n";
-		};
-		E1DEFC3DADD778CE88C8541C /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputFileListPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
 

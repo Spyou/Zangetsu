@@ -49,6 +49,19 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
+  # Apple TV (tvOS) federated plugin implementations. Skip packages that need
+  # newer platform_interfaces than we pin (device_info_plus_tvos,
+  # package_info_plus_tvos) — those degrade gracefully; path_provider does not
+  # (Hive.initFlutter fails hard without it).
+  path_provider_tvos: ^0.0.3
+  shared_preferences_tvos: ^0.0.2
+  flutter_secure_storage_tvos: ^0.0.2
+  sqflite_tvos: ^0.0.2
+  video_player_tvos: ^0.0.1
+  wakelock_plus_tvos: ^0.0.1
+  firebase_core_tvos: ^0.0.2
+  firebase_analytics_tvos: ^0.0.1
+  firebase_messaging_tvos: ^0.0.1
   # Extract the .srt/.ssa from SubDL's zipped subtitle downloads.
   archive: ^4.0.9
 

@@ -12,6 +12,7 @@ import '../environment.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
+import '../platform/apple_tv.dart';
 import 'tracker.dart';
 
 /// MAL's list-endpoint root for [kind] — `anime` or `manga` (novels are
@@ -158,6 +159,8 @@ List<TrackerListItem> parseMalListPage(Object? body, MediaKind kind) {
 /// fallback). Writes go to `PATCH /v2/anime/{id}/my_list_status`.
 class MalService extends ChangeNotifier implements Tracker {
   MalService(this._dio) {
+    // app_links has no tvOS impl; TV connects trackers via phone QR pairing.
+    if (isAppleTv) return;
     _linkSub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     _appLinks
         .getInitialLink()

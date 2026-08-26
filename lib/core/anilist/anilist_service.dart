@@ -9,6 +9,7 @@ import '../environment.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
+import '../platform/apple_tv.dart';
 import '../tracker/tracker.dart';
 import '../ui/global_messenger.dart';
 import 'anilist_api.dart';
@@ -130,6 +131,8 @@ class AniListService extends ChangeNotifier implements Tracker {
   AniListService(this._dio) {
     _store = AniListStore();
     _api = AniListApi(_dio, () => _store.token);
+    // app_links has no tvOS impl; TV connects trackers via phone QR pairing.
+    if (isAppleTv) return;
     _linkSub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     // Cover the cold-start case (browser relaunched the app with the redirect).
     _appLinks.getInitialLink().then((uri) {

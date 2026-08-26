@@ -7,6 +7,7 @@ import '../../features/auth/send_trackers_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
+import '../platform/apple_tv.dart';
 import '../repository/source_repository.dart';
 import '../ui/global_messenger.dart';
 import 'pair_link.dart';
@@ -18,6 +19,8 @@ import 'share_link.dart';
 /// and ignore anything they don't own.
 class OpenLinkService {
   OpenLinkService() {
+    // app_links has no tvOS implementation — listening throws MissingPluginException.
+    if (isAppleTv) return;
     _sub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     // Cold start: the browser/OS may have launched the app straight to the link.
     _appLinks.getInitialLink().then((uri) {

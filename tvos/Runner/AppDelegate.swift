@@ -14,9 +14,27 @@ class AppDelegate: FlutterAppDelegate {
         self.window = window
 
         GeneratedPluginRegistrant.register(with: self)
+        Self.registerDeviceChannel(with: flutterViewController.binaryMessenger)
         Self.registerNovelHttp(with: flutterViewController.binaryMessenger)
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    /// Same channel Android uses for leanback detection. Always true here —
+    /// this binary only ships on Apple TV.
+    private static func registerDeviceChannel(with messenger: FlutterBinaryMessenger) {
+        let channel = FlutterMethodChannel(
+            name: "com.spyou.watch_app/device",
+            binaryMessenger: messenger
+        )
+        channel.setMethodCallHandler { call, result in
+            switch call.method {
+            case "isTv":
+                result(true)
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
     }
 
     /// tvOS twin of iOS NovelHttp: LNReader plugin HTTP goes through URLSession
