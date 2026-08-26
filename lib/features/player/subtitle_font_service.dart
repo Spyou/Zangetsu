@@ -5,6 +5,9 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart' show FontLoader;
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/playback/playback_prefs.dart' show kBundledSubtitleFonts;
+import '../../core/playback/tv_track_helpers.dart' show subtitleFontFileName;
+
 /// Download-on-demand for subtitle fonts. Only Inter (UI font) and Noto Sans
 /// (the libass Android fallback) ship in the APK; the rest are fetched from the
 /// app's own public repo on first pick, cached to `<appSupport>/sub_fonts/`, and
@@ -16,20 +19,6 @@ import 'package:path_provider/path_provider.dart';
 class SubtitleFontService {
   SubtitleFontService._();
   static final SubtitleFontService instance = SubtitleFontService._();
-
-  /// family name (matches [kBundledSubtitleFonts]) → .ttf filename in the repo.
-  static const Map<String, String> _files = {
-    'Inter': 'Inter.ttf',
-    'Poppins': 'Poppins-Regular.ttf',
-    'Roboto': 'Roboto-Regular.ttf',
-    'Open Sans': 'OpenSans-Regular.ttf',
-    'Lato': 'Lato-Regular.ttf',
-    'Montserrat': 'Montserrat-Regular.ttf',
-    'Nunito': 'Nunito-Regular.ttf',
-    'Rubik': 'Rubik-Regular.ttf',
-    'Noto Sans': 'NotoSans-Regular.ttf',
-    'Source Sans 3': 'SourceSans3-Regular.ttf',
-  };
 
   /// Families bundled in the APK (registered in pubspec) — always available.
   static const Set<String> bundled = {'Inter', 'Noto Sans'};
@@ -55,7 +44,7 @@ class SubtitleFontService {
   /// True when [family] is usable right now (Default, bundled, or downloaded).
   Future<bool> isAvailable(String family) async {
     if (family.isEmpty || bundled.contains(family)) return true;
-    final fname = _files[family];
+    final fname = subtitleFontFileName(family);
     if (fname == null) return false;
     final dir = await _fontsDir();
     return File('${dir.path}/$fname').existsSync();
@@ -65,7 +54,7 @@ class SubtitleFontService {
   /// (already-available counts as success). Never throws.
   Future<bool> ensure(String family) async {
     if (family.isEmpty || bundled.contains(family)) return true;
-    final fname = _files[family];
+    final fname = subtitleFontFileName(family);
     if (fname == null) return false;
     try {
       final dir = await _fontsDir();
@@ -102,10 +91,12 @@ class SubtitleFontService {
   Future<void> registerCached() async {
     try {
       final dir = await _fontsDir();
-      for (final entry in _files.entries) {
-        if (bundled.contains(entry.key)) continue;
-        final f = File('${dir.path}/${entry.value}');
-        if (f.existsSync()) await _register(entry.key, f);
+      for (final family in kBundledSubtitleFonts) {
+        if (family.isEmpty || bundled.contains(family)) continue;
+        final fname = subtitleFontFileName(family);
+        if (fname == null) continue;
+        final f = File('${dir.path}/$fname');
+        if (f.existsSync()) await _register(family, f);
       }
     } catch (_) {}
   }

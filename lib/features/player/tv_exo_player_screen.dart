@@ -25,6 +25,7 @@ import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_font_stage.dart';
+import 'subtitle_font_service.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/title_prefs.dart';
@@ -115,6 +116,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   HlsVariant? _activeQuality; // null = Auto
   int? _seekTargetMs; // one-shot seek on next ready (resume OR source switch)
   bool _menuOpen = false;
+  /// Drill-in stack for the Settings side panel. Empty = root "Settings" page.
+  final List<_TvSettingsPage> _menuStack = [];
+  /// When true, the right-side panel is the Speed picker (opened from speed pill).
+  bool _speedMenuOpen = false;
   double _speed = 1.0;
   // Focus for the player root (D-pad controls) and the up-next card. Overlays
   // (menu / search / up-next) must explicitly grab focus and hand it back here,
@@ -252,12 +257,16 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       if (!mounted) return;
       if (_c?.playing.value == true &&
           !_menuOpen &&
+          !_speedMenuOpen &&
           !_episodesOpen &&
           !_controlRowFocused &&
           !_scrubbing &&
           _searchResults == null &&
           _upNextCountdown == null) {
-        setState(() => _controlsVisible = false);
+        setState(() {
+          _controlsVisible = false;
+          _speedMenuOpen = false;
+        });
       }
     });
   }
@@ -269,6 +278,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _toggleControlsFromTouch() {
     if (_menuOpen) {
       _closeMenu();
+      return;
+    }
+    if (_speedMenuOpen) {
+      _closeSpeedMenu();
       return;
     }
     if (_searchResults != null) {
@@ -728,20 +741,26 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       scale: p.subtitleScale,
       colorHex: p.subtitleColorHex,
       bgOpacity: p.subtitleBgOpacity,
-      position: p.subtitlePosition,
       font: p.subtitleFont,
+      outlineType: p.subtitleOutlineType,
     );
     final path = await _stageFont(style.fontFamily);
-    _c?.applyCaptionStyle(style, fontPath: path);
+    _c?.applyCaptionStyle(
+      style,
+      fontPath: path,
+      positionPref: p.subtitlePosition,
+    );
   }
 
-  /// Stages the chosen bundled font once (shared with the native TV player) and
+  /// Stages the chosen font once (shared with the native TV player) and
   /// caches the path so repeated style changes don't re-copy. Null for default.
+  /// Download-on-demand families are fetched via [SubtitleFontService] first.
   Future<String?> _stageFont(String family) async {
     if (family.isEmpty) return null;
     if (family == _stagedFontFamily && _stagedFontPath != null) {
       return _stagedFontPath;
     }
+    await SubtitleFontService.instance.ensure(family);
     final path = await stageSubtitleFont(family);
     if (path != null) {
       _stagedFontFamily = family;
@@ -837,101 +856,219 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     }();
   }
 
-  List<TvMenuSection> _buildSections(TvExoController c) {
-    final sections = <TvMenuSection>[];
+  List<TvMenuOption> _buildMenuOptions(TvExoController c) {
+    final page =
+        _menuStack.isEmpty ? _TvSettingsPage.root : _menuStack.last;
+    switch (page) {
+      case _TvSettingsPage.root:
+        return _rootSettingsOptions(c);
+      case _TvSettingsPage.servers:
+        return _serversOptions(c);
+      case _TvSettingsPage.quality:
+        return _qualityOptions(c);
+      case _TvSettingsPage.audio:
+        return _audioOptions(c);
+      case _TvSettingsPage.subs:
+        return _subsOptions(c);
+      case _TvSettingsPage.captionStyle:
+        return _captionStyleOptions();
+      case _TvSettingsPage.captionSize:
+        return _captionSizeOptions();
+      case _TvSettingsPage.captionColor:
+        return _captionColorOptions();
+      case _TvSettingsPage.captionEdge:
+        return _captionEdgeOptions();
+      case _TvSettingsPage.captionBg:
+        return _captionBgOptions();
+      case _TvSettingsPage.captionFont:
+        return _captionFontOptions();
+      case _TvSettingsPage.captionPos:
+        return _captionPosOptions();
+      case _TvSettingsPage.volume:
+        return _volumeOptions();
+    }
+  }
 
-    // Servers — every resolved mirror for the current sub/dub kind, so the user
-    // can switch when one is slow or dead (mirrors the phone player's Sources).
+  String get _menuTitle {
+    if (_menuStack.isEmpty) return 'Settings';
+    return switch (_menuStack.last) {
+      _TvSettingsPage.root => 'Settings',
+      _TvSettingsPage.servers => 'Servers',
+      _TvSettingsPage.quality => 'Quality',
+      _TvSettingsPage.audio => 'Audio',
+      _TvSettingsPage.subs => 'Subtitles/CC',
+      _TvSettingsPage.captionStyle => 'Captions Styling',
+      _TvSettingsPage.captionSize => 'Font Size',
+      _TvSettingsPage.captionColor => 'Text Color',
+      _TvSettingsPage.captionEdge => 'Edge Style',
+      _TvSettingsPage.captionBg => 'Background',
+      _TvSettingsPage.captionFont => 'Font',
+      _TvSettingsPage.captionPos => 'Position',
+      _TvSettingsPage.volume => 'Volume',
+    };
+  }
+
+  void _pushMenu(_TvSettingsPage page) {
+    setState(() => _menuStack.add(page));
+    _bumpMenuHide();
+  }
+
+  void _popOrCloseMenu() {
+    if (_menuStack.isNotEmpty) {
+      setState(() => _menuStack.removeLast());
+      _bumpMenuHide();
+    } else {
+      _closeMenu();
+    }
+  }
+
+  TvMenuOption _navRow(String label, {String? trailing, required VoidCallback onSelect}) =>
+      TvMenuOption(
+        label: label,
+        trailing: trailing,
+        showCheck: false,
+        onSelect: onSelect,
+      );
+
+  List<TvMenuOption> _rootSettingsOptions(TvExoController c) {
+    final options = <TvMenuOption>[];
     final servers = sortByQuality(_qualityPool());
     if (servers.length > 1) {
-      sections.add(
-        TvMenuSection(
-          title: 'Servers',
-          options: [
-            for (final s in servers)
-              TvMenuOption(
-                label: _serverLabel(s),
-                selected: s.url == _activeSource?.url,
-                onSelect: () => _open(s, seekToMs: c.position.value),
-              ),
-          ],
-        ),
-      );
+      final active = servers.where((s) => s.url == _activeSource?.url).firstOrNull;
+      options.add(_navRow(
+        'Servers',
+        trailing: active != null ? _serverLabel(active) : null,
+        onSelect: () => _pushMenu(_TvSettingsPage.servers),
+      ));
     }
 
-    // Quality
-    final qOptions = <TvMenuOption>[];
+    final qTrailing = _qualityTrailing(c);
+    if (qTrailing != null) {
+      options.add(_navRow(
+        'Quality',
+        trailing: qTrailing,
+        onSelect: () => _pushMenu(_TvSettingsPage.quality),
+      ));
+    }
+
+    final audio = c.audioTracks.value;
+    final audioLabel = _selectedTrackLabel(audio) ??
+        (_category == 'dub' ? 'Dub' : 'Sub');
+    options.add(_navRow(
+      'Audio',
+      trailing: audioLabel,
+      onSelect: () => _pushMenu(_TvSettingsPage.audio),
+    ));
+
+    final text = c.textTracks.value;
+    final selectedSub = _selectedTrackLabel(text);
+    final subsOff = selectedSub == null;
+    options.add(_navRow(
+      'Subtitles/CC',
+      trailing: subsOff ? 'Off' : selectedSub,
+      onSelect: () => _pushMenu(_TvSettingsPage.subs),
+    ));
+
+    options.add(_navRow(
+      'Captions Styling',
+      onSelect: () => _pushMenu(_TvSettingsPage.captionStyle),
+    ));
+
+    final vol = sl<PlaybackPrefs>().volumeBoost;
+    options.add(_navRow(
+      'Volume',
+      trailing: vol == 100 ? '100%' : '$vol%',
+      onSelect: () => _pushMenu(_TvSettingsPage.volume),
+    ));
+    return options;
+  }
+
+  String? _qualityTrailing(TvExoController c) {
     if (_qualities.isNotEmpty) {
-      qOptions.add(
-        TvMenuOption(
-          label: 'Auto',
-          selected: _activeQuality == null,
-          onSelect: () => _selectQuality(null),
-        ),
-      );
-      for (final v in _qualities) {
-        qOptions.add(
-          TvMenuOption(
-            label: v.quality,
-            selected: _activeQuality?.url == v.url,
-            onSelect: () => _selectQuality(v),
-          ),
-        );
-      }
-    } else if (c.videoTracks.value.length > 1) {
-      // No parsed HLS master, but ExoPlayer found a ladder inside the stream
-      // itself — a DASH manifest, or an HLS one our own parser couldn't read.
-      // Same deal as the phone: these are renditions of the file that is
-      // already playing, so switching is a track override, not a reload.
+      return _activeQuality?.quality ?? 'Auto';
+    }
+    if (c.videoTracks.value.length > 1) {
       final tracks = c.videoTracks.value;
       final overridden = tracks.any((t) => t.id == _activeVideoTrackId);
-      qOptions.add(
-        TvMenuOption(
-          label: 'Auto',
-          selected: !overridden,
-          onSelect: () => _selectVideoTrack(null),
-        ),
-      );
-      for (final t in tracks) {
-        qOptions.add(
-          TvMenuOption(
-            label: '${t.height}p',
-            selected: overridden && t.id == _activeVideoTrackId,
-            onSelect: () => _selectVideoTrack(t),
-          ),
-        );
+      if (!overridden) return 'Auto';
+      final t = tracks.where((t) => t.id == _activeVideoTrackId).firstOrNull;
+      return t?.height != null ? '${t!.height}p' : 'Track';
+    }
+    return null;
+  }
+
+  String? _selectedTrackLabel(List<TvTrack> tracks) {
+    for (final t in tracks) {
+      if (t.selected) {
+        return t.label ?? (t.language.isEmpty ? null : t.language);
       }
     }
-    // Anything else has one video track: nothing to switch inside it, so the
-    // section is left out. The other sources are separate files on separate
-    // servers — they live under Sources, where switching to one looks like what
-    // it is.
-    if (qOptions.isNotEmpty) {
-      sections.add(TvMenuSection(title: 'Quality', options: qOptions));
-    }
+    return null;
+  }
 
-    // Audio
-    final audio = c.audioTracks.value;
-    if (audio.length > 1) {
-      sections.add(
-        TvMenuSection(
-          title: 'Audio',
-          options: [
-            for (final t in audio)
-              TvMenuOption(
-                label: t.label ?? (t.language.isEmpty ? 'Track' : t.language),
-                selected: t.selected,
-                onSelect: () => _selectAudio(t),
-              ),
-          ],
+  List<TvMenuOption> _serversOptions(TvExoController c) {
+    final servers = sortByQuality(_qualityPool());
+    return [
+      for (final s in servers)
+        TvMenuOption(
+          label: _serverLabel(s),
+          selected: s.url == _activeSource?.url,
+          onSelect: () {
+            _open(s, seekToMs: c.position.value);
+            _popOrCloseMenu();
+          },
         ),
-      );
-    }
+    ];
+  }
 
-    // Version (sub/dub). Show when the resolved pool carries both kinds OR the
-    // show advertises both via its detail counts — separate sub/dub episode
-    // lists only ever resolve one kind at a time, so the pool check alone would
-    // hide the toggle for most anime.
+  List<TvMenuOption> _qualityOptions(TvExoController c) {
+    final options = <TvMenuOption>[];
+    if (_qualities.isNotEmpty) {
+      options.add(TvMenuOption(
+        label: 'Auto',
+        selected: _activeQuality == null,
+        onSelect: () {
+          _selectQuality(null);
+          setState(() {});
+        },
+      ));
+      for (final v in _qualities) {
+        options.add(TvMenuOption(
+          label: v.quality,
+          selected: _activeQuality?.url == v.url,
+          onSelect: () {
+            _selectQuality(v);
+            setState(() {});
+          },
+        ));
+      }
+    } else if (c.videoTracks.value.length > 1) {
+      final tracks = c.videoTracks.value;
+      final overridden = tracks.any((t) => t.id == _activeVideoTrackId);
+      options.add(TvMenuOption(
+        label: 'Auto',
+        selected: !overridden,
+        onSelect: () {
+          _selectVideoTrack(null);
+          setState(() {});
+        },
+      ));
+      for (final t in tracks) {
+        options.add(TvMenuOption(
+          label: '${t.height}p',
+          selected: overridden && t.id == _activeVideoTrackId,
+          onSelect: () {
+            _selectVideoTrack(t);
+            setState(() {});
+          },
+        ));
+      }
+    }
+    return options;
+  }
+
+  List<TvMenuOption> _audioOptions(TvExoController c) {
+    final options = <TvMenuOption>[];
     final kinds = availableKinds(_sources);
     final poolHasBoth =
         kinds.contains(AudioKind.sub) && kinds.contains(AudioKind.dub);
@@ -939,28 +1076,39 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         widget.availableCategories.contains('sub') &&
         widget.availableCategories.contains('dub');
     if (poolHasBoth || showHasBoth) {
-      sections.add(
-        TvMenuSection(
-          title: 'Version',
-          options: [
-            TvMenuOption(
-              label: 'Sub',
-              selected: _category == 'sub',
-              onSelect: () => _switchCategory('sub'),
-            ),
-            TvMenuOption(
-              label: 'Dub',
-              selected: _category == 'dub',
-              onSelect: () => _switchCategory('dub'),
-            ),
-          ],
-        ),
-      );
+      options.add(TvMenuOption(
+        label: 'Sub',
+        selected: _category == 'sub',
+        onSelect: () => _switchCategory('sub'),
+      ));
+      options.add(TvMenuOption(
+        label: 'Dub',
+        selected: _category == 'dub',
+        onSelect: () => _switchCategory('dub'),
+      ));
     }
+    final audio = c.audioTracks.value;
+    if (audio.isEmpty) {
+      options.add(TvMenuOption(
+        label: 'Default',
+        selected: true,
+        onSelect: () {},
+      ));
+    } else {
+      for (final t in audio) {
+        options.add(TvMenuOption(
+          label: t.label ?? (t.language.isEmpty ? 'Track' : t.language),
+          selected: t.selected,
+          onSelect: () => _selectAudio(t),
+        ));
+      }
+    }
+    return options;
+  }
 
-    // Subtitles
+  List<TvMenuOption> _subsOptions(TvExoController c) {
     final text = c.textTracks.value;
-    final subOptions = <TvMenuOption>[
+    return [
       TvMenuOption(
         label: 'Off',
         selected: text.every((t) => !t.selected),
@@ -974,62 +1122,185 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         ),
       TvMenuOption(
         label: 'Preferred language…',
+        showCheck: false,
         onSelect: _pickPreferredLanguage,
       ),
-      TvMenuOption(label: 'Search online…', onSelect: _openSubtitleSearch),
       TvMenuOption(
-        label: 'Subtitle size',
-        trailing: _sizeLabel(sl<PlaybackPrefs>().subtitleScale),
-        onSelect: _cycleSubtitleSize,
-      ),
-      TvMenuOption(
-        label: 'Background',
-        trailing: sl<PlaybackPrefs>().subtitleBgOpacity > 0 ? 'On' : 'Off',
-        onSelect: _toggleSubtitleBackground,
+        label: 'Search online…',
+        showCheck: false,
+        onSelect: _openSubtitleSearch,
       ),
     ];
-    sections.add(TvMenuSection(title: 'Subtitles', options: subOptions));
+  }
 
-    // Speed
-    sections.add(
-      TvMenuSection(
-        title: 'Speed',
-        options: [
-          for (final s in kTvSpeeds)
-            TvMenuOption(
-              label: s == 1.0 ? 'Normal' : '${s}x',
-              selected: (_speed - s).abs() < 0.001,
-              onSelect: () => _setSpeed(s),
-            ),
-        ],
+  List<TvMenuOption> _captionStyleOptions() {
+    final p = sl<PlaybackPrefs>();
+    return [
+      _navRow(
+        'Font Size',
+        trailing: tvCaptionSizeLabel(p.subtitleScale),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionSize),
       ),
-    );
+      _navRow(
+        'Text Color',
+        trailing: tvCaptionColorLabel(p.subtitleColorHex),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionColor),
+      ),
+      _navRow(
+        'Edge Style',
+        trailing: tvCaptionEdgeLabel(p.subtitleOutlineType),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionEdge),
+      ),
+      _navRow(
+        'Background',
+        trailing: tvCaptionBgLabel(p.subtitleBgOpacity),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionBg),
+      ),
+      _navRow(
+        'Font',
+        trailing: tvCaptionFontLabel(p.subtitleFont),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionFont),
+      ),
+      _navRow(
+        'Position',
+        trailing: tvCaptionPositionLabel(p.subtitlePosition),
+        onSelect: () => _pushMenu(_TvSettingsPage.captionPos),
+      ),
+    ];
+  }
 
-    // Volume boost
+  List<TvMenuOption> _captionSizeOptions() {
+    final current = sl<PlaybackPrefs>().subtitleScale;
+    return [
+      for (final (label, scale) in kTvCaptionSizes)
+        TvMenuOption(
+          label: label,
+          selected: tvCaptionSizeLabel(current) == label,
+          onSelect: () => _setCaptionScale(scale),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _captionColorOptions() {
+    final current = sl<PlaybackPrefs>().subtitleColorHex.toUpperCase();
+    return [
+      for (final (hex, label) in kTvCaptionColors)
+        TvMenuOption(
+          label: label,
+          selected: current == hex,
+          onSelect: () => _setCaptionColor(hex),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _captionEdgeOptions() {
+    final current = tvEdgeTypeFromOutlinePref(
+      sl<PlaybackPrefs>().subtitleOutlineType,
+    );
+    return [
+      for (final (id, label, type) in kTvCaptionEdgeTypes)
+        TvMenuOption(
+          label: label,
+          selected: current == type,
+          onSelect: () => _setCaptionEdge(id),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _captionBgOptions() {
+    final current = sl<PlaybackPrefs>().subtitleBgOpacity;
+    return [
+      for (final (label, opacity) in kTvCaptionBackgrounds)
+        TvMenuOption(
+          label: label,
+          selected: tvCaptionBgLabel(current) == label,
+          onSelect: () => _setCaptionBg(opacity),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _captionFontOptions() {
+    final current = sl<PlaybackPrefs>().subtitleFont;
+    return [
+      for (final f in kBundledSubtitleFonts)
+        TvMenuOption(
+          label: tvCaptionFontLabel(f),
+          selected: current == f,
+          onSelect: () => _setCaptionFont(f),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _captionPosOptions() {
+    final current = sl<PlaybackPrefs>().subtitlePosition;
+    return [
+      for (final (label, pos) in kTvCaptionPositions)
+        TvMenuOption(
+          label: label,
+          selected: tvCaptionPositionLabel(current) == label,
+          onSelect: () => _setCaptionPos(pos),
+        ),
+    ];
+  }
+
+  List<TvMenuOption> _volumeOptions() {
     const volSteps = [100, 125, 150, 175, 200];
     final vol = sl<PlaybackPrefs>().volumeBoost;
-    sections.add(
-      TvMenuSection(
-        title: 'Volume',
-        options: [
-          for (final v in volSteps)
-            TvMenuOption(
-              label: v == 100 ? '100% (normal)' : '$v%',
-              selected: vol == v,
-              onSelect: () => _setVolume(v),
-            ),
-        ],
-      ),
-    );
+    return [
+      for (final v in volSteps)
+        TvMenuOption(
+          label: v == 100 ? '100% (normal)' : '$v%',
+          selected: vol == v,
+          onSelect: () => _setVolume(v),
+        ),
+    ];
+  }
 
-    return sections;
+  Future<void> _setCaptionScale(double scale) async {
+    await sl<PlaybackPrefs>().setSubtitleScale(scale);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setCaptionColor(String hex) async {
+    await sl<PlaybackPrefs>().setSubtitleColorHex(hex);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setCaptionEdge(String id) async {
+    await sl<PlaybackPrefs>().setSubtitleOutlineType(id);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setCaptionBg(double opacity) async {
+    await sl<PlaybackPrefs>().setSubtitleBgOpacity(opacity);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setCaptionFont(String font) async {
+    await sl<PlaybackPrefs>().setSubtitleFont(font);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setCaptionPos(int pos) async {
+    await sl<PlaybackPrefs>().setSubtitlePosition(pos);
+    await _applyCaptionStyle();
+    if (mounted) setState(() {});
   }
 
   void _setSpeed(double s) {
-    setState(() => _speed = s);
+    setState(() {
+      _speed = s;
+      _speedMenuOpen = false;
+    });
     _c?.setPlaybackSpeed(s);
     sl<TitlePrefsStore>().setSpeed(widget.sourceId, _resumeShowId, s);
     sl<PlaybackPrefs>().setDefaultSpeed(s);
+    _rootFocus.requestFocus();
   }
 
   void _setVolume(int v) {
@@ -1038,23 +1309,20 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     if (mounted) setState(() {});
   }
 
-  String _sizeLabel(double s) => s <= 0.85 ? 'S' : (s >= 1.2 ? 'L' : 'M');
-
-  Future<void> _cycleSubtitleSize() async {
-    final p = sl<PlaybackPrefs>();
-    final next = p.subtitleScale <= 0.85
-        ? 1.0
-        : (p.subtitleScale >= 1.2 ? 0.8 : 1.3);
-    await p.setSubtitleScale(next);
-    await _applyCaptionStyle();
-    if (mounted) setState(() {});
+  void _openSpeedMenu() {
+    setState(() {
+      _speedMenuOpen = true;
+      _menuOpen = false;
+      _menuStack.clear();
+    });
+    _bumpMenuHide();
   }
 
-  Future<void> _toggleSubtitleBackground() async {
-    final p = sl<PlaybackPrefs>();
-    await p.setSubtitleBgOpacity(p.subtitleBgOpacity > 0 ? 0.0 : 0.6);
-    await _applyCaptionStyle();
-    if (mounted) setState(() {});
+  void _closeSpeedMenu() {
+    _menuHideTimer?.cancel();
+    _stampOverlayClose();
+    setState(() => _speedMenuOpen = false);
+    _rootFocus.requestFocus();
   }
 
   Future<void> _pickPreferredLanguage() async {
@@ -1134,7 +1402,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _openMenu() {
-    setState(() => _menuOpen = true);
+    setState(() {
+      _menuOpen = true;
+      _menuStack.clear();
+      _speedMenuOpen = false;
+    });
     _bumpMenuHide();
   }
 
@@ -1143,14 +1415,22 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   void _bumpMenuHide() {
     _menuHideTimer?.cancel();
     _menuHideTimer = Timer(const Duration(seconds: 15), () {
-      if (mounted && _menuOpen) _closeMenu();
+      if (!mounted) return;
+      if (_menuOpen) {
+        _closeMenu();
+      } else if (_speedMenuOpen) {
+        _closeSpeedMenu();
+      }
     });
   }
 
   void _closeMenu() {
     _menuHideTimer?.cancel();
     _stampOverlayClose();
-    setState(() => _menuOpen = false);
+    setState(() {
+      _menuOpen = false;
+      _menuStack.clear();
+    });
     _rootFocus.requestFocus(); // hand D-pad back to the player controls
   }
 
@@ -1390,6 +1670,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     // While an overlay (menu / online search / up-next) is up, it owns the
     // D-pad: let its focused widget + traversal handle keys, don't eat them.
     if (_menuOpen ||
+        _speedMenuOpen ||
         _episodesOpen ||
         _searchResults != null ||
         _upNextCountdown != null) {
@@ -1540,6 +1821,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   Widget build(BuildContext context) {
     final overlayOpen =
         _menuOpen ||
+        _speedMenuOpen ||
         _episodesOpen ||
         _searchResults != null ||
         _upNextCountdown != null;
@@ -1561,6 +1843,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           _closeEpisodes();
         } else if (_menuOpen) {
           _closeMenu();
+        } else if (_speedMenuOpen) {
+          _closeSpeedMenu();
         } else if (_upNextCountdown != null) {
           _cancelUpNext();
         } else if (_controlsVisible && !_justClosedOverlay) {
@@ -1690,15 +1974,25 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                       // fades out on the same 5s timer instead of sitting on the
                       // video the whole episode. (The AniSkip pill above still
                       // shows for its interval, Netflix-style.)
-                      if (sl<PlaybackPrefs>().megaSkip && _controlsVisible) {
+                      if (_controlsVisible) {
                         final secs = sl<PlaybackPrefs>().megaSkipSeconds;
+                        final showMega = sl<PlaybackPrefs>().megaSkip;
                         children.add(
-                          _pillButton('+${secs}s', () {
-                            final c = _c;
-                            if (c != null) {
-                              c.seek(c.position.value + secs * 1000);
-                            }
-                          }),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _speedPill(),
+                              if (showMega) ...[
+                                const SizedBox(width: 8),
+                                _pillButton('+${secs}s', () {
+                                  final c = _c;
+                                  if (c != null) {
+                                    c.seek(c.position.value + secs * 1000);
+                                  }
+                                }),
+                              ],
+                            ],
+                          ),
                         );
                       }
                       if (children.isEmpty) return const SizedBox.shrink();
@@ -1778,30 +2072,44 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                     ),
                   ),
                 ),
+              if (_speedMenuOpen)
+                TvTrackMenu(
+                  key: const ValueKey('menu-speed'),
+                  title: 'Speed',
+                  options: [
+                    for (final s in kTvSpeeds)
+                      TvMenuOption(
+                        label: s == 1.0 ? 'Normal' : '$s×',
+                        selected: (_speed - s).abs() < 0.001,
+                        onSelect: () => _setSpeed(s),
+                      ),
+                  ],
+                  onClose: _closeSpeedMenu,
+                  onInteract: _bumpMenuHide,
+                ),
               if (_menuOpen && _c != null)
                 TvTrackMenu(
-                  sections: _buildSections(_c!),
-                  onClose: _closeMenu,
+                  key: ValueKey('menu-$_menuTitle-${_menuStack.length}'),
+                  title: _menuTitle,
+                  options: _buildMenuOptions(_c!),
+                  onClose: _popOrCloseMenu,
                   onInteract: _bumpMenuHide,
                 ),
               if (_searchResults != null)
                 TvTrackMenu(
+                  title: 'Online subtitles',
                   onClose: () {
                     setState(() => _searchResults = null);
                     _rootFocus.requestFocus();
                   },
-                  sections: [
-                    TvMenuSection(
-                      title: 'Online subtitles',
-                      options: [
-                        for (final r in _searchResults!)
-                          TvMenuOption(
-                            label: r.name,
-                            trailing: r.language,
-                            onSelect: () => _applySearchResult(r),
-                          ),
-                      ],
-                    ),
+                  options: [
+                    for (final r in _searchResults!)
+                      TvMenuOption(
+                        label: r.name,
+                        trailing: r.language,
+                        showCheck: false,
+                        onSelect: () => _applySearchResult(r),
+                      ),
                   ],
                 ),
             ],
@@ -2278,4 +2586,74 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       ),
     );
   }
+
+  Widget _speedPill() {
+    final label = (_speed - 1.0).abs() < 0.001 ? '1×' : '$_speed×';
+    return Focus(
+      onKeyEvent: (_, e) {
+        if (e is! KeyDownEvent) return KeyEventResult.ignored;
+        if (okKeys.contains(e.logicalKey)) {
+          _openSpeedMenu();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Builder(
+        builder: (context) {
+          final focused = Focus.of(context).hasFocus;
+          return GestureDetector(
+            onTap: () {
+              Focus.of(context).requestFocus();
+              _openSpeedMenu();
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: focused || _speedMenuOpen
+                      ? AppColors.accent
+                      : Colors.white38,
+                  width: 2,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.speed,
+                    size: 18,
+                    color: Colors.white.withValues(alpha: 0.95),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// Drill-in pages for the Flutter TV Settings side panel.
+enum _TvSettingsPage {
+  root,
+  servers,
+  quality,
+  audio,
+  subs,
+  captionStyle,
+  captionSize,
+  captionColor,
+  captionEdge,
+  captionBg,
+  captionFont,
+  captionPos,
+  volume,
 }
