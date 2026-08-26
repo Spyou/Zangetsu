@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../announce/announcement.dart';
 import '../announce/announcement_service.dart';
+import '../platform/apple_tv.dart';
 import '../playback/category_store.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
@@ -136,12 +137,14 @@ const _deviceChannel = MethodChannel('com.spyou.watch_app/device');
 Future<void> initDependencies() async {
   // Detect device class first so every subsequent registration can gate on it.
   // Wrapped in try/catch: no native handler (tests, iOS, web) → phone behavior.
+  // tvOS has no Android `isTv` channel; [isAppleTv] covers Apple TV.
   bool isTv = false;
   try {
     isTv = (await _deviceChannel.invokeMethod<bool>('isTv')) ?? false;
   } catch (_) {
     isTv = false;
   }
+  if (!isTv && isAppleTv) isTv = true;
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
 
   await Hive.initFlutter();

@@ -70,8 +70,7 @@ import '../../core/ui/badge.dart';
 import '../../core/ui/route_observer.dart';
 import '../../core/ui/states.dart';
 import '../player/player_screen.dart';
-import '../player/tv_exo_player_screen.dart';
-import '../player/tv_native_player.dart'; // used by the detail_screen_tv.dart part
+import '../player/tv_playback_launch.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
