@@ -117,10 +117,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     ('default', 'Default (128 MB)'),
     ('high', 'High (512 MB) — smoother'),
   ];
+  // Length only — there's no 'max' size. The size preset still caps memory, so
+  // a longer buffer costs nothing extra in the worst case; it just fills more
+  // of the same ceiling on lower-bitrate streams.
   static const List<(String, String)> _bufferLengthOptions = [
     ('low', 'Low (15s) — low-RAM / TV'),
     ('default', 'Default (60s)'),
     ('high', 'High (120s) — smoother'),
+    ('max', 'Max (300s) — longest'),
   ];
 
   Future<void> _pickBufferSize() async {

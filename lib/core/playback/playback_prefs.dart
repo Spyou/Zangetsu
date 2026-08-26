@@ -387,8 +387,9 @@ class PlaybackPrefs {
   // Presets, NOT raw values, so a user can't set a footgun. 'default' returns
   // exactly today's hardcoded numbers, so a fresh install / untouched setting is
   // byte-identical. 'low' shrinks the buffers for low-RAM / Android-TV to avoid
-  // OOM; 'high' enlarges them for smoother playback on strong devices.
-  static const List<String> bufferPresets = ['low', 'default', 'high'];
+  // OOM; 'high' enlarges them for smoother playback on strong devices; 'max'
+  // is LENGTH-only, for connections that drop out for minutes at a time.
+  static const List<String> bufferPresets = ['low', 'default', 'high', 'max'];
 
   /// Forward+back demuxer buffer SIZE preset: 'low' | 'default' | 'high'.
   String get videoBufferSize =>
@@ -419,6 +420,7 @@ class PlaybackPrefs {
       case 'low':
         return '32MiB';
       case 'high':
+      case 'max': // length-only preset; if it ever lands here, don't shrink
         return '512MiB';
       default:
         return '128MiB';
@@ -430,6 +432,7 @@ class PlaybackPrefs {
       case 'low':
         return '16MiB';
       case 'high':
+      case 'max':
         return '128MiB';
       default:
         return '48MiB';
@@ -442,6 +445,12 @@ class PlaybackPrefs {
         return 15;
       case 'high':
         return 120;
+      case 'max':
+        // Costs no extra worst-case memory: both engines stop at whichever of
+        // seconds and bytes comes first, so the size preset still caps this.
+        // At ~5 Mbps (1080p anime) 300s is ~187MB, comfortably inside the
+        // 512MiB 'high' cap; at 4K the byte cap binds first, around 165s.
+        return 300;
       default:
         return 60;
     }
@@ -475,6 +484,7 @@ class PlaybackPrefs {
       case 'low':
         return 32 * 1024 * 1024;
       case 'high':
+      case 'max':
         return 512 * 1024 * 1024;
       default:
         return 128 * 1024 * 1024;

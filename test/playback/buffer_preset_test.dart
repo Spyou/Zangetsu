@@ -26,6 +26,31 @@ void main() {
       expect(PlaybackPrefs.bufferMaxBackBytesFor('high'), '128MiB');
       expect(PlaybackPrefs.bufferSecsFor('high'), 120);
     });
+
+    test('max is a LENGTH-only preset — 300s, and never shrinks the size', () {
+      expect(PlaybackPrefs.bufferSecsFor('max'), 300);
+      // 'max' is only offered for length, but if it ever reached a size lookup
+      // it must not fall through to the 128MiB default and quietly shrink the
+      // buffer the user just asked to enlarge.
+      expect(PlaybackPrefs.bufferMaxBytesFor('max'), '512MiB');
+      expect(PlaybackPrefs.bufferMaxBackBytesFor('max'), '128MiB');
+      expect(PlaybackPrefs.exoTargetBufferBytesFor('max'), 512 * 1024 * 1024);
+    });
+
+    test('longer presets are strictly longer', () {
+      expect(
+        PlaybackPrefs.bufferSecsFor('low'),
+        lessThan(PlaybackPrefs.bufferSecsFor('default')),
+      );
+      expect(
+        PlaybackPrefs.bufferSecsFor('default'),
+        lessThan(PlaybackPrefs.bufferSecsFor('high')),
+      );
+      expect(
+        PlaybackPrefs.bufferSecsFor('high'),
+        lessThan(PlaybackPrefs.bufferSecsFor('max')),
+      );
+    });
   });
 
   group('ExoPlayer buffer presets (TV players + phone DRM)', () {
@@ -33,11 +58,12 @@ void main() {
       expect(PlaybackPrefs.exoMaxBufferMsFor('low'), 15000);
       expect(PlaybackPrefs.exoMaxBufferMsFor('default'), 60000);
       expect(PlaybackPrefs.exoMaxBufferMsFor('high'), 120000);
+      expect(PlaybackPrefs.exoMaxBufferMsFor('max'), 300000);
       expect(PlaybackPrefs.exoMaxBufferMsFor('nonsense'), 60000);
     });
 
     test('min buffer never exceeds max — DefaultLoadControl asserts min <= max', () {
-      for (final p in ['low', 'default', 'high', '', 'nonsense']) {
+      for (final p in ['low', 'default', 'high', 'max', '', 'nonsense']) {
         expect(
           PlaybackPrefs.exoMinBufferMsFor(p),
           lessThanOrEqualTo(PlaybackPrefs.exoMaxBufferMsFor(p)),
@@ -56,7 +82,7 @@ void main() {
     });
 
     test('target bytes stay inside Int range (setTargetBufferBytes takes an int)', () {
-      for (final p in ['low', 'default', 'high']) {
+      for (final p in ['low', 'default', 'high', 'max']) {
         expect(PlaybackPrefs.exoTargetBufferBytesFor(p), lessThan(2147483647));
       }
     });
@@ -72,7 +98,7 @@ void main() {
       // length=low with size=high. DefaultLoadControl asserts
       // bufferForPlayback <= minBuffer <= maxBuffer and would throw at player
       // construction — i.e. no video at all — if any pairing broke that.
-      const presets = ['low', 'default', 'high', '', 'nonsense'];
+      const presets = ['low', 'default', 'high', 'max', '', 'nonsense'];
       for (final length in presets) {
         for (final size in presets) {
           final min = PlaybackPrefs.exoMinBufferMsFor(length);
