@@ -4,43 +4,55 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/tv/tv_keys.dart';
 
-/// One selectable row in a [TvTrackMenu] section.
+/// One selectable row in a [TvTrackMenu].
 class TvMenuOption {
   const TvMenuOption({
     required this.label,
     this.selected = false,
     this.trailing,
+    this.showCheck = true,
     required this.onSelect,
   });
   final String label;
   final bool selected;
   final String? trailing;
+
+  /// When false, renders a summary/nav row (label + trailing, no check icon).
+  final bool showCheck;
   final VoidCallback onSelect;
 }
 
-/// A titled group of options.
+/// A titled group of options (legacy multi-section menus).
 class TvMenuSection {
   const TvMenuSection({required this.title, required this.options});
   final String title;
   final List<TvMenuOption> options;
 }
 
-/// A D-pad-navigable right-side panel of track sections. Up/Down move focus,
-/// OK selects, Back closes. Presentational: the screen supplies the sections
-/// and the per-option callbacks.
+/// A D-pad-navigable right-side settings panel. Up/Down move focus, OK selects,
+/// Back invokes [onClose] (host pops a sub-page or dismisses).
 ///
-/// Self-focusing: the player's root `Focus` already holds focus when this opens,
-/// so `autofocus` alone can't move focus here — the menu owns a [FocusScopeNode]
-/// and grabs focus explicitly once mounted, then the first row autofocuses.
+/// Prefer [title] + [options] for the Crunchyroll-style Settings list. [sections]
+/// remains for callers that still group rows under headers.
 class TvTrackMenu extends StatefulWidget {
   const TvTrackMenu({
     super.key,
-    required this.sections,
+    this.title = 'Settings',
+    this.options = const [],
+    this.sections = const [],
     required this.onClose,
     this.onInteract,
   });
 
+  /// Panel / page title shown at the top.
+  final String title;
+
+  /// Flat option list (used when [sections] is empty).
+  final List<TvMenuOption> options;
+
+  /// Optional titled groups; when non-empty, rendered instead of [options].
   final List<TvMenuSection> sections;
+
   final VoidCallback onClose;
 
   /// Called on any focus change / selection within the menu, so the host can
@@ -70,7 +82,8 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
 
   @override
   Widget build(BuildContext context) {
-    var optionIndex = 0; // first option overall gets autofocus
+    var optionIndex = 0;
+    final useSections = widget.sections.isNotEmpty;
     return Align(
       alignment: Alignment.centerRight,
       child: FocusScope(
@@ -79,20 +92,14 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
           final k = e.logicalKey;
           // Swallow EVERY phase of Back (down/repeat/up). Closing on the DOWN
           // but letting the UP fall through hands the same press to the system
-          // as a route pop — which then eats the NEXT Back-ladder rung (the
-          // menu closed AND the controls vanished in one press).
+          // as a route pop — which then eats the NEXT Back-ladder rung.
           if (k == LogicalKeyboardKey.goBack ||
               k == LogicalKeyboardKey.escape) {
             if (e is KeyDownEvent) widget.onClose();
             return KeyEventResult.handled;
           }
           if (e is! KeyDownEvent) return KeyEventResult.ignored;
-          // Any key inside the menu counts as activity — resets the host's
-          // inactivity auto-hide even when focus doesn't move (edge Up/Down,
-          // Left/Right) so the menu never closes while the user is interacting.
           widget.onInteract?.call();
-          // Swallow Left/Right so focus can't traverse out of the side panel;
-          // Up/Down fall through to move between rows.
           if (k == LogicalKeyboardKey.arrowLeft ||
               k == LogicalKeyboardKey.arrowRight) {
             return KeyEventResult.handled;
@@ -106,28 +113,47 @@ class _TvTrackMenuState extends State<TvTrackMenu> {
           child: FocusTraversalGroup(
             policy: OrderedTraversalPolicy(),
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+              padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
               children: [
-                for (final s in widget.sections) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
-                    child: Text(
-                      s.title,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 1.1,
-                      ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 20),
+                  child: Text(
+                    widget.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  for (final o in s.options)
+                ),
+                if (useSections)
+                  for (final s in widget.sections) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                      child: Text(
+                        s.title,
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1.1,
+                        ),
+                      ),
+                    ),
+                    for (final o in s.options)
+                      _Row(
+                        option: o,
+                        autofocus: optionIndex++ == 0,
+                        onInteract: widget.onInteract,
+                      ),
+                  ]
+                else
+                  for (final o in widget.options)
                     _Row(
                       option: o,
                       autofocus: optionIndex++ == 0,
                       onInteract: widget.onInteract,
                     ),
-                ],
               ],
             ),
           ),
@@ -153,6 +179,8 @@ class _RowState extends State<_Row> {
   @override
   Widget build(BuildContext context) {
     final o = widget.option;
+    final trailingColor =
+        _focused ? Colors.white : Colors.white.withValues(alpha: 0.55);
     return Focus(
       autofocus: widget.autofocus,
       onFocusChange: (f) {
@@ -171,30 +199,38 @@ class _RowState extends State<_Row> {
         onTap: o.onSelect,
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
-            color: _focused ? Colors.white.withValues(alpha: 0.14) : null,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: _focused ? AppColors.accent : Colors.transparent,
-              width: 2,
-            ),
+            color: _focused ? AppColors.accent : null,
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             children: [
-              Icon(
-                o.selected ? Icons.check : Icons.circle_outlined,
-                size: 18,
-                color: o.selected ? AppColors.accent : Colors.white38,
-              ),
-              const SizedBox(width: 12),
+              if (o.showCheck) ...[
+                Icon(
+                  o.selected ? Icons.check : Icons.circle_outlined,
+                  size: 18,
+                  color: o.selected
+                      ? (_focused ? Colors.white : AppColors.accent)
+                      : Colors.white38,
+                ),
+                const SizedBox(width: 12),
+              ],
               Expanded(
-                child: Text(o.label,
-                    style: const TextStyle(color: Colors.white, fontSize: 16)),
+                child: Text(
+                  o.label,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
               if (o.trailing != null)
-                Text(o.trailing!,
-                    style: const TextStyle(color: Colors.white38, fontSize: 13)),
+                Text(
+                  o.trailing!,
+                  style: TextStyle(color: trailingColor, fontSize: 15),
+                ),
             ],
           ),
         ),

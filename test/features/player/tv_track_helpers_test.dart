@@ -90,8 +90,17 @@ void main() {
     test('maps known families, null otherwise', () {
       expect(subtitleFontAsset('Inter'), 'assets/fonts/Inter.ttf');
       expect(subtitleFontAsset('Noto Sans'), 'assets/fonts/NotoSans-Regular.ttf');
+      expect(subtitleFontAsset('Poppins'), isNull); // download-on-demand
       expect(subtitleFontAsset(''), isNull);
       expect(subtitleFontAsset('Comic Sans'), isNull);
+    });
+  });
+
+  group('subtitleFontFileName', () {
+    test('maps family to ttf filename', () {
+      expect(subtitleFontFileName('Inter'), 'Inter.ttf');
+      expect(subtitleFontFileName('Poppins'), 'Poppins-Regular.ttf');
+      expect(subtitleFontFileName(''), isNull);
     });
   });
 
@@ -111,20 +120,36 @@ void main() {
   group('captionStyleFromPrefs', () {
     test('maps prefs to style', () {
       final s = captionStyleFromPrefs(
-        scale: 1.3, colorHex: '#FFFFFFFF', bgOpacity: 0.0, position: 95, font: 'Inter');
+        scale: 1.3, colorHex: '#FFFFFFFF', bgOpacity: 0.0, font: 'Inter');
       expect(s.scale, 1.3);
       expect(s.fgColor, 0xFFFFFFFF);
       expect(s.bgColor, 0); // transparent (opacity 0)
       expect(s.edge, isTrue); // outline when no bg box
-      expect(s.position, closeTo(0.05, 0.001)); // (100-95)/100
+      expect(s.edgeType, kTvEdgeOutline);
       expect(s.fontFamily, 'Inter');
     });
     test('background opacity produces alpha-black bg and no edge', () {
       final s = captionStyleFromPrefs(
-        scale: 1.0, colorHex: '#FFFFFFFF', bgOpacity: 1.0, position: 50, font: '');
+        scale: 1.0, colorHex: '#FFFFFFFF', bgOpacity: 1.0, font: '');
       expect(s.bgColor, 0xFF000000);
       expect(s.edge, isFalse);
-      expect(s.position, closeTo(0.5, 0.001));
+      expect(s.edgeType, kTvEdgeNone);
+    });
+    test('explicit outlineType overrides bg heuristic', () {
+      final s = captionStyleFromPrefs(
+        scale: 1.0,
+        colorHex: '#FFFFFFFF',
+        bgOpacity: 0.5,
+        font: '',
+        outlineType: 'shadow',
+      );
+      expect(s.edgeType, kTvEdgeDropShadow);
+      expect(s.edge, isTrue);
+    });
+    test('phone-only outline presets fall back to outline', () {
+      expect(tvEdgeTypeFromOutlinePref('soft'), kTvEdgeOutline);
+      expect(tvEdgeTypeFromOutlinePref('glow'), kTvEdgeOutline);
+      expect(tvEdgeTypeFromOutlinePref('bold'), kTvEdgeOutline);
     });
   });
 }

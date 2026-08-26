@@ -52,20 +52,132 @@ class TvSubDecision {
   final Language? language; // for download
 }
 
+/// Media3 [CaptionStyleCompat] edge-type constants.
+const int kTvEdgeNone = 0;
+const int kTvEdgeOutline = 1;
+const int kTvEdgeDropShadow = 2;
+const int kTvEdgeRaised = 3;
+const int kTvEdgeDepressed = 4;
+
+/// TV Captions Styling edge picker: (pref id, label, Media3 edge type).
+const List<(String, String, int)> kTvCaptionEdgeTypes = [
+  ('none', 'None', kTvEdgeNone),
+  ('outline', 'Outline', kTvEdgeOutline),
+  ('shadow', 'Drop Shadow', kTvEdgeDropShadow),
+  ('raised', 'Raised', kTvEdgeRaised),
+  ('depressed', 'Depressed', kTvEdgeDepressed),
+];
+
+/// Text-colour swatches for TV Captions Styling (#RRGGBBAA → label).
+const List<(String, String)> kTvCaptionColors = [
+  ('#FFFFFFFF', 'White'),
+  ('#FFFF00FF', 'Yellow'),
+  ('#00E5FFFF', 'Cyan'),
+  ('#7CFC00FF', 'Green'),
+  ('#FF6B6BFF', 'Red'),
+  ('#000000FF', 'Black'),
+];
+
+/// Font size buckets for TV Captions Styling.
+const List<(String, double)> kTvCaptionSizes = [
+  ('Small', 0.8),
+  ('Medium', 1.0),
+  ('Large', 1.3),
+];
+
+/// Background opacity buckets for TV Captions Styling.
+const List<(String, double)> kTvCaptionBackgrounds = [
+  ('Off', 0.0),
+  ('Light', 0.25),
+  ('Medium', 0.5),
+  ('Strong', 0.75),
+];
+
+/// Vertical position buckets (PlaybackPrefs subtitlePosition 0–100).
+const List<(String, int)> kTvCaptionPositions = [
+  ('Low', 95),
+  ('Middle', 70),
+  ('High', 40),
+];
+
+/// Maps a [PlaybackPrefs.subtitleOutlineType] id to a Media3 edge type.
+/// Phone-only presets (`soft` / `glow` / `bold`) fall back to outline.
+int tvEdgeTypeFromOutlinePref(String outlineType) {
+  switch (outlineType) {
+    case 'none':
+      return kTvEdgeNone;
+    case 'shadow':
+      return kTvEdgeDropShadow;
+    case 'raised':
+      return kTvEdgeRaised;
+    case 'depressed':
+      return kTvEdgeDepressed;
+    case 'outline':
+    case 'soft':
+    case 'glow':
+    case 'bold':
+    default:
+      return kTvEdgeOutline;
+  }
+}
+
+String tvCaptionSizeLabel(double scale) {
+  final nearest = kTvCaptionSizes.reduce(
+    (a, b) => (a.$2 - scale).abs() <= (b.$2 - scale).abs() ? a : b,
+  );
+  return nearest.$1;
+}
+
+String tvCaptionColorLabel(String colorHex) {
+  final want = colorHex.toUpperCase();
+  for (final (hex, label) in kTvCaptionColors) {
+    if (hex == want) return label;
+  }
+  return 'Custom';
+}
+
+String tvCaptionBgLabel(double opacity) {
+  final nearest = kTvCaptionBackgrounds.reduce(
+    (a, b) => (a.$2 - opacity).abs() <= (b.$2 - opacity).abs() ? a : b,
+  );
+  return nearest.$1;
+}
+
+String tvCaptionEdgeLabel(String outlineType) {
+  final type = tvEdgeTypeFromOutlinePref(outlineType);
+  for (final (_, label, t) in kTvCaptionEdgeTypes) {
+    if (t == type) return label;
+  }
+  return 'Outline';
+}
+
+String tvCaptionPositionLabel(int position) {
+  final nearest = kTvCaptionPositions.reduce(
+    (a, b) => (a.$2 - position).abs() <= (b.$2 - position).abs() ? a : b,
+  );
+  return nearest.$1;
+}
+
+String tvCaptionFontLabel(String font) => font.isEmpty ? 'Default' : font;
+
 class TvCaptionStyle {
   const TvCaptionStyle({
     required this.scale,
     required this.fgColor,
     required this.bgColor,
     required this.edge,
-    required this.position,
     this.fontFamily = '',
+    this.edgeType = kTvEdgeOutline,
   });
   final double scale;
   final int fgColor; // ARGB
   final int bgColor; // ARGB
+
+  /// Legacy: true when [edgeType] is not [kTvEdgeNone].
   final bool edge;
-  final double position; // bottom-padding fraction 0..1
+
+  /// Media3 CaptionStyleCompat edge type.
+  final int edgeType;
   final String fontFamily;
 }
 
@@ -142,21 +254,36 @@ TvSubDecision decideSubtitle({
   return TvSubDecision(TvSubAction.download, language: lang);
 }
 
-/// Maps a bundled subtitle-font family to its asset path (see pubspec fonts).
-String? subtitleFontAsset(String family) {
+/// Maps a subtitle-font family to its `.ttf` filename under `sub_fonts/`
+/// (and under `assets/fonts/` for APK-bundled families).
+String? subtitleFontFileName(String family) {
   const map = {
-    'Inter': 'assets/fonts/Inter.ttf',
-    'Poppins': 'assets/fonts/Poppins-Regular.ttf',
-    'Roboto': 'assets/fonts/Roboto-Regular.ttf',
-    'Open Sans': 'assets/fonts/OpenSans-Regular.ttf',
-    'Lato': 'assets/fonts/Lato-Regular.ttf',
-    'Montserrat': 'assets/fonts/Montserrat-Regular.ttf',
-    'Nunito': 'assets/fonts/Nunito-Regular.ttf',
-    'Rubik': 'assets/fonts/Rubik-Regular.ttf',
-    'Noto Sans': 'assets/fonts/NotoSans-Regular.ttf',
-    'Source Sans 3': 'assets/fonts/SourceSans3-Regular.ttf',
+    'Inter': 'Inter.ttf',
+    'Poppins': 'Poppins-Regular.ttf',
+    'Roboto': 'Roboto-Regular.ttf',
+    'Open Sans': 'OpenSans-Regular.ttf',
+    'Lato': 'Lato-Regular.ttf',
+    'Montserrat': 'Montserrat-Regular.ttf',
+    'Nunito': 'Nunito-Regular.ttf',
+    'Rubik': 'Rubik-Regular.ttf',
+    'Noto Sans': 'NotoSans-Regular.ttf',
+    'Source Sans 3': 'SourceSans3-Regular.ttf',
   };
   return map[family];
+}
+
+/// Asset path for fonts that ship in the APK (see pubspec `flutter: fonts:`).
+/// Download-on-demand families return null — stage them from `sub_fonts/` after
+/// [SubtitleFontService.ensure].
+String? subtitleFontAsset(String family) {
+  switch (family) {
+    case 'Inter':
+      return 'assets/fonts/Inter.ttf';
+    case 'Noto Sans':
+      return 'assets/fonts/NotoSans-Regular.ttf';
+    default:
+      return null;
+  }
 }
 
 /// PlaybackPrefs stores the subtitle colour as `#RRGGBBAA` (default
@@ -174,17 +301,22 @@ TvCaptionStyle captionStyleFromPrefs({
   required double scale,
   required String colorHex,
   required double bgOpacity,
-  required int position,
   required String font,
+  String? outlineType,
 }) {
   final o = bgOpacity.clamp(0.0, 1.0);
   final bgA = (o * 255).round();
+  // Explicit outline pref wins; otherwise keep the legacy heuristic (outline
+  // when there's no background box so text stays readable on busy scenes).
+  final edgeType = outlineType != null
+      ? tvEdgeTypeFromOutlinePref(outlineType)
+      : (o <= 0.0 ? kTvEdgeOutline : kTvEdgeNone);
   return TvCaptionStyle(
     scale: scale,
     fgColor: parseSubtitleColor(colorHex),
     bgColor: bgA << 24, // alpha-black window box
-    edge: o <= 0.0, // outline for readability when there's no box
-    position: ((100 - position).clamp(0, 100)) / 100.0,
+    edge: edgeType != kTvEdgeNone,
+    edgeType: edgeType,
     fontFamily: font,
   );
 }
