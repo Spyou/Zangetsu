@@ -215,14 +215,33 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- External video players we can hand a stream to (package visibility
-             on Android 11+). -->
+        <!-- Any installed app that can open a video, so the external-player
+             picker isn't limited to the handful we know by name below. Without
+             this, Android 11+ hides them and the picker silently under-reports.
+             Both mimes: plain files resolve as video/*, HLS as x-mpegURL. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="video/*"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:mimeType="application/x-mpegURL"/>
+        </intent>
+        <!-- External video players we send tailored extras to (headers, subs,
+             resume position). Listed by name as well as by the intents above:
+             the mime queries alone don't reach a player whose filter doesn't
+             advertise these exact types, and these are the ones that must
+             always resolve. -->
         <package android:name="com.mxtech.videoplayer.ad"/>
         <package android:name="com.mxtech.videoplayer.pro"/>
         <package android:name="org.videolan.vlc"/>
         <package android:name="is.xyz.mpv"/>
         <package android:name="com.brouken.player"/>
         <package android:name="dev.anilbeesetti.nextplayer"/>
+        <!-- SPlayer ships under two ids; both were in knownPlayers but missing
+             here, so getPackageInfo threw and it never showed up. -->
+        <package android:name="com.young.simple.player"/>
+        <package android:name="com.ttee.leeplayer"/>
         <!-- UPI apps — the donate screen deep-links upi://pay. Needed for
              url_launcher to resolve an installed UPI app on Android 11+. -->
         <intent>

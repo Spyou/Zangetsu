@@ -1220,13 +1220,57 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         "com.ttee.leeplayer" to "SPlayer",
     )
 
+    // The known players first, in the curated order above, then anything else on
+    // the device that can open a video.
+    //
+    // The hardcoded list used to be the whole answer, which meant a player we'd
+    // never heard of was invisible even when installed — the picker claimed the
+    // user had nothing when they had Kodi or their OEM's player sitting right
+    // there. Known players stay on top because their intent extras are known, so
+    // subtitles and the resume position actually reach them; the rest play fine
+    // but may ignore those extras, which is why they're flagged for the UI to
+    // show under their own heading.
     private fun installedPlayers(): List<Map<String, String>> {
         val out = mutableListOf<Map<String, String>>()
+        val seen = mutableSetOf<String>()
         for ((pkg, label) in knownPlayers) {
             try {
                 packageManager.getPackageInfo(pkg, 0)
-                out.add(mapOf("package" to pkg, "label" to label))
+                if (seen.add(pkg)) {
+                    out.add(mapOf("package" to pkg, "label" to label, "known" to "1"))
+                }
             } catch (_: Exception) { /* not installed */ }
+        }
+        // Probed with an https URL because that's what we actually hand over —
+        // an app that only claims content:// or file:// can't play our streams,
+        // so leaving it out of the list is the correct answer, not a gap.
+        for (mime in arrayOf("video/*", "application/x-mpegURL")) {
+            try {
+                val probe = Intent(Intent.ACTION_VIEW).setDataAndType(
+                    Uri.parse("https://example.com/video.mp4"),
+                    mime,
+                )
+                // MATCH_DEFAULT_ONLY: startActivity needs CATEGORY_DEFAULT on the
+                // target filter, so anything without it would fail to launch.
+                val hits = packageManager.queryIntentActivities(
+                    probe,
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                for (ri in hits) {
+                    val info = ri.activityInfo ?: continue
+                    val pkg = info.packageName ?: continue
+                    if (pkg == packageName || !seen.add(pkg)) continue
+                    // The application label, not the activity's — activity labels
+                    // are often "Open with …" or blank.
+                    val label = info.applicationInfo
+                        ?.let { packageManager.getApplicationLabel(it).toString() }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: pkg
+                    out.add(mapOf("package" to pkg, "label" to label, "known" to "0"))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "queryIntentActivities($mime) failed: ${e.message}")
+            }
         }
         return out
     }
@@ -1281,7 +1325,20 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 try { it.success(mapOf("launched" to true, "played" to true)) } catch (_: Exception) {}
             }
             pendingPlayerResult = result
-            startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            try {
+                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            } catch (e: android.content.ActivityNotFoundException) {
+                // The precise mime above is a hint, not a requirement: plenty of
+                // players advertise video/* and nothing else, so an HLS stream
+                // sent as application/x-mpegURL resolves to no activity and the
+                // launch dies here — the app then falls back to the built-in
+                // player and the chosen app looks like it was ignored. Retry
+                // once as video/*, which is what every video app claims.
+                if (mime == "video/*") throw e
+                Log.w(TAG, "no activity for $mime in $pkg — retrying as video/*")
+                intent.setDataAndType(Uri.parse(url), "video/*")
+                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "launchExternal failed: ${e.message}")
             pendingPlayerResult = null
