@@ -12,9 +12,12 @@ import android.view.View
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -74,6 +77,8 @@ class ExoPlayerView(
     private var sink: EventChannel.EventSink? = null
 
     private val handler = Handler(Looper.getMainLooper())
+    /** PlaybackPrefs subtitlePosition 0=top … 100=bottom; drives cue line remapping. */
+    private var captionPositionPref = 95
     private val tick = object : Runnable {
         override fun run() {
             emitState()
@@ -94,6 +99,9 @@ class ExoPlayerView(
             override fun onPlaybackStateChanged(state: Int) { syncKeepScreenOn(); emitState() }
             override fun onIsPlayingChanged(isPlaying: Boolean) { syncKeepScreenOn(); emitState() }
             override fun onTracksChanged(tracks: androidx.media3.common.Tracks) = emitState()
+            override fun onCues(cueGroup: CueGroup) {
+                playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
+            }
         })
         syncKeepScreenOn()
         handler.post(tick)
@@ -128,7 +136,16 @@ class ExoPlayerView(
                 )
                 when (g.type) {
                     C.TRACK_TYPE_AUDIO -> audio.add(entry)
-                    C.TRACK_TYPE_TEXT -> text.add(entry)
+                    C.TRACK_TYPE_TEXT -> {
+                        // Hide in-band CEA-608/708 from the picker — unlabeled
+                        // "Subtitle 1" rows that do nothing useful for softsubs.
+                        val mime = f.sampleMimeType
+                        if (mime != MimeTypes.APPLICATION_CEA608 &&
+                            mime != MimeTypes.APPLICATION_CEA708
+                        ) {
+                            text.add(entry)
+                        }
+                    }
                     C.TRACK_TYPE_VIDEO -> if (g.isTrackSupported(ti)) {
                         // Height is what labels the row, so a rendition that
                         // doesn't report one is no use as a choice.
@@ -177,14 +194,21 @@ class ExoPlayerView(
         val fontPath = call.argument<String>("fontPath")
         val fg = (call.argument<Number>("fgColor") ?: -1).toInt()
         val bg = (call.argument<Number>("bgColor") ?: 0).toInt()
-        val edge = call.argument<Boolean>("edge") ?: false
-        val pos = (call.argument<Number>("position") ?: 0.05).toDouble()
+        val edgeType = call.argument<Number>("edgeType")?.toInt()
+            ?: if (call.argument<Boolean>("edge") == true) {
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE
+            } else {
+                CaptionStyleCompat.EDGE_TYPE_NONE
+            }
+        captionPositionPref = (call.argument<Number>("positionPref") ?: 95)
+            .toInt()
+            .coerceIn(0, 100)
         val tf = fontPath?.let { runCatching { Typeface.createFromFile(it) }.getOrNull() }
         val style = CaptionStyleCompat(
             fg,
             bg,
             Color.TRANSPARENT,
-            if (edge) CaptionStyleCompat.EDGE_TYPE_OUTLINE else CaptionStyleCompat.EDGE_TYPE_NONE,
+            edgeType,
             Color.BLACK,
             tf,
         )
@@ -193,7 +217,21 @@ class ExoPlayerView(
             setApplyEmbeddedFontSizes(false)
             setStyle(style)
             setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * scale.toFloat())
-            setBottomPaddingFraction(pos.toFloat())
+            // Cue lines are remapped in [repositionCues]; pad alone is ignored
+            // when the cue already has a line.
+            setBottomPaddingFraction(0.02f)
+        }
+        playerView.subtitleView?.setCues(repositionCues(player.currentCues.cues))
+    }
+
+    private fun repositionCues(cues: List<Cue>): List<Cue> {
+        if (cues.isEmpty()) return cues
+        val line = captionPositionPref.coerceIn(0, 100) / 100f
+        return cues.map { cue ->
+            cue.buildUpon()
+                .setLine(line, Cue.LINE_TYPE_FRACTION)
+                .setLineAnchor(Cue.ANCHOR_TYPE_END)
+                .build()
         }
     }
 

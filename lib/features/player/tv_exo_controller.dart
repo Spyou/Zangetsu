@@ -142,14 +142,19 @@ class TvExoController {
   /// ExoPlayer. Never reopens anything, so position and server are untouched.
   Future<void> selectVideoTrack(String? id) =>
       _method.invokeMethod('selectVideoTrack', {'id': id});
-  Future<void> applyCaptionStyle(TvCaptionStyle s, {String? fontPath}) =>
+  Future<void> applyCaptionStyle(
+    TvCaptionStyle s, {
+    String? fontPath,
+    required int positionPref,
+  }) =>
       _method.invokeMethod('setCaptionStyle', {
         'scale': s.scale,
         'fontPath': fontPath,
         'fgColor': s.fgColor,
         'bgColor': s.bgColor,
         'edge': s.edge,
-        'position': s.position,
+        'edgeType': s.edgeType,
+        'positionPref': positionPref,
       });
   Future<void> setPlaybackSpeed(double speed) =>
       _method.invokeMethod('setPlaybackSpeed', {'speed': speed});

@@ -25,6 +25,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
+import 'subtitle_font_service.dart';
 
 /// Launches and services the fully-native TV player (TvPlayerActivity —
 /// real-window ExoPlayer/SurfaceView) instead of the Flutter platform-view
@@ -115,16 +116,19 @@ class TvNativePlayer {
     final mark = resume.get(sourceId, _showId, ep.id);
 
     // Full subtitle style, computed the SAME way as the Flutter PlatformView TV
-    // player so both render identically (colour, box, outline, position, font).
+    // player so both render identically (colour, box, outline, font).
     final prefs = sl<PlaybackPrefs>();
     final subStyle = captionStyleFromPrefs(
       scale: prefs.subtitleScale,
       colorHex: prefs.subtitleColorHex,
       bgOpacity: prefs.subtitleBgOpacity,
-      position: prefs.subtitlePosition,
       font: prefs.subtitleFont,
+      outlineType: prefs.subtitleOutlineType,
     );
-    final subFontPath = await stageSubtitleFont(prefs.subtitleFont);
+    final subFontPath = await () async {
+      await SubtitleFontService.instance.ensure(prefs.subtitleFont);
+      return stageSubtitleFont(prefs.subtitleFont);
+    }();
 
     // Discord Rich Presence: the native Activity runs outside the Flutter
     // engine and can't reach the Dart Discord service, so announce "Watching"
@@ -177,7 +181,12 @@ class TvNativePlayer {
       'subtitleFgColor': subStyle.fgColor,
       'subtitleBgColor': subStyle.bgColor,
       'subtitleEdge': subStyle.edge,
-      'subtitlePosition': subStyle.position,
+      'subtitleEdgeType': subStyle.edgeType,
+      'subtitleColorHex': prefs.subtitleColorHex,
+      'subtitleOutlineType': prefs.subtitleOutlineType,
+      'subtitleFontFamily': prefs.subtitleFont,
+      'subtitlePositionPref': prefs.subtitlePosition,
+      'subtitleBgOpacity': prefs.subtitleBgOpacity,
       'subtitleFontPath': ?subFontPath,
       'subtitleApiKeySet': prefs.subtitleApiKey.trim().isNotEmpty,
       'megaSkip': prefs.megaSkip,
@@ -261,6 +270,37 @@ class TvNativePlayer {
         final s = (call.arguments as Map)['scale'] as num?;
         if (s != null) await sl<PlaybackPrefs>().setSubtitleScale(s.toDouble());
         return null;
+      case 'setSubtitleColorHex':
+        final hex = (call.arguments as Map)['hex'] as String?;
+        if (hex != null) await sl<PlaybackPrefs>().setSubtitleColorHex(hex);
+        return null;
+      case 'setSubtitleBgOpacity':
+        final o = (call.arguments as Map)['opacity'] as num?;
+        if (o != null) {
+          await sl<PlaybackPrefs>().setSubtitleBgOpacity(o.toDouble());
+        }
+        return null;
+      case 'setSubtitleOutlineType':
+        final t = (call.arguments as Map)['type'] as String?;
+        if (t != null) await sl<PlaybackPrefs>().setSubtitleOutlineType(t);
+        return null;
+      case 'setSubtitleFont':
+        final f = (call.arguments as Map)['font'] as String?;
+        if (f != null) await sl<PlaybackPrefs>().setSubtitleFont(f);
+        return null;
+      case 'setSubtitlePosition':
+        final p = (call.arguments as Map)['position'] as num?;
+        if (p != null) await sl<PlaybackPrefs>().setSubtitlePosition(p.toInt());
+        return null;
+      case 'setDefaultSpeed':
+        final s = (call.arguments as Map)['speed'] as num?;
+        if (s != null) await sl<PlaybackPrefs>().setDefaultSpeed(s.toDouble());
+        return null;
+      case 'stageSubtitleFont':
+        final font = (call.arguments as Map)['font'] as String? ?? '';
+        if (font.isEmpty) return null;
+        await SubtitleFontService.instance.ensure(font);
+        return await stageSubtitleFont(font);
       case 'searchSubtitles':
         // OpenSubtitles search for the current show; results cached for download.
         final pref = sl<PlaybackPrefs>().subtitlePreference;

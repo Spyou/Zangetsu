@@ -21,6 +21,8 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -79,7 +81,12 @@ class TvPlayerActivity : Activity() {
         const val EXTRA_SUB_FG = "subtitleFgColor"
         const val EXTRA_SUB_BG_COLOR = "subtitleBgColor"
         const val EXTRA_SUB_EDGE = "subtitleEdge"
-        const val EXTRA_SUB_POS = "subtitlePosition"
+        const val EXTRA_SUB_EDGE_TYPE = "subtitleEdgeType"
+        const val EXTRA_SUB_COLOR_HEX = "subtitleColorHex"
+        const val EXTRA_SUB_OUTLINE_TYPE = "subtitleOutlineType"
+        const val EXTRA_SUB_FONT_FAMILY = "subtitleFontFamily"
+        const val EXTRA_SUB_POS_PREF = "subtitlePositionPref"
+        const val EXTRA_SUB_BG_OPACITY = "subtitleBgOpacity"
         const val EXTRA_SUB_FONT = "subtitleFontPath"
         const val EXTRA_SUB_HAS_KEY = "subtitleApiKeySet"
         const val EXTRA_EP_LABELS = "episodeLabels"
@@ -159,6 +166,7 @@ class TvPlayerActivity : Activity() {
     private lateinit var btnAudioSubs: TextView
     private lateinit var btnNext: TextView
     private lateinit var btnMegaskip: TextView
+    private lateinit var btnSpeed: TextView
     // MegaSkip jump size in seconds (read from the launch extras).
     private var megaSkipSecs = 85
     // Whether the AniSkip "Skip intro/ending" pill may show (Settings toggle).
@@ -176,10 +184,34 @@ class TvPlayerActivity : Activity() {
     private val autoSkipped = HashSet<Long>()
     // Live subtitle size multiplier (seeded from prefs; changeable in-player).
     private var subScale = 1f
+    private var subFg = android.graphics.Color.WHITE
+    private var subBgColor = android.graphics.Color.TRANSPARENT
+    private var subEdgeType = CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    private var subFontPath: String? = null
+    private var subFontFamily = ""
+    private var subBgOpacity = 0f
+    private var subOutlineId = "outline"
+    private var subColorHex = "#FFFFFFFF"
+    private var subPositionPref = 95
     private lateinit var fillerBadge: TextView
 
     private lateinit var menuPanel: View
     private lateinit var menuContent: android.widget.LinearLayout
+
+    /** Drill-in pages for the Audio & Subs Settings panel. */
+    private enum class AvPage {
+        ROOT, AUDIO, SUBS, CAPTION_STYLE, SIZE, COLOR, EDGE, BG, FONT, POS, VOLUME
+    }
+    private val avStack = ArrayDeque<AvPage>()
+    private var avMenuActive = false
+    /**
+     * Optimistic subtitle selection for the Settings UI. ExoPlayer's
+     * [Tracks.Group.isTrackSelected] often lags one interaction behind when we
+     * rebuild the menu, so the checkmark would land on the *previous* pick.
+     * [textUiForcedOff] = Off; [textUiLabel] non-null = that track; both clear → trust Exo.
+     */
+    private var textUiForcedOff = false
+    private var textUiLabel: String? = null
 
     private var controlsVisible = false
     private var focusZone = 0 // 0 = none (OK=play/pause, ◀▶=seek), 1 = top actions, 2 = bottom
@@ -244,6 +276,28 @@ class TvPlayerActivity : Activity() {
         autoSkipFiller = intent.getBooleanExtra(EXTRA_AUTO_SKIP_FILLER, false)
         fillerFlags = intent.getBooleanArrayExtra(EXTRA_FILLER_FLAGS) ?: BooleanArray(0)
         subScale = intent.getFloatExtra(EXTRA_SUB_SCALE, 1f)
+        subFg = intent.getIntExtra(EXTRA_SUB_FG, android.graphics.Color.WHITE)
+        subBgColor = intent.getIntExtra(EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT)
+        subEdgeType = intent.getIntExtra(
+            EXTRA_SUB_EDGE_TYPE,
+            if (intent.getBooleanExtra(EXTRA_SUB_EDGE, true)) {
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE
+            } else {
+                CaptionStyleCompat.EDGE_TYPE_NONE
+            },
+        )
+        subOutlineId = intent.getStringExtra(EXTRA_SUB_OUTLINE_TYPE) ?: when (subEdgeType) {
+            CaptionStyleCompat.EDGE_TYPE_NONE -> "none"
+            CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW -> "shadow"
+            CaptionStyleCompat.EDGE_TYPE_RAISED -> "raised"
+            CaptionStyleCompat.EDGE_TYPE_DEPRESSED -> "depressed"
+            else -> "outline"
+        }
+        subPositionPref = intent.getIntExtra(EXTRA_SUB_POS_PREF, 95).coerceIn(0, 100)
+        subBgOpacity = intent.getFloatExtra(EXTRA_SUB_BG_OPACITY, ((subBgColor ushr 24) and 0xFF) / 255f)
+        subColorHex = intent.getStringExtra(EXTRA_SUB_COLOR_HEX) ?: "#FFFFFFFF"
+        subFontPath = intent.getStringExtra(EXTRA_SUB_FONT)
+        subFontFamily = intent.getStringExtra(EXTRA_SUB_FONT_FAMILY) ?: ""
         subtitleApiKeySet = intent.getBooleanExtra(EXTRA_SUB_HAS_KEY, false)
 
         setContentView(R.layout.tv_player)
@@ -275,7 +329,7 @@ class TvPlayerActivity : Activity() {
         speed = intent.getFloatExtra(EXTRA_SPEED, 1f)
         exo.playbackParameters = PlaybackParameters(speed)
         applyVolume(intent.getIntExtra(EXTRA_VOLUME, 100))
-        applySubtitleStyle()
+        applySubtitleStyleLive()
 
         exo.addListener(object : Player.Listener {
             override fun onRenderedFirstFrame() {
@@ -312,6 +366,11 @@ class TvPlayerActivity : Activity() {
                     loadEpisode(nextAutoplayIndex())
                 }
             }
+            // PlayerView also writes cues; we register after it so this wins and
+            // can force vertical position (embedded cue lines ignore bottom pad).
+            override fun onCues(cueGroup: CueGroup) {
+                playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
+            }
         })
 
         // First episode: stream data comes straight from the intent (Dart resolved
@@ -344,6 +403,7 @@ class TvPlayerActivity : Activity() {
     ) {
         val p = player ?: return
         userPaused = false
+        clearTextUiOverride() // new stream → trust Exo again
         currentUrl = url
         currentHeaders = headers
         currentMime = mime
@@ -734,6 +794,11 @@ class TvPlayerActivity : Activity() {
         menuOpener = opener
         firstSelectedRow = null
         focusTarget = null
+        // Quality / Sources / Episodes are flat menus — not the AV stack.
+        if (opener !== btnAudioSubs) {
+            avMenuActive = false
+            avStack.clear()
+        }
         menuContent.removeAllViews()
         build()
         showPanel()
@@ -748,14 +813,13 @@ class TvPlayerActivity : Activity() {
     /** Sources — the full resolved stream/mirror list. */
     private fun openSourcesMenu() = showMenu(btnSources) { buildSourcesMenu() }
 
-    /** Audio / Sub-Dub / Subtitles / Speed / Volume. */
-    private fun openAvMenu() = showMenu(btnAudioSubs) { buildAvMenu() }
-
     /** The "Episodes" list — jump to any episode via the same bridge switch. */
     private fun openEpisodes() {
         menuOpener = btnEpisodes
         firstSelectedRow = null
         focusTarget = null
+        avMenuActive = false
+        avStack.clear()
         menuContent.removeAllViews()
         sectionHeader("Episodes")
         for (i in 0 until episodeCount) {
@@ -774,6 +838,8 @@ class TvPlayerActivity : Activity() {
 
     private fun closeMenu() {
         menuOpen = false
+        avMenuActive = false
+        avStack.clear()
         menuPanel.visibility = View.GONE
         menuContent.removeAllViews()
         bumpControls()
@@ -841,84 +907,472 @@ class TvPlayerActivity : Activity() {
         }
     }
 
-    /** The "Audio & Subs" button's menu. */
-    private fun buildAvMenu() {
+    /** Audio / Subtitles / Captions Styling / Volume — Crunchyroll-style Settings. */
+    private fun openAvMenu() {
+        avMenuActive = true
+        avStack.clear()
+        showMenu(btnAudioSubs) { buildAvPage(AvPage.ROOT) }
+    }
+
+    private fun pushAv(page: AvPage) {
+        avStack.addLast(page)
+        rebuildAvMenuDeferred()
+    }
+
+    private fun popAvOrClose() {
+        if (avStack.isNotEmpty()) {
+            avStack.removeLast()
+            rebuildAvMenuDeferred()
+        } else {
+            closeMenu()
+        }
+    }
+
+    private fun rebuildAvMenu() {
+        firstSelectedRow = null
+        focusTarget = null
+        menuContent.removeAllViews()
+        val page = avStack.lastOrNull() ?: AvPage.ROOT
+        buildAvPage(page)
+        menuContent.post {
+            (focusTarget ?: firstSelectedRow ?: firstFocusable(menuContent))?.requestFocus()
+        }
+    }
+
+    /** Rebuild after the current click/key event finishes. Rebuilding the menu
+     *  hierarchy mid-click lets the event fall through to the row below — which
+     *  showed up as "I selected English but Spanish got the checkmark". */
+    private fun rebuildAvMenuDeferred() {
+        menuContent.post { rebuildAvMenu() }
+    }
+
+    private fun buildAvPage(page: AvPage) {
+        when (page) {
+            AvPage.ROOT -> buildAvRoot()
+            AvPage.AUDIO -> buildAvAudio()
+            AvPage.SUBS -> buildAvSubs()
+            AvPage.CAPTION_STYLE -> buildCaptionStyleRoot()
+            AvPage.SIZE -> buildCaptionSize()
+            AvPage.COLOR -> buildCaptionColor()
+            AvPage.EDGE -> buildCaptionEdge()
+            AvPage.BG -> buildCaptionBg()
+            AvPage.FONT -> buildCaptionFont()
+            AvPage.POS -> buildCaptionPos()
+            AvPage.VOLUME -> buildAvVolume()
+        }
+    }
+
+    private fun menuTitle(title: String) {
+        menuContent.addView(TextView(this).apply {
+            text = title
+            setTextColor(android.graphics.Color.WHITE)
+            textSize = 22f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(dp(4), dp(2), 0, dp(18))
+        })
+    }
+
+    private fun buildAvRoot() {
         val p = player ?: return
+        menuTitle("Settings")
         val groups = p.currentTracks.groups
 
-        // Audio tracks.
-        addTrackSection("Audio", groups, C.TRACK_TYPE_AUDIO) { f, idx ->
-            f.label ?: langName(f.language) ?: "Audio ${idx + 1}"
-        }
+        val audioLabel = selectedTrackLabel(groups, C.TRACK_TYPE_AUDIO)
+            ?: if (category == "dub") "Dub" else "Sub"
+        navRow("Audio", audioLabel) { pushAv(AvPage.AUDIO) }
 
-        // Sub / Dub (Version).
-        if (availableCategories.size > 1) {
-            sectionHeader("Sub / Dub")
-            for (c in availableCategories) {
-                option(if (c == "dub") "Dub" else "Sub", selected = c == category) { switchCategory(c) }
-            }
-        }
+        val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        navRow("Subtitles/CC", subtitleTrailingLabel(groups, textDisabled)) { pushAv(AvPage.SUBS) }
 
-        // Subtitles (+ Off).
-        val text = groups.filter { it.type == C.TRACK_TYPE_TEXT }
-        val textTracks = text.flatMap { g -> (0 until g.length).map { g to it } }
-        if (textTracks.isNotEmpty()) {
-            val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
-            sectionHeader("Subtitles")
-            option("Off", selected = textDisabled) {
-                p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
-                    .clearOverridesOfType(C.TRACK_TYPE_TEXT)
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
-            }
-            for ((g, i) in textTracks) {
+        navRow("Captions Styling", null) { pushAv(AvPage.CAPTION_STYLE) }
+
+        val volLabel = if (volumePercent == 100) "100%" else "$volumePercent%"
+        navRow("Volume", volLabel) { pushAv(AvPage.VOLUME) }
+    }
+
+    private fun selectedTrackLabel(groups: List<Tracks.Group>, type: Int): String? {
+        val gs = groups.filter { it.type == type && it.isSupported }
+        for (g in gs) {
+            for (i in 0 until g.length) {
+                if (!g.isTrackSelected(i)) continue
                 val f = g.getTrackFormat(i)
-                val label = f.label ?: langName(f.language) ?: "Subtitle ${i + 1}"
-                option(label, selected = !textDisabled && g.isTrackSelected(i)) {
-                    applyOverride(C.TRACK_TYPE_TEXT, g, i)
+                // Ignore embedded CEA CC in the trailing label — same filter as the picker.
+                if (type == C.TRACK_TYPE_TEXT && isEmbeddedCea(f)) continue
+                return f.label ?: langName(f.language) ?: "Track ${i + 1}"
+            }
+        }
+        return null
+    }
+
+    /** In-band CEA-608/708 often has no label/language (shows as "Subtitle 1") and
+     *  selecting it does nothing useful for anime softsubs — hide from the picker. */
+    private fun isEmbeddedCea(f: androidx.media3.common.Format): Boolean {
+        val mime = f.sampleMimeType ?: return false
+        return mime == MimeTypes.APPLICATION_CEA608 || mime == MimeTypes.APPLICATION_CEA708
+    }
+
+    private fun textTrackChoices(groups: List<Tracks.Group>): List<Pair<Tracks.Group, Int>> {
+        return groups
+            .filter { it.type == C.TRACK_TYPE_TEXT }
+            .flatMap { g -> (0 until g.length).map { g to it } }
+            .filter { (g, i) ->
+                g.isTrackSupported(i) && !isEmbeddedCea(g.getTrackFormat(i))
+            }
+    }
+
+    private fun subtitleTrackLabel(f: androidx.media3.common.Format, index: Int): String {
+        f.label?.takeIf { it.isNotBlank() }?.let { return it }
+        langName(f.language)?.let { return it }
+        return "Subtitle ${index + 1}"
+    }
+
+    private fun buildAvAudio() {
+        menuTitle("Audio")
+        val p = player ?: return
+        val groups = p.currentTracks.groups
+        if (availableCategories.size > 1) {
+            for (c in availableCategories) {
+                option(if (c == "dub") "Dub" else "Sub", selected = c == category, closeOnSelect = false) {
+                    switchCategory(c)
                 }
             }
         }
+        // Always list audio tracks — even a single track — so the submenu is never
+        // blank when Version isn't available (addTrackSection used to skip size<=1).
+        val gs = groups.filter { it.type == C.TRACK_TYPE_AUDIO && it.isSupported }
+        val tracks = gs.flatMap { g -> (0 until g.length).map { g to it } }
+        if (tracks.isEmpty()) {
+            option("Default", selected = true, closeOnSelect = false) {}
+        } else {
+            for ((g, i) in tracks) {
+                val f = g.getTrackFormat(i)
+                val label = f.label ?: langName(f.language) ?: "Audio ${i + 1}"
+                val group = g
+                val trackIndex = i
+                option(label, selected = g.isTrackSelected(i), closeOnSelect = false) {
+                    applyOverride(C.TRACK_TYPE_AUDIO, group, trackIndex)
+                    rebuildAvMenuDeferred()
+                }
+            }
+        }
+    }
 
-        // Online subtitle search (OpenSubtitles) — needs an API key. Shown even
-        // when the video has no subs, so you can add one.
+    private fun subtitleTrailingLabel(groups: List<Tracks.Group>, textDisabled: Boolean): String {
+        if (textUiForcedOff) return "Off"
+        textUiLabel?.let { return it }
+        val selectedSub = selectedTrackLabel(groups, C.TRACK_TYPE_TEXT)
+        // Exo often leaves TEXT enabled with nothing selected — that's Off, not "On".
+        return if (textDisabled || selectedSub == null) "Off" else selectedSub
+    }
+
+    private fun clearTextUiOverride() {
+        textUiForcedOff = false
+        textUiLabel = null
+    }
+
+    private fun buildAvSubs() {
+        menuTitle("Subtitles/CC")
+        val p = player ?: return
+        val groups = p.currentTracks.groups
+        val textTracks = textTrackChoices(groups)
+        val textDisabled = p.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val exoSelected = textTracks.any { (g, i) -> g.isTrackSelected(i) }
+        // Prefer optimistic UI state — Exo's isTrackSelected lags the menu rebuild.
+        val subsOff = when {
+            textUiForcedOff -> true
+            textUiLabel != null -> false
+            else -> textDisabled || !exoSelected
+        }
+        option("Off", selected = subsOff, closeOnSelect = false) {
+            textUiForcedOff = true
+            textUiLabel = "Off"
+            lastFocusLabel = "Off"
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
+            rebuildAvMenuDeferred()
+        }
+        textTracks.forEachIndexed { index, (g, i) ->
+            val f = g.getTrackFormat(i)
+            val label = subtitleTrackLabel(f, index)
+            val group = g
+            val trackIndex = i
+            // Match by label — TrackGroup identity can churn after applyOverride.
+            val isSelected = when {
+                textUiForcedOff -> false
+                textUiLabel != null -> textUiLabel == label
+                else -> !subsOff && g.isTrackSelected(i)
+            }
+            option(label, selected = isSelected, closeOnSelect = false) {
+                textUiForcedOff = false
+                textUiLabel = label
+                lastFocusLabel = label
+                applyOverride(C.TRACK_TYPE_TEXT, group, trackIndex)
+                rebuildAvMenuDeferred()
+            }
+        }
         if (subtitleApiKeySet) {
-            if (textTracks.isEmpty()) sectionHeader("Subtitles")
-            option("Search online…", selected = false) { searchSubtitlesOnline() }
+            navRow("Search online…", null) { searchSubtitlesOnline() }
         }
+    }
 
-        // Subtitle size — live change + persisted (only when there are subs).
-        // Labels avoid "Normal" so they don't collide with the Speed section's
-        // "Normal" (option() restores focus by label). The checkmark snaps to the
-        // nearest bucket so an in-between persisted size still shows one.
-        if (textTracks.isNotEmpty()) {
-            sectionHeader("Subtitle size")
-            val sizes = listOf("Small" to 0.8f, "Medium" to 1.0f, "Large" to 1.3f)
-            val nearest = sizes.minByOrNull { kotlin.math.abs(it.second - subScale) }?.second
-            for ((sLabel, s) in sizes) {
-                option(sLabel, selected = s == nearest) {
-                    subScale = s
-                    playerView.subtitleView
-                        ?.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * s)
-                    MainActivity.tvBridge?.invokeMethod(
-                        "setSubtitleScale", mapOf("scale" to s.toDouble()),
-                    )
+    private fun buildCaptionStyleRoot() {
+        menuTitle("Captions Styling")
+        navRow("Font Size", captionSizeLabel(subScale)) { pushAv(AvPage.SIZE) }
+        navRow("Text Color", captionColorLabel(subColorHex)) { pushAv(AvPage.COLOR) }
+        navRow("Edge Style", captionEdgeLabel(subOutlineId)) { pushAv(AvPage.EDGE) }
+        navRow("Background", captionBgLabel(subBgOpacity)) { pushAv(AvPage.BG) }
+        navRow("Font", if (subFontFamily.isEmpty()) "Default" else subFontFamily) { pushAv(AvPage.FONT) }
+        navRow("Position", captionPosLabel(subPositionPref)) { pushAv(AvPage.POS) }
+    }
+
+    private fun buildCaptionSize() {
+        menuTitle("Font Size")
+        val sizes = listOf("Small" to 0.8f, "Medium" to 1.0f, "Large" to 1.3f)
+        val nearest = sizes.minByOrNull { kotlin.math.abs(it.second - subScale) }?.second
+        for ((label, s) in sizes) {
+            option(label, selected = s == nearest, closeOnSelect = false) {
+                subScale = s
+                applySubtitleStyleLive()
+                MainActivity.tvBridge?.invokeMethod("setSubtitleScale", mapOf("scale" to s.toDouble()))
+                rebuildAvMenuDeferred()
+            }
+        }
+    }
+
+    private fun buildCaptionColor() {
+        menuTitle("Text Color")
+        val colors = listOf(
+            "#FFFFFFFF" to "White",
+            "#FFFF00FF" to "Yellow",
+            "#00E5FFFF" to "Cyan",
+            "#7CFC00FF" to "Green",
+            "#FF6B6BFF" to "Red",
+            "#000000FF" to "Black",
+        )
+        for ((hex, label) in colors) {
+            option(label, selected = subColorHex.equals(hex, ignoreCase = true), closeOnSelect = false) {
+                subColorHex = hex
+                subFg = parseColorHex(hex)
+                applySubtitleStyleLive()
+                MainActivity.tvBridge?.invokeMethod("setSubtitleColorHex", mapOf("hex" to hex))
+                rebuildAvMenuDeferred()
+            }
+        }
+    }
+
+    private fun buildCaptionEdge() {
+        menuTitle("Edge Style")
+        val edges = listOf(
+            "none" to ("None" to CaptionStyleCompat.EDGE_TYPE_NONE),
+            "outline" to ("Outline" to CaptionStyleCompat.EDGE_TYPE_OUTLINE),
+            "shadow" to ("Drop Shadow" to CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW),
+            "raised" to ("Raised" to CaptionStyleCompat.EDGE_TYPE_RAISED),
+            "depressed" to ("Depressed" to CaptionStyleCompat.EDGE_TYPE_DEPRESSED),
+        )
+        for ((id, pair) in edges) {
+            val (label, type) = pair
+            option(label, selected = subEdgeType == type, closeOnSelect = false) {
+                subOutlineId = id
+                subEdgeType = type
+                applySubtitleStyleLive()
+                MainActivity.tvBridge?.invokeMethod("setSubtitleOutlineType", mapOf("type" to id))
+                rebuildAvMenuDeferred()
+            }
+        }
+    }
+
+    private fun buildCaptionBg() {
+        menuTitle("Background")
+        val bgs = listOf("Off" to 0f, "Light" to 0.25f, "Medium" to 0.5f, "Strong" to 0.75f)
+        val nearest = bgs.minByOrNull { kotlin.math.abs(it.second - subBgOpacity) }?.second
+        for ((label, o) in bgs) {
+            option(label, selected = o == nearest, closeOnSelect = false) {
+                subBgOpacity = o
+                subBgColor = ((o * 255).toInt() shl 24)
+                applySubtitleStyleLive()
+                MainActivity.tvBridge?.invokeMethod("setSubtitleBgOpacity", mapOf("opacity" to o.toDouble()))
+                rebuildAvMenuDeferred()
+            }
+        }
+    }
+
+    private fun buildCaptionFont() {
+        menuTitle("Font")
+        val fonts = listOf(
+            "" to "Default",
+            "Inter" to "Inter",
+            "Poppins" to "Poppins",
+            "Roboto" to "Roboto",
+            "Open Sans" to "Open Sans",
+            "Lato" to "Lato",
+            "Montserrat" to "Montserrat",
+            "Nunito" to "Nunito",
+            "Rubik" to "Rubik",
+            "Noto Sans" to "Noto Sans",
+            "Source Sans 3" to "Source Sans 3",
+        )
+        for ((family, label) in fonts) {
+            option(label, selected = subFontFamily == family, closeOnSelect = false) {
+                applyCaptionFont(family)
+            }
+        }
+    }
+
+    /** Persist + stage the bundled font, then re-apply CaptionStyleCompat. */
+    private fun applyCaptionFont(family: String) {
+        subFontFamily = family
+        MainActivity.tvBridge?.invokeMethod("setSubtitleFont", mapOf("font" to family))
+        if (family.isEmpty()) {
+            subFontPath = null
+            applySubtitleStyleLive()
+            rebuildAvMenuDeferred()
+            return
+        }
+        val bridge = MainActivity.tvBridge
+        if (bridge == null) {
+            applySubtitleStyleLive()
+            rebuildAvMenuDeferred()
+            return
+        }
+        bridge.invokeMethod(
+            "stageSubtitleFont",
+            mapOf("font" to family),
+            object : MethodChannel.Result {
+                override fun success(result: Any?) {
+                    val path = result as? String
+                    runOnUiThread {
+                        subFontPath = path
+                        applySubtitleStyleLive()
+                        rebuildAvMenuDeferred()
+                        if (path == null) toast("Could not load font")
+                    }
                 }
+                override fun error(code: String, msg: String?, details: Any?) {
+                    runOnUiThread {
+                        toast(msg ?: "Could not load font")
+                        rebuildAvMenuDeferred()
+                    }
+                }
+                override fun notImplemented() {
+                    runOnUiThread { rebuildAvMenuDeferred() }
+                }
+            },
+        )
+    }
+
+    private fun applySubtitleStyleLive() {
+        val tf = when {
+            !subFontPath.isNullOrBlank() ->
+                runCatching { android.graphics.Typeface.createFromFile(subFontPath) }.getOrNull()
+                    ?: android.graphics.Typeface.DEFAULT
+            else -> android.graphics.Typeface.DEFAULT
+        }
+        playerView.subtitleView?.apply {
+            setApplyEmbeddedStyles(false)
+            setApplyEmbeddedFontSizes(false)
+            setStyle(
+                CaptionStyleCompat(
+                    subFg,
+                    subBgColor,
+                    android.graphics.Color.TRANSPARENT,
+                    subEdgeType,
+                    android.graphics.Color.BLACK,
+                    tf,
+                ),
+            )
+            setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subScale)
+            // Position is applied by remapping cue lines (see repositionCues) —
+            // bottom padding alone is ignored when cues already set a line.
+            setBottomPaddingFraction(0.02f)
+            invalidate()
+        }
+        // Re-apply current cues so a Position change takes effect immediately.
+        player?.currentCues?.let { playerView.subtitleView?.setCues(repositionCues(it.cues)) }
+    }
+
+    /**
+     * Force each cue onto the user's vertical preference (0=top … 100=bottom).
+     * Media3's [SubtitleView.setBottomPaddingFraction] only shifts cues that
+     * leave line unset — most VTT/SRT/ASS cues set their own line, so without
+     * this remapping Low/Middle/High look identical.
+     */
+    private fun repositionCues(cues: List<Cue>): List<Cue> {
+        if (cues.isEmpty()) return cues
+        val line = subPositionPref.coerceIn(0, 100) / 100f
+        return cues.map { cue ->
+            cue.buildUpon()
+                .setLine(line, Cue.LINE_TYPE_FRACTION)
+                .setLineAnchor(Cue.ANCHOR_TYPE_END)
+                .build()
+        }
+    }
+
+    private fun buildCaptionPos() {
+        menuTitle("Position")
+        val positions = listOf("Low" to 95, "Middle" to 70, "High" to 40)
+        val nearest = positions.minByOrNull { kotlin.math.abs(it.second - subPositionPref) }?.second
+        for ((label, pos) in positions) {
+            option(label, selected = pos == nearest, closeOnSelect = false) {
+                subPositionPref = pos
+                applySubtitleStyleLive()
+                MainActivity.tvBridge?.invokeMethod("setSubtitlePosition", mapOf("position" to pos))
+                rebuildAvMenuDeferred()
             }
         }
+    }
 
-        // Playback speed.
-        sectionHeader("Speed")
-        for (s in listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)) {
-            option(if (s == 1.0f) "Normal" else "${s}×", selected = speed == s) {
-                speed = s
-                player?.playbackParameters = PlaybackParameters(s)
-            }
-        }
-
-        // Volume boost.
-        sectionHeader("Volume")
+    private fun buildAvVolume() {
+        menuTitle("Volume")
         for (v in listOf(100, 125, 150, 175, 200)) {
-            option("$v%", selected = volumePercent == v) { applyVolume(v) }
+            option(if (v == 100) "100% (normal)" else "$v%", selected = volumePercent == v, closeOnSelect = false) {
+                applyVolume(v)
+                rebuildAvMenuDeferred()
+            }
+        }
+    }
+
+    private fun captionSizeLabel(scale: Float): String {
+        val sizes = listOf("Small" to 0.8f, "Medium" to 1.0f, "Large" to 1.3f)
+        return sizes.minByOrNull { kotlin.math.abs(it.second - scale) }?.first ?: "Medium"
+    }
+
+    private fun captionColorLabel(hex: String): String {
+        val colors = listOf(
+            "#FFFFFFFF" to "White", "#FFFF00FF" to "Yellow", "#00E5FFFF" to "Cyan",
+            "#7CFC00FF" to "Green", "#FF6B6BFF" to "Red", "#000000FF" to "Black",
+        )
+        return colors.firstOrNull { it.first.equals(hex, ignoreCase = true) }?.second ?: "Custom"
+    }
+
+    private fun captionEdgeLabel(id: String): String = when (id) {
+        "none" -> "None"
+        "shadow" -> "Drop Shadow"
+        "raised" -> "Raised"
+        "depressed" -> "Depressed"
+        else -> "Outline"
+    }
+
+    private fun captionBgLabel(opacity: Float): String {
+        val bgs = listOf("Off" to 0f, "Light" to 0.25f, "Medium" to 0.5f, "Strong" to 0.75f)
+        return bgs.minByOrNull { kotlin.math.abs(it.second - opacity) }?.first ?: "Off"
+    }
+
+    private fun captionPosLabel(pos: Int): String {
+        val positions = listOf("Low" to 95, "Middle" to 70, "High" to 40)
+        return positions.minByOrNull { kotlin.math.abs(it.second - pos) }?.first ?: "Low"
+    }
+
+    private fun parseColorHex(hex: String): Int {
+        var h = hex.removePrefix("#").trim()
+        if (h.length == 6) h = h + "FF"
+        if (h.length != 8) return android.graphics.Color.WHITE
+        return try {
+            val rgb = h.substring(0, 6)
+            val a = h.substring(6, 8)
+            android.graphics.Color.parseColor("#$a$rgb")
+        } catch (_: Exception) {
+            android.graphics.Color.WHITE
         }
     }
 
@@ -926,15 +1380,20 @@ class TvPlayerActivity : Activity() {
         title: String,
         groups: List<Tracks.Group>,
         type: Int,
+        closeOnSelect: Boolean = true,
         label: (androidx.media3.common.Format, Int) -> String,
     ) {
         val gs = groups.filter { it.type == type && it.isSupported }
         val tracks = gs.flatMap { g -> (0 until g.length).map { g to it } }
         if (tracks.size <= 1) return
-        sectionHeader(title)
+        // When already under a page title (Audio), skip the redundant section header.
+        if (closeOnSelect) sectionHeader(title)
         for ((g, i) in tracks) {
-            option(label(g.getTrackFormat(i), i), selected = g.isTrackSelected(i)) {
-                applyOverride(type, g, i)
+            val group = g
+            val trackIndex = i
+            option(label(g.getTrackFormat(i), i), selected = g.isTrackSelected(i), closeOnSelect = closeOnSelect) {
+                applyOverride(type, group, trackIndex)
+                if (!closeOnSelect) rebuildAvMenuDeferred()
             }
         }
     }
@@ -1043,37 +1502,6 @@ class TvPlayerActivity : Activity() {
         } catch (_: Exception) { /* effect unavailable on this device */ }
     }
 
-    /** Style side-loaded + embedded subtitles from the saved prefs: scale, colour,
-     *  optional background, black outline (readable on TV over any scene). */
-    private fun applySubtitleStyle() {
-        // Values are pre-computed by captionStyleFromPrefs (Dart), identical to
-        // the Flutter PlatformView player — colour, box, outline, position, font.
-        // subScale is a field so an in-player size change survives re-styling.
-        val fg = intent.getIntExtra(EXTRA_SUB_FG, android.graphics.Color.WHITE)
-        val bg = intent.getIntExtra(EXTRA_SUB_BG_COLOR, android.graphics.Color.TRANSPARENT)
-        val edge = intent.getBooleanExtra(EXTRA_SUB_EDGE, true)
-        val pos = intent.getFloatExtra(EXTRA_SUB_POS, 0.05f)
-        val tf = intent.getStringExtra(EXTRA_SUB_FONT)
-            ?.let { runCatching { android.graphics.Typeface.createFromFile(it) }.getOrNull() }
-        playerView.subtitleView?.apply {
-            setApplyEmbeddedStyles(false)
-            setApplyEmbeddedFontSizes(false)
-            setStyle(
-                CaptionStyleCompat(
-                    fg,
-                    bg,
-                    android.graphics.Color.TRANSPARENT,
-                    if (edge) CaptionStyleCompat.EDGE_TYPE_OUTLINE
-                    else CaptionStyleCompat.EDGE_TYPE_NONE,
-                    android.graphics.Color.BLACK,
-                    tf,
-                ),
-            )
-            setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * subScale)
-            setBottomPaddingFraction(pos)
-        }
-    }
-
     private fun langName(code: String?): String? {
         if (code.isNullOrBlank() || code == "und") return null
         return try {
@@ -1093,7 +1521,56 @@ class TvPlayerActivity : Activity() {
         })
     }
 
-    private fun option(label: String, selected: Boolean, onSelect: () -> Unit) {
+    /** Summary / nav row: label left, optional trailing value right, no check. */
+    private fun navRow(label: String, trailing: String?, onSelect: () -> Unit) {
+        val row = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = pillBg(0x00000000)
+            addView(TextView(this@TvPlayerActivity).apply {
+                text = label
+                setTextColor(android.graphics.Color.WHITE)
+                textSize = 16.5f
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f,
+                )
+            })
+            if (trailing != null) {
+                addView(TextView(this@TvPlayerActivity).apply {
+                    text = trailing
+                    setTextColor(0x8CFFFFFF.toInt())
+                    textSize = 15f
+                    tag = "trailing"
+                })
+            }
+            onFocusChangeListener = View.OnFocusChangeListener { v, has ->
+                v.background = pillBg(if (has) accent else 0x00000000)
+                val trail = (v as android.widget.LinearLayout).findViewWithTag<TextView>("trailing")
+                trail?.setTextColor(if (has) android.graphics.Color.WHITE else 0x8CFFFFFF.toInt())
+            }
+            bindSingleTapActivate {
+                lastFocusLabel = label
+                onSelect()
+            }
+        }
+        if (label == lastFocusLabel) focusTarget = row
+        menuContent.addView(
+            row,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+    }
+
+    private fun option(
+        label: String,
+        selected: Boolean,
+        closeOnSelect: Boolean = true,
+        onSelect: () -> Unit,
+    ) {
         val row = TextView(this).apply {
             text = (if (selected) "✓   " else "     ") + label
             setTextColor(if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt())
@@ -1109,11 +1586,10 @@ class TvPlayerActivity : Activity() {
                     else if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt()
                 )
             }
-            // Single-tap on touchscreens: highlight + select (not focus-then-click).
             bindSingleTapActivate {
                 lastFocusLabel = label
                 onSelect()
-                closeMenu()
+                if (closeOnSelect) closeMenu()
             }
         }
         if (selected && firstSelectedRow == null) firstSelectedRow = row
@@ -1155,6 +1631,7 @@ class TvPlayerActivity : Activity() {
         btnAudioSubs = findViewById(R.id.btn_audio_subs)
         btnNext = findViewById(R.id.btn_next)
         btnMegaskip = findViewById(R.id.btn_megaskip)
+        btnSpeed = findViewById(R.id.btn_speed)
         fillerBadge = findViewById(R.id.filler_badge)
         // MegaSkip pill: label + visibility from the megaSkip prefs (launch extras).
         megaSkipSecs = intent.getIntExtra(EXTRA_MEGASKIP_SECS, 85)
@@ -1199,7 +1676,7 @@ class TvPlayerActivity : Activity() {
             }
         })
 
-        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnMegaskip)) {
+        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnMegaskip, btnSpeed)) {
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
             applyPillFocus(b, false)
@@ -1209,7 +1686,7 @@ class TvPlayerActivity : Activity() {
                     // Keep zone in sync for touch focus (D-pad uses enterZone).
                     focusZone = when (v.id) {
                         R.id.btn_quality, R.id.btn_sources, R.id.btn_audio_subs -> 1
-                        else -> 2 // episodes / next / megaskip bottom row
+                        else -> 2 // episodes / next / megaskip / speed bottom row
                     }
                     cancelAutoHide()
                 }
@@ -1224,6 +1701,8 @@ class TvPlayerActivity : Activity() {
         btnAudioSubs.bindSingleTapActivate { openAvMenu() }
         btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
         btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
+        btnSpeed.bindSingleTapActivate { openSpeedMenu() }
+        updateSpeedPillLabel()
 
         applyPillFocus(skipButton, false)
         skipButton.onFocusChangeListener =
@@ -1439,6 +1918,31 @@ class TvPlayerActivity : Activity() {
         bumpControls()
     }
 
+    private fun updateSpeedPillLabel() {
+        btnSpeed.text = if (kotlin.math.abs(speed - 1f) < 0.001f) "1×" else "${speed}×"
+    }
+
+    /** Playback speed — same right-side panel as Quality / Audio & Subs. */
+    private fun openSpeedMenu() = showMenu(btnSpeed) { buildSpeedMenu() }
+
+    private fun buildSpeedMenu() {
+        menuTitle("Speed")
+        val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+        for (s in speeds) {
+            option(
+                if (s == 1.0f) "Normal" else "${s}×",
+                selected = kotlin.math.abs(speed - s) < 0.001f,
+            ) {
+                speed = s
+                player?.playbackParameters = PlaybackParameters(s)
+                updateSpeedPillLabel()
+                MainActivity.tvBridge?.invokeMethod(
+                    "setDefaultSpeed", mapOf("speed" to s.toDouble()),
+                )
+            }
+        }
+    }
+
     // ── Button-row focus (zone 1 = top-right actions, zone 2 = bottom) ────────
     private fun enterZone(zone: Int) {
         showControls()
@@ -1642,6 +2146,7 @@ class TvPlayerActivity : Activity() {
     // close an open menu, else hide the controls, else exit the player.
     private fun handleBack() {
         when {
+            menuPanel.visibility == View.VISIBLE && avMenuActive && avStack.isNotEmpty() -> popAvOrClose()
             menuPanel.visibility == View.VISIBLE -> closeMenu()
             controls.visibility == View.VISIBLE -> {
                 cancelAutoHide()

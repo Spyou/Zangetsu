@@ -1344,7 +1344,27 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_FG, (call.argument<Number>("subtitleFgColor") ?: -1).toInt())
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_BG_COLOR, (call.argument<Number>("subtitleBgColor") ?: 0).toInt())
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_EDGE, call.argument<Boolean>("subtitleEdge") ?: true)
-            intent.putExtra(TvPlayerActivity.EXTRA_SUB_POS, (call.argument<Number>("subtitlePosition") ?: 0.05).toFloat())
+            val edgeTypeArg = call.argument<Number>("subtitleEdgeType")
+            val edgeType = edgeTypeArg?.toInt()
+                ?: if (call.argument<Boolean>("subtitleEdge") == true) 1 else 0
+            intent.putExtra(TvPlayerActivity.EXTRA_SUB_EDGE_TYPE, edgeType)
+            call.argument<String>("subtitleColorHex")?.let {
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_COLOR_HEX, it)
+            }
+            call.argument<String>("subtitleOutlineType")?.let {
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_OUTLINE_TYPE, it)
+            }
+            call.argument<String>("subtitleFontFamily")?.let {
+                intent.putExtra(TvPlayerActivity.EXTRA_SUB_FONT_FAMILY, it)
+            }
+            intent.putExtra(
+                TvPlayerActivity.EXTRA_SUB_POS_PREF,
+                (call.argument<Number>("subtitlePositionPref") ?: 95).toInt(),
+            )
+            intent.putExtra(
+                TvPlayerActivity.EXTRA_SUB_BG_OPACITY,
+                (call.argument<Number>("subtitleBgOpacity") ?: 0.0).toFloat(),
+            )
             call.argument<String>("subtitleFontPath")?.let { intent.putExtra(TvPlayerActivity.EXTRA_SUB_FONT, it) }
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_HAS_KEY, call.argument<Boolean>("subtitleApiKeySet") ?: false)
             intent.putExtra(TvPlayerActivity.EXTRA_MEGASKIP, call.argument<Boolean>("megaSkip") ?: true)
