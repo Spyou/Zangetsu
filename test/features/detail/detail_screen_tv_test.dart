@@ -110,6 +110,23 @@ class _FakeResumeStore implements ResumeStore {
   ResumeMark? get(String sourceId, String showId, String episodeId) => null;
 }
 
+/// Resume mark on episode 55 only — for range-chip resume tests.
+class _ResumeAtEpisode55Store implements ResumeStore {
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+
+  @override
+  ResumeMark? get(String sourceId, String showId, String episodeId) {
+    if (episodeId == 'e55') {
+      return ResumeMark(
+        position: const Duration(minutes: 10),
+        duration: const Duration(minutes: 24),
+      );
+    }
+    return null;
+  }
+}
+
 /// Stub [ProviderRegistry] — no registered providers.
 class _FakeProviderRegistry implements ProviderRegistry {
   @override
@@ -206,6 +223,23 @@ const _testDetailWithRelations = MediaDetail(
     MediaRelation(title: 'Prequel Anime', relation: 'Prequel'),
   ],
 );
+
+MediaDetail _longSeasonDetail(int count) => MediaDetail(
+      id: 'long-show',
+      title: 'Long Season Anime',
+      url: 'http://test/long',
+      type: ProviderType.anime,
+      sourceId: 'test',
+      episodes: [
+        for (var i = 1; i <= count; i++)
+          Episode(
+            id: 'e$i',
+            title: 'Episode $i',
+            url: '/e$i',
+            number: i.toDouble(),
+          ),
+      ],
+    );
 
 // ── Test ──────────────────────────────────────────────────────────────────────
 
@@ -764,6 +798,123 @@ void main() {
       await tester.pump(); // let _ensureFiller setState land
 
       expect(find.text('FILLER'), findsOneWidget);
+    },
+  );
+
+  // ── GAP: episode range chips ─────────────────────────────────────────────
+
+  testWidgets(
+    'DetailScreenTv shows range chips and slices episodes for long seasons',
+    (tester) async {
+      final longCubit = DetailCubit(
+        repo: _StubSourceRepository(_longSeasonDetail(60)),
+        url: 'http://test/long',
+        sourceId: 'test',
+        prefs: _FakeTitlePrefs(),
+      );
+      await longCubit.load();
+      addTearDown(longCubit.close);
+
+      const longItem = MediaItem(
+        id: 'long-show',
+        title: 'Long Season Anime',
+        url: 'http://test/long',
+        type: ProviderType.anime,
+        sourceId: 'test',
+      );
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: longCubit,
+          child: const MaterialApp(
+            home: DetailScreenTv(item: longItem),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('tv-range-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-range-1')), findsOneWidget);
+      expect(find.text('1–50'), findsOneWidget);
+      expect(find.text('51–60'), findsOneWidget);
+
+      expect(find.byKey(const ValueKey('tv-ep-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-50')), findsNothing);
+
+      final range1 = tester.widget<TvFocusable>(
+        find.byKey(const ValueKey('tv-range-1')),
+      );
+      range1.onTap();
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('tv-ep-50')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-0')), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv hides range chips when a season has 50 or fewer episodes',
+    (tester) async {
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: cubit,
+          child: MaterialApp(
+            home: DetailScreenTv(item: _testItem),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('tv-range-0')), findsNothing);
+      expect(find.byKey(const ValueKey('tv-ep-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-2')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'DetailScreenTv opens the resume episode range on first build',
+    (tester) async {
+      await sl.reset();
+      sl.registerSingleton<AppMode>(const AppMode(isTv: true));
+      sl.registerSingleton<MyListStore>(_FakeMyListStore());
+      sl.registerSingleton<ListStatusStore>(_FakeListStatusStore());
+      sl.registerSingleton<ResumeStore>(_ResumeAtEpisode55Store());
+      sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
+      sl.registerSingleton<CloudStreamManager>(_FakeCloudStreamManager());
+      sl.registerSingleton<DownloadManager>(_FakeDownloadManager());
+      sl.registerSingleton<TrackerHub>(TrackerHub(const []));
+
+      final resumeCubit = DetailCubit(
+        repo: _StubSourceRepository(_longSeasonDetail(60)),
+        url: 'http://test/long',
+        sourceId: 'test',
+        prefs: _FakeTitlePrefs(),
+      );
+      await resumeCubit.load();
+      addTearDown(resumeCubit.close);
+      addTearDown(() async => sl.reset());
+
+      const longItem = MediaItem(
+        id: 'long-show',
+        title: 'Long Season Anime',
+        url: 'http://test/long',
+        type: ProviderType.anime,
+        sourceId: 'test',
+      );
+
+      await tester.pumpWidget(
+        BlocProvider<DetailCubit>.value(
+          value: resumeCubit,
+          child: const MaterialApp(
+            home: DetailScreenTv(item: longItem),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const ValueKey('tv-ep-54')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tv-ep-0')), findsNothing);
     },
   );
 }
