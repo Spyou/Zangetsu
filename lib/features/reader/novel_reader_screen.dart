@@ -15,6 +15,8 @@ import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import 'novel_paginator.dart';
 import 'reader_chrome.dart';
+import 'reader_auto_scroll.dart';
+import 'reader_auto_scroll_ui.dart';
 import 'reader_comfort.dart';
 import 'reader_pull_chapter.dart';
 
@@ -67,7 +69,9 @@ class NovelReaderScreen extends StatefulWidget {
 }
 
 class _NovelReaderScreenState extends State<NovelReaderScreen>
-    with ReaderComfortMixin<NovelReaderScreen> {
+    with ReaderComfortMixin<NovelReaderScreen>, TickerProviderStateMixin {
+  /// Hands-free scrolling — scroll mode only; paged mode turns whole pages.
+  late final ReaderAutoScroll _autoScroll;
   late int _index;
   // Mutable so a Continue Reading resume (opened with just the one chapter)
   // can widen to the show's full list in the background — see
@@ -111,6 +115,11 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     _index = widget.startIndex;
     _scrollController = ScrollController()..addListener(_onScroll);
     _pageController = PageController();
+    // Built here, NOT lazily: createTicker reads TickerMode off the
+    // context, and a `late final` initialiser would run that on first
+    // access — which, if auto-scroll was never used, is dispose(), where
+    // the element is already deactivated and the lookup throws.
+    _autoScroll = ReaderAutoScroll(vsync: this);
     // Wakelock/brightness/orientation — see ReaderComfortMixin. The novel
     // reader never held a wakelock before this; it now does, same as manga.
     applyReaderComfort();
@@ -121,6 +130,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   @override
   void dispose() {
     _flushProgress(); // reader close: don't lose the last-read position
+    _autoScroll.dispose();
     restoreReaderComfort();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -375,6 +385,9 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   void _flushProgress() => _saveProgress(flush: true);
 
   void _goToChapter(int newIndex) {
+    // See the manga reader: a live auto-scroll must not survive into a chapter
+    // that hasn't laid out yet.
+    _autoScroll.stop();
     if (newIndex < 0 || newIndex >= _chapters.length) return;
     if (newIndex == _index) return;
     _flushProgress(); // chapter change: push the chapter we're leaving now
@@ -408,14 +421,21 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _toggleChrome,
-              child: ReaderPullChapter(
-                enabled: prefs.overscrollChapter,
-                hasPrev: _index > 0,
-                hasNext: _index < _chapters.length - 1,
-                prevLabel: _chapterLabel(_index - 1),
-                nextLabel: _chapterLabel(_index + 1),
-                onChangeChapter: (d) => _goToChapter(_index + d),
-                child: _buildBody(theme, prefs),
+              // Touch pauses; lifting resumes after a grace. See the manga
+              // reader — stopping outright on a drag made a nudge fatal.
+              child: Listener(
+                onPointerDown: (_) => _autoScroll.pauseForTouch(),
+                onPointerUp: (_) => _autoScroll.resumeAfterTouch(),
+                onPointerCancel: (_) => _autoScroll.resumeAfterTouch(),
+                child: ReaderPullChapter(
+                  enabled: prefs.overscrollChapter,
+                  hasPrev: _index > 0,
+                  hasNext: _index < _chapters.length - 1,
+                  prevLabel: _chapterLabel(_index - 1),
+                  nextLabel: _chapterLabel(_index + 1),
+                  onChangeChapter: (d) => _goToChapter(_index + d),
+                  child: _buildBody(theme, prefs),
+                ),
               ),
             ),
           ),
@@ -423,6 +443,14 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
           // IgnorePointer inside each for why that doesn't eat page taps.
           _buildTopBar(),
           _buildBottomBar(),
+          if (prefs.autoScrollButton)
+            ReaderAutoScrollButton(
+              autoScroll: _autoScroll,
+              onTap: _openAutoScrollSheet,
+              initialX: prefs.autoScrollButtonX,
+              initialY: prefs.autoScrollButtonY,
+              onMoved: prefs.setAutoScrollButtonPos,
+            ),
         ],
       ),
     );
@@ -754,6 +782,52 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     );
   }
 
+  /// Start/stop hands-free reading. Both modes: scroll mode creeps, paged mode
+  /// turns a page every so often.
+  void _setAutoScroll(bool on) {
+    final prefs = sl<ReaderPrefs>();
+    _autoScroll.speed = prefs.autoScrollSpeed;
+    if (!on) {
+      _autoScroll.stop();
+      return;
+    }
+    if (prefs.novelPaginated) {
+      _autoScroll.start(
+        advancePage: () => _pageController.nextPage(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+        ),
+      );
+    } else {
+      if (!_scrollController.hasClients) return;
+      _autoScroll.start(controller: _scrollController);
+    }
+    if (_chromeVisible) setState(() => _chromeVisible = false);
+  }
+
+  void _openAutoScrollSheet() {
+    final prefs = sl<ReaderPrefs>();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ReaderAutoScrollSheet(
+        running: _autoScroll.running.value,
+        speed: prefs.autoScrollSpeed,
+        showButton: prefs.autoScrollButton,
+        onToggle: _setAutoScroll,
+        onSpeed: (v) {
+          prefs.setAutoScrollSpeed(v);
+          _autoScroll.speed = v;
+        },
+        onShowButton: (v) {
+          prefs.setAutoScrollButton(v);
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
   Widget _buildBottomBar() {
     final hasPrev = _index > 0;
     final hasNext = _index < _chapters.length - 1;
@@ -859,94 +933,114 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      // Not readerSheetBody: that wraps its children in a SingleChildScrollView,
+      // and a lazy ListView inside one has no bounded height — it would try to
+      // build all 100+ rows at once. Same grabber and title, own scrolling.
       builder: (ctx) => ReaderSheetShell(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 2),
-              child: Text('Chapters', style: AppText.headline),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-              child: Text(
-                '${_index + 1} of ${_chapters.length}',
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
-              ),
-            ),
-            // Capped at half the screen: a long list would otherwise let the
-            // shrink-wrapped ListView grow the sheet to full height, which
-            // reads as a new page rather than a sheet over the reader.
-            Flexible(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  controller: ScrollController(
-                    initialScrollOffset: ((_index - 2) * rowHeight).clamp(
-                      0,
-                      double.infinity,
-                    ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  itemCount: _chapters.length,
-                  itemExtent: rowHeight,
-                  itemBuilder: (context, i) {
-                    final current = i == _index;
-                    return InkWell(
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        if (i != _index) _goToChapter(i);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 46,
-                              child: Text(
-                                '${i + 1}',
-                                style: AppText.caption.copyWith(
-                                  color: current
-                                      ? AppColors.accent
-                                      : AppColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                _chapters[i].title.trim().isNotEmpty
-                                    ? _chapters[i].title
-                                    : 'Chapter ${i + 1}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.body.copyWith(
-                                  color: current
-                                      ? AppColors.accent
-                                      : Colors.white,
-                                  fontWeight: current
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            if (current)
-                              Icon(
-                                Icons.play_arrow_rounded,
-                                size: 18,
-                                color: AppColors.accent,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
+                child: Text('Chapters', style: AppText.headline),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Text(
+                  '${_index + 1} of ${_chapters.length}',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              // Capped at half the screen: a long list would otherwise let the
+              // shrink-wrapped ListView grow the sheet to full height, which
+              // reads as a new page rather than a sheet over the reader.
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    controller: ScrollController(
+                      initialScrollOffset: ((_index - 2) * rowHeight).clamp(
+                        0,
+                        double.infinity,
+                      ),
+                    ),
+                    itemCount: _chapters.length,
+                    itemExtent: rowHeight,
+                    itemBuilder: (context, i) {
+                      final current = i == _index;
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          if (i != _index) _goToChapter(i);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 46,
+                                child: Text(
+                                  '${i + 1}',
+                                  style: AppText.caption.copyWith(
+                                    color: current
+                                        ? AppColors.accent
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _chapters[i].title.trim().isNotEmpty
+                                      ? _chapters[i].title
+                                      : 'Chapter ${i + 1}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.body.copyWith(
+                                    color: current
+                                        ? AppColors.accent
+                                        : Colors.white,
+                                    fontWeight: current
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                              ),
+                              if (current)
+                                Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 18,
+                                  color: AppColors.accent,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -973,42 +1067,49 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             if (mounted) setState(() {});
           }
 
-          return ReaderSheetShell(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
-                  child: Text('Text size', style: AppText.headline),
+          return readerSheetBody(
+            context: ctx,
+            title: 'Text size',
+            subtitle: 'Applies straight away',
+            children: [
+              readerSheetSection('Text'),
+              readerSheetGroup([
+                readerSheetRow(
+                  icon: Icons.format_size_rounded,
+                  label: 'Font size',
+                  trailing: Text(
+                    prefs.fontSize.round().toString(),
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  child: Slider(
+                    value: prefs.fontSize.clamp(12, 28),
+                    min: 12,
+                    max: 28,
+                    activeColor: AppColors.accent,
+                    onChanged: (v) => apply(() => prefs.setFontSize(v)),
+                  ),
                 ),
-                readerSheetGroup([
-                  readerSheetRow(
-                    icon: Icons.format_size_rounded,
-                    label: 'Font size',
-                    child: Slider(
-                      value: prefs.fontSize.clamp(12, 28),
-                      min: 12,
-                      max: 28,
-                      activeColor: AppColors.accent,
-                      onChanged: (v) => apply(() => prefs.setFontSize(v)),
+                readerSheetRow(
+                  icon: Icons.format_line_spacing_rounded,
+                  label: 'Line height',
+                  trailing: Text(
+                    prefs.lineHeight.toStringAsFixed(1),
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textSecondary,
                     ),
                   ),
-                  readerSheetRow(
-                    icon: Icons.format_line_spacing_rounded,
-                    label: 'Line height',
-                    child: Slider(
-                      value: prefs.lineHeight.clamp(1.2, 2.4),
-                      min: 1.2,
-                      max: 2.4,
-                      activeColor: AppColors.accent,
-                      onChanged: (v) => apply(() => prefs.setLineHeight(v)),
-                    ),
+                  child: Slider(
+                    value: prefs.lineHeight.clamp(1.2, 2.4),
+                    min: 1.2,
+                    max: 2.4,
+                    activeColor: AppColors.accent,
+                    onChanged: (v) => apply(() => prefs.setLineHeight(v)),
                   ),
-                ]),
-                const SizedBox(height: 8),
-              ],
-            ),
+                ),
+              ]),
+            ],
           );
         },
       ),
@@ -1213,6 +1314,19 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                         ]),
                         readerSheetSection('Navigation'),
                         readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.play_circle_outline_rounded,
+                            label: 'Auto-scroll',
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              _openAutoScrollSheet();
+                            },
+                          ),
                           readerSheetRow(
                             icon: Icons.swipe_vertical_rounded,
                             label: 'Pull to change chapter',

@@ -374,6 +374,67 @@ class ReaderSheetShell extends StatelessWidget {
 /// settings sheet — mirrors `_SheetSectionHeader`. No horizontal padding of
 /// its own; drop it straight into whichever already-side-padded column the
 /// sheet's other controls live in.
+/// The standard reader-sheet body: grabber, title, then your rows.
+///
+/// Exists because hand-rolling this per sheet is how they drift — the first
+/// auto-scroll and text-size sheets each missed the grabber, the safe-area
+/// inset, the height cap AND the scroll view, so their content simply
+/// overflowed on a short screen. Anything sheet-shaped in a reader should go
+/// through here.
+Widget readerSheetBody({
+  required BuildContext context,
+  required String title,
+  String? subtitle,
+  required List<Widget> children,
+}) {
+  return ReaderSheetShell(
+    child: SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        // Capped and scrollable: a sheet that grows past the screen just
+        // overflows, and Flutter paints the yellow stripes over the content.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.85,
+        ),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 4),
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textTertiary.withValues(alpha: 0.5),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Text(title, style: AppText.headline),
+                if (subtitle != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      subtitle,
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ...children,
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
 Widget readerSheetSection(String label) {
   return Padding(
     padding: const EdgeInsets.only(top: 12, bottom: 6),
@@ -508,8 +569,13 @@ Widget readerSheetRow({
   required String label,
   Widget? trailing,
   Widget? child,
+
+  /// Makes the whole row tappable — for a row that opens something rather than
+  /// carrying its own control. Rows with a switch or slider leave this null;
+  /// the control is the tap target there.
+  VoidCallback? onTap,
 }) {
-  return Padding(
+  final row = Padding(
     padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -533,6 +599,11 @@ Widget readerSheetRow({
         if (child != null) ...[const SizedBox(height: 8), child],
       ],
     ),
+  );
+  if (onTap == null) return row;
+  return Material(
+    color: Colors.transparent,
+    child: InkWell(onTap: onTap, child: row),
   );
 }
 

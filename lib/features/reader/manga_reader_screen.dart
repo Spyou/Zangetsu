@@ -21,6 +21,8 @@ import '../../core/theme/app_text.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import 'reader_chrome.dart';
+import 'reader_auto_scroll.dart';
+import 'reader_auto_scroll_ui.dart';
 import 'reader_comfort.dart';
 import 'reader_pull_chapter.dart';
 
@@ -72,7 +74,10 @@ class MangaReaderScreen extends StatefulWidget {
 }
 
 class _MangaReaderScreenState extends State<MangaReaderScreen>
-    with ReaderComfortMixin<MangaReaderScreen> {
+    with ReaderComfortMixin<MangaReaderScreen>, TickerProviderStateMixin {
+  /// Hands-free scrolling — webtoon only; paged modes step whole pages and
+  /// have nothing to creep.
+  late final ReaderAutoScroll _autoScroll;
   late int _index; // chapter index
   // Mutable so a Continue Reading resume (opened with just the one chapter)
   // can widen to the show's full list in the background — see
@@ -130,6 +135,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     super.initState();
     _index = widget.startIndex;
     _pageController = PageController();
+    // Built here, NOT lazily: createTicker reads TickerMode off the
+    // context, and a `late final` initialiser would run that on first
+    // access — which, if auto-scroll was never used, is dispose(), where
+    // the element is already deactivated and the lookup throws.
+    _autoScroll = ReaderAutoScroll(vsync: this);
     _verticalController = ScrollController()..addListener(_onVerticalScroll);
     // Wakelock/brightness/orientation — see ReaderComfortMixin. Best-effort:
     // a plugin-channel failure (e.g. an unusual device, or — in widget tests
@@ -150,6 +160,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // ScrollController one last time before that controller goes away.
     _captureFinalVerticalIndex();
     _flushProgress(); // reader close: don't lose the last-read position
+    _autoScroll.dispose();
     VolumeKeys.disable(); // give the volume rocker back
     restoreReaderComfort();
     _verticalController.removeListener(_onVerticalScroll);
@@ -447,6 +458,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   void _goToChapter(int newIndex) {
     if (newIndex < 0 || newIndex >= _chapters.length) return;
     if (newIndex == _index) return;
+    // The next chapter starts at the top with nothing laid out yet; carrying a
+    // live auto-scroll across would race the load and creep through a blank.
+    _autoScroll.stop();
     // Moving ON to a later chapter means the user is done with this one — mark
     // it read and let it scrobble even if they never scrolled the tail (the
     // "Next chapter →" footer button is the common path). Going BACKWARDS is
@@ -608,6 +622,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           // why that doesn't let a hidden bar eat page taps.
           _buildTopBar(),
           _buildBottomBar(),
+          if (prefs.autoScrollButton)
+            ReaderAutoScrollButton(
+              autoScroll: _autoScroll,
+              onTap: _openAutoScrollSheet,
+              initialX: prefs.autoScrollButtonX,
+              initialY: prefs.autoScrollButtonY,
+              onMoved: prefs.setAutoScrollButtonPos,
+            ),
         ],
       ),
     );
@@ -691,16 +713,26 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       );
     }
     final direction = _effectiveDirection(prefs);
-    Widget content = ReaderPullChapter(
-      enabled: prefs.overscrollChapter,
-      hasPrev: _index > 0,
-      hasNext: _index < _chapters.length - 1,
-      prevLabel: _chapterLabel(_index - 1),
-      nextLabel: _chapterLabel(_index + 1),
-      onChangeChapter: (d) => _goToChapter(_index + d),
-      child: direction == 'vertical'
-          ? _buildVertical(pages)
-          : _buildPaged(pages, direction),
+    // Touching PAUSES auto-scroll; lifting resumes it after a short grace.
+    // The first version stopped it outright on any drag, so nudging the page
+    // to re-read a line killed the whole thing and you had to go and switch it
+    // back on. Listener rather than scroll notifications: this needs to know
+    // about a finger resting on the page, not only one that moved it.
+    Widget content = Listener(
+      onPointerDown: (_) => _autoScroll.pauseForTouch(),
+      onPointerUp: (_) => _autoScroll.resumeAfterTouch(),
+      onPointerCancel: (_) => _autoScroll.resumeAfterTouch(),
+      child: ReaderPullChapter(
+        enabled: prefs.overscrollChapter,
+        hasPrev: _index > 0,
+        hasNext: _index < _chapters.length - 1,
+        prevLabel: _chapterLabel(_index - 1),
+        nextLabel: _chapterLabel(_index + 1),
+        onChangeChapter: (d) => _goToChapter(_index + d),
+        child: direction == 'vertical'
+            ? _buildVertical(pages)
+            : _buildPaged(pages, direction),
+      ),
     );
     // Only wrap in ColorFiltered when a filter is actually chosen — 'none'
     // (the default) must leave this widget out of the tree entirely so the
@@ -1241,6 +1273,53 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
+  /// Start/stop hands-free reading. Works in every mode: the webtoon strip
+  /// creeps, the paged views turn a page every so often — a mode where the
+  /// feature simply doesn't exist is what made the first attempt feel broken.
+  void _setAutoScroll(bool on) {
+    final prefs = sl<ReaderPrefs>();
+    _autoScroll.speed = prefs.autoScrollSpeed;
+    if (!on) {
+      _autoScroll.stop();
+      return;
+    }
+    if (_effectiveDirection(prefs) == 'vertical') {
+      if (!_verticalController.hasClients) return;
+      _autoScroll.start(controller: _verticalController);
+    } else {
+      _autoScroll.start(
+        advancePage: () => _pageController.nextPage(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOut,
+        ),
+      );
+    }
+    if (_chromeVisible) setState(() => _chromeVisible = false);
+  }
+
+  void _openAutoScrollSheet() {
+    final prefs = sl<ReaderPrefs>();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => ReaderAutoScrollSheet(
+        running: _autoScroll.running.value,
+        speed: prefs.autoScrollSpeed,
+        showButton: prefs.autoScrollButton,
+        onToggle: _setAutoScroll,
+        onSpeed: (v) {
+          prefs.setAutoScrollSpeed(v);
+          _autoScroll.speed = v; // live while running
+        },
+        onShowButton: (v) {
+          prefs.setAutoScrollButton(v);
+          if (mounted) setState(() {});
+        },
+      ),
+    );
+  }
+
   /// Chapter list, opened by tapping the title pill. Jumping goes through the
   /// same [_goToChapter] the prev/next buttons use, so progress is saved and
   /// the chapter marked read on the way out exactly as it always was.
@@ -1263,96 +1342,116 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      // Not readerSheetBody: that wraps its children in a SingleChildScrollView,
+      // and a lazy ListView inside one has no bounded height — it would try to
+      // build all 100+ rows at once. Same grabber and title, own scrolling.
       builder: (ctx) => ReaderSheetShell(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 4, 18, 2),
-              child: Text('Chapters', style: AppText.headline),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
-              child: Text(
-                '${_index + 1} of ${_chapters.length}',
-                style: AppText.caption.copyWith(color: AppColors.textSecondary),
-              ),
-            ),
-            // Capped at half the screen: a long list would otherwise let the
-            // shrink-wrapped ListView grow the sheet to full height, which
-            // reads as a new page rather than a sheet over the reader.
-            Flexible(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
-                ),
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  controller: ScrollController(
-                    // Centre-ish rather than pinned to the top edge, so the
-                    // chapters either side are visible too.
-                    initialScrollOffset: ((_index - 2) * rowHeight).clamp(
-                      0,
-                      double.infinity,
-                    ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.fromLTRB(0, 8, 0, 4),
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textTertiary.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(2),
                   ),
-                  itemCount: _chapters.length,
-                  itemExtent: rowHeight,
-                  itemBuilder: (context, i) {
-                    final current = i == _index;
-                    return InkWell(
-                      onTap: () {
-                        Navigator.of(ctx).pop();
-                        if (i != _index) _goToChapter(i);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        child: Row(
-                          children: [
-                            SizedBox(
-                              width: 46,
-                              child: Text(
-                                '${i + 1}',
-                                style: AppText.caption.copyWith(
-                                  color: current
-                                      ? AppColors.accent
-                                      : AppColors.textSecondary,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              child: Text(
-                                _chapters[i].title.trim().isNotEmpty
-                                    ? _chapters[i].title
-                                    : 'Chapter ${i + 1}',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.body.copyWith(
-                                  color: current
-                                      ? AppColors.accent
-                                      : Colors.white,
-                                  fontWeight: current
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            if (current)
-                              Icon(
-                                Icons.play_arrow_rounded,
-                                size: 18,
-                                color: AppColors.accent,
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
                 ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
+                child: Text('Chapters', style: AppText.headline),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Text(
+                  '${_index + 1} of ${_chapters.length}',
+                  style: AppText.caption.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+              // Capped at half the screen: a long list would otherwise let the
+              // shrink-wrapped ListView grow the sheet to full height, which
+              // reads as a new page rather than a sheet over the reader.
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    controller: ScrollController(
+                      // Centre-ish rather than pinned to the top edge, so the
+                      // chapters either side are visible too.
+                      initialScrollOffset: ((_index - 2) * rowHeight).clamp(
+                        0,
+                        double.infinity,
+                      ),
+                    ),
+                    itemCount: _chapters.length,
+                    itemExtent: rowHeight,
+                    itemBuilder: (context, i) {
+                      final current = i == _index;
+                      return InkWell(
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          if (i != _index) _goToChapter(i);
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 46,
+                                child: Text(
+                                  '${i + 1}',
+                                  style: AppText.caption.copyWith(
+                                    color: current
+                                        ? AppColors.accent
+                                        : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  _chapters[i].title.trim().isNotEmpty
+                                      ? _chapters[i].title
+                                      : 'Chapter ${i + 1}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.body.copyWith(
+                                    color: current
+                                        ? AppColors.accent
+                                        : Colors.white,
+                                    fontWeight: current
+                                        ? FontWeight.w700
+                                        : FontWeight.w400,
+                                  ),
+                                ),
+                              ),
+                              if (current)
+                                Icon(
+                                  Icons.play_arrow_rounded,
+                                  size: 18,
+                                  color: AppColors.accent,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
         ),
       ),
     );
@@ -1548,6 +1647,19 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                               onChanged: (v) =>
                                   apply(() => prefs.setOverscrollChapter(v)),
                             ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.play_circle_outline_rounded,
+                            label: 'Auto-scroll',
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.textSecondary,
+                              size: 20,
+                            ),
+                            onTap: () {
+                              Navigator.of(ctx).pop();
+                              _openAutoScrollSheet();
+                            },
                           ),
                           readerSheetRow(
                             icon: Icons.volume_up_rounded,

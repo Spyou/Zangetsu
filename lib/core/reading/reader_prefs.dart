@@ -83,6 +83,42 @@ class ReaderPrefs {
   Future<void> setOverscrollChapter(bool value) =>
       _box.put('overscrollChapter', value);
 
+  /// Auto-scroll speed on a 1–10 feel scale, not pixels per second: how fast
+  /// you like it is a feel, and "60 px/s" means nothing to anyone reading.
+  /// [ReaderAutoScroll] maps it to a creep rate or a page dwell depending on
+  /// the reading mode.
+  ///
+  /// Persisted, unlike auto-scroll itself: the speed is a lasting preference,
+  /// whereas whether it's *running* belongs to the reading session — nobody
+  /// wants to open a chapter and find it already scrolling away. Stored under
+  /// a new key so the old pixels-per-second values (60–300) can't be read back
+  /// as a 1–10 speed and pin everyone to maximum.
+  double get autoScrollSpeed =>
+      (_box.get('autoScrollSpeedScale', defaultValue: 3.0) as num).toDouble();
+  Future<void> setAutoScrollSpeed(double value) =>
+      _box.put('autoScrollSpeedScale', value);
+
+  /// Keep a small floating play/pause button on the reader while auto-scroll
+  /// is on. Without it, pausing means revealing the chrome first — which
+  /// defeats the point of a hands-free mode. On by default for that reason.
+  bool get autoScrollButton =>
+      _box.get('autoScrollButton', defaultValue: true) as bool;
+  Future<void> setAutoScrollButton(bool value) =>
+      _box.put('autoScrollButton', value);
+
+  /// Where the floating auto-scroll button sits, as a fraction of the screen
+  /// (0–1 on each axis) rather than pixels — so it lands in the same place
+  /// after a rotation or on a different device instead of off-screen.
+  /// Defaults to the lower right, clear of the bottom chrome.
+  double get autoScrollButtonX =>
+      (_box.get('autoScrollButtonX', defaultValue: 0.88) as num).toDouble();
+  double get autoScrollButtonY =>
+      (_box.get('autoScrollButtonY', defaultValue: 0.74) as num).toDouble();
+  Future<void> setAutoScrollButtonPos(double x, double y) async {
+    await _box.put('autoScrollButtonX', x);
+    await _box.put('autoScrollButtonY', y);
+  }
+
   /// How many pages ahead the reader warms into the disk cache after landing
   /// on a page. Six rather than the three we started with: preloading only
   /// fetches bytes now, so the extra runway costs disk and network instead of
