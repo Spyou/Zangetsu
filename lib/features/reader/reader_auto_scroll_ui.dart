@@ -56,11 +56,9 @@ class _ReaderAutoScrollButtonState extends State<ReaderAutoScrollButton> {
       maxTop,
     );
 
-    // ALWAYS a Positioned, even when hidden. A Stack sizes itself to its
-    // largest NON-positioned child, and every other child of the reader's
-    // stack is positioned — so returning a bare SizedBox.shrink() here
-    // collapsed the whole stack to 0x0 and the page vanished. Costly lesson;
-    // the empty case has to stay positioned too.
+    // Always Positioned, even when hidden. A Stack sizes to its largest
+    // non-positioned child, and everything else here is positioned — a bare
+    // SizedBox.shrink() collapsed the whole reader to 0x0.
     return Positioned(
       left: left,
       top: top,
@@ -89,12 +87,8 @@ class _ReaderAutoScrollButtonState extends State<ReaderAutoScrollButton> {
                   widget.onMoved(_x, _y);
                 },
                 child: Opacity(
-                  // Semi-transparent at rest, unlike the top/bottom pills.
-                  // Those appear only when you ask for them; this one sits over
-                  // the page for the whole run, so at full strength it's a
-                  // permanent hole in the art. Solid enough to find, faint
-                  // enough to read through — and firmer while you're dragging
-                  // it, where you actually want to see what you're moving.
+                  // Faint at rest: unlike the chrome pills this sits over the
+                  // page for the whole run. Firmer while you're moving it.
                   opacity: _dragging ? 0.9 : 0.55,
                   child: SizedBox(
                     width: _size,
@@ -103,10 +97,8 @@ class _ReaderAutoScrollButtonState extends State<ReaderAutoScrollButton> {
                       radius: _size / 2,
                       child: Center(
                         child: Icon(
-                          // Shows what's happening, not what tapping does:
-                          // while your finger is down it's genuinely paused,
-                          // and an icon that flickers as you touch the page
-                          // would be worse than one that just reports.
+                          // Reports state rather than the tap action —
+                          // otherwise it flickers every time you touch.
                           paused ? Icons.pause_rounded : Icons.motion_photos_on,
                           size: 22,
                           color: AppColors.accent,

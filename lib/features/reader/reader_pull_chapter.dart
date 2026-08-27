@@ -5,17 +5,12 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'reader_chrome.dart';
 
-/// Pull past the end of a chapter to open the next one — with the pull itself
-/// shown as progress, so you can see it coming, see how much further to go,
-/// and back out.
+/// Pull past the end of a chapter to open the next one, with the pull shown
+/// as progress.
 ///
-/// Fires on RELEASE, not on crossing the threshold. That's the whole point of
-/// showing progress: an instant trigger mid-drag gives you no chance to change
-/// your mind, and the indicator would flash past too fast to read. Pull too
-/// far by accident, scroll back, nothing happens.
-///
-/// Wraps a scrollable rather than living inside it, so the manga strip, the
-/// paged view and the novel reader all share one implementation.
+/// Fires on release, not on crossing the line, so you can pull too far and
+/// scroll back without anything happening. Wraps a scrollable, so the strip,
+/// the paged view and the novel reader all share it.
 class ReaderPullChapter extends StatefulWidget {
   const ReaderPullChapter({
     super.key,
@@ -85,23 +80,16 @@ class _ReaderPullChapterState extends State<ReaderPullChapter> {
       return false;
     }
 
-    // Dragging back into the content cancels the pull.
-    //
-    // Overscroll deltas only arrive while the edge is actually being pushed
-    // against, so reversing produces ordinary scroll updates and nothing else.
-    // Without this the accumulated pull kept its peak value all the way to
-    // release, and pulling past the line then scrolling back still changed
-    // chapter — the exact opposite of what the progress ring is promising.
+    // Overscroll only fires while you're pushing against the edge, so a
+    // reversal shows up here instead. Without this the pull kept its peak
+    // value and scrolling back still changed chapter.
     if (n is ScrollUpdateNotification) {
       final d = n.scrollDelta ?? 0;
       if (d == 0) return false;
       final movingBack = (_pull > 0 && d < 0) || (_pull < 0 && d > 0);
       if (!movingBack) return false;
-      // Wind the ring back DOWN with the finger rather than snapping it away:
-      // the whole point of showing progress is that it tracks the gesture, and
-      // a ring that vanishes the instant you reverse tells you nothing about
-      // how far back you've come. Clamped at zero so it can't run through into
-      // the opposite direction on one long drag.
+      // Wind back down with the finger rather than snapping away. Clamped at
+      // zero so one long drag can't run through into the other direction.
       setState(() {
         final next = _pull + d;
         _pull = _pull > 0
@@ -147,14 +135,9 @@ class _ReaderPullChapterState extends State<ReaderPullChapter> {
       child: Stack(
         children: [
           Positioned.fill(child: widget.child),
-          // IgnorePointer: the indicator sits over the page mid-drag and must
-          // never take the pointer away from the scrollable underneath.
-          //
-          // Inset well clear of the chrome at each edge. The bottom especially:
-          // the reader's own "Next chapter →" overlay sits at bottom:24, and
-          // this appears at exactly the moment that button does (end of the
-          // chapter) — at the same offset the two stack and neither is
-          // readable. Above the bottom pill and that button; below the top pills.
+          // IgnorePointer so the scrollable underneath still gets the drag.
+          // Inset clears the chrome: the "Next chapter" overlay sits at
+          // bottom:24 and shows at the same moment this does, so they'd stack.
           if (showing)
             Positioned(
               left: 0,
@@ -199,15 +182,12 @@ class _PullIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Fades in over the first fifth of the pull rather than appearing at full
-    // strength on the first pixel, which reads as a flicker on a stray drag.
+    // Fades in over the first fifth, or a stray drag flashes it.
     final opacity = (progress * 5).clamp(0.0, 1.0);
     return Opacity(
       opacity: opacity,
-      // Compact on purpose: this floats over the page mid-gesture, so it should
-      // read at a glance and cover as little art as possible. The ring's fill
-      // and the arrow-to-tick flip already say "keep pulling" / "let go", so
-      // the only words needed are which chapter you're heading to.
+      // Compact: the ring and the arrow-to-tick already say "keep pulling" /
+      // "let go", so the only words needed are where you're heading.
       child: ReaderPillSurface(
         radius: 18,
         padding: const EdgeInsets.fromLTRB(7, 6, 12, 6),

@@ -1,24 +1,11 @@
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
-/// Hands-free reading for both readers.
+/// Hands-free reading, for the strip and the paged views alike.
 ///
-/// Modelled on Kotatsu's scroll timer rather than a naive "scroll N pixels per
-/// frame", because the naive version is what makes auto-scroll feel broken:
-///
-///  * **A touch pauses, it does not stop.** Nudging the page to re-read a line
-///    used to kill the whole thing and you had to go and turn it on again.
-///    Now the finger going down pauses it and lifting resumes, after a short
-///    grace so a flick doesn't immediately fight you.
-///  * **It eases in and out.** Snapping to full speed on start and dead-
-///    stopping on pause both read as a glitch. The rate ramps over ~a third of
-///    a second in each direction.
-///  * **Paged modes work too**, by turning pages on a timer instead of
-///    creeping — otherwise the feature simply doesn't exist for half the
-///    reading modes, which is where the previous attempt fell down.
-///
-/// Speed is a 1–10 scale, not pixels per second: "how fast" is a feel, and a
-/// px/s number means nothing to anyone reading.
+/// Touching pauses rather than stops, and the rate eases in and out — a first
+/// version that hard-stopped on any drag and snapped to full speed felt
+/// broken. Speed is a 1-10 feel, not px/s.
 class ReaderAutoScroll {
   ReaderAutoScroll({required TickerProvider vsync}) {
     _ticker = vsync.createTicker(_onTick);

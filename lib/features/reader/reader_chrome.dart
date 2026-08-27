@@ -374,13 +374,11 @@ class ReaderSheetShell extends StatelessWidget {
 /// settings sheet — mirrors `_SheetSectionHeader`. No horizontal padding of
 /// its own; drop it straight into whichever already-side-padded column the
 /// sheet's other controls live in.
-/// The standard reader-sheet body: grabber, title, then your rows.
+/// Standard reader-sheet body: grabber, title, then your rows.
 ///
-/// Exists because hand-rolling this per sheet is how they drift — the first
-/// auto-scroll and text-size sheets each missed the grabber, the safe-area
-/// inset, the height cap AND the scroll view, so their content simply
-/// overflowed on a short screen. Anything sheet-shaped in a reader should go
-/// through here.
+/// Hand-rolling this per sheet is how they drift — the first two I wrote
+/// missed the grabber, the safe area, the height cap and the scroll view, so
+/// they overflowed on a short screen.
 Widget readerSheetBody({
   required BuildContext context,
   required String title,
