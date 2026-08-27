@@ -16,6 +16,7 @@ import '../../core/tracker/tracker_hub.dart';
 import 'novel_paginator.dart';
 import 'reader_chrome.dart';
 import 'reader_comfort.dart';
+import 'reader_pull_chapter.dart';
 
 /// Text reader for manga/novel chapters — the reading counterpart of the
 /// video player. Phone-only (no TV twin, no TV focus handling needed).
@@ -218,7 +219,11 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     // real-clock deadline would never trip and this loop would spin forever
     // (hanging pumpAndSettle). 60 ticks × 50ms ≈ 3s of lazy layout to catch up.
     double? lastMax;
-    for (var tick = 0; tick < 60 && mounted && _scrollController.hasClients; tick++) {
+    for (
+      var tick = 0;
+      tick < 60 && mounted && _scrollController.hasClients;
+      tick++
+    ) {
       final pos = _scrollController.position;
       // A jump already landed and the user has since dragged away from it —
       // leave them alone instead of yanking them back mid-read.
@@ -403,7 +408,15 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: _toggleChrome,
-              child: _buildBody(theme, prefs),
+              child: ReaderPullChapter(
+                enabled: prefs.overscrollChapter,
+                hasPrev: _index > 0,
+                hasNext: _index < _chapters.length - 1,
+                prevLabel: _chapterLabel(_index - 1),
+                nextLabel: _chapterLabel(_index + 1),
+                onChangeChapter: (d) => _goToChapter(_index + d),
+                child: _buildBody(theme, prefs),
+              ),
             ),
           ),
           // Always mounted now (fade instead of build-if-visible) — see the
@@ -413,6 +426,13 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
         ],
       ),
     );
+  }
+
+  /// Display name for a neighbouring chapter, for the pull indicator.
+  String? _chapterLabel(int i) {
+    if (i < 0 || i >= _chapters.length) return null;
+    final t = _chapters[i].title.trim();
+    return t.isNotEmpty ? t : 'Chapter ${i + 1}';
   }
 
   Widget _buildBody(_ReaderTheme theme, ReaderPrefs prefs) {
@@ -494,9 +514,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   final styles = <String, String>{
                     'font-size': '${prefs.fontSize}px',
                     'line-height': '${prefs.lineHeight}',
-                    'direction': direction == TextDirection.rtl
-                        ? 'rtl'
-                        : 'ltr',
+                    'direction': direction == TextDirection.rtl ? 'rtl' : 'ltr',
                   };
                   if (element.localName == 'p' || element.localName == 'div') {
                     styles['margin'] = '0 0 ${prefs.paragraphSpacing}px 0';
@@ -699,52 +717,37 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: _chromeVisible ? 1 : 0,
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              const ReaderScrim(top: true),
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 4,
+          // Same floating pills as the manga reader: back · title (tap for
+          // chapters) · settings.
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 16, 10, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ReaderPillIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    tooltip: 'Back',
+                    onTap: () => Navigator.of(context).maybePop(),
                   ),
-                  child: Row(
-                    children: [
-                      readerBarButton(
-                        Icons.arrow_back_rounded,
-                        () => Navigator.of(context).maybePop(),
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.showTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppText.body.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            Text(
-                              'Chapter ${_index + 1} / ${_chapters.length}',
-                              style: AppText.caption.copyWith(
-                                color: Colors.white70,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: ReaderTitlePill(
+                      title: widget.showTitle,
+                      subtitle: 'Chapter ${_index + 1} / ${_chapters.length}',
+                      onTap: _openChapterSheet,
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 9),
+                  ReaderPillIconButton(
+                    icon: Icons.more_vert_rounded,
+                    tooltip: 'Reader settings',
+                    onTap: _openSettingsSheet,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -754,6 +757,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   Widget _buildBottomBar() {
     final hasPrev = _index > 0;
     final hasNext = _index < _chapters.length - 1;
+    final paged = sl<ReaderPrefs>().novelPaginated;
     // Same IgnorePointer-while-hidden reasoning as _buildTopBar.
     return Positioned(
       left: 0,
@@ -764,45 +768,71 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: _chromeVisible ? 1 : 0,
-          child: Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              const ReaderScrim(top: false),
-              SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (sl<ReaderPrefs>().novelPaginated && _pages.length > 1)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          'Page ${_pageIndex + 1} / ${_pages.length}',
-                          style: AppText.caption.copyWith(
-                            color: Colors.white70,
+          // One floating pill: prev · page slider · text size · next.
+          // The slider only exists in PAGED mode, where pages are discrete and
+          // a PageController can jump to one. Scrolling mode has no page to
+          // seek to — its position is a scroll fraction that only settles after
+          // layout — so it gets the plain label instead of a slider that would
+          // fight the resume logic.
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+              child: ReaderBottomPill(
+                children: [
+                  readerBarButton(
+                    Icons.skip_previous_rounded,
+                    () => _goToChapter(_index - 1),
+                    enabled: hasPrev,
+                  ),
+                  Expanded(
+                    child: paged && _pages.length > 1
+                        ? ReaderSlider(
+                            value: _pageIndex.toDouble().clamp(
+                              0,
+                              (_pages.length - 1).toDouble(),
+                            ),
+                            min: 0,
+                            max: (_pages.length - 1).toDouble(),
+                            divisions: _pages.length - 1,
+                            onChanged: (v) {
+                              final i = v.round();
+                              if (i == _pageIndex) return;
+                              setState(() => _pageIndex = i);
+                              if (_pageController.hasClients) {
+                                _pageController.jumpToPage(i);
+                              }
+                            },
+                            onChangeEnd: (_) => _saveProgress(flush: true),
+                          )
+                        : Center(
+                            child: Text(
+                              paged
+                                  ? 'Page ${_pageIndex + 1} / ${_pages.length}'
+                                  : 'Chapter ${_index + 1} / ${_chapters.length}',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        readerBarButton(
-                          Icons.skip_previous_rounded,
-                          () => _goToChapter(_index - 1),
-                          enabled: hasPrev,
-                        ),
-                        readerBarButton(Icons.tune_rounded, _openSettingsSheet),
-                        readerBarButton(
-                          Icons.skip_next_rounded,
-                          () => _goToChapter(_index + 1),
-                          enabled: hasNext,
-                        ),
-                      ],
+                  ),
+                  // Novel-only: the one setting people change mid-read.
+                  IconButton(
+                    tooltip: 'Text size',
+                    icon: const Icon(
+                      Icons.format_size_rounded,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                    onPressed: _openTextSizeSheet,
+                  ),
+                  readerBarButton(
+                    Icons.skip_next_rounded,
+                    () => _goToChapter(_index + 1),
+                    enabled: hasNext,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -815,6 +845,176 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   /// from reader_chrome.dart's shared readerSheetRow/ReaderSegmentedControl/
   /// readerSheetGroup pieces, so this sheet, the manga reader's, and
   /// Settings -> Reader all read as one design.
+  /// Chapter list, opened by tapping the title pill. Same [_goToChapter] the
+  /// prev/next buttons use, so progress saving and scrobbling are unchanged.
+  void _openChapterSheet() {
+    if (_chapters.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other chapters loaded yet')),
+      );
+      return;
+    }
+    const rowHeight = 52.0;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => ReaderSheetShell(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 2),
+              child: Text('Chapters', style: AppText.headline),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+              child: Text(
+                '${_index + 1} of ${_chapters.length}',
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            // Capped at half the screen: a long list would otherwise let the
+            // shrink-wrapped ListView grow the sheet to full height, which
+            // reads as a new page rather than a sheet over the reader.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  controller: ScrollController(
+                    initialScrollOffset: ((_index - 2) * rowHeight).clamp(
+                      0,
+                      double.infinity,
+                    ),
+                  ),
+                  itemCount: _chapters.length,
+                  itemExtent: rowHeight,
+                  itemBuilder: (context, i) {
+                    final current = i == _index;
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        if (i != _index) _goToChapter(i);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 46,
+                              child: Text(
+                                '${i + 1}',
+                                style: AppText.caption.copyWith(
+                                  color: current
+                                      ? AppColors.accent
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                _chapters[i].title.trim().isNotEmpty
+                                    ? _chapters[i].title
+                                    : 'Chapter ${i + 1}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.body.copyWith(
+                                  color: current
+                                      ? AppColors.accent
+                                      : Colors.white,
+                                  fontWeight: current
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                            if (current)
+                              Icon(
+                                Icons.play_arrow_rounded,
+                                size: 18,
+                                color: AppColors.accent,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Font size + line height only — the two things people reach for mid-read.
+  /// Everything else (theme, font family, paged mode) stays in the full
+  /// settings sheet rather than being duplicated here.
+  ///
+  /// Writes through the same prefs setters the settings sheet uses, so paged
+  /// mode re-paginates through its usual path (`_paginationKey` notices the
+  /// text style changed) instead of needing anything special here.
+  void _openTextSizeSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final prefs = sl<ReaderPrefs>();
+          void apply(VoidCallback change) {
+            change();
+            setSheetState(() {});
+            if (mounted) setState(() {});
+          }
+
+          return ReaderSheetShell(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 4, 18, 10),
+                  child: Text('Text size', style: AppText.headline),
+                ),
+                readerSheetGroup([
+                  readerSheetRow(
+                    icon: Icons.format_size_rounded,
+                    label: 'Font size',
+                    child: Slider(
+                      value: prefs.fontSize.clamp(12, 28),
+                      min: 12,
+                      max: 28,
+                      activeColor: AppColors.accent,
+                      onChanged: (v) => apply(() => prefs.setFontSize(v)),
+                    ),
+                  ),
+                  readerSheetRow(
+                    icon: Icons.format_line_spacing_rounded,
+                    label: 'Line height',
+                    child: Slider(
+                      value: prefs.lineHeight.clamp(1.2, 2.4),
+                      min: 1.2,
+                      max: 2.4,
+                      activeColor: AppColors.accent,
+                      onChanged: (v) => apply(() => prefs.setLineHeight(v)),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 8),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   void _openSettingsSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -916,8 +1116,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                   ? 'justify'
                                   : 'left',
                               onSelect: (v) => apply(
-                                () =>
-                                    prefs.setTextAlignJustify(v == 'justify'),
+                                () => prefs.setTextAlignJustify(v == 'justify'),
                               ),
                             ),
                           ),
@@ -1009,6 +1208,19 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                                     () => apply(() => prefs.setTheme(t)),
                                   ),
                               ],
+                            ),
+                          ),
+                        ]),
+                        readerSheetSection('Navigation'),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.swipe_vertical_rounded,
+                            label: 'Pull to change chapter',
+                            trailing: Switch(
+                              value: prefs.overscrollChapter,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setOverscrollChapter(v)),
                             ),
                           ),
                         ]),
@@ -1157,9 +1369,7 @@ List<_HtmlToken> _tokenizeHtml(String html) {
 
   void flush() {
     if (buffer.isEmpty) return;
-    tokens.add(
-      _HtmlToken.text(buffer.toString(), bold: bold, italic: italic),
-    );
+    tokens.add(_HtmlToken.text(buffer.toString(), bold: bold, italic: italic));
     buffer.clear();
   }
 

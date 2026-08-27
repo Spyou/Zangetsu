@@ -58,6 +58,31 @@ class ReaderPrefs {
       _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
 
+  /// Turn manga pages with the hardware volume keys.
+  ///
+  /// OFF by default, and deliberately so: this SWALLOWS the volume keys while
+  /// the reader is open, so someone who never asked for it would find their
+  /// volume dead with no explanation. Opt-in only.
+  bool get volumeKeyPaging =>
+      _box.get('volumeKeyPaging', defaultValue: false) as bool;
+  Future<void> setVolumeKeyPaging(bool value) =>
+      _box.put('volumeKeyPaging', value);
+
+  /// Swap which volume key goes forward. Down-is-next matches how most readers
+  /// ship; up-is-next suits holding the phone the other way round.
+  bool get invertVolumeKeys =>
+      _box.get('invertVolumeKeys', defaultValue: false) as bool;
+  Future<void> setInvertVolumeKeys(bool value) =>
+      _box.put('invertVolumeKeys', value);
+
+  /// Pull past the end of a chapter to open the next one (and past the start
+  /// for the previous). ON by default: it only triggers on a deliberate drag
+  /// beyond the edge, where there is nothing else to do.
+  bool get overscrollChapter =>
+      _box.get('overscrollChapter', defaultValue: true) as bool;
+  Future<void> setOverscrollChapter(bool value) =>
+      _box.put('overscrollChapter', value);
+
   /// How many pages ahead the reader warms into the disk cache after landing
   /// on a page. Six rather than the three we started with: preloading only
   /// fetches bytes now, so the extra runway costs disk and network instead of

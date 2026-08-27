@@ -230,7 +230,42 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     override fun onPause() {
         if (current?.get() === this) current = null
+        // Fail safe: never leave the volume rocker hijacked for an app that
+        // isn't in front. Dart re-enables it when the reader resumes.
+        volumeKeyPaging = false
         super.onPause()
+    }
+
+    // ── Volume-key paging (manga reader) ──────────────────────────────────
+    // Android handles the volume keys at the window level, above the Flutter
+    // view, so a Dart-side key handler never sees them — it has to be caught
+    // here. OFF unless the reader explicitly turns it on, and forced off again
+    // in onPause, because the failure mode (volume rocker does nothing, app-
+    // wide, with no clue why) is far worse than the feature is valuable.
+    private var volumeKeyPaging = false
+    private var volumeKeyChannel: MethodChannel? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (volumeKeyPaging) {
+            val code = event.keyCode
+            if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+                code == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+            ) {
+                // Act on the down (and its auto-repeat, so holding pages on),
+                // and swallow the matching up so the system sees a clean pair
+                // and never flashes its volume panel.
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    val dir = if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP) {
+                        "up"
+                    } else {
+                        "down"
+                    }
+                    volumeKeyChannel?.invokeMethod("volumeKey", dir)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     // A "new episode" notification tapped while the app is already running:
@@ -382,6 +417,24 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     else -> result.notImplemented()
                 }
             }
+
+        // Volume-key paging: the reader turns this on while it's open and off
+        // when it closes. Bidirectional — Dart sets the flag, native pushes
+        // "volumeKey" back with the direction.
+        volumeKeyChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "zangetsu/volume_keys",
+        ).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setEnabled" -> {
+                        volumeKeyPaging = call.argument<Boolean>("enabled") ?: false
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // Download channel: stream-copy remux of a concatenated-TS HLS download
         // into a real MP4 (MediaExtractor → MediaMuxer). Runs off the main thread;

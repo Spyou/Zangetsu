@@ -14,6 +14,7 @@ import '../../core/reading/read_store.dart';
 import '../../core/reading/reader_overrides.dart';
 import '../../core/reading/reader_prefs.dart';
 import '../../core/reading/reader_settings.dart';
+import '../../core/reading/volume_keys.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -21,6 +22,7 @@ import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import 'reader_chrome.dart';
 import 'reader_comfort.dart';
+import 'reader_pull_chapter.dart';
 
 /// Image reader for manga chapters — the paged/webtoon counterpart of
 /// [package:watch_app/features/reader/novel_reader_screen.dart]'s text
@@ -134,6 +136,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // — no host handler at all) must not crash the reader; the mixin itself
     // swallows that.
     applyReaderComfort();
+    _syncVolumeKeys();
     _load();
     _maybeResolveChapters();
   }
@@ -147,6 +150,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // ScrollController one last time before that controller goes away.
     _captureFinalVerticalIndex();
     _flushProgress(); // reader close: don't lose the last-read position
+    VolumeKeys.disable(); // give the volume rocker back
     restoreReaderComfort();
     _verticalController.removeListener(_onVerticalScroll);
     _verticalController.dispose();
@@ -513,13 +517,23 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   /// registers `ReaderOverrideStore`, and this simply falls back to the
   /// global pref there rather than throwing — same fallback the app itself
   /// would never need, since the injector always registers it.
-  String _effectiveDirection(ReaderPrefs prefs) => sl.isRegistered<ReaderOverrideStore>()
-      ? sl<ReaderOverrideStore>().effectiveMode(widget.sourceId, widget.showId, prefs)
+  String _effectiveDirection(ReaderPrefs prefs) =>
+      sl.isRegistered<ReaderOverrideStore>()
+      ? sl<ReaderOverrideStore>().effectiveMode(
+          widget.sourceId,
+          widget.showId,
+          prefs,
+        )
       : prefs.direction;
 
   /// Same idea as [_effectiveDirection], for fit.
-  String _effectiveFit(ReaderPrefs prefs) => sl.isRegistered<ReaderOverrideStore>()
-      ? sl<ReaderOverrideStore>().effectiveFit(widget.sourceId, widget.showId, prefs)
+  String _effectiveFit(ReaderPrefs prefs) =>
+      sl.isRegistered<ReaderOverrideStore>()
+      ? sl<ReaderOverrideStore>().effectiveFit(
+          widget.sourceId,
+          widget.showId,
+          prefs,
+        )
       : prefs.fitMode;
 
   /// Best-effort continuity when the direction pref changes mid-chapter from
@@ -599,6 +613,58 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
+  /// Volume-key paging, driven by the native `dispatchKeyEvent` hook (see
+  /// [VolumeKeys] for why it can't be done in Dart).
+  ///
+  /// Down = forward by default; the invert pref swaps that. Vertical/webtoon
+  /// mode scrolls a viewport instead of stepping pages, so the keys nudge the
+  /// strip rather than doing nothing.
+  void _onVolumeKey(bool up) {
+    if (!mounted) return;
+    final prefs = sl<ReaderPrefs>();
+    final forward = up == prefs.invertVolumeKeys;
+
+    if (_effectiveDirection(prefs) == 'vertical') {
+      if (!_verticalController.hasClients) return;
+      final page = _verticalController.position.viewportDimension * 0.85;
+      final target = (_verticalController.offset + (forward ? page : -page))
+          .clamp(0.0, _verticalController.position.maxScrollExtent);
+      _verticalController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+
+    // Same controller calls a tap makes, so paging, progress saving and the
+    // last-page next-chapter overlay all behave identically either way.
+    const dur = Duration(milliseconds: 180);
+    if (forward) {
+      _pageController.nextPage(duration: dur, curve: Curves.easeOut);
+    } else {
+      _pageController.previousPage(duration: dur, curve: Curves.easeOut);
+    }
+  }
+
+  /// Re-applies the volume-key pref — called on init and whenever the settings
+  /// sheet changes it, so toggling it takes effect without leaving the reader.
+  void _syncVolumeKeys() {
+    if (sl<ReaderPrefs>().volumeKeyPaging) {
+      VolumeKeys.enable(_onVolumeKey);
+    } else {
+      VolumeKeys.disable();
+    }
+  }
+
+  /// Display name for a neighbouring chapter, for the pull indicator. Null
+  /// when the index is out of range, which the indicator treats as "no label".
+  String? _chapterLabel(int i) {
+    if (i < 0 || i >= _chapters.length) return null;
+    final t = _chapters[i].title.trim();
+    return t.isNotEmpty ? t : 'Chapter ${i + 1}';
+  }
+
   Widget _buildBody(ReaderPrefs prefs) {
     if (_loading) {
       return GestureDetector(
@@ -625,9 +691,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       );
     }
     final direction = _effectiveDirection(prefs);
-    Widget content = direction == 'vertical'
-        ? _buildVertical(pages)
-        : _buildPaged(pages, direction);
+    Widget content = ReaderPullChapter(
+      enabled: prefs.overscrollChapter,
+      hasPrev: _index > 0,
+      hasNext: _index < _chapters.length - 1,
+      prevLabel: _chapterLabel(_index - 1),
+      nextLabel: _chapterLabel(_index + 1),
+      onChangeChapter: (d) => _goToChapter(_index + d),
+      child: direction == 'vertical'
+          ? _buildVertical(pages)
+          : _buildPaged(pages, direction),
+    );
     // Only wrap in ColorFiltered when a filter is actually chosen — 'none'
     // (the default) must leave this widget out of the tree entirely so the
     // default reading path is byte-for-byte what it was before this feature.
@@ -642,7 +716,11 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         // _pageIndex no longer setState()s on every page/scroll tick (see
         // _pageIndexVN), so the overlay has to watch it directly to still
         // appear/disappear exactly at the last page, same as before.
-        if (hasNext)
+        // Paged modes only. The webtoon strip gets a real footer under the last
+        // page instead (see _buildVertical): a floating overlay there parks
+        // itself over the artwork and covers the speech bubbles you're still
+        // reading, because a tall page stays "the last page" for a long scroll.
+        if (hasNext && direction != 'vertical')
           ValueListenableBuilder<int>(
             valueListenable: _pageIndexVN,
             builder: (context, pageIndex, _) => pageIndex == pages.length - 1
@@ -748,8 +826,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               controller: _verticalController,
               physics: _wZooming ? const NeverScrollableScrollPhysics() : null,
               itemCount: pages.length,
-              itemBuilder: (context, index) =>
-                  _verticalItem(context, pages[index]),
+              // The end-of-chapter footer rides along INSIDE the last item
+              // rather than being an extra one. itemCount stays == pages.length
+              // so `estimateIndexFromScroll`'s scroll-to-page mapping (and the
+              // slider that shares it) needs no adjustment for a phantom page.
+              itemBuilder: (context, index) {
+                final page = _verticalItem(context, pages[index]);
+                if (index != pages.length - 1) return page;
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [page, _chapterEndFooter()],
+                );
+              },
             ),
           ),
         );
@@ -900,6 +988,75 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
+  /// End-of-chapter card, shown under the last page of the webtoon strip.
+  ///
+  /// Part of the scrolling content rather than floating over it, so it can
+  /// never sit on top of the art. Reading the last page now ends the way it
+  /// should: the page finishes, then the card, then a pull opens the next
+  /// chapter — the three line up instead of overlapping.
+  Widget _chapterEndFooter() {
+    final hasNext = _index < _chapters.length - 1;
+    final next = hasNext ? _chapterLabel(_index + 1) : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 44),
+      child: Column(
+        children: [
+          Text(
+            'End of ${_chapterLabel(_index) ?? 'this chapter'}',
+            textAlign: TextAlign.center,
+            style: AppText.caption.copyWith(color: AppColors.textSecondary),
+          ),
+          if (hasNext) ...[
+            const SizedBox(height: 12),
+            ReaderPillSurface(
+              radius: 22,
+              onTap: () => _goToChapter(_index + 1),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      next ?? 'Next chapter',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.body.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 17,
+                    color: AppColors.accent,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'or keep pulling',
+              style: AppText.caption.copyWith(
+                color: AppColors.textSecondary.withValues(alpha: 0.7),
+                fontSize: 10.5,
+              ),
+            ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                "That's the last chapter.",
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNextChapterOverlay() {
     return Positioned(
       left: 0,
@@ -976,57 +1133,43 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: _chromeVisible ? 1 : 0,
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              const ReaderScrim(top: true),
-              SafeArea(
-                bottom: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 4,
+          // Floating pills, no scrim: back · title (tap for chapters) ·
+          // settings. The settings button moved up here from the bottom row,
+          // which the bottom pill needed the width for.
+          child: SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 16, 10, 0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ReaderPillIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    tooltip: 'Back',
+                    onTap: () => Navigator.of(context).maybePop(),
                   ),
-                  child: Row(
-                    children: [
-                      readerBarButton(
-                        Icons.arrow_back_rounded,
-                        () => Navigator.of(context).maybePop(),
+                  const SizedBox(width: 9),
+                  Flexible(
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: _pageIndexVN,
+                      builder: (context, pageIndex, _) => ReaderTitlePill(
+                        title: widget.showTitle,
+                        subtitle: pages == null || pages.isEmpty
+                            ? 'Chapter ${_index + 1} / ${_chapters.length}'
+                            : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
+                        onTap: _openChapterSheet,
                       ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              widget.showTitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppText.body.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            ValueListenableBuilder<int>(
-                              valueListenable: _pageIndexVN,
-                              builder: (context, pageIndex, _) => Text(
-                                pages == null || pages.isEmpty
-                                    ? 'Chapter ${_index + 1} / ${_chapters.length}'
-                                    : 'ch ${_index + 1} · pg ${pageIndex + 1}/${pages.length}',
-                                style: AppText.caption.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 9),
+                  ReaderPillIconButton(
+                    icon: Icons.more_vert_rounded,
+                    tooltip: 'Reader settings',
+                    onTap: _openSettingsSheet,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1048,76 +1191,168 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 200),
           opacity: _chromeVisible ? 1 : 0,
-          child: Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              const ReaderScrim(top: false),
-              SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (pageCount > 1)
-                        ValueListenableBuilder<int>(
-                          valueListenable: _pageIndexVN,
-                          builder: (context, pageIndex, _) => Row(
-                            children: [
-                              Text(
-                                '${pageIndex + 1}',
-                                style: AppText.caption.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                              Expanded(
-                                child: ReaderSlider(
-                                  value: pageIndex.toDouble().clamp(
-                                    0,
-                                    (pageCount - 1).toDouble(),
-                                  ),
-                                  min: 0,
-                                  max: (pageCount - 1).toDouble(),
-                                  divisions: pageCount - 1,
-                                  onChangeStart: (_) => _seeking = true,
-                                  onChanged: (v) => _seekToPage(v.round()),
-                                  onChangeEnd: (v) => _commitSeek(v.round()),
-                                ),
-                              ),
-                              Text(
-                                '$pageCount',
-                                style: AppText.caption.copyWith(
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          readerBarButton(
-                            Icons.skip_previous_rounded,
-                            () => _goToChapter(_index - 1),
-                            enabled: hasPrev,
-                          ),
-                          readerBarButton(
-                            Icons.tune_rounded,
-                            _openSettingsSheet,
-                          ),
-                          readerBarButton(
-                            Icons.skip_next_rounded,
-                            () => _goToChapter(_index + 1),
-                            enabled: hasNext,
-                          ),
-                        ],
-                      ),
-                    ],
+          // One floating pill: prev chapter · page slider · next chapter.
+          // The page counter that used to flank the slider now lives in the
+          // title pill's subtitle, so the numbers aren't lost.
+          child: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+              child: ReaderBottomPill(
+                children: [
+                  readerBarButton(
+                    Icons.skip_previous_rounded,
+                    () => _goToChapter(_index - 1),
+                    enabled: hasPrev,
                   ),
+                  Expanded(
+                    // A chapter with one page has nothing to scrub, so the
+                    // slider is replaced by empty space rather than a dead
+                    // control pinned at both ends.
+                    child: pageCount > 1
+                        ? ValueListenableBuilder<int>(
+                            valueListenable: _pageIndexVN,
+                            builder: (context, pageIndex, _) => ReaderSlider(
+                              value: pageIndex.toDouble().clamp(
+                                0,
+                                (pageCount - 1).toDouble(),
+                              ),
+                              min: 0,
+                              max: (pageCount - 1).toDouble(),
+                              divisions: pageCount - 1,
+                              onChangeStart: (_) => _seeking = true,
+                              onChanged: (v) => _seekToPage(v.round()),
+                              onChangeEnd: (v) => _commitSeek(v.round()),
+                            ),
+                          )
+                        : const SizedBox(height: 40),
+                  ),
+                  readerBarButton(
+                    Icons.skip_next_rounded,
+                    () => _goToChapter(_index + 1),
+                    enabled: hasNext,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Chapter list, opened by tapping the title pill. Jumping goes through the
+  /// same [_goToChapter] the prev/next buttons use, so progress is saved and
+  /// the chapter marked read on the way out exactly as it always was.
+  ///
+  /// Opens scrolled to the current chapter: these lists run to hundreds of
+  /// entries, and landing at the top would mean scrolling to find where you
+  /// already are.
+  void _openChapterSheet() {
+    // A resume opened with a one-chapter placeholder hasn't widened yet (see
+    // _maybeResolveChapters) — a sheet listing only the chapter you're on is
+    // a dead end, so say so instead of opening it.
+    if (_chapters.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No other chapters loaded yet')),
+      );
+      return;
+    }
+    const rowHeight = 52.0;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => ReaderSheetShell(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 2),
+              child: Text('Chapters', style: AppText.headline),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 10),
+              child: Text(
+                '${_index + 1} of ${_chapters.length}',
+                style: AppText.caption.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            // Capped at half the screen: a long list would otherwise let the
+            // shrink-wrapped ListView grow the sheet to full height, which
+            // reads as a new page rather than a sheet over the reader.
+            Flexible(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.5,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  controller: ScrollController(
+                    // Centre-ish rather than pinned to the top edge, so the
+                    // chapters either side are visible too.
+                    initialScrollOffset: ((_index - 2) * rowHeight).clamp(
+                      0,
+                      double.infinity,
+                    ),
+                  ),
+                  itemCount: _chapters.length,
+                  itemExtent: rowHeight,
+                  itemBuilder: (context, i) {
+                    final current = i == _index;
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(ctx).pop();
+                        if (i != _index) _goToChapter(i);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 46,
+                              child: Text(
+                                '${i + 1}',
+                                style: AppText.caption.copyWith(
+                                  color: current
+                                      ? AppColors.accent
+                                      : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Text(
+                                _chapters[i].title.trim().isNotEmpty
+                                    ? _chapters[i].title
+                                    : 'Chapter ${i + 1}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.body.copyWith(
+                                  color: current
+                                      ? AppColors.accent
+                                      : Colors.white,
+                                  fontWeight: current
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                ),
+                              ),
+                            ),
+                            if (current)
+                              Icon(
+                                Icons.play_arrow_rounded,
+                                size: 18,
+                                color: AppColors.accent,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -1301,6 +1536,45 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                   apply(() => prefs.setCropBorders(v)),
                             ),
                           ),
+                        ]),
+                        readerSheetSection('Navigation'),
+                        readerSheetGroup([
+                          readerSheetRow(
+                            icon: Icons.swipe_vertical_rounded,
+                            label: 'Pull to change chapter',
+                            trailing: Switch(
+                              value: prefs.overscrollChapter,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setOverscrollChapter(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.volume_up_rounded,
+                            label: 'Volume keys turn pages',
+                            trailing: Switch(
+                              value: prefs.volumeKeyPaging,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setVolumeKeyPaging(v);
+                                _syncVolumeKeys();
+                              }),
+                            ),
+                          ),
+                          // Only worth showing once the keys actually do
+                          // something — a lone "invert" switch above a feature
+                          // that's off reads as broken.
+                          if (prefs.volumeKeyPaging)
+                            readerSheetRow(
+                              icon: Icons.swap_vert_rounded,
+                              label: 'Invert volume keys',
+                              trailing: Switch(
+                                value: prefs.invertVolumeKeys,
+                                activeThumbColor: AppColors.accent,
+                                onChanged: (v) =>
+                                    apply(() => prefs.setInvertVolumeKeys(v)),
+                              ),
+                            ),
                         ]),
                         readerSheetSection('Comfort'),
                         readerSheetGroup([
