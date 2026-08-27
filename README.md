@@ -4,9 +4,9 @@
 
 <img src="assets/icon/app_icon.png" width="120" alt="Zangetsu" />
 
-### A modern, open-source anime & movie management app for Android and TV
+### A modern, open-source app for anime, movies, manga & light novels — on Android, TV and iOS
 
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&pause=1200&color=FF4D57&center=true&vCenter=true&width=600&lines=Track+your+watch+history+%F0%9F%93%88;Sync+progress+across+devices+%F0%9F%94%84;Discover+anime+%26+movies+%F0%9F%94%8D;100%25+open+source+%E2%9D%A4%EF%B8%8F" alt="Typing SVG" />
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=22&pause=1200&color=FF4D57&center=true&vCenter=true&width=600&lines=Track+your+watch+history+%F0%9F%93%88;Read+manga+%26+light+novels+%F0%9F%93%9A;Sync+progress+across+devices+%F0%9F%94%84;Discover+anime+%26+movies+%F0%9F%94%8D;100%25+open+source+%E2%9D%A4%EF%B8%8F" alt="Typing SVG" />
 
 <br/>
 
@@ -22,7 +22,7 @@
 ![Platform](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
 ![Platform](https://img.shields.io/badge/Android_TV-FF4D57?style=for-the-badge&logo=youtube&logoColor=white)
 ![Platform](https://img.shields.io/badge/Windows-Soon-0078D4?style=for-the-badge&logo=windows&logoColor=white)
-![Platform](https://img.shields.io/badge/iOS-Soon-000000?style=for-the-badge&logo=apple&logoColor=white)
+![Platform](https://img.shields.io/badge/iOS-Beta-000000?style=for-the-badge&logo=apple&logoColor=white)
 ![Flutter](https://img.shields.io/badge/Built%20with-Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
 ![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
 
@@ -54,7 +54,9 @@
 
 ## 🎬 Overview
 
-Zangetsu is a modern, open-source app designed to help users organize and manage anime and movie activity in one place.
+Zangetsu is a modern, open-source app for keeping anime, movies, series, manga and light novels in one place.
+
+It has three modes — **Streaming**, **Manga** and **Novel** — each with its own sources and its own reader or player, plus a full **Android TV** interface built for a remote rather than a touchscreen.
 
 It focuses on **discovery**, **tracking**, **syncing**, and **personal library management** — wrapped in a clean interface and a smooth user experience.
 
@@ -63,9 +65,9 @@ It focuses on **discovery**, **tracking**, **syncing**, and **personal library m
 
 <div align="center">
 
-| 🔍 Discover | 📈 Track | 🔄 Sync | 📚 Organize |
+| 🎬 Watch | 📚 Read | 📈 Track | 🔄 Sync |
 |:---:|:---:|:---:|:---:|
-| Search anime & movies | Progress & history | Across devices | Your personal library |
+| Anime, movies & series | Manga & light novels | Progress & history | Across devices |
 
 </div>
 
@@ -129,15 +131,20 @@ Get the latest version from the **[GitHub Releases](https://github.com/Spyou/Zan
 |---|:---:|
 | 🤖 Android | ✅ Available |
 | 📺 Android TV | ✅ Available |
+| 🍎 iOS | 🧪 Beta (TestFlight) |
 | 🪟 Windows | 🚧 In progress |
-| 🍎 iOS | 🚧 In progress |
 
 </div>
 
+> On iOS, CloudStream, Aniyomi and Mihon extensions can't be loaded — iOS
+> doesn't allow that kind of plugin. Zangetsu's own JavaScript sources, the
+> player, downloads and trackers all work.
+
 - [x] Android release
 - [x] Android TV release
-- [ ] Windows release
+- [x] iOS beta
 - [ ] iOS release
+- [ ] Windows release
 
 ---
 
@@ -253,7 +260,7 @@ Zangetsu is licensed under the **[GNU GPL-3.0](LICENSE)**. See the included lice
 <img src="assets/icon/app_icon.png" width="70" alt="Zangetsu"/>
 
 ### Zangetsu
-*Made with ❤️ for anime & movie fans.*
+*Made with ❤️ for anime, movie & manga fans.*
 
 <br/>
 
