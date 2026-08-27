@@ -8,6 +8,7 @@ import '../../core/models/provider_info.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/reading/reader_prefs.dart';
+import '../../core/reading/tap_zones.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -420,7 +421,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
           Positioned.fill(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: _toggleChrome,
+              onTapUp: (d) => _dispatchTap(d.globalPosition),
               // Touch pauses; lifting resumes after a grace. See the manga
               // reader — stopping outright on a drag made a nudge fatal.
               child: Listener(
@@ -646,8 +647,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             final pages = _pages;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTapUp: (d) =>
-                  _handlePageTap(d.localPosition.dx, constraints.maxWidth),
+              onTapUp: (d) => _dispatchTap(d.globalPosition),
               child: PageView.builder(
                 controller: _pageController,
                 itemCount: pages.isEmpty ? 1 : pages.length,
@@ -714,21 +714,66 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     _saveProgress(flush: false); // same save/scrobble path as scroll mode
   }
 
-  void _handlePageTap(double dx, double width) {
-    final third = width / 3;
-    if (dx < third) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-    } else if (dx > width - third) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOut,
-      );
-    } else {
-      _toggleChrome();
+  /// Run whatever the reader's tap zones say for a tap at [global].
+  ///
+  /// Paged and scroll mode use different layouts: turning a page means nothing
+  /// in a continuous scroll, and scrolling means nothing on a fixed page.
+  void _dispatchTap(Offset global) {
+    final size = MediaQuery.sizeOf(context);
+    if (size.width <= 0 || size.height <= 0) return;
+    final prefs = sl<ReaderPrefs>();
+    // Novels are laid out left-to-right whichever manga mode is set, so the
+    // paged layout is read directly rather than through the reading mode.
+    final layout = prefs.tapZones(
+      prefs.novelPaginated ? TapZoneLayout.paged : TapZoneLayout.webtoon,
+    );
+    _runReaderAction(
+      layout.actionAt(
+        Offset(
+          (global.dx / size.width).clamp(0.0, 1.0),
+          (global.dy / size.height).clamp(0.0, 1.0),
+        ),
+      ),
+    );
+  }
+
+  void _runReaderAction(ReaderAction action) {
+    const dur = Duration(milliseconds: 200);
+    switch (action) {
+      case ReaderAction.none:
+        return;
+      case ReaderAction.toggleMenu:
+        _toggleChrome();
+      case ReaderAction.nextPage:
+        if (_pageController.hasClients) {
+          _pageController.nextPage(duration: dur, curve: Curves.easeOut);
+        }
+      case ReaderAction.prevPage:
+        if (_pageController.hasClients) {
+          _pageController.previousPage(duration: dur, curve: Curves.easeOut);
+        }
+      case ReaderAction.scrollUp:
+        _scrollBy(-1);
+      case ReaderAction.scrollDown:
+        _scrollBy(1);
+      case ReaderAction.nextChapter:
+        _goToChapter(_index + 1);
+      case ReaderAction.prevChapter:
+        _goToChapter(_index - 1);
     }
+  }
+
+  /// One screenful, less a sliver of overlap so the line you were on is still
+  /// on screen after the jump.
+  void _scrollBy(int direction) {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final step = pos.viewportDimension * 0.85 * direction;
+    _scrollController.animateTo(
+      (pos.pixels + step).clamp(pos.minScrollExtent, pos.maxScrollExtent),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 
   // Chrome bars are always white-on-scrim now, matching the manga reader —

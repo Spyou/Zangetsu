@@ -1,6 +1,8 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
+import 'tap_zones.dart';
+
 /// Persistent reader settings — the manga/novel analogue of PlaybackPrefs.
 /// Backed by a tiny untyped Hive box read anywhere via `sl<ReaderPrefs>()`.
 /// Values are read with defaults so a fresh install behaves sensibly; numbers
@@ -176,6 +178,28 @@ class ReaderPrefs {
 
   Future<void> setReadingMode(String value) =>
       _box.put('readingMode', value);
+
+  // ── Tap zones ───────────────────────────────────────────────────────────
+  /// What tapping each part of the page does, per reading mode. Stored as JSON
+  /// so the shape can change without a migration; anything unreadable falls
+  /// back to the default rather than leaving a dead screen.
+  TapZoneLayout tapZones(String layoutId) => TapZoneLayout.fromJsonString(
+    _box.get('tapZones_$layoutId') as String?,
+    layoutId,
+  );
+
+  /// The layout for the mode currently being read.
+  TapZoneLayout tapZonesForMode(String readingMode) =>
+      tapZones(TapZoneLayout.idForReadingMode(readingMode));
+
+  Future<void> setTapZones(TapZoneLayout layout) =>
+      _box.put('tapZones_${layout.id}', layout.toJsonString());
+
+  Future<void> resetTapZones() async {
+    for (final id in TapZoneLayout.ids) {
+      await _box.delete('tapZones_$id');
+    }
+  }
 
   /// Page fit: 'contain' | 'width' | 'height' | 'original' | 'smart'.
   /// Default 'contain' renders identically to the reader's current hardcoded

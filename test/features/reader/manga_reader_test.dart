@@ -36,28 +36,9 @@ import 'package:watch_app/features/reader/manga_reader_screen.dart';
 // ── Pure-logic tests ────────────────────────────────────────────────────────
 
 void _pureLogicTests() {
-  group('zoneFor', () {
-    test('ltr: left third is previous, right third is next', () {
-      expect(zoneFor(10, 300, 'ltr'), ReaderTapZone.previous);
-      expect(zoneFor(290, 300, 'ltr'), ReaderTapZone.next);
-    });
-
-    test('rtl: swaps previous/next', () {
-      expect(zoneFor(10, 300, 'rtl'), ReaderTapZone.next);
-      expect(zoneFor(290, 300, 'rtl'), ReaderTapZone.previous);
-    });
-
-    test('center third is chrome in both directions', () {
-      expect(zoneFor(150, 300, 'ltr'), ReaderTapZone.chrome);
-      expect(zoneFor(150, 300, 'rtl'), ReaderTapZone.chrome);
-    });
-
-    test('vertical: every dx is chrome — no left/right paging', () {
-      expect(zoneFor(10, 300, 'vertical'), ReaderTapZone.chrome);
-      expect(zoneFor(150, 300, 'vertical'), ReaderTapZone.chrome);
-      expect(zoneFor(290, 300, 'vertical'), ReaderTapZone.chrome);
-    });
-  });
+  // Tap-zone behaviour now lives in test/reading/tap_zones_test.dart — the
+  // reader reads a configurable layout instead of a hardcoded thirds split,
+  // and webtoon mode scrolls on tap where it used to do nothing.
 
   group('preloadWindow', () {
     test('returns the next 3 indices', () {

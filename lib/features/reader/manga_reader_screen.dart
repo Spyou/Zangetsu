@@ -16,6 +16,7 @@ import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
 import '../../core/reading/reader_overrides.dart';
 import '../../core/reading/reader_prefs.dart';
+import '../../core/reading/tap_zones.dart';
 import '../../core/reading/reader_settings.dart';
 import '../../core/reading/volume_keys.dart';
 import '../../core/repository/source_repository.dart';
@@ -637,21 +638,63 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     });
   }
 
-  void _handleTap(double dx, double width) {
-    switch (zoneFor(dx, width, _effectiveDirection(sl<ReaderPrefs>()))) {
-      case ReaderTapZone.previous:
-        _pageController.previousPage(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      case ReaderTapZone.next:
-        _pageController.nextPage(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      case ReaderTapZone.chrome:
+  /// Run whatever the current reading mode's tap zones say for a tap at
+  /// [global].
+  ///
+  /// Screen coordinates on purpose: in webtoon mode the tap lands on a page
+  /// widget that can be several screens tall, so a position local to that
+  /// widget says nothing about where on the SCREEN the finger went. Zones are
+  /// normalised, so this is the one measurement that works in every mode.
+  void _dispatchTap(Offset global) {
+    final size = MediaQuery.sizeOf(context);
+    if (size.width <= 0 || size.height <= 0) return;
+    final prefs = sl<ReaderPrefs>();
+    final mode = _effectiveDirection(prefs);
+    final layout = prefs.tapZonesForMode(mode);
+    _runReaderAction(
+      layout.actionAt(
+        Offset(
+          (global.dx / size.width).clamp(0.0, 1.0),
+          (global.dy / size.height).clamp(0.0, 1.0),
+        ),
+        rtl: mode == 'rtl',
+      ),
+    );
+  }
+
+  void _runReaderAction(ReaderAction action) {
+    const dur = Duration(milliseconds: 200);
+    switch (action) {
+      case ReaderAction.none:
+        return;
+      case ReaderAction.toggleMenu:
         _toggleChrome();
+      case ReaderAction.nextPage:
+        _pageController.nextPage(duration: dur, curve: Curves.easeOut);
+      case ReaderAction.prevPage:
+        _pageController.previousPage(duration: dur, curve: Curves.easeOut);
+      case ReaderAction.scrollUp:
+        _scrollStrip(-1);
+      case ReaderAction.scrollDown:
+        _scrollStrip(1);
+      case ReaderAction.nextChapter:
+        _goToChapter(_index + 1);
+      case ReaderAction.prevChapter:
+        _goToChapter(_index - 1);
     }
+  }
+
+  /// One screenful, less a sliver of overlap so the line you were on is still
+  /// visible after the jump.
+  void _scrollStrip(int direction) {
+    if (!_verticalController.hasClients) return;
+    final pos = _verticalController.position;
+    final step = pos.viewportDimension * 0.85 * direction;
+    _verticalController.animateTo(
+      (pos.pixels + step).clamp(pos.minScrollExtent, pos.maxScrollExtent),
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOut,
+    );
   }
 
   void _toggleZoom(TransformationController ctrl) {
@@ -1003,8 +1046,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           final width = _decodeWidth(context);
           return GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTapUp: (d) =>
-                _handleTap(d.localPosition.dx, constraints.maxWidth),
+            onTapUp: (d) => _dispatchTap(d.globalPosition),
             onDoubleTapDown: (d) => _lastDoubleTapPos = d.localPosition,
             onDoubleTap: () => _toggleZoom(ctrl),
             onLongPress: () => _showPageActions(page),
@@ -1049,18 +1091,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     );
   }
 
-  /// Vertical (webtoon) mode has no left/right paging — the whole chapter is
-  /// one continuous scroll, so there is nothing for a left/right tap zone to
-  /// mean. Every tap here just toggles chrome, matching `zoneFor`'s own
-  /// vertical branch (kept in sync there; this widget doesn't call `zoneFor`
-  /// since there's only one outcome to reach).
+  /// Webtoon mode has its own zones: top and bottom scroll a screenful, the
+  /// middle opens the controls. There are no pages to turn in a continuous
+  /// strip, so tapping used to do nothing here but toggle chrome.
   Widget _verticalItem(BuildContext context, PageImage page) {
     final width = _decodeWidth(context);
     // See the comment on _pagedItem's RepaintBoundary — same reasoning here.
     return RepaintBoundary(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _toggleChrome,
+        onTapUp: (d) => _dispatchTap(d.globalPosition),
         onLongPress: () => _showPageActions(page),
         child: _cropIfEnabled(
           _isLocal(page.url)
@@ -2057,26 +2097,6 @@ class _TwoFingerScaleRecognizer extends ScaleGestureRecognizer {
 }
 
 /// Where a tap on a page lands, in the paged (ltr/rtl) reader.
-enum ReaderTapZone { previous, next, chrome }
-
-/// Pure and top-level so tap zones are unit-testable without pumping a
-/// widget. Splits the page into left/center/right thirds; RTL swaps which
-/// side means previous/next (an RTL manga page is physically flipped, so the
-/// "next" side is on the left). Vertical mode has no left/right paging at
-/// all — see `_verticalItem`, which routes every tap straight to
-/// chrome-toggle without consulting this function.
-ReaderTapZone zoneFor(double dx, double width, String direction) {
-  if (direction == 'vertical') return ReaderTapZone.chrome;
-  final third = width / 3;
-  if (dx < third) {
-    return direction == 'rtl' ? ReaderTapZone.next : ReaderTapZone.previous;
-  }
-  if (dx > width - third) {
-    return direction == 'rtl' ? ReaderTapZone.previous : ReaderTapZone.next;
-  }
-  return ReaderTapZone.chrome;
-}
-
 /// The page indices to prefetch after landing on [current] — the next
 /// [count] pages (default 3, matching the reader's original hardcoded
 /// window), clamped to the chapter's bounds. Pure so the "preload the next N"
