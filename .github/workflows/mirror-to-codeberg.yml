@@ -77,6 +77,13 @@ jobs:
           set -euo pipefail
           cd repo-mirror
           git remote set-url origin "https://codeberg.org/${CB_USER}/${CB_REPO}.git"
+          # `git clone --mirror` sets remote.origin.mirror=true, and git refuses
+          # to combine that with the explicit refspecs the push steps below use
+          # ("fatal: --mirror can't be combined with refspecs") — which is why
+          # every run of this workflow had been failing. Drop the flag and keep
+          # the refspecs: pushing heads and tags explicitly is deliberate, since
+          # a plain --mirror would also copy GitHub's refs/pull/* onto Codeberg.
+          git config --unset remote.origin.mirror || true
 
       - name: Push branches to Codeberg (with retry + prune)
         run: |

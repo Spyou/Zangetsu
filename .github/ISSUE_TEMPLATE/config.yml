@@ -1,0 +1,12 @@
+blank_issues_enabled: false
+contact_links:
+  - name: How do I add sources?
+    url: https://zangetsu.online/guide/
+    about: >
+      Setup, adding repositories, playback troubleshooting and Android TV —
+      the guide answers most "how do I…" questions.
+  - name: Which APK should I download?
+    url: https://zangetsu.online/guide/
+    about: >
+      arm64-v8a for most phones, TV for Android TV (many are still 32-bit),
+      universal if you're unsure or the others fail to install.

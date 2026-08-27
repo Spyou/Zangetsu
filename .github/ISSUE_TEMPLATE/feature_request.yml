@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest something new
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem?
+      description: >
+        Describe what you're trying to do and where the app gets in the way,
+        rather than the solution you have in mind. It's easier to find a good
+        answer from the problem than from a proposed feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the app?
+      options:
+        - Video player
+        - Manga / novel reader
+        - Sources / extensions
+        - Downloads
+        - Trackers
+        - Android TV
+        - Browsing / search
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: input
+    id: prior-art
+    attributes:
+      label: Does another app do this well?
+      description: >
+        A name is genuinely useful — it's much quicker to look at a working
+        implementation than to infer one from a description.
+      placeholder: "Kotatsu does this in its reader"

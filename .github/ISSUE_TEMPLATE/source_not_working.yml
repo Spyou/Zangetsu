@@ -1,0 +1,89 @@
+name: A source isn't working
+description: A source won't install, won't search, or won't play
+labels: ["source"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Zangetsu ships with no sources and doesn't run any of them** — apart
+        from its own JS repo, they're third-party and can break or disappear
+        without notice.
+
+        Please try these first, since they resolve most reports:
+
+        1. **Settings → Sources → Source health** — tests your sources and
+           marks dead ones.
+        2. **Update the source** — the sources screen badges available updates.
+        3. **Try the same title from a different source.**
+
+        If it still fails, the details below let us tell "this source is down"
+        apart from "the app can't load this kind of source".
+
+  - type: input
+    id: source
+    attributes:
+      label: Source name
+      placeholder: "Asura Scans"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ecosystem
+    attributes:
+      label: What kind of source is it?
+      options:
+        - Zangetsu (JS)
+        - CloudStream (.cs3)
+        - Aniyomi (anime)
+        - Mihon (manga)
+        - LNReader (light novels)
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where does it fail?
+      options:
+        - Won't install / add repository
+        - Installs, but search returns nothing
+        - Search works, but the title won't open
+        - Opens, but nothing plays / no pages load
+        - Plays, but stops or errors part way
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      placeholder: "1.9.7"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 7, Android 14"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: tried
+    attributes:
+      label: Already tried
+      options:
+        - label: Source health test
+        - label: Updated the source
+        - label: A different source, which works
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Settings → Advanced → Logs → share. Nearly every source problem is
+        diagnosed from these — without them this is usually guesswork.
+      render: text
