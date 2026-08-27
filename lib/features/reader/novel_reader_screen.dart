@@ -483,6 +483,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       fontFamily: novelFontFamily(prefs.fontFamily),
       fontSize: prefs.fontSize,
       height: prefs.lineHeight,
+      letterSpacing: prefs.letterSpacing,
+      wordSpacing: prefs.wordSpacing,
       color: theme.text,
     );
     final hasNext = _index < _chapters.length - 1;
@@ -617,6 +619,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
       fontFamily: novelFontFamily(prefs.fontFamily),
       fontSize: prefs.fontSize,
       height: prefs.lineHeight,
+      letterSpacing: prefs.letterSpacing,
+      wordSpacing: prefs.wordSpacing,
       color: theme.text,
     );
     final direction = resolveNovelDirection(prefs, text.html);
@@ -682,7 +686,8 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   void _ensurePaginated(String html, TextStyle base, Size pageSize) {
     final key =
         '${identityHashCode(_text)}|${base.fontSize}|${base.fontFamily}'
-        '|${base.height}|${pageSize.width.toStringAsFixed(1)}'
+        '|${base.height}|${base.letterSpacing}|${base.wordSpacing}'
+        '|${pageSize.width.toStringAsFixed(1)}'
         '|${pageSize.height.toStringAsFixed(1)}';
     if (key == _paginationKey) return;
     final carry = _pages.isEmpty ? _savedPermille() : _pagedPermille();
@@ -1210,6 +1215,42 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                               activeColor: AppColors.accent,
                               onChanged: (v) =>
                                   apply(() => prefs.setLineHeight(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.text_fields_rounded,
+                            label: 'Letter spacing',
+                            trailing: Text(
+                              prefs.letterSpacing.toStringAsFixed(1),
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            child: Slider(
+                              value: prefs.letterSpacing.clamp(-0.5, 3),
+                              min: -0.5,
+                              max: 3,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setLetterSpacing(v)),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.space_bar_rounded,
+                            label: 'Word spacing',
+                            trailing: Text(
+                              prefs.wordSpacing.toStringAsFixed(1),
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            child: Slider(
+                              value: prefs.wordSpacing.clamp(0, 10),
+                              min: 0,
+                              max: 10,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setWordSpacing(v)),
                             ),
                           ),
                           readerSheetRow(

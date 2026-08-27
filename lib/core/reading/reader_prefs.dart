@@ -83,6 +83,17 @@ class ReaderPrefs {
   Future<void> setOverscrollChapter(bool value) =>
       _box.put('overscrollChapter', value);
 
+  /// Extra space between letters, in logical pixels. 0 is the font's own.
+  double get letterSpacing =>
+      (_box.get('letterSpacing', defaultValue: 0.0) as num).toDouble();
+  Future<void> setLetterSpacing(double value) =>
+      _box.put('letterSpacing', value);
+
+  /// Extra space between words, in logical pixels. 0 is the font's own.
+  double get wordSpacing =>
+      (_box.get('wordSpacing', defaultValue: 0.0) as num).toDouble();
+  Future<void> setWordSpacing(double value) => _box.put('wordSpacing', value);
+
   /// Switch a long-strip chapter to vertical on its own, even when the
   /// direction pref says left-to-right. Manhwa is one tall image per page, so
   /// paged mode hands you sideways slices of it.
