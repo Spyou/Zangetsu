@@ -2,7 +2,6 @@ import AVFoundation
 import AVKit
 import CoreText
 import Flutter
-import MediaAccessibility
 import UIKit
 
 /// AVKit-based Apple TV player: stock transport chrome plus Zangetsu hooks
@@ -59,8 +58,18 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     private var captionWindow: UIWindow?
     /// While `Date() < captionStatusUntil`, keep the toast; afterwards always clear/replace.
     private var captionStatusUntil: Date?
-    private var captionSettingsObserver: NSObjectProtocol?
     private var captionBottomConstraint: NSLayoutConstraint?
+    /// App Captions Styling (PlaybackPrefs) — not system Accessibility.
+    private var captionScale: Double = 1.0
+    private var captionColorHex: String = "#FFFFFFFF"
+    private var captionBgOpacity: Double = 0.0
+    private var captionOutlineType: String = "outline"
+    private var captionFontFamily: String = ""
+    private var captionFontPath: String?
+    private var captionPositionPref: Int = 95
+    private var captionFont: UIFont = .systemFont(ofSize: 36, weight: .semibold)
+    private var captionFgColor: UIColor = .white
+
     // Subtitle timing debug (`[zangetsu-sub-timing]` in Xcode console).
     private var lastActiveCueIndex: Int?
     private var lastPlaybackT: Double = -1
@@ -98,13 +107,6 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         delegate = self
         transportBarIncludesTitleView = true
         // Caption overlay is installed lazily when a track is selected.
-        captionSettingsObserver = NotificationCenter.default.addObserver(
-            forName: Notification.Name(kMACaptionAppearanceSettingsChangedNotification as String),
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.applyCaptionAppearance()
-        }
         if let args = pendingArgs {
             pendingArgs = nil
             installEpisodesTab()
@@ -222,94 +224,118 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         super.viewDidLayoutSubviews()
         guard captionWindow != nil else { return }
         installCaptionOverlay()
+        updateCaptionPosition()
         captionWindow?.rootViewController?.view.bringSubviewToFront(captionHost)
     }
 
-    /// Sideloaded cues follow Settings → Accessibility → Subtitles & Captioning.
+    /// Apply Zangetsu Captions Styling (PlaybackPrefs) to the overlay.
     private func applyCaptionAppearance() {
-        applySystemCaptionAppearance()
-    }
+        let size = max(18, 36 * CGFloat(max(0.5, captionScale)))
+        captionFont = Self.resolveFont(
+            family: captionFontFamily,
+            path: captionFontPath,
+            size: size
+        )
+        captionFgColor = Self.color(hex: captionColorHex) ?? .white
+        captionLabel.font = captionFont
+        captionLabel.textColor = captionFgColor
 
-    private func applySystemCaptionAppearance() {
-        let domain = MACaptionAppearanceDomain.user
-
-        // Behavior out-params are only `.useValue` or `.useContentIfAvailable`
-        // (there is no `.useDefault` on this SDK).
-        var sizeBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let rel = CGFloat(MACaptionAppearanceGetRelativeCharacterSize(domain, &sizeBehavior))
-        let base: CGFloat = 36
-        let size = max(20, base * (sizeBehavior == .useValue ? max(0.5, rel) : 1))
-
-        var fontBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let desc = MACaptionAppearanceCopyFontDescriptorForStyle(
-            domain, &fontBehavior, .default
-        ).takeRetainedValue()
-        let ctFont = CTFontCreateWithFontDescriptor(desc, size, nil)
-        if let name = CTFontCopyPostScriptName(ctFont) as String?,
-           let font = UIFont(name: name, size: size) {
-            captionLabel.font = font
-        } else {
-            captionLabel.font = .systemFont(ofSize: size, weight: .semibold)
-        }
-
-        var fgBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let fgCG = MACaptionAppearanceCopyForegroundColor(domain, &fgBehavior).takeRetainedValue()
-        var fgOpBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let fgOpacity = CGFloat(MACaptionAppearanceGetForegroundOpacity(domain, &fgOpBehavior))
-        let fgAlpha = max(0.15, min(1, fgOpBehavior == .useValue ? fgOpacity : 1))
-        if fgBehavior == .useValue {
-            captionLabel.textColor = UIColor(cgColor: fgCG).withAlphaComponent(fgAlpha)
-        } else {
-            // Content-default captions: white text (returned CGColor is often black).
-            captionLabel.textColor = UIColor.white.withAlphaComponent(fgAlpha)
-        }
-
-        var bgBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let bgCG = MACaptionAppearanceCopyBackgroundColor(domain, &bgBehavior).takeRetainedValue()
-        var bgOpBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let bgOpacity = CGFloat(MACaptionAppearanceGetBackgroundOpacity(domain, &bgOpBehavior))
-        if bgBehavior == .useValue, bgOpBehavior == .useValue, bgOpacity > 0.02 {
-            captionBubble.backgroundColor = UIColor(cgColor: bgCG).withAlphaComponent(bgOpacity)
-            captionBubble.layer.cornerRadius = 6
+        let bgA = max(0, min(1, captionBgOpacity))
+        if bgA > 0.02 {
+            captionBubble.backgroundColor = UIColor.black.withAlphaComponent(bgA)
+            captionBubble.layer.cornerRadius = 8
         } else {
             captionBubble.backgroundColor = .clear
             captionBubble.layer.cornerRadius = 0
         }
+        updateCaptionPosition()
 
-        var edgeBehavior = MACaptionAppearanceBehavior.useContentIfAvailable
-        let edge = MACaptionAppearanceGetTextEdgeStyle(domain, &edgeBehavior)
-        applyTextEdgeStyle(edgeBehavior == .useValue ? edge : .dropShadow)
-        captionBottomConstraint?.constant = -48
+        if !captionBubble.isHidden,
+           let text = captionLabel.attributedText?.string ?? captionLabel.text,
+           !text.isEmpty {
+            setCaptionText(text)
+        }
     }
 
-    private func applyTextEdgeStyle(_ style: MACaptionAppearanceTextEdgeStyle) {
-        captionLabel.layer.shadowColor = UIColor.black.cgColor
+    private func updateCaptionPosition() {
+        let h = max(captionHost.bounds.height, view.bounds.height, UIScreen.main.bounds.height)
+        let t = CGFloat(max(0, min(100, captionPositionPref))) / 100.0
+        // 100 ≈ near bottom; 0 ≈ upper third.
+        captionBottomConstraint?.constant = -((1 - t) * (h * 0.55) + 36)
+    }
+
+    private static func resolveFont(family: String, path: String?, size: CGFloat) -> UIFont {
+        if let path, !path.isEmpty,
+           let data = NSData(contentsOfFile: path) as CFData?,
+           let provider = CGDataProvider(data: data),
+           let cgFont = CGFont(provider) {
+            var err: Unmanaged<CFError>?
+            CTFontManagerRegisterGraphicsFont(cgFont, &err)
+            if let ps = cgFont.postScriptName as String?,
+               let font = UIFont(name: ps, size: size) {
+                return font
+            }
+        }
+        if !family.isEmpty {
+            let candidates = [family, "\(family)-Regular", family.replacingOccurrences(of: " ", with: "")]
+            for name in candidates {
+                if let font = UIFont(name: name, size: size) { return font }
+            }
+        }
+        return .systemFont(ofSize: size, weight: .semibold)
+    }
+
+    private static func color(hex: String) -> UIColor? {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        if h.hasPrefix("#") { h.removeFirst() }
+        if h.count == 6 { h += "FF" }
+        guard h.count == 8, let v = UInt64(h, radix: 16) else { return nil }
+        let r = CGFloat((v >> 24) & 0xFF) / 255
+        let g = CGFloat((v >> 16) & 0xFF) / 255
+        let b = CGFloat((v >> 8) & 0xFF) / 255
+        let a = CGFloat(v & 0xFF) / 255
+        return UIColor(red: r, green: g, blue: b, alpha: a)
+    }
+
+    /// Build attributed caption text from app outline prefs.
+    private func makeCaptionAttributed(_ text: String) -> NSAttributedString {
+        let para = NSMutableParagraphStyle()
+        para.alignment = .center
+        para.lineBreakMode = .byWordWrapping
+
+        var attrs: [NSAttributedString.Key: Any] = [
+            .font: captionFont,
+            .foregroundColor: captionFgColor,
+            .paragraphStyle: para,
+        ]
+
+        captionLabel.layer.shadowOpacity = 0
+        captionLabel.layer.shadowRadius = 0
         captionLabel.layer.shadowOffset = .zero
-        switch style {
-        case .none, .undefined:
-            captionLabel.layer.shadowOpacity = 0
-            captionLabel.layer.shadowRadius = 0
-            captionLabel.layer.shadowOffset = .zero
-        case .dropShadow:
+        captionLabel.layer.shadowColor = UIColor.black.cgColor
+
+        switch captionOutlineType {
+        case "none":
+            break
+        case "shadow":
             captionLabel.layer.shadowOpacity = 0.95
             captionLabel.layer.shadowRadius = 3
             captionLabel.layer.shadowOffset = CGSize(width: 1.5, height: 1.5)
-        case .raised:
-            captionLabel.layer.shadowOpacity = 0.85
-            captionLabel.layer.shadowRadius = 1
-            captionLabel.layer.shadowOffset = CGSize(width: -1, height: -1)
-        case .depressed:
-            captionLabel.layer.shadowOpacity = 0.85
-            captionLabel.layer.shadowRadius = 1
-            captionLabel.layer.shadowOffset = CGSize(width: 1, height: 1)
-        case .uniform:
-            captionLabel.layer.shadowOpacity = 1
-            captionLabel.layer.shadowRadius = 2.5
-            captionLabel.layer.shadowOffset = .zero
-        @unknown default:
+        case "raised":
             captionLabel.layer.shadowOpacity = 0.9
-            captionLabel.layer.shadowRadius = 3
+            captionLabel.layer.shadowRadius = 0.5
+            captionLabel.layer.shadowOffset = CGSize(width: -1.5, height: -1.5)
+        case "depressed":
+            captionLabel.layer.shadowOpacity = 0.9
+            captionLabel.layer.shadowRadius = 0.5
+            captionLabel.layer.shadowOffset = CGSize(width: 1.5, height: 1.5)
+        case "outline", "soft", "glow", "bold":
+            fallthrough
+        default:
+            attrs[.strokeColor] = UIColor.black
+            attrs[.strokeWidth] = -4.0
         }
+        return NSAttributedString(string: text, attributes: attrs)
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -320,9 +346,6 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     }
 
     deinit {
-        if let captionSettingsObserver {
-            NotificationCenter.default.removeObserver(captionSettingsObserver)
-        }
         tearDownObservers()
         tearDownCaptionWindow()
         saveTimer?.invalidate()
@@ -373,6 +396,27 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         }
         if let n = args["subtitleDelaySeconds"] as? NSNumber {
             captionDelaySeconds = max(-60, min(60, n.doubleValue))
+        }
+        if let n = args["subtitleScale"] as? NSNumber {
+            captionScale = max(0.5, min(2.5, n.doubleValue))
+        }
+        if let hex = args["subtitleColorHex"] as? String, !hex.isEmpty {
+            captionColorHex = hex
+        }
+        if let n = args["subtitleBgOpacity"] as? NSNumber {
+            captionBgOpacity = max(0, min(1, n.doubleValue))
+        }
+        if let t = args["subtitleOutlineType"] as? String, !t.isEmpty {
+            captionOutlineType = t
+        }
+        if let f = args["subtitleFontFamily"] as? String {
+            captionFontFamily = f
+        }
+        if let p = args["subtitleFontPath"] as? String, !p.isEmpty {
+            captionFontPath = p
+        }
+        if let n = args["subtitlePositionPref"] as? NSNumber {
+            captionPositionPref = max(0, min(100, n.intValue))
         }
         let skew = (args["subtitleSkewSeconds"] as? NSNumber)?.doubleValue ?? 0
         providerSubtitleSkewApplied = abs(skew) >= 0.05
@@ -559,7 +603,12 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         ))
 
         // Audio / Sources / Subs
-        items.append(buildAudioSourcesMenu())
+        if let audio = buildAudioMenu() {
+            items.append(audio)
+        }
+        if let sources = buildSourcesMenu() {
+            items.append(sources)
+        }
 
         // Subtitles (embedded + provider + online)
         items.append(buildSubtitlesMenu())
@@ -588,29 +637,29 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         transportBarCustomMenuItems = items
     }
 
-    private func buildAudioSourcesMenu() -> UIMenu {
-        var children: [UIMenuElement] = []
-
-        if !availableCategories.isEmpty {
-            let catActions: [UIAction] = availableCategories.map { cat in
-                let name = cat == "dub" ? "Dub" : (cat == "sub" ? "Sub" : cat)
-                return UIAction(
-                    title: name,
-                    state: cat == category ? .on : .off
-                ) { [weak self] _ in
-                    guard let self else { return }
-                    self.category = cat
-                    self.channel.invokeMethod("setCategory", arguments: ["category": cat])
-                    self.resolveAndPlay(index: self.episodeIndex, forceReload: true)
-                }
+    private func buildAudioMenu() -> UIMenu? {
+        guard !availableCategories.isEmpty else { return nil }
+        let catActions: [UIAction] = availableCategories.map { cat in
+            let name = cat == "dub" ? "Dub" : (cat == "sub" ? "Sub" : cat)
+            return UIAction(
+                title: name,
+                state: cat == category ? .on : .off
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.category = cat
+                self.channel.invokeMethod("setCategory", arguments: ["category": cat])
+                self.resolveAndPlay(index: self.episodeIndex, forceReload: true)
             }
-            children.append(UIMenu(
-                title: "Audio",
-                options: [.displayInline, .singleSelection],
-                children: catActions
-            ))
         }
+        return UIMenu(
+            title: "Audio",
+            image: UIImage(systemName: "speaker.wave.2"),
+            options: [.singleSelection],
+            children: catActions
+        )
+    }
 
+    private func buildSourcesMenu() -> UIMenu? {
         if !cachedSources.isEmpty {
             let srcActions: [UIAction] = cachedSources.enumerated().map { i, src in
                 let label = (src["label"] as? String)
@@ -623,33 +672,26 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
                     self?.playSource(src)
                 }
             }
-            children.append(UIMenu(
+            return UIMenu(
                 title: "Sources",
-                options: [.displayInline],
+                image: UIImage(systemName: "rectangle.stack"),
                 children: srcActions
-            ))
-        } else {
-            children.append(UIAction(title: "Refresh sources") { [weak self] _ in
-                self?.refreshSourcesCache(rebuildMenus: true)
-            })
+            )
         }
-
         return UIMenu(
-            title: "Audio & Sources",
-            image: UIImage(systemName: "speaker.wave.2"),
-            children: children
+            title: "Sources",
+            image: UIImage(systemName: "rectangle.stack"),
+            children: [
+                UIAction(title: "Refresh sources") { [weak self] _ in
+                    self?.refreshSourcesCache(rebuildMenus: true)
+                },
+            ]
         )
     }
 
     private func buildSubtitlesMenu() -> UIMenu {
         var children: [UIMenuElement] = []
-        children.append(UIAction(
-            title: "Caption style…",
-            subtitle: "Settings → Accessibility → Subtitles",
-            image: UIImage(systemName: "textformat")
-        ) { [weak self] _ in
-            self?.flashCaptionStatus("Style: Settings → Accessibility → Subtitles")
-        })
+        children.append(buildCaptionStyleMenu())
         children.append(buildCaptionDelayMenu())
         children.append(UIAction(
             title: "Off",
@@ -687,6 +729,211 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             image: UIImage(systemName: "captions.bubble"),
             children: children
         )
+    }
+
+    /// Nested Caption style menus (Size / Color / Edge / …).
+    private func buildCaptionStyleMenu() -> UIMenu {
+        func nearestSizeLabel() -> String {
+            Self.nearestLabel(in: Self.captionSizes.map { ($0.0, $0.1) }, value: captionScale)
+        }
+        func nearestBgLabel() -> String {
+            Self.nearestLabel(in: Self.captionBackgrounds.map { ($0.0, $0.1) }, value: captionBgOpacity)
+        }
+        func nearestPosLabel() -> String {
+            Self.nearestLabel(
+                in: Self.captionPositions.map { ($0.0, Double($0.1)) },
+                value: Double(captionPositionPref)
+            )
+        }
+        let colorLabel = Self.captionColors.first {
+            $0.1.caseInsensitiveCompare(captionColorHex) == .orderedSame
+        }?.0 ?? "Custom"
+        let edgeId = ["soft", "glow", "bold"].contains(captionOutlineType)
+            ? "outline"
+            : captionOutlineType
+        let edgeLabel = Self.captionEdges.first { $0.1 == edgeId }?.0 ?? "Outline"
+        let fontLabel = captionFontFamily.isEmpty ? "Default" : captionFontFamily
+
+        let sizeMenu = UIMenu(
+            title: "Size",
+            subtitle: nearestSizeLabel(),
+            options: [.singleSelection],
+            children: Self.captionSizes.map { label, scale in
+                UIAction(
+                    title: label,
+                    state: nearestSizeLabel() == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionScale(scale)
+                }
+            }
+        )
+        let colorMenu = UIMenu(
+            title: "Color",
+            subtitle: colorLabel,
+            options: [.singleSelection],
+            children: Self.captionColors.map { label, hex in
+                UIAction(
+                    title: label,
+                    state: colorLabel == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionColorHex(hex)
+                }
+            }
+        )
+        let edgeMenu = UIMenu(
+            title: "Edge",
+            subtitle: edgeLabel,
+            options: [.singleSelection],
+            children: Self.captionEdges.map { label, id in
+                UIAction(
+                    title: label,
+                    state: edgeLabel == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionOutlineType(id)
+                }
+            }
+        )
+        let bgMenu = UIMenu(
+            title: "Background",
+            subtitle: nearestBgLabel(),
+            options: [.singleSelection],
+            children: Self.captionBackgrounds.map { label, opacity in
+                UIAction(
+                    title: label,
+                    state: nearestBgLabel() == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionBgOpacity(opacity)
+                }
+            }
+        )
+        let fontMenu = UIMenu(
+            title: "Font",
+            subtitle: fontLabel,
+            options: [.singleSelection],
+            children: Self.captionFonts.map { label, family in
+                UIAction(
+                    title: label,
+                    state: fontLabel == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionFontFamily(family)
+                }
+            }
+        )
+        let posMenu = UIMenu(
+            title: "Position",
+            subtitle: nearestPosLabel(),
+            options: [.singleSelection],
+            children: Self.captionPositions.map { label, pos in
+                UIAction(
+                    title: label,
+                    state: nearestPosLabel() == label ? .on : .off
+                ) { [weak self] _ in
+                    self?.setCaptionPosition(pos)
+                }
+            }
+        )
+
+        return UIMenu(
+            title: "Caption style",
+            image: UIImage(systemName: "textformat"),
+            children: [sizeMenu, colorMenu, edgeMenu, bgMenu, fontMenu, posMenu]
+        )
+    }
+
+    private static let captionSizes: [(String, Double)] = [
+        ("Small", 0.8), ("Medium", 1.0), ("Large", 1.3),
+    ]
+    private static let captionColors: [(String, String)] = [
+        ("White", "#FFFFFFFF"),
+        ("Yellow", "#FFFF00FF"),
+        ("Cyan", "#00E5FFFF"),
+        ("Green", "#7CFC00FF"),
+        ("Red", "#FF6B6BFF"),
+        ("Black", "#000000FF"),
+    ]
+    private static let captionEdges: [(String, String)] = [
+        ("None", "none"),
+        ("Outline", "outline"),
+        ("Drop Shadow", "shadow"),
+        ("Raised", "raised"),
+        ("Depressed", "depressed"),
+    ]
+    private static let captionBackgrounds: [(String, Double)] = [
+        ("Off", 0.0), ("Light", 0.25), ("Medium", 0.5), ("Strong", 0.75),
+    ]
+    private static let captionFonts: [(String, String)] = [
+        ("Default", ""),
+        ("Inter", "Inter"),
+        ("Poppins", "Poppins"),
+        ("Roboto", "Roboto"),
+        ("Open Sans", "Open Sans"),
+        ("Lato", "Lato"),
+        ("Montserrat", "Montserrat"),
+        ("Nunito", "Nunito"),
+        ("Rubik", "Rubik"),
+        ("Noto Sans", "Noto Sans"),
+        ("Source Sans 3", "Source Sans 3"),
+    ]
+    private static let captionPositions: [(String, Int)] = [
+        ("Low", 95), ("Middle", 70), ("High", 40),
+    ]
+
+    private static func nearestLabel(in options: [(String, Double)], value: Double) -> String {
+        options.min(by: { abs($0.1 - value) < abs($1.1 - value) })?.0 ?? options.first?.0 ?? ""
+    }
+
+    private func setCaptionScale(_ scale: Double) {
+        captionScale = scale
+        channel.invokeMethod("setSubtitleScale", arguments: ["scale": scale])
+        applyCaptionAppearance()
+        rebuildTransportMenus()
+    }
+
+    private func setCaptionColorHex(_ hex: String) {
+        captionColorHex = hex
+        channel.invokeMethod("setSubtitleColorHex", arguments: ["hex": hex])
+        applyCaptionAppearance()
+        rebuildTransportMenus()
+    }
+
+    private func setCaptionOutlineType(_ type: String) {
+        captionOutlineType = type
+        channel.invokeMethod("setSubtitleOutlineType", arguments: ["type": type])
+        applyCaptionAppearance()
+        rebuildTransportMenus()
+    }
+
+    private func setCaptionBgOpacity(_ opacity: Double) {
+        captionBgOpacity = opacity
+        channel.invokeMethod("setSubtitleBgOpacity", arguments: ["opacity": opacity])
+        applyCaptionAppearance()
+        rebuildTransportMenus()
+    }
+
+    private func setCaptionPosition(_ position: Int) {
+        captionPositionPref = position
+        channel.invokeMethod("setSubtitlePosition", arguments: ["position": position])
+        applyCaptionAppearance()
+        rebuildTransportMenus()
+    }
+
+    private func setCaptionFontFamily(_ family: String) {
+        captionFontFamily = family
+        channel.invokeMethod("setSubtitleFont", arguments: ["font": family])
+        if family.isEmpty {
+            captionFontPath = nil
+            applyCaptionAppearance()
+            rebuildTransportMenus()
+            return
+        }
+        channel.invokeMethod("stageSubtitleFont", arguments: ["font": family]) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.captionFontPath = result as? String
+                self.applyCaptionAppearance()
+                self.rebuildTransportMenus()
+            }
+        }
     }
 
     private func buildCaptionDelayMenu() -> UIMenu {
@@ -1017,9 +1264,10 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         installCaptionOverlay()
         captionParentView().bringSubviewToFront(captionHost)
         if let text, !text.isEmpty {
-            captionLabel.text = text
+            captionLabel.attributedText = makeCaptionAttributed(text)
             captionBubble.isHidden = false
         } else {
+            captionLabel.attributedText = nil
             captionLabel.text = nil
             captionBubble.isHidden = true
         }
@@ -1857,10 +2105,6 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         saveTimer?.invalidate()
         saveTimer = nil
         tearDownCaptionWindow()
-        if let captionSettingsObserver {
-            NotificationCenter.default.removeObserver(captionSettingsObserver)
-            self.captionSettingsObserver = nil
-        }
 
         let cur = player?.currentTime().seconds ?? 0
         let durS = player?.currentItem?.duration.seconds ?? 0
