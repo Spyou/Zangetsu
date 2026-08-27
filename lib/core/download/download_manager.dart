@@ -156,11 +156,7 @@ class DownloadManager extends ChangeNotifier {
         );
         if (finalized != null) path = finalized;
       }
-      _put(rec.copyWith(
-        status: DownloadStatus.done,
-        progress: 1,
-        filePath: () => path,
-      ));
+      await _markDone(rec, path);
       notifyListeners();
     });
     svc.on('failed').listen((d) async {
@@ -186,18 +182,14 @@ class DownloadManager extends ChangeNotifier {
   /// Apply progress events from the native torrent download engine onto records
   /// (peers/speed are cached in [torrentProgress] for the UI).
   void _listenTorrentDownloads() {
-    _torrentSvc.events().listen((p) {
+    _torrentSvc.events().listen((p) async {
       final rec = _records[p.id];
       if (rec == null || rec.status == DownloadStatus.canceled) return;
       torrentProgress[p.id] = p;
       switch (p.status) {
         case 'done':
           _candidates.remove(p.id);
-          _put(rec.copyWith(
-            status: DownloadStatus.done,
-            progress: 1,
-            filePath: () => p.filePath,
-          ));
+          await _markDone(rec, p.filePath);
         case 'failed':
           _put(rec.copyWith(
             status: DownloadStatus.failed,
@@ -241,11 +233,7 @@ class DownloadManager extends ChangeNotifier {
                 );
                 if (finalized != null) path = finalized;
               }
-              _put(rec.copyWith(
-                status: DownloadStatus.done,
-                progress: 1,
-                filePath: () => path,
-              ));
+              await _markDone(rec, path);
             } else if (status == 'failed') {
               final err = m['error'] as String? ?? 'Download failed';
               AppLogger.instance.log(
@@ -370,6 +358,14 @@ class DownloadManager extends ChangeNotifier {
     try {
       await Permission.notification.request();
     } catch (_) {}
+    // Carry the outgoing file on the new record so it survives a restart —
+    // in memory it was lost if the app died mid re-download, stranding the old
+    // file for good. A previous supersededPath wins if this record never got a
+    // file of its own (a re-download that failed, then was retried).
+    final replacing = _records[_idFor(sourceId, showId, episode.id)];
+    final outgoing = (replacing?.filePath?.isNotEmpty ?? false)
+        ? replacing!.filePath
+        : replacing?.supersededPath;
     final rec = DownloadRecord(
       id: _idFor(sourceId, showId, episode.id),
       sourceId: sourceId,
@@ -385,6 +381,7 @@ class DownloadManager extends ChangeNotifier {
       category: category,
       quality: qualityLabel,
       malId: malId,
+      supersededPath: outgoing,
       createdAt: nowMs,
     );
     _put(rec);
@@ -869,29 +866,11 @@ class DownloadManager extends ChangeNotifier {
     //    downloads left the file on disk (the "still in the folder" bug). Delete
     //    it directly; if scoped storage blocks the raw delete, fall back to the
     //    plugin's native (MediaStore-aware) delete. Then drop the empty show dir.
-    final fp = rec.filePath;
-    if (fp != null && fp.isNotEmpty) {
-      try {
-        if (isUriPath(fp)) {
-          await _dl.uri.deleteFile(Uri.parse(fp));
-        } else {
-          final f = File(fp);
-          try {
-            if (await f.exists()) await f.delete();
-          } catch (_) {}
-          if (await f.exists()) {
-            try {
-              await _dl.uri.deleteFile(f.uri);
-            } catch (_) {}
-          }
-          try {
-            final dir = f.parent;
-            if (await dir.exists() && await dir.list().isEmpty) {
-              await dir.delete();
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
+    await _deleteMediaFile(rec.filePath);
+    // A re-download that never finished leaves the file it was going to
+    // replace pointed at here; it has no other owner, so it goes too.
+    if (rec.supersededPath != rec.filePath) {
+      await _deleteMediaFile(rec.supersededPath);
     }
     _records.remove(rec.id);
     await _box.delete(rec.id);
@@ -968,6 +947,12 @@ class DownloadManager extends ChangeNotifier {
   /// Skips in-flight records; emits a single [notifyListeners] if anything went.
   Future<void> pruneMissing() async {
     final gone = <String>[];
+    // Downloads that finished before the size was recorded on completion. They
+    // sat at "0 B" forever and dragged the storage total down with them, so
+    // measure them here — this already stats every file, so it costs nothing
+    // extra. Collected and applied after the loop rather than written inline,
+    // to avoid mutating the map being iterated.
+    final measured = <DownloadRecord>[];
     for (final rec in _records.values) {
       if (rec.status != DownloadStatus.done) continue;
       final fp = rec.filePath;
@@ -978,7 +963,13 @@ class DownloadManager extends ChangeNotifier {
           continue;
         }
         final f = File(fp);
-        if (await f.exists()) continue; // file present → keep
+        if (await f.exists()) {
+          if (rec.bytesTotal <= 0) {
+            final len = await sizeOf(fp);
+            if (len != null) measured.add(rec.copyWith(bytesTotal: len));
+          }
+          continue; // file present → keep
+        }
         // Storage is "available" if ANY ancestor dir still exists (walk up), so
         // a missing file means it was deleted — not that the volume is unmounted.
         var storageOk = false;
@@ -994,6 +985,12 @@ class DownloadManager extends ChangeNotifier {
         }
         if (storageOk) gone.add(rec.id);
       } catch (_) {}
+    }
+    if (measured.isNotEmpty) {
+      for (final rec in measured) {
+        _put(rec);
+      }
+      notifyListeners();
     }
     if (gone.isEmpty) return;
     for (final id in gone) {
@@ -1152,16 +1149,85 @@ class DownloadManager extends ChangeNotifier {
     }
 
     _candidates.remove(rec.id); // success — no more fallbacks needed
+    await _markDone(rec, path);
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /// Delete a downloaded media file. Two cases:
+  ///  • SAF custom folder → a content:// URI, removed via UriUtils.
+  ///  • Default download (public Download/Zangetsu) → a plain file path the
+  ///    app owns. Previously ONLY the content:// case was handled, so default
+  ///    downloads left the file on disk (the "still in the folder" bug). Delete
+  ///    it directly; if scoped storage blocks the raw delete, fall back to the
+  ///    plugin's native (MediaStore-aware) delete. Then drop the empty show dir.
+  Future<void> _deleteMediaFile(String? fp) async {
+    if (fp == null || fp.isEmpty) return;
+    try {
+      if (isUriPath(fp)) {
+        await _dl.uri.deleteFile(Uri.parse(fp));
+      } else {
+        final f = File(fp);
+        try {
+          if (await f.exists()) await f.delete();
+        } catch (_) {}
+        if (await f.exists()) {
+          try {
+            await _dl.uri.deleteFile(f.uri);
+          } catch (_) {}
+        }
+        try {
+          final dir = f.parent;
+          if (await dir.exists() && await dir.list().isEmpty) {
+            await dir.delete();
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  /// Size of a finished download, or null to leave what's already recorded.
+  ///
+  /// Only the background_downloader path reports a size (via
+  /// `expectedFileSize`), so HLS — which is fetched in-app and remuxed — always
+  /// finished at 0 and the storage total under-counted every anime source.
+  /// A content:// URI can't be stat'd, so those keep whatever they had.
+  @visibleForTesting
+  static Future<int?> sizeOf(String? path) async {
+    if (path == null || path.isEmpty || isUriPath(path)) return null;
+    try {
+      final f = File(path);
+      if (!await f.exists()) return null;
+      final len = await f.length();
+      return len > 0 ? len : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Finish a download: record its real size, then clear out the file a
+  /// previous download of the same episode left behind.
+  ///
+  /// The record id is source+show+episode with no quality or mirror in it, so
+  /// re-downloading an episode at another quality overwrites the record and
+  /// used to strand the old file — invisible to the app and a few hundred MB
+  /// each. Deleted only once the replacement is safely on disk, so a failed
+  /// re-download doesn't cost the copy that already worked.
+  Future<void> _markDone(DownloadRecord rec, String? path) async {
     _put(
       rec.copyWith(
         status: DownloadStatus.done,
         progress: 1,
         filePath: () => path,
+        bytesTotal: rec.bytesTotal > 0 ? null : await sizeOf(path),
+        supersededPath: () => null,
       ),
     );
+    final superseded = rec.supersededPath;
+    if (superseded != null && superseded.isNotEmpty && superseded != path) {
+      await _deleteMediaFile(superseded);
+    }
   }
-
-  // ── Helpers ──────────────────────────────────────────────────────────────
 
   void _put(DownloadRecord rec) {
     _records[rec.id] = rec;
