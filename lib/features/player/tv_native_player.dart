@@ -109,7 +109,7 @@ class TvNativePlayer {
     }
 
     final ep = _episodes[startIndex];
-    final src = await _resolveSource(ep);
+    var src = await _resolveSource(ep);
     if (src == null) return false;
     final playUrl = await _playableUrl(src.url);
     if (playUrl == null) return false; // torrent failed / Wi-Fi-only
@@ -222,7 +222,7 @@ class TvNativePlayer {
         final category = (args['category'] as String?) ?? _category;
         if (index < 0 || index >= _episodes.length) return null;
         final ep = _episodes[index];
-        final src = await _resolveSource(ep, category: category);
+        var src = await _resolveSource(ep, category: category);
         if (src == null) return null;
         final playUrl = await _playableUrl(src.url);
         if (playUrl == null) return null;
@@ -395,6 +395,8 @@ class TvNativePlayer {
         // The mobile Quality menu keys off per-source quality; carry it through so
         // the native Quality menu can list distinct resolutions.
         'quality': src.quality ?? '',
+        'subtitleSkewSeconds': src.subtitleSkewSeconds ?? 0.0,
+        'subtitleSkewAfterSeconds': src.subtitleSkewAfterSeconds ?? 0.0,
         // ClearKey DRM (base64url kid/key) for encrypted CENC/DASH channels; the
         // native TV player builds an ExoPlayer clearkey session when present.
         if (src.isDrm) 'drmKid': src.drmKid,

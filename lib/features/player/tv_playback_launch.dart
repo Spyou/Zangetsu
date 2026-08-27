@@ -7,28 +7,35 @@ import '../../core/platform/apple_tv.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
-import 'tv_av_player_screen.dart';
+import 'tv_av_native_player.dart';
 import 'tv_exo_player_screen.dart';
 import 'tv_native_player.dart';
 
 /// Which TV player backend to use.
-enum TvPlayerKind { avPlayer, nativeExo, exoView }
+enum TvPlayerKind {
+  /// Stock AVPlayerViewController (Apple TV).
+  avPlayerSystem,
 
-/// Pure routing: Apple TV always uses AVPlayer; Android TV keeps the native
-/// ExoPlayer Activity vs Flutter platform-view split.
+  nativeExo,
+  exoView,
+}
+
+/// Pure routing: Apple TV always uses system AVKit; Android TV keeps native
+/// Exo vs platform-view.
 TvPlayerKind tvPlayerKind({
   required bool appleTv,
   required bool nativeTvPlayer,
 }) {
-  if (appleTv) return TvPlayerKind.avPlayer;
+  if (appleTv) return TvPlayerKind.avPlayerSystem;
   if (nativeTvPlayer) return TvPlayerKind.nativeExo;
   return TvPlayerKind.exoView;
 }
 
 /// Routes a TV play request to the platform player.
 ///
-/// Apple TV always uses AVPlayer ([TvAvPlayerScreen]). Android TV keeps the
-/// existing native ExoPlayer Activity vs Flutter platform-view split.
+/// Apple TV always uses AVKit [TvSystemPlayerViewController] with transport
+/// menus / Episodes tab / Up Next. Android TV keeps native Exo vs
+/// platform-view.
 Future<void> launchTvPlayback({
   required BuildContext context,
   required String sourceId,
@@ -48,29 +55,31 @@ Future<void> launchTvPlayback({
   bool tmdbIsTv = false,
   String? imdbId,
 }) async {
+  final prefs = sl<PlaybackPrefs>();
   final kind = tvPlayerKind(
     appleTv: isAppleTv,
-    nativeTvPlayer: sl<PlaybackPrefs>().nativeTvPlayer,
+    nativeTvPlayer: prefs.nativeTvPlayer,
   );
 
-  if (kind == TvPlayerKind.avPlayer) {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => TvAvPlayerScreen(
-          sourceId: sourceId,
-          episodes: episodes,
-          startIndex: startIndex,
-          resume: resume,
-          resolveSources: resolveSources,
-          showUrl: showUrl,
-          showTitle: showTitle,
-          cover: cover,
-          coverHeaders: coverHeaders,
-          category: category,
-          malId: malId,
-        ),
-      ),
+  if (kind == TvPlayerKind.avPlayerSystem) {
+    final started = await TvAvNativePlayer.play(
+      sourceId: sourceId,
+      episodes: episodes,
+      startIndex: startIndex,
+      resume: resume,
+      resolveSources: resolveSources,
+      showUrl: showUrl,
+      showTitle: showTitle,
+      cover: cover,
+      coverHeaders: coverHeaders,
+      category: category,
+      availableCategories: availableCategories,
+      malId: malId,
+      scrobbleTitle: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
     );
+    if (!started && context.mounted) await showTvPlaybackLoadError(context);
     return;
   }
 

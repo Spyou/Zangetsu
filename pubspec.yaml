@@ -57,6 +57,7 @@ dependencies:
   shared_preferences_tvos: ^0.0.2
   flutter_secure_storage_tvos: ^0.0.2
   sqflite_tvos: ^0.0.2
+  # Transitive via flutter_widget_from_html (etc.); needs a tvOS implementation.
   video_player_tvos: ^0.0.1
   wakelock_plus_tvos: ^0.0.1
   firebase_core_tvos: ^0.0.2
@@ -115,8 +116,6 @@ dependencies:
   # that media_kit plays natively — no iframe, no YouTube chrome (Netflix-style).
   youtube_explode_dart: ^3.1.0
   wakelock_plus: ^1.5.2
-  # Apple TV (tvOS) playback via AVPlayer; Android/iOS keep media_kit / Exo.
-  video_player: ^2.10.0
   appwrite: ^25.0.0
   image_picker: ^1.2.2
   # Swipe-for-brightness gesture in the player (left half of the surface).

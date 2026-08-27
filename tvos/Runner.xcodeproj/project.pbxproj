@@ -10,6 +10,7 @@
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		2B44C126E7469A9996814265 /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5B54B831B9FA8B9B8627B31 /* Pods_Runner.framework */; };
 		97C146FB1CF9000082B4168C /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000082B4168C /* AppDelegate.swift */; };
+		AAF40000000000000000TSVC /* TvSystemPlayerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAF40000000000000000TSVR /* TvSystemPlayerViewController.swift */; };
 		97C1470A1CF9000082B4168D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000082B4168D /* Main.storyboard */; };
 		97C1470B1CF9000082B4168D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000082B4168E /* LaunchScreen.storyboard */; };
 		97C1470F1CF9000082B4168C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000082B4168C /* Assets.xcassets */; };
@@ -27,6 +28,7 @@
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Debug.xcconfig; path = Flutter/Debug.xcconfig; sourceTree = "<group>"; };
 		97C146EE1CF9000082B41680 /* Runner.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Runner.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		97C146FA1CF9000082B4168C /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AAF40000000000000000TSVR /* TvSystemPlayerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TvSystemPlayerViewController.swift; sourceTree = "<group>"; };
 		97C146FD1CF9000082B4168C /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C146FE1CF9000082B4168C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		97C146FF1CF9000082B4168D /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Main.storyboard; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -83,6 +85,7 @@
 			isa = PBXGroup;
 			children = (
 				97C146FA1CF9000082B4168C /* AppDelegate.swift */,
+				AAF40000000000000000TSVR /* TvSystemPlayerViewController.swift */,
 				AAA000000000000000000003 /* Runner-Bridging-Header.h */,
 				1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */,
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
@@ -287,6 +290,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				97C146FB1CF9000082B4168C /* AppDelegate.swift in Sources */,
+				AAF40000000000000000TSVC /* TvSystemPlayerViewController.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

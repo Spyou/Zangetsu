@@ -198,6 +198,8 @@ class DownloadManager extends ChangeNotifier {
   /// Apply progress events from the native torrent download engine onto records
   /// (peers/speed are cached in [torrentProgress] for the UI).
   void _listenTorrentDownloads() {
+    // Android-only Method/EventChannel — tvOS has no torrent engine.
+    if (isAppleTv) return;
     _torrentSvc.events().listen((p) {
       final rec = _records[p.id];
       if (rec == null || rec.status == DownloadStatus.canceled) return;

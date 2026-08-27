@@ -18,6 +18,7 @@ import '../../core/tracker/tracker.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';

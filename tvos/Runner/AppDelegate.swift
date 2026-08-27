@@ -3,6 +3,8 @@ import Flutter
 
 @main
 class AppDelegate: FlutterAppDelegate {
+    private var tvPlayerChannel: FlutterMethodChannel?
+
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -16,8 +18,50 @@ class AppDelegate: FlutterAppDelegate {
         GeneratedPluginRegistrant.register(with: self)
         Self.registerDeviceChannel(with: flutterViewController.binaryMessenger)
         Self.registerNovelHttp(with: flutterViewController.binaryMessenger)
+        registerTvPlayerChannel(with: flutterViewController)
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    /// Bidirectional bridge for the native AVKit player.
+    /// Dart→native: `launch`, `setFillerInfo`. Native→Dart uses the same
+    /// channel via `invokeMethod` (resolveEpisode / saveProgress / …).
+    private func registerTvPlayerChannel(with flutterVC: FlutterViewController) {
+        let channel = FlutterMethodChannel(
+            name: "zangetsu/tv_player",
+            binaryMessenger: flutterVC.binaryMessenger
+        )
+        tvPlayerChannel = channel
+        channel.setMethodCallHandler { [weak flutterVC] call, result in
+            guard let flutterVC else {
+                result(FlutterError(code: "no_vc", message: "Flutter VC gone", details: nil))
+                return
+            }
+            switch call.method {
+            case "launch":
+                guard let args = call.arguments as? [String: Any] else {
+                    result(FlutterError(code: "bad_args", message: "map required", details: nil))
+                    return
+                }
+                if TvSystemPlayerViewController.active != nil {
+                    result(FlutterError(code: "busy", message: "player already open", details: nil))
+                    return
+                }
+                let player = TvSystemPlayerViewController(
+                    channel: channel, args: args, result: result
+                )
+                player.modalPresentationStyle = .fullScreen
+                flutterVC.present(player, animated: true)
+            case "setFillerInfo":
+                let flags = (call.arguments as? [String: Any])?["fillerFlags"] as? [Bool]
+                    ?? ((call.arguments as? [String: Any])?["fillerFlags"] as? [NSNumber])?.map(\.boolValue)
+                let auto = (call.arguments as? [String: Any])?["autoSkipFiller"] as? Bool
+                TvSystemPlayerViewController.active?.applyFillerInfo(flags: flags, autoSkip: auto)
+                result(nil)
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
     }
 
     /// Same channel Android uses for leanback detection. Always true here —

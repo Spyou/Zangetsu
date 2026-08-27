@@ -32,6 +32,10 @@
   -->
   <key>FLTAssetsPath</key>
   <string>flutter_assets</string>
+  <!-- Impeller + FlutterTexture often paints black on the tvOS Simulator
+       while AVPlayer audio still plays. Skia restores external textures. -->
+  <key>FLTEnableImpeller</key>
+  <false/>
   <key>UIMainStoryboardFile</key>
   <string>Main</string>
   <key>UIRequiredDeviceCapabilities</key>

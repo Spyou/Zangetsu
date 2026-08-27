@@ -3,14 +3,14 @@ import 'package:watch_app/features/player/tv_playback_launch.dart';
 
 void main() {
   group('tvPlayerKind', () {
-    test('Apple TV always uses AVPlayer', () {
+    test('Apple TV always uses system AVKit', () {
       expect(
         tvPlayerKind(appleTv: true, nativeTvPlayer: false),
-        TvPlayerKind.avPlayer,
+        TvPlayerKind.avPlayerSystem,
       );
       expect(
         tvPlayerKind(appleTv: true, nativeTvPlayer: true),
-        TvPlayerKind.avPlayer,
+        TvPlayerKind.avPlayerSystem,
       );
     });
 
