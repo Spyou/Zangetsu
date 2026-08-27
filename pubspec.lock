@@ -1870,11 +1870,10 @@ packages:
   sqflite_tvos:
     dependency: "direct main"
     description:
-      name: sqflite_tvos
-      sha256: "813406594b2566571a8f9db744110fbc7b90c433bd258bc21d6fa5f85ddc022a"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.2"
+      path: "third_party/sqflite_tvos"
+      relative: true
+    source: path
+    version: "0.0.2+privacy"
   stack_trace:
     dependency: transitive
     description:

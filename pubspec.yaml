@@ -56,7 +56,10 @@ dependencies:
   path_provider_tvos: ^0.0.3
   shared_preferences_tvos: ^0.0.2
   flutter_secure_storage_tvos: ^0.0.2
-  sqflite_tvos: ^0.0.2
+  # Path override: pub.dev 0.0.2 ships PrivacyInfo.xcprivacy but never embeds
+  # it (podspec missing resource_bundles) → ITMS-91061 on TestFlight.
+  sqflite_tvos:
+    path: third_party/sqflite_tvos
   # Transitive via flutter_widget_from_html (etc.); needs a tvOS implementation.
   video_player_tvos: ^0.0.1
   wakelock_plus_tvos: ^0.0.1
