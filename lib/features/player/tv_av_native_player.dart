@@ -719,22 +719,42 @@ class TvAvNativePlayer {
       );
 
       Future<Uint8List?> fetchPrefix(String u) async {
-        final bytesDio = Dio(
-          BaseOptions(
-            connectTimeout: const Duration(seconds: 12),
-            receiveTimeout: const Duration(seconds: 15),
-            responseType: ResponseType.bytes,
-            headers: {
-              'User-Agent': _cdnUserAgent,
-              'Range': 'bytes=0-1048575',
-              ...headers,
-            },
-          ),
-        );
-        final res = await bytesDio.get<List<int>>(u);
-        final raw = res.data;
-        if (raw == null || raw.isEmpty) return null;
-        return Uint8List.fromList(raw);
+        try {
+          final bytesDio = Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 12),
+              receiveTimeout: const Duration(seconds: 15),
+              responseType: ResponseType.bytes,
+              validateStatus: (code) => code != null && code >= 200 && code < 400,
+              headers: {
+                'User-Agent': _cdnUserAgent,
+                'Range': 'bytes=0-1048575',
+                ...headers,
+              },
+            ),
+          );
+          final res = await bytesDio.get<List<int>>(u);
+          final raw = res.data;
+          if (raw == null || raw.isEmpty) return null;
+          return Uint8List.fromList(raw);
+        } on DioException catch (e) {
+          debugPrint(
+            '[zangetsu-sub-timing] HLS epoch fetch ${e.response?.statusCode ?? e.type} $u',
+          );
+          return null;
+        } catch (e) {
+          debugPrint('[zangetsu-sub-timing] HLS epoch fetch error $e');
+          return null;
+        }
+      }
+
+      bool looksLikeAdUrl(String u) {
+        final lower = u.toLowerCase();
+        return lower.contains('ad-site') ||
+            lower.contains('ibyteimg.com') ||
+            lower.contains('/ads/') ||
+            lower.contains('advert') ||
+            lower.contains('preroll');
       }
 
       Uint8List? initBytes;
@@ -744,18 +764,28 @@ class TvAvNativePlayer {
         initBytes = await fetchPrefix(initUrl);
       }
 
-      final toFetch = <int>{0};
+      final toFetch = <int>{};
       var elapsed = 0.0;
       for (var i = 0; i < segments.length; i++) {
+        final abs = Uri.parse(playlistUrl).resolve(segments[i].uri).toString();
+        if (looksLikeAdUrl(abs)) {
+          elapsed += segments[i].duration;
+          continue;
+        }
+        if (toFetch.isEmpty) toFetch.add(i); // first non-ad
         if (elapsed >= 11 && elapsed <= 20) toFetch.add(i);
         elapsed += segments[i].duration;
       }
-      if (segments.length > 1) toFetch.add(1);
-      if (segments.length > 3) toFetch.add(3);
+      // Prefer a few early content segments even if the first is an ad.
+      for (var i = 0; i < segments.length && toFetch.length < 4; i++) {
+        final abs = Uri.parse(playlistUrl).resolve(segments[i].uri).toString();
+        if (!looksLikeAdUrl(abs)) toFetch.add(i);
+      }
 
       MpegTsInspect? firstInspect;
       double? ptsMinusPlaylist;
       double? firstEpoch;
+      var probedFirstContent = false;
       for (final idx in toFetch.toList()..sort()) {
         final seg = segments[idx];
         final segUrl = Uri.parse(playlistUrl).resolve(seg.uri).toString();
@@ -816,10 +846,11 @@ class TvAvNativePlayer {
             ptsMinusPlaylist ??= delta;
           }
         }
-        if (idx == 0) {
+        if (!probedFirstContent) {
+          probedFirstContent = true;
           final tsEpoch = inspect.epoch;
           debugPrint(
-            '[zangetsu-sub-timing] HLS epoch candidate[0] '
+            '[zangetsu-sub-timing] HLS epoch candidate[$idx] '
             '${tsEpoch == null ? "none (clocks ~0, not Apple padding)" : "${tsEpoch.toStringAsFixed(3)}s ${inspect.summary}"}',
           );
           firstEpoch = tsEpoch;
@@ -858,8 +889,11 @@ class TvAvNativePlayer {
         'reason': 'TS ${firstInspect?.summary ?? "no inspect"}',
       };
     } catch (e) {
-      debugPrint('[zangetsu-sub-timing] HLS epoch probe failed: $e');
-      return {'seconds': 0.0, 'reason': 'probe failed: $e'};
+      final short = e is DioException
+          ? 'HTTP ${e.response?.statusCode ?? e.type.name}'
+          : '$e';
+      debugPrint('[zangetsu-sub-timing] HLS epoch probe failed: $short');
+      return {'seconds': 0.0, 'reason': 'probe failed: $short'};
     }
   }
 
