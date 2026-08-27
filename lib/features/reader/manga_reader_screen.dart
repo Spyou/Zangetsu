@@ -300,19 +300,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       ),
     ).resolve(ImageConfiguration.empty);
     late ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (info, _) {
-        stream.removeListener(listener);
-        final tall = info.image.height / info.image.width >= _webtoonAspect;
-        info.dispose(); // only the size was wanted, not a retained decode
-        if (!mounted || _looksLikeWebtoon == tall) return;
-        setState(() => _looksLikeWebtoon = tall);
-        // Vertical and paged run off different controllers, so flipping here
-        // would otherwise drop the reader back at the top of the chapter.
-        _syncControllersAfterDirectionChange();
-      },
-      onError: (_, _) => stream.removeListener(listener),
-    );
+    listener = ImageStreamListener((info, _) {
+      stream.removeListener(listener);
+      final tall = info.image.height / info.image.width >= _webtoonAspect;
+      info.dispose(); // only the size was wanted, not a retained decode
+      if (!mounted || _looksLikeWebtoon == tall) return;
+      setState(() => _looksLikeWebtoon = tall);
+      // Vertical and paged run off different controllers, so flipping here
+      // would otherwise drop the reader back at the top of the chapter.
+      _syncControllersAfterDirectionChange();
+    }, onError: (_, _) => stream.removeListener(listener));
     stream.addListener(listener);
   }
 
@@ -356,6 +353,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // actual page. Using the highest page of the spread means the final spread
     // yields the final page, so `ReadStore.finished` still fires at the end.
     final spreads = _activeSpreads();
+    // The transition page sits past the last real one. Leave _pageIndex on the
+    // final page rather than letting it run out of range — everything
+    // downstream (the pg x/N label, resume, mark-read, scrobble, the slider)
+    // reads it as a real page.
+    final count = spreads?.length ?? _pages?.length ?? 0;
+    if (index >= count) return;
     final page = spreads == null
         ? index
         : spreads[index].reduce((a, b) => a > b ? a : b);
@@ -801,40 +804,36 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (colorFilter != null) {
       content = ColorFiltered(colorFilter: colorFilter, child: content);
     }
-    final hasNext = _index < _chapters.length - 1;
     return Stack(
       children: [
         Positioned.fill(child: content),
+
         // _pageIndex no longer setState()s on every page/scroll tick (see
         // _pageIndexVN), so the overlay has to watch it directly to still
         // appear/disappear exactly at the last page, same as before.
-        // Paged modes only. The webtoon strip gets a real footer under the last
-        // page instead (see _buildVertical): a floating overlay there parks
-        // itself over the artwork and covers the speech bubbles you're still
-        // reading, because a tall page stays "the last page" for a long scroll.
-        if (hasNext && direction != 'vertical')
-          ValueListenableBuilder<int>(
-            valueListenable: _pageIndexVN,
-            builder: (context, pageIndex, _) => pageIndex == pages.length - 1
-                ? _buildNextChapterOverlay()
-                : const SizedBox.shrink(),
-          ),
       ],
     );
   }
 
+  /// One extra swipeable page after the last, when there's a chapter to go to.
+  /// The old floating "Next chapter" button sat on top of the artwork; this
+  /// gets out of the way instead. Webtoon does the same thing with a footer
+  /// under the strip.
+  bool get _hasTransitionPage => _index < _chapters.length - 1;
+
   Widget _buildPaged(List<PageImage> pages, String direction) {
     final spreads = _activeSpreads();
+    final extra = _hasTransitionPage ? 1 : 0;
     if (spreads == null) {
-      // Ordinary one-page-per-view path — byte-for-byte what it was before
-      // double-page existed.
       return PageView.builder(
         key: const ValueKey('manga-pageview'),
         controller: _pageController,
         reverse: direction == 'rtl',
-        itemCount: pages.length,
+        itemCount: pages.length + extra,
         onPageChanged: _onPageChanged,
-        itemBuilder: (context, index) => _pagedItem(pages[index], index),
+        itemBuilder: (context, index) => index >= pages.length
+            ? _chapterEndPage()
+            : _pagedItem(pages[index], index),
       );
     }
     // Double-page landscape: each PageView page is a spread. `onPageChanged`
@@ -843,11 +842,17 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       key: const ValueKey('manga-pageview'),
       controller: _pageController,
       reverse: direction == 'rtl',
-      itemCount: spreads.length,
+      itemCount: spreads.length + extra,
       onPageChanged: _onPageChanged,
-      itemBuilder: (context, index) => _spreadItem(spreads[index], pages),
+      itemBuilder: (context, index) => index >= spreads.length
+          ? _chapterEndPage()
+          : _spreadItem(spreads[index], pages),
     );
   }
+
+  /// Full-screen end-of-chapter page, same card the webtoon strip ends with.
+  Widget _chapterEndPage() =>
+      Center(child: SingleChildScrollView(child: _chapterEndFooter()));
 
   /// One PageView page in double-page mode: a lone page renders exactly like
   /// the single-page path, a two-page spread lays the two page images side by
@@ -1145,33 +1150,6 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               ),
             ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildNextChapterOverlay() {
-    return Positioned(
-      left: 0,
-      right: 0,
-      bottom: 24,
-      child: SafeArea(
-        top: false,
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.7),
-              borderRadius: BorderRadius.circular(24),
-            ),
-            child: TextButton(
-              onPressed: () => _goToChapter(_index + 1),
-              child: Text(
-                'Next chapter →',
-                style: AppText.body.copyWith(color: AppColors.accent),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
