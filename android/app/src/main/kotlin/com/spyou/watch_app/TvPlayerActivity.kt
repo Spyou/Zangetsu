@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
@@ -118,6 +119,9 @@ class TvPlayerActivity : Activity() {
         private const val HOLD_MS = 500L
         private const val DEFAULT_ACCENT = 0xFFFF4D5E.toInt()
         private const val UNFOCUSED_PILL = 0x59101014 // subtle dark glass (premium)
+        /** CloudStream-style chunk size — matches Dart [kEpisodeRangeChunk]. */
+        private const val EPISODE_RANGE_CHUNK = 50
+        private const val RANGE_CHIP_SURFACE = 0xFF2A2A32.toInt()
 
         /** Foreground native player, so Dart can push late filler info. */
         @JvmStatic
@@ -226,6 +230,7 @@ class TvPlayerActivity : Activity() {
     private var scrubbing = false
     private var speedEngaged = false
     private var menuOpen = false
+    private var episodeRangeIndex = 0 // 50-ep chunk in the Episodes panel
     private var menuOpener: View? = null // the row button that opened the panel
     // Land focus on the option the user last picked (else the current selection,
     // else the first row) when a menu (re)opens — not always the first row.
@@ -791,6 +796,38 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Options menu (Quality / Audio / Subtitles / Speed / Volume) ───────────
+    private fun resetMenuPanelLayout() {
+        val scroll = menuPanel as? LockedScrollView ?: return
+        scroll.scrollLocked = false
+        scroll.isFillViewport = false
+        menuContent.layoutParams = menuContent.layoutParams.apply {
+            height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+    }
+
+    /** Header + range rail stay fixed; only the inner episode list scrolls. */
+    private fun prepareEpisodesPanelLayout() {
+        val scroll = menuPanel as? LockedScrollView ?: return
+        scroll.scrollLocked = true
+        scroll.isFillViewport = true
+        scroll.scrollTo(0, 0)
+        menuContent.layoutParams = menuContent.layoutParams.apply {
+            height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        }
+    }
+
+    private fun episodeListScroll(): android.widget.ScrollView =
+        android.widget.ScrollView(this).apply {
+            tag = "episode-list-scroll"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+
     private fun showPanel() {
         // Hide the transport controls so the panel reads cleanly over the video.
         controls.visibility = View.GONE
@@ -814,6 +851,7 @@ class TvPlayerActivity : Activity() {
             avMenuActive = false
             avStack.clear()
         }
+        resetMenuPanelLayout()
         menuContent.removeAllViews()
         build()
         showPanel()
@@ -835,19 +873,312 @@ class TvPlayerActivity : Activity() {
         focusTarget = null
         avMenuActive = false
         avStack.clear()
+        episodeRangeIndex = if (episodeCount > 0) currentIndex / EPISODE_RANGE_CHUNK else 0
+        buildEpisodesPanel()
+        showPanel()
+        menuContent.post { focusEpisodeMenuTarget() }
+    }
+
+    private fun episodeRangeCount(): Int =
+        if (episodeCount <= 0) 0
+        else (episodeCount + EPISODE_RANGE_CHUNK - 1) / EPISODE_RANGE_CHUNK
+
+    private fun episodeDisplayNumber(index: Int): Int {
+        val label = episodeLabels.getOrNull(index) ?: return index + 1
+        val m = Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE).find(label)
+        return m?.groupValues?.get(1)?.toIntOrNull() ?: (index + 1)
+    }
+
+    private fun episodeRangeLabel(rangeIndex: Int): String {
+        if (episodeCount == 0) return ""
+        val startIdx = (rangeIndex * EPISODE_RANGE_CHUNK).coerceIn(0, episodeCount - 1)
+        val endIdx = ((rangeIndex + 1) * EPISODE_RANGE_CHUNK - 1).coerceIn(0, episodeCount - 1)
+        return "${episodeDisplayNumber(startIdx)}–${episodeDisplayNumber(endIdx)}"
+    }
+
+    private fun buildEpisodesPanel() {
         menuContent.removeAllViews()
+        resetMenuPanelLayout()
+        prepareEpisodesPanelLayout()
         sectionHeader("Episodes")
-        for (i in 0 until episodeCount) {
+        val rangeCount = episodeRangeCount()
+        if (rangeCount <= 1) {
+            val listScroll = episodeListScroll()
+            val list = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            }
+            addEpisodeRows(0, episodeCount, list)
+            listScroll.addView(list)
+            menuContent.addView(listScroll)
+            return
+        }
+        episodeRangeIndex = episodeRangeIndex.coerceIn(0, rangeCount - 1)
+        val start = episodeRangeIndex * EPISODE_RANGE_CHUNK
+        val end = minOf(start + EPISODE_RANGE_CHUNK, episodeCount)
+
+        // Pin the range rail on the left; only the episode list scrolls.
+        val body = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+        }
+
+        val rail = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                dp(96),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginEnd = dp(12)
+                gravity = Gravity.TOP
+            }
+        }
+        for (r in 0 until rangeCount) {
+            rail.addView(
+                rangeChip(
+                    rangeIndex = r,
+                    label = episodeRangeLabel(r),
+                    selected = r == episodeRangeIndex,
+                ) {
+                    if (r != episodeRangeIndex) {
+                        episodeRangeIndex = r
+                        firstSelectedRow = null
+                        focusTarget = null
+                        buildEpisodesPanel()
+                        menuContent.post { focusEpisodeMenuTarget(preferRange = true) }
+                    }
+                },
+            )
+            if (r < rangeCount - 1) {
+                rail.addView(
+                    View(this).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            dp(8),
+                        )
+                    },
+                )
+            }
+        }
+
+        // Many ranges (>~700 eps): rail gets its own locked scroll — stays put
+        // while browsing episodes; unlock only when a chip holds focus.
+        val railContainer: View = if (rangeCount > 14) {
+            LockedScrollView(this).apply {
+                tag = "range-rail-scroll"
+                scrollLocked = true
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    dp(96),
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ).apply { marginEnd = dp(12) }
+                isVerticalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                isFocusable = false
+                addView(
+                    rail.apply {
+                        layoutParams = android.widget.FrameLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        )
+                    },
+                )
+            }
+        } else {
+            rail
+        }
+        body.addView(railContainer)
+
+        val listScroll = episodeListScroll().apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                1f,
+            )
+        }
+        val list = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        addEpisodeRows(start, end, list)
+        listScroll.addView(list)
+        body.addView(listScroll)
+        menuContent.addView(body)
+        scrollRangeRailToSelected()
+    }
+
+    private fun rangeRailScroll(): LockedScrollView? =
+        menuContent.findViewWithTag("range-rail-scroll") as? LockedScrollView
+
+    private fun setRangeRailLocked(locked: Boolean) {
+        rangeRailScroll()?.scrollLocked = locked
+    }
+
+    private fun scrollRangeRailToSelected() {
+        val scroll = rangeRailScroll() ?: return
+        val chip = menuContent.findViewWithTag<View>("range-$episodeRangeIndex") ?: return
+        scroll.post { scroll.scrollToIgnoringLock(0, chip.top.coerceAtLeast(0)) }
+    }
+
+    private fun addEpisodeRows(
+        from: Int,
+        until: Int,
+        parent: android.widget.LinearLayout,
+    ) {
+        for (i in from until until) {
             val label = episodeLabels.getOrNull(i) ?: "Episode ${i + 1}"
             val isFiller = i < fillerFlags.size && fillerFlags[i]
-            val row = if (isFiller) "$label  · FILLER" else label
-            option(row, selected = i == currentIndex) { if (i != currentIndex) loadEpisode(i) }
+            val rowLabel = if (isFiller) "$label  · FILLER" else label
+            episodeOption(parent, i, rowLabel, selected = i == currentIndex) {
+                if (i != currentIndex) loadEpisode(i)
+            }
         }
-        showPanel()
-        // Land focus on the current episode (row index = currentIndex + 1 header).
-        menuContent.post {
-            val row = (currentIndex + 1).coerceIn(0, menuContent.childCount - 1)
-            menuContent.getChildAt(row)?.requestFocus()
+    }
+
+    private fun rangeChip(
+        rangeIndex: Int,
+        label: String,
+        selected: Boolean,
+        onSelect: () -> Unit,
+    ): TextView {
+        return TextView(this).apply {
+            tag = "range-$rangeIndex"
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isFocusableInTouchMode = true
+            minHeight = dp(32)
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setTextColor(if (selected) android.graphics.Color.WHITE else 0xFFE8E8EC.toInt())
+            if (selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = rangeChipBg(selected, focused = false)
+            onFocusChangeListener = View.OnFocusChangeListener { v, has ->
+                if (has) setRangeRailLocked(false)
+                v.background = rangeChipBg(selected, has)
+                (v as TextView).setTextColor(
+                    if (has || selected) android.graphics.Color.WHITE else 0xFFE8E8EC.toInt(),
+                )
+            }
+            bindSingleTapActivate { onSelect() }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    focusEpisodeFromRangeChip()
+                    true
+                } else false
+            }
+        }
+    }
+
+    private fun focusSelectedRangeChip() {
+        menuContent.findViewWithTag<View>("range-$episodeRangeIndex")?.requestFocus()
+    }
+
+    private fun focusEpisodeFromRangeChip() {
+        val rangeStart = episodeRangeIndex * EPISODE_RANGE_CHUNK
+        val rangeEnd = minOf(rangeStart + EPISODE_RANGE_CHUNK, episodeCount)
+        val target = if (currentIndex in rangeStart until rangeEnd) {
+            currentIndex
+        } else {
+            rangeStart
+        }
+        val row = menuContent.findViewWithTag<View>("ep-$target")
+        row?.requestFocus()
+        row?.let { scrollEpisodeIntoView(it) }
+    }
+
+    private fun rangeChipBg(selected: Boolean, focused: Boolean): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dp(20).toFloat()
+            setColor(if (selected) accent else RANGE_CHIP_SURFACE)
+            if (focused) setStroke(dp(2), android.graphics.Color.WHITE)
+        }
+    }
+
+    private fun episodeOption(
+        parent: android.widget.LinearLayout,
+        index: Int,
+        label: String,
+        selected: Boolean,
+        onSelect: () -> Unit,
+    ) {
+        val row = TextView(this).apply {
+            tag = "ep-$index"
+            text = (if (selected) "✓   " else "     ") + label
+            setTextColor(if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt())
+            textSize = 16.5f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            if (selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            isFocusable = true
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            background = pillBg(0x00000000)
+            onFocusChangeListener = View.OnFocusChangeListener { v, has ->
+                if (has) setRangeRailLocked(true)
+                v.background = pillBg(if (has) accent else 0x00000000)
+                (v as TextView).setTextColor(
+                    if (has) android.graphics.Color.WHITE
+                    else if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt(),
+                )
+            }
+            bindSingleTapActivate {
+                lastFocusLabel = label
+                onSelect()
+                closeMenu()
+            }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
+                    episodeRangeCount() > 1
+                ) {
+                    focusSelectedRangeChip()
+                    true
+                } else false
+            }
+        }
+        if (selected && firstSelectedRow == null) firstSelectedRow = row
+        if (label == lastFocusLabel) focusTarget = row
+        parent.addView(
+            row,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+    }
+
+    private fun focusEpisodeMenuTarget(preferRange: Boolean = false) {
+        if (preferRange) {
+            menuContent.findViewWithTag<TextView>("range-$episodeRangeIndex")?.requestFocus()
+            return
+        }
+        val target = menuContent.findViewWithTag<View>("ep-$currentIndex")
+        target?.requestFocus()
+        target?.let { scrollEpisodeIntoView(it) }
+            ?: firstSelectedRow?.requestFocus()
+            ?: firstFocusable(menuContent)?.requestFocus()
+    }
+
+    private fun scrollEpisodeIntoView(row: View) {
+        var parent = row.parent
+        while (parent != null) {
+            if (parent is android.widget.ScrollView && parent.tag == "episode-list-scroll") {
+                val scroll = parent
+                scroll.post { scroll.smoothScrollTo(0, row.top) }
+                return
+            }
+            parent = (parent as? View)?.parent
         }
     }
 
@@ -857,6 +1188,7 @@ class TvPlayerActivity : Activity() {
         avStack.clear()
         menuPanel.visibility = View.GONE
         menuContent.removeAllViews()
+        resetMenuPanelLayout()
         bumpControls()
         (menuOpener ?: root).requestFocus()
     }
