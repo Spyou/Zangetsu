@@ -414,7 +414,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
     final prefs = sl<ReaderPrefs>();
     final theme = _readerTheme(prefs.theme);
     return Scaffold(
-      backgroundColor: theme.bg,
+      backgroundColor: _dimmedBg(theme, prefs.novelBgOpacity),
       body: Stack(
         children: [
           Positioned.fill(
@@ -1143,6 +1143,10 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             (value: 'ltr', label: 'LTR'),
             (value: 'rtl', label: 'RTL'),
           ];
+          // Recomputed on every sheet rebuild, so picking a light theme pulls
+          // the slider (and the page) back up to that theme's floor.
+          final bgFloor = _bgOpacityFloor(_readerTheme(prefs.theme));
+          final bgOpacity = prefs.novelBgOpacity.clamp(bgFloor, 1.0);
 
           return ReaderSheetShell(
             child: SafeArea(
@@ -1311,6 +1315,24 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                               ],
                             ),
                           ),
+                          readerSheetRow(
+                            icon: Icons.brightness_2_outlined,
+                            label: 'Background',
+                            trailing: Text(
+                              '${(bgOpacity * 100).round()}%',
+                              style: AppText.caption.copyWith(
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                            child: Slider(
+                              value: bgOpacity,
+                              min: bgFloor,
+                              max: 1,
+                              activeColor: AppColors.accent,
+                              onChanged: (v) =>
+                                  apply(() => prefs.setNovelBgOpacity(v)),
+                            ),
+                          ),
                         ]),
                         readerSheetSection('Navigation'),
                         readerSheetGroup([
@@ -1404,6 +1426,22 @@ class _ReaderTheme {
   final Color bg;
   final Color text;
 }
+
+/// The theme's page colour blended toward black by the `novelBgOpacity` pref.
+/// At 1.0 (the default) this hands back the theme colour untouched. Blending
+/// rather than an alpha so the page stays opaque — a translucent Scaffold would
+/// show the route underneath.
+Color _dimmedBg(_ReaderTheme theme, double opacity) => Color.lerp(
+  Colors.black,
+  theme.bg,
+  opacity.clamp(_bgOpacityFloor(theme), 1.0),
+)!;
+
+/// How far down a theme may be dimmed. A light theme's text is dark, so taking
+/// its page to black would leave the text unreadable — those stop at 0.75,
+/// which still clears WCAG AA on sepia (~4.9:1).
+double _bgOpacityFloor(_ReaderTheme theme) =>
+    theme.bg.computeLuminance() > 0.5 ? 0.75 : 0.0;
 
 _ReaderTheme _readerTheme(String theme) {
   switch (theme) {

@@ -83,6 +83,26 @@ class ReaderPrefs {
   Future<void> setOverscrollChapter(bool value) =>
       _box.put('overscrollChapter', value);
 
+  /// Switch a long-strip chapter to vertical on its own, even when the
+  /// direction pref says left-to-right. Manhwa is one tall image per page, so
+  /// paged mode hands you sideways slices of it.
+  ///
+  /// On by default: someone reading a webtoon in paged mode gets a bad time
+  /// and no clue why. A per-series direction override still wins — an explicit
+  /// choice shouldn't be second-guessed.
+  bool get autoWebtoon =>
+      _box.get('autoWebtoon', defaultValue: true) as bool;
+  Future<void> setAutoWebtoon(bool value) => _box.put('autoWebtoon', value);
+
+  /// Novel page background, 0 (black) to 1 (the theme's own colour).
+  ///
+  /// Lets you keep a theme's text colour while darkening the page behind it.
+  /// Defaults to 1, which is exactly what the theme gives today.
+  double get novelBgOpacity =>
+      (_box.get('novelBgOpacity', defaultValue: 1.0) as num).toDouble();
+  Future<void> setNovelBgOpacity(double value) =>
+      _box.put('novelBgOpacity', value);
+
   /// Auto-scroll speed on a 1–10 feel scale, not pixels per second: how fast
   /// you like it is a feel, and "60 px/s" means nothing to anyone reading.
   /// [ReaderAutoScroll] maps it to a creep rate or a page dwell depending on

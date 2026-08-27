@@ -91,6 +91,15 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   String? _error;
   List<PageImage>? _pages;
 
+  // Whether this chapter's first page turned out to be a long vertical strip.
+  // Null until _detectWebtoon resolves it, and again on every chapter change.
+  bool? _looksLikeWebtoon;
+
+  /// Height/width past which a page is a strip rather than a comic page. A
+  /// print-shaped page sits near 1.4 and a double spread below 1; a webtoon
+  /// slice is usually 3x its width or more, so 2.5 lands in the gap.
+  static const double _webtoonAspect = 2.5;
+
   // Current page, as a ValueNotifier rather than plain state: the top-bar
   // label and the bottom slider listen to it directly (ValueListenableBuilder
   // below), so a page turn/scroll tick no longer has to setState() the whole
@@ -231,6 +240,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       });
       _preload(start, pages);
       _restoreControllerPositions(start, pages.length);
+      _detectWebtoon();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -261,6 +271,49 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         }
       }
     });
+  }
+
+  /// Reads the first page's real decoded size to work out whether the chapter
+  /// is one long strip (manhwa) rather than comic pages — paged mode shows a
+  /// strip as sideways slices, which is unreadable. Deliberately off the build
+  /// path: [_effectiveDirection] runs on every build and only reads the result.
+  ///
+  /// The provider is built the way [_pagedItem]/[_verticalItem] build theirs
+  /// (CachedNetworkImage wraps its provider in a ResizeImage), so this reads
+  /// the page the reader is already decoding instead of fetching a second,
+  /// full-size copy. A page that never resolves leaves the flag null and the
+  /// reader keeps whatever direction was asked for.
+  void _detectWebtoon() {
+    final pages = _pages;
+    if (pages == null || pages.isEmpty) return;
+    if (_looksLikeWebtoon != null) return; // one resolve per chapter
+    if (!sl<ReaderPrefs>().autoWebtoon) return;
+    final first = pages.first;
+    final width = _decodeWidth(context);
+    final stream = ResizeImage.resizeIfNeeded(
+      width,
+      null,
+      CachedNetworkImageProvider(
+        first.url,
+        headers: first.headers,
+        maxWidth: width,
+      ),
+    ).resolve(ImageConfiguration.empty);
+    late ImageStreamListener listener;
+    listener = ImageStreamListener(
+      (info, _) {
+        stream.removeListener(listener);
+        final tall = info.image.height / info.image.width >= _webtoonAspect;
+        info.dispose(); // only the size was wanted, not a retained decode
+        if (!mounted || _looksLikeWebtoon == tall) return;
+        setState(() => _looksLikeWebtoon = tall);
+        // Vertical and paged run off different controllers, so flipping here
+        // would otherwise drop the reader back at the top of the chapter.
+        _syncControllersAfterDirectionChange();
+      },
+      onError: (_, _) => stream.removeListener(listener),
+    );
+    stream.addListener(listener);
   }
 
   /// Decode width for the current device — see `readerDecodeWidth`'s doc.
@@ -474,6 +527,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
       _index = newIndex;
       _pages = null;
       _error = null;
+      _looksLikeWebtoon = null;
       _pageIndex = 0;
       _lastScrollSaveMs = 0;
       // A new chapter starts un-zoomed — don't carry the last one's pinch over.
@@ -524,21 +578,27 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   void _toggleChrome() => setState(() => _chromeVisible = !_chromeVisible);
 
-  /// The direction this chapter is actually shown with: this series' own
-  /// override (set from the settings sheet's Direction chips) if one is
-  /// active, else the global `prefs.direction`. The `isRegistered` guard
-  /// matters for tests: most build this reader with a GetIt that never
-  /// registers `ReaderOverrideStore`, and this simply falls back to the
-  /// global pref there rather than throwing — same fallback the app itself
-  /// would never need, since the injector always registers it.
-  String _effectiveDirection(ReaderPrefs prefs) =>
-      sl.isRegistered<ReaderOverrideStore>()
-      ? sl<ReaderOverrideStore>().effectiveMode(
-          widget.sourceId,
-          widget.showId,
-          prefs,
-        )
-      : prefs.direction;
+  /// The direction this chapter is actually shown with, in priority order:
+  /// this series' own override (set from the settings sheet's Direction
+  /// chips), then auto-webtoon if the chapter turned out to be a long strip,
+  /// then the global `prefs.direction`. An explicit per-series choice wins —
+  /// auto never second-guesses one.
+  ///
+  /// Called from build() and a handful of callbacks, so it only ever reads
+  /// state that's already computed — see [_detectWebtoon] for the work.
+  ///
+  /// The `isRegistered` guard matters for tests: most build this reader with
+  /// a GetIt that never registers `ReaderOverrideStore`, and this simply
+  /// falls back to the global pref there rather than throwing — same fallback
+  /// the app itself would never need, since the injector always registers it.
+  String _effectiveDirection(ReaderPrefs prefs) {
+    final override = sl.isRegistered<ReaderOverrideStore>()
+        ? sl<ReaderOverrideStore>().modeOverride(widget.sourceId, widget.showId)
+        : null;
+    if (override != null) return override;
+    if (prefs.autoWebtoon && _looksLikeWebtoon == true) return 'vertical';
+    return prefs.direction;
+  }
 
   /// Same idea as [_effectiveDirection], for fit.
   String _effectiveFit(ReaderPrefs prefs) =>
@@ -1565,6 +1625,19 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                                   widget.showId,
                                   v == 'default' ? null : v,
                                 );
+                                _syncControllersAfterDirectionChange();
+                              }),
+                            ),
+                          ),
+                          readerSheetRow(
+                            icon: Icons.view_day_outlined,
+                            label: 'Auto webtoon mode',
+                            trailing: Switch(
+                              value: prefs.autoWebtoon,
+                              activeThumbColor: AppColors.accent,
+                              onChanged: (v) => apply(() {
+                                prefs.setAutoWebtoon(v);
+                                _detectWebtoon(); // no-op once off
                                 _syncControllersAfterDirectionChange();
                               }),
                             ),
