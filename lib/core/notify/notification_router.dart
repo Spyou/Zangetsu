@@ -1,11 +1,12 @@
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
+import '../mode/content_mode.dart';
 import '../models/provider_info.dart';
 import '../ui/global_messenger.dart';
 import 'subscription_store.dart';
 
-/// Open the Detail screen for the show a "new episode" notification points to.
+/// Open the Detail screen for the show a new-episode/chapter alert points to.
 /// [payload] is "sourceId|url" (split on the FIRST '|' — a url may contain one).
 /// The full cover / headers / title come from the stored subscription so Detail
 /// renders immediately; it then re-fetches by sourceId+url anyway.
@@ -35,7 +36,13 @@ Future<void> openShowFromNotification(String? payload) async {
         id: url,
         title: sub?.title ?? '',
         url: url,
-        type: ProviderType.anime,
+        // Was hardcoded to anime, which opened a subscribed manga as a video
+        // show. The subscription knows what it is.
+        type: switch (sub?.mode) {
+          ContentMode.manga => ProviderType.manga,
+          ContentMode.novel => ProviderType.novel,
+          _ => ProviderType.anime,
+        },
         sourceId: sourceId,
         cover: sub?.cover,
         coverHeaders: sub?.coverHeaders,

@@ -66,20 +66,25 @@ class NotificationService {
   /// Notify that [title] has a new episode ([episode]). [id] should be stable
   /// per-show so repeated alerts replace rather than stack. [payload] carries
   /// "sourceId|url" for tap handling.
+  /// [reading] picks the wording and the channel: manga and novels get their
+  /// own so they can be muted without silencing episode alerts, and so the text
+  /// doesn't call a chapter an episode.
   Future<void> showNewEpisode({
     required int id,
     required String title,
     required int episode,
     String? payload,
+    bool reading = false,
   }) async {
     if (!Platform.isAndroid) return;
     if (!_inited) await init();
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
-        'new_episodes',
-        'New episodes',
-        channelDescription:
-            'Alerts when a subscribed show has a new episode available',
+        reading ? 'new_chapters' : 'new_episodes',
+        reading ? 'New chapters' : 'New episodes',
+        channelDescription: reading
+            ? 'Alerts when a subscribed manga or novel has a new chapter'
+            : 'Alerts when a subscribed show has a new episode available',
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -87,7 +92,7 @@ class NotificationService {
     await _plugin.show(
       id,
       title,
-      'Episode $episode is out',
+      '${reading ? 'Chapter' : 'Episode'} $episode is out',
       details,
       payload: payload,
     );

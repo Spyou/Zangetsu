@@ -555,11 +555,14 @@ class _DetailViewState extends State<_DetailView>
   bool get _subscribed =>
       sl<SubscriptionStore>().contains(widget.item.sourceId, widget.item.url);
 
-  /// Toggle "notify on new episodes" for this show. On subscribe we seed the
-  /// baseline to the current episode count so only FUTURE episodes alert.
+  /// Toggle new-episode (or new-chapter) alerts for this show. On subscribe we
+  /// seed the baseline to the current count so only FUTURE ones alert.
   Future<void> _toggleSubscribe(MediaDetail detail) async {
     final store = sl<SubscriptionStore>();
     final item = widget.item;
+    final reading =
+        detail.type == ProviderType.manga || detail.type == ProviderType.novel;
+    final unit = reading ? 'chapters' : 'episodes';
     if (_subscribed) {
       await store.remove(item.sourceId, item.url);
       _snack('Notifications off for “${item.title}”');
@@ -572,10 +575,15 @@ class _DetailViewState extends State<_DetailView>
           cover: item.cover,
           coverHeaders: item.coverHeaders,
           lastCount: detail.episodes.length,
+          mode: detail.type == ProviderType.novel
+              ? ContentMode.novel
+              : detail.type == ProviderType.manga
+              ? ContentMode.manga
+              : ContentMode.anime,
         ),
       );
       await NotificationService.instance.init(); // ask for permission now
-      _snack('You’ll be notified of new episodes of “${item.title}”');
+      _snack('You’ll be notified of new $unit of “${item.title}”');
     }
     // Mirror CS subs to native so the background worker picks up the change.
     await CsNotify.sync(store.all());
@@ -1659,8 +1667,10 @@ class _DetailViewState extends State<_DetailView>
                     active: _subscribed,
                     label: 'Notify',
                     tooltip: _subscribed
-                        ? 'Stop new-episode alerts'
-                        : 'Notify on new episodes',
+                        ? 'Stop alerts'
+                        : (isReading
+                              ? 'Notify on new chapters'
+                              : 'Notify on new episodes'),
                     onTap: () => _toggleSubscribe(detail),
                   ),
                 if (_trackingAvailable(detail))
