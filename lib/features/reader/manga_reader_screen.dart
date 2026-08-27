@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/models/episode.dart';
+import '../../core/download/cbz_image.dart';
 import '../../core/models/page_content.dart';
 import '../../core/models/provider_info.dart';
 import '../../core/reading/read_history.dart';
@@ -290,14 +293,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     if (!sl<ReaderPrefs>().autoWebtoon) return;
     final first = pages.first;
     final width = _decodeWidth(context);
-    final stream = ResizeImage.resizeIfNeeded(
+    final stream = _pageProvider(
+      first,
       width,
-      null,
-      CachedNetworkImageProvider(
-        first.url,
-        headers: first.headers,
-        maxWidth: width,
-      ),
     ).resolve(ImageConfiguration.empty);
     late ImageStreamListener listener;
     listener = ImageStreamListener((info, _) {
@@ -1016,23 +1014,32 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               maxScale: 4.0,
               child: Center(
                 child: _cropIfEnabled(
-                  CachedNetworkImage(
-                    imageUrl: page.url,
-                    httpHeaders: page.headers,
-                    memCacheWidth: width,
-                    maxWidthDiskCache: width,
-                    fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-                    // Static, not an animated spinner — see ColoredBox usage in
-                    // poster_card.dart/continue_card.dart for the same convention.
-                    placeholder: (_, _) => SizedBox.expand(
-                      child: ColoredBox(color: AppColors.surface2),
-                    ),
-                    errorWidget: (_, _, _) => const Icon(
-                      Icons.broken_image_outlined,
-                      color: Colors.white38,
-                      size: 48,
-                    ),
-                  ),
+                  _isLocal(page.url)
+                      ? Image(
+                          image: _pageProvider(page, width),
+                          fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                          errorBuilder: (_, _, _) => const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white24,
+                          ),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: page.url,
+                          httpHeaders: page.headers,
+                          memCacheWidth: width,
+                          maxWidthDiskCache: width,
+                          fit: _pageBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                          // Static, not an animated spinner — see ColoredBox usage in
+                          // poster_card.dart/continue_card.dart for the same convention.
+                          placeholder: (_, _) => SizedBox.expand(
+                            child: ColoredBox(color: AppColors.surface2),
+                          ),
+                          errorWidget: (_, _, _) => const Icon(
+                            Icons.broken_image_outlined,
+                            color: Colors.white38,
+                            size: 48,
+                          ),
+                        ),
                 ),
               ),
             ),
@@ -1056,30 +1063,43 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         onTap: _toggleChrome,
         onLongPress: () => _showPageActions(page),
         child: _cropIfEnabled(
-          CachedNetworkImage(
-            imageUrl: page.url,
-            httpHeaders: page.headers,
-            width: double.infinity,
-            memCacheWidth: width,
-            maxWidthDiskCache: width,
-            fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
-            // Fixed-height static placeholder (not a spinner) — avoids a
-            // zero-height flash in the list while still not perpetually
-            // animating; same ColoredBox convention as poster_card.dart.
-            placeholder: (_, _) => SizedBox(
-              height: 200,
-              width: double.infinity,
-              child: ColoredBox(color: AppColors.surface2),
-            ),
-            errorWidget: (_, _, _) => const SizedBox(
-              height: 200,
-              child: Icon(
-                Icons.broken_image_outlined,
-                color: Colors.white38,
-                size: 48,
-              ),
-            ),
-          ),
+          _isLocal(page.url)
+              ? Image(
+                  image: _pageProvider(page, width),
+                  width: double.infinity,
+                  fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                  errorBuilder: (_, _, _) => const SizedBox(
+                    height: 200,
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white24,
+                    ),
+                  ),
+                )
+              : CachedNetworkImage(
+                  imageUrl: page.url,
+                  httpHeaders: page.headers,
+                  width: double.infinity,
+                  memCacheWidth: width,
+                  maxWidthDiskCache: width,
+                  fit: _verticalBoxFit(_effectiveFit(sl<ReaderPrefs>())),
+                  // Fixed-height static placeholder (not a spinner) — avoids a
+                  // zero-height flash in the list while still not perpetually
+                  // animating; same ColoredBox convention as poster_card.dart.
+                  placeholder: (_, _) => SizedBox(
+                    height: 200,
+                    width: double.infinity,
+                    child: ColoredBox(color: AppColors.surface2),
+                  ),
+                  errorWidget: (_, _, _) => const SizedBox(
+                    height: 200,
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white38,
+                      size: 48,
+                    ),
+                  ),
+                ),
         ),
       ),
     );
@@ -1493,6 +1513,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
         ),
       ),
     );
+  }
+
+  /// True for a saved page — those come back from the repository as a file
+  /// path, not a URL, and CachedNetworkImage can't load one.
+  static bool _isLocal(String url) => !url.startsWith('http');
+
+  /// The image for a page: inside a saved `.cbz`, a loose saved file, or the
+  /// network. One place, so the two page builders and the webtoon probe can't
+  /// disagree about what they're loading.
+  static ImageProvider _pageProvider(PageImage page, int width) {
+    final cbz = CbzImage.tryParse(page.url);
+    if (cbz != null) return ResizeImage.resizeIfNeeded(width, null, cbz);
+    return _isLocal(page.url)
+      ? ResizeImage.resizeIfNeeded(width, null, FileImage(File(page.url)))
+      : ResizeImage.resizeIfNeeded(
+          width,
+          null,
+          CachedNetworkImageProvider(
+            page.url,
+            headers: page.headers,
+            maxWidth: width,
+          ),
+        );
   }
 
   /// Direction/Fit/Background/Filter/Comfort, live-applied — mirrors the

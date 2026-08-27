@@ -21,8 +21,12 @@ import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/share/share_link.dart';
+import '../../core/download/chapter_download.dart';
+import '../../core/download/chapter_download_store.dart';
+import '../../core/download/chapter_downloader.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
+import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/media_detail.dart';
@@ -1225,6 +1229,27 @@ class _DetailViewState extends State<_DetailView>
     String category,
   ) => _pickSourceAndDownload(ep, detail, category);
 
+  /// Manga/novel chapter → straight to the chapter downloader. No source
+  /// picker here: a chapter has one url, not a list of mirrors to choose from.
+  Future<void> _downloadChapter(Episode ep, MediaDetail detail) =>
+      _downloadChapters([ep], detail);
+
+  /// Same thing for a batch — one queue write for the lot rather than one per
+  /// chapter, which is what a "download all" on a long series needs.
+  Future<void> _downloadChapters(List<Episode> eps, MediaDetail detail) {
+    final item = widget.item;
+    return sl<ChapterDownloader>().enqueueMany(
+      chapters: eps,
+      sourceId: item.sourceId,
+      showId: item.id,
+      showTitle: detail.title,
+      cover: detail.cover ?? item.cover,
+      mode: detail.type == ProviderType.novel
+          ? ContentMode.novel
+          : ContentMode.manga,
+    );
+  }
+
   Future<void> _pickSourceAndDownload(
     Episode ep,
     MediaDetail detail,
@@ -1743,8 +1768,12 @@ class _DetailViewState extends State<_DetailView>
                 : (fullIndex) =>
                       _pickPlayerFor(eps, fullIndex, detail, category),
             onRefresh: cubit.refresh,
-            onDownload: (ep) => _downloadSingle(ep, detail, category),
-            showDownload: !isReading,
+            onDownload: (ep) => isReading
+                ? _downloadChapter(ep, detail)
+                : _downloadSingle(ep, detail, category),
+            onDownloadMany: isReading
+                ? (eps) => _downloadChapters(eps, detail)
+                : null,
             isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────

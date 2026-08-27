@@ -16,6 +16,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/download/chapter_download_store.dart';
+import 'package:watch_app/core/download/chapter_downloader.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_record.dart';
 import 'package:watch_app/core/models/episode.dart';
@@ -314,6 +316,14 @@ void main() {
     Hive.init(readerPrefsDir.path);
     await ReaderPrefs.init();
     sl.registerSingleton<ReaderPrefs>(ReaderPrefs());
+    // Chapter downloads: the per-chapter download icon reads both on build.
+    // The downloader is lazy because it needs the SourceRepository each test
+    // registers for itself, after this setUp has run.
+    await ChapterDownloadStore.init();
+    sl.registerSingleton<ChapterDownloadStore>(ChapterDownloadStore());
+    sl.registerLazySingleton<ChapterDownloader>(
+      () => ChapterDownloader(sl<SourceRepository>(), sl<ChapterDownloadStore>()),
+    );
     // Empty by default (no saved reading position) — the novel test below
     // just needs this registered so _readResumeIndex's sl<ReadStore>() call
     // doesn't blow up; the dedicated resume test overrides it with marks.
@@ -371,9 +381,10 @@ void main() {
       expect(find.text('Sub'), findsNothing);
       expect(find.text('Dub'), findsNothing);
 
-      // No download affordance — main button or per-chapter icon (both use
-      // this glyph when shown).
-      expect(find.byIcon(Icons.file_download_outlined), findsNothing);
+      // No main Download button (that one resolves video sources), but each
+      // chapter row does carry its own download icon.
+      expect(find.text('Download'), findsNothing);
+      expect(find.byIcon(Icons.file_download_outlined), findsWidgets);
 
       // Tapping a chapter row pushes NovelReaderScreen.
       expect(find.byType(NovelReaderScreen), findsNothing);

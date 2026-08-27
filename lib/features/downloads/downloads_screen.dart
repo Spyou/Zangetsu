@@ -2,13 +2,16 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
 import '../../core/ui/settings_widgets.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
+import '../../core/download/chapter_download_store.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/download/download_record.dart';
+import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -22,6 +25,7 @@ import '../settings/download_location_screen.dart';
 import '../player/player_screen.dart';
 import '../player/tv_exo_player_screen.dart';
 import '../player/tv_native_player.dart';
+import 'chapter_downloads_screen.dart';
 import 'downloads_screen_tv.dart';
 
 /// Offline library — downloads grouped by show, with per-episode progress and
@@ -207,7 +211,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 ),
                 slider(
                   title: 'Parallel downloads',
-                  subtitle: 'How many episodes download at the same time.',
+                  subtitle: 'How many episodes download at the same time. '
+                      'Chapters always download one at a time.',
                   value: parallel,
                   min: DownloadPrefs.parallelMin,
                   max: DownloadPrefs.parallelMax,
@@ -223,8 +228,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 const SizedBox(height: 8),
                 slider(
                   title: 'Connections per download',
-                  subtitle: 'Segment connections a single download uses. '
-                      'Higher = faster, more data at once.',
+                  subtitle: 'Segment connections an episode uses, and pages '
+                      'fetched at once in a chapter. Higher = faster, more '
+                      'data at once.',
                   value: connections,
                   min: DownloadPrefs.connectionsMin,
                   max: DownloadPrefs.connectionsMax,
@@ -244,6 +250,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const DownloadsScreenTv();
     final manager = sl<DownloadManager>();
+    final store = sl<ChapterDownloadStore>();
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
@@ -263,6 +270,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           return Column(
             children: [
               _locationHeader(),
+              _chapterLinks(store),
               if (groups.isEmpty)
                 const Expanded(
                   child: EmptyState(
@@ -277,6 +285,87 @@ class _DownloadsScreenState extends State<DownloadsScreen>
             ],
           );
         },
+      ),
+    );
+  }
+
+  /// Manga and novel downloads get their own screens — they're chapters, not
+  /// episodes, and listing them here made this screen a dumping ground. These
+  /// two rows are just the way in, with a count so you can see there's
+  /// something there without opening it.
+  ///
+  /// Only these rows watch the chapter box. It's written twice a second while
+  /// a chapter downloads, and the video list below has no reason to rebuild
+  /// for that.
+  Widget _chapterLinks(ChapterDownloadStore store) {
+    return ValueListenableBuilder<Box<Map>>(
+      valueListenable: store.listenable(),
+      builder: (context, box, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+        child: Row(
+          children: [
+            for (final m in const [ContentMode.manga, ContentMode.novel]) ...[
+              Expanded(child: _chapterCard(m, store.countDone(m))),
+              if (m == ContentMode.manga) const SizedBox(width: 10),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Side by side rather than two full-width rows: they're a way into the other
+  /// two screens, not content, and stacked they pushed the episode list most of
+  /// a screen down.
+  Widget _chapterCard(ContentMode mode, int count) {
+    final novel = mode == ContentMode.novel;
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => ChapterDownloadsScreen(mode: mode),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 11, 10, 11),
+          child: Row(
+            children: [
+              Icon(chapterIcon(mode), color: AppColors.accent, size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      novel ? 'Novels' : 'Manga',
+                      style: AppText.body.copyWith(
+                        color: AppColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '$count ${count == 1 ? 'chapter' : 'chapters'}',
+                      style: AppText.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.textTertiary,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -405,7 +494,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           ),
           const SizedBox(width: 6),
           Text(
-            '$count downloaded · ${_fmtSize(bytes)}',
+            '$count downloaded · ${fmtDownloadSize(bytes)}',
             style: AppText.caption,
           ),
           const Spacer(),
@@ -459,7 +548,7 @@ class _ShowGroup extends StatelessWidget {
     final doneRecs =
         records.where((r) => r.status == DownloadStatus.done).toList();
     final groupBytes = doneRecs.fold<int>(0, (s, r) => s + r.bytesTotal);
-    final sizeSuffix = groupBytes > 0 ? ' · ${_fmtSize(groupBytes)}' : '';
+    final sizeSuffix = groupBytes > 0 ? ' · ${fmtDownloadSize(groupBytes)}' : '';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -688,10 +777,10 @@ class DownloadTile extends StatelessWidget {
     }
     return switch (record.status) {
       DownloadStatus.done =>
-        record.bytesTotal > 0 ? _fmtSize(record.bytesTotal) : 'Downloaded',
+        record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
       DownloadStatus.downloading =>
         '${(record.progress * 100).round()}%'
-            '${record.bytesTotal > 0 ? ' of ${_fmtSize(record.bytesTotal)}' : ''}'
+            '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
             '$_torrentSuffix',
       DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
       DownloadStatus.queued => 'Queued',
@@ -869,11 +958,4 @@ class _TileMenu extends StatelessWidget {
           ],
         ),
       );
-}
-
-String _fmtSize(int bytes) {
-  if (bytes >= 1 << 30) return '${(bytes / (1 << 30)).toStringAsFixed(1)} GB';
-  if (bytes >= 1 << 20) return '${(bytes / (1 << 20)).toStringAsFixed(0)} MB';
-  if (bytes >= 1 << 10) return '${(bytes / (1 << 10)).toStringAsFixed(0)} KB';
-  return '$bytes B';
 }

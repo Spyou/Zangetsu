@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
 
@@ -63,6 +64,8 @@ import '../backup/backup_service.dart';
 import '../backup/sources_backup.dart';
 import '../backup/library_backup.dart';
 import '../backup/settings_backup.dart';
+import '../download/chapter_download_store.dart';
+import '../download/chapter_downloader.dart';
 import '../download/download_manager.dart';
 import '../download/download_prefs.dart';
 import '../download/download_service.dart';
@@ -797,6 +800,16 @@ Future<void> initDependencies() async {
   sl.registerSingleton<DownloadManager>(
     DownloadManager(sl<SourceRepository>(), sl<DownloadPrefs>())..setup(),
   );
+
+  // Offline manga/novel chapters. Foreground-only, so no service to start —
+  // just the index plus the fetch queue. Anything a kill interrupted last run
+  // is picked back up here; it's unawaited so a slow disk can't hold up boot.
+  await ChapterDownloadStore.init();
+  sl.registerSingleton<ChapterDownloadStore>(ChapterDownloadStore());
+  sl.registerSingleton<ChapterDownloader>(
+    ChapterDownloader(sl<SourceRepository>(), sl<ChapterDownloadStore>()),
+  );
+  unawaited(sl<ChapterDownloader>().resumeInterrupted());
 
   // Chromecast session controller. Wraps the native zangetsu/cast channel.
   // init() is guarded: if the native side is absent (non-Android, test) the

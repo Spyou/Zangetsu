@@ -12,6 +12,8 @@ import 'package:watch_app/core/announce/announcement.dart';
 import 'package:watch_app/core/announce/announcement_service.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/download/chapter_download_store.dart';
+import 'package:watch_app/core/download/chapter_downloader.dart';
 import 'package:watch_app/core/download/download_manager.dart';
 import 'package:watch_app/core/download/download_prefs.dart';
 import 'package:watch_app/core/mode/content_mode_cubit.dart';
@@ -311,6 +313,12 @@ void main() {
     sl.registerSingleton<SearchSourcePrefs>(_FakeSearchSourcePrefs());
     sl.registerSingleton<ListStatusStore>(ListStatusStore());
     sl.registerSingleton<DownloadManager>(DownloadManager(fakeRepo));
+    // The Downloads tab lists saved manga/novel chapters alongside episodes.
+    await ChapterDownloadStore.init();
+    sl.registerSingleton<ChapterDownloadStore>(ChapterDownloadStore());
+    sl.registerSingleton<ChapterDownloader>(
+      ChapterDownloader(fakeRepo, sl<ChapterDownloadStore>()),
+    );
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
     sl.registerSingleton<AniListService>(_FakeAniListService());
     sl.registerSingleton<MalService>(_FakeMalService());
