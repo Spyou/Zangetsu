@@ -218,8 +218,7 @@ class ExoPlayerView(
                         // new one and cause a mismatched decoder configuration.
                         player.trackSelectionParameters = player.trackSelectionParameters
                             .buildUpon()
-                            .clearOverrides()
-                            .setMaxVideoBitrate(Int.MAX_VALUE)
+                            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                             .build()
                         val httpFactory = DefaultHttpDataSource.Factory()
                             .setAllowCrossProtocolRedirects(true)

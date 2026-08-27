@@ -386,8 +386,7 @@ class TvPlayerActivity : Activity() {
         p.clearMediaItems()
         p.trackSelectionParameters = p.trackSelectionParameters
             .buildUpon()
-            .clearOverrides()
-            .setMaxVideoBitrate(Int.MAX_VALUE)
+            .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
             .build()
         p.setMediaSource(sourceFactory.createMediaSource(builder.build()))
         if (positionMs > 0) p.seekTo(positionMs)
