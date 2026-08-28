@@ -50,4 +50,44 @@ void main() {
       expect(r.map((e) => e.id), ['u']);
     });
   });
+
+  group('episode range helpers', () {
+    test('episodeRangeCount splits at 50', () {
+      expect(episodeRangeCount(0), 0);
+      expect(episodeRangeCount(1), 1);
+      expect(episodeRangeCount(50), 1);
+      expect(episodeRangeCount(51), 2);
+      expect(episodeRangeCount(60), 2);
+      expect(episodeRangeCount(100), 2);
+      expect(episodeRangeCount(101), 3);
+    });
+
+    test('episodeRangeIndex maps local index to chunk', () {
+      expect(episodeRangeIndex(-1), 0);
+      expect(episodeRangeIndex(0), 0);
+      expect(episodeRangeIndex(49), 0);
+      expect(episodeRangeIndex(50), 1);
+    });
+
+    test('episodeRangeSlice returns inclusive start, exclusive end', () {
+      expect(episodeRangeSlice(0, 60), (start: 0, end: 50));
+      expect(episodeRangeSlice(1, 60), (start: 50, end: 60));
+      expect(episodeRangeSlice(0, 50), (start: 0, end: 50));
+    });
+
+    test('episodeRangeLabel uses episode numbers with fallbacks', () {
+      final numbered = [
+        for (var i = 1; i <= 60; i++)
+          ep('$i', 'Ep $i', i.toDouble()),
+      ];
+      expect(episodeRangeLabel(numbered, 0), '1–50');
+      expect(episodeRangeLabel(numbered, 1), '51–60');
+
+      final partial = [
+        ep('a', 'First', 51),
+        ep('b', 'Second', null),
+      ];
+      expect(episodeRangeLabel(partial, 0), '51–2');
+    });
+  });
 }
