@@ -5,6 +5,9 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/apple_tv.dart';
+import '../platform/app_paths.dart';
+
 // ── Pure helpers (tested) ─────────────────────────────────────────────────────
 
 /// Returns a file name like `zangetsu-backup-20260702-0905.json`.
@@ -65,6 +68,7 @@ class BackupFile {
     // in which case the app-private copy above is the saved backup, so report
     // its path (restore-from-file lists it) instead of failing. On a phone
     // (keepLocalCopy == false) localCopyPath is null, so this is byte-identical.
+    if (isAppleTv) return localCopyPath;
     try {
       final shared = await FileDownloader().moveFileToSharedStorage(
         file.path,
@@ -76,8 +80,11 @@ class BackupFile {
     return localCopyPath;
   }
 
-  /// App-private, permission-free backups directory in external app storage.
+  /// App-private backups directory (Caches on Apple TV, external storage on Android).
   Future<Directory?> _localBackupDir() async {
+    if (isAppleTv) {
+      return writableAppSubdir('backups');
+    }
     final ext = await getExternalStorageDirectory();
     if (ext == null) return null;
     final dir = Directory('${ext.path}/backups');

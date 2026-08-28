@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'app_image_cache.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:path_provider/path_provider.dart';
@@ -28,6 +29,9 @@ class MediaCache {
   /// Downloads live in the DOCUMENTS dir, so they are never touched.
   static Future<void> clear() async {
     // 1. CachedNetworkImage disk cache — clears its store index cleanly first.
+    try {
+      await AppImageCache.manager.emptyCache();
+    } catch (_) {}
     try {
       await DefaultCacheManager().emptyCache();
     } catch (_) {}

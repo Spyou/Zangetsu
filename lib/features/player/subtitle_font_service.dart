@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart' show FontLoader;
-import 'package:path_provider/path_provider.dart';
+import '../../core/platform/app_paths.dart';
 
 import '../../core/playback/playback_prefs.dart' show kBundledSubtitleFonts;
 import '../../core/playback/tv_track_helpers.dart' show subtitleFontFileName;
@@ -34,10 +34,7 @@ class SubtitleFontService {
   Directory? _dir;
 
   Future<Directory> _fontsDir() async {
-    final d = _dir ??= Directory(
-      '${(await getApplicationSupportDirectory()).path}/sub_fonts',
-    );
-    if (!d.existsSync()) d.createSync(recursive: true);
+    final d = _dir ??= await writableAppSubdir('sub_fonts');
     return d;
   }
 

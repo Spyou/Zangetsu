@@ -170,6 +170,7 @@ class _TvHeroState extends State<_TvHero> {
                           alignment: Alignment.centerLeft,
                           child: CachedNetworkImage(
                             imageUrl: _logoUrl!,
+                            cacheManager: AppImageCache.manager,
                             fit: BoxFit.contain,
                             alignment: Alignment.centerLeft,
                             memCacheWidth: memW,
