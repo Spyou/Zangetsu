@@ -9,9 +9,16 @@ import '../tv/tv_list_focusable.dart';
 /// Compact, flat app bar for pushed settings screens — an 18px title with a
 /// bottom hairline, matching the in-tab section header so drilling deeper keeps
 /// the same header. Inherits the transparent/flat [AppBarTheme].
-PreferredSizeWidget settingsAppBar(String title, {List<Widget>? actions}) {
+/// Set [showBack] false when the screen is a nav-shell TAB rather than a pushed
+/// page — there's nothing to pop back to, and the implicit arrow would be dead.
+PreferredSizeWidget settingsAppBar(
+  String title, {
+  List<Widget>? actions,
+  bool showBack = true,
+}) {
   return AppBar(
-    titleSpacing: 4,
+    titleSpacing: showBack ? 4 : 16,
+    automaticallyImplyLeading: showBack,
     title: Text(title, style: AppText.barTitle),
     actions: actions,
     bottom: const PreferredSize(

@@ -27,7 +27,14 @@ import '../player/player_screen.dart';
 /// Every store is a per-title last-position pointer, so there's one row per
 /// show/title.
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key, this.initialIndex = 0});
+  const HistoryScreen({
+    super.key,
+    this.initialIndex = 0,
+    this.showBack = true,
+  });
+
+  /// False when shown as a dock tab — nothing to pop back to.
+  final bool showBack;
 
   /// Which tab to open on: 0 Anime, 1 Manga, 2 Novel. Callers pass the current
   /// content mode's index (the [ContentMode] enum is ordered anime/manga/novel)
@@ -307,6 +314,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(
+        automaticallyImplyLeading: widget.showBack,
         backgroundColor: AppColors.bg,
         surfaceTintColor: Colors.transparent,
         title: const Text('History'),

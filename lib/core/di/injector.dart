@@ -18,6 +18,7 @@ import '../playback/playback_prefs.dart';
 import '../playback/pinned_sources.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
+import '../ui/nav_prefs.dart';
 import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../schedule/airing_service.dart';
@@ -279,6 +280,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<AnimeLangPrefs>(animeLangPrefs);
   await SearchPrefs.init();
   sl.registerSingleton<SearchPrefs>(SearchPrefs());
+  await NavPrefs.init();
+  sl.registerSingleton<NavPrefs>(NavPrefs());
   // Per-source reliability: orders search healthy-first, recoverably skips dead
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();

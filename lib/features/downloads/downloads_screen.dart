@@ -33,7 +33,10 @@ import 'downloads_screen_tv.dart';
 /// into a scannable list; a search box filters by show or episode title, and a
 /// summary strip shows the total downloaded count + storage used.
 class DownloadsScreen extends StatefulWidget {
-  const DownloadsScreen({super.key});
+  const DownloadsScreen({super.key, this.showBack = true});
+
+  /// False when shown as a dock tab — see [settingsAppBar].
+  final bool showBack;
 
   @override
   State<DownloadsScreen> createState() => _DownloadsScreenState();
@@ -254,6 +257,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
+        showBack: widget.showBack,
         'Downloads',
         actions: [
           IconButton(

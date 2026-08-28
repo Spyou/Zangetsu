@@ -34,6 +34,7 @@ import '../../core/provider/provider_manager.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import 'appearance_screen.dart';
+import 'nav_tabs_screen.dart';
 import 'reader_settings_screen.dart';
 import 'discord_settings_screen.dart';
 import 'torrent_settings_screen.dart';
@@ -803,6 +804,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         onTap: () => _push(const AppearanceScreen()),
+      ),
+      _SettingsEntry(
+        section: 'Interface',
+        icon: Icons.dashboard_customize_outlined,
+        title: 'Navigation bar',
+        subtitle: 'Which tabs show, and their order',
+        keywords: 'navigation bar tabs dock bottom reorder hide downloads '
+            'history customise customize interface',
+        onTap: () => _push(const NavTabsScreen()),
       ),
       _SettingsEntry(
         section: 'Interface',
