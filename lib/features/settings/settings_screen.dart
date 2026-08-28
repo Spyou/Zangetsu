@@ -36,6 +36,7 @@ import '../history/history_screen.dart';
 import 'appearance_screen.dart';
 import 'reader_settings_screen.dart';
 import 'discord_settings_screen.dart';
+import 'debrid_settings_screen.dart';
 import 'torrent_settings_screen.dart';
 import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
@@ -575,6 +576,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         keywords: 'discord rich presence status rpc',
         onTap: () async {
           await _push(const DiscordSettingsScreen());
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: 'Account & sync',
+        icon: Icons.cloud_outlined,
+        title: 'Debrid',
+        subtitle: 'Real-Debrid & TorBox for torrents',
+        keywords:
+            'debrid real-debrid realdebrid torbox magnet torrent cache rd',
+        onTap: () async {
+          await _push(const DebridSettingsScreen());
           if (mounted) setState(() {});
         },
       ),
@@ -1125,7 +1138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   };
 
   String _sectionSummary(String section) => switch (section) {
-    'Account & sync' => 'Trackers, Discord, backup, sync',
+    'Account & sync' => 'Trackers, Discord, Debrid, backup, sync',
     'Sources' => 'Providers, active source, updates',
     'Playback' => 'Quality, autoplay, speed',
     'Reading' => 'Manga & novel reader defaults',

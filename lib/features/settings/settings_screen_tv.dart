@@ -28,6 +28,7 @@ import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'connections_screen_tv.dart';
+import 'debrid_settings_screen.dart';
 import 'discord_settings_screen.dart';
 import 'donate_screen.dart';
 import 'settings_screen.dart';
@@ -376,6 +377,15 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         subtitle: 'Rich Presence — show your status',
                         onTap: () async {
                           await _push(const DiscordSettingsScreen());
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      SettingsTile(
+                        icon: Icons.cloud_outlined,
+                        title: 'Debrid',
+                        subtitle: 'Real-Debrid & TorBox for torrents',
+                        onTap: () async {
+                          await _push(const DebridSettingsScreen());
                           if (mounted) setState(() {});
                         },
                       ),
