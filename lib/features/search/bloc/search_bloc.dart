@@ -88,7 +88,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// room to answer — [SourceHealthStore.slowThreshold] already flags merely-slow
   /// at 4s, and a timeout never marks a source dead, so a source that trips this
   /// is queried in full again on the next search.
-  static const Duration _sourceTimeout = Duration(seconds: 60);
+  static const Duration sourceTimeout = Duration(seconds: 60);
 
   /// What a capped-out search returns — shaped like a normal empty result so it
   /// flows through the same outcome handling as any other failure.
@@ -478,7 +478,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
                 filtersJson: state.filterSelectionFor(s.id),
                 cache: true,
               )
-              .timeout(_sourceTimeout, onTimeout: _timedOut);
+              .timeout(sourceTimeout, onTimeout: _timedOut);
           sw.stop();
           if (isClosed || gen != _runGen) return; // superseded/closed
           // Record health: a response over the slow threshold downgrades an
@@ -608,7 +608,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           filtersJson: state.filterSelectionFor(id),
           cache: true,
         )
-        .timeout(_sourceTimeout, onTimeout: _timedOut);
+        .timeout(sourceTimeout, onTimeout: _timedOut);
     sw.stop();
     if (isClosed || state.query.trim() != q) return;
 
