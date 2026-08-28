@@ -42,8 +42,13 @@ class _ProbeResult {
   int? responseMs;
   int? resultCount;
 
-  /// First search hit, kept so the deep check has something to open.
-  String? firstUrl;
+  /// The first few search hits, kept so the deep check has something to open.
+  ///
+  /// More than one on purpose: a single title can legitimately have no chapters
+  /// or episodes (a stub entry, or everything filtered out by language), and
+  /// judging a whole source on that one pick is how a healthy source gets called
+  /// broken.
+  List<String> topUrls = const [];
 
   /// Deep check: did opening a title and listing its episodes/chapters work?
   /// Null when the deep check hasn't run (or couldn't).
@@ -156,7 +161,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
     final sw = Stopwatch()..start();
     SourceOutcome outcome = SourceOutcome.empty;
     int count = 0;
-    String? firstUrl;
+    var topUrls = const <String>[];
 
     // Try each query until one returns hits. A later success overrides an
     // earlier empty/failure — the source clearly works, the first word just
@@ -174,7 +179,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
         outcome = res.outcome;
         if (res.items.isNotEmpty) {
           count = res.items.length;
-          firstUrl = res.items.first.url;
+          topUrls = [for (final i in res.items.take(3)) i.url];
           break;
         }
       } catch (_) {
@@ -197,13 +202,13 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
     setState(() {
       // Still spinning only when a deep check is about to run for this row;
       // otherwise the probe IS the result.
-      r.running = deep && firstUrl != null;
+      r.running = deep && topUrls.isNotEmpty;
       r.outcome = outcome;
       r.responseMs = sw.elapsedMilliseconds;
       r.resultCount = count;
-      r.firstUrl = firstUrl;
+      r.topUrls = topUrls;
     });
-    if (deep && firstUrl != null) await _deepCheck(r, firstUrl, gen);
+    if (deep && topUrls.isNotEmpty) await _deepCheck(r, topUrls, gen);
   }
 
   /// Opens the first search hit and lists its episodes/chapters.
@@ -214,21 +219,30 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
   /// and resolves video links; this stops at the episode list, which is the
   /// same check for every mode (anime episodes, manga and novel chapters all
   /// come back through `episodes`).
-  Future<void> _deepCheck(_ProbeResult r, String url, int gen) async {
+  Future<void> _deepCheck(_ProbeResult r, List<String> urls, int gen) async {
     bool ok = false;
     String? note;
-    try {
-      final eps = await _repo
-          .episodes(url, sourceId: r.id)
-          .timeout(_probeTimeout, onTimeout: () => const []);
-      if (eps.isEmpty) {
-        note = 'opens, but lists nothing to play';
-      } else {
-        ok = true;
-        note = '${eps.length} to play';
+    var opened = false;
+    for (final url in urls) {
+      if (gen != _runGen) return;
+      try {
+        final eps = await _repo
+            .episodes(url, sourceId: r.id)
+            .timeout(_probeTimeout, onTimeout: () => const []);
+        opened = true;
+        if (eps.isNotEmpty) {
+          ok = true;
+          note = '${eps.length} to play';
+          break;
+        }
+      } catch (_) {
+        // Try the next title before blaming the source.
       }
-    } catch (_) {
-      note = "can't open titles";
+    }
+    if (!ok) {
+      note = opened
+          ? 'opens, but lists nothing to play'
+          : "can't open titles";
     }
     if (!mounted || gen != _runGen) return;
     setState(() {
@@ -306,7 +320,11 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
             tooltip: 'Deep test (opens a title from each source)',
             icon: const Icon(Icons.biotech_outlined),
             color: _deep ? AppColors.accent : AppColors.textPrimary,
-            onPressed: _testing ? null : () => _runTests(deep: true),
+            // Live even mid-run. The screen kicks off a test on open, and
+            // disabling this until that finished meant waiting out the whole
+            // list before you could ask for the deeper one. Safe now that a new
+            // run supersedes the old via [_runGen] instead of racing it.
+            onPressed: () => _runTests(deep: true),
           ),
           IconButton(
             tooltip: 'Re-test',
