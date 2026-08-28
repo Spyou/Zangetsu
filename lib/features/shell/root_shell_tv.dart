@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/provider/cloudstream_provider.dart';
-import '../../core/provider/provider_manager.dart' show AniyomiManager;
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -90,6 +93,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   static const int _searchRailItem = 1;
 
   int _index = 0;
+  /// tvOS: only mount tabs the user has opened — cloud-restore boots build a
+  /// heavy shell; building every [IndexedStack] child on the first frame can
+  /// delay the splash overlay from clearing.
+  final Set<int> _mountedPages = {0};
   bool _navOpen = false; // drawer expanded ⇔ focus is in the rail zone
   DateTime? _lastBackPress;
 
@@ -327,15 +334,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   }
 
   void _onItemSelected(int i) {
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      if (isAppleTv) _mountedPages.add(i);
+    });
     if (i == _searchRailItem) _searchFocusSignal.value++;
-    // Hand focus to the freshly shown page so the drawer collapses and you land
-    // in the content — picking a section takes you into it (like tapping right)
-    // instead of leaving the nav open over the page. Runs for EVERY section,
-    // including Search: the TV search screen isn't wired to _searchFocusSignal
-    // (that's the phone path), so without this the rail kept focus and the
-    // drawer stayed open. On Search this lands on the search field, which also
-    // pops the keyboard.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _contentScope.traversalDescendants
@@ -343,6 +346,20 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
           .firstOrNull
           ?.requestFocus();
     });
+  }
+
+  /// tvOS: load provider JS before [HomeCubit] hits QuickJS — a cloud-restore
+  /// pick (e.g. AniKoto) can be enabled in the registry but not yet evaluated.
+  Future<void> _reloadHomeForSource(String sourceId) async {
+    if (isAppleTv) {
+      final ok = await sl<ProviderRegistry>()
+          .ensureRuntimeLoaded(sourceId)
+          .catchError((_) => false);
+      if (!ok || sl<ProviderManager>().get(sourceId) == null) {
+        return;
+      }
+    }
+    sl<HomeCubit>().load(reset: true);
   }
 
   void _handlePopInvoked(bool didPop, dynamic result) {
@@ -376,6 +393,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       const ScheduleScreen(),
       shared.last, // Settings
     ];
+  }
+
+  Widget _pageAt(int index, List<Widget> pages) {
+    if (!isAppleTv || _mountedPages.contains(index)) return pages[index];
+    return const SizedBox.shrink();
   }
 
   // ── Drawer pieces ─────────────────────────────────────────────────────────
@@ -715,7 +737,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       onPopInvokedWithResult: _handlePopInvoked,
       child: BlocListener<ActiveSourceCubit, String>(
         listenWhen: (prev, curr) => prev != curr,
-        listener: (context, _) => sl<HomeCubit>().load(reset: true),
+        listener: (context, sourceId) {
+          if (isAppleTv && !tvosProvidersReady) return;
+          unawaited(_reloadHomeForSource(sourceId));
+        },
         child: Actions(
           actions: <Type, Action<Intent>>{
             DirectionalFocusIntent: _TvRailDirectionalAction(this),
@@ -742,10 +767,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         for (var i = 0; i < pages.length; i++)
                           ExcludeFocus(
                             excluding: i != _index,
-                            child: ExcludeSemantics(
-                              excluding: i != _index,
-                              child: pages[i],
-                            ),
+                            // IndexedStack exposes only its painted child.
+                            // Toggling ExcludeSemantics while tvOS dispatches a
+                            // scroll semantics action triggers Flutter's
+                            // _debugDoingSemantics assertion.
+                            child: _pageAt(i, pages),
                           ),
                       ],
                     ),

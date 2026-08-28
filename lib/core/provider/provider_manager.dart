@@ -18,6 +18,7 @@ import '../models/media_item.dart';
 import '../models/page_content.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
+import '../platform/apple_tv.dart';
 import 'base_provider.dart';
 import 'cf_clearance_store.dart';
 import 'crypto_ops.dart';
@@ -43,19 +44,35 @@ class _JsHost {
   _JsHost({required this.dio}) {
     _runtime = getJavascriptRuntime();
     _runtime.enableHandlePromises();
-    _runtime.onMessage('fetch', _onFetch);
-    _runtime.onMessage('console', _onConsole);
-    _runtime.onMessage('crypto', _onCrypto);
-    _runtime.onMessage('timer', _onTimer);
+    // Never perform work re-entrantly inside sendMessage. The tvOS bridge
+    // invokes these callbacks while evaluate() still owns the JS engine lock;
+    // awaiting HTTP or evaluating a resolver from that callback deadlocks the
+    // engine before evaluate() can return its Promise handle.
+    _runtime.onMessage('fetch', (raw) {
+      scheduleMicrotask(() => _onFetch(raw));
+    });
+    _runtime.onMessage('console', (raw) {
+      scheduleMicrotask(() => _onConsole(raw));
+    });
+    _runtime.onMessage('crypto', (raw) {
+      scheduleMicrotask(() => _onCrypto(raw));
+    });
+    _runtime.onMessage('timer', (raw) {
+      scheduleMicrotask(() => _onTimer(raw));
+    });
     final r = _runtime.evaluate(kJsBootstrap);
     if (r.isError) {
       throw JsRuntimeException('Bootstrap failed: ${r.stringResult}');
+    }
+    if (isAppleTv) {
+      _runtime.evaluate('globalThis.__usePollingBridge = true;');
     }
   }
 
   final Dio dio;
   late final JavascriptRuntime _runtime;
   final Map<String, JsProvider> providers = {};
+  int _providerCallSeq = 0;
 
   // Serialize every provider call onto ONE queue. flutter_js/QuickJS is single-
   // threaded and non-reentrant; overlapping calls race its async FFI callback
@@ -194,6 +211,9 @@ class _JsHost {
     _suppressCfSolve = method == 'search';
     try {
       final argsJson = jsonEncode(args);
+      if (isAppleTv) {
+        return await _runAppleTvCall(sourceId, method, argsJson, timeout);
+      }
       // __callProviderT (not __callProvider): a JS-side deadline settles the
       // promise even if the source hangs, so flutter_js's promise poller stops
       // instead of spinning QuickJS forever. The .timeout() below stays as a
@@ -235,6 +255,95 @@ class _JsHost {
     } finally {
       _suppressCfSolve = wasSuppress;
     }
+  }
+
+  /// Physical tvOS cannot call Dart re-entrantly through JavaScriptCore's FFI
+  /// sendMessage callback. JS queues native requests; Dart polls, services
+  /// them, and injects their results back into the runtime.
+  Future<String> _runAppleTvCall(
+    String sourceId,
+    String method,
+    String argsJson,
+    Duration timeout,
+  ) async {
+    final callId = 'p${++_providerCallSeq}';
+    final expr =
+        '''
+(function() {
+  __callProvider(
+    ${jsonEncode(sourceId)},
+    ${jsonEncode(method)},
+    ${jsonEncode(argsJson)}
+  ).then(
+    function(value) {
+      globalThis.__providerResults[${jsonEncode(callId)}] =
+        { ok: true, value: value };
+    },
+    function(error) {
+      globalThis.__providerResults[${jsonEncode(callId)}] =
+        { ok: false, error: String(error) };
+    }
+  );
+  return 'scheduled';
+})()
+''';
+    final scheduled = _runtime.evaluate(expr);
+    if (scheduled.isError || scheduled.stringResult != 'scheduled') {
+      throw JsRuntimeException(
+        'Could not schedule $sourceId.$method: ${scheduled.stringResult}',
+      );
+    }
+    return _pumpAppleTvCall(callId, method, timeout);
+  }
+
+  Future<String> _pumpAppleTvCall(
+    String callId,
+    String method,
+    Duration timeout,
+  ) async {
+    final deadline = DateTime.now().add(timeout);
+    while (DateTime.now().isBefore(deadline)) {
+      final requestsResult = _runtime.evaluate(
+        'JSON.stringify(globalThis.__nativeRequests.splice(0))',
+      );
+      final decoded = jsonDecode(requestsResult.stringResult);
+      if (decoded is List) {
+        for (final raw in decoded) {
+          if (raw is! Map) continue;
+          final request = Map<String, dynamic>.from(raw);
+          final channel = request['channel'];
+          final payload = request['payload'];
+          if (channel == 'fetch') {
+            await _onFetch(payload);
+          } else if (channel == 'crypto') {
+            _onCrypto(payload);
+          } else if (channel == 'console') {
+            _onConsole(payload);
+          } else if (channel == 'timer') {
+            _onTimer(payload);
+          }
+        }
+      }
+
+      final result = _runtime.evaluate('''
+(function() {
+  var value = globalThis.__providerResults[${jsonEncode(callId)}];
+  if (!value) return '';
+  delete globalThis.__providerResults[${jsonEncode(callId)}];
+  return JSON.stringify(value);
+})()
+''');
+      if (result.stringResult.isNotEmpty) {
+        final payload = jsonDecode(result.stringResult) as Map<String, dynamic>;
+        if (payload['ok'] == true) {
+          return (payload['value'] ?? '').toString();
+        }
+        final error = (payload['error'] ?? 'unknown provider error').toString();
+        throw JsRuntimeException(error);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    throw JsRuntimeException('$method timed out after ${timeout.inSeconds}s');
   }
 
   Map<String, dynamic> _coerceMap(dynamic raw) {
@@ -865,7 +974,8 @@ class AniyomiManager extends ChangeNotifier {
 
   /// Read-only update check for a single repo; stores + notifies. Never throws.
   Future<List<AniyomiUpdate>> checkRepoUpdates(String url) async {
-    final checker = checkerOverride ??
+    final checker =
+        checkerOverride ??
         (u, codes) => AniyomiExtensionService().checkRepoForUpdates(u, codes);
     try {
       final list = await checker(url, installedCodes);
@@ -897,7 +1007,10 @@ class AniyomiManager extends ChangeNotifier {
 
   /// Checks every repo URL. TTL-debounced (30 min) unless [force]. Returns the
   /// total update count. Never throws.
-  Future<int> checkAllUpdates(List<String> repoUrls, {bool force = false}) async {
+  Future<int> checkAllUpdates(
+    List<String> repoUrls, {
+    bool force = false,
+  }) async {
     final last = _lastUpdateCheck;
     if (!force &&
         last != null &&

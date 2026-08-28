@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/app_mode.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
@@ -135,11 +136,17 @@ class _HomeViewState extends State<_HomeView>
           });
     // The splash usually pre-warms the rows; only fetch here if it didn't
     // (e.g. first run right after onboarding, or a source with no warm yet).
-    final cubit = context.read<HomeCubit>();
-    if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+    // tvOS: provider JS loads AFTER the splash (runDeferredAppleTvBootTasks).
+    // load() here races that step and wedges QuickJS on the first RootShell
+    // frame — looks stuck on the splash after a cloud restore (onboarded=true
+    // pushes Home immediately; fresh installs see Onboarding first and miss it).
+    if (!isAppleTv) {
+      final cubit = context.read<HomeCubit>();
+      if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+    }
     // Silently check GitHub Releases once on launch; the dialog only appears if
     // a newer, non-skipped version exists. Best-effort — never blocks startup.
-    if (!_updateChecked) {
+    if (!_updateChecked && !isAppleTv) {
       _updateChecked = true;
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;

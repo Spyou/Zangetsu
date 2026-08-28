@@ -6,7 +6,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/aniyomi/aniyomi_image_provider.dart';
+import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
@@ -57,9 +59,26 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// _metaCache; futures are stored so carousel rotation never re-fetches.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
 
+  /// tvOS: defer the Hive listenable until after the shell's first frame lands.
+  bool _historyLive = !isAppleTv;
+
   @override
   void initState() {
     super.initState();
+    if (isAppleTv) {
+      // Let shell chrome paint first, then fetch from the now-loaded provider.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _historyLive = true);
+        final cubit = context.read<HomeCubit>();
+        if (tvosProvidersReady &&
+            cubit.state.sections == null &&
+            !cubit.state.loading) {
+          cubit.load();
+        }
+      });
+      return;
+    }
     // Kick the first load ourselves, exactly like the phone home does. main()
     // only calls HomeCubit.load() when isOnboarded() was already true at boot,
     // so someone who just finished onboarding lands here with sections == null
@@ -92,11 +111,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       episodes = const [];
     }
     if (!mounted || episodes.isEmpty) return;
-    resolveSources(String u) => sl<SourceRepository>().sources(
-      u,
-      sourceId: item.sourceId,
-      fast: true,
-    );
+    resolveSources(String u) =>
+        sl<SourceRepository>().sources(u, sourceId: item.sourceId, fast: true);
     await launchTvPlayback(
       context: context,
       sourceId: item.sourceId,
@@ -138,11 +154,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     if (!mounted || episodes.isEmpty) return;
     var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
     if (idx < 0) idx = 0;
-    resolveSources(String u) => sl<SourceRepository>().sources(
-      u,
-      sourceId: e.sourceId,
-      fast: true,
-    );
+    resolveSources(String u) =>
+        sl<SourceRepository>().sources(u, sourceId: e.sourceId, fast: true);
     await launchTvPlayback(
       context: context,
       sourceId: e.sourceId,
@@ -424,7 +437,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       // off history.isEmpty) reacts the instant the cloud pull lands — the pull
       // finishes AFTER this build on login / boot-migration. The box is opened
       // at boot; guard for a signed-out render and the test env where it isn't.
-      body: (loggedIn && Hive.isBoxOpen(WatchHistory.boxName))
+      body: (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
           ? ValueListenableBuilder(
               valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
               builder: (context, _, _) =>
