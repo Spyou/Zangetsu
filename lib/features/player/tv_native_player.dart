@@ -10,6 +10,7 @@ import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/provider_info.dart';
+import '../../core/debrid/playable_torrent.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -22,7 +23,6 @@ import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import 'subtitle_font_service.dart';
@@ -419,20 +419,19 @@ class TvNativePlayer {
     }
   }
 
-  /// A URL ExoPlayer can play: a magnet/.torrent is streamed through the shared
-  /// [TorrentService] (libtorrent → a local http:// stream) exactly like the phone
-  /// player does; anything else passes through unchanged. Returns null on
-  /// torrent failure / Wi-Fi-only.
+  /// A URL ExoPlayer can play: a magnet/.torrent is resolved through debrid
+  /// (when configured) or streamed through [TorrentService] (libtorrent → a
+  /// local http:// stream); anything else passes through unchanged. Returns
+  /// null on torrent failure / Wi-Fi-only.
   static Future<String?> _playableUrl(String url) async {
     if (!isTorrentUrl(url)) return url;
     _stopTorrent();
     try {
-      final t = await sl<TorrentService>().startStream(
-        url,
-        allowMobileData: sl<TorrentPrefs>().allowMobileData,
+      final result = await sl<PlayableTorrent>().resolve(
+        VideoSource(url: url, container: SourceContainer.torrent),
       );
-      _torrentId = t.id;
-      return t.localUrl;
+      _torrentId = result.localTorrentId;
+      return result.source.url;
     } catch (_) {
       return null;
     }

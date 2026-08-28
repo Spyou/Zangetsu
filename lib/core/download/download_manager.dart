@@ -11,6 +11,10 @@ import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../debrid/debrid_provider.dart';
+import '../debrid/debrid_resolver.dart';
+import '../debrid/debrid_result.dart';
+import '../debrid/playable_torrent.dart';
 import '../logging/app_logger.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
@@ -28,14 +32,19 @@ import 'download_service.dart';
 /// `downloads` box so the library survives restarts. A [ChangeNotifier] so the
 /// UI can rebuild live. See docs/downloads-feature.md.
 class DownloadManager extends ChangeNotifier {
-  DownloadManager(this._repo,
-      [DownloadPrefs? downloadPrefs, TorrentDownloadService? torrentSvc])
-      : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
-        _torrentSvc = torrentSvc ?? TorrentDownloadService();
+  DownloadManager(
+    this._repo, [
+    DownloadPrefs? downloadPrefs,
+    TorrentDownloadService? torrentSvc,
+    DebridResolver? debrid,
+  ])  : _downloadPrefs = downloadPrefs ?? DownloadPrefs(),
+        _torrentSvc = torrentSvc ?? TorrentDownloadService(),
+        _debrid = debrid;
 
   final SourceRepository _repo;
   final DownloadPrefs _downloadPrefs;
   final TorrentDownloadService _torrentSvc;
+  final DebridResolver? _debrid;
 
   /// Latest torrent-download progress per id (peers/speed for the UI), kept
   /// out of [DownloadRecord] so it isn't persisted every tick.
@@ -456,8 +465,13 @@ class DownloadManager extends ChangeNotifier {
       return;
     }
     if (isTorrentSource(source)) {
-      await _startTorrentDownload(rec, source);
-      return;
+      final http = await _maybeDebridHttp(rec, source);
+      if (http == null) return; // torrent path started, or Always failed
+      source = http;
+      if (_isHls(source)) {
+        await _startHlsDownload(rec, source);
+        return;
+      }
     }
     final filename =
         '${_safe(rec.showTitle)}_E${rec.episodeNumber?.toInt() ?? ''}'
@@ -1279,6 +1293,60 @@ class DownloadManager extends ChangeNotifier {
   @visibleForTesting
   static bool isTorrentSource(VideoSource s) =>
       s.container == SourceContainer.torrent;
+
+  /// Prefer/Always: resolve via debrid to an HTTP [VideoSource] the normal
+  /// downloader can enqueue. Returns null when the torrent path was started
+  /// (or Always failed and the record was marked).
+  Future<VideoSource?> _maybeDebridHttp(
+    DownloadRecord rec,
+    VideoSource source,
+  ) async {
+    final resolver = _debrid;
+    if (resolver == null || resolver.prefs.mode == DebridMode.off) {
+      await _startTorrentDownload(rec, source);
+      return null;
+    }
+    final attempt = await resolver.resolve(source.url);
+    if (attempt is DebridOk) {
+      return _httpSource(source, attempt.resolved);
+    }
+    if (shouldFallbackToLocal(attempt, resolver.prefs.mode)) {
+      if (attempt is DebridFailed) {
+        AppLogger.instance.log(
+          'debrid download fallback (${attempt.error.kind.name}): '
+          '${attempt.error.message}',
+          level: 'W',
+        );
+      }
+      await _startTorrentDownload(rec, source);
+      return null;
+    }
+    final msg = attempt is DebridFailed
+        ? attempt.error.message
+        : "Couldn't resolve this torrent via debrid.";
+    _put(rec.copyWith(
+      status: DownloadStatus.failed,
+      error: () => msg,
+    ));
+    notifyListeners();
+    return null;
+  }
+
+  static VideoSource _httpSource(VideoSource original, DebridResolved resolved) {
+    final name = (resolved.filename ?? resolved.url).toLowerCase();
+    final container = name.contains('.m3u8')
+        ? SourceContainer.hls
+        : SourceContainer.mp4;
+    return VideoSource(
+      url: resolved.url,
+      quality: original.quality,
+      label: original.label,
+      container: container,
+      kind: original.kind,
+      audioLang: original.audioLang,
+      subtitles: original.subtitles,
+    );
+  }
 
   Future<void> _startTorrentDownload(
       DownloadRecord rec, VideoSource source) async {

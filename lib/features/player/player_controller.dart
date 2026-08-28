@@ -5,8 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:equatable/equatable.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart'
-    show rootBundle, PlatformException;
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -26,7 +25,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/filler_service.dart';
 import '../../core/playback/skip_service.dart';
 import '../../core/playback/subtitle_language.dart';
-import '../../core/torrent/torrent_prefs.dart';
+import '../../core/debrid/playable_torrent.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/playback/resume_store.dart';
@@ -1981,63 +1980,39 @@ class PlayerCubit extends Cubit<PlayerState> {
 
   // Active torrent stream (Phase 1: one at a time). Null for normal playback.
   String? _activeTorrentId;
-  StreamSubscription<TorrentProgress>? _torrentSub;
 
-  /// Streams a torrent [s] into a local http url, driving [PlayerState.torrentPhase]
-  /// as a buffering overlay. Returns a playable local-url source, or null if it
-  /// couldn't (a clean error is emitted, no throw). Stops any previous torrent.
+  /// Streams a torrent [s] into a playable HTTP url (debrid when configured,
+  /// otherwise the native engine), driving [PlayerState.torrentPhase] as a
+  /// buffering overlay. Returns a playable source, or null if it couldn't
+  /// (a clean error is emitted, no throw). Stops any previous torrent.
   Future<VideoSource?> _resolveTorrent(VideoSource s, int g) async {
     await _stopTorrent();
     emit(state.copyWith(torrentPhase: () => 'Finding peers…', error: () => null));
-    _torrentSub = sl<TorrentService>().events().listen((p) {
-      if (g != _gen) return;
-      final txt = switch (p.state) {
-        TorrentState.finding => 'Finding peers…',
-        TorrentState.buffering =>
-          'Buffering ${(p.bufferPct * 100).clamp(0, 100).toStringAsFixed(0)}%'
-              '${p.peers > 0 ? ' · ${p.peers} peers' : ''}',
-        TorrentState.ready => 'Starting…',
-        TorrentState.error => 'Finding peers…',
-      };
-      emit(state.copyWith(torrentPhase: () => txt));
-    });
     try {
-      final t = await sl<TorrentService>().startStream(
-        s.url,
-        allowMobileData: sl<TorrentPrefs>().allowMobileData,
+      final result = await sl<PlayableTorrent>().resolve(
+        s,
+        onPhase: (txt) {
+          if (g != _gen) return;
+          emit(state.copyWith(torrentPhase: () => txt));
+        },
       );
-      await _torrentSub?.cancel();
-      _torrentSub = null;
       if (g != _gen) {
-        await _stopTorrent();
+        if (result.localTorrentId != null) {
+          try {
+            await sl<TorrentService>().stop(result.localTorrentId!);
+          } catch (_) {}
+        }
         return null;
       }
-      _activeTorrentId = t.id;
+      _activeTorrentId = result.localTorrentId;
       emit(state.copyWith(torrentPhase: () => null));
-      // A local progressive stream — treat as a plain file (mp4 tuning, no
-      // headers); keep the original quality/label/subs.
-      return VideoSource(
-        url: t.localUrl,
-        quality: s.quality,
-        label: s.label,
-        container: SourceContainer.mp4,
-        kind: s.kind,
-        audioLang: s.audioLang,
-        subtitles: s.subtitles,
-      );
-    } catch (e) {
-      await _torrentSub?.cancel();
-      _torrentSub = null;
+      return result.source;
+    } on PlayableTorrentException catch (e) {
       if (g != _gen) return null;
-      final msg = (e is PlatformException && e.code == 'wifi_only')
-          ? 'Torrents are set to Wi-Fi only. Turn on mobile data for torrents '
-              'in Settings › Torrents.'
-          : "Couldn't stream this torrent — no peers or it timed out. "
-              'Try another source.';
       emit(state.copyWith(
         torrentPhase: () => null,
         loadingSources: false,
-        error: () => msg,
+        error: () => e.message,
       ));
       return null;
     }
@@ -2047,8 +2022,6 @@ class PlayerCubit extends Cubit<PlayerState> {
   Future<void> _stopTorrent() async {
     final id = _activeTorrentId;
     _activeTorrentId = null;
-    await _torrentSub?.cancel();
-    _torrentSub = null;
     if (id != null) {
       try {
         await sl<TorrentService>().stop(id);

@@ -32,8 +32,8 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/debrid/playable_torrent.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -457,12 +457,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     var playUrl = src.url;
     var playHeaders = src.headers ?? const <String, String>{};
     if (isTorrentUrl(src.url)) {
-      final local = await _resolveTorrent(src.url, gen);
+      final local = await _resolveTorrent(src, gen);
       // Bail if a newer _open superseded us while resolving, or on error/wifi
       // (shown by _resolveTorrent).
       if (local == null || gen != _loadGen || !mounted) return;
-      playUrl = local;
+      playUrl = local.url;
       playHeaders = const {};
+      src = local;
     }
     final subs = _subtitleConfigs(src);
     await _c?.setSource(
@@ -527,54 +528,31 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     sl<DiscordRpc>().clear(delay: DiscordRpc.playerExitClearDelay);
   }
 
-  Future<String?> _resolveTorrent(String uri, int gen) async {
+  Future<VideoSource?> _resolveTorrent(VideoSource src, int gen) async {
     setState(() => _torrentPhase = 'Finding peers…');
-    // Local subscription (not a shared field) so an overlapping _open can't
-    // cancel this resolve's stream, or vice-versa. Stale ticks are ignored.
-    final sub = sl<TorrentService>().events().listen((e) {
-      if (!mounted || gen != _loadGen) return;
-      if (e.state == TorrentState.buffering) {
-        setState(
-          () => _torrentPhase = 'Buffering ${(e.bufferPct * 100).round()}%',
-        );
-      } else if (e.state == TorrentState.finding) {
-        setState(() => _torrentPhase = 'Finding peers…');
-      }
-    });
     try {
-      final t = await sl<TorrentService>().startStream(
-        uri,
-        allowMobileData: sl<TorrentPrefs>().allowMobileData,
+      final result = await sl<PlayableTorrent>().resolve(
+        src,
+        onPhase: (txt) {
+          if (!mounted || gen != _loadGen) return;
+          setState(() => _torrentPhase = txt);
+        },
       );
-      await sub.cancel();
       if (gen != _loadGen) {
-        // A newer load superseded us — stop the torrent WE just started so it
-        // doesn't leak, and let the caller bail.
-        sl<TorrentService>().stop(t.id);
+        if (result.localTorrentId != null) {
+          sl<TorrentService>().stop(result.localTorrentId!);
+        }
         return null;
       }
-      _torrentId = t.id;
+      _torrentId = result.localTorrentId;
       if (mounted) setState(() => _torrentPhase = null);
-      return t.localUrl;
-    } on PlatformException catch (e) {
-      await sub.cancel();
+      return result.source;
+    } on PlayableTorrentException catch (e) {
       if (gen != _loadGen) return null;
       if (mounted) {
         setState(() {
           _torrentPhase = null;
-          _error = e.code == 'wifi_only'
-              ? 'Connect to Wi-Fi or allow mobile data in Settings to stream torrents.'
-              : 'Could not start the torrent.';
-        });
-      }
-      return null;
-    } catch (_) {
-      await sub.cancel();
-      if (gen != _loadGen) return null;
-      if (mounted) {
-        setState(() {
-          _torrentPhase = null;
-          _error = 'Could not start the torrent.';
+          _error = e.message;
         });
       }
       return null;
