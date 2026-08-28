@@ -46,6 +46,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     on<SearchSourceFiltersApplied>(_onSourceFiltersApplied);
     on<SearchFilteredBrowseMore>(_onFilteredBrowseMore);
     on<SearchModeChanged>(_onModeChanged);
+    on<SearchRetryRequested>(_onRetryRequested);
     // Results belong to the mode they were fetched in. The Search tab stays
     // alive in the nav shell, so without this a manga search was still on
     // screen after switching to Streaming — stale results from sources this
@@ -67,6 +68,32 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
   StreamSubscription<ContentMode>? _modeSub;
+
+  /// Hard cap on one source's search.
+  ///
+  /// [SourceRepository.searchStatus] never throws and has no timeout of its
+  /// own — it inherits whatever the underlying provider's HTTP client does, and
+  /// a provider that hangs outright (a stuck native bridge, a Cloudflare WebView
+  /// solve that never resolves) simply never answers. Its `respondedSources`
+  /// entry is then never written and its skeleton stays on screen forever.
+  ///
+  /// Sized against Aniyomi/Mihon, which cap one call at `callTimeout(2 minutes)`
+  /// on top of 30s connect/read (their `NetworkHelper`). This app never got that
+  /// ceiling: the vendored `NetworkHelper` wraps CloudStream's `baseClient`,
+  /// which is a bare `OkHttpClient()` — OkHttp's default `callTimeout` is 0, ie.
+  /// none. `callTimeout` is set exactly once app-wide, on `downloadClient`. So
+  /// nothing bounded a search at all, and a source that hung simply hung.
+  ///
+  /// 60s sits under their per-call ceiling while leaving a genuinely slow source
+  /// room to answer — [SourceHealthStore.slowThreshold] already flags merely-slow
+  /// at 4s, and a timeout never marks a source dead, so a source that trips this
+  /// is queried in full again on the next search.
+  static const Duration _sourceTimeout = Duration(seconds: 60);
+
+  /// What a capped-out search returns — shaped like a normal empty result so it
+  /// flows through the same outcome handling as any other failure.
+  static ({List<MediaItem> items, SourceOutcome outcome}) _timedOut() =>
+      (items: const <MediaItem>[], outcome: SourceOutcome.timeout);
 
   /// [SourceRepository.loadedSources] narrowed to the active content mode, so an
   /// all-sources search only fans out over sources that mode can actually show —
@@ -353,6 +380,8 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
         status: SearchStatus.loading,
         groups: const [],
         respondedSources: const {},
+        failedSources: const {},
+        queriedSources: const {},
         clearError: true,
       ),
     );
@@ -370,7 +399,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       sources = _modeSources().where((s) => prefs.isIncluded(s.id)).toList();
     }
     if (sources.isEmpty) {
-      emit(state.copyWith(status: SearchStatus.error));
+      // Not a failure — there was nothing to search. Says so, rather than
+      // reusing the generic "search failed" copy for a setup problem.
+      emit(
+        state.copyWith(
+          status: SearchStatus.error,
+          error: 'No sources are switched on for search.',
+        ),
+      );
       return;
     }
 
@@ -381,11 +417,23 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // current-source-only mode we always query the one chosen source (never skip
     // it — the user explicitly picked it).
     final health = sl<SourceHealthStore>();
+    // Sources the health check drops before they're ever queried. Reported as
+    // failures rather than dropped silently: a fresh "dead" mark only comes
+    // from a hard error, so "couldn't be reached" is what actually happened
+    // last time — and the Retry on that row clears the mark, which is exactly
+    // the recovery.
+    final skipped = <String>[];
     if (!state.currentSourceOnly) {
       final live = sources.where((s) => !health.isSkippable(s.id)).toList();
       // If EVERY source is currently skippable, the windows have likely all
       // lapsed-or-not together; rather than show nothing, retry them all.
-      if (live.isNotEmpty) sources = live;
+      if (live.isNotEmpty) {
+        final liveIds = {for (final s in live) s.id};
+        skipped.addAll(
+          sources.where((s) => !liveIds.contains(s.id)).map((s) => s.id),
+        );
+        sources = live;
+      }
       int rank(SourceHealth h) => switch (h) {
         SourceHealth.ok => 0,
         SourceHealth.slow => 1,
@@ -402,8 +450,19 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // already keeps a new source out of the cache; this covers removes too).
     _repo.syncSearchCache();
 
+    // What's genuinely in flight, so the screen's skeletons match reality
+    // instead of its own guess at the source list.
+    emit(
+      state.copyWith(
+        queriedSources: {for (final s in sources) s.id},
+        failedSources: {for (final id in skipped) id: SourceOutcome.error},
+      ),
+    );
+
     final acc = <SourceResultGroup>[];
-    var anyError = false;
+    // Which sources broke, and how. Was a single `anyError` bool, which threw
+    // away the one thing the UI needed to explain itself.
+    final failed = <String, SourceOutcome>{...state.failedSources};
     // Monotonic arrival counter: the Nth source to return non-empty results gets
     // arrivalIndex N, so sections render fastest-first (CloudStream-style).
     var arrived = 0;
@@ -412,12 +471,14 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
       sources.map((s) async {
         final sw = Stopwatch()..start();
         try {
-          final res = await _repo.searchStatus(
-            q,
-            sourceId: s.id,
-            filtersJson: state.filterSelectionFor(s.id),
-            cache: true,
-          );
+          final res = await _repo
+              .searchStatus(
+                q,
+                sourceId: s.id,
+                filtersJson: state.filterSelectionFor(s.id),
+                cache: true,
+              )
+              .timeout(_sourceTimeout, onTimeout: _timedOut);
           sw.stop();
           if (isClosed || gen != _runGen) return; // superseded/closed
           // Record health: a response over the slow threshold downgrades an
@@ -431,7 +492,9 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
           }
           // ignore: unawaited_futures
           health.record(s.id, outcome, responseMs: sw.elapsedMilliseconds);
-          if (!responded && outcome != SourceOutcome.slow) anyError = true;
+          if (!responded && outcome != SourceOutcome.slow) {
+            failed[s.id] = outcome;
+          }
           if (res.items.isNotEmpty) {
             acc.add(
               SourceResultGroup(
@@ -446,6 +509,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
                 status: SearchStatus.success,
                 groups: List.of(acc),
                 respondedSources: {...state.respondedSources, s.id},
+                failedSources: Map.of(failed),
               ),
             );
           } else {
@@ -455,17 +519,19 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
             emit(
               state.copyWith(
                 respondedSources: {...state.respondedSources, s.id},
+                failedSources: Map.of(failed),
               ),
             );
           }
         } catch (_) {
           // searchStatus is no-throw, but stay defensive — never let one source
           // break the fan-out. Still mark it responded so its skeleton clears.
-          anyError = true;
+          failed[s.id] = SourceOutcome.error;
           if (!isClosed && gen == _runGen) {
             emit(
               state.copyWith(
                 respondedSources: {...state.respondedSources, s.id},
+                failedSources: Map.of(failed),
               ),
             );
           }
@@ -478,13 +544,119 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     if (acc.isEmpty) {
       emit(
         state.copyWith(
-          status: anyError ? SearchStatus.error : SearchStatus.success,
+          status: failed.isNotEmpty
+              ? SearchStatus.error
+              : SearchStatus.success,
           groups: const [],
+          failedSources: Map.of(failed),
         ),
       );
     } else {
-      emit(state.copyWith(status: SearchStatus.success, groups: List.of(acc)));
+      emit(
+        state.copyWith(
+          status: SearchStatus.success,
+          groups: List.of(acc),
+          failedSources: Map.of(failed),
+        ),
+      );
     }
+  }
+
+  /// Retries what failed, after clearing the health mark(s) first.
+  ///
+  /// That clear matters: a hard error marks a source dead, and [_runSearch]
+  /// skips a freshly-dead source — so without it the retry the user just asked
+  /// for would silently decline to run.
+  ///
+  /// With a [SearchRetryRequested.sourceId] this re-queries that one source and
+  /// splices the result into the existing groups, so the sources that already
+  /// answered keep their results instead of the whole view resetting. Without
+  /// one it re-runs the search; the short-TTL cache means the sources that
+  /// worked come back from memory while the failed ones (never cached) go live.
+  Future<void> _onRetryRequested(
+    SearchRetryRequested event,
+    Emitter<SearchState> emit,
+  ) async {
+    final q = state.query.trim();
+    if (q.isEmpty) return;
+    final health = sl<SourceHealthStore>();
+    final id = event.sourceId;
+
+    if (id == null) {
+      for (final failedId in state.failedSources.keys) {
+        await health.clear(failedId);
+      }
+      await _runSearch(q, emit);
+      return;
+    }
+
+    await health.clear(id);
+    // Back to "still searching" for this one source: drops the failed row and
+    // puts its skeleton back, so the retry is visibly doing something.
+    emit(
+      state.copyWith(
+        respondedSources: {...state.respondedSources}..remove(id),
+        failedSources: Map.of(state.failedSources)..remove(id),
+      ),
+    );
+
+    final sw = Stopwatch()..start();
+    final res = await _repo
+        .searchStatus(
+          q,
+          sourceId: id,
+          filtersJson: state.filterSelectionFor(id),
+          cache: true,
+        )
+        .timeout(_sourceTimeout, onTimeout: _timedOut);
+    sw.stop();
+    if (isClosed || state.query.trim() != q) return;
+
+    var outcome = res.outcome;
+    final responded =
+        outcome == SourceOutcome.ok || outcome == SourceOutcome.empty;
+    if (responded && sw.elapsed > SourceHealthStore.slowThreshold) {
+      outcome = SourceOutcome.slow;
+    }
+    // ignore: unawaited_futures
+    health.record(id, outcome, responseMs: sw.elapsedMilliseconds);
+
+    final failed = Map.of(state.failedSources);
+    if (responded || outcome == SourceOutcome.slow) {
+      failed.remove(id);
+    } else {
+      failed[id] = outcome;
+    }
+
+    final groups = List<SourceResultGroup>.of(state.groups);
+    if (res.items.isNotEmpty) {
+      final idx = groups.indexWhere((g) => g.sourceId == id);
+      final g = SourceResultGroup(
+        sourceId: id,
+        sourceName: _repo.displayName(id),
+        items: res.items,
+        arrivalIndex: idx >= 0 ? groups[idx].arrivalIndex : groups.length,
+      );
+      if (idx >= 0) {
+        groups[idx] = g;
+      } else {
+        groups.add(g);
+      }
+    }
+
+    emit(
+      state.copyWith(
+        // Mirrors _runSearch's finalize: still nothing to show and something
+        // still broken means we're back on the error view.
+        status: groups.isEmpty && failed.isNotEmpty
+            ? SearchStatus.error
+            : SearchStatus.success,
+        groups: groups,
+        respondedSources: {...state.respondedSources, id},
+        queriedSources: {...state.queriedSources, id},
+        failedSources: failed,
+      ),
+    );
   }
 
   /// Past searches that contain [query] (case-insensitive), newest-first.

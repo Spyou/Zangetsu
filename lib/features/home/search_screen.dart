@@ -15,6 +15,7 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/search_history.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/playback/search_source_prefs.dart';
+import '../../core/playback/source_health_store.dart' show SourceOutcome;
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
@@ -111,6 +112,24 @@ class _SearchView extends StatefulWidget {
 /// link. Picked to fill a few grid rows / a comfortable horizontal row without
 /// the section dominating the screen.
 const int _kSourcePreviewCap = 12;
+
+/// Plain-English reason a source failed, from the outcome the repository
+/// already classified (see `SourceRepository._outcomeFromError`).
+///
+/// Deliberately says what the user can act on rather than naming the
+/// mechanism — "blocked" tells them to try another source, a stack trace
+/// doesn't.
+String outcomeReason(SourceOutcome outcome) => switch (outcome) {
+  SourceOutcome.timeout => 'Timed out',
+  SourceOutcome.blocked => 'Blocked by the site',
+  _ => "Couldn't be reached",
+};
+
+IconData _outcomeIcon(SourceOutcome outcome) => switch (outcome) {
+  SourceOutcome.timeout => Icons.hourglass_empty_rounded,
+  SourceOutcome.blocked => Icons.shield_outlined,
+  _ => Icons.error_outline_rounded,
+};
 
 class _SearchViewState extends State<_SearchView>
     with TickerProviderStateMixin {
@@ -287,7 +306,10 @@ class _SearchViewState extends State<_SearchView>
     final result = await showMihonFilterSheet(context, filters);
     if (result == null || !mounted) return;
     context.read<SearchBloc>().add(
-      SearchSourceFiltersApplied(sourceId, MihonFilters.toSelectionJson(result)),
+      SearchSourceFiltersApplied(
+        sourceId,
+        MihonFilters.toSelectionJson(result),
+      ),
     );
   }
 
@@ -425,10 +447,7 @@ class _SearchViewState extends State<_SearchView>
                         child: SkeletonGrid(),
                       );
                     case SearchStatus.error:
-                      return const EmptyState(
-                        icon: Icons.error_outline,
-                        message: 'Search failed — try again',
-                      );
+                      return _errorView(state);
                     case SearchStatus.success:
                       return _resultsBody(state, cellW, modeSources);
                   }
@@ -936,13 +955,13 @@ class _SearchViewState extends State<_SearchView>
   ) {
     return switch (sourceFilterEcosystemOf(sourceId)) {
       SourceFilterEcosystem.aniyomi => (
-          onFilter: () => _openAniFilters(sourceId),
-          active: state.aniFiltersBySource.containsKey(sourceId),
-        ),
+        onFilter: () => _openAniFilters(sourceId),
+        active: state.aniFiltersBySource.containsKey(sourceId),
+      ),
       SourceFilterEcosystem.mihon => (
-          onFilter: () => _openMihonFilters(sourceId),
-          active: state.mihonFiltersBySource.containsKey(sourceId),
-        ),
+        onFilter: () => _openMihonFilters(sourceId),
+        active: state.mihonFiltersBySource.containsKey(sourceId),
+      ),
       null => (onFilter: null, active: false),
     };
   }
@@ -1185,19 +1204,24 @@ class _SearchViewState extends State<_SearchView>
     // never distinguish "hasn't answered" from "answered with nothing". Only
     // when viewing all sources — a selected source chip means the user has
     // narrowed to one, so other sources' skeletons would be noise.
-    final prefs = sl<SearchSourcePrefs>();
     final landed = {for (final g in state.groups) g.sourceId};
     // Current-source-only mode queries a single source, so there are never
     // other sources still streaming in — no skeleton sections. On a specific
     // ecosystem tab, only that ecosystem's still-loading sources get skeletons
     // (the "All" tab keeps every pending source, i.e. current behaviour).
+    //
+    // Driven by state.queriedSources — what the bloc ACTUALLY searched — not by
+    // the enabled-source list. Re-deriving it here was a guess, and it drifted:
+    // a source dropped by the health check is never queried, so it never
+    // responds, so its skeleton stayed on screen forever with no request in
+    // flight to time out.
     final pending =
         (state.currentSourceOnly || state.sourceFilter != kAllSources)
         ? const <({String id, String name})>[]
         : modeSources
               .where(
                 (s) =>
-                    prefs.isIncluded(s.id) &&
+                    state.queriedSources.contains(s.id) &&
                     !landed.contains(s.id) &&
                     !state.respondedSources.contains(s.id) &&
                     (state.ecosystem == SearchEcosystem.all ||
@@ -1206,7 +1230,20 @@ class _SearchViewState extends State<_SearchView>
               .toList();
     final stillLoading = pending.isNotEmpty;
 
-    if (groups.isEmpty && !stillLoading) {
+    // Sources that answered with a failure. Scoped exactly like `pending` —
+    // a narrowed view shouldn't report on sources it isn't showing.
+    final failed =
+        (state.currentSourceOnly || state.sourceFilter != kAllSources)
+        ? const <MapEntry<String, SourceOutcome>>[]
+        : state.failedSources.entries
+              .where(
+                (e) =>
+                    state.ecosystem == SearchEcosystem.all ||
+                    ecosystemOf(e.key) == state.ecosystem,
+              )
+              .toList();
+
+    if (groups.isEmpty && !stillLoading && failed.isEmpty) {
       return _noResults(state);
     }
 
@@ -1225,6 +1262,20 @@ class _SearchViewState extends State<_SearchView>
       return _resultsGrid(state.visibleResults, cellW);
     }
 
+    final sections = <Widget>[
+      for (final g in groups)
+        if (layout == SearchLayout.horizontal)
+          _sourceRow(g, cellW)
+        else
+          _sourceGrid(g, cellW),
+      // Sources whose results haven't arrived yet.
+      if (stillLoading)
+        for (final s in pending) _skeletonSection(s.name, layout),
+      // Sources that broke. Shown in place, with why, rather than just going
+      // missing from the list with no explanation.
+      for (final f in failed) _failedSection(f.key, f.value),
+    ];
+
     return ListView(
       padding: EdgeInsets.only(
         top: 6,
@@ -1232,19 +1283,13 @@ class _SearchViewState extends State<_SearchView>
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        for (final g in groups) ...[
-          if (layout == SearchLayout.horizontal)
-            _sourceRow(g, cellW)
-          else
-            _sourceGrid(g, cellW),
-          const SizedBox(height: 18),
+        // Separator BETWEEN sections, never after the last one — a divider
+        // hanging under the final section reads as a section that failed to
+        // load rather than as the end of the list.
+        for (var i = 0; i < sections.length; i++) ...[
+          sections[i],
+          if (i != sections.length - 1) _sectionGap(),
         ],
-        // Per-source skeletons for sources whose results haven't arrived yet.
-        if (stillLoading)
-          for (final s in pending) ...[
-            _skeletonSection(s.name, layout),
-            const SizedBox(height: 18),
-          ],
       ],
     );
   }
@@ -1267,73 +1312,86 @@ class _SearchViewState extends State<_SearchView>
   }) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Flexible(
-                  child: Text(
-                    name,
-                    style: AppText.body.copyWith(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: pending
-                          ? AppColors.textTertiary
-                          : AppColors.textPrimary,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (pending || count > 0) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    pending ? 'searching…' : '$count',
-                    style: AppText.caption.copyWith(fontSize: 11.5),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (onFilter != null)
-            IconButton(
-              onPressed: onFilter,
-              icon: Icon(
-                Icons.tune_rounded,
-                size: 20,
-                color: filterActive ? AppColors.accent : AppColors.textTertiary,
-              ),
-              tooltip: 'Source filters',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            ),
-          if (onSeeAll != null)
-            GestureDetector(
-              onTap: onSeeAll,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'See all',
-                      style: AppText.caption.copyWith(
-                        color: AppColors.textTertiary,
+      // Every header the same height whether or not it has the filter /
+      // "See all" controls.
+      //
+      // Without this a header with neither collapses to the title's own line
+      // height and the section divider above it lands right on the text.
+      // CloudStream sources have no filters and most sections aren't capped, so
+      // theirs were the bare ones; the manga sources looked fine only because
+      // their filter IconButton (minHeight 36) happened to hold the row open.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 36),
+        child: Row(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      style: AppText.body.copyWith(
+                        fontSize: 13.5,
                         fontWeight: FontWeight.w600,
+                        color: pending
+                            ? AppColors.textTertiary
+                            : AppColors.textPrimary,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 18,
-                      color: AppColors.textTertiary,
+                  ),
+                  if (pending || count > 0) ...[
+                    const SizedBox(width: 8),
+                    Text(
+                      pending ? 'searching…' : '$count',
+                      style: AppText.caption.copyWith(fontSize: 11.5),
                     ),
                   ],
-                ),
+                ],
               ),
             ),
-        ],
+            if (onFilter != null)
+              IconButton(
+                onPressed: onFilter,
+                icon: Icon(
+                  Icons.tune_rounded,
+                  size: 20,
+                  color: filterActive
+                      ? AppColors.accent
+                      : AppColors.textTertiary,
+                ),
+                tooltip: 'Source filters',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+            if (onSeeAll != null)
+              GestureDetector(
+                onTap: onSeeAll,
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'See all',
+                        style: AppText.caption.copyWith(
+                          color: AppColors.textTertiary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1461,6 +1519,132 @@ class _SearchViewState extends State<_SearchView>
           },
         ),
       ],
+    );
+  }
+
+  /// Space between two source sections.
+  ///
+  /// Two sources used to run together as one continuous mixed grid: the 18px
+  /// gap was barely wider than the grid's own 16px row spacing, so there was no
+  /// way to see where one source ended. The rule is what separates them.
+  ///
+  /// No bottom padding on purpose. [_sectionHeader] already brings its own
+  /// space above the title — its Row is 36 tall because of the filter
+  /// IconButton's minHeight, with the title vertically centred — so padding
+  /// underneath here lands on top of that and pushes the rule visibly off
+  /// centre (measured 32px above vs 73px below before this).
+  Widget _sectionGap() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Divider(height: 1, thickness: 1, color: AppColors.hairline),
+  );
+
+  /// A source that failed this run: its name, why it failed, and a retry that
+  /// re-queries just this source.
+  Widget _failedSection(String sourceId, SourceOutcome outcome) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Icon(_outcomeIcon(outcome), size: 18, color: AppColors.textTertiary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  sl<SourceRepository>().displayName(sourceId),
+                  style: AppText.body.copyWith(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(outcomeReason(outcome), style: AppText.caption),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: () =>
+                context.read<SearchBloc>().add(SearchRetryRequested(sourceId)),
+            child: Text(
+              'Retry',
+              style: AppText.button.copyWith(
+                fontSize: 13,
+                color: AppColors.accent,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The whole search failed — nothing came back at all. Names what went wrong
+  /// per source instead of the old blanket "try again".
+  Widget _errorView(SearchState state) {
+    final failed = state.failedSources.entries.toList();
+    final repo = sl<SourceRepository>();
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 52,
+              color: AppColors.textTertiary,
+            ),
+            const SizedBox(height: 14),
+            Text(
+              // state.error is set for the cases that aren't a source failure
+              // at all (nothing switched on to search).
+              state.error ??
+                  (failed.length == 1
+                      ? 'That source could not be reached'
+                      : 'No source could be reached'),
+              textAlign: TextAlign.center,
+              style: AppText.headline,
+            ),
+            if (failed.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              // Capped: with a dozen sources switched on, a full list would push
+              // the retry off screen.
+              for (final f in failed.take(4))
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    '${repo.displayName(f.key)} — '
+                    '${outcomeReason(f.value).toLowerCase()}',
+                    textAlign: TextAlign.center,
+                    style: AppText.caption,
+                  ),
+                ),
+              if (failed.length > 4)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'and ${failed.length - 4} more',
+                    style: AppText.caption,
+                  ),
+                ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => context.read<SearchBloc>().add(
+                  const SearchRetryRequested(),
+                ),
+                child: Text(
+                  'Retry',
+                  style: AppText.button.copyWith(color: AppColors.accent),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
