@@ -199,7 +199,7 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                   (package: '', label: 'Built-in player'),
                 ),
               ),
-              for (final p in installed)
+              for (final p in installed.where((p) => p.known))
                 _PlayerRow(
                   icon: Icons.open_in_new_rounded,
                   label: p.label,
@@ -209,13 +209,43 @@ Future<PlayerChoice?> showEpisodePlayerSheet(
                     (package: p.package, label: p.label),
                   ),
                 ),
+              // Everything else on the device that answers a video intent. They
+              // play — header-gated streams too, via the local proxy — but we
+              // don't know which intent extras they read, so external subtitles
+              // and the resume position may be ignored. Under their own heading
+              // because some are galleries or browsers rather than players at
+              // all, hence "apps", not "players".
+              if (installed.any((p) => !p.known)) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Other apps',
+                      style: AppText.caption.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+                for (final p in installed.where((p) => !p.known))
+                  _PlayerRow(
+                    icon: Icons.open_in_new_rounded,
+                    label: p.label,
+                    isDefault: defaultPackage == p.package,
+                    onTap: () => Navigator.pop(
+                      sheetContext,
+                      (package: p.package, label: p.label),
+                    ),
+                  ),
+              ],
               // Opening an empty sheet on long-press reads as a broken gesture,
               // so say why there's only one row rather than showing nothing.
               if (installed.isEmpty)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
                   child: Text(
-                    'No external players installed. VLC, MX Player and '
+                    'No other video apps installed. VLC, MX Player and '
                     'Just Player all show up here once installed.',
                     style: AppText.caption.copyWith(
                       color: AppColors.textSecondary,

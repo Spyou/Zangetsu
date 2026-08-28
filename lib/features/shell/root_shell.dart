@@ -11,6 +11,9 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/ui/nav_prefs.dart';
+import '../downloads/downloads_screen.dart';
+import '../history/history_screen.dart';
 import '../auth/auth_cubit.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
@@ -48,9 +51,18 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell>
     with SingleTickerProviderStateMixin {
-  static const int _searchTab = 2;
+  /// The tab showing, by identity. Was an int index into a hardcoded five —
+  /// which stopped meaning anything once the dock became reorderable.
+  DockTab _tab = DockTab.home;
 
-  int _index = 0;
+  /// Falls back to an unregistered instance rather than throwing.
+  ///
+  /// Production always registers it; widget tests build this shell with only
+  /// the deps they care about. A bare [NavPrefs] reads no Hive box and returns
+  /// [NavPrefs.defaultTabs], which is the dock those tests expect anyway —
+  /// same guard the bloc uses for ContentModeCubit.
+  late final NavPrefs _navPrefs =
+      sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : NavPrefs();
 
   /// Double-back-to-exit: timestamp of the last root Back press. A second Back
   /// within 2s exits the app; the first just shows the "press back again" toast.
@@ -78,23 +90,45 @@ class _RootShellState extends State<RootShell>
       value: 1,
     );
     _switch = CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic);
+    _navPrefs.addListener(_onTabsChanged);
+  }
+
+  /// The dock was edited in Settings. If the tab we're on just got hidden,
+  /// land somewhere that still exists instead of showing a page with no item.
+  void _onTabsChanged() {
+    if (!mounted) return;
+    final visible = _visibleTabs();
+    setState(() {
+      if (!visible.contains(_tab)) _tab = visible.first;
+    });
+  }
+
+  /// The dock as actually rendered: the user's order, minus anything the
+  /// current content mode has no use for.
+  List<DockTab> _visibleTabs() {
+    final mode = sl<ContentModeCubit>().state;
+    final tabs = _navPrefs.tabs;
+    if (!mode.isReading) return tabs;
+    final out = [for (final t in tabs) if (!t.isAnimeOnly) t];
+    return out.isEmpty ? tabs : out;
   }
 
   @override
   void dispose() {
+    _navPrefs.removeListener(_onTabsChanged);
     _switchCtrl.dispose();
     _searchFocusSignal.dispose();
     super.dispose();
   }
 
-  void _onTabSelected(int i) {
-    if (i == _index) {
+  void _onTabSelected(DockTab tab) {
+    if (tab == _tab) {
       // Re-tapping the current tab: no transition, just re-focus Search.
-      if (i == _searchTab) _searchFocusSignal.value++;
+      if (tab == DockTab.search) _searchFocusSignal.value++;
       return;
     }
-    setState(() => _index = i);
-    if (i == _searchTab) _searchFocusSignal.value++;
+    setState(() => _tab = tab);
+    if (tab == DockTab.search) _searchFocusSignal.value++;
     _switchCtrl.forward(from: 0);
   }
 
@@ -134,18 +168,26 @@ class _RootShellState extends State<RootShell>
     );
   }
 
-  /// The five tab pages, in dock order: Home · Schedule · Search · My List ·
-  /// Settings. Search sits centre (best thumb reach); [ScheduleScreen] takes
-  /// the second slot. The last tab (Settings screen) is presented as "Profile"
-  /// in the dock. [buildShellPages] yields Home/Search/My List/…/Settings.
-  List<Widget> _pages() {
+  /// One page per visible tab, in the same order the dock draws them, so the
+  /// [IndexedStack] index is just the tab's position in that list.
+  ///
+  /// [buildShellPages] stays the shared Home/Search/My List/Settings set that
+  /// the TV rail also builds from — untouched, so TV is unaffected.
+  List<Widget> _pagesFor(List<DockTab> tabs) {
     final shared = buildShellPages(_searchFocusSignal);
     return [
-      shared[0], // Home
-      const ScheduleScreen(), // Schedule
-      shared[1], // Search
-      shared[2], // My List
-      shared.last, // Settings (Profile tab)
+      for (final t in tabs)
+        switch (t) {
+          DockTab.home => shared[0],
+          DockTab.search => shared[1],
+          DockTab.myList => shared[2],
+          DockTab.profile => shared.last, // Settings, shown as "Profile"
+          DockTab.schedule => const ScheduleScreen(),
+          // Both normally get pushed with a back button; as tabs they own the
+          // whole screen, so their own back affordance is suppressed.
+          DockTab.downloads => const DownloadsScreen(showBack: false),
+          DockTab.history => const HistoryScreen(showBack: false),
+        },
     ];
   }
 
@@ -166,14 +208,26 @@ class _RootShellState extends State<RootShell>
         bloc: sl<ContentModeCubit>(),
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, mode) {
-          if (mode.isReading && _index == 1) setState(() => _index = 0);
+          // Always rebuild: the dock's items are computed in build() now, so
+          // the mode change has to reach it. (The Row used to sit inside its
+          // own BlocBuilder; the tab list replaced that.) Schedule is dropped
+          // in reading modes, so if that's where we were, land on the first
+          // tab that survives rather than on a page with no dock item.
+          setState(() {
+            if (mode.isReading && _tab.isAnimeOnly) {
+              _tab = _visibleTabs().first;
+            }
+          });
         },
         child: Scaffold(
           backgroundColor: AppColors.bg,
           // Content runs under the floating dock (screens keep their own bottom
           // padding so the last row scrolls clear of it).
           extendBody: true,
-          body: AnimatedBuilder(
+          body: Builder(builder: (context) {
+            final visible = _visibleTabs();
+            final active = visible.indexOf(_tab);
+            return AnimatedBuilder(
             animation: _switch,
             builder: (context, child) {
               final v = _switch.value;
@@ -189,16 +243,22 @@ class _RootShellState extends State<RootShell>
             // RepaintBoundary → the page is a single cached layer the transition
             // just composites (opacity + translate), so no repaint per frame.
             child: RepaintBoundary(
-              child: IndexedStack(index: _index, children: _pages()),
+              child: IndexedStack(
+                // indexOf can be -1 for one frame if the mode flipped before
+                // the listener ran; clamp rather than throw.
+                index: active < 0 ? 0 : active,
+                children: _pagesFor(visible),
+              ),
             ),
-          ),
+          );
+          }),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
               // Slide the dock away only when a Settings section is open AND the
               // Settings (Profile, last) tab is the one showing — every other tab
               // keeps its dock.
-              final hide = sectionOpen && _index == 4;
+              final hide = sectionOpen && _tab == DockTab.profile;
               return AnimatedSlide(
                 offset: hide ? const Offset(0, 1.6) : Offset.zero,
                 duration: const Duration(milliseconds: 240),
@@ -206,7 +266,8 @@ class _RootShellState extends State<RootShell>
                 child: IgnorePointer(
                   ignoring: hide,
                   child: _FloatingDock(
-                    index: _index,
+                    tabs: _visibleTabs(),
+                    active: _tab,
                     onSelected: _onTabSelected,
                   ),
                 ),
@@ -224,10 +285,17 @@ class _RootShellState extends State<RootShell>
 /// state change lives in the icon itself (deliberately not the Material
 /// pill/indicator look).
 class _FloatingDock extends StatelessWidget {
-  const _FloatingDock({required this.index, required this.onSelected});
+  const _FloatingDock({
+    required this.tabs,
+    required this.active,
+    required this.onSelected,
+  });
 
-  final int index;
-  final ValueChanged<int> onSelected;
+  /// Exactly what to draw, already ordered and already filtered for the
+  /// content mode — the dock does no picking of its own any more.
+  final List<DockTab> tabs;
+  final DockTab active;
+  final ValueChanged<DockTab> onSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -248,45 +316,23 @@ class _FloatingDock extends StatelessWidget {
               borderRadius: BorderRadius.circular(26),
               border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
             ),
-            // Schedule has no meaning in a reading mode (no airing anime to
-            // track), so it's omitted there. The other items keep their
-            // original onSelected index — nothing is renumbered — so tab
-            // identity and the IndexedStack below stay untouched.
-            child: BlocBuilder<ContentModeCubit, ContentMode>(
-              bloc: sl<ContentModeCubit>(),
-              builder: (context, mode) => Row(
-                children: [
-                  _DockItem(
-                    label: 'Home',
-                    glyph: DockGlyph.home,
-                    selected: index == 0,
-                    onTap: () => onSelected(0),
-                  ),
-                  if (!mode.isReading)
+            child: Row(
+              children: [
+                for (final t in tabs)
+                  if (t == DockTab.profile)
+                    _ProfileDockItem(
+                      selected: active == t,
+                      onTap: () => onSelected(t),
+                    )
+                  else
                     _DockItem(
-                      label: 'Schedule',
-                      glyph: DockGlyph.calendar,
-                      selected: index == 1,
-                      onTap: () => onSelected(1),
+                      label: t.label,
+                      glyph: dockGlyphFor(t),
+                      icon: _iconFor(t),
+                      selected: active == t,
+                      onTap: () => onSelected(t),
                     ),
-                  _DockItem(
-                    label: 'Search',
-                    glyph: DockGlyph.search,
-                    selected: index == 2,
-                    onTap: () => onSelected(2),
-                  ),
-                  _DockItem(
-                    label: 'My List',
-                    glyph: DockGlyph.bookmark,
-                    selected: index == 3,
-                    onTap: () => onSelected(3),
-                  ),
-                  _ProfileDockItem(
-                    selected: index == 4,
-                    onTap: () => onSelected(4),
-                  ),
-                ],
-              ),
+              ],
             ),
           ),
         ),
@@ -294,6 +340,19 @@ class _FloatingDock extends StatelessWidget {
     );
   }
 }
+
+/// (outline, filled) Material icons for tabs with no hand-drawn glyph.
+(IconData, IconData)? _iconFor(DockTab t) => switch (t) {
+  DockTab.downloads => (
+    Icons.download_outlined,
+    Icons.download_rounded,
+  ),
+  DockTab.history => (
+    Icons.history_outlined,
+    Icons.history_rounded,
+  ),
+  _ => null,
+};
 
 /// A quick spring "pop" for a dock icon the moment its tab becomes selected
 /// (scale 0.7 → 1.0 with a soft overshoot). Deselection doesn't animate —
@@ -321,12 +380,18 @@ class _DockItem extends StatelessWidget {
   const _DockItem({
     required this.label,
     required this.glyph,
+    required this.icon,
     required this.selected,
     required this.onTap,
   });
 
   final String label;
-  final DockGlyph glyph;
+
+  /// Hand-drawn glyph; null when [icon] carries the tab instead.
+  final DockGlyph? glyph;
+
+  /// (outline, filled) Material pair, used when [glyph] is null.
+  final (IconData, IconData)? icon;
   final bool selected;
   final VoidCallback onTap;
 
@@ -347,7 +412,13 @@ class _DockItem extends StatelessWidget {
                 child: Center(
                   child: _DockPop(
                     selected: selected,
-                    child: DockIcon(glyph, color: color, filled: selected),
+                    child: glyph != null
+                        ? DockIcon(glyph!, color: color, filled: selected)
+                        : Icon(
+                            selected ? icon!.$2 : icon!.$1,
+                            color: color,
+                            size: 23,
+                          ),
                   ),
                 ),
               ),

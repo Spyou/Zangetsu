@@ -1,6 +1,9 @@
 import '../aniyomi/aniyomi_filters.dart';
 import '../aniyomi/aniyomi_provider.dart';
 import '../lnreader/lnreader_manager.dart';
+import '../di/injector.dart';
+import '../download/chapter_download.dart';
+import '../download/chapter_download_store.dart';
 import '../logging/app_logger.dart';
 import '../mihon/mihon_filters.dart';
 import '../mihon/mihon_manager.dart';
@@ -95,7 +98,10 @@ class SourceRepository {
   /// the whole cache the moment the loaded-source set changes (add/remove/
   /// enable/disable). Only successful outcomes (ok/empty) are cached — a
   /// transient error/timeout is never remembered, so a failed source retries.
-  final Map<String, ({DateTime at, List<MediaItem> items, SourceOutcome outcome})>
+  final Map<
+    String,
+    ({DateTime at, List<MediaItem> items, SourceOutcome outcome})
+  >
   _searchCache = {};
   final Map<String, Future<({List<MediaItem> items, SourceOutcome outcome})>>
   _searchInflight = {};
@@ -111,7 +117,8 @@ class SourceRepository {
     String category,
     String? filtersJson,
     int page,
-  ) => '$sourceId|${query.trim().toLowerCase()}|$category|'
+  ) =>
+      '$sourceId|${query.trim().toLowerCase()}|$category|'
       '${filtersJson ?? ''}|$page';
 
   /// Drop the search cache when the set of loaded sources changed since the last
@@ -238,9 +245,7 @@ class SourceRepository {
     // until the user opts in, exactly like every other NSFW source.
     ..._mihonManager.all
         .where((p) => !p.info.nsfw || _prefs.nsfwSources)
-        .map(
-          (p) => (id: p.sourceId, name: p.displayName, lang: p.info.lang),
-        )
+        .map((p) => (id: p.sourceId, name: p.displayName, lang: p.info.lang))
         // A multi-language extension installs one source PER language, so
         // installing MangaDex registered a dozen of them and search queried
         // every one — Hebrew results for a user who'd chosen English. The
@@ -476,26 +481,32 @@ class SourceRepository {
     }
     final inflight = _searchInflight[key];
     if (inflight != null) return inflight; // share an already-running fetch
-    final future = _searchStatusUncached(
-      query,
-      category: category,
-      sourceId: resolved,
-      filtersJson: filtersJson,
-      page: page,
-    ).then((res) {
-      // Cache only successful outcomes so a transient failure isn't remembered.
-      if (res.outcome == SourceOutcome.ok ||
-          res.outcome == SourceOutcome.empty) {
-        _searchCache[key] = (at: DateTime.now(), items: res.items, outcome: res.outcome);
-      }
-      return res;
-    });
+    final future =
+        _searchStatusUncached(
+          query,
+          category: category,
+          sourceId: resolved,
+          filtersJson: filtersJson,
+          page: page,
+        ).then((res) {
+          // Cache only successful outcomes so a transient failure isn't remembered.
+          if (res.outcome == SourceOutcome.ok ||
+              res.outcome == SourceOutcome.empty) {
+            _searchCache[key] = (
+              at: DateTime.now(),
+              items: res.items,
+              outcome: res.outcome,
+            );
+          }
+          return res;
+        });
     _searchInflight[key] = future;
     future.whenComplete(() => _searchInflight.remove(key));
     return future;
   }
 
-  Future<({List<MediaItem> items, SourceOutcome outcome})> _searchStatusUncached(
+  Future<({List<MediaItem> items, SourceOutcome outcome})>
+  _searchStatusUncached(
     String query, {
     String category = 'sub',
     String? sourceId,
@@ -668,7 +679,13 @@ class SourceRepository {
   /// never touches [_prefetch]/[_resolved]. Throws [UnsupportedError] if the
   /// resolved source isn't a [ReadingProvider] (e.g. CloudStream/Aniyomi) —
   /// unreachable through mode-filtered UI, but a hard guard regardless.
-  Future<List<PageImage>> pages(String chapterUrl, {String? sourceId}) {
+  Future<List<PageImage>> pages(String chapterUrl, {String? sourceId}) async {
+    // Saved chapter wins, so a download is actually worth having. Local paths
+    // come back in `url` with no headers; the reader picks the file loader for
+    // anything that isn't http.
+    final local = await _localPages(chapterUrl, sourceId);
+    if (local != null) return local;
+
     final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
@@ -678,9 +695,45 @@ class SourceRepository {
     return (p as ReadingProvider).getPages(chapterUrl);
   }
 
+  /// Pages of a downloaded chapter, or null when it isn't saved. Resolved
+  /// through the locator rather than a constructor field so the repository
+  /// keeps working in tests that never register the store.
+  Future<List<PageImage>?> _localPages(
+    String chapterUrl,
+    String? sourceId,
+  ) async {
+    if (!sl.isRegistered<ChapterDownloadStore>()) return null;
+    try {
+      final store = sl<ChapterDownloadStore>();
+      final rec = store.get(
+        ChapterDownload.idFor(sourceId ?? _active.state, chapterUrl),
+      );
+      if (rec == null || rec.status != ChapterDownloadStatus.done) return null;
+      final paths = await store.localPages(rec);
+      if (paths.isEmpty) return null;
+      return [for (final path in paths) PageImage(url: path)];
+    } catch (_) {
+      return null; // a broken download must not stop the chapter opening
+    }
+  }
+
   /// Novel leaf — chapter text for [chapterUrl]. Same no-cache rationale and
   /// [ReadingProvider] guard as [pages].
-  Future<ChapterText> chapterText(String chapterUrl, {String? sourceId}) {
+  Future<ChapterText> chapterText(String chapterUrl, {String? sourceId}) async {
+    if (sl.isRegistered<ChapterDownloadStore>()) {
+      try {
+        final store = sl<ChapterDownloadStore>();
+        final rec = store.get(
+          ChapterDownload.idFor(sourceId ?? _active.state, chapterUrl),
+        );
+        if (rec != null && rec.status == ChapterDownloadStatus.done) {
+          final html = await store.localText(rec);
+          if (html != null && html.isNotEmpty) return ChapterText(html: html);
+        }
+      } catch (_) {
+        // fall through to the network
+      }
+    }
     final p = _providerFor(sourceId);
     if (p is! ReadingProvider) {
       throw UnsupportedError('${p.sourceId} does not support reading content');
@@ -712,7 +765,11 @@ class SourceRepository {
     AppLogger.instance.log(
       '[links] invalidate ${_short(episodeUrl)} '
       'resolved=${hadResolved ? "cleared" : "none"} '
-      'prefetch=${hadPrefetch ? "cleared" : includePrefetch ? "none" : "kept"}',
+      'prefetch=${hadPrefetch
+          ? "cleared"
+          : includePrefetch
+          ? "none"
+          : "kept"}',
     );
   }
 

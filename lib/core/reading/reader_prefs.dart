@@ -1,6 +1,8 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
+import 'tap_zones.dart';
+
 /// Persistent reader settings — the manga/novel analogue of PlaybackPrefs.
 /// Backed by a tiny untyped Hive box read anywhere via `sl<ReaderPrefs>()`.
 /// Values are read with defaults so a fresh install behaves sensibly; numbers
@@ -58,6 +60,98 @@ class ReaderPrefs {
       _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
 
+  /// Turn manga pages with the hardware volume keys.
+  ///
+  /// OFF by default, and deliberately so: this SWALLOWS the volume keys while
+  /// the reader is open, so someone who never asked for it would find their
+  /// volume dead with no explanation. Opt-in only.
+  bool get volumeKeyPaging =>
+      _box.get('volumeKeyPaging', defaultValue: false) as bool;
+  Future<void> setVolumeKeyPaging(bool value) =>
+      _box.put('volumeKeyPaging', value);
+
+  /// Swap which volume key goes forward. Down-is-next matches how most readers
+  /// ship; up-is-next suits holding the phone the other way round.
+  bool get invertVolumeKeys =>
+      _box.get('invertVolumeKeys', defaultValue: false) as bool;
+  Future<void> setInvertVolumeKeys(bool value) =>
+      _box.put('invertVolumeKeys', value);
+
+  /// Pull past the end of a chapter to open the next one (and past the start
+  /// for the previous). ON by default: it only triggers on a deliberate drag
+  /// beyond the edge, where there is nothing else to do.
+  bool get overscrollChapter =>
+      _box.get('overscrollChapter', defaultValue: true) as bool;
+  Future<void> setOverscrollChapter(bool value) =>
+      _box.put('overscrollChapter', value);
+
+  /// Extra space between letters, in logical pixels. 0 is the font's own.
+  double get letterSpacing =>
+      (_box.get('letterSpacing', defaultValue: 0.0) as num).toDouble();
+  Future<void> setLetterSpacing(double value) =>
+      _box.put('letterSpacing', value);
+
+  /// Extra space between words, in logical pixels. 0 is the font's own.
+  double get wordSpacing =>
+      (_box.get('wordSpacing', defaultValue: 0.0) as num).toDouble();
+  Future<void> setWordSpacing(double value) => _box.put('wordSpacing', value);
+
+  /// Switch a long-strip chapter to vertical on its own, even when the
+  /// direction pref says left-to-right. Manhwa is one tall image per page, so
+  /// paged mode hands you sideways slices of it.
+  ///
+  /// On by default: someone reading a webtoon in paged mode gets a bad time
+  /// and no clue why. A per-series direction override still wins — an explicit
+  /// choice shouldn't be second-guessed.
+  bool get autoWebtoon =>
+      _box.get('autoWebtoon', defaultValue: true) as bool;
+  Future<void> setAutoWebtoon(bool value) => _box.put('autoWebtoon', value);
+
+  /// Novel page background, 0 (black) to 1 (the theme's own colour).
+  ///
+  /// Lets you keep a theme's text colour while darkening the page behind it.
+  /// Defaults to 1, which is exactly what the theme gives today.
+  double get novelBgOpacity =>
+      (_box.get('novelBgOpacity', defaultValue: 1.0) as num).toDouble();
+  Future<void> setNovelBgOpacity(double value) =>
+      _box.put('novelBgOpacity', value);
+
+  /// Auto-scroll speed on a 1–10 feel scale, not pixels per second: how fast
+  /// you like it is a feel, and "60 px/s" means nothing to anyone reading.
+  /// [ReaderAutoScroll] maps it to a creep rate or a page dwell depending on
+  /// the reading mode.
+  ///
+  /// Persisted, unlike auto-scroll itself: the speed is a lasting preference,
+  /// whereas whether it's *running* belongs to the reading session — nobody
+  /// wants to open a chapter and find it already scrolling away. Stored under
+  /// a new key so the old pixels-per-second values (60–300) can't be read back
+  /// as a 1–10 speed and pin everyone to maximum.
+  double get autoScrollSpeed =>
+      (_box.get('autoScrollSpeedScale', defaultValue: 3.0) as num).toDouble();
+  Future<void> setAutoScrollSpeed(double value) =>
+      _box.put('autoScrollSpeedScale', value);
+
+  /// Keep a small floating play/pause button on the reader while auto-scroll
+  /// is on. Without it, pausing means revealing the chrome first — which
+  /// defeats the point of a hands-free mode. On by default for that reason.
+  bool get autoScrollButton =>
+      _box.get('autoScrollButton', defaultValue: true) as bool;
+  Future<void> setAutoScrollButton(bool value) =>
+      _box.put('autoScrollButton', value);
+
+  /// Where the floating auto-scroll button sits, as a fraction of the screen
+  /// (0–1 on each axis) rather than pixels — so it lands in the same place
+  /// after a rotation or on a different device instead of off-screen.
+  /// Defaults to the lower right, clear of the bottom chrome.
+  double get autoScrollButtonX =>
+      (_box.get('autoScrollButtonX', defaultValue: 0.88) as num).toDouble();
+  double get autoScrollButtonY =>
+      (_box.get('autoScrollButtonY', defaultValue: 0.74) as num).toDouble();
+  Future<void> setAutoScrollButtonPos(double x, double y) async {
+    await _box.put('autoScrollButtonX', x);
+    await _box.put('autoScrollButtonY', y);
+  }
+
   /// How many pages ahead the reader warms into the disk cache after landing
   /// on a page. Six rather than the three we started with: preloading only
   /// fetches bytes now, so the extra runway costs disk and network instead of
@@ -84,6 +178,28 @@ class ReaderPrefs {
 
   Future<void> setReadingMode(String value) =>
       _box.put('readingMode', value);
+
+  // ── Tap zones ───────────────────────────────────────────────────────────
+  /// What tapping each part of the page does, per reading mode. Stored as JSON
+  /// so the shape can change without a migration; anything unreadable falls
+  /// back to the default rather than leaving a dead screen.
+  TapZoneLayout tapZones(String layoutId) => TapZoneLayout.fromJsonString(
+    _box.get('tapZones_$layoutId') as String?,
+    layoutId,
+  );
+
+  /// The layout for the mode currently being read.
+  TapZoneLayout tapZonesForMode(String readingMode) =>
+      tapZones(TapZoneLayout.idForReadingMode(readingMode));
+
+  Future<void> setTapZones(TapZoneLayout layout) =>
+      _box.put('tapZones_${layout.id}', layout.toJsonString());
+
+  Future<void> resetTapZones() async {
+    for (final id in TapZoneLayout.ids) {
+      await _box.delete('tapZones_$id');
+    }
+  }
 
   /// Page fit: 'contain' | 'width' | 'height' | 'original' | 'smart'.
   /// Default 'contain' renders identically to the reader's current hardcoded

@@ -117,10 +117,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     ('default', 'Default (128 MB)'),
     ('high', 'High (512 MB) — smoother'),
   ];
+  // Length only — there's no 'max' size. The size preset still caps memory, so
+  // a longer buffer costs nothing extra in the worst case; it just fills more
+  // of the same ceiling on lower-bitrate streams.
   static const List<(String, String)> _bufferLengthOptions = [
     ('low', 'Low (15s) — low-RAM / TV'),
     ('default', 'Default (60s)'),
     ('high', 'High (120s) — smoother'),
+    ('max', 'Max (300s) — longest'),
   ];
 
   Future<void> _pickBufferSize() async {
@@ -470,12 +474,20 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   Future<void> _pickPlayer() async {
     final players = await ExternalPlayer().installed();
     if (!mounted) return;
-    final options = <(String, String)>[('', 'Built-in player'), for (final p in players) (p.package, p.label)];
+    // Already known-first from the native side. The ones past the known block
+    // still play — header-gated streams included, since those route through the
+    // local proxy for any player that isn't MX/Just — but we don't know which
+    // extras they read, so external subtitles and the resume position may be
+    // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
+    final options = <(String, String)>[
+      ('', 'Built-in player'),
+      for (final p in players) (p.package, p.known ? p.label : '${p.label}  ·  no subs/resume'),
+    ];
     if (players.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'No external players found. Install MX Player, VLC, mpv, '
+            'No other video apps found. Install MX Player, VLC, mpv, '
             'Just Player or Next Player.',
           ),
         ),
@@ -487,7 +499,11 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
       current: _prefs.externalPlayerPackage,
     );
     if (picked == null) return;
-    final label = options.firstWhere((o) => o.$1 == picked, orElse: () => ('', '')).$2;
+    // From `players`, not `options` — the option label carries the "no headers"
+    // hint, which belongs in the picker but not in the saved name shown on the
+    // settings row afterwards.
+    final match = players.where((p) => p.package == picked);
+    final label = match.isEmpty ? '' : match.first.label;
     await _prefs.setExternalPlayer(picked, picked.isEmpty ? '' : label);
     if (mounted) setState(() {});
   }

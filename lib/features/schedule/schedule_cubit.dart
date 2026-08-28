@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/models/media_item.dart' show normalizeTitle;
 import '../../core/models/provider_info.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/schedule/airing_service.dart';
@@ -27,7 +28,7 @@ class ScheduleState extends Equatable {
     this.selectedDay,
     this.myListOnly = false,
     this.monthAiringByDay = const {},
-    this.followedMalIds = const {},
+    this.followed = const FollowedShows(),
     this.soonByDay = const {},
     this.loadingMonth = false,
     this.errorMonth = false,
@@ -39,7 +40,7 @@ class ScheduleState extends Equatable {
   final Map<DateTime, List<AiringEntry>> airingByDay;
 
   /// Week airing narrowed to tracked anime, grouped by day (TV My List tab).
-  /// Kept for the unchanged TV screen; the phone redesign uses [followedMalIds]
+  /// Kept for the unchanged TV screen; the phone redesign uses [followed]
   /// with [myListOnly] instead.
   final Map<DateTime, List<AiringEntry>> myListByDay;
 
@@ -66,8 +67,8 @@ class ScheduleState extends Equatable {
   final Map<DateTime, List<AiringEntry>> monthAiringByDay;
 
   /// MAL ids of anime in My List — drives the green "you follow this" dot and
-  /// the [myListOnly] filter.
-  final Set<int> followedMalIds;
+  /// the [myListOnly] filter. Matches on MAL id OR title — see [FollowedShows].
+  final FollowedShows followed;
 
   /// Coming-soon movies/TV grouped by local release day (both views).
   final Map<DateTime, List<ComingSoonEntry>> soonByDay;
@@ -89,7 +90,7 @@ class ScheduleState extends Equatable {
     DateTime? selectedDay,
     bool? myListOnly,
     Map<DateTime, List<AiringEntry>>? monthAiringByDay,
-    Set<int>? followedMalIds,
+    FollowedShows? followed,
     Map<DateTime, List<ComingSoonEntry>>? soonByDay,
     bool? loadingMonth,
     bool? errorMonth,
@@ -108,7 +109,7 @@ class ScheduleState extends Equatable {
         selectedDay: selectedDay ?? this.selectedDay,
         myListOnly: myListOnly ?? this.myListOnly,
         monthAiringByDay: monthAiringByDay ?? this.monthAiringByDay,
-        followedMalIds: followedMalIds ?? this.followedMalIds,
+        followed: followed ?? this.followed,
         soonByDay: soonByDay ?? this.soonByDay,
         loadingMonth: loadingMonth ?? this.loadingMonth,
         errorMonth: errorMonth ?? this.errorMonth,
@@ -118,7 +119,7 @@ class ScheduleState extends Equatable {
   List<Object?> get props => [
         airingAll, airingByDay, myListByDay, comingSoon, loadingAiring,
         loadingSoon, errorAiring, errorSoon, view, monthAnchor, selectedDay,
-        myListOnly, monthAiringByDay, followedMalIds, soonByDay, loadingMonth,
+        myListOnly, monthAiringByDay, followed, soonByDay, loadingMonth,
         errorMonth,
       ];
 }
@@ -231,12 +232,12 @@ class ScheduleCubit extends Cubit<ScheduleState> {
       entries = await _airing.weekAiring();
     }
     if (isClosed) return;
-    final followed = _myListMalIds();
+    final followed = _followedShows();
     emit(state.copyWith(
       airingAll: entries,
       airingByDay: groupByLocalDay(entries),
-      myListByDay: groupByLocalDay(filterByMalIds(entries, followed)),
-      followedMalIds: followed,
+      myListByDay: groupByLocalDay(filterByFollowed(entries, followed)),
+      followed: followed,
       loadingAiring: false,
       errorAiring: entries.isEmpty, // still empty after retries → genuine miss
     ));
@@ -275,8 +276,25 @@ class ScheduleCubit extends Cubit<ScheduleState> {
     ));
   }
 
-  Set<int> _myListMalIds() => <int>{
-        for (final m in _myList.all())
-          if (m.type == ProviderType.anime && m.malId != null) m.malId!,
-      };
+  /// What the My List filter matches against.
+  ///
+  /// Both ids AND titles: most list entries have no malId (it only arrives with
+  /// metadata enrichment), so an id-only set was usually empty and the filter
+  /// hid everything.
+  FollowedShows _followedShows() {
+    final mine =
+        _myList.all().where((m) => m.type == ProviderType.anime).toList();
+    return FollowedShows(
+      malIds: {
+        for (final m in mine)
+          if (m.malId != null) m.malId!,
+      },
+      titles: {
+        for (final m in mine) ...[
+          normalizeTitle(m.title),
+          if (m.englishTitle != null) normalizeTitle(m.englishTitle!),
+        ],
+      }..removeWhere((t) => t.isEmpty),
+    );
+  }
 }

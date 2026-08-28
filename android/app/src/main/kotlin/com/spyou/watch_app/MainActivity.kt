@@ -230,7 +230,42 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
 
     override fun onPause() {
         if (current?.get() === this) current = null
+        // Fail safe: never leave the volume rocker hijacked for an app that
+        // isn't in front. Dart re-enables it when the reader resumes.
+        volumeKeyPaging = false
         super.onPause()
+    }
+
+    // ── Volume-key paging (manga reader) ──────────────────────────────────
+    // Android handles the volume keys at the window level, above the Flutter
+    // view, so a Dart-side key handler never sees them — it has to be caught
+    // here. OFF unless the reader explicitly turns it on, and forced off again
+    // in onPause, because the failure mode (volume rocker does nothing, app-
+    // wide, with no clue why) is far worse than the feature is valuable.
+    private var volumeKeyPaging = false
+    private var volumeKeyChannel: MethodChannel? = null
+
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (volumeKeyPaging) {
+            val code = event.keyCode
+            if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP ||
+                code == android.view.KeyEvent.KEYCODE_VOLUME_DOWN
+            ) {
+                // Act on the down (and its auto-repeat, so holding pages on),
+                // and swallow the matching up so the system sees a clean pair
+                // and never flashes its volume panel.
+                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                    val dir = if (code == android.view.KeyEvent.KEYCODE_VOLUME_UP) {
+                        "up"
+                    } else {
+                        "down"
+                    }
+                    volumeKeyChannel?.invokeMethod("volumeKey", dir)
+                }
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     // A "new episode" notification tapped while the app is already running:
@@ -382,6 +417,24 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     else -> result.notImplemented()
                 }
             }
+
+        // Volume-key paging: the reader turns this on while it's open and off
+        // when it closes. Bidirectional — Dart sets the flag, native pushes
+        // "volumeKey" back with the direction.
+        volumeKeyChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "zangetsu/volume_keys",
+        ).apply {
+            setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setEnabled" -> {
+                        volumeKeyPaging = call.argument<Boolean>("enabled") ?: false
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        }
 
         // Download channel: stream-copy remux of a concatenated-TS HLS download
         // into a real MP4 (MediaExtractor → MediaMuxer). Runs off the main thread;
@@ -1220,13 +1273,57 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         "com.ttee.leeplayer" to "SPlayer",
     )
 
+    // The known players first, in the curated order above, then anything else on
+    // the device that can open a video.
+    //
+    // The hardcoded list used to be the whole answer, which meant a player we'd
+    // never heard of was invisible even when installed — the picker claimed the
+    // user had nothing when they had Kodi or their OEM's player sitting right
+    // there. Known players stay on top because their intent extras are known, so
+    // subtitles and the resume position actually reach them; the rest play fine
+    // but may ignore those extras, which is why they're flagged for the UI to
+    // show under their own heading.
     private fun installedPlayers(): List<Map<String, String>> {
         val out = mutableListOf<Map<String, String>>()
+        val seen = mutableSetOf<String>()
         for ((pkg, label) in knownPlayers) {
             try {
                 packageManager.getPackageInfo(pkg, 0)
-                out.add(mapOf("package" to pkg, "label" to label))
+                if (seen.add(pkg)) {
+                    out.add(mapOf("package" to pkg, "label" to label, "known" to "1"))
+                }
             } catch (_: Exception) { /* not installed */ }
+        }
+        // Probed with an https URL because that's what we actually hand over —
+        // an app that only claims content:// or file:// can't play our streams,
+        // so leaving it out of the list is the correct answer, not a gap.
+        for (mime in arrayOf("video/*", "application/x-mpegURL")) {
+            try {
+                val probe = Intent(Intent.ACTION_VIEW).setDataAndType(
+                    Uri.parse("https://example.com/video.mp4"),
+                    mime,
+                )
+                // MATCH_DEFAULT_ONLY: startActivity needs CATEGORY_DEFAULT on the
+                // target filter, so anything without it would fail to launch.
+                val hits = packageManager.queryIntentActivities(
+                    probe,
+                    PackageManager.MATCH_DEFAULT_ONLY,
+                )
+                for (ri in hits) {
+                    val info = ri.activityInfo ?: continue
+                    val pkg = info.packageName ?: continue
+                    if (pkg == packageName || !seen.add(pkg)) continue
+                    // The application label, not the activity's — activity labels
+                    // are often "Open with …" or blank.
+                    val label = info.applicationInfo
+                        ?.let { packageManager.getApplicationLabel(it).toString() }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: pkg
+                    out.add(mapOf("package" to pkg, "label" to label, "known" to "0"))
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "queryIntentActivities($mime) failed: ${e.message}")
+            }
         }
         return out
     }
@@ -1281,7 +1378,20 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 try { it.success(mapOf("launched" to true, "played" to true)) } catch (_: Exception) {}
             }
             pendingPlayerResult = result
-            startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            try {
+                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            } catch (e: android.content.ActivityNotFoundException) {
+                // The precise mime above is a hint, not a requirement: plenty of
+                // players advertise video/* and nothing else, so an HLS stream
+                // sent as application/x-mpegURL resolves to no activity and the
+                // launch dies here — the app then falls back to the built-in
+                // player and the chosen app looks like it was ignored. Retry
+                // once as video/*, which is what every video app claims.
+                if (mime == "video/*") throw e
+                Log.w(TAG, "no activity for $mime in $pkg — retrying as video/*")
+                intent.setDataAndType(Uri.parse(url), "video/*")
+                startActivityForResult(intent, EXT_PLAYER_REQUEST)
+            }
         } catch (e: Exception) {
             Log.w(TAG, "launchExternal failed: ${e.message}")
             pendingPlayerResult = null
@@ -1338,6 +1448,12 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             }
             intent.putExtra(TvPlayerActivity.EXTRA_SPEED, (call.argument<Number>("defaultSpeed") ?: 1.0).toFloat())
             intent.putExtra(TvPlayerActivity.EXTRA_VOLUME, (call.argument<Number>("volumeBoost") ?: 100).toInt())
+            // Buffer preset → ExoPlayer LoadControl. Defaulting to 0 leaves the
+            // media3 defaults in place, so an older Dart caller behaves as before.
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_MIN_MS, (call.argument<Number>("minBufferMs") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_MAX_MS, (call.argument<Number>("maxBufferMs") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_BYTES, (call.argument<Number>("targetBufferBytes") ?: 0).toInt())
+            intent.putExtra(TvPlayerActivity.EXTRA_BUF_BACK_MS, (call.argument<Number>("backBufferMs") ?: 0).toInt())
             intent.putExtra(TvPlayerActivity.EXTRA_SUB_SCALE, (call.argument<Number>("subtitleScale") ?: 1.0).toFloat())
             // Subtitle style is pre-computed Dart-side (captionStyleFromPrefs) so
             // both TV players render identically — pass the finished values.

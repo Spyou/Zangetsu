@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import '../../../core/models/media_detail.dart' show MediaStatus;
 import '../../../core/models/media_item.dart';
 import '../../../core/models/provider_info.dart';
+import '../../../core/playback/source_health_store.dart' show SourceOutcome;
 
 enum SearchStatus { idle, loading, success, error }
 
@@ -288,6 +289,27 @@ class SearchState extends Equatable {
   /// results".
   final Set<String> respondedSources;
 
+  /// Sources that FAILED this run, mapped to why (timeout / blocked / error).
+  ///
+  /// A failed source still answers, so it lands in [respondedSources] and its
+  /// skeleton clears — but it contributes no [SourceResultGroup], which made a
+  /// failure indistinguishable from "responded with nothing" and left the
+  /// source silently missing from the results. Keeping the outcome is what lets
+  /// the UI name the source and say how it broke.
+  ///
+  /// Reset at the start of every run, same as [respondedSources].
+  final Map<String, SourceOutcome> failedSources;
+
+  /// The sources this run actually QUERIED. Reset at the start of every run.
+  ///
+  /// The screen used to work out its "still searching" skeletons itself, from
+  /// the enabled-source list — a guess that silently disagreed with what the
+  /// bloc did. A source dropped by [SourceHealthStore.isSkippable] is never
+  /// queried, so it never responds, so its skeleton sat on screen forever: no
+  /// request was in flight for the per-source timeout to cap. Publishing the
+  /// real list makes pending = queried − responded, which can't drift.
+  final Set<String> queriedSources;
+
   /// Results of a filters-only browse — source filters applied with an empty
   /// search box. Aniyomi treats "no query + filters" as a normal search request
   /// and extensions implement it that way (a source's Sort/Genre/Year filters
@@ -337,6 +359,8 @@ class SearchState extends Equatable {
     this.aniFiltersBySource = const {},
     this.mihonFiltersBySource = const {},
     this.respondedSources = const {},
+    this.failedSources = const {},
+    this.queriedSources = const {},
     this.filteredBrowse = const [],
     this.filteredBrowseSourceId = '',
     this.filteredBrowsePage = 1,
@@ -681,6 +705,8 @@ class SearchState extends Equatable {
     Map<String, String>? aniFiltersBySource,
     Map<String, String>? mihonFiltersBySource,
     Set<String>? respondedSources,
+    Map<String, SourceOutcome>? failedSources,
+    Set<String>? queriedSources,
     List<MediaItem>? filteredBrowse,
     String? filteredBrowseSourceId,
     int? filteredBrowsePage,
@@ -704,6 +730,8 @@ class SearchState extends Equatable {
     aniFiltersBySource: aniFiltersBySource ?? this.aniFiltersBySource,
     mihonFiltersBySource: mihonFiltersBySource ?? this.mihonFiltersBySource,
     respondedSources: respondedSources ?? this.respondedSources,
+    failedSources: failedSources ?? this.failedSources,
+    queriedSources: queriedSources ?? this.queriedSources,
     filteredBrowse: filteredBrowse ?? this.filteredBrowse,
     filteredBrowseSourceId:
         filteredBrowseSourceId ?? this.filteredBrowseSourceId,
@@ -732,6 +760,8 @@ class SearchState extends Equatable {
     aniFiltersBySource,
     mihonFiltersBySource,
     respondedSources,
+    failedSources,
+    queriedSources,
     filteredBrowse,
     filteredBrowseSourceId,
     filteredBrowsePage,

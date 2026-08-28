@@ -1,0 +1,111 @@
+name: Bug report
+description: Something in the app is broken or behaves wrong
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing: please make sure you're on the **latest release**, and
+        that the same thing happens with a **different source** — a lot of
+        reports turn out to be one source being down rather than the app.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what actually happened.
+      placeholder: |
+        1. Opened …
+        2. Tapped …
+        3. Expected … but got …
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Settings → About → version. "Latest" isn't a version.
+      placeholder: "1.9.7"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device-type
+    attributes:
+      label: Device type
+      options:
+        - Phone / tablet
+        - Android TV / TV box / stick
+        - iOS (TestFlight)
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Model and OS version. TV boxes especially — many are 32-bit.
+      placeholder: "Pixel 7, Android 14  /  Nvidia Shield, Android TV 11"
+    validations:
+      required: true
+
+  - type: input
+    id: apk
+    attributes:
+      label: Which APK did you install?
+      description: >
+        arm64-v8a, armeabi-v7a, universal, or TV. If you're not sure, say so —
+        installing the wrong architecture is a common cause of crashes.
+      placeholder: "arm64-v8a"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - Playback / video player
+        - Manga or novel reader
+        - Sources / extensions
+        - Downloads
+        - Trackers (AniList / MAL / Simkl)
+        - Android TV interface
+        - Search / browsing
+        - Something else
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Which source?
+      description: >
+        If it's a playback, reading or extension problem, name the source and
+        which kind it is (Zangetsu JS / CloudStream / Aniyomi / Mihon /
+        LNReader). Leave blank if it isn't source-related.
+      placeholder: "AnimePahe (CloudStream)"
+
+  - type: checkboxes
+    id: other-source
+    attributes:
+      label: Did you try another source?
+      options:
+        - label: Yes — the same thing happens with a different source
+        - label: No / not applicable
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: >
+        Settings → Advanced → Logs → share. This is by far the most useful
+        thing you can attach for a playback or source problem.
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or anything else
+      description: Drag images or a screen recording in here.

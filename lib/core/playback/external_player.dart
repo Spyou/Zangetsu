@@ -19,15 +19,31 @@ String _safeUrl(String url) {
 class ExternalPlayer {
   static const MethodChannel _ch = MethodChannel('zangetsu/external_player');
 
-  /// Installed known players as `(package, label)` rows. Empty on non-Android
-  /// or when none are installed.
-  Future<List<({String package, String label})>> installed() async {
+  /// Installed video players as `(package, label, known)` rows, empty on
+  /// non-Android.
+  ///
+  /// Ordered known-first: `known` players are the ones whose intent extras we
+  /// know, so subtitles and the resume position reach them. The rest are
+  /// whatever else on the device answers an `ACTION_VIEW` video intent — real
+  /// players we've never heard of, but also galleries and browsers. Those still
+  /// play (header-gated streams included — anything outside
+  /// `kHeaderForwardingPlayers` is handed the local header-injecting proxy URL),
+  /// they just may ignore the subtitle and position extras. Callers should
+  /// present them under their own heading rather than mixed in.
+  Future<List<({String package, String label, bool known})>> installed() async {
     if (!Platform.isAndroid) return const [];
     try {
       final raw = await _ch.invokeMethod<List<dynamic>>('getPlayers');
       return (raw ?? const []).map((e) {
         final m = Map<String, dynamic>.from(e as Map);
-        return (package: '${m['package']}', label: '${m['label']}');
+        return (
+          package: '${m['package']}',
+          label: '${m['label']}',
+          // Absent on an older native build that predates the flag — treating
+          // those as known keeps the previous behaviour instead of dumping the
+          // whole list under "Other apps".
+          known: m['known'] != '0',
+        );
       }).toList();
     } catch (e) {
       // A MissingPluginException here means the native channel isn't in the

@@ -2,10 +2,11 @@ import '../repository/source_repository.dart';
 import 'notification_service.dart';
 import 'subscription_store.dart';
 
-/// Re-checks each subscribed show's source for new episodes (CloudStream-style)
-/// and fires a notification when the episode count has grown. Uses the SAME
-/// [SourceRepository.episodes] call the detail page uses, so it works for BOTH
-/// JS and CS sources. Best-effort — a per-show failure is swallowed so one dead
+/// Re-checks each subscribed show's source for new episodes or chapters
+/// (CloudStream-style) and fires a notification when the count has grown. Uses
+/// the SAME [SourceRepository.episodes] call the detail page uses, so it works
+/// for JS, CS, and the reading sources — Mihon and LNReader return a chapter
+/// list from the same method. Best-effort — a per-show failure is swallowed so one dead
 /// source can't block the rest.
 class SubscriptionChecker {
   SubscriptionChecker(this._repo, this._store);
@@ -37,6 +38,7 @@ class SubscriptionChecker {
                 title: sub.title,
                 episode: count,
                 payload: '${sub.sourceId}|${sub.url}',
+                reading: sub.isReading,
               );
             }
             await _store.setCount(sub.sourceId, sub.url, count);

@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../models/media_item.dart' show normalizeTitle;
 import 'schedule_models.dart';
 
 const String _kAniListEndpoint = 'https://graphql.anilist.co';
@@ -48,7 +49,12 @@ List<AiringEntry> parseAiringSchedules(Map<String, dynamic> data) {
     final cover = (media['coverImage'] is Map)
         ? media['coverImage']['large'] as String?
         : null;
+    final alt = (english != null && english.isNotEmpty && romaji != null &&
+            romaji.isNotEmpty && romaji != english)
+        ? romaji
+        : null;
     out.add(AiringEntry(
+      altTitle: alt,
       malId: media['idMal'] as int?,
       title: title,
       coverUrl: cover,
@@ -91,6 +97,42 @@ Map<DateTime, List<AiringEntry>> groupByLocalDay(List<AiringEntry> entries) {
 
 List<AiringEntry> filterByMalIds(List<AiringEntry> entries, Set<int> malIds) =>
     entries.where((e) => e.malId != null && malIds.contains(e.malId)).toList();
+
+/// The shows the "My List" filter should keep.
+///
+/// MAL ids alone were not enough. A list entry only carries a malId once
+/// metadata enrichment has run, and an item added straight from a source
+/// usually has none — so the set came out empty, nothing matched, and the
+/// schedule claimed you follow nothing while the very same show sat in the
+/// unfiltered list. (Verified against BLACK TORCH: AniList publishes
+/// `idMal: 61169` for it, so the airing side was fine; the list side had no
+/// id to match with.)
+///
+/// Titles are the fallback, normalized so case and punctuation can't break it.
+class FollowedShows {
+  const FollowedShows({this.malIds = const {}, this.titles = const {}});
+
+  final Set<int> malIds;
+
+  /// Already normalized via [normalizeTitle].
+  final Set<String> titles;
+
+  bool get isEmpty => malIds.isEmpty && titles.isEmpty;
+
+  bool matches(AiringEntry e) {
+    if (e.malId != null && malIds.contains(e.malId)) return true;
+    if (titles.isEmpty) return false;
+    if (titles.contains(normalizeTitle(e.title))) return true;
+    final alt = e.altTitle;
+    return alt != null && titles.contains(normalizeTitle(alt));
+  }
+}
+
+List<AiringEntry> filterByFollowed(
+  List<AiringEntry> entries,
+  FollowedShows followed,
+) =>
+    entries.where(followed.matches).toList();
 
 /// Fetches this week's anime airing schedule from AniList (public, no auth).
 class AiringService {

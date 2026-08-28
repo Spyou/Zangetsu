@@ -56,6 +56,10 @@ class _FakeMetadataEnrichment extends MetadataEnrichment {
   int resolveTmdbIdCalls = 0;
   int resolveMalIdCalls = 0;
 
+  /// The details `fetch()` was asked to enrich, so a test can assert both THAT
+  /// it ran and what type it ran for.
+  final List<ProviderType> fetchedTypes = [];
+
   @override
   Future<int?> resolveTmdbId(String title, String? year, bool isTv) async {
     resolveTmdbIdCalls++;
@@ -74,7 +78,10 @@ class _FakeMetadataEnrichment extends MetadataEnrichment {
   @override
   Future<({List<CastMember> cast, List<MediaRelation> relations})> fetch(
     MediaDetail d,
-  ) async => (cast: <CastMember>[], relations: <MediaRelation>[]);
+  ) async {
+    fetchedTypes.add(d.type);
+    return (cast: <CastMember>[], relations: <MediaRelation>[]);
+  }
 }
 
 MediaDetail _idLessDetail(ProviderType type) => MediaDetail(
@@ -144,4 +151,31 @@ void main() {
       expect(fakeEnrichment.resolveMalIdCalls, 1);
     },
   );
+
+  // Cast/Relations for reading titles. The enrichment gate wanted a malId, a
+  // tmdbId, or anime — a Mihon manga has none of the three, so the tabs stayed
+  // empty. Manga/novel now go through fetch(), which routes them to AniList's
+  // MANGA side; the TMDB path above stays shut, which is what keeps an anime
+  // adaptation's cast off a manga page.
+  group('reading titles reach Cast/Relations', () {
+    test('an id-less MANGA detail is enriched', () async {
+      await loadCubit(_idLessDetail(ProviderType.manga));
+      expect(fakeEnrichment.fetchedTypes, [ProviderType.manga]);
+      expect(fakeEnrichment.resolveTmdbIdCalls, 0,
+          reason: 'still never the video databases — that was the old bug');
+      expect(fakeEnrichment.resolveMalIdCalls, 0,
+          reason: 'the MAL step is the anime path, not this one');
+    });
+
+    test('an id-less NOVEL detail is enriched', () async {
+      await loadCubit(_idLessDetail(ProviderType.novel));
+      expect(fakeEnrichment.fetchedTypes, [ProviderType.novel]);
+      expect(fakeEnrichment.resolveTmdbIdCalls, 0);
+    });
+
+    test('anime still enriches (unchanged)', () async {
+      await loadCubit(_idLessDetail(ProviderType.anime));
+      expect(fakeEnrichment.fetchedTypes, [ProviderType.anime]);
+    });
+  });
 }

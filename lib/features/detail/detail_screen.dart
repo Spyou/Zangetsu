@@ -21,12 +21,17 @@ import '../../core/notify/cs_notify.dart';
 import '../../core/notify/notification_service.dart';
 import '../../core/notify/subscription_store.dart';
 import '../../core/share/share_link.dart';
+import '../../core/download/chapter_download.dart';
+import '../../core/download/chapter_download_store.dart';
+import '../../core/download/chapter_downloader.dart';
 import '../../core/download/download_manager.dart';
 import '../../core/download/download_record.dart';
+import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/media_detail.dart';
 import 'chapter_meta.dart';
+import '../../core/tv/tv_episode_range_chips.dart';
 import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';
@@ -549,11 +554,14 @@ class _DetailViewState extends State<_DetailView>
   bool get _subscribed =>
       sl<SubscriptionStore>().contains(widget.item.sourceId, widget.item.url);
 
-  /// Toggle "notify on new episodes" for this show. On subscribe we seed the
-  /// baseline to the current episode count so only FUTURE episodes alert.
+  /// Toggle new-episode (or new-chapter) alerts for this show. On subscribe we
+  /// seed the baseline to the current count so only FUTURE ones alert.
   Future<void> _toggleSubscribe(MediaDetail detail) async {
     final store = sl<SubscriptionStore>();
     final item = widget.item;
+    final reading =
+        detail.type == ProviderType.manga || detail.type == ProviderType.novel;
+    final unit = reading ? 'chapters' : 'episodes';
     if (_subscribed) {
       await store.remove(item.sourceId, item.url);
       _snack('Notifications off for “${item.title}”');
@@ -566,10 +574,15 @@ class _DetailViewState extends State<_DetailView>
           cover: item.cover,
           coverHeaders: item.coverHeaders,
           lastCount: detail.episodes.length,
+          mode: detail.type == ProviderType.novel
+              ? ContentMode.novel
+              : detail.type == ProviderType.manga
+              ? ContentMode.manga
+              : ContentMode.anime,
         ),
       );
       await NotificationService.instance.init(); // ask for permission now
-      _snack('You’ll be notified of new episodes of “${item.title}”');
+      _snack('You’ll be notified of new $unit of “${item.title}”');
     }
     // Mirror CS subs to native so the background worker picks up the change.
     await CsNotify.sync(store.all());
@@ -1223,6 +1236,27 @@ class _DetailViewState extends State<_DetailView>
     String category,
   ) => _pickSourceAndDownload(ep, detail, category);
 
+  /// Manga/novel chapter → straight to the chapter downloader. No source
+  /// picker here: a chapter has one url, not a list of mirrors to choose from.
+  Future<void> _downloadChapter(Episode ep, MediaDetail detail) =>
+      _downloadChapters([ep], detail);
+
+  /// Same thing for a batch — one queue write for the lot rather than one per
+  /// chapter, which is what a "download all" on a long series needs.
+  Future<void> _downloadChapters(List<Episode> eps, MediaDetail detail) {
+    final item = widget.item;
+    return sl<ChapterDownloader>().enqueueMany(
+      chapters: eps,
+      sourceId: item.sourceId,
+      showId: item.id,
+      showTitle: detail.title,
+      cover: detail.cover ?? item.cover,
+      mode: detail.type == ProviderType.novel
+          ? ContentMode.novel
+          : ContentMode.manga,
+    );
+  }
+
   Future<void> _pickSourceAndDownload(
     Episode ep,
     MediaDetail detail,
@@ -1632,8 +1666,10 @@ class _DetailViewState extends State<_DetailView>
                     active: _subscribed,
                     label: 'Notify',
                     tooltip: _subscribed
-                        ? 'Stop new-episode alerts'
-                        : 'Notify on new episodes',
+                        ? 'Stop alerts'
+                        : (isReading
+                              ? 'Notify on new chapters'
+                              : 'Notify on new episodes'),
                     onTap: () => _toggleSubscribe(detail),
                   ),
                 if (_trackingAvailable(detail))
@@ -1703,7 +1739,9 @@ class _DetailViewState extends State<_DetailView>
               ),
               tabs: [
                 Tab(text: isReading ? 'Chapters' : 'Episodes'),
-                const Tab(text: 'Cast'),
+                // "Cast" means voice actors on an anime; on a manga the tab
+                // holds its author, artist and characters, so it says so.
+                Tab(text: isReading ? 'Characters' : 'Cast'),
                 const Tab(text: 'Relations'),
                 const Tab(text: 'Details'),
               ],
@@ -1741,8 +1779,12 @@ class _DetailViewState extends State<_DetailView>
                 : (fullIndex) =>
                       _pickPlayerFor(eps, fullIndex, detail, category),
             onRefresh: cubit.refresh,
-            onDownload: (ep) => _downloadSingle(ep, detail, category),
-            showDownload: !isReading,
+            onDownload: (ep) => isReading
+                ? _downloadChapter(ep, detail)
+                : _downloadSingle(ep, detail, category),
+            onDownloadMany: isReading
+                ? (eps) => _downloadChapters(eps, detail)
+                : null,
             isReading: isReading,
           ),
           // ── Cast ────────────────────────────────────────────────────────────

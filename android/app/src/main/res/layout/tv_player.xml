@@ -18,10 +18,10 @@
 
     <!-- Right-side options menu (Settings / Episodes / Speed / …).
          Populated + driven by the Activity; native focus handles D-pad. -->
-    <ScrollView android:id="@+id/menu_panel" android:layout_width="452dp" android:layout_height="match_parent" android:layout_gravity="end" android:background="#F00C0C10" android:paddingHorizontal="30dp" android:paddingVertical="34dp" android:scrollbars="none" android:visibility="gone">
+    <com.spyou.watch_app.LockedScrollView android:id="@+id/menu_panel" android:layout_width="520dp" android:layout_height="match_parent" android:layout_gravity="end" android:background="#A80C0C10" android:paddingHorizontal="30dp" android:paddingVertical="34dp" android:scrollbars="none" android:visibility="gone">
 
         <LinearLayout android:id="@+id/menu_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-    </ScrollView>
+    </com.spyou.watch_app.LockedScrollView>
 
     <!-- Controls overlay — toggled GONE/VISIBLE by the Activity, auto-hides. -->
     <FrameLayout android:id="@+id/controls" android:layout_width="match_parent" android:layout_height="match_parent" android:clipChildren="false" android:clipToPadding="false" android:visibility="gone">

@@ -177,6 +177,10 @@ class TvNativePlayer {
       // Playback + subtitle-style defaults from the shared prefs.
       'defaultSpeed': prefs.defaultSpeed,
       'volumeBoost': prefs.volumeBoost,
+      // Buffer preset → ExoPlayer LoadControl. Resolved Dart-side so the
+      // preset→number mapping stays in PlaybackPrefs (one place, unit-tested)
+      // rather than being written a second time in Kotlin.
+      ...prefs.exoBufferParams,
       'subtitleScale': subStyle.scale,
       'subtitleFgColor': subStyle.fgColor,
       'subtitleBgColor': subStyle.bgColor,

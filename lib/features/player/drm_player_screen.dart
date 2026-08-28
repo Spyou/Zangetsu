@@ -7,7 +7,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/di/injector.dart';
 import '../../core/models/video_source.dart';
+import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import 'tv_exo_controller.dart';
 
@@ -231,7 +233,9 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                     id: params.id,
                     viewType: 'zangetsu/exoplayer_view',
                     layoutDirection: TextDirection.ltr,
-                    creationParams: const <String, dynamic>{},
+                    // Same buffer setting as everywhere else — this screen is
+                    // ExoPlayer too (ClearKey DRM, which mpv can't decrypt).
+                    creationParams: sl<PlaybackPrefs>().exoBufferParams,
                     creationParamsCodec: const StandardMessageCodec(),
                     onFocus: () => params.onFocusChanged(true),
                   )

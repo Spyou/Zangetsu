@@ -1,9 +1,11 @@
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 
-/// A subscribed show — we re-check its source for new episodes (CloudStream-
-/// style). [lastCount] is the episode count seen at the last check; a higher
-/// count on a later check means new episodes → notify.
+import '../mode/content_mode.dart';
+
+/// A subscribed show — we re-check its source for new episodes or chapters
+/// (CloudStream-style). [lastCount] is the count seen at the last check; a
+/// higher count on a later check means there's something new → notify.
 class Subscription {
   const Subscription({
     required this.sourceId,
@@ -12,6 +14,7 @@ class Subscription {
     this.cover,
     this.coverHeaders,
     this.lastCount = 0,
+    this.mode = ContentMode.anime,
   });
 
   final String sourceId;
@@ -20,6 +23,11 @@ class Subscription {
   final String? cover;
   final Map<String, String>? coverHeaders;
   final int lastCount;
+
+  /// What this show is, so an alert can say "chapter" rather than "episode"
+  /// and tapping it opens the reader instead of the player. Defaults to anime
+  /// for subscriptions saved before reading modes were covered.
+  final ContentMode mode;
 
   /// Stable key for the box (one entry per source+show).
   String get key => '$sourceId|$url';
@@ -31,7 +39,13 @@ class Subscription {
     cover: cover,
     coverHeaders: coverHeaders,
     lastCount: lastCount ?? this.lastCount,
+    mode: mode,
   );
+
+  bool get isReading => mode != ContentMode.anime;
+
+  /// "chapter" / "episode", for the alert text.
+  String get unit => isReading ? 'Chapter' : 'Episode';
 
   Map<String, dynamic> toMap() => {
     'sourceId': sourceId,
@@ -40,6 +54,7 @@ class Subscription {
     'cover': cover,
     'coverHeaders': coverHeaders,
     'lastCount': lastCount,
+    'mode': mode.name,
   };
 
   static Subscription fromMap(Map m) => Subscription(
@@ -51,6 +66,10 @@ class Subscription {
         ? (m['coverHeaders'] as Map).map((k, v) => MapEntry('$k', '$v'))
         : null,
     lastCount: (m['lastCount'] as num?)?.toInt() ?? 0,
+    mode: ContentMode.values.firstWhere(
+      (e) => e.name == m['mode'],
+      orElse: () => ContentMode.anime,
+    ),
   );
 }
 

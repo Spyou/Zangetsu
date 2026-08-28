@@ -37,11 +37,13 @@ import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
 import '../../core/tracker/tracker_hub.dart';
+import '../../core/tv/tv_episode_range_chips.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/subtitle_language_picker.dart';
+import '../detail/episode_filter.dart';
 import 'tv_exo_controller.dart';
 import 'tv_track_menu.dart';
 
@@ -138,10 +140,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   );
   bool _controlRowFocused = false;
   bool _episodesOpen = false; // the episode-picker overlay
+  int _episodeRangeIndex = 0; // 50-ep chunk in the picker
   // Its own scope so the picker can grab D-pad focus off the root (the root
   // holds focus and a child's autofocus can't steal it — same reason the track
   // menu uses a scope).
   final _episodesScope = FocusScopeNode(debugLabel: 'tvExoEpisodes');
+  final _selectedRangeFocus = FocusNode(debugLabel: 'tvExoSelectedRange');
+  final _currentEpisodeFocus = FocusNode(debugLabel: 'tvExoCurrentEpisode');
 
   bool _subApplied = false; // one-shot preferred-language per (re)load
   bool _subDownloadTried = false; // one auto-download attempt per episode
@@ -1452,7 +1457,10 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _openEpisodes() {
-    setState(() => _episodesOpen = true);
+    setState(() {
+      _episodesOpen = true;
+      _episodeRangeIndex = episodeRangeIndex(_index);
+    });
     // Move focus into the picker once it's mounted (autofocus can't steal it
     // from the root); the current episode is the autofocus target in the scope.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1813,6 +1821,8 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       n.dispose();
     }
     _episodesScope.dispose();
+    _selectedRangeFocus.dispose();
+    _currentEpisodeFocus.dispose();
     _fillerEps.dispose();
     super.dispose();
   }
@@ -1888,7 +1898,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                             id: params.id,
                             viewType: 'zangetsu/exoplayer_view',
                             layoutDirection: TextDirection.ltr,
-                            creationParams: const <String, dynamic>{},
+                            creationParams: sl<PlaybackPrefs>().exoBufferParams,
                             creationParamsCodec: const StandardMessageCodec(),
                             onFocus: () => params.onFocusChanged(true),
                           )
@@ -2449,10 +2459,23 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
 
   /// Full-screen episode picker (opened from the control row's Episodes button).
   Widget _episodesOverlay() {
-    return Positioned.fill(
+    final total = _episodes.length;
+    final rangeCount = episodeRangeCount(total);
+    final showRanges = rangeCount > 1;
+    final maxRange = rangeCount == 0 ? 0 : rangeCount - 1;
+    final rangeIndex = _episodeRangeIndex.clamp(0, maxRange);
+    final slice = episodeRangeSlice(rangeIndex, total);
+    final visibleStart = slice.start;
+    final visibleCount = slice.end - slice.start;
+
+    return Positioned(
+      right: 0,
+      top: 0,
+      bottom: 0,
+      width: 520,
       child: Container(
-        color: Colors.black.withValues(alpha: 0.9),
-        padding: const EdgeInsets.fromLTRB(48, 40, 48, 40),
+        color: Colors.black.withValues(alpha: 0.66),
+        padding: const EdgeInsets.fromLTRB(30, 34, 30, 34),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2468,71 +2491,117 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
             Expanded(
               child: FocusScope(
                 node: _episodesScope,
-                child: ValueListenableBuilder<Set<int>>(
-                  valueListenable: _fillerEps,
-                  builder: (context, fillers, _) {
-                    return ListView.builder(
-                      // Big cache so D-pad traversal can reach off-screen rows.
-                      cacheExtent: 2000,
-                      itemCount: _episodes.length,
-                      itemBuilder: (context, i) {
-                        final ep = _episodes[i];
-                        final n = ep.number?.toInt() ?? (i + 1);
-                        final title =
-                            episodeDisplayTitle(ep, number: n) ?? 'Episode $n';
-                        final current = i == _index;
-                        final isFiller = fillers.contains(n);
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: TvFocusable(
-                            autofocus: current,
-                            scale: 1.0,
-                            onTap: () => _playEpisodeAt(i),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 20,
-                                vertical: 14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.06),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                children: [
-                                  if (current) ...[
-                                    const Icon(
-                                      Icons.play_arrow_rounded,
-                                      color: Colors.white,
-                                      size: 20,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (showRanges)
+                      TvEpisodeRangeChips(
+                        axis: Axis.vertical,
+                        count: rangeCount,
+                        selected: rangeIndex,
+                        selectedChipFocusNode: _selectedRangeFocus,
+                        episodeReturnFocusNode: _currentEpisodeFocus,
+                        labelFor: (i) => episodeRangeLabel(_episodes, i),
+                        onSelect: (i) =>
+                            setState(() => _episodeRangeIndex = i),
+                      ),
+                    if (showRanges) const SizedBox(width: 16),
+                    Expanded(
+                      child: ValueListenableBuilder<Set<int>>(
+                        valueListenable: _fillerEps,
+                        builder: (context, fillers, _) {
+                          return ListView.builder(
+                            primary: false,
+                            cacheExtent: 2000,
+                            itemCount: visibleCount,
+                            itemBuilder: (context, localI) {
+                              final i = visibleStart + localI;
+                              final ep = _episodes[i];
+                              final n = ep.number?.toInt() ?? (i + 1);
+                              final title = episodeDisplayTitle(ep, number: n) ??
+                                  'Episode $n';
+                              final current = i == _index;
+                              final isFiller = fillers.contains(n);
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Focus(
+                                  onKeyEvent: (_, event) {
+                                    if (!showRanges) {
+                                      return KeyEventResult.ignored;
+                                    }
+                                    if (event is KeyDownEvent &&
+                                        event.logicalKey ==
+                                            LogicalKeyboardKey.arrowLeft) {
+                                      _selectedRangeFocus.requestFocus();
+                                      return KeyEventResult.handled;
+                                    }
+                                    return KeyEventResult.ignored;
+                                  },
+                                  child: TvFocusable(
+                                    autofocus: current,
+                                    focusNode:
+                                        current ? _currentEpisodeFocus : null,
+                                    scale: 1.0,
+                                    onTap: () => _playEpisodeAt(i),
+                                    child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 20,
+                                      vertical: 14,
                                     ),
-                                    const SizedBox(width: 8),
-                                  ],
-                                  Expanded(
-                                    child: Text(
-                                      '${i + 1}. $title',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 16,
-                                        fontWeight: current
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                      ),
+                                    decoration: BoxDecoration(
+                                      color: current
+                                          ? AppColors.accent.withValues(
+                                              alpha: 0.22,
+                                            )
+                                          : Colors.white.withValues(alpha: 0.06),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: current
+                                          ? Border.all(
+                                              color: AppColors.accent,
+                                              width: 1.5,
+                                            )
+                                          : null,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        if (current) ...[
+                                          const Icon(
+                                            Icons.play_arrow_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                          const SizedBox(width: 8),
+                                        ],
+                                        Expanded(
+                                          child: Text(
+                                            'Episode $n · $title',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: current
+                                                  ? FontWeight.w700
+                                                  : FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                        if (isFiller) ...[
+                                          const SizedBox(width: 8),
+                                          const TagBadge(text: 'FILLER'),
+                                        ],
+                                      ],
                                     ),
                                   ),
-                                  if (isFiller) ...[
-                                    const SizedBox(width: 8),
-                                    const TagBadge(text: 'FILLER'),
-                                  ],
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
+                            );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),

@@ -72,6 +72,7 @@ class DownloadRecord {
     this.progress = 0,
     this.bytesTotal = 0,
     this.filePath,
+    this.supersededPath,
     this.error,
     this.subtitles = const [],
     this.malId,
@@ -96,6 +97,12 @@ class DownloadRecord {
   final double progress; // 0..1
   final int bytesTotal; // expected file size in bytes (0 when unknown)
   final String? filePath; // final shared-storage path once complete
+
+  /// File left behind by the download this one replaced, deleted once this one
+  /// lands. Persisted rather than held in memory: a re-download killed halfway
+  /// would otherwise forget the old file and strand it for good, which is the
+  /// leak this whole thing exists to stop.
+  final String? supersededPath;
   final String? error;
   final List<OfflineSubtitle> subtitles; // soft-sub files saved for offline use
   final int? malId; // anime MAL id → AniList auto-scrobble on offline playback
@@ -113,6 +120,7 @@ class DownloadRecord {
     double? progress,
     int? bytesTotal,
     String? Function()? filePath,
+    String? Function()? supersededPath,
     String? Function()? error,
     List<OfflineSubtitle>? subtitles,
     bool? isTorrent,
@@ -134,6 +142,9 @@ class DownloadRecord {
     progress: progress ?? this.progress,
     bytesTotal: bytesTotal ?? this.bytesTotal,
     filePath: filePath != null ? filePath() : this.filePath,
+    supersededPath: supersededPath != null
+        ? supersededPath()
+        : this.supersededPath,
     error: error != null ? error() : this.error,
     subtitles: subtitles ?? this.subtitles,
     malId: malId,
@@ -159,6 +170,7 @@ class DownloadRecord {
     'progress': progress,
     'bytesTotal': bytesTotal,
     'filePath': filePath,
+    'supersededPath': supersededPath,
     'error': error,
     'subtitles': subtitles.map((s) => s.toMap()).toList(),
     'malId': malId,
@@ -188,6 +200,7 @@ class DownloadRecord {
       progress: (m['progress'] as num?)?.toDouble() ?? 0,
       bytesTotal: (m['bytesTotal'] as num?)?.toInt() ?? 0,
       filePath: m['filePath'] as String?,
+      supersededPath: m['supersededPath'] as String?,
       error: m['error'] as String?,
       subtitles: ((m['subtitles'] as List?) ?? const [])
           .whereType<Map>()

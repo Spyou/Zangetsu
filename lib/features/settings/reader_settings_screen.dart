@@ -5,6 +5,7 @@ import '../../core/reading/reader_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import 'tap_zones_screen.dart';
 
 /// Global reader defaults — manga and novel. These are the same
 /// [ReaderPrefs] keys the in-reader settings sheets write; the manga
@@ -340,6 +341,21 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
                   await prefs.setKeepScreenOn(v);
                   if (mounted) setState(() {});
                 },
+              ),
+            ],
+          ),
+          const SettingsSectionLabel('Gestures'),
+          SettingsCard(
+            children: [
+              SettingsTile(
+                icon: Icons.touch_app_outlined,
+                title: 'Tap zones',
+                subtitle: 'What tapping each part of the page does',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const TapZonesScreen(),
+                  ),
+                ),
               ),
             ],
           ),

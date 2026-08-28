@@ -30,7 +30,7 @@ class _EpisodesTab extends StatefulWidget {
     this.onPickPlayer,
     this.onRefresh,
     required this.onDownload,
-    this.showDownload = true,
+    this.onDownloadMany,
     this.isReading = false,
   });
 
@@ -68,13 +68,13 @@ class _EpisodesTab extends StatefulWidget {
   /// Null hides the button.
   final Future<void> Function()? onRefresh;
 
-  /// Per-episode download icon → opens the download sheet for that episode.
+  /// Per-row download icon → the download sheet for an episode, or a straight
+  /// enqueue for a chapter.
   final void Function(Episode ep) onDownload;
 
-  /// False for reading types (manga/novel) — chapters resolve to a reader,
-  /// not a video source, so the per-row download icon is hidden rather than
-  /// left as a dead/misleading tap target.
-  final bool showDownload;
+  /// Queue a run of chapters in one go. Null for video, where downloading is
+  /// per-episode through the source picker.
+  final Future<void> Function(List<Episode> eps)? onDownloadMany;
 
   /// True for reading types — the section header reads "Chapters" instead
   /// of "Episodes" (single-season case only; multi-season keeps the season
@@ -86,10 +86,6 @@ class _EpisodesTab extends StatefulWidget {
 }
 
 class _EpisodesTabState extends State<_EpisodesTab> {
-  /// Long seasons are split into chunks of this size (CloudStream-style) so
-  /// hundreds/thousands of episodes stay navigable via range chips.
-  static const int _chunk = 50;
-
   bool _grid = false;
 
   /// Selected scanlation group, or null for "All". Several groups release the
@@ -124,10 +120,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // Against the FILTERED list — the range index addresses what's on screen,
     // and a scanlator filter makes that a different list to seasonEps.
     final local = _filteredEps.indexOf(resumeEp);
-    return local < 0 ? 0 : local ~/ _chunk;
+    return episodeRangeIndex(local);
   }
 
-  int get _rangeCount => (_filteredEps.length / _chunk).ceil();
+  int get _rangeCount => episodeRangeCount(_filteredEps.length);
 
   /// Scanlation groups on offer, first-seen order (which is the source's own
   /// ordering, so the group a reader is following tends to come first).
@@ -150,9 +146,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         if (e.scanlator?.trim() == want) e,
     ];
   }
-
-  String _numLabel(Episode e, int fallback) =>
-      (e.number?.toInt() ?? fallback).toString();
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),
   /// keyed by showId — the video [ResumeStore] never holds a mark for a
@@ -230,7 +223,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     if (local < 0 && n >= 1 && n <= eps.length) local = n - 1;
     if (local < 0) return;
     setState(() {
-      _rangeIndex = local ~/ _chunk;
+      _rangeIndex = episodeRangeIndex(local);
       _grid = true; // the grid makes the jumped-to episode easy to spot
       _highlightEpId = eps[local].id;
     });
@@ -251,9 +244,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // index past the end, so clamp before slicing.
     final maxRange = _rangeCount == 0 ? 0 : _rangeCount - 1;
     final rangeIndex = _rangeIndex.clamp(0, maxRange);
-    final start = (rangeIndex * _chunk).clamp(0, total);
-    final end = (start + _chunk).clamp(0, total);
-    final visible = eps.sublist(start, end);
+    final slice = episodeRangeSlice(rangeIndex, total);
+    final visible = eps.sublist(slice.start, slice.end);
     final showRanges = _rangeCount > 1;
     final groups = _scanlators;
 
@@ -273,6 +265,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onToggleView: () => setState(() => _grid = !_grid),
             onJump: showRanges ? _jump : null,
             isReading: widget.isReading,
+            onBulkDownload:
+                widget.onDownloadMany != null && !sl<AppMode>().isTv
+                ? () => _openBulkDownload(eps)
+                : null,
           ),
         ),
         // Only when the tracker says the show is still airing. Sits under the
@@ -324,12 +320,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             child: _RangeChips(
               count: _rangeCount,
               selected: rangeIndex,
-              labelFor: (i) {
-                final s = (i * _chunk).clamp(0, total - 1);
-                final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
-                return '${_numLabel(eps[s], s + 1)}'
-                    '–${_numLabel(eps[e], e + 1)}';
-              },
+              labelFor: (i) => episodeRangeLabel(eps, i),
               onSelect: (i) => setState(() {
                 _rangeIndex = i;
                 _highlightEpId = null;
@@ -337,12 +328,158 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ),
           ),
         if (_grid)
-          _buildGrid(store, visible, start)
+          _buildGrid(store, visible, slice.start)
         else
-          _buildList(store, visible, start),
+          _buildList(store, visible, slice.start),
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );
+  }
+
+  /// "Download next N" over the chapters that aren't saved yet, counting from
+  /// the top of the list as displayed — so it follows the user's sort order
+  /// instead of guessing at chapter numbers the source may not provide.
+  void _openBulkDownload(List<Episode> eps) {
+    final store = sl<ChapterDownloadStore>();
+    final pending = eps
+        .where((e) => !store.isDownloaded(widget.sourceId, e.url))
+        .toList();
+
+    if (pending.isEmpty) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(
+          const SnackBar(content: Text('Every chapter is already downloaded')),
+        );
+      return;
+    }
+
+    // Only offer counts that mean something — "Next 25" on a 6-chapter list is
+    // just "All" wearing a hat.
+    final counts = [10, 25, 50].where((n) => n < pending.length).toList();
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 8),
+              width: 36,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textTertiary.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Download chapters', style: AppText.headline),
+                  ),
+                  Text(
+                    '${pending.length} not saved',
+                    style: AppText.caption,
+                  ),
+                ],
+              ),
+            ),
+            for (final n in counts)
+              ListTile(
+                leading: Icon(
+                  Icons.file_download_outlined,
+                  color: AppColors.accent,
+                ),
+                title: Text(
+                  'Next $n',
+                  style: AppText.body.copyWith(color: AppColors.textPrimary),
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  _enqueueAll(pending.take(n).toList());
+                },
+              ),
+            ListTile(
+              leading: Icon(
+                Icons.download_for_offline_outlined,
+                color: AppColors.accent,
+              ),
+              title: Text(
+                'All ${pending.length}',
+                style: AppText.body.copyWith(color: AppColors.textPrimary),
+              ),
+              subtitle: pending.length > 50
+                  ? Text(
+                      'This will take a while and use a lot of storage',
+                      style: AppText.caption,
+                    )
+                  : null,
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _enqueueAll(pending);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _enqueueAll(List<Episode> chapters) async {
+    // A long series can be thousands of chapters, and one tap shouldn't commit
+    // to that much storage and traffic without saying so out loud.
+    if (chapters.length > 50) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (dctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text('Download ${chapters.length} chapters?', style: AppText.headline),
+          content: Text(
+            'This runs one chapter at a time and can take a long while. '
+            'You can stop it from Downloads.',
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: Text(
+                'Cancel',
+                style: AppText.button.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: Text(
+                'Download',
+                style: AppText.button.copyWith(color: AppColors.accent),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      if (!mounted) return;
+    }
+    await widget.onDownloadMany!(chapters);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            'Queued ${chapters.length} '
+            '${chapters.length == 1 ? 'chapter' : 'chapters'}',
+          ),
+        ),
+      );
   }
 
   Widget _buildList(ResumeStore store, List<Episode> visible, int offset) {
@@ -370,8 +507,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               onTap: () => widget.onOpen(fullIndex),
               onDownload: () => widget.onDownload(ep),
               sourceId: widget.sourceId,
-              showId: widget.showId,
-              showDownload: widget.showDownload,
             ),
           );
         }
@@ -394,7 +529,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             onDownload: () => widget.onDownload(ep),
             sourceId: widget.sourceId,
             showId: widget.showId,
-            showDownload: widget.showDownload,
           ),
         );
       },
@@ -452,6 +586,7 @@ class _EpisodesHeader extends StatelessWidget {
     required this.onToggleView,
     this.onJump,
     this.isReading = false,
+    this.onBulkDownload,
   });
 
   final bool hasMultipleSeasons;
@@ -471,6 +606,10 @@ class _EpisodesHeader extends StatelessWidget {
 
   /// True for reading types — the single-season label reads "Chapters".
   final bool isReading;
+
+  /// Download a run of chapters at once; null hides the button. Reading only —
+  /// a 200-chapter manga one tap at a time isn't a feature.
+  final VoidCallback? onBulkDownload;
 
   Widget _circle(IconData icon, VoidCallback onTap, {String? semanticLabel}) =>
       Semantics(
@@ -552,6 +691,14 @@ class _EpisodesHeader extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (onBulkDownload != null) ...[
+                _circle(
+                  Icons.download_rounded,
+                  onBulkDownload!,
+                  semanticLabel: 'Download chapters',
+                ),
+                const SizedBox(width: 8),
+              ],
               if (onJump != null) ...[
                 _circle(
                   Icons.search_rounded,
@@ -921,8 +1068,6 @@ class _ChapterRow extends StatelessWidget {
     required this.onTap,
     required this.onDownload,
     required this.sourceId,
-    required this.showId,
-    this.showDownload = true,
   });
 
   /// Key on the portrait cover — the one structural marker that tells a
@@ -939,9 +1084,7 @@ class _ChapterRow extends StatelessWidget {
   final double fraction;
   final VoidCallback onTap;
   final VoidCallback onDownload;
-  final bool showDownload;
   final String sourceId;
-  final String showId;
 
   @override
   Widget build(BuildContext context) {
@@ -1033,16 +1176,14 @@ class _ChapterRow extends StatelessWidget {
                 ],
               ),
             ),
-            // Same rule as the episode row: hidden on TV, and hidden whenever
-            // the caller says there's nothing downloadable (which is every
-            // reading source today).
-            if (!sl<AppMode>().isTv && showDownload) ...[
+            // Same rule as the episode row: phone only. Reading is phone-only
+            // anyway, but a TV chapter list would still reach this.
+            if (!sl<AppMode>().isTv) ...[
               const SizedBox(width: 8),
-              _EpisodeDownloadIcon(
+              _ChapterDownloadIcon(
                 sourceId: sourceId,
-                showId: showId,
-                episodeId: ep.id,
-                onTap: onDownload,
+                chapterUrl: ep.url,
+                onDownload: onDownload,
               ),
             ],
           ],
@@ -1078,7 +1219,6 @@ class _EpisodeRow extends StatelessWidget {
     required this.sourceId,
     required this.showId,
     this.filler = false,
-    this.showDownload = true,
   });
 
   final Episode ep;
@@ -1098,7 +1238,6 @@ class _EpisodeRow extends StatelessWidget {
   /// player picker has nothing to say.
   final VoidCallback? onLongPress;
   final VoidCallback onDownload;
-  final bool showDownload;
   final String sourceId;
   final String showId;
 
@@ -1301,9 +1440,7 @@ class _EpisodeRow extends StatelessWidget {
                 // Per-episode download icon (phone only). On TV it's redundant
                 // clutter next to the main Download button + hard to focus, so
                 // it's hidden — the TV path downloads via the Download action.
-                // Also hidden for reading types — a chapter has no video
-                // source to download.
-                if (!sl<AppMode>().isTv && showDownload) ...[
+                if (!sl<AppMode>().isTv) ...[
                   const SizedBox(width: 8),
                   _EpisodeDownloadIcon(
                     sourceId: sourceId,
@@ -1328,6 +1465,119 @@ class _EpisodeRow extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Per-chapter download icon (manga/novel). Watches the downloader for live
+// progress and the store for what's already saved, so only this row rebuilds.
+// A chapter that failed shows the plain download glyph again — enqueueing it
+// again is the retry, and it picks up the pages already in the .part folder.
+class _ChapterDownloadIcon extends StatelessWidget {
+  const _ChapterDownloadIcon({
+    required this.sourceId,
+    required this.chapterUrl,
+    required this.onDownload,
+  });
+
+  final String sourceId;
+  final String chapterUrl;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    final downloader = sl<ChapterDownloader>();
+    final store = sl<ChapterDownloadStore>();
+    final id = ChapterDownload.idFor(sourceId, chapterUrl);
+    return ListenableBuilder(
+      listenable: Listenable.merge([downloader, store.listenable()]),
+      builder: (context, _) {
+        final live = downloader.inFlight[id];
+        if (live != null) {
+          return _button(
+            tooltip: 'Cancel download',
+            onPressed: () => unawaited(downloader.cancel(id)),
+            icon: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                value: live.progress > 0 ? live.progress : null,
+                strokeWidth: 2.4,
+                color: AppColors.accent,
+                backgroundColor: AppColors.surface2,
+              ),
+            ),
+          );
+        }
+        if (store.isDownloaded(sourceId, chapterUrl)) {
+          return _button(
+            tooltip: 'Downloaded',
+            onPressed: () => _offerDelete(context, store, id),
+            icon: Icon(
+              Icons.check_circle_rounded,
+              color: AppColors.accent,
+              size: 24,
+            ),
+          );
+        }
+        return _button(
+          tooltip: 'Download chapter',
+          onPressed: onDownload,
+          icon: const Icon(
+            Icons.file_download_outlined,
+            color: AppColors.textPrimary,
+            size: 24,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _button({
+    required String tooltip,
+    required VoidCallback onPressed,
+    required Widget icon,
+  }) => IconButton(
+    onPressed: onPressed,
+    visualDensity: VisualDensity.compact,
+    splashRadius: 22,
+    tooltip: tooltip,
+    icon: icon,
+  );
+
+  void _offerDelete(
+    BuildContext context,
+    ChapterDownloadStore store,
+    String id,
+  ) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      barrierColor: Colors.black54,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(
+                Icons.delete_outline_rounded,
+                color: AppColors.accent,
+              ),
+              title: Text(
+                'Delete download',
+                style: AppText.body.copyWith(color: AppColors.accent),
+              ),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(store.remove(id));
+              },
+            ),
           ],
         ),
       ),
