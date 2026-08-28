@@ -1740,7 +1740,9 @@ class _DetailViewState extends State<_DetailView>
               ),
               tabs: [
                 Tab(text: isReading ? 'Chapters' : 'Episodes'),
-                const Tab(text: 'Cast'),
+                // "Cast" means voice actors on an anime; on a manga the tab
+                // holds its author, artist and characters, so it says so.
+                Tab(text: isReading ? 'Characters' : 'Cast'),
                 const Tab(text: 'Relations'),
                 const Tab(text: 'Details'),
               ],

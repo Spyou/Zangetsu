@@ -34,17 +34,70 @@ class _CastTab extends StatelessWidget {
     if (cast.isEmpty) {
       return _emptyTab(Icons.people_outline_rounded, 'No cast information');
     }
-    return GridView.builder(
+    // Split characters from the people who MADE the thing. On a manga the tab
+    // holds both, and side by side in one unlabelled grid there's nothing to
+    // say which is which — an author reads as just another character with an
+    // odd subtitle. Everything else (anime, TMDB, source-supplied cast) has no
+    // staff entries, so it falls through as a single unlabelled grid exactly
+    // as before.
+    final staff = [
+      for (final m in cast)
+        if (m.person?.source == PersonSource.anilistStaff) m,
+    ];
+    if (staff.isNotEmpty && staff.length != cast.length) {
+      final people = [for (final m in cast) if (!staff.contains(m)) m];
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 40),
+        children: [
+          _castSection('Characters', people),
+          _castSection('Creators', staff),
+        ],
+      );
+    }
+    return _grid(
+      cast,
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      nested: false,
+    );
+  }
+
+  Widget _castSection(String label, List<CastMember> members) {
+    if (members.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 2),
+          child: Text(
+            label.toUpperCase(),
+            style: AppText.overline.copyWith(color: AppColors.textTertiary),
+          ),
+        ),
+        _grid(members, padding: const EdgeInsets.fromLTRB(16, 8, 16, 4)),
+      ],
+    );
+  }
+
+  /// [nested] grids sit inside the sectioned ListView and must not scroll
+  /// themselves; the single-grid path is the scroll view.
+  Widget _grid(
+    List<CastMember> members, {
+    required EdgeInsets padding,
+    bool nested = true,
+  }) {
+    return GridView.builder(
+      shrinkWrap: nested,
+      physics: nested ? const NeverScrollableScrollPhysics() : null,
+      padding: padding,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 16,
         crossAxisSpacing: 12,
         childAspectRatio: 0.66,
       ),
-      itemCount: cast.length,
+      itemCount: members.length,
       itemBuilder: (_, i) {
-        final m = cast[i];
+        final m = members[i];
         final card = Column(
           children: [
             ClipRRect(

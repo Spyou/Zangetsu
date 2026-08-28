@@ -240,6 +240,98 @@ class AniListApi {
       'relations{ edges{ relationType '
       'node{ idMal type format title{romaji english} coverImage{medium} } } }';
 
+  /// Manga/novel twin of [_extrasSelection].
+  ///
+  /// No `voiceActors` — a comic has none — and `staff` instead, because the
+  /// people worth naming on a manga are its author and artist. Relations come
+  /// back the same shape.
+  static const String _readingExtrasSelection =
+      'characters(sort:[ROLE,RELEVANCE],perPage:24){ edges{ role '
+      'node{ id name{full} image{medium} } } } '
+      'staff(sort:[RELEVANCE],perPage:6){ edges{ role '
+      'node{ id name{full} image{medium} } } } '
+      'relations{ edges{ relationType '
+      'node{ idMal type format title{romaji english} coverImage{medium} } } }';
+
+  /// Cast + relations for a MANGA or NOVEL, resolved by title.
+  ///
+  /// `type:MANGA` is the whole safety story. Manga usually shares its anime
+  /// adaptation's title, and an earlier attempt at this looked reading titles
+  /// up in the video databases — which happily returned the ADAPTATION and put
+  /// the anime's cast on the manga's page. Asking AniList for MANGA makes that
+  /// structurally impossible: an anime can't come back from this query.
+  ///
+  /// AniList files light novels under MANGA (format NOVEL), so novels use the
+  /// same path. Best-effort; empty on a miss.
+  Future<({List<CastMember> cast, List<MediaRelation> relations})>
+      readingExtrasBySearch(String search) async {
+    Future<({List<CastMember> cast, List<MediaRelation> relations})> tryOne(
+      String q,
+    ) async {
+      final d = await _gql(
+        'query(\$search:String){ Media(search:\$search,type:MANGA){ '
+        '$_readingExtrasSelection } }',
+        {'search': q},
+      );
+      final media = d?['Media'];
+      if (media is! Map) {
+        return (cast: <CastMember>[], relations: <MediaRelation>[]);
+      }
+      final base = _parseExtras(media, keepTypes: const {'MANGA', 'ANIME'});
+      // Characters first, creators after. The detail header's "Starring:" line
+      // takes the head of this list, so putting staff in front made a manga
+      // read "Starring: <the author>" — and the source's own metadata already
+      // shows a Creators: line above it.
+      return (
+        cast: [...base.cast, ..._parseStaff(media)],
+        relations: base.relations,
+      );
+    }
+
+    var r = await tryOne(search);
+    if (r.cast.isEmpty && r.relations.isEmpty) {
+      final cleaned = _cleanSearchTitle(search);
+      if (cleaned.isNotEmpty && cleaned != search) r = await tryOne(cleaned);
+    }
+    return r;
+  }
+
+  /// Author/artist rows, appended after the characters — see the ordering note
+  /// in [readingExtrasBySearch].
+  List<CastMember> _parseStaff(Map media) {
+    final out = <CastMember>[];
+    final edges = media['staff'] is Map ? media['staff']['edges'] : null;
+    if (edges is! List) return out;
+    for (final e in edges) {
+      if (e is! Map) continue;
+      final node = e['node'];
+      final name = (node is Map && node['name'] is Map)
+          ? node['name']['full'] as String?
+          : null;
+      if (name == null || name.isEmpty) continue;
+      final img = (node is Map && node['image'] is Map)
+          ? node['image']['medium'] as String?
+          : null;
+      final id = (node is Map) ? (node['id'] as num?)?.toInt() : null;
+      out.add(CastMember(
+        name: name,
+        role: e['role'] as String?,
+        photo: img,
+        // Tappable, so an author's card opens their page and lists everything
+        // else they've written. Without the ref the card is inert.
+        person: id == null
+            ? null
+            : PersonRef(
+                id: id,
+                source: PersonSource.anilistStaff,
+                name: name,
+                photo: img,
+              ),
+      ));
+    }
+    return out;
+  }
+
   /// Cast (characters + their Japanese voice actors) and related anime titles
   /// for an anime, by MAL id. Unauthenticated; returns empty lists on miss.
   Future<({List<CastMember> cast, List<MediaRelation> relations})> mediaExtras(
@@ -312,9 +404,22 @@ class AniListApi {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+  /// [keepTypes] are the AniList media types a relation may be.
+  ///
+  /// Anime pages keep ANIME only — this is a video app and a manga relation
+  /// there leads nowhere. Reading pages keep BOTH: their own sequels and
+  /// spin-offs are MANGA, but "is there an anime of this?" is one of the main
+  /// things a reader wants from the tab, and those edges come back as ANIME.
+  /// The card names the relation type, so an adaptation reads as an
+  /// adaptation — which is information, not the misattribution that made
+  /// Cast/Relations get switched off for reading titles in the first place.
+  ///
+  /// Defaulting to ANIME-only is what silently emptied the tab: a manga's
+  /// relations are MANGA, so every one was dropped.
   ({List<CastMember> cast, List<MediaRelation> relations}) _parseExtras(
-    Map media,
-  ) {
+    Map media, {
+    Set<String> keepTypes = const {'ANIME'},
+  }) {
     final cast = <CastMember>[];
     final cEdges = media['characters'] is Map ? media['characters']['edges'] : null;
     if (cEdges is List) {
@@ -358,7 +463,7 @@ class AniListApi {
       for (final e in rEdges) {
         if (e is! Map) continue;
         final node = e['node'];
-        if (node is! Map || node['type'] != 'ANIME') continue; // video app only
+        if (node is! Map || !keepTypes.contains(node['type'])) continue;
         final t = node['title'];
         final romaji = (t is Map) ? t['romaji'] as String? : null;
         final title =
