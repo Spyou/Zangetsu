@@ -103,4 +103,57 @@ void main() {
     final out = filterByMalIds([e(1), e(2), e(null), e(3)], {1, 3});
     expect(out.map((x) => x.malId).toList(), [1, 3]);
   });
+
+  // The Schedule's "My List" filter said "None of the anime you follow air on
+  // this day" while the very same show sat in the unfiltered list one tap
+  // earlier. Matching was malId-only on both sides, and a list entry only
+  // carries a malId once metadata enrichment has run — an item added straight
+  // from a source has none, so the followed set came out empty.
+  group('FollowedShows', () {
+    AiringEntry entry({int? mal, String title = 'BLACK TORCH', String? alt}) =>
+        AiringEntry(
+          malId: mal,
+          title: title,
+          altTitle: alt,
+          coverUrl: null,
+          episode: 1,
+          airsAtLocal: DateTime(2026),
+          format: 'TV',
+        );
+
+    test('matches on title when the list entry has no malId', () {
+      // Exactly the reported case: AniList publishes idMal for the show, the
+      // saved list entry has none.
+      const followed = FollowedShows(titles: {'blacktorch'});
+      expect(followed.matches(entry(mal: 61169)), isTrue);
+    });
+
+    test('still matches on malId', () {
+      const followed = FollowedShows(malIds: {61169});
+      expect(followed.matches(entry(mal: 61169, title: 'renamed')), isTrue);
+    });
+
+    test('title match ignores case and punctuation', () {
+      const followed = FollowedShows(titles: {'blacktorch'});
+      expect(followed.matches(entry(title: 'Black Torch!')), isTrue);
+    });
+
+    test('matches the romaji title when AniList returned the English one', () {
+      const followed = FollowedShows(titles: {'kimitobokuno'});
+      expect(
+        followed.matches(entry(title: 'Something Else', alt: 'Kimi to Boku no')),
+        isTrue,
+      );
+    });
+
+    test('does not match an unrelated show', () {
+      const followed = FollowedShows(malIds: {1}, titles: {'blacktorch'});
+      expect(followed.matches(entry(mal: 999, title: 'Frieren')), isFalse);
+    });
+
+    test('an empty followed set matches nothing', () {
+      expect(const FollowedShows().matches(entry(mal: 1)), isFalse);
+      expect(const FollowedShows().isEmpty, isTrue);
+    });
+  });
 }

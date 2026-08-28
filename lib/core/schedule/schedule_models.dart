@@ -9,12 +9,20 @@ class AiringEntry extends Equatable {
     required this.episode,
     required this.airsAtLocal,
     required this.format,
+    this.altTitle,
     this.bannerUrl,
     this.synopsis,
   });
 
   final int? malId;
   final String title;
+
+  /// The other title AniList had (romaji when [title] is the English one).
+  ///
+  /// Kept because the "My List" filter falls back to matching titles, and a
+  /// list entry saved from a source is usually the romaji spelling while
+  /// AniList hands back the English one. Null when they're the same.
+  final String? altTitle;
   final String? coverUrl;
   final int episode;
   final DateTime airsAtLocal;
@@ -29,7 +37,8 @@ class AiringEntry extends Equatable {
 
   @override
   List<Object?> get props =>
-      [malId, title, coverUrl, episode, airsAtLocal, format, bannerUrl, synopsis];
+      [malId, title, altTitle, coverUrl, episode, airsAtLocal, format,
+       bannerUrl, synopsis];
 }
 
 /// One upcoming movie/TV title (from TMDB upcoming / on_the_air).

@@ -371,7 +371,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
       var list = byDay[selected] ?? const <AiringEntry>[];
       if (state.myListOnly) {
         list = list
-            .where((e) => e.malId != null && state.followedMalIds.contains(e.malId))
+            .where(state.followed.matches)
             .toList();
       }
       return Column(
@@ -597,13 +597,12 @@ class _ScheduleBodyState extends State<ScheduleBody>
     src.forEach((day, entries) {
       final filtered = state.myListOnly
           ? entries
-              .where((e) =>
-                  e.malId != null && state.followedMalIds.contains(e.malId))
+              .where(state.followed.matches)
               .toList()
           : entries;
       if (filtered.isEmpty) return;
       final followed = filtered
-          .any((e) => e.malId != null && state.followedMalIds.contains(e.malId));
+          .any(state.followed.matches);
       out[day] = (count: filtered.length, followed: followed);
     });
     return out;
