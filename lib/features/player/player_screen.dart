@@ -1996,11 +1996,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _loadSubtitleFromFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const ['srt', 'vtt', 'ass', 'ssa', 'sub'],
       );
-      final path = result?.files.single.path;
+      final path = file?.path;
       if (path != null) {
         await _c.setSubtitleFromFile(path);
       }

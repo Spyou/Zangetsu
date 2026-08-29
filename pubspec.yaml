@@ -49,11 +49,11 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   path_provider: ^2.1.5
-  # Apple TV (tvOS) federated plugin implementations. Skip packages that need
-  # newer platform_interfaces than we pin (device_info_plus_tvos,
-  # package_info_plus_tvos) — those degrade gracefully; path_provider does not
-  # (Hive.initFlutter fails hard without it).
+  # Apple TV (tvOS) federated plugin implementations. path_provider does not
+  # degrade gracefully (Hive.initFlutter fails hard without it).
   path_provider_tvos: ^0.0.3
+  device_info_plus_tvos: ^0.0.1
+  package_info_plus_tvos: ^0.0.1
   shared_preferences_tvos: ^0.0.2
   flutter_secure_storage_tvos: ^0.0.2
   # Path override: pub.dev 0.0.2 ships PrivacyInfo.xcprivacy but never embeds
@@ -83,9 +83,7 @@ dependencies:
   media_kit_video: ^1.2.5
   media_kit_libs_video: ^1.0.5
 
-  # "Load subtitle from file" in the player (document picker on iOS/Android).
-  # Also used for backup import (file_picker >= 8.1.7 required for Uri return on Android 13+).
-  file_picker: ^8.1.7
+  file_picker: ^12.1.2
 
   # Image caching
   cached_network_image: ^3.4.1
@@ -106,9 +104,7 @@ dependencies:
   # (pure Dart, no native — negligible size). See core/ui/reveal_item.dart.
   visibility_detector: ^0.4.0+2
 
-  # Native OS share sheet for the Detail "Share" action.
-  # Pinned to 12.x — 13.x pulls win32 ^6 which conflicts with device_info_plus.
-  share_plus: ^12.0.2
+  share_plus: ^13.1.0
 
   # Save player screenshots to the gallery (Android MediaStore / iOS Photos).
   gal: ^2.3.0
@@ -119,7 +115,7 @@ dependencies:
   # that media_kit plays natively — no iframe, no YouTube chrome (Netflix-style).
   youtube_explode_dart: ^3.1.0
   wakelock_plus: ^1.5.2
-  appwrite: ^25.0.0
+  appwrite: ^26.1.0
   image_picker: ^1.2.2
   # Swipe-for-brightness gesture in the player (left half of the surface).
   screen_brightness: ^2.1.4
@@ -140,7 +136,7 @@ dependencies:
   # Discord Rich Presence: Gateway WebSocket + secure token storage + a WebView
   # for the Discord login (user-token capture).
   web_socket_channel: ^3.0.1
-  flutter_secure_storage: ^9.2.2
+  flutter_secure_storage: ^10.3.1
   webview_flutter: ^4.10.0
   # Capture the OAuth redirect (zangetsu://anilist-auth) back into the app for
   # AniList account linking.
@@ -150,14 +146,9 @@ dependencies:
   floating: ^6.0.0
   # In-app updates: read the running version + check GitHub Releases, then hand
   # the downloaded APK to the system installer.
-  package_info_plus: ^9.0.1
+  package_info_plus: ^10.2.1
   open_filex: ^4.5.0
-  # Read the device's supported ABIs so the updater downloads the matching
-  # per-ABI APK (smaller/faster than the fat universal) instead of guessing.
-  # 12.4.0 calls NSProcessInfo.isiOSAppOnVision, which only exists in the
-  # Xcode 26.1 SDK. This machine is on Xcode 26.0.1, so stay on 12.3.0
-  # until Xcode is updated. Do not use ^12.3.0 — that still pulls 12.4.0.
-  device_info_plus: 12.3.0
+  device_info_plus: ^13.2.0
   flutter_colorpicker: ^1.1.0
   firebase_core: ^4.12.1
   firebase_analytics: ^12.4.5

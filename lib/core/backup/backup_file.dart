@@ -130,17 +130,14 @@ class BackupFile {
     // work" cause. The content is validated by parseBackupJson/unwrapPayload
     // right after reading, so allowing any file is safe (bad picks get a clear
     // "isn't a Zangetsu backup" error).
-    final result = await FilePicker.platform.pickFiles();
-    if (result == null) return null;
+    final picked = await FilePicker.pickFile();
+    if (picked == null) return null;
 
-    final picked = result.files.single;
     final String content;
     if (picked.path != null) {
       content = await File(picked.path!).readAsString();
-    } else if (picked.bytes != null) {
-      content = utf8.decode(picked.bytes!);
     } else {
-      throw const FormatException('Could not read picked file — no path or bytes available');
+      content = utf8.decode(await picked.readAsBytes());
     }
     return parseBackupJson(content);
   }

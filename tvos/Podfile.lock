@@ -1,4 +1,5 @@
 PODS:
+  - device_info_plus_tvos (0.0.1)
   - Firebase/Analytics (12.15.0):
     - Firebase/Core
   - Firebase/Core (12.15.0):
@@ -112,15 +113,18 @@ PODS:
     - nanopb/encode (= 3.30910.0)
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
+  - package_info_plus_tvos (0.0.1)
   - PromisesObjC (2.4.1)
   - sqflite_tvos (0.0.1)
   - video_player_tvos (0.0.1)
   - wakelock_plus_tvos (0.0.1)
 
 DEPENDENCIES:
+  - device_info_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/device_info_plus_tvos-0.0.1/tvos`)
   - firebase_analytics_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_analytics_tvos-0.0.1/tvos`)
   - firebase_core_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.2/tvos`)
   - firebase_messaging_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_messaging_tvos-0.0.1/tvos`)
+  - package_info_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/package_info_plus_tvos-0.0.1/tvos`)
   - sqflite_tvos (from `/Users/nathenbrewer/Documents/GitHub/Zangetsu/third_party/sqflite_tvos/tvos`)
   - video_player_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/video_player_tvos-0.0.1/tvos`)
   - wakelock_plus_tvos (from `/Users/nathenbrewer/.pub-cache/hosted/pub.dev/wakelock_plus_tvos-0.0.1/tvos`)
@@ -140,12 +144,16 @@ SPEC REPOS:
     - PromisesObjC
 
 EXTERNAL SOURCES:
+  device_info_plus_tvos:
+    :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/device_info_plus_tvos-0.0.1/tvos"
   firebase_analytics_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_analytics_tvos-0.0.1/tvos"
   firebase_core_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_core_tvos-0.0.2/tvos"
   firebase_messaging_tvos:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/firebase_messaging_tvos-0.0.1/tvos"
+  package_info_plus_tvos:
+    :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/package_info_plus_tvos-0.0.1/tvos"
   sqflite_tvos:
     :path: "/Users/nathenbrewer/Documents/GitHub/Zangetsu/third_party/sqflite_tvos/tvos"
   video_player_tvos:
@@ -154,6 +162,7 @@ EXTERNAL SOURCES:
     :path: "/Users/nathenbrewer/.pub-cache/hosted/pub.dev/wakelock_plus_tvos-0.0.1/tvos"
 
 SPEC CHECKSUMS:
+  device_info_plus_tvos: 78a9b32764ad5d555fedd8fdc9a7f50241cda22e
   Firebase: a8539b633d474fbeb654c7043f9c1649e274045b
   firebase_analytics_tvos: 012d09cdcb80260d8f79886ae21c5c4a5fceff7f
   firebase_core_tvos: d48bfabffaf0dcf8a2ffc07ce2859858823f80a0
@@ -167,6 +176,7 @@ SPEC CHECKSUMS:
   GoogleDataTransport: a24e58982ab3ba2f64d79613e027fe7f57e88539
   GoogleUtilities: 4e0c2ad9fa0d0d18b5c4df8bf57b461cba35b0bb
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
+  package_info_plus_tvos: 073cd723f2962bcdef16e93e53f001b8f4967c8b
   PromisesObjC: 752c3227f599e3467650e47ea36f433eeb10c273
   sqflite_tvos: de46ff398e88f8a04a66192b0e2f6da6eb5376cd
   video_player_tvos: d8ff3846a49c5603dfcb49c91a6921aef9ce5d46

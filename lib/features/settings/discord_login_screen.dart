@@ -1,20 +1,118 @@
 import 'package:flutter/material.dart';
+
+import '../../core/platform/apple_tv.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-
-/// Logs into Discord in a WebView and captures the user token (so the Gateway
-/// can set Rich Presence). Pops with the token string, or null if cancelled.
-/// A "paste token" fallback covers the case where Discord blocks the WebView or
-/// changes the token-grabber.
-class DiscordLoginScreen extends StatefulWidget {
+/// Logs into Discord and captures the user token for Rich Presence.
+///
+/// Phone/tablet/Android TV: WebView login with a paste-token fallback.
+/// Apple TV: WebView is unavailable — paste token only (from a browser on another device).
+class DiscordLoginScreen extends StatelessWidget {
   const DiscordLoginScreen({super.key});
 
   @override
-  State<DiscordLoginScreen> createState() => _DiscordLoginScreenState();
+  Widget build(BuildContext context) {
+    if (isAppleTv) return const _DiscordTokenPasteScreen();
+    return const _DiscordWebLoginScreen();
+  }
 }
 
-class _DiscordLoginScreenState extends State<DiscordLoginScreen> {
+/// Apple TV — no [WebViewController] implementation on tvOS.
+class _DiscordTokenPasteScreen extends StatefulWidget {
+  const _DiscordTokenPasteScreen();
+
+  @override
+  State<_DiscordTokenPasteScreen> createState() => _DiscordTokenPasteScreenState();
+}
+
+class _DiscordTokenPasteScreenState extends State<_DiscordTokenPasteScreen> {
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final token = _controller.text.trim();
+    if (token.length <= 30) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Paste a valid Discord user token')),
+      );
+      return;
+    }
+    Navigator.of(context).pop(token);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: settingsAppBar('Connect Discord'),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+          children: [
+            Text(
+              'Discord sign-in in a browser is not available on TV. '
+              'On your phone or computer, log in at discord.com, copy your '
+              'user token, then paste it below.',
+              style: AppText.body,
+            ),
+            const SizedBox(height: 24),
+            TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              autofocus: true,
+              maxLines: 4,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              decoration: const InputDecoration(
+                labelText: 'Discord user token',
+                hintText: 'Paste token here',
+                alignLabelWithHint: true,
+              ),
+              onSubmitted: (_) => _save(),
+            ),
+            const SizedBox(height: 24),
+            TvFocusable(
+              autofocus: true,
+              variant: TvFocusVariant.pill,
+              onTap: _save,
+              semanticLabel: 'Save token',
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                child: Center(
+                  child: Text(
+                    'Save',
+                    style: AppText.headline.copyWith(color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Mobile / desktop WebView login with paste-token fallback in the app bar.
+class _DiscordWebLoginScreen extends StatefulWidget {
+  const _DiscordWebLoginScreen();
+
+  @override
+  State<_DiscordWebLoginScreen> createState() => _DiscordWebLoginScreenState();
+}
+
+class _DiscordWebLoginScreenState extends State<_DiscordWebLoginScreen> {
   late final WebViewController _controller;
   bool _grabbed = false;
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/discord/discord_config.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/theme/app_colors.dart';
@@ -97,6 +98,8 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                   title: _busy ? 'Connecting…' : 'Connect Discord',
                   subtitle: _busy
                       ? null
+                      : isAppleTv
+                      ? 'Paste your token from discord.com on another device'
                       : 'Sign in so your status can show on your profile',
                   onTap: _busy ? null : _connect,
                   trailing: _busy
