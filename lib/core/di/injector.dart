@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/lnreader/novel_cloudflare.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
@@ -489,6 +490,13 @@ Future<void> initDependencies() async {
             },
           );
           if (res != null) {
+            // Cloudflare wants a human to pass a challenge. Latched rather than
+            // thrown: the plugin is JS and swallows its own fetch failures, so
+            // an exception never leaves the runtime. HomeCubit reads the latch
+            // when a load comes back empty and offers the solver.
+            if (res['cloudflare'] == true) {
+              NovelCloudflare.needsSolve(res['url'] as String? ?? url);
+            }
             return LnReaderHttpResponse(
               status: (res['status'] as num?)?.toInt() ?? 0,
               body: res['body'] as String? ?? '',

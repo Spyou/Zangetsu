@@ -2,6 +2,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/error/exceptions.dart';
+import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
 import '../../../core/repository/source_repository.dart';
@@ -81,6 +82,16 @@ class HomeCubit extends Cubit<HomeState> {
     } catch (_) {
       sections = const <HomeSection>[];
     }
+
+    // A novel plugin catches its own fetch errors and returns nothing, so a
+    // Cloudflare challenge arrives as an empty list rather than an exception.
+    // Pick it up from the latch so the solve prompt still appears. Only when
+    // there is genuinely nothing to show, so a source that partly worked is
+    // never interrupted.
+    if (cloudflareUrl == null && sections.isEmpty) {
+      cloudflareUrl = NovelCloudflare.pendingUrl;
+    }
+    if (sections.isNotEmpty) NovelCloudflare.clear();
 
     // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;

@@ -1077,6 +1077,16 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // alone don't clear that gate. Dart falls back to Dio itself if this
         // channel throws or is missing, so a bad response here never breaks
         // a working source.
+        // The novel client must present the device's real WebView UA — see
+        // NovelHttp.deviceUserAgent. Best-effort: this can throw while WebView
+        // is being updated, and a null just leaves the old behaviour.
+        if (NovelHttp.deviceUserAgent == null) {
+            NovelHttp.deviceUserAgent = runCatching {
+                android.webkit.WebSettings.getDefaultUserAgent(this)
+                    .replace("; wv", "")
+                    .takeIf { it.isNotBlank() }
+            }.getOrNull()
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/novel_http")
             .setMethodCallHandler { call, result ->
                 if (call.method != "request") {
@@ -1102,6 +1112,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                                     "body" to resp.body,
                                     "url" to resp.url,
                                     "headers" to resp.headers,
+                                    "cloudflare" to resp.cloudflare,
                                 ),
                             )
                         }
