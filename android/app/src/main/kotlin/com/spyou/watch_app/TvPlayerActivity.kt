@@ -14,6 +14,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -34,6 +35,7 @@ import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
@@ -129,12 +131,19 @@ class TvPlayerActivity : Activity() {
         var active: TvPlayerActivity? = null
     }
 
+    private val aspectRatios = listOf(
+        Triple("Fit", R.drawable.ic_aspect_ratio_fit, AspectRatioFrameLayout.RESIZE_MODE_FIT),
+        Triple("Fill", R.drawable.ic_aspect_ratio_fill, AspectRatioFrameLayout.RESIZE_MODE_FILL),
+        Triple("Zoom", R.drawable.ic_aspect_ratio_zoom, AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
+    )
+
     private var player: ExoPlayer? = null
     private var reported = false
     private var accent = DEFAULT_ACCENT
 
     private var currentIndex = 0
     private var episodeCount = 1
+    private var currentAspectRatio = 0
     private var episodeLabels: Array<String> = emptyArray()
     private var category = "sub"
     private var availableCategories: List<String> = emptyList()
@@ -175,6 +184,7 @@ class TvPlayerActivity : Activity() {
     private lateinit var btnSources: TextView
     private lateinit var btnAudioSubs: TextView
     private lateinit var btnNext: TextView
+    private lateinit var btnAspectRatio: TextView
     private lateinit var btnMegaskip: TextView
     private lateinit var btnSpeed: TextView
     // MegaSkip jump size in seconds (read from the launch extras).
@@ -499,6 +509,16 @@ class TvPlayerActivity : Activity() {
                 }
             },
         )
+    }
+
+    private fun changeAspectRatio() {
+        currentAspectRatio = (++currentAspectRatio) % aspectRatios.size
+
+        val currentValue = aspectRatios[currentAspectRatio]
+        playerView.resizeMode = currentValue.third
+        btnAspectRatio.text = currentValue.first
+        val drawable = ContextCompat.getDrawable(this, currentValue.second)
+        btnAspectRatio.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
     }
 
     private fun applyResolved(index: Int, m: Map<String, Any?>) {
@@ -1977,6 +1997,7 @@ class TvPlayerActivity : Activity() {
         btnSources = findViewById(R.id.btn_sources)
         btnAudioSubs = findViewById(R.id.btn_audio_subs)
         btnNext = findViewById(R.id.btn_next)
+        btnAspectRatio = findViewById(R.id.btn_ratio)
         btnMegaskip = findViewById(R.id.btn_megaskip)
         btnSpeed = findViewById(R.id.btn_speed)
         fillerBadge = findViewById(R.id.filler_badge)
@@ -2023,7 +2044,7 @@ class TvPlayerActivity : Activity() {
             }
         })
 
-        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnMegaskip, btnSpeed)) {
+        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnAspectRatio, btnMegaskip, btnSpeed)) {
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
             applyPillFocus(b, false)
@@ -2047,6 +2068,7 @@ class TvPlayerActivity : Activity() {
         btnSources.bindSingleTapActivate { openSourcesMenu() }
         btnAudioSubs.bindSingleTapActivate { openAvMenu() }
         btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
+        btnAspectRatio.bindSingleTapActivate { changeAspectRatio() }
         btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
         btnSpeed.bindSingleTapActivate { openSpeedMenu() }
         updateSpeedPillLabel()
