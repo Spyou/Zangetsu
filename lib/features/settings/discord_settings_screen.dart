@@ -99,7 +99,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                   subtitle: _busy
                       ? null
                       : isAppleTv
-                      ? 'Paste your token from discord.com on another device'
+                      ? 'Scan the QR with your phone to sign in'
                       : 'Sign in so your status can show on your profile',
                   onTap: _busy ? null : _connect,
                   trailing: _busy

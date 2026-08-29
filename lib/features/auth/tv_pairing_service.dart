@@ -129,6 +129,17 @@ class TvPairingService {
     return data['ok'] == true;
   }
 
+  /// No-auth relay drop (Discord login, web tracker connect). The ciphertext
+  /// is encrypted with the TV's nonce before it reaches the backend.
+  Future<bool> dropRelay(String code, String encryptedBlob) async {
+    final data = await _invoke({
+      'action': 'drop',
+      'code': _norm(code),
+      'trackerBlob': encryptedBlob,
+    });
+    return data['ok'] == true;
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> _invoke(Map<String, dynamic> body) async {

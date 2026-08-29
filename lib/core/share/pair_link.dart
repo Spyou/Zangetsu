@@ -3,7 +3,7 @@ import '../environment.dart';
 /// Encodes TV pairing links and parses incoming pair URLs from either the
 /// website (`https://zangetsu.online/pair/…`) or the `zangetsu://pair` deeplink.
 class PairLink {
-  const PairLink({this.code, this.nonce, this.trackers = false});
+  const PairLink({this.code, this.nonce, this.trackers = false, this.discord = false});
 
   final String? code;
   final String? nonce;
@@ -11,14 +11,23 @@ class PairLink {
   /// When true this is the trackers-only QR (Flow B), not account sign-in.
   final bool trackers;
 
+  /// When true this is a Discord token relay to a TV, not account sign-in.
+  final bool discord;
+
   /// HTTPS pair URL for web/share links (browser → optional app handoff).
   static String qrData({
     required String code,
     String? nonce,
     bool trackers = false,
+    bool discord = false,
   }) {
     return Uri.parse(Environment.sitePairUrl).replace(
-      queryParameters: _query(code: code, nonce: nonce, trackers: trackers),
+      queryParameters: _query(
+        code: code,
+        nonce: nonce,
+        trackers: trackers,
+        discord: discord,
+      ),
     ).toString();
   }
 
@@ -28,11 +37,17 @@ class PairLink {
     required String code,
     String? nonce,
     bool trackers = false,
+    bool discord = false,
   }) {
     return Uri(
       scheme: Environment.trackerRedirectScheme,
       host: Environment.pairLinkHost,
-      queryParameters: _query(code: code, nonce: nonce, trackers: trackers),
+      queryParameters: _query(
+        code: code,
+        nonce: nonce,
+        trackers: trackers,
+        discord: discord,
+      ),
     ).toString();
   }
 
@@ -40,11 +55,13 @@ class PairLink {
     required String code,
     String? nonce,
     bool trackers = false,
+    bool discord = false,
   }) =>
       {
         'code': code,
         if (nonce != null && nonce.isNotEmpty) 'nonce': nonce,
         if (trackers) 'trackers': '1',
+        if (discord) 'discord': '1',
       };
 
   /// Accepts `zangetsu://pair?…` and the configured [Environment.sitePairUrl].
@@ -55,6 +72,7 @@ class PairLink {
       code: q['code'],
       nonce: q['nonce'],
       trackers: q['trackers'] == '1',
+      discord: q['discord'] == '1',
     );
   }
 
