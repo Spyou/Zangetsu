@@ -21,6 +21,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
+import '../cache/app_image_cache.dart';
+
 const MethodChannel _kMihonChannel = MethodChannel('zangetsu/mihon');
 
 /// [ImageProvider] that fetches image bytes via the native Mihon OkHttpClient.
@@ -86,5 +88,5 @@ ImageProvider mihonCoverProvider(String url, Map<String, String>? headers) {
     final id = int.tryParse(marker);
     if (id != null) return MihonImage(id, url);
   }
-  return CachedNetworkImageProvider(url, headers: headers);
+  return AppImageCache.imageProvider(url, headers: headers);
 }

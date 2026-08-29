@@ -881,7 +881,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   if (mounted) setState(() {});
                 },
               ),
-              if (sl<AppMode>().isTv)
+              if (sl<AppMode>().isTv && !isAppleTv)
                 _toggleRow(
                   icon: Icons.tv_outlined,
                   title: 'Native TV player',
@@ -894,7 +894,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                     if (mounted) setState(() {});
                   },
                 ),
-              if (sl<AppMode>().isTv && _prefs.nativeTvPlayer)
+              if (sl<AppMode>().isTv && !isAppleTv && _prefs.nativeTvPlayer)
                 _toggleRow(
                   icon: Icons.surround_sound_outlined,
                   title: 'Software audio (Dolby/DTS)',

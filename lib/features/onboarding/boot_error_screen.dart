@@ -4,6 +4,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/tv/tv_focusable.dart';
 
 /// Shown when startup doesn't finish — either a boot step threw, or it hung
 /// past the watchdog.
@@ -16,6 +17,10 @@ import '../../core/theme/app_text.dart';
 /// won't open, so it leads with reassurance that their account and library are
 /// safe, offers the harmless action first, and keeps the technical detail
 /// folded away for anyone who wants to send it in.
+///
+/// Every action is [TvFocusable] so Apple TV / Android TV remotes can reach
+/// Try again, Reset, Show details, and Copy — this screen often appears before
+/// the rest of the TV chrome is up.
 class BootErrorScreen extends StatefulWidget {
   const BootErrorScreen({super.key, required this.details, this.onRetry});
 
@@ -51,6 +56,7 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx, false),
             child: const Text('Cancel'),
           ),
@@ -82,11 +88,31 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
         ),
         actions: [
           TextButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(ctx),
             child: const Text('OK'),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _tvButton({
+    required VoidCallback? onTap,
+    required Widget child,
+    bool autofocus = false,
+  }) {
+    // Disabled while resetting — keep a non-focusable placeholder so layout
+    // doesn't jump, but D-pad can't land on a dead control.
+    if (onTap == null) {
+      return ExcludeFocus(child: child);
+    }
+    return TvFocusable(
+      autofocus: autofocus,
+      onTap: onTap,
+      // Inner Material buttons are focusable too — exclude them so the D-pad
+      // only stops on the TvFocusable wrapper (same pattern as onboarding TV).
+      child: ExcludeFocus(child: child),
     );
   }
 
@@ -99,7 +125,7 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(28, 32, 28, 32),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints: const BoxConstraints(maxWidth: 520),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,57 +149,69 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                   ),
                   const SizedBox(height: 24),
                   if (widget.onRetry != null) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        onPressed: _resetting ? null : widget.onRetry,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.accent,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
+                    _tvButton(
+                      autofocus: true,
+                      onTap: _resetting ? null : widget.onRetry,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _resetting ? null : widget.onRetry,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppColors.accent,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                          child: const Text('Try again'),
                         ),
-                        child: const Text('Try again'),
                       ),
                     ),
                     const SizedBox(height: 10),
                   ],
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _resetting ? null : _reset,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: const BorderSide(color: AppColors.hairline),
+                  _tvButton(
+                    autofocus: widget.onRetry == null,
+                    onTap: _resetting ? null : _reset,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _resetting ? null : _reset,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: AppColors.hairline),
+                        ),
+                        child: _resetting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Reset app data'),
                       ),
-                      child: _resetting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Reset app data'),
                     ),
                   ),
                   const SizedBox(height: 20),
                   // Folded away: useful to us, noise to everyone else.
-                  GestureDetector(
+                  _tvButton(
                     onTap: () => setState(() => _showDetails = !_showDetails),
-                    behavior: HitTestBehavior.opaque,
-                    child: Row(
-                      children: [
-                        Text(
-                          _showDetails ? 'Hide details' : 'Show details',
-                          style: AppText.caption.copyWith(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Text(
+                            _showDetails ? 'Hide details' : 'Show details',
+                            style: AppText.caption.copyWith(
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                          Icon(
+                            _showDetails
+                                ? Icons.expand_less_rounded
+                                : Icons.expand_more_rounded,
+                            size: 18,
                             color: AppColors.textTertiary,
                           ),
-                        ),
-                        Icon(
-                          _showDetails
-                              ? Icons.expand_less_rounded
-                              : Icons.expand_more_rounded,
-                          size: 18,
-                          color: AppColors.textTertiary,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   if (_showDetails) ...[
@@ -196,20 +234,37 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () async {
+                    _tvButton(
+                      onTap: () async {
                         await Clipboard.setData(
                           ClipboardData(text: widget.details),
                         );
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Details copied — send them to us'),
+                            content: Text(
+                              'Details copied — send them to us',
+                            ),
                           ),
                         );
                       },
-                      icon: const Icon(Icons.copy_rounded, size: 16),
-                      label: const Text('Copy details'),
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(
+                            ClipboardData(text: widget.details),
+                          );
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Details copied — send them to us',
+                              ),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 16),
+                        label: const Text('Copy details'),
+                      ),
                     ),
                   ],
                 ],

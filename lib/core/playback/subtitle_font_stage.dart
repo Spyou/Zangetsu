@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/services.dart' show rootBundle;
-import 'package:path_provider/path_provider.dart';
+import '../../core/platform/app_paths.dart';
 
 import 'tv_track_helpers.dart' show subtitleFontAsset, subtitleFontFileName;
 
@@ -14,10 +14,7 @@ import 'tv_track_helpers.dart' show subtitleFontAsset, subtitleFontFileName;
 Future<String?> stageSubtitleFont(String family) async {
   if (family.isEmpty) return null;
 
-  final dir = Directory(
-    '${(await getApplicationSupportDirectory()).path}/sub_fonts',
-  );
-  if (!dir.existsSync()) dir.createSync(recursive: true);
+  final dir = await writableAppSubdir('sub_fonts');
 
   final asset = subtitleFontAsset(family);
   if (asset != null) {

@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/platform/apple_tv.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/models/home_section.dart';
@@ -70,16 +74,33 @@ class HomeCubit extends Cubit<HomeState> {
   /// source's content while the (possibly slow) fetch runs.
   Future<void> load({bool reset = false}) async {
     final gen = ++_gen;
-    emit(reset ? const HomeState(loading: true) : state.copyWith(loading: true));
+    final sourceId = _repo.sourceId;
+    emit(
+      reset ? const HomeState(loading: true) : state.copyWith(loading: true),
+    );
+
+    if (isAppleTv && !_repo.hasSource(sourceId)) {
+      if (isClosed || gen != _gen) return;
+      emit(const HomeState(sections: [], loading: false));
+      return;
+    }
 
     List<HomeSection> sections;
     String? cloudflareUrl;
     try {
-      sections = await _repo.home();
+      final homeFuture = _repo.home();
+      sections = isAppleTv
+          ? await homeFuture.timeout(const Duration(seconds: 20))
+          : await homeFuture;
+    } on TimeoutException catch (_) {
+      debugPrint('[home] load timed out · source=$sourceId');
+      sections = const <HomeSection>[];
     } on CloudflareRequiredException catch (e) {
+      debugPrint('[home] load needs Cloudflare · source=$sourceId');
       sections = const <HomeSection>[];
       cloudflareUrl = e.url;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[home] load failed · source=$sourceId · $e\n$st');
       sections = const <HomeSection>[];
     }
 
@@ -95,10 +116,12 @@ class HomeCubit extends Cubit<HomeState> {
 
     // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;
-    emit(HomeState(
+    emit(
+      HomeState(
       sections: sections,
       loading: false,
       cloudflareUrl: cloudflareUrl,
-    ));
+      ),
+    );
   }
 }

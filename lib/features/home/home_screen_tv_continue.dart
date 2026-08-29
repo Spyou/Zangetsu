@@ -127,6 +127,7 @@ class _TvContinueCard extends StatelessWidget {
                     if ((e.cover ?? '').isNotEmpty)
                       CachedNetworkImage(
                         imageUrl: e.cover!,
+                        cacheManager: AppImageCache.manager,
                         httpHeaders: e.coverHeaders,
                         fit: BoxFit.cover,
                         memCacheWidth: 600,

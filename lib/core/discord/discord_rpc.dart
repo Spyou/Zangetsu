@@ -46,8 +46,7 @@ class DiscordRpc {
 
   /// Opt-in + credentials. Sending is not gated on Android `paused` — the
   /// player leaves Flutter paused for the whole episode.
-  bool get _allowed =>
-      _enabled && loggedIn && DiscordConfig.configured && !IncognitoMode.on;
+  bool get _allowed => _enabled && loggedIn && DiscordConfig.configured && !IncognitoMode.on;
 
   bool get _canRun => _allowed;
 
@@ -139,15 +138,10 @@ class DiscordRpc {
     bool playing = true,
   }) async {
     if (!_allowed) {
-      debugPrint('[discord] setWatching skipped ($_skipReason) title=$title');
       return;
     }
     _cancelScheduledClear();
-    final ts = discordPlaybackTimestamps(
-      position: position,
-      duration: duration,
-      playing: playing,
-    );
+    final ts = discordPlaybackTimestamps(position: position, duration: duration, playing: playing);
     final large = posterUrl != null ? await _externalAsset(posterUrl) : null;
     final logo = await _appLogoKey();
     _current = DiscordActivity(

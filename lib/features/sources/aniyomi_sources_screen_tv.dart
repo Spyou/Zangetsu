@@ -946,12 +946,10 @@ class _AniScreenTvAddRepoDialog extends StatefulWidget {
 
 class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
   final _urlCtrl = TextEditingController();
-  final _urlFocus = FocusNode();
 
   @override
   void dispose() {
     _urlCtrl.dispose();
-    _urlFocus.dispose();
     super.dispose();
   }
 
@@ -967,12 +965,11 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            TvTextField(
               controller: _urlCtrl,
-              focusNode: _urlFocus,
+              autofocus: true,
               keyboardType: TextInputType.url,
-              cursorColor: AppColors.accent,
-              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
               decoration: const InputDecoration(
                 labelText: 'Repo base URL',
@@ -981,7 +978,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
             ),
             const SizedBox(height: 10),
             Text(
-              'Paste the repo base URL — the app appends '
+              'Press OK on the field to type. The app appends '
               '"/index.min.json" automatically.',
               style: AppText.caption,
             ),
