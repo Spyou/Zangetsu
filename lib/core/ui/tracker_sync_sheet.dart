@@ -279,6 +279,10 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       // Editing one tracker → only offer that tracker's candidates, so picking
       // a match can't quietly rebind a tracker you weren't looking at.
       tracker: widget.tracker,
+      // Without this the picker takes its MediaKind.anime default, and Simkl
+      // searches its ANIME catalogue for a film — the picker opens and finds
+      // nothing, which is exactly how this looked broken.
+      kind: _kind,
     );
     if (picked == null || !mounted) return;
     setState(() {

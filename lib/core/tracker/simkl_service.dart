@@ -378,7 +378,10 @@ class SimklService extends ChangeNotifier implements Tracker {
                   : e;
 
           final ids = (media['ids'] is Map) ? media['ids'] as Map : const {};
-          final simklId = _asInt(ids['simkl']);
+          // Simkl is inconsistent about this key: the sync endpoints answer
+          // with `simkl`, /search/* with `simkl_id`. Accept either everywhere
+          // rather than guess per endpoint.
+          final simklId = _asInt(ids['simkl'] ?? ids['simkl_id']);
           final malId = anime ? _asInt(ids['mal']) : null;
           final tmdbId = anime ? null : _asInt(ids['tmdb']);
           final title = (media['title'] as String?) ??
@@ -546,7 +549,10 @@ class SimklService extends ChangeNotifier implements Tracker {
       for (final e in list) {
         if (e is! Map) continue;
         final ids = (e['ids'] is Map) ? e['ids'] as Map : const {};
-        final simkl = _asInt(ids['simkl']);
+        // /search/* returns `simkl_id`, not `simkl` — reading only the latter
+        // silently dropped EVERY search result, for anime as well as movies,
+        // so "Change match" always said "No matches found".
+        final simkl = _asInt(ids['simkl'] ?? ids['simkl_id']);
         if (simkl == null) continue;
         final total = _asInt(e['total_episodes']) ?? _asInt(e['episodes']);
         final year = _asInt(e['year']);
