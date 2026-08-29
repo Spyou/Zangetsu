@@ -119,6 +119,7 @@ class _FakeTracker extends ChangeNotifier implements Tracker {
 }
 
 void main() {
+  _mediaKindRoutingTests();
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('TrackerHub kind forwarding', () {
@@ -175,4 +176,33 @@ class _ThrowingAdapter implements HttpClientAdapter {
   ) {
     throw StateError('no network call expected for manga kind on Simkl');
   }
+}
+
+// "Wrong title? Change match" was hidden for movies/TV, so a Simkl entry
+// matched to the wrong film was stuck. Unhiding it alone would have been worse
+// than nothing: SimklService.searchEntries always queried /search/anime, so the
+// picker would have opened and found nothing. These pin both halves.
+
+void _mediaKindRoutingTests() {
+  group('MediaKind covers movie/TV', () {
+    test('the enum carries all four kinds', () {
+      expect(MediaKind.values, [
+        MediaKind.anime,
+        MediaKind.manga,
+        MediaKind.movie,
+        MediaKind.tv,
+      ]);
+    });
+
+    test('every kind round-trips through its persisted name', () {
+      for (final k in MediaKind.values) {
+        expect(mediaKindFromName(k.name), k, reason: k.name);
+      }
+    });
+
+    test('an unknown or missing name still falls back to anime', () {
+      expect(mediaKindFromName(null), MediaKind.anime);
+      expect(mediaKindFromName('something-else'), MediaKind.anime);
+    });
+  });
 }

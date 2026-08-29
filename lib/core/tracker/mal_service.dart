@@ -806,6 +806,9 @@ class MalService extends ChangeNotifier implements Tracker {
     String query, {
     MediaKind kind = MediaKind.anime,
   }) async {
+    // MAL indexes anime and manga only. Answering a movie/TV query from
+    // its anime catalogue would hand back confident nonsense, so decline.
+    if (kind == MediaKind.movie || kind == MediaKind.tv) return const [];
     if (query.trim().isEmpty) return const [];
     final token = await _validToken();
     if (token == null) return const [];

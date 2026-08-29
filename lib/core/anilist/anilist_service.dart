@@ -711,6 +711,9 @@ class AniListService extends ChangeNotifier implements Tracker {
     MediaKind kind = MediaKind.anime,
     bool novelFormat = false,
   }) async {
+    // AniList indexes anime and manga only. Answering a movie/TV query from
+    // its anime catalogue would hand back confident nonsense, so decline.
+    if (kind == MediaKind.movie || kind == MediaKind.tv) return const [];
     if (query.trim().isEmpty) return const [];
     final results = await _api.searchMedia(
       query,

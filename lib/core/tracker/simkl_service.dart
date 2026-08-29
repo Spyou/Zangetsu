@@ -524,9 +524,17 @@ class SimklService extends ChangeNotifier implements Tracker {
   }) async {
     if (kind == MediaKind.manga) return const []; // Simkl has no manga/novel API
     if (query.trim().isEmpty) return const [];
+    // Simkl keeps anime, movies and TV in SEPARATE catalogues. Searching
+    // /search/anime for a movie is how "Change match" came back empty for
+    // TMDB titles — the endpoint has to follow the kind.
+    final path = switch (kind) {
+      MediaKind.movie => 'movie',
+      MediaKind.tv => 'tv',
+      _ => 'anime',
+    };
     try {
       final res = await _dio.get<dynamic>(
-        '$_api/search/anime?q=${Uri.encodeComponent(query)}&extended=full&limit=12',
+        '$_api/search/$path?q=${Uri.encodeComponent(query)}&extended=full&limit=12',
         options: Options(
           headers: _headers,
           validateStatus: (s) => s != null && s < 500,

@@ -139,7 +139,15 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       (widget.isAnime || widget.reading) &&
       (_maxEpisodes == null || _maxEpisodes! != 1);
 
-  MediaKind get _kind => widget.reading ? MediaKind.manga : MediaKind.anime;
+  /// Reading → manga. Anime (including anime FILMS) → anime. Anything else is
+  /// a TMDB movie/series, which only Simkl has a catalogue for — telling those
+  /// apart is what stops a movie's "Change match" searching Simkl's anime
+  /// catalogue and coming back empty.
+  MediaKind get _kind {
+    if (widget.reading) return MediaKind.manga;
+    if (widget.isAnime) return MediaKind.anime;
+    return widget.tmdbIsTv ? MediaKind.tv : MediaKind.movie;
+  }
 
   @override
   void initState() {
@@ -419,9 +427,11 @@ class _TrackerSyncSheetState extends State<TrackerSyncSheet> {
       ],
       const SizedBox(height: 24),
       _applyButton(),
-      // Reading titles get this too — a manga matched to the wrong entry was
-      // previously stuck that way, since this row only rendered for anime.
-      if (widget.isAnime || widget.reading) ...[
+      // Every kind gets this. It rendered for anime only at first, then anime
+      // + reading; a movie or series matched to the wrong Simkl entry was still
+      // stuck with no way to correct it. There is no kind for which "the app
+      // guessed, and it can guess wrong" stops being true.
+      ...[
         const SizedBox(height: 8),
         _focusable(
           onTap: _changeMatch,
