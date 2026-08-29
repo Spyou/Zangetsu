@@ -15,6 +15,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -23,6 +24,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
@@ -131,11 +133,14 @@ class TvPlayerActivity : Activity() {
         var active: TvPlayerActivity? = null
     }
 
+    // Aspect Ratio Stuffs
     private val aspectRatios = listOf(
         Triple("Fit", R.drawable.ic_aspect_ratio_fit, AspectRatioFrameLayout.RESIZE_MODE_FIT),
         Triple("Fill", R.drawable.ic_aspect_ratio_fill, AspectRatioFrameLayout.RESIZE_MODE_FILL),
         Triple("Zoom", R.drawable.ic_aspect_ratio_zoom, AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
     )
+    private var currentAspectRatio = 0
+    private var lastVideoRatio: Float? = null
 
     private var player: ExoPlayer? = null
     private var reported = false
@@ -143,7 +148,6 @@ class TvPlayerActivity : Activity() {
 
     private var currentIndex = 0
     private var episodeCount = 1
-    private var currentAspectRatio = 0
     private var episodeLabels: Array<String> = emptyArray()
     private var category = "sub"
     private var availableCategories: List<String> = emptyList()
@@ -362,6 +366,11 @@ class TvPlayerActivity : Activity() {
         applySubtitleStyleLive()
 
         exo.addListener(object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                lastVideoRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                updateAspectRatioButtonVisibility()
+            }
+
             override fun onRenderedFirstFrame() {
                 Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
             }
@@ -402,6 +411,12 @@ class TvPlayerActivity : Activity() {
                 playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
             }
         })
+
+        playerView.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                updateAspectRatioButtonVisibility()
+            }
+        }
 
         // First episode: stream data comes straight from the intent (Dart resolved
         // it before launching). Later switches come from the bridge.
@@ -459,7 +474,7 @@ class TvPlayerActivity : Activity() {
         if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
             val json =
                 "{\"keys\":[{\"kty\":\"oct\",\"k\":\"$drmKey\",\"kid\":\"$drmKid\"}]," +
-                    "\"type\":\"temporary\"}"
+                        "\"type\":\"temporary\"}"
             val drmManager = DefaultDrmSessionManager.Builder()
                 .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
                 .setMultiSession(false)
@@ -509,6 +524,22 @@ class TvPlayerActivity : Activity() {
                 }
             },
         )
+    }
+
+    private fun updateAspectRatioButtonVisibility() {
+        val videoRatio = lastVideoRatio ?: run {
+            btnAspectRatio.isVisible = false // no video size known yet
+            return
+        }
+
+        val containerWidth = playerView.width
+        val containerHeight = playerView.height
+        if (containerWidth == 0 || containerHeight == 0) return // not laid out yet
+
+        val containerRatio = containerWidth.toFloat() / containerHeight
+        val ratiosMatch = kotlin.math.abs(videoRatio - containerRatio) < 0.01f
+
+        btnAspectRatio.isVisible = !ratiosMatch
     }
 
     private fun changeAspectRatio() {
@@ -2210,8 +2241,8 @@ class TvPlayerActivity : Activity() {
     private fun syncKeepScreenOn() {
         val p = player
         playerView.keepScreenOn = p != null && p.playWhenReady &&
-            (p.playbackState == Player.STATE_READY ||
-                p.playbackState == Player.STATE_BUFFERING)
+                (p.playbackState == Player.STATE_READY ||
+                        p.playbackState == Player.STATE_BUFFERING)
     }
 
     private fun updatePlayPauseIcon() {
@@ -2402,7 +2433,7 @@ class TvPlayerActivity : Activity() {
             }
 
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ->
-                { if (down) togglePlayPause(); return true }
+            { if (down) togglePlayPause(); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { if (down) { player?.play(); bumpControls() }; return true }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { if (down) { player?.pause(); bumpControls() }; return true }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) seekBy(SEEK_MS); return true }
@@ -2475,13 +2506,13 @@ class TvPlayerActivity : Activity() {
     private fun goImmersive() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            )
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        or View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
     }
 
     /** Hand the final position back so Flutter saves resume + Continue Watching. */
