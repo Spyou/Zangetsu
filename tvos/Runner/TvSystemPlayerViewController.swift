@@ -584,6 +584,16 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
     private func rebuildTransportMenus() {
         var items: [UIMenuElement] = []
 
+        // Next episode — leftmost in the transport icon row.
+        if episodeIndex < episodeCount - 1 {
+            items.append(UIAction(
+                title: "Next Episode",
+                image: UIImage(systemName: "forward.end.fill")
+            ) { [weak self] _ in
+                self?.playNext()
+            })
+        }
+
         // Speed
         let speeds: [Float] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]
         let speedChildren: [UIAction] = speeds.map { s in
@@ -621,16 +631,6 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
                 image: UIImage(systemName: "goforward")
             ) { [weak self] _ in
                 self?.seekBy(Int64(secs) * 1000)
-            })
-        }
-
-        // Next episode
-        if episodeIndex < episodeCount - 1 {
-            items.append(UIAction(
-                title: "Next Episode",
-                image: UIImage(systemName: "forward.end.fill")
-            ) { [weak self] _ in
-                self?.playNext()
             })
         }
 
