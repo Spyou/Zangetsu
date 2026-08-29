@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/playback/search_prefs.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
@@ -370,15 +371,16 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                           if (mounted) setState(() {});
                         },
                       ),
-                      SettingsTile(
-                        icon: Icons.gamepad_outlined,
-                        title: 'Discord',
-                        subtitle: 'Rich Presence — show your status',
-                        onTap: () async {
-                          await _push(const DiscordSettingsScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
+                      if (!isAppleTv)
+                        SettingsTile(
+                          icon: Icons.gamepad_outlined,
+                          title: 'Discord',
+                          subtitle: 'Rich Presence — show your status',
+                          onTap: () async {
+                            await _push(const DiscordSettingsScreen());
+                            if (mounted) setState(() {});
+                          },
+                        ),
                       SettingsTile(
                         icon: Icons.shield_outlined,
                         title: 'Privacy',

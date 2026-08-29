@@ -4,7 +4,6 @@ import 'package:app_links/app_links.dart';
 
 import '../../features/auth/pair_tv_screen.dart';
 import '../../features/auth/send_trackers_to_tv_screen.dart';
-import '../../features/settings/send_discord_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
@@ -37,9 +36,7 @@ class OpenLinkService {
     // landing page). Same payload either way.
     final pair = PairLink.parse(uri);
     if (pair != null) {
-      if (pair.discord) {
-        _openSendDiscord(pair.code, pair.nonce);
-      } else if (pair.trackers) {
+      if (pair.trackers) {
         _openSendTrackers(pair.code, pair.nonce);
       } else {
         _openPair(pair.code, pair.nonce);
@@ -81,21 +78,6 @@ class OpenLinkService {
       return;
     }
     nav.push(SendTrackersToTvScreen.route(code, nonce));
-  }
-
-  /// Open the phone's Discord relay screen after scanning a TV QR.
-  void _openSendDiscord(String? code, String? nonce, [int attempt = 0]) {
-    final nav = rootNavigatorKey.currentState;
-    if (nav == null) {
-      if (attempt < 20) {
-        Future.delayed(
-          const Duration(milliseconds: 250),
-          () => _openSendDiscord(code, nonce, attempt + 1),
-        );
-      }
-      return;
-    }
-    nav.push(SendDiscordToTvScreen.route(code, nonce));
   }
 
   /// Waits (briefly, cold-start safe) for the root Navigator to exist, then
