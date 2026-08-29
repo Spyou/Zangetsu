@@ -126,14 +126,14 @@ class _ControlsOverlay extends StatelessWidget {
                         child: Row(
                           children: [
                             Expanded(
-                              child: Text('More', style: AppText.title),
+                              child: Text(ctx.l10n.more, style: AppText.title),
                             ),
                             IconButton(
                               icon: const Icon(
                                 Icons.close_rounded,
                                 color: AppColors.textSecondary,
                               ),
-                              tooltip: 'Close',
+                              tooltip: ctx.l10n.close,
                               onPressed: () => Navigator.of(ctx).pop(),
                             ),
                           ],
@@ -143,7 +143,7 @@ class _ControlsOverlay extends StatelessWidget {
                       const SizedBox(height: 4),
                     _MoreRow(
                       icon: Icons.memory_rounded,
-                      label: 'Decoder · $decoderLabel',
+                      label: ctx.l10n.decoderColon(decoderLabel),
                       onTap: () {
                         Navigator.pop(ctx);
                         onDecoder();
@@ -153,7 +153,7 @@ class _ControlsOverlay extends StatelessWidget {
                       icon: enhanceActive
                           ? Icons.auto_awesome_rounded
                           : Icons.auto_awesome_outlined,
-                      label: 'Anime4K Enhancement',
+                      label: ctx.l10n.anime4kEnhancement,
                       onTap: () {
                         Navigator.pop(ctx);
                         onEnhance();
@@ -161,7 +161,7 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                     _MoreRow(
                       icon: Icons.palette_outlined,
-                      label: 'Colour',
+                      label: ctx.l10n.colour,
                       onTap: () {
                         Navigator.pop(ctx);
                         onColorProfile();
@@ -169,7 +169,7 @@ class _ControlsOverlay extends StatelessWidget {
                     ),
                     _MoreRow(
                       icon: Icons.photo_camera_rounded,
-                      label: 'Snapshot',
+                      label: ctx.l10n.snapshot,
                       onTap: () {
                         Navigator.pop(ctx);
                         onScreenshot();
@@ -179,7 +179,7 @@ class _ControlsOverlay extends StatelessWidget {
                       icon: sleepActive
                           ? Icons.bedtime_rounded
                           : Icons.bedtime_outlined,
-                      label: 'Sleep timer',
+                      label: ctx.l10n.sleepTimer,
                       onTap: () {
                         Navigator.pop(ctx);
                         onSleep();
@@ -188,7 +188,7 @@ class _ControlsOverlay extends StatelessWidget {
                       if (onPip != null)
                         _MoreRow(
                           icon: Icons.picture_in_picture_alt_rounded,
-                          label: 'Picture-in-picture',
+                          label: ctx.l10n.pictureInPicture,
                           onTap: () {
                             Navigator.pop(ctx);
                             onPip!();
@@ -240,7 +240,7 @@ class _ControlsOverlay extends StatelessWidget {
                         : Icons.cast,
                     color: Colors.white,
                   ),
-                  tooltip: 'Cast',
+                  tooltip: context.l10n.cast,
                   onPressed: () => castCtrl.pickDevice(),
                 );
               },
@@ -253,7 +253,7 @@ class _ControlsOverlay extends StatelessWidget {
                 Icons.info_outline_rounded,
                 color: infoOpen ? AppColors.accent : Colors.white,
               ),
-              tooltip: 'Playback stats',
+              tooltip: context.l10n.playbackStats,
               onPressed: onInfo,
             ));
           }
@@ -460,7 +460,7 @@ class _ControlsOverlay extends StatelessWidget {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-                    tooltip: 'Back',
+                    tooltip: context.l10n.back,
                     onPressed: onBack,
                   ),
                   // Text hit-tests as opaque (RenderParagraph.hitTestSelf is
@@ -533,7 +533,7 @@ class _ControlsOverlay extends StatelessWidget {
                     IconButton(
                       icon: Icon(Icons.bedtime_rounded,
                           color: AppColors.accent),
-                      tooltip: 'Sleep timer on',
+                      tooltip: context.l10n.sleepTimerOn,
                       onPressed: onSleep,
                     ),
                   // Episodes and ⋮ More live in the bottom bar now — a second
@@ -545,7 +545,7 @@ class _ControlsOverlay extends StatelessWidget {
                       Icons.lock_open_rounded,
                       color: Colors.white,
                     ),
-                    tooltip: 'Lock controls',
+                    tooltip: context.l10n.lockControls,
                     onPressed: onLock,
                   ),
                   IconButton(
@@ -553,7 +553,7 @@ class _ControlsOverlay extends StatelessWidget {
                       Icons.settings_rounded,
                       color: Colors.white,
                     ),
-                    tooltip: 'Settings',
+                    tooltip: context.l10n.settingsTooltip,
                     onPressed: onSettings,
                   ),
                   if (onChat != null)
@@ -562,7 +562,7 @@ class _ControlsOverlay extends StatelessWidget {
                         Icons.chat_bubble_outline_rounded,
                         color: Colors.white,
                       ),
-                      tooltip: 'Chat',
+                      tooltip: context.l10n.chat,
                       onPressed: onChat,
                     ),
                 ],
@@ -583,7 +583,7 @@ class _ControlsOverlay extends StatelessWidget {
               if (multiEpisode) ...[
                 _TransportButton(
                   icon: Icons.skip_previous_rounded,
-                  label: 'Previous episode',
+                  label: context.l10n.previousEpisode,
                   onTap: onPrev,
                 ),
                 const SizedBox(width: 24),
@@ -631,7 +631,7 @@ class _ControlsOverlay extends StatelessWidget {
                 const SizedBox(width: 24),
                 _TransportButton(
                   icon: Icons.skip_next_rounded,
-                  label: 'Next episode',
+                  label: context.l10n.nextEpisode2,
                   onTap: hasNext
                       ? () {
                           c.playNext();

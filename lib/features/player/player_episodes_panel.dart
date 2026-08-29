@@ -249,7 +249,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                       if (seasons.length > 1)
                         PopupMenuButton<int>(
                           initialValue: selSeason,
-                          tooltip: 'Season',
+                          tooltip: context.l10n.season,
                           color: AppColors.surface2,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(11),
@@ -270,7 +270,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                                 value: sn,
                                 height: 40,
                                 child: Text(
-                                  'Season $sn',
+                                  context.l10n.seasonNumber(sn),
                                   style: AppText.caption.copyWith(
                                     color: sn == selSeason
                                         ? AppColors.accent
@@ -316,7 +316,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                           Icons.close_rounded,
                           color: AppColors.textSecondary,
                         ),
-                        tooltip: 'Close',
+                        tooltip: context.l10n.close,
                         onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
@@ -339,7 +339,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                                 fontSize: 12.5 * s,
                               ),
                               decoration: InputDecoration(
-                                hintText: 'Jump to episode…',
+                                hintText: context.l10n.jumpToEpisode,
                                 hintStyle: AppText.caption.copyWith(
                                   color: AppColors.textTertiary,
                                   fontSize: 12.5 * s,

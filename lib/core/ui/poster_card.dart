@@ -242,6 +242,7 @@ class _PosterTag extends StatelessWidget {
         text,
         style: const TextStyle(
           fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
           fontSize: 9,
           height: 1.1,
           fontWeight: FontWeight.w700,

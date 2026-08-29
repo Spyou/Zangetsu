@@ -19,6 +19,7 @@ import '../../core/ui/states.dart';
 import 'mihon_repo_tab.dart'
     show kMihonReposBoxName, MihonAddRepoDialog, MihonRepoTab;
 import 'sources_search_field.dart';
+import '../../l10n/l10n.dart';
 
 /// Dedicated Mihon (manga) ecosystem screen — Installed + Repositories in one
 /// scroll. Structural twin of `AniyomiSourcesScreen`
@@ -138,10 +139,10 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text('Mihon', style: AppText.barTitle),
+          title: Text(context.l10n.mihon, style: AppText.barTitle),
           actions: [
             IconButton(
-              tooltip: 'Languages',
+              tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
                   showSourceLanguageSheet(context, sl<MangaLangPrefs>()),
@@ -155,9 +156,9 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
             labelStyle: AppText.headline,
             unselectedLabelStyle: AppText.headline,
             dividerHeight: 0,
-            tabs: const [
-              Tab(text: 'Installed'),
-              Tab(text: 'Repositories'),
+            tabs: [
+              Tab(text: context.l10n.installed),
+              Tab(text: context.l10n.repositories),
             ],
           ),
         ),
@@ -167,7 +168,7 @@ class _MihonScreenPhoneViewState extends State<_MihonScreenPhoneView> {
           onPressed: widget.onAddRepo,
           icon: const Icon(Icons.add),
           label: Text(
-            'Add Mihon repo',
+            context.l10n.addMihonRepo,
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
@@ -247,7 +248,7 @@ class _MihonInstalledGroupState extends State<_MihonInstalledGroup> {
           return EmptyState(
             icon: Icons.menu_book_outlined,
             message: query.trim().isEmpty
-                ? 'No Mihon sources installed.'
+                ? context.l10n.noMihonSourcesInstalled
                 : 'No installed sources match "${query.trim()}".',
           );
         }
@@ -391,7 +392,7 @@ class _MihonExtensionGroupState extends State<_MihonExtensionGroup> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text('${rows.length} languages', style: AppText.caption),
+                      Text(context.l10n.languageCount(rows.length), style: AppText.caption),
                     ],
                   ),
                 ),
@@ -505,23 +506,23 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall $name?', style: AppText.headline),
+        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
         content: Text(
-          'This removes the source from your installed list.',
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -549,7 +550,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstalled $name')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstalledName(name))));
     }
   }
 
@@ -561,11 +562,11 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
       await apply(update);
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Updated ${update.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updatedName(update.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -606,7 +607,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: Text('Update → v${update.availableVersion}'),
+          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -617,7 +618,7 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(content: Text('Active source: ${source.displayName}')),
+            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
           );
       },
       child: Padding(
@@ -655,13 +656,13 @@ class _MihonSourceRowState extends State<_MihonSourceRow> {
               ),
             if (_hasSettings)
               IconButton(
-                tooltip: 'Source settings',
+                tooltip: context.l10n.sourceSettings,
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
               ),
             IconButton(
-              tooltip: 'Uninstall',
+              tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),

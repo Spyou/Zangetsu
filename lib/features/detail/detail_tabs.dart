@@ -32,7 +32,7 @@ class _CastTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) {
-      return _emptyTab(Icons.people_outline_rounded, 'No cast information');
+      return _emptyTab(Icons.people_outline_rounded, context.l10n.noCastInformation);
     }
     // Split characters from the people who MADE the thing. On a manga the tab
     // holds both, and side by side in one unlabelled grid there's nothing to
@@ -49,8 +49,8 @@ class _CastTab extends StatelessWidget {
       return ListView(
         padding: const EdgeInsets.only(bottom: 40),
         children: [
-          _castSection('Characters', people),
-          _castSection('Creators', staff),
+          _castSection(context.l10n.characters, people),
+          _castSection(context.l10n.creators, staff),
         ],
       );
     }
@@ -188,7 +188,7 @@ class _RelationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (relations.isEmpty) {
-      return _emptyTab(Icons.account_tree_outlined, 'No related titles');
+      return _emptyTab(Icons.account_tree_outlined, context.l10n.noRelatedTitles);
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
@@ -298,18 +298,18 @@ class _DetailsTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
         if (sourceName.isNotEmpty)
-          _DetailRow(label: 'Source', value: sourceName),
-        if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
-        if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
+          _DetailRow(label: context.l10n.playerInfoSource, value: sourceName),
+        if (statusStr.isNotEmpty) _DetailRow(label: context.l10n.status, value: statusStr),
+        if ((year ?? '').isNotEmpty) _DetailRow(label: context.l10n.year, value: year!),
         _DetailRow(
-            label: reading ? 'Chapters' : 'Episodes',
+            label: reading ? context.l10n.chapters : context.l10n.episodes,
             value: '$episodeCount'),
         if (studios.isNotEmpty)
-          _DetailRow(label: 'Studio', value: studios.join(', ')),
+          _DetailRow(label: context.l10n.studio, value: studios.join(', ')),
         if (genres.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text(
-            'Genres',
+            context.l10n.genres,
             style: AppText.caption.copyWith(color: AppColors.textTertiary),
           ),
           const SizedBox(height: 10),
@@ -324,7 +324,7 @@ class _DetailsTab extends StatelessWidget {
         if (desc.isNotEmpty) ...[
           const SizedBox(height: 20),
           Text(
-            'Synopsis',
+            context.l10n.synopsis,
             style: AppText.caption.copyWith(color: AppColors.textTertiary),
           ),
           const SizedBox(height: 8),

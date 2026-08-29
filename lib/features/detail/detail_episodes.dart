@@ -239,9 +239,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
   @override
   Widget build(BuildContext context) {
     if (widget.seasonEps.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.video_library_outlined,
-        message: 'No episodes available from this source',
+        message: context.l10n.noEpisodesAvailableFromThisSource,
       );
     }
     final store = sl<ResumeStore>();
@@ -292,8 +292,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                 text: TextSpan(
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   children: [
-                    TextSpan(text: 'Episode ${widget.nextAiringEpisode} '),
-                    const TextSpan(text: 'airs in '),
+                    TextSpan(
+                      text: context.l10n.episodeLabel(widget.nextAiringEpisode!),
+                    ),
+                    TextSpan(text: context.l10n.airsIn),
                     // The countdown carries the weight — it's the part worth
                     // glancing at; the rest is scaffolding around it.
                     TextSpan(
@@ -315,7 +317,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             child: _RangeChips(
               count: groups.length + 1,
               selected: _scanlator == null ? 0 : groups.indexOf(_scanlator!) + 1,
-              labelFor: (i) => i == 0 ? 'All' : groups[i - 1],
+              labelFor: (i) => i == 0 ? context.l10n.all : groups[i - 1],
               onSelect: (i) => setState(() {
                 _scanlator = i == 0 ? null : groups[i - 1];
                 _rangeIndex = 0;
@@ -362,7 +364,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(
-          const SnackBar(content: Text('Every chapter is already downloaded')),
+          SnackBar(content: Text(context.l10n.everyChapterIsAlreadyDownloaded)),
         );
       return;
     }
@@ -396,10 +398,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('Download chapters', style: AppText.headline),
+                    child: Text(context.l10n.downloadChapters, style: AppText.headline),
                   ),
                   Text(
-                    '${pending.length} not saved',
+                    context.l10n.notSavedCount(pending.length),
                     style: AppText.caption,
                   ),
                 ],
@@ -412,7 +414,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                   color: AppColors.accent,
                 ),
                 title: Text(
-                  'Next $n',
+                  context.l10n.nextCount(n),
                   style: AppText.body.copyWith(color: AppColors.textPrimary),
                 ),
                 onTap: () {
@@ -426,12 +428,12 @@ class _EpisodesTabState extends State<_EpisodesTab> {
                 color: AppColors.accent,
               ),
               title: Text(
-                'All ${pending.length}',
+                context.l10n.allCount(pending.length),
                 style: AppText.body.copyWith(color: AppColors.textPrimary),
               ),
               subtitle: pending.length > 50
                   ? Text(
-                      'This will take a while and use a lot of storage',
+                      context.l10n.thisWillTakeAWhileAndUseALotOfStorage,
                       style: AppText.caption,
                     )
                   : null,
@@ -454,24 +456,23 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         context: context,
         builder: (dctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text('Download ${chapters.length} chapters?', style: AppText.headline),
+          title: Text(context.l10n.downloadChaptersQuestion(chapters.length), style: AppText.headline),
           content: Text(
-            'This runs one chapter at a time and can take a long while. '
-            'You can stop it from Downloads.',
+            context.l10n.chapterOneAtATimeWarning,
             style: AppText.body,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dctx, false),
               child: Text(
-                'Cancel',
+                context.l10n.cancel,
                 style: AppText.button.copyWith(color: AppColors.textSecondary),
               ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(dctx, true),
               child: Text(
-                'Download',
+                context.l10n.download,
                 style: AppText.button.copyWith(color: AppColors.accent),
               ),
             ),
@@ -487,10 +488,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
       ..clearSnackBars()
       ..showSnackBar(
         SnackBar(
-          content: Text(
-            'Queued ${chapters.length} '
-            '${chapters.length == 1 ? 'chapter' : 'chapters'}',
-          ),
+          content: Text(context.l10n.queuedChapters(chapters.length)),
         ),
       );
   }
@@ -680,7 +678,7 @@ class _EpisodesHeader extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'Season $currentSeason',
+                                context.l10n.seasonNumber(currentSeason),
                                 style: AppText.headline,
                               ),
                               const SizedBox(width: 6),
@@ -695,7 +693,7 @@ class _EpisodesHeader extends StatelessWidget {
                       ),
                     )
                   : Text(
-                      isReading ? 'Chapters' : 'Episodes',
+                      isReading ? context.l10n.chapters : context.l10n.episodes,
                       style: AppText.headline,
                     ),
             ),
@@ -708,7 +706,7 @@ class _EpisodesHeader extends StatelessWidget {
                 _circle(
                   Icons.download_rounded,
                   onBulkDownload!,
-                  semanticLabel: 'Download chapters',
+                  semanticLabel: context.l10n.downloadChapters,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -716,14 +714,14 @@ class _EpisodesHeader extends StatelessWidget {
                 _circle(
                   Icons.search_rounded,
                   onJump!,
-                  semanticLabel: 'Find episode',
+                  semanticLabel: context.l10n.findEpisode,
                 ),
                 const SizedBox(width: 8),
               ],
               _circle(
                 grid ? Icons.view_list_rounded : Icons.grid_view_rounded,
                 onToggleView,
-                semanticLabel: grid ? 'List view' : 'Grid view',
+                semanticLabel: grid ? context.l10n.listView : context.l10n.gridView,
               ),
               const SizedBox(width: 8),
               if (onRefresh != null) ...[
@@ -737,16 +735,16 @@ class _EpisodesHeader extends StatelessWidget {
                         SnackBar(
                           content: Text(
                             isReading
-                                ? 'Refreshing chapters…'
-                                : 'Refreshing episodes…',
+                                ? context.l10n.refreshingChapters
+                                : context.l10n.refreshingEpisodes,
                           ),
                           duration: const Duration(milliseconds: 1200),
                         ),
                       );
                   },
                   semanticLabel: isReading
-                      ? 'Refresh chapters'
-                      : 'Refresh episodes',
+                      ? context.l10n.refreshChapters
+                      : context.l10n.refreshEpisodes,
                 ),
                 const SizedBox(width: 8),
               ],
@@ -790,7 +788,7 @@ class _SeasonSheet extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('Seasons', style: AppText.title),
+              child: Text(context.l10n.seasons, style: AppText.title),
             ),
           ),
           Flexible(
@@ -812,7 +810,7 @@ class _SeasonSheet extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            'Season $s',
+                            context.l10n.seasonNumber(s),
                             style: AppText.body.copyWith(
                               color: selected
                                   ? AppColors.textPrimary
@@ -1027,14 +1025,14 @@ class _JumpDialogState extends State<_JumpDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Go to episode', style: AppText.headline),
+      title: Text(context.l10n.goToEpisode, style: AppText.headline),
       content: TextField(
         controller: _ctrl,
         autofocus: true,
         keyboardType: TextInputType.number,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         decoration: InputDecoration(
-          hintText: 'Episode number',
+          hintText: context.l10n.episodeNumber,
           hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
         ),
         onSubmitted: (_) => _submit(),
@@ -1042,7 +1040,7 @@ class _JumpDialogState extends State<_JumpDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancel', style: AppText.body),
+          child: Text(context.l10n.cancel, style: AppText.body),
         ),
         TextButton(
           onPressed: _submit,
@@ -1103,8 +1101,8 @@ class _ChapterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final title = displayTitle.trim().isNotEmpty
         ? displayTitle.trim()
-        : 'Chapter $number';
-    final meta = chapterMetaLine(ep);
+        : context.l10n.chapterLabel(number);
+    final meta = chapterMetaLine(context.l10n, ep);
     final art = (ep.thumbnail != null && ep.thumbnail!.isNotEmpty)
         ? ep.thumbnail!
         : coverUrl;
@@ -1284,7 +1282,7 @@ class _EpisodeRow extends StatelessWidget {
     final titleText = episodeDisplayTitle(ep, sourceTitle: srcTitle, number: epNum) ?? '';
     final heading = titleText.isNotEmpty
         ? '$epNum. $titleText'
-        : 'Episode $epNum';
+        : context.l10n.episodeLabel(epNum);
 
     return InkWell(
       onTap: onTap,
@@ -1441,9 +1439,9 @@ class _EpisodeRow extends StatelessWidget {
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            if (isResume) const TagBadge(text: 'CONTINUE'),
+                            if (isResume) TagBadge(text: context.l10n.continueBadge),
                             if (isResume && filler) const SizedBox(width: 6),
-                            if (filler) const TagBadge(text: 'FILLER'),
+                            if (filler) TagBadge(text: context.l10n.fillerBadge),
                           ],
                         ),
                       ],
@@ -1511,7 +1509,7 @@ class _ChapterDownloadIcon extends StatelessWidget {
         final live = downloader.inFlight[id];
         if (live != null) {
           return _button(
-            tooltip: 'Cancel download',
+            tooltip: context.l10n.cancelDownload,
             onPressed: () => unawaited(downloader.cancel(id)),
             icon: SizedBox(
               width: 20,
@@ -1527,7 +1525,7 @@ class _ChapterDownloadIcon extends StatelessWidget {
         }
         if (store.isDownloaded(sourceId, chapterUrl)) {
           return _button(
-            tooltip: 'Downloaded',
+            tooltip: context.l10n.downloaded,
             onPressed: () => _offerDelete(context, store, id),
             icon: Icon(
               Icons.check_circle_rounded,
@@ -1537,7 +1535,7 @@ class _ChapterDownloadIcon extends StatelessWidget {
           );
         }
         return _button(
-          tooltip: 'Download chapter',
+          tooltip: context.l10n.downloadChapter,
           onPressed: onDownload,
           icon: const Icon(
             Icons.file_download_outlined,
@@ -1583,7 +1581,7 @@ class _ChapterDownloadIcon extends StatelessWidget {
                 color: AppColors.accent,
               ),
               title: Text(
-                'Delete download',
+                context.l10n.deleteDownload,
                 style: AppText.body.copyWith(color: AppColors.accent),
               ),
               onTap: () {
@@ -1629,6 +1627,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
                 s == DownloadStatus.queued ||
                 s == DownloadStatus.resolving);
         return _glyph(
+          context.l10n,
           s,
           rec?.progress ?? 0,
           onPressed: inProgress
@@ -1640,6 +1639,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
   }
 
   Widget _glyph(
+    AppLocalizations l10n,
     DownloadStatus? status,
     double progress, {
     required VoidCallback onPressed,
@@ -1686,12 +1686,12 @@ class _EpisodeDownloadIcon extends StatelessWidget {
       ),
     };
     final label = switch (status) {
-      DownloadStatus.done => 'Downloaded',
-      DownloadStatus.downloading || DownloadStatus.paused => 'Downloading',
-      DownloadStatus.queued || DownloadStatus.resolving => 'Downloading',
-      DownloadStatus.unsupported => 'Download unsupported',
-      DownloadStatus.failed => 'Retry download',
-      _ => 'Download episode',
+      DownloadStatus.done => l10n.downloaded,
+      DownloadStatus.downloading || DownloadStatus.paused => l10n.downloading,
+      DownloadStatus.queued || DownloadStatus.resolving => l10n.downloading,
+      DownloadStatus.unsupported => l10n.downloadUnsupported,
+      DownloadStatus.failed => l10n.retryDownload,
+      _ => l10n.downloadEpisode,
     };
     return IconButton(
       onPressed: onPressed,
@@ -1709,6 +1709,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
     DownloadManager manager,
     DownloadRecord rec,
   ) {
+    final l10n = context.l10n;
     final paused = rec.status == DownloadStatus.paused;
     showModalBottomSheet<void>(
       context: context,
@@ -1727,7 +1728,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
                 color: AppColors.textPrimary,
               ),
               title: Text(
-                paused ? 'Resume download' : 'Pause download',
+                paused ? l10n.resumeDownload : l10n.pauseDownload,
                 style: AppText.body.copyWith(color: AppColors.textPrimary),
               ),
               onTap: () {
@@ -1742,7 +1743,7 @@ class _EpisodeDownloadIcon extends StatelessWidget {
             ListTile(
               leading: Icon(Icons.close_rounded, color: AppColors.accent),
               title: Text(
-                'Cancel download',
+                l10n.cancelDownload,
                 style: AppText.body.copyWith(color: AppColors.accent),
               ),
               onTap: () {

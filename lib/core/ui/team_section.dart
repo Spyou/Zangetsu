@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_text.dart';
 
 /// A person on the Contributors page — a curated core member with a role, or a
 /// community contributor auto-pulled from the repo's GitHub contributors.
@@ -147,6 +148,7 @@ class TeamAvatar extends StatelessWidget {
         name.isEmpty ? '?' : name[0].toUpperCase(),
         style: TextStyle(
           fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
           color: AppColors.textSecondary,
           fontWeight: FontWeight.w700,
           fontSize: size * 0.4,

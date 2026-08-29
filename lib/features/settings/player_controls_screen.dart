@@ -5,6 +5,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../l10n/l10n.dart';
 import '../player/player_controls_config.dart';
 
 /// Arrange the player's controls: which bar each one sits on, in what order,
@@ -90,12 +91,12 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
-        title: const Text('Player controls'),
+        title: Text(context.l10n.playerControls),
         actions: [
           TextButton(
             onPressed: _reset,
             child: Text(
-              'Reset',
+              context.l10n.reset,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -119,12 +120,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
             child: Text(
-              'Drag to reorder within a bar. Use Move to send a control '
-              'somewhere else. Hidden controls are still available in the '
-              '⋮ More menu inside the player.\n\n'
-              'Back, Lock and Settings are fixed in the top bar, and the show '
-              'title shares that row — the more you put up there, the less '
-              'room the title has.',
+              context.l10n.playerControlsHelp,
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),
@@ -191,7 +187,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        'Show title · E2',
+                        context.l10n.showTitleE2,
                         style: AppText.caption.copyWith(
                           color: Colors.white,
                           fontSize: 11,
@@ -241,8 +237,8 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
             child: Center(
               child: Text(
                 slot == ControlSlot.hidden
-                    ? 'Every control is on a bar.'
-                    : 'Nothing here — move a control across with Move.',
+                    ? context.l10n.everyControlIsOnABar
+                    : context.l10n.nothingHereMoveControl,
                 textAlign: TextAlign.center,
                 style: AppText.caption.copyWith(color: AppColors.textTertiary),
               ),
@@ -309,7 +305,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Text(
-                'Pinned',
+                context.l10n.pinned,
                 style: AppText.caption.copyWith(
                   color: AppColors.textTertiary,
                   fontSize: 11.5,
@@ -333,7 +329,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
     ];
     final topFull = _top.length >= PlayerControlsConfig.maxTop;
     return PopupMenuButton<ControlSlot>(
-      tooltip: 'Move',
+      tooltip: context.l10n.move,
       color: AppColors.surface2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
       onSelected: (s) => _moveTo(id, s),
@@ -346,7 +342,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
             height: 42,
             enabled: !(s == ControlSlot.top && topFull),
             child: Text(
-              s == ControlSlot.top && topFull ? '${s.label} (full)' : s.label,
+              s == ControlSlot.top && topFull ? context.l10n.topBarFull(s.label) : s.label,
               style: AppText.caption.copyWith(
                 color: s == ControlSlot.top && topFull
                     ? AppColors.textTertiary
@@ -367,7 +363,7 @@ class _PlayerControlsScreenState extends State<PlayerControlsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Move',
+                context.l10n.move,
                 style: AppText.caption.copyWith(
                   color: AppColors.textSecondary,
                   fontSize: 12.5,

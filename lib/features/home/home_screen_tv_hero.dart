@@ -299,6 +299,7 @@ class _TvHeroState extends State<_TvHero> {
               'Play',
               style: TextStyle(
                 fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                 color: AppColors.bg,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
@@ -326,6 +327,7 @@ class _TvHeroState extends State<_TvHero> {
               label,
               style: const TextStyle(
                 fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                 color: Colors.white,
                 fontWeight: FontWeight.w600,
                 fontSize: 15,

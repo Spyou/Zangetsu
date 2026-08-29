@@ -68,3 +68,6 @@ supabase/.env
 
 # Supabase CLI deploy scratch
 supabase/.temp/
+
+# FVM Version Cache
+.fvm/

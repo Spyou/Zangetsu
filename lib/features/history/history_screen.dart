@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/di/injector.dart';
@@ -14,6 +15,7 @@ import '../../core/reading/read_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/list_status_sheet.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../detail/detail_screen.dart';
@@ -123,11 +125,14 @@ class _HistoryScreenState extends State<HistoryScreen>
       headers: e.coverHeaders,
       detail: _detailOf(e.showUrl, e.sourceId),
       inMyList: _myList.contains(stub),
-      playLabel: 'Resume',
+      playLabel: context.l10n.resume,
       progress: e.progress,
       progressLabel: e.episodeNumber != null
-          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
-          : '$pct% watched',
+          ? context.l10n.episodeWatchedPct(
+              e.episodeNumber!.toInt(),
+              pct,
+            )
+          : context.l10n.percentWatched(pct),
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
       onToggleMyList: () async {
@@ -186,11 +191,12 @@ class _HistoryScreenState extends State<HistoryScreen>
   // ── Manga / Novel (reading history) ───────────────────────────────────────
 
   Future<void> _resumeRead(ReadEntry e) async {
+    final l10n = context.l10n;
     final chapter = Episode(
       id: e.chapterId,
       title: e.chapterNumber != null
-          ? 'Chapter ${e.chapterNumber!.toInt()}'
-          : 'Chapter',
+          ? l10n.chapterLabel(e.chapterNumber!.toInt())
+          : l10n.chapter,
       number: e.chapterNumber,
       url: e.chapterUrl,
     );
@@ -227,18 +233,20 @@ class _HistoryScreenState extends State<HistoryScreen>
     final stub = _readStub(e);
     final hasProgress = e.total > 0;
     final progress = hasProgress ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+    final l10n = context.l10n;
     final chap = e.chapterNumber != null
-        ? 'Chapter ${e.chapterNumber!.toInt()}'
+        ? l10n.chapterLabel(e.chapterNumber!.toInt())
         : null;
-    final pctLabel = hasProgress ? '${(progress * 100).round()}% read' : null;
+    final pctLabel =
+        hasProgress ? l10n.percentRead((progress * 100).round()) : null;
     showMediaInfoSheet(
       context,
       title: e.title,
       cover: e.cover,
-      typeLabel: e.type == ProviderType.manga ? 'Manga' : 'Novel',
+      typeLabel: e.type == ProviderType.manga ? l10n.modeManga : l10n.modeNovel,
       detail: _detailOf(e.showId, e.sourceId),
       inMyList: _myList.contains(stub),
-      playLabel: 'Resume',
+      playLabel: l10n.resume,
       progress: hasProgress ? progress : null,
       progressLabel: [?chap, ?pctLabel].join('  ·  '),
       onPlay: () => _resumeRead(e),
@@ -272,29 +280,27 @@ class _HistoryScreenState extends State<HistoryScreen>
     final idx = _tab.index;
     // Scoped to the active tab only — clearing one mode never touches the
     // other two. The wording names the exact mode so that's unmistakable.
+    final l10n = context.l10n;
     final (noun, kind) = switch (idx) {
-      0 => ('show', 'watch'),
-      1 => ('manga', 'manga'),
-      _ => ('novel', 'novel'),
+      0 => (l10n.historyNounShow, l10n.historyKindWatch),
+      1 => (l10n.historyNounMangaItem, l10n.historyKindManga),
+      _ => (l10n.historyNounNovelItem, l10n.historyKindNovel),
     };
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Clear $kind history?'),
-        content: Text(
-          'This removes every $noun from your $kind history. Your other '
-          'history, list and downloads are untouched.',
-        ),
+        title: Text(l10n.clearKindHistoryTitle(kind)),
+        content: Text(l10n.clearKindHistoryBody(noun, kind)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-            child: const Text('Clear all'),
+            child: Text(l10n.clearAll),
           ),
         ],
       ),
@@ -317,11 +323,11 @@ class _HistoryScreenState extends State<HistoryScreen>
         automaticallyImplyLeading: widget.showBack,
         backgroundColor: AppColors.bg,
         surfaceTintColor: Colors.transparent,
-        title: const Text('History'),
+        title: Text(context.l10n.history),
         actions: [
           if (_activeNotEmpty)
             IconButton(
-              tooltip: 'Clear all',
+              tooltip: context.l10n.clearAll,
               icon: const Icon(Icons.delete_sweep_outlined),
               onPressed: _clearActiveTab,
             ),
@@ -345,19 +351,21 @@ class _HistoryScreenState extends State<HistoryScreen>
           unselectedLabelColor: AppColors.textSecondary,
           labelStyle: const TextStyle(
             fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w700,
           ),
           unselectedLabelStyle: const TextStyle(
             fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
             fontSize: 14.5,
             fontWeight: FontWeight.w600,
           ),
           overlayColor: WidgetStateProperty.all(Colors.transparent),
-          tabs: const [
-            Tab(text: 'Streaming'),
-            Tab(text: 'Manga'),
-            Tab(text: 'Novel'),
+          tabs: [
+            Tab(text: context.l10n.modeStreaming),
+            Tab(text: context.l10n.modeManga),
+            Tab(text: context.l10n.modeNovel),
           ],
         ),
       ),
@@ -373,11 +381,10 @@ class _HistoryScreenState extends State<HistoryScreen>
               onLongPress: () => _showInfo(e),
               onRemove: () => _remove(e),
             ),
-            empty: const _EmptyState(
+            empty: _EmptyState(
               icon: Icons.history_rounded,
-              title: 'Nothing watched yet',
-              subtitle: 'Shows you watch will appear here so you can pick up '
-                  'where you left off.',
+              title: context.l10n.nothingWatchedYet,
+              subtitle: context.l10n.showsYouWatchWillAppearHere,
             ),
           ),
           _list<ReadEntry>(
@@ -389,11 +396,10 @@ class _HistoryScreenState extends State<HistoryScreen>
               onLongPress: () => _showReadInfo(e),
               onRemove: () => _removeRead(e),
             ),
-            empty: const _EmptyState(
+            empty: _EmptyState(
               icon: Icons.auto_stories_outlined,
-              title: 'Nothing read yet',
-              subtitle: 'Manga you read will appear here so you can pick up '
-                  'where you left off.',
+              title: context.l10n.nothingReadYet,
+              subtitle: context.l10n.mangaYouReadWillAppearHere,
             ),
           ),
           _list<ReadEntry>(
@@ -405,11 +411,10 @@ class _HistoryScreenState extends State<HistoryScreen>
               onLongPress: () => _showReadInfo(e),
               onRemove: () => _removeRead(e),
             ),
-            empty: const _EmptyState(
+            empty: _EmptyState(
               icon: Icons.menu_book_outlined,
-              title: 'Nothing read yet',
-              subtitle: 'Novels you read will appear here so you can pick up '
-                  'where you left off.',
+              title: context.l10n.nothingReadYet,
+              subtitle: context.l10n.novelsYouReadWillAppearHere,
             ),
           ),
         ],
@@ -427,7 +432,7 @@ class _HistoryScreenState extends State<HistoryScreen>
     required Widget empty,
   }) {
     if (entries.isEmpty) return empty;
-    final groups = _groupBy<T>(entries, tsMs);
+    final groups = _groupBy(context, entries, tsMs);
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 4,
@@ -445,6 +450,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                 g.label,
                 style: TextStyle(
                   fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.2,
@@ -460,11 +466,18 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   // ── Day grouping ──────────────────────────────────────────────────────────
-  List<_DayGroup<T>> _groupBy<T>(List<T> entries, int Function(T) tsMs) {
+  List<_DayGroup<T>> _groupBy<T>(
+    BuildContext context,
+    List<T> entries,
+    int Function(T) tsMs,
+  ) {
     final out = <_DayGroup<T>>[];
     String? current;
     for (final e in entries) {
-      final label = _dayLabel(DateTime.fromMillisecondsSinceEpoch(tsMs(e)));
+      final label = _dayLabel(
+        context,
+        DateTime.fromMillisecondsSinceEpoch(tsMs(e)),
+      );
       if (label != current) {
         out.add(_DayGroup(label, []));
         current = label;
@@ -481,29 +494,25 @@ class _DayGroup<T> {
   final List<T> entries;
 }
 
-const _monShort = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-const _wdShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-String _dayLabel(DateTime d) {
+String _dayLabel(BuildContext context, DateTime d) {
+  final l10n = context.l10n;
+  final locale = Localizations.localeOf(context).toString();
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   final day = DateTime(d.year, d.month, d.day);
   final diff = today.difference(day).inDays;
-  if (diff == 0) return 'Today';
-  if (diff == 1) return 'Yesterday';
-  if (diff < 7) return _wdShort[day.weekday - 1];
-  final y = day.year == now.year ? '' : ', ${day.year}';
-  return '${_wdShort[day.weekday - 1]}, ${_monShort[day.month - 1]} ${day.day}$y';
+  if (diff == 0) return l10n.relativeToday;
+  if (diff == 1) return l10n.relativeYesterday;
+  if (diff < 7) return DateFormat.E(locale).format(day);
+  if (day.year == now.year) {
+    return DateFormat('EEE, MMM d', locale).format(day);
+  }
+  return DateFormat('EEE, MMM d, yyyy', locale).format(day);
 }
 
-String _clockTime(DateTime d) {
-  final h24 = d.hour;
-  final h = h24 % 12 == 0 ? 12 : h24 % 12;
-  final m = d.minute.toString().padLeft(2, '0');
-  return '$h:$m ${h24 < 12 ? 'AM' : 'PM'}';
+String _clockTime(BuildContext context, DateTime d) {
+  final locale = Localizations.localeOf(context).toString();
+  return DateFormat.jm(locale).format(d);
 }
 
 class _HistoryRow extends StatelessWidget {
@@ -522,9 +531,9 @@ class _HistoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = entry;
-    final time = _clockTime(DateTime.fromMillisecondsSinceEpoch(e.updatedAt));
+    final time = _clockTime(context, DateTime.fromMillisecondsSinceEpoch(e.updatedAt));
     final ep = e.episodeNumber != null
-        ? 'Episode ${e.episodeNumber!.toInt()}'
+        ? context.l10n.episodeLabel(e.episodeNumber!.toInt())
         : null;
     final subtitle = [?ep, time].join('  ·  ');
     return _RowShell(
@@ -556,9 +565,9 @@ class _ReadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = entry;
-    final time = _clockTime(DateTime.fromMillisecondsSinceEpoch(e.updatedMs));
+    final time = _clockTime(context, DateTime.fromMillisecondsSinceEpoch(e.updatedMs));
     final ch = e.chapterNumber != null
-        ? 'Chapter ${e.chapterNumber!.toInt()}'
+        ? context.l10n.chapterLabel(e.chapterNumber!.toInt())
         : null;
     final subtitle = [?ch, time].join('  ·  ');
     final progress = e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
@@ -639,7 +648,7 @@ class _RowShell extends StatelessWidget {
               ),
             ),
             IconButton(
-              tooltip: 'Remove',
+              tooltip: context.l10n.remove,
               icon: const Icon(
                 Icons.close_rounded,
                 color: AppColors.textTertiary,

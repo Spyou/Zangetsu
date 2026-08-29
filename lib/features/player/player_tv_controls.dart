@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/l10n.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -339,7 +340,7 @@ class _PlayerTvControlsState extends State<PlayerTvControls> {
                                               // display node, not a focusable
                                               // seek control.
                                               child: Semantics(
-                                                label: 'Seek bar',
+                                                label: context.l10n.seekBar,
                                                 value:
                                                     '${_fmtDur(pos)} of ${_fmtDur(dur)}',
                                                 child: LinearProgressIndicator(

@@ -15,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/ui/source_switcher.dart';
 import 'package:watch_app/features/home/search_screen.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 SourceBuckets _buckets({
   List<({String id, String label, String? repo})> anime = const [],
@@ -26,10 +27,13 @@ SourceBuckets _buckets({
 
 const _row = (id: 'js:x', label: 'X', repo: null);
 
+AppLocalizations get _l10n =>
+    lookupAppLocalizations(const Locale('en'));
+
 void main() {
   group('searchFilterSections — anime mode regression', () {
     test('empty buckets → no sections (identical to the original literal)', () {
-      expect(searchFilterSections(_buckets(), ContentMode.anime), isEmpty);
+      expect(searchFilterSections(_buckets(), ContentMode.anime, _l10n), isEmpty);
     });
 
     test(
@@ -43,7 +47,7 @@ void main() {
           manga: [_row],
           novel: [_row],
         );
-        final sections = searchFilterSections(buckets, ContentMode.anime);
+        final sections = searchFilterSections(buckets, ContentMode.anime, _l10n);
         expect(sections.map((s) => s.title).toList(), [
           'Anime',
           'Movies & Series',
@@ -55,7 +59,7 @@ void main() {
 
   group('searchFilterSections — reading modes', () {
     test('manga mode with nothing installed → no sections', () {
-      expect(searchFilterSections(_buckets(), ContentMode.manga), isEmpty);
+      expect(searchFilterSections(_buckets(), ContentMode.manga, _l10n), isEmpty);
     });
 
     test('manga mode with a manga source installed → a single Manga section, '
@@ -66,7 +70,7 @@ void main() {
         movies: [_row],
         nsfw: [_row],
       );
-      final sections = searchFilterSections(buckets, ContentMode.manga);
+      final sections = searchFilterSections(buckets, ContentMode.manga, _l10n);
       expect(sections.map((s) => s.title).toList(), ['Manga']);
       expect(sections.single.rows, [_row]);
     });
@@ -75,7 +79,7 @@ void main() {
       'novel mode with a novel source installed → a single Novel section',
       () {
         final buckets = _buckets(novel: [_row]);
-        final sections = searchFilterSections(buckets, ContentMode.novel);
+        final sections = searchFilterSections(buckets, ContentMode.novel, _l10n);
         expect(sections.map((s) => s.title).toList(), ['Novel']);
       },
     );
@@ -109,6 +113,8 @@ void main() {
       (tester) async {
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: SearchSourcesEmptyView(
                 mode: ContentMode.anime,
@@ -130,6 +136,8 @@ void main() {
         var tapped = false;
         await tester.pumpWidget(
           MaterialApp(
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
             home: Scaffold(
               body: SearchSourcesEmptyView(
                 mode: ContentMode.manga,

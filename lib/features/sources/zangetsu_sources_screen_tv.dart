@@ -48,20 +48,20 @@ class _ZTvViewState extends State<_ZTvView> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                    child: Text('Zangetsu providers', style: AppText.largeTitle),
+                    child: Text(context.l10n.zangetsuProviders, style: AppText.largeTitle),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
                     child: Row(
                       children: [
                         _ZTvTabChip(
-                          title: 'Installed',
+                          title: context.l10n.installed,
                           selected: _tab == 0,
                           autofocus: true,
                           onTap: () => setState(() => _tab = 0),
                         ),
                         const SizedBox(width: 12),
-                        _ZTvTabChip(title: 'Repositories', selected: _tab == 1, onTap: () => setState(() => _tab = 1)),
+                        _ZTvTabChip(title: context.l10n.repositories, selected: _tab == 1, onTap: () => setState(() => _tab = 1)),
                         const SizedBox(width: 20),
                         Expanded(
                           child: ConstrainedBox(
@@ -91,7 +91,7 @@ class _ZTvViewState extends State<_ZTvView> {
                                 padding: const EdgeInsets.only(top: 8),
                                 child: TvListFocusable(
                                   onTap: _showAddRepoDialog,
-                                  semanticLabel: 'Add repo',
+                                  semanticLabel: context.l10n.addRepo,
                                   child: ExcludeSemantics(
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -104,7 +104,7 @@ class _ZTvViewState extends State<_ZTvView> {
                                         children: [
                                           Icon(Icons.add, color: AppColors.accent, size: 18),
                                           const SizedBox(width: 8),
-                                          Text('Add repo', style: AppText.headline.copyWith(color: AppColors.accent)),
+                                          Text(context.l10n.addRepo, style: AppText.headline.copyWith(color: AppColors.accent)),
                                         ],
                                       ),
                                     ),
@@ -191,8 +191,8 @@ class _ZTvInstalledContent extends StatelessWidget {
             child: EmptyState(
               icon: Icons.dns_rounded,
               message: query.trim().isEmpty
-                  ? 'No providers installed.'
-                  : 'No installed providers match "${query.trim()}".',
+                  ? context.l10n.noProvidersInstalled
+                  : context.l10n.noInstalledProvidersMatchQuery(query.trim()),
             ),
           );
         }
@@ -206,7 +206,7 @@ class _ZTvInstalledContent extends StatelessWidget {
         final repoByUrl = {for (final r in state.repos) r.url: r};
 
         String nameFor(String repoUrl) {
-          if (repoUrl == kBundledRepoUrl) return 'Built-in';
+          if (repoUrl == kBundledRepoUrl) return context.l10n.builtIn;
           final repo = repoByUrl[repoUrl];
           if (repo != null) return repo.displayName;
           final snap = groups[repoUrl]!
@@ -340,9 +340,9 @@ class _ZTvInstalledRow extends StatelessWidget {
     final name = entry.displayName.isNotEmpty ? entry.displayName : entry.name;
     final ok = await _zTvConfirm(
       context,
-      title: 'Remove $name?',
-      body: 'The provider will be removed from your installed sources.',
-      confirmLabel: 'Remove',
+      title: context.l10n.removeNameQuestion(name),
+      body: context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
+      confirmLabel: context.l10n.removeDownloadTooltip,
     );
     if (!ok) return;
     bloc.add(SourceUninstalled(_key, displayName: name));
@@ -513,8 +513,8 @@ class _ZTvReposContent extends StatelessWidget {
             child: EmptyState(
               icon: Icons.cloud_off_rounded,
               message: searching
-                  ? 'No providers match "${query.trim()}".'
-                  : 'No repos added yet.\nPress "Add repo" to add one.',
+                  ? context.l10n.noProvidersMatchQuery(query.trim())
+                  : context.l10n.noReposAddedYetPress(context.l10n.addRepo),
             ),
           );
         }
@@ -562,11 +562,11 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
     final bloc = context.read<SourcesBloc>();
     final ok = await _zTvConfirm(
       context,
-      title: 'Remove repo?',
+      title: context.l10n.removeRepo,
       body:
-          'Already-installed sources from "${repo.displayName}" stay installed. '
-          'You can add the repo back later.',
-      confirmLabel: 'Remove',
+          context.l10n.alreadyInstalledSourcesFromRepoStay(repo.displayName) +
+          context.l10n.youCanAddRepoBackLater,
+      confirmLabel: context.l10n.removeDownloadTooltip,
     );
     if (!ok) return;
     bloc.add(RepoRemoved(repo.url, displayName: repo.displayName));
@@ -629,14 +629,14 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                     ),
                   ),
                 ),
-                // "Refresh" action.
+                // context.l10n.refresh action.
                 TvListFocusable(
                   onTap: () => context.read<SourcesBloc>().add(RepoRefreshed(repo.url)),
                   semanticLabel: '${repo.displayName}, refresh',
                   child: ExcludeSemantics(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      child: Text('Refresh', style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+                      child: Text(context.l10n.refresh, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
                     ),
                   ),
                 ),
@@ -649,20 +649,20 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                         child: Text(
-                          'Update all ($updateCount)',
+                          context.l10n.updateAllCount(updateCount),
                           style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
                   ),
-                // "Remove" action.
+                // context.l10n.removeDownloadTooltip action.
                 TvListFocusable(
                   onTap: () => _removeRepo(context),
                   semanticLabel: '${repo.displayName}, remove',
                   child: ExcludeSemantics(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      child: Text('Remove', style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+                      child: Text(context.l10n.removeDownloadTooltip, style: AppText.caption.copyWith(color: AppColors.textSecondary)),
                     ),
                   ),
                 ),
@@ -684,7 +684,7 @@ class _ZTvRepoGroupState extends State<_ZTvRepoGroup> {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            'No sources in this repo yet.',
+                            context.l10n.noSourcesInThisRepoYet,
                             textAlign: TextAlign.center,
                             style: AppText.caption,
                           ),
@@ -744,9 +744,9 @@ class _ZTvRepoSourceRow extends StatelessWidget {
     final bloc = context.read<SourcesBloc>();
     final ok = await _zTvConfirm(
       context,
-      title: 'Uninstall ${source.name}?',
-      body: 'The provider will be removed from your installed sources.',
-      confirmLabel: 'Uninstall',
+      title: context.l10n.uninstallNameQuestion(source.name),
+      body: context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
+      confirmLabel: context.l10n.uninstall,
     );
     if (!ok) return;
     bloc.add(SourceUninstalled(_key, displayName: source.name));
@@ -784,7 +784,7 @@ class _ZTvRepoSourceRow extends StatelessWidget {
           if (installed && hasUpdate)
             TvActionChip(
               autofocus: autofocus,
-              label: 'Update',
+              label: context.l10n.update,
               icon: Icons.download_rounded,
               onTap: () => context.read<SourcesBloc>().add(SourceUpdated(_key)),
               semanticLabel: '${source.name}, update',
@@ -792,7 +792,7 @@ class _ZTvRepoSourceRow extends StatelessWidget {
           else if (installed)
             TvActionChip(
               autofocus: autofocus,
-              label: 'Installed',
+              label: context.l10n.installed,
               emphasized: false,
               onTap: () => _uninstall(context),
               semanticLabel: '${source.name}, uninstall',
@@ -800,7 +800,7 @@ class _ZTvRepoSourceRow extends StatelessWidget {
           else
             TvActionChip(
               autofocus: autofocus,
-              label: 'Install',
+              label: context.l10n.install,
               onTap: () => context.read<SourcesBloc>().add(SourceInstalled(repo: repo, source: source)),
               semanticLabel: '${source.name}, install',
             ),
@@ -853,11 +853,11 @@ Future<bool> _zTvConfirm(
                   TvListFocusable(
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    semanticLabel: 'Cancel',
+                    semanticLabel: context.l10n.cancel,
                     child: ExcludeSemantics(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        child: Text('Cancel', style: AppText.body.copyWith(color: AppColors.textSecondary)),
+                        child: Text(context.l10n.cancel, style: AppText.body.copyWith(color: AppColors.textSecondary)),
                       ),
                     ),
                   ),
@@ -948,7 +948,7 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add repo', style: AppText.headline),
+      title: Text(context.l10n.addRepo, style: AppText.headline),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -959,10 +959,10 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
             cursorColor: AppColors.accent,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
             textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: 'Custom name (optional)',
-              hintText: "Leave blank to use the repo's own name",
-            ),
+            decoration: InputDecoration(
+                labelText: context.l10n.customNameOptional,
+              hintText: context.l10n.leaveBlankToUseTheRepoSOwnName,
+              ),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -973,10 +973,10 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
             cursorColor: AppColors.accent,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
             onSubmitted: (_) => _submit(),
-            decoration: const InputDecoration(labelText: 'Manifest URL', hintText: 'https://.../index.json'),
-          ),
+            decoration: InputDecoration(labelText: context.l10n.manifestUrl, hintText: context.l10n.manifestUrlHint),
+              ),
           const SizedBox(height: 10),
-          Text("Paste the repo's index.json URL.", style: AppText.caption),
+          Text(context.l10n.pasteRepoIndexJsonUrlShort, style: AppText.caption),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: AppText.caption.copyWith(color: AppColors.accent)),
@@ -986,17 +986,17 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
       actions: [
         TvListFocusable(
           onTap: _loading ? () {} : () => Navigator.of(context).pop(),
-          semanticLabel: 'Cancel',
+          semanticLabel: context.l10n.cancel,
           child: ExcludeSemantics(
             child: TextButton(
               onPressed: _loading ? null : () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: AppText.body.copyWith(color: AppColors.textSecondary)),
+              child: Text(context.l10n.cancel, style: AppText.body.copyWith(color: AppColors.textSecondary)),
             ),
           ),
         ),
         TvListFocusable(
           onTap: _loading ? () {} : _submit,
-          semanticLabel: 'Add',
+          semanticLabel: context.l10n.navTabsAdd,
           child: ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.white),
@@ -1007,7 +1007,7 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Add'),
+                  : Text(context.l10n.navTabsAdd),
             ),
           ),
         ),

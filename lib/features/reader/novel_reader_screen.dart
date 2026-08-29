@@ -20,6 +20,7 @@ import 'reader_auto_scroll.dart';
 import 'reader_auto_scroll_ui.dart';
 import 'reader_comfort.dart';
 import 'reader_pull_chapter.dart';
+import '../../l10n/l10n.dart';
 
 /// Text reader for manga/novel chapters — the reading counterpart of the
 /// video player. Phone-only (no TV twin, no TV focus handling needed).
@@ -565,7 +566,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                     child: TextButton(
                       onPressed: () => _goToChapter(_index + 1),
                       child: Text(
-                        'Next chapter →',
+                        context.l10n.nextChapter2,
                         style: AppText.body.copyWith(color: AppColors.accent),
                       ),
                     ),
@@ -600,7 +601,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             TextButton(
               onPressed: _load,
               child: Text(
-                'Retry',
+                context.l10n.retry,
                 style: AppText.body.copyWith(color: AppColors.accent),
               ),
             ),
@@ -806,7 +807,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                 children: [
                   ReaderPillIconButton(
                     icon: Icons.arrow_back_rounded,
-                    tooltip: 'Back',
+                    tooltip: context.l10n.back,
                     onTap: () => Navigator.of(context).maybePop(),
                   ),
                   const SizedBox(width: 9),
@@ -820,7 +821,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   const SizedBox(width: 9),
                   ReaderPillIconButton(
                     icon: Icons.more_vert_rounded,
-                    tooltip: 'Reader settings',
+                    tooltip: context.l10n.readerSettings,
                     onTap: _openSettingsSheet,
                   ),
                 ],
@@ -942,7 +943,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                   ),
                   // Novel-only: the one setting people change mid-read.
                   IconButton(
-                    tooltip: 'Text size',
+                    tooltip: context.l10n.textSize,
                     icon: const Icon(
                       Icons.format_size_rounded,
                       color: Colors.white,
@@ -974,7 +975,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
   void _openChapterSheet() {
     if (_chapters.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No other chapters loaded yet')),
+        SnackBar(content: Text(context.l10n.noOtherChaptersLoadedYet)),
       );
       return;
     }
@@ -1006,7 +1007,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
-                child: Text('Chapters', style: AppText.headline),
+                child: Text(context.l10n.chapters, style: AppText.headline),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -1119,14 +1120,14 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
 
           return readerSheetBody(
             context: ctx,
-            title: 'Text size',
-            subtitle: 'Applies straight away',
+            title: context.l10n.textSize,
+            subtitle: context.l10n.appliesStraightAway,
             children: [
               readerSheetSection('Text'),
               readerSheetGroup([
                 readerSheetRow(
                   icon: Icons.format_size_rounded,
-                  label: 'Font size',
+                  label: context.l10n.fontSize,
                   trailing: Text(
                     prefs.fontSize.round().toString(),
                     style: AppText.caption.copyWith(
@@ -1143,7 +1144,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                 ),
                 readerSheetRow(
                   icon: Icons.format_line_spacing_rounded,
-                  label: 'Line height',
+                  label: context.l10n.lineHeight,
                   trailing: Text(
                     prefs.lineHeight.toStringAsFixed(1),
                     style: AppText.caption.copyWith(
@@ -1184,14 +1185,14 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
             for (final f in const ['inter', 'serif', 'system'])
               (value: f, label: _fontLabel(f)),
           ];
-          const alignmentOptions = <({String value, String label})>[
-            (value: 'left', label: 'Left'),
-            (value: 'justify', label: 'Justify'),
+          final alignmentOptions = <({String value, String label})>[
+            (value: 'left', label: context.l10n.left),
+            (value: 'justify', label: context.l10n.justify),
           ];
-          const directionOptions = <({String value, String label})>[
-            (value: 'auto', label: 'Auto'),
-            (value: 'ltr', label: 'LTR'),
-            (value: 'rtl', label: 'RTL'),
+          final directionOptions = <({String value, String label})>[
+            (value: 'auto', label: context.l10n.auto),
+            (value: 'ltr', label: context.l10n.ltr),
+            (value: 'rtl', label: context.l10n.rtl),
           ];
           // Recomputed on every sheet rebuild, so picking a light theme pulls
           // the slider (and the page) back up to that theme's floor.
@@ -1225,12 +1226,12 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                             ),
                           ),
                         ),
-                        Text('Reader settings', style: AppText.headline),
+                        Text(context.l10n.readerSettings, style: AppText.headline),
                         readerSheetSection('Text'),
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.text_fields_rounded,
-                            label: 'Font',
+                            label: context.l10n.font,
                             child: ReaderSegmentedControl(
                               options: fontOptions,
                               selected: prefs.fontFamily,
@@ -1240,7 +1241,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.format_size_rounded,
-                            label: 'Font size',
+                            label: context.l10n.fontSize,
                             child: Slider(
                               value: prefs.fontSize.clamp(12, 28),
                               min: 12,
@@ -1252,7 +1253,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.format_line_spacing_rounded,
-                            label: 'Line height',
+                            label: context.l10n.lineHeight,
                             child: Slider(
                               value: prefs.lineHeight.clamp(1.2, 2.4),
                               min: 1.2,
@@ -1264,7 +1265,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.text_fields_rounded,
-                            label: 'Letter spacing',
+                            label: context.l10n.letterSpacing,
                             trailing: Text(
                               prefs.letterSpacing.toStringAsFixed(1),
                               style: AppText.caption.copyWith(
@@ -1282,7 +1283,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.space_bar_rounded,
-                            label: 'Word spacing',
+                            label: context.l10n.wordSpacing,
                             trailing: Text(
                               prefs.wordSpacing.toStringAsFixed(1),
                               style: AppText.caption.copyWith(
@@ -1300,7 +1301,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.format_align_justify_rounded,
-                            label: 'Alignment',
+                            label: context.l10n.alignment,
                             child: ReaderSegmentedControl(
                               options: alignmentOptions,
                               selected: prefs.textAlignJustify
@@ -1313,7 +1314,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.format_textdirection_r_to_l_rounded,
-                            label: 'Direction',
+                            label: context.l10n.direction,
                             child: ReaderSegmentedControl(
                               options: directionOptions,
                               selected: prefs.textDirection,
@@ -1323,7 +1324,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.view_stream_outlined,
-                            label: 'Paragraph spacing',
+                            label: context.l10n.paragraphSpacing,
                             child: Slider(
                               value: prefs.paragraphSpacing.clamp(0, 24),
                               min: 0,
@@ -1338,7 +1339,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.format_indent_increase_rounded,
-                            label: 'Margin',
+                            label: context.l10n.margin,
                             child: Slider(
                               value: prefs.marginWidth.clamp(0, 48),
                               min: 0,
@@ -1350,7 +1351,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.menu_book_rounded,
-                            label: 'Paginated',
+                            label: context.l10n.paginated,
                             trailing: Switch(
                               value: prefs.novelPaginated,
                               activeThumbColor: AppColors.accent,
@@ -1375,7 +1376,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                             ),
                           ),
                         ]),
-                        readerSheetSection('Theme'),
+                        readerSheetSection(context.l10n.theme),
                         readerSheetGroup([
                           Padding(
                             padding: const EdgeInsets.symmetric(
@@ -1403,7 +1404,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.brightness_2_outlined,
-                            label: 'Background',
+                            label: context.l10n.background,
                             trailing: Text(
                               '${(bgOpacity * 100).round()}%',
                               style: AppText.caption.copyWith(
@@ -1424,7 +1425,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.play_circle_outline_rounded,
-                            label: 'Auto-scroll',
+                            label: context.l10n.autoScroll,
                             trailing: Icon(
                               Icons.chevron_right_rounded,
                               color: AppColors.textSecondary,
@@ -1437,7 +1438,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.swipe_vertical_rounded,
-                            label: 'Pull to change chapter',
+                            label: context.l10n.pullToChangeChapter,
                             trailing: Switch(
                               value: prefs.overscrollChapter,
                               activeThumbColor: AppColors.accent,
@@ -1450,7 +1451,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.visibility_outlined,
-                            label: 'Keep screen on',
+                            label: context.l10n.keepScreenOn,
                             trailing: Switch(
                               value: prefs.keepScreenOn,
                               activeThumbColor: AppColors.accent,
@@ -1475,7 +1476,7 @@ class _NovelReaderScreenState extends State<NovelReaderScreen>
 
   String _fontLabel(String f) => switch (f) {
     'serif' => 'Serif',
-    'system' => 'System',
+    'system' => context.l10n.system,
     _ => 'Inter',
   };
 

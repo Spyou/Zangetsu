@@ -25,8 +25,10 @@ import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
+import 'core/locale/locale_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
@@ -195,18 +197,48 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (mounted) setState(() {}); // accent changed → rebuild so the app recolours
   }
 
+  void _onLocaleChanged() {
+    if (mounted) setState(() {}); // language changed → rebuild MaterialApp.locale
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
+    LocaleController.revision.addListener(_onLocaleChanged);
   }
 
   @override
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
+    LocaleController.revision.removeListener(_onLocaleChanged);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  MaterialApp _rootMaterialApp({
+    required Widget home,
+    GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey,
+    GlobalKey<NavigatorState>? navigatorKey,
+    List<NavigatorObserver>? navigatorObservers,
+    TransitionBuilder? builder,
+  }) {
+    return MaterialApp(
+      title: kAppName,
+      theme: buildAppTheme(),
+      debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: LocaleController.locale,
+      localeResolutionCallback: (locale, supported) =>
+          resolveAppLocale(locale, supported),
+      scaffoldMessengerKey: scaffoldMessengerKey,
+      navigatorKey: navigatorKey,
+      navigatorObservers: navigatorObservers ?? const [],
+      home: home,
+      builder: builder,
+    );
   }
 
   @override
@@ -351,10 +383,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             snap.error ?? 'startup failed',
             snap.stackTrace,
           );
-          return MaterialApp(
-            title: kAppName,
-            theme: buildAppTheme(),
-            debugShowCheckedModeBanner: false,
+          return _rootMaterialApp(
             home: BootErrorScreen(
               details: '${snap.error}\n\n${snap.stackTrace ?? ''}'.trim(),
               onRetry: _retryBoot,
@@ -364,12 +393,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         // Still initializing → splash. No cubits are needed yet, so a bare
         // MaterialApp is enough.
         if (snap.connectionState != ConnectionState.done) {
-          return MaterialApp(
-            title: kAppName,
-            theme: buildAppTheme(),
-            debugShowCheckedModeBanner: false,
-            home: const SplashScreen(),
-          );
+          return _rootMaterialApp(home: const SplashScreen());
         }
         // Dependencies ready — sl<> is resolvable from here on.
         final onboarded = _onboardedOverride ?? isOnboarded();
@@ -396,10 +420,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           child: BlocListener<AuthCubit, AuthState>(
             listenWhen: (p, c) => p.status != c.status,
             listener: _onAuthChange,
-            child: MaterialApp(
-              title: kAppName,
-              theme: buildAppTheme(),
-              debugShowCheckedModeBanner: false,
+            child: _rootMaterialApp(
               scaffoldMessengerKey: rootMessengerKey,
               navigatorKey: rootNavigatorKey,
               navigatorObservers: [Analytics.observer, appRouteObserver],

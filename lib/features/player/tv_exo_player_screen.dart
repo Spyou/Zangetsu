@@ -42,6 +42,7 @@ import '../../core/tv/tv_keys.dart';
 import '../../core/tv/tv_load_error_dialog.dart';
 import '../../core/ui/badge.dart';
 import '../../core/ui/subtitle_language_picker.dart';
+import '../../l10n/l10n.dart';
 import 'tv_exo_controller.dart';
 import 'tv_track_menu.dart';
 
@@ -1025,7 +1026,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final options = <TvMenuOption>[];
     if (_qualities.isNotEmpty) {
       options.add(TvMenuOption(
-        label: 'Auto',
+        label: context.l10n.auto,
         selected: _activeQuality == null,
         onSelect: () {
           _selectQuality(null);
@@ -1046,7 +1047,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
       final tracks = c.videoTracks.value;
       final overridden = tracks.any((t) => t.id == _activeVideoTrackId);
       options.add(TvMenuOption(
-        label: 'Auto',
+        label: context.l10n.auto,
         selected: !overridden,
         onSelect: () {
           _selectVideoTrack(null);
@@ -1077,12 +1078,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         widget.availableCategories.contains('dub');
     if (poolHasBoth || showHasBoth) {
       options.add(TvMenuOption(
-        label: 'Sub',
+        label: context.l10n.sub,
         selected: _category == 'sub',
         onSelect: () => _switchCategory('sub'),
       ));
       options.add(TvMenuOption(
-        label: 'Dub',
+        label: context.l10n.dub,
         selected: _category == 'dub',
         onSelect: () => _switchCategory('dub'),
       ));
@@ -1090,7 +1091,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final audio = c.audioTracks.value;
     if (audio.isEmpty) {
       options.add(TvMenuOption(
-        label: 'Default',
+        label: context.l10n.defaultLabel,
         selected: true,
         onSelect: () {},
       ));
@@ -1110,7 +1111,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final text = c.textTracks.value;
     return [
       TvMenuOption(
-        label: 'Off',
+        label: context.l10n.off,
         selected: text.every((t) => !t.selected),
         onSelect: () => c.selectTextTrack(null),
       ),
@@ -1121,12 +1122,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
           onSelect: () => c.selectTextTrack(t.id),
         ),
       TvMenuOption(
-        label: 'Preferred language…',
+        label: context.l10n.preferredLanguage,
         showCheck: false,
         onSelect: _pickPreferredLanguage,
       ),
       TvMenuOption(
-        label: 'Search online…',
+        label: context.l10n.searchOnline,
         showCheck: false,
         onSelect: _openSubtitleSearch,
       ),
@@ -2075,11 +2076,11 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
               if (_speedMenuOpen)
                 TvTrackMenu(
                   key: const ValueKey('menu-speed'),
-                  title: 'Speed',
+                  title: context.l10n.speed,
                   options: [
                     for (final s in kTvSpeeds)
                       TvMenuOption(
-                        label: s == 1.0 ? 'Normal' : '$s×',
+                        label: s == 1.0 ? context.l10n.normalSpeed : '$s×',
                         selected: (_speed - s).abs() < 0.001,
                         onSelect: () => _setSpeed(s),
                       ),
@@ -2097,7 +2098,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
                 ),
               if (_searchResults != null)
                 TvTrackMenu(
-                  title: 'Online subtitles',
+                  title: context.l10n.onlineSubtitles,
                   onClose: () {
                     setState(() => _searchResults = null);
                     _rootFocus.requestFocus();
@@ -2130,12 +2131,12 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
     final buttons = <({IconData icon, String label, VoidCallback onTap})>[
       (
         icon: Icons.video_library_outlined,
-        label: 'Episodes',
+        label: context.l10n.episodes,
         onTap: _openEpisodes,
       ),
-      (icon: Icons.subtitles_outlined, label: 'Audio & Subs', onTap: _openMenu),
+      (icon: Icons.subtitles_outlined, label: context.l10n.audioSubs, onTap: _openMenu),
       if (_index < _episodes.length - 1)
-        (icon: Icons.skip_next_rounded, label: 'Next Episode', onTap: _next),
+        (icon: Icons.skip_next_rounded, label: context.l10n.nextEpisode, onTap: _next),
     ];
     return Positioned.fill(
       child: Stack(

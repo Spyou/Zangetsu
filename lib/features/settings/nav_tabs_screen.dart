@@ -7,6 +7,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 import '../shell/dock_icons.dart';
 
 /// Choose which tabs the bottom bar shows, and in what order.
@@ -67,16 +69,17 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final hidden = _hidden;
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
-        'Navigation bar',
+        l10n.navigationBar,
         actions: [
           TextButton(
             onPressed: _prefs.isDefault ? null : _reset,
             child: Text(
-              'Reset',
+              l10n.reset,
               style: AppText.button.copyWith(
                 color: _prefs.isDefault
                     ? AppColors.textTertiary
@@ -94,7 +97,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           SettingsSectionLabel(
             // The cap is visible before you hit it, rather than discovered as
             // a greyed-out button.
-            'On the bar · ${_shown.length}/${NavPrefs.maxTabs}',
+            l10n.navTabsOnBar(_shown.length, NavPrefs.maxTabs),
             first: true,
           ),
           SettingsCard(
@@ -111,7 +114,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
               ),
             ],
           ),
-          const SettingsSectionLabel('Not shown'),
+          SettingsSectionLabel(l10n.navTabsNotShown),
           SettingsCard(
             children: hidden.isEmpty
                 ? [
@@ -119,7 +122,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       child: Center(
                         child: Text(
-                          'Every tab is on the bar.',
+                          l10n.navTabsEveryTabOnBar,
                           style: AppText.caption.copyWith(
                             color: AppColors.textTertiary,
                           ),
@@ -132,12 +135,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 14, 8, 0),
             child: Text(
-              'Drag to reorder. ${NavPrefs.minTabs}–${NavPrefs.maxTabs} tabs '
-              'fit on the bar.\n\n'
-              'Profile is pinned because it is the only way into Settings — '
-              'hiding it would leave no way back to this screen. Schedule only '
-              'appears in Streaming mode; there is no airing schedule to show '
-              'while you are reading.',
+              l10n.navTabsHelp(NavPrefs.minTabs, NavPrefs.maxTabs),
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),
@@ -217,7 +215,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
         ),
         const SizedBox(height: 2),
         Text(
-          t.label,
+          t.localizedLabel(context),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -239,6 +237,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   };
 
   Widget _row(DockTab t, {int? index}) {
+    final l10n = context.l10n;
     final onBar = index != null;
     final tint = onBar ? AppColors.textPrimary : AppColors.textTertiary;
     final glyph = dockGlyphFor(t);
@@ -272,7 +271,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              t.label,
+              t.localizedLabel(context),
               style: AppText.body.copyWith(color: tint, fontSize: 14.5),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -282,7 +281,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 8),
               child: Text(
-                'Streaming only',
+                l10n.navTabsStreamingOnly,
                 style: AppText.caption.copyWith(
                   color: AppColors.textTertiary,
                   fontSize: 11.5,
@@ -293,7 +292,7 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: Text(
-                'Pinned',
+                l10n.pinned,
                 style: AppText.caption.copyWith(
                   color: AppColors.textTertiary,
                   fontSize: 11.5,
@@ -308,14 +307,17 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
   }
 
   Widget _action(DockTab t, bool onBar) {
+    final l10n = context.l10n;
     final enabled = onBar ? _canRemove : _canAdd;
     return IconButton(
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
       tooltip: onBar
-          ? (enabled ? 'Remove' : 'Keep at least ${NavPrefs.minTabs} tabs')
-          : (enabled ? 'Add' : 'The bar is full'),
+          ? (enabled
+              ? l10n.navTabsRemove
+              : l10n.navTabsKeepMinTabs(NavPrefs.minTabs))
+          : (enabled ? l10n.navTabsAdd : l10n.navTabsBarFull),
       icon: Icon(
         onBar
             ? Icons.remove_circle_outline_rounded

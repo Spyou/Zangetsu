@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/team_section.dart';
 
 /// The people behind Zangetsu: the curated core team (with roles) followed by
@@ -23,17 +24,17 @@ class _ContributorsScreenState extends State<ContributorsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Contributors'),
+      appBar: settingsAppBar(context.l10n.contributors),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Team', first: true, muted: true),
+          SettingsSectionLabel(context.l10n.team, first: true, muted: true),
           for (final m in kCoreTeam)
             SettingsCard(
               margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
               children: [_ContributorTile(member: m)],
             ),
-          const SettingsSectionLabel('Community Contributors', muted: true),
+          SettingsSectionLabel(context.l10n.communityContributors, muted: true),
           // Hand-listed first — people with no commits to their name, so the
           // GitHub fetch below can't turn them up.
           for (final m in kFixedCommunity)
@@ -157,13 +158,12 @@ class _CommunityEmpty extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'No community contributors yet.',
+            context.l10n.noCommunityContributorsYet,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 4),
           Text(
-            'Open a pull request on GitHub and your name shows up here '
-            'automatically.',
+            context.l10n.openPullRequestOnGitHub,
             style: AppText.caption.copyWith(
               color: AppColors.textTertiary,
               height: 1.4,

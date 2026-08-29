@@ -6,6 +6,7 @@ import '../../core/download/download_manager.dart';
 import '../../core/download/download_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
 
 /// A clear, human folder name derived from a SAF directory tree URI — the
@@ -59,11 +60,11 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
     final current = prefs.locationUri;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Download location'),
+      appBar: settingsAppBar(context.l10n.downloadLocation),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Current location'),
+          SettingsSectionLabel(context.l10n.currentLocation),
           SettingsCard(
             children: [
               Padding(
@@ -81,7 +82,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                     const SizedBox(width: 14),
                     Expanded(
                       child: Text(
-                        prefs.locationLabel ?? 'Downloads › Zangetsu',
+                        prefs.locationLabel ?? context.l10n.downloadsZangetsu,
                         style: AppText.body,
                       ),
                     ),
@@ -91,7 +92,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
             ],
           ),
           if (_volumes.isNotEmpty) ...[
-            const SettingsSectionLabel('Available drives'),
+            SettingsSectionLabel(context.l10n.availableDrives),
             SettingsCard(
               children: [
                 for (final v in _volumes)
@@ -101,7 +102,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
                         : Icons.smartphone_rounded,
                     title: v.label,
                     subtitle:
-                        v.removable ? 'Removable drive' : 'On this device',
+                        v.removable ? context.l10n.removableDrive : context.l10n.onThisDevice,
                     iconAccent: current == v.path,
                     trailing: current == v.path
                         ? Icon(Icons.check_rounded,
@@ -119,7 +120,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
             children: [
               SettingsTile(
                 icon: Icons.folder_open_outlined,
-                title: 'Choose folder…',
+                title: context.l10n.chooseFolder,
                 onTap: () async {
                   final uri = await FileDownloader().uri.pickDirectory(
                     persistedUriPermission: true,
@@ -135,7 +136,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
               if (prefs.locationUri != null)
                 SettingsTile(
                   icon: Icons.restore_rounded,
-                  title: 'Reset to default',
+                  title: context.l10n.resetToDefault,
                   onTap: () async {
                     await sl<DownloadPrefs>().setLocation(null, null);
                     if (mounted) setState(() {});
@@ -146,8 +147,7 @@ class _DownloadLocationScreenState extends State<DownloadLocationScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'New downloads save here. Downloads that already finished stay '
-              'where they were.',
+              context.l10n.newDownloadsSaveHere,
               style: AppText.caption,
             ),
           ),

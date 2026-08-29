@@ -263,6 +263,7 @@ class SettingsSectionLabel extends StatelessWidget {
         label.toUpperCase(),
         style: TextStyle(
           fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
           fontSize: 12,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.6,

@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 
 /// Gradient behind a reader's chrome bar — near-black fading to transparent,
 /// same colour ramp as [AppColors.scrim]. Deliberately taller than the
@@ -470,6 +471,7 @@ class ReaderSegmentedControl extends StatelessWidget {
 
   static const _labelStyle = TextStyle(
     fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
     fontSize: 12.5,
     fontWeight: FontWeight.w600,
   );
@@ -631,7 +633,7 @@ Widget readerSheetGroup(List<Widget> rows) {
 /// Small accent-tinted pill flagging that a row's control is a per-series
 /// override rather than the global default — replaces the old loose
 /// "· this title" caption under the manga reader's Direction/Fit rows.
-Widget readerOverrideTag() {
+Widget readerOverrideTag(BuildContext context) {
   return Container(
     margin: const EdgeInsets.only(left: 8),
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -640,7 +642,7 @@ Widget readerOverrideTag() {
       borderRadius: BorderRadius.circular(20),
     ),
     child: Text(
-      'This title',
+      context.l10n.thisTitle,
       style: AppText.caption.copyWith(
         color: AppColors.accent,
         fontSize: 10.5,

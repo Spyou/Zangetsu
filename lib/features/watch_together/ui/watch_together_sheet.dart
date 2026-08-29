@@ -8,6 +8,7 @@ import '../../player/player_screen.dart';
 import '../model/room_state.dart';
 import '../watch_room_service.dart';
 import '../watch_together_controller.dart';
+import '../../../l10n/l10n.dart';
 
 Future<void> showWatchTogetherSheet(
   BuildContext context, {
@@ -23,8 +24,7 @@ Future<void> showWatchTogetherSheet(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Watch Together',
+            Text(context.l10n.watchTogether,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -34,7 +34,7 @@ Future<void> showWatchTogetherSheet(
             const SizedBox(height: 16),
             FilledButton.icon(
               icon: const Icon(Icons.group_add),
-              label: const Text('Create a room'),
+              label: Text(context.l10n.createARoom),
               onPressed: () async {
                 await controller.host(buildInitialRoom());
                 if (ctx.mounted) Navigator.pop(ctx);
@@ -43,7 +43,7 @@ Future<void> showWatchTogetherSheet(
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.login),
-              label: const Text('Join with a code'),
+              label: Text(context.l10n.joinWithACode),
               onPressed: () async {
                 final code = await _askCode(ctx);
                 if (code == null || code.trim().isEmpty || !ctx.mounted) return;
@@ -68,7 +68,7 @@ Future<void> promptJoinWatchParty(BuildContext context) async {
 }
 
 /// Fetch the room for [code] and launch a player for its show, auto-joining.
-/// Shows "Room not found" if it's missing/ended. The player handles a missing
+/// Shows context.l10n.roomNotFound if it's missing/ended. The player handles a missing
 /// local source with a clear message (see PlayerScreen).
 Future<void> joinWatchPartyByCode(BuildContext context, String code) async {
   final upper = code.trim().toUpperCase();
@@ -77,7 +77,7 @@ Future<void> joinWatchPartyByCode(BuildContext context, String code) async {
   if (!context.mounted) return;
   if (room == null || room.status == 'ended') {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Room not found')),
+      SnackBar(content: Text(context.l10n.roomNotFound)),
     );
     return;
   }
@@ -112,21 +112,21 @@ Future<String?> _askCode(BuildContext context) {
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Enter room code'),
+      title: Text(context.l10n.enterRoomCode),
       content: TextField(
         controller: ctrl,
         autofocus: true,
         textCapitalization: TextCapitalization.characters,
-        decoration: const InputDecoration(hintText: 'e.g. ABC234'),
-      ),
+        decoration: InputDecoration(hintText: context.l10n.eGABC234),
+              ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-          child: const Text('Join'),
+          child: Text(context.l10n.join),
         ),
       ],
     ),

@@ -14,6 +14,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
 import 'sources_search_field.dart';
+import '../../l10n/l10n.dart';
 
 /// Hive box name for persisted Aniyomi repo URLs.
 const String kAniyomiReposBoxName = 'aniyomi_repos';
@@ -29,7 +30,7 @@ const String kAniyomiReposBoxName = 'aniyomi_repos';
 /// submits the URL field.  Returns null on cancel.
 ///
 /// [alreadyAddedUrls] marks repos that have already been added so they show
-/// an "Added" label instead of an "Add" button.
+/// an "Added" label instead of an context.l10n.navTabsAdd button.
 class AniyomiAddRepoDialog extends StatefulWidget {
   const AniyomiAddRepoDialog({super.key, this.alreadyAddedUrls = const {}});
 
@@ -57,7 +58,7 @@ class _AniyomiAddRepoDialogState extends State<AniyomiAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add Aniyomi repo', style: AppText.headline),
+      title: Text(context.l10n.addAniyomiRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -70,15 +71,14 @@ class _AniyomiAddRepoDialogState extends State<AniyomiAddRepoDialog> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Repo base URL',
-                hintText: 'https://.../repo',
+              decoration: InputDecoration(
+                labelText: context.l10n.repoBaseUrl,
+                hintText: context.l10n.repoBaseUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              "Paste the repo's base URL — the app appends "
-              '"/index.min.json" automatically.',
+              context.l10n.pasteRepoBaseUrlAniyomi,
               style: AppText.caption,
             ),
           ],
@@ -88,7 +88,7 @@ class _AniyomiAddRepoDialogState extends State<AniyomiAddRepoDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
@@ -98,7 +98,7 @@ class _AniyomiAddRepoDialogState extends State<AniyomiAddRepoDialog> {
             foregroundColor: Colors.white,
           ),
           onPressed: _submit,
-          child: const Text('Add'),
+          child: Text(context.l10n.navTabsAdd),
         ),
       ],
     );
@@ -147,10 +147,9 @@ class AniyomiRepoTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (repoUrls.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.extension_outlined,
-        message:
-            'No Aniyomi repos added yet.\nTap "Add Aniyomi repo" to add one.',
+        message: context.l10n.noAniyomiReposAddedYetNTapAddAniyomiRepoToAddOne,
       );
     }
     return RefreshIndicator(
@@ -305,24 +304,24 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Remove repo?', style: AppText.headline),
+        title: Text(context.l10n.removeRepo, style: AppText.headline),
         content: Text(
-          'Already-installed extensions from this repo stay installed. '
-          'You can add the repo back later.',
+          context.l10n.alreadyInstalledExtensionsStay +
+              context.l10n.youCanAddRepoBackLater,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Remove',
+              context.l10n.removeDownloadTooltip,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -348,8 +347,10 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
           SnackBar(
             content: Text(
               list.isEmpty
-                  ? 'Up to date'
-                  : '${list.length} update${list.length == 1 ? '' : 's'} available',
+                  ? context.l10n.alreadyUpToDate
+                  : list.length == 1
+                      ? context.l10n.oneUpdate
+                      : context.l10n.nUpdates(list.length),
             ),
           ),
         );
@@ -406,7 +407,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
     messenger
       ..clearSnackBars()
       ..showSnackBar(
-        SnackBar(content: Text('Updated $done source${done == 1 ? '' : 's'}')),
+        SnackBar(content: Text(context.l10n.updatedSourcesCount(done, done == 1 ? '' : 's'))),
       );
   }
 
@@ -465,9 +466,9 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                               const SizedBox(height: 2),
                               Text(
                                 _fetching
-                                    ? 'Loading…'
+                                    ? context.l10n.loading
                                     : _fetchError != null
-                                    ? 'Failed to load'
+                                    ? context.l10n.failedToLoad
                                     : '${_entries?.length ?? 0} extension'
                                           '${(_entries?.length ?? 0) == 1 ? '' : 's'}',
                                 style: AppText.caption.copyWith(
@@ -510,7 +511,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                n == 1 ? '1 update' : '$n updates',
+                                n == 1 ? context.l10n.oneUpdate : '$n updates',
                                 style: AppText.caption.copyWith(
                                   color: AppColors.accent,
                                   fontWeight: FontWeight.w600,
@@ -545,7 +546,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                       PopupMenuItem(
                         value: 'refresh',
                         child: Text(
-                          'Refresh',
+                          context.l10n.refresh,
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -556,8 +557,8 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                         enabled: !_checking,
                         child: Text(
                           _checking
-                              ? 'Checking for updates…'
-                              : 'Check for updates',
+                              ? context.l10n.checkingForUpdates
+                              : context.l10n.checkForUpdates,
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -567,8 +568,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                         PopupMenuItem(
                           value: 'update_all',
                           child: Text(
-                            'Update all '
-                            '(${pendingUpdates.length})',
+                            context.l10n.updateAllCount(pendingUpdates.length),
                             style: AppText.body.copyWith(
                               color: AppColors.accent,
                             ),
@@ -577,7 +577,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
                       PopupMenuItem(
                         value: 'remove',
                         child: Text(
-                          'Remove repo',
+                          context.l10n.removeRepo2,
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -637,7 +637,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
-          'Failed to load: $_fetchError',
+          context.l10n.failedToLoadError(_fetchError!),
           textAlign: TextAlign.center,
           style: AppText.caption.copyWith(color: AppColors.textSecondary),
         ),
@@ -648,7 +648,7 @@ class _AniyomiRepoSectionState extends State<_AniyomiRepoSection> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
         child: Text(
-          'No extensions found in this repo.',
+          context.l10n.noExtensionsFoundInThisRepo,
           textAlign: TextAlign.center,
           style: AppText.caption,
         ),
@@ -727,22 +727,19 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
           manager: mgr,
         );
         // installFromRepo never throws — it returns an empty list on failure.
-        // Treat "no source loaded" as a failure so we don't mislabel "Installed".
+        // Treat "no source loaded" as a failure so we don't mislabel context.l10n.installed.
         if (providers.isEmpty) {
-          throw Exception(
-            'No source loaded — the extension may be incompatible or the '
-            'download failed.',
-          );
+          throw Exception(context.l10n.noSourceLoaded);
         }
       }
       widget.onInstalled();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Installed ${_entry.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installedName(_entry.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -753,23 +750,23 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall ${_entry.name}?', style: AppText.headline),
+        title: Text(ctx.l10n.uninstallNameQuestion(_entry.name), style: AppText.headline),
         content: Text(
-          'This removes the extension from your installed sources.',
+          ctx.l10n.thisRemovesTheExtensionFromYourInstalledSources,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -789,11 +786,11 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
       widget.onUninstalled();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstalled ${_entry.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstalledName(_entry.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -877,7 +874,7 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Installed'),
+              child: Text(context.l10n.installed),
             )
           else
             FilledButton(
@@ -891,7 +888,7 @@ class _AniyomiExtensionRowState extends State<_AniyomiExtensionRow> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Install'),
+              child: Text(context.l10n.install),
             ),
         ],
       ),
@@ -916,7 +913,7 @@ class _NsfwBadge extends StatelessWidget {
         border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
       ),
       child: Text(
-        'NSFW',
+        context.l10n.nsfw,
         style: AppText.overline.copyWith(
           color: AppColors.accent,
           fontWeight: FontWeight.w700,

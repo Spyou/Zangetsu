@@ -80,6 +80,7 @@ import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
+import '../../l10n/l10n.dart';
 
 part 'detail_hero.dart';
 part 'detail_info.dart';
@@ -492,7 +493,7 @@ class _DetailViewState extends State<_DetailView>
   /// provider URL), so we search the CURRENT source for the title and open the
   /// first match's detail. Falls back to a snackbar when nothing is found.
   Future<void> _openRelation(MediaRelation r) async {
-    _snack('Finding “${r.title}”…');
+    _snack(context.l10n.findingTitle(r.title));
     try {
       final results = await sl<SourceRepository>().search(
         r.title,
@@ -506,12 +507,12 @@ class _DetailViewState extends State<_DetailView>
         wantedMalId: r.malId,
       );
       if (match == null) {
-        _snack('“${r.title}” isn’t on this source');
+        _snack(context.l10n.titleIsntOnThisSource(r.title));
         return;
       }
       Navigator.of(context).push(DetailScreen.route(match));
     } catch (_) {
-      if (mounted) _snack('Couldn’t open “${r.title}”');
+      if (mounted) _snack(context.l10n.couldntOpenTitle(r.title));
     }
   }
 
@@ -529,14 +530,14 @@ class _DetailViewState extends State<_DetailView>
   Future<void> _openSourceSite() async {
     final url = _sourceWebUrl();
     if (url == null) {
-      _snack('No web page for this source');
+      _snack(context.l10n.noWebPageForThisSource);
       return;
     }
     final ok = await launchUrl(
       Uri.parse(url),
       mode: LaunchMode.externalApplication,
     );
-    if (!ok && mounted) _snack('Could not open the source site');
+    if (!ok && mounted) _snack(context.l10n.couldNotOpenSourceSite);
   }
 
   /// Best-effort web URL for the title. Absolute item URLs (CloudStream/JS)
@@ -562,10 +563,9 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     final reading =
         detail.type == ProviderType.manga || detail.type == ProviderType.novel;
-    final unit = reading ? 'chapters' : 'episodes';
     if (_subscribed) {
       await store.remove(item.sourceId, item.url);
-      _snack('Notifications off for “${item.title}”');
+      _snack(context.l10n.notificationsOffFor(item.title));
     } else {
       await store.add(
         Subscription(
@@ -583,7 +583,11 @@ class _DetailViewState extends State<_DetailView>
         ),
       );
       await NotificationService.instance.init(); // ask for permission now
-      _snack('You’ll be notified of new $unit of “${item.title}”');
+      _snack(
+        reading
+            ? context.l10n.youllBeNotifiedOfNewChaptersFor(item.title)
+            : context.l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
+      );
     }
     // Mirror CS subs to native so the background worker picks up the change.
     await CsNotify.sync(store.all());
@@ -670,7 +674,7 @@ class _DetailViewState extends State<_DetailView>
     final ep = episodes[index];
     final label = ep.title.trim().isNotEmpty
         ? ep.title.trim()
-        : 'Episode ${ep.number?.toInt() ?? index + 1}';
+        : context.l10n.episodeLabel(ep.number?.toInt() ?? index + 1);
     final prefs = sl<PlaybackPrefs>();
 
     final resume = sl<ResumeStore>();
@@ -679,9 +683,9 @@ class _DetailViewState extends State<_DetailView>
       context,
       episodeLabel: label,
       currentPlayerLabel: prefs.externalPlayerPackage.isEmpty
-          ? 'Built-in'
+          ? context.l10n.builtIn
           : (prefs.externalPlayerLabel.isEmpty
-                ? 'External'
+                ? context.l10n.external
                 : prefs.externalPlayerLabel),
       isWatched:
           resume.get(widget.item.sourceId, widget.item.url, ep.id)?.finished ??
@@ -725,7 +729,7 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Links reloaded')));
+        ).showSnackBar(SnackBar(content: Text(context.l10n.linksReloaded)));
 
       case EpisodeAction.playMirror:
         // Scraping takes seconds, unlike every other row here, so the wait is
@@ -734,7 +738,7 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         if (sources.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No sources found for this episode')),
+            SnackBar(content: Text(context.l10n.noSourcesFoundForThisEpisode)),
           );
           return;
         }
@@ -777,7 +781,11 @@ class _DetailViewState extends State<_DetailView>
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(nowWatched ? 'Marked as watched' : 'Marked unwatched'),
+            content: Text(
+              nowWatched
+                  ? context.l10n.markedAsWatched
+                  : context.l10n.markedUnwatched,
+            ),
           ),
         );
 
@@ -800,7 +808,9 @@ class _DetailViewState extends State<_DetailView>
         if (!mounted) return;
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Marked ${index + 1} episodes as watched')),
+          SnackBar(
+            content: Text(context.l10n.markedEpisodesAsWatched(index + 1)),
+          ),
         );
     }
   }
@@ -1020,15 +1030,18 @@ class _DetailViewState extends State<_DetailView>
   /// e.g. "Download S1:E1". Falls back to a plain "Download" when there are no
   /// episodes to reference. (No downloads yet — label only; the button snacks.)
   String _downloadLabel(
+    AppLocalizations l10n,
     List<Episode> seasonEps,
     bool hasMultipleSeasons,
     int currentSeason,
   ) {
-    if (seasonEps.isEmpty) return 'Download';
+    if (seasonEps.isEmpty) return l10n.download;
     final first = seasonEps.first;
     final epNum = first.number?.toInt() ?? 1;
-    if (hasMultipleSeasons) return 'Download S$currentSeason:E$epNum';
-    return 'Download E$epNum';
+    if (hasMultipleSeasons) {
+      return l10n.downloadSeasonEpisode(currentSeason, epNum);
+    }
+    return l10n.downloadEpisodeLabel(epNum);
   }
 
   /// Whether video progress exists at all for this title — the jump prompt has
@@ -1148,7 +1161,7 @@ class _DetailViewState extends State<_DetailView>
   }) async {
     final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
-      _snack('No episodes to download');
+      _snack(context.l10n.noEpisodesToDownload);
       return;
     }
     if (total == 1) {
@@ -1298,7 +1311,7 @@ class _DetailViewState extends State<_DetailView>
         malId: detail.malId ?? item.malId,
       ),
     );
-    _snack('Added to downloads');
+    _snack(context.l10n.addedToDownloads);
   }
 
   void _startDownload(
@@ -1325,8 +1338,8 @@ class _DetailViewState extends State<_DetailView>
     );
     _snack(
       episodes.length == 1
-          ? 'Added to downloads'
-          : 'Downloading ${episodes.length} episodes',
+          ? context.l10n.addedToDownloads
+          : context.l10n.downloadingNEpisodes(episodes.length),
     );
   }
 
@@ -1341,9 +1354,9 @@ class _DetailViewState extends State<_DetailView>
             return const _DetailSkeleton(heroHeight: _expandedHeight);
           }
           if (state.status == DetailStatus.error || state.detail == null) {
-            return const EmptyState(
+            return EmptyState(
               icon: Icons.error_outline,
-              message: 'Failed to load this title',
+              message: context.l10n.failedToLoadThisTitle,
             );
           }
           return _buildBody(context, state, state.detail!);
@@ -1395,8 +1408,12 @@ class _DetailViewState extends State<_DetailView>
         ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
         : 1;
     final buttonLabel = isReading
-        ? (readResume!.hasResume ? 'Continue' : 'Read')
-        : (resume.hasResume ? 'Continue E$episodeNum' : 'Play');
+        ? (readResume!.hasResume
+              ? context.l10n.continueLabel
+              : context.l10n.read)
+        : (resume.hasResume
+              ? context.l10n.continueEpisode(episodeNum)
+              : context.l10n.play);
 
     // Cover / backdrop.
     final coverUrl = detail.cover ?? item.cover ?? '';
@@ -1438,12 +1455,13 @@ class _DetailViewState extends State<_DetailView>
     final metaParts = <String>[];
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
     if (hasMultipleSeasons) {
-      metaParts.add('${seasonSet.length} Seasons');
+      metaParts.add(context.l10n.seasonCount(seasonSet.length));
     } else if (eps.isNotEmpty) {
-      // Manga/novel count chapters. The model stays `Episode`; this is the
-      // user-facing word only, so anime/movie reads exactly as before.
-      final unit = isReading ? 'Chapter' : 'Episode';
-      metaParts.add('${eps.length} $unit${eps.length == 1 ? '' : 's'}');
+      metaParts.add(
+        isReading
+            ? context.l10n.chapterCount(eps.length)
+            : context.l10n.episodeCount(eps.length),
+      );
     }
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     final metaLine = metaParts.join('  ·  ');
@@ -1451,6 +1469,7 @@ class _DetailViewState extends State<_DetailView>
     // ── Download button label: "Download S{season}:E{n}" when we can derive
     // the first episode of the current season, else a plain "Download". ──────
     final downloadLabel = _downloadLabel(
+      context.l10n,
       seasonEps,
       hasMultipleSeasons,
       currentSeason,
@@ -1620,16 +1639,16 @@ class _DetailViewState extends State<_DetailView>
                 children: [
                   if (starring != null)
                     _CreditLine(
-                      label: 'Starring',
+                      label: context.l10n.starring,
                       value: starring,
                       more: starringMore,
                       // Tapping the line (or its "… more") reveals the Cast tab.
                       onMore: starringMore ? () => _revealTab(1) : null,
                     ),
                   if (genresLine != null)
-                    _CreditLine(label: 'Genres', value: genresLine),
+                    _CreditLine(label: context.l10n.genres, value: genresLine),
                   if (creators != null)
-                    _CreditLine(label: 'Creators', value: creators),
+                    _CreditLine(label: context.l10n.creators, value: creators),
                 ],
               ),
             ),
@@ -1654,9 +1673,11 @@ class _DetailViewState extends State<_DetailView>
                   // untouched, and reading:false returns the plain label
                   // unchanged for anime.
                   label: _status == null
-                      ? 'My List'
+                      ? context.l10n.myList
                       : shortLabelFor(_status!, reading: isReading),
-                  tooltip: _inMyList ? 'Change status' : 'Add to My List',
+                  tooltip: _inMyList
+                      ? context.l10n.changeStatus
+                      : context.l10n.addToMyList,
                   onTap: () => _openListSheet(detail),
                 ),
                 if (Platform.isAndroid)
@@ -1665,12 +1686,12 @@ class _DetailViewState extends State<_DetailView>
                         ? Icons.notifications_active_rounded
                         : Icons.notifications_none_rounded,
                     active: _subscribed,
-                    label: 'Notify',
+                    label: context.l10n.notify,
                     tooltip: _subscribed
-                        ? 'Stop alerts'
+                        ? context.l10n.stopAlerts
                         : (isReading
-                              ? 'Notify on new chapters'
-                              : 'Notify on new episodes'),
+                              ? context.l10n.notifyOnNewChapters
+                              : context.l10n.notifyOnNewEpisodes),
                     onTap: () => _toggleSubscribe(detail),
                   ),
                 if (_trackingAvailable(detail))
@@ -1679,22 +1700,22 @@ class _DetailViewState extends State<_DetailView>
                         ? Icons.published_with_changes_rounded
                         : Icons.sync_rounded,
                     active: _tracked,
-                    label: 'Tracking',
+                    label: context.l10n.tracking,
                     tooltip: _tracked
-                        ? 'Tracked — edit status, score & progress'
-                        : 'Sync status, score & progress',
+                        ? context.l10n.trackedEditStatusScoreProgress
+                        : context.l10n.syncStatusScoreProgress,
                     onTap: () => _openTrackingSheet(detail),
                   ),
                 _IconAction(
                   icon: Icons.ios_share_rounded,
-                  label: 'Share',
-                  tooltip: 'Share',
+                  label: context.l10n.share,
+                  tooltip: context.l10n.share,
                   onTap: () => _share(detail, sourceName),
                 ),
                 _IconAction(
                   icon: Icons.public_rounded,
-                  label: 'Web',
-                  tooltip: 'Open source site',
+                  label: context.l10n.web,
+                  tooltip: context.l10n.openSourceSite,
                   onTap: _openSourceSite,
                 ),
               ],
@@ -1739,12 +1760,10 @@ class _DetailViewState extends State<_DetailView>
                 fontWeight: FontWeight.w500,
               ),
               tabs: [
-                Tab(text: isReading ? 'Chapters' : 'Episodes'),
-                // "Cast" means voice actors on an anime; on a manga the tab
-                // holds its author, artist and characters, so it says so.
-                Tab(text: isReading ? 'Characters' : 'Cast'),
-                const Tab(text: 'Relations'),
-                const Tab(text: 'Details'),
+                Tab(text: isReading ? context.l10n.chapters : context.l10n.episodes),
+                Tab(text: isReading ? context.l10n.characters : context.l10n.cast),
+                Tab(text: context.l10n.relations),
+                Tab(text: context.l10n.details),
               ],
             ),
           ),

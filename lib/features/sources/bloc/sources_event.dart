@@ -29,7 +29,7 @@ class SourceInstalled extends SourcesEvent {
 }
 
 /// Re-install the source at composite [key] from its repo's CURRENT manifest,
-/// forcing a fresh JS download (an "Update"). The bloc resolves the repo +
+/// forcing a fresh JS download (an update). The bloc resolves the repo +
 /// source from the key, so it works from either tab.
 class SourceUpdated extends SourcesEvent {
   const SourceUpdated(this.key);
@@ -48,7 +48,7 @@ class RepoUpdated extends SourcesEvent {
 }
 
 /// Re-fetch a repo's manifest so newer source versions become visible
-/// ("Check for updates").
+/// (Check for updates).
 class RepoRefreshed extends SourcesEvent {
   const RepoRefreshed(this.repoUrl);
   final String repoUrl;

@@ -42,7 +42,9 @@ import '../../core/provider/provider_downloader.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/theme_controller.dart';
+import '../../core/locale/app_language_picker.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../core/ui/subtitle_language_picker.dart';
 import '../../core/theme/app_text.dart';
@@ -130,7 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (file == null) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(const SnackBar(content: Text('Could not export logs')));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.couldNotExportLogs)),
+        );
       return;
     }
     await SharePlus.instance.share(
@@ -145,7 +149,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) {
+        final sheetL10n = ctx.l10n;
+        return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -162,16 +168,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('DNS', style: AppText.headline),
+                child: Text(sheetL10n.dns, style: AppText.headline),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'Encrypted DNS for CloudStream sources — helps bypass ISP '
-                  'blocking. Off = your normal connection.',
+                  sheetL10n.dnsBlurb,
                   style: AppText.caption,
                 ),
               ),
@@ -188,7 +193,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
     if (picked == null || picked == _dnsChoice) return;
     await CsDns.set(picked);
@@ -205,7 +211,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) {
+        final sheetL10n = ctx.l10n;
+        return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -222,16 +230,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Search layout', style: AppText.headline),
+                child: Text(sheetL10n.searchLayout, style: AppText.headline),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'How cross-source results are shown. Vertical = a grid per '
-                  'source; Horizontal = a scrolling row per source.',
+                  sheetL10n.searchLayoutBlurb,
                   style: AppText.caption,
                 ),
               ),
@@ -239,7 +246,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const Divider(color: AppColors.hairline, height: 1),
             for (final l in SearchLayout.values)
               ListTile(
-                title: Text(l.label, style: AppText.body),
+                title: Text(l.localizedLabel(ctx), style: AppText.body),
                 trailing: l == prefs.layout
                     ? Icon(Icons.check_rounded, color: AppColors.accent)
                     : null,
@@ -248,7 +255,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
     if (picked == null) return;
     await prefs.setLayout(picked);
@@ -257,22 +265,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _pickBatchDownloadStyle() async {
     final prefs = sl<PlaybackPrefs>();
-    // (id, label, blurb)
-    const options = <(String, String, String)>[
-      (
-        'classic',
-        'Classic',
-        'The full sheet with a per-episode thumbnail grid.',
-      ),
-      ('minimal', 'Minimal', 'A number wheel — pick how many episodes to grab.'),
-    ];
     final picked = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: AppColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) => SafeArea(
+      builder: (ctx) {
+        final sheetL10n = ctx.l10n;
+        final options = <(String, String, String)>[
+          ('classic', sheetL10n.batchDownloadClassic, sheetL10n.batchDownloadClassicBlurb),
+          ('minimal', sheetL10n.batchDownloadMinimal, sheetL10n.batchDownloadMinimalBlurb),
+        ];
+        return SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -289,16 +294,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Batch download style', style: AppText.headline),
+                child: Text(sheetL10n.batchDownloadStyle, style: AppText.headline),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  'The sheet shown when you download a whole season. Both '
-                  'download exactly the same — only the picker looks different.',
+                  sheetL10n.batchDownloadStyleBlurb,
                   style: AppText.caption,
                 ),
               ),
@@ -316,7 +320,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
     if (picked == null) return;
     await prefs.setBatchDownloadStyle(picked);
@@ -404,8 +409,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 size: 24,
               ),
             ),
-            title: 'Sign in',
-            subtitle: 'Sync your list, history & continue watching',
+            title: context.l10n.signIn,
+            subtitle: context.l10n.signInSubtitle,
             trailing: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
               decoration: BoxDecoration(
@@ -413,7 +418,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
-                'Sign in',
+                context.l10n.signIn,
                 style: AppText.caption.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w700,
@@ -514,7 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 isCollapsed: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 13),
                 border: InputBorder.none,
-                hintText: 'Search settings',
+                hintText: context.l10n.settingsSearchHint,
                 hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
               ),
             ),
@@ -546,6 +551,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (sl<AppMode>().isTv) return const SettingsScreenTv();
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
     final activeId = context.watch<ActiveSourceCubit>().state;
+    final l10n = context.l10n;
     final connectedCount = <Tracker>[
       sl<AniListService>(),
       sl<MalService>(),
@@ -556,39 +562,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final entries = <_SettingsEntry>[
       // Account & sync
       _SettingsEntry(
-        section: 'Account & sync',
+        section: SettingsSection.account,
         icon: Icons.sync_alt_rounded,
-        title: 'Connections',
+        title: l10n.connections,
         subtitle: connectedCount > 0
-            ? '$connectedCount connected'
-            : 'AniList, MyAnimeList, Simkl',
-        keywords: 'anilist myanimelist mal simkl tracker sync account login connect',
+            ? l10n.connectedCount(connectedCount)
+            : l10n.connectionsTvSubtitle,
+        keywords: l10n.connectionsTvSubtitle.toLowerCase(),
         onTap: () async {
           await _push(const ConnectionsScreen());
           if (mounted) setState(() {});
         },
       ),
       _SettingsEntry(
-        section: 'Account & sync',
+        section: SettingsSection.account,
         icon: Icons.gamepad_outlined,
-        title: 'Discord',
-        subtitle: 'Rich Presence — show your status',
-        keywords: 'discord rich presence status rpc',
+        title: l10n.discord,
+        subtitle: l10n.discordSubtitle,
+        keywords: 'discord rich presence',
         onTap: () async {
           await _push(const DiscordSettingsScreen());
           if (mounted) setState(() {});
         },
       ),
       _SettingsEntry(
-        section: 'Account & sync',
+        section: SettingsSection.account,
         icon: Icons.groups_2_outlined,
-        title: 'Watch Party',
-        subtitle: 'Create or join a watch party with friends',
-        keywords: 'watch party together sync friends room',
+        title: l10n.watchParty,
+        subtitle: l10n.watchPartySubtitle,
+        keywords: 'watch party together',
         onTap: () {
           if (sl<AuthCubit>().state.user == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Sign in to watch together')),
+              SnackBar(content: Text(l10n.signInToWatchTogether)),
             );
             return;
           }
@@ -598,17 +604,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       _SettingsEntry(
-        section: 'Account & sync',
+        section: SettingsSection.account,
         icon: Icons.cloud_upload_outlined,
-        title: 'Sync library to cloud',
-        subtitle: 'Re-upload history & list to this account',
+        title: l10n.syncLibraryToCloud,
+        subtitle: l10n.syncLibraryToCloudSubtitle,
         keywords:
             'sync cloud upload library history continue watching list device '
             'cross-device re-sync fix restore',
         onTap: () async {
           if (sl<AuthCubit>().state.user == null) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Sign in first')),
+              SnackBar(content: Text(l10n.signInFirst)),
             );
             return;
           }
@@ -618,7 +624,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (!context.mounted) return;
           if (!live) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Reconnect to sync your library.')),
+              SnackBar(content: Text(l10n.reconnectToSyncLibrary)),
             );
             return;
           }
@@ -626,7 +632,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           messenger
             ..clearSnackBars()
             ..showSnackBar(
-              const SnackBar(content: Text('Syncing your library to cloud…')),
+              SnackBar(content: Text(l10n.syncingLibraryToCloud)),
             );
           final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
           final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
@@ -637,27 +643,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SnackBar(
                 content: Text(
                   h == 0 && l == 0
-                      ? 'Your library is already synced to this account.'
-                      : 'Synced $h history + $l list items to your account.',
+                      ? l10n.syncLibraryAlreadySynced
+                      : l10n.syncLibraryPushed(h, l),
                 ),
               ),
             );
         },
       ),
       _SettingsEntry(
-        section: 'Account & sync',
+        section: SettingsSection.account,
         icon: Icons.cloud_sync_outlined,
-        title: 'Backup & Restore',
-        subtitle: 'Save your sources, list & settings',
+        title: l10n.backupAndRestore,
+        subtitle: l10n.backupAndRestoreSubtitle,
         keywords: 'backup restore export import save cloud',
         onTap: () => _push(const BackupScreen()),
       ),
       // Sources
       _SettingsEntry(
-        section: 'Sources',
+        section: SettingsSection.sources,
         icon: Icons.dns_rounded,
-        title: 'Providers',
-        subtitle: '$enabledCount enabled',
+        title: l10n.providers,
+        subtitle: l10n.providersEnabledCount(enabledCount),
         keywords: 'providers sources extensions plugins cloudstream aniyomi repository',
         onTap: () async {
           await _push(const SourcesScreen());
@@ -665,9 +671,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       _SettingsEntry(
-        section: 'Sources',
+        section: SettingsSection.sources,
         icon: Icons.swap_horiz_rounded,
-        title: 'Active source',
+        title: l10n.activeSource,
         subtitle: _activeLabel(activeId),
         keywords: 'active source default provider switch',
         // The one coral accent here: an "active" dot before the chevron.
@@ -686,19 +692,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: _pickActiveSource,
       ),
       _SettingsEntry(
-        section: 'Sources',
+        section: SettingsSection.sources,
         icon: Icons.health_and_safety_outlined,
-        title: 'Source health',
-        subtitle: 'Test which sources are working',
+        title: l10n.sourceHealth,
+        subtitle: l10n.sourceHealthSubtitle,
         keywords: 'source health test working dead status check',
         onTap: () => _push(const SourceHealthScreen()),
       ),
       if (Platform.isAndroid)
         _SettingsEntry(
-          section: 'Sources',
+          section: SettingsSection.sources,
           icon: Icons.update_rounded,
-          title: 'Source updates',
-          subtitle: 'Notify when installed sources have updates',
+          title: l10n.sourceUpdates,
+          subtitle: l10n.sourceUpdatesSubtitle,
           keywords: 'source updates notify extensions upgrade',
           trailing: Switch.adaptive(
             value: sl<CloudStreamManager>().notifyUpdates,
@@ -710,10 +716,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ),
       _SettingsEntry(
-        section: 'Sources',
+        section: SettingsSection.sources,
         icon: Icons.autorenew_rounded,
-        title: 'Auto-update extensions',
-        subtitle: 'Update installed sources automatically on launch',
+        title: l10n.autoUpdateExtensions,
+        subtitle: l10n.autoUpdateExtensionsSubtitle,
         keywords:
             'auto update extensions sources plugins automatic upgrade cloudstream aniyomi',
         trailing: Switch.adaptive(
@@ -727,27 +733,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       // Playback & downloads
       _SettingsEntry(
-        section: 'Playback',
+        section: SettingsSection.playback,
         icon: Icons.play_circle_outline,
-        title: 'Playback',
-        subtitle: 'Quality, autoplay, speed',
+        title: l10n.playback,
+        subtitle: l10n.playbackSubtitle,
         keywords: 'playback quality autoplay speed player decoder audio subtitle resume gesture',
         onTap: () => _push(const PlaybackSettingsScreen()),
       ),
       _SettingsEntry(
-        section: 'Reading',
+        section: SettingsSection.reading,
         icon: Icons.menu_book_outlined,
-        title: 'Reader',
-        subtitle: 'Manga & novel reading defaults',
+        title: l10n.reader,
+        subtitle: l10n.readerSubtitle,
         keywords:
             'reader manga novel reading defaults fit direction fontsize theme orientation preload',
         onTap: () => _push(const ReaderSettingsScreen()),
       ),
       _SettingsEntry(
-        section: 'History',
+        section: SettingsSection.history,
         icon: Icons.history_rounded,
-        title: 'History',
-        subtitle: 'Shows you\'ve watched',
+        title: l10n.history,
+        subtitle: l10n.historySubtitle,
         keywords: 'history watch watched continue recent resume',
         onTap: () async {
           await _push(const HistoryScreen());
@@ -755,42 +761,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       _SettingsEntry(
-        section: 'Downloads',
+        section: SettingsSection.downloads,
         icon: Icons.download_outlined,
-        title: 'Downloads',
-        subtitle: 'Manage your downloaded episodes',
+        title: l10n.downloads,
+        subtitle: l10n.downloadsSubtitle,
         keywords: 'downloads offline episodes save manage',
         onTap: () => _push(const DownloadsScreen()),
       ),
       _SettingsEntry(
-        section: 'Downloads',
+        section: SettingsSection.downloads,
         icon: Icons.sd_storage_outlined,
-        title: 'Storage',
-        subtitle: 'Manage space used by the app',
+        title: l10n.storage,
+        subtitle: l10n.storageSubtitle,
         keywords: 'storage space cache clear disk usage',
         onTap: () => _push(const StorageSettingsScreen()),
       ),
       _SettingsEntry(
-        section: 'Downloads',
+        section: SettingsSection.downloads,
         icon: Icons.downloading_outlined,
-        title: 'Torrents',
-        subtitle: 'Streaming & data settings',
+        title: l10n.torrents,
+        subtitle: l10n.torrentsSubtitle,
         keywords: 'torrent magnet streaming seed data wifi',
         onTap: () => _push(const TorrentSettingsScreen()),
       ),
       // Interface & notifications
       _SettingsEntry(
-        section: 'Interface',
+        section: SettingsSection.interface,
         icon: Icons.palette_outlined,
-        title: 'Appearance',
-        subtitle: 'Accent colour, poster badges',
+        title: l10n.appearance,
+        subtitle: l10n.appearanceSubtitle,
         keywords:
             'appearance accent colour color theme highlight personalise '
             'quality badge poster 4k hd cam',
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _value(ThemeController.accentLabel),
+            _value(themeAccentLabel(l10n)),
             const SizedBox(width: 10),
             Container(
               width: 20,
@@ -806,64 +812,76 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: () => _push(const AppearanceScreen()),
       ),
       _SettingsEntry(
-        section: 'Interface',
+        section: SettingsSection.interface,
+        icon: Icons.language_rounded,
+        title: l10n.appLanguage,
+        subtitle: l10n.appLanguageSubtitle,
+        keywords: l10n.appLanguageKeywords,
+        trailing: _value(appLanguageValueLabel(context)),
+        onTap: () async {
+          await pickAppLanguagePhone(context);
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
         icon: Icons.dashboard_customize_outlined,
-        title: 'Navigation bar',
-        subtitle: 'Which tabs show, and their order',
+        title: l10n.navigationBar,
+        subtitle: l10n.navigationBarSubtitle,
         keywords: 'navigation bar tabs dock bottom reorder hide downloads '
             'history customise customize interface',
         onTap: () => _push(const NavTabsScreen()),
       ),
       _SettingsEntry(
-        section: 'Interface',
+        section: SettingsSection.interface,
         icon: Icons.grid_view_rounded,
-        title: 'Search layout',
-        subtitle: 'How cross-source results are shown',
+        title: l10n.searchLayout,
+        subtitle: l10n.searchLayoutSubtitle,
         keywords: 'search layout grid list results view interface',
-        trailing: _value(sl<SearchPrefs>().layout.label),
+        trailing: _value(sl<SearchPrefs>().layout.localizedLabel(context)),
         onTap: _pickSearchLayout,
       ),
       _SettingsEntry(
-        section: 'Interface',
+        section: SettingsSection.interface,
         icon: Icons.download_rounded,
-        title: 'Batch download style',
-        subtitle: 'How the multi-episode sheet looks',
+        title: l10n.batchDownloadStyle,
+        subtitle: l10n.batchDownloadStyleSubtitle,
         keywords:
             'batch download style sheet minimal classic wheel episodes multi',
         trailing: _value(
           sl<PlaybackPrefs>().batchDownloadStyle == 'minimal'
-              ? 'Minimal'
-              : 'Classic',
+              ? l10n.batchDownloadMinimal
+              : l10n.batchDownloadClassic,
         ),
         onTap: _pickBatchDownloadStyle,
       ),
       if (Platform.isAndroid)
         _SettingsEntry(
-          section: 'Notifications',
+          section: SettingsSection.notifications,
           icon: Icons.notifications_none_rounded,
-          title: 'Notifications',
-          subtitle: 'New-episode alerts for subscribed shows',
+          title: l10n.notifications,
+          subtitle: l10n.notificationsSubtitle,
           keywords: 'notifications alerts new episode subscribe airing',
           onTap: () => _push(const SubscriptionsScreen()),
         ),
       // Advanced
       if (Platform.isAndroid)
         _SettingsEntry(
-          section: 'Advanced',
+          section: SettingsSection.advanced,
           icon: Icons.vpn_lock_outlined,
-          title: 'DNS',
-          subtitle: 'Bypass ISP blocks on CS sources',
+          title: l10n.dns,
+          subtitle: l10n.dnsSubtitle,
           keywords: 'dns cloudflare google adguard quad9 isp block bypass private',
           trailing: _value(
-            _dnsChoice == CsDns.off ? 'Off' : CsDns.labelFor(_dnsChoice),
+            _dnsChoice == CsDns.off ? l10n.off : CsDns.labelFor(_dnsChoice),
           ),
           onTap: _pickDns,
         ),
       _SettingsEntry(
-        section: 'Advanced',
+        section: SettingsSection.advanced,
         icon: Icons.shield_outlined,
-        title: 'Privacy',
-        subtitle: 'NSFW sources',
+        title: l10n.privacy,
+        subtitle: l10n.privacySubtitle,
         keywords: 'privacy nsfw adult content hide 18',
         onTap: () async {
           await _push(const PrivacySettingsScreen());
@@ -871,10 +889,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
       _SettingsEntry(
-        section: 'Advanced',
+        section: SettingsSection.advanced,
         icon: Icons.bug_report_outlined,
-        title: 'Share logs',
-        subtitle: 'Send a diagnostic log to help fix an issue',
+        title: l10n.shareLogs,
+        subtitle: l10n.shareLogsSubtitle,
         keywords: 'logs share diagnostic debug bug report crash',
         onTap: _shareLogs,
       ),
@@ -882,9 +900,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // social links, updates, beta toggle and support (so the section opens
       // straight to it — no nested "About" sub-page).
       _SettingsEntry(
-        section: 'About',
+        section: SettingsSection.about,
         icon: Icons.info_outline_rounded,
-        title: 'About',
+        title: l10n.about,
         subtitle: 'v$kAppVersion',
         keywords: 'about version app info license developers credits team '
             'contributors social discord telegram how it works guide '
@@ -1003,18 +1021,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  static const _sectionOrder = <String>[
-    'Account & sync',
-    'Sources',
-    'Playback',
-    'Reading',
-    'History',
-    'Downloads',
-    'Interface',
-    'Notifications',
-    'Advanced',
-    'About',
-  ];
+  static const _sectionOrder = SettingsSection.order;
 
   /// Renders [entries] grouped by section. When there's a query, only matching
   /// entries survive; sections that end up empty are dropped, and an empty
@@ -1028,7 +1035,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           .where((e) => e.section == section && (q.isEmpty || e.matches(q)))
           .toList();
       if (items.isEmpty) continue;
-      out.add(SettingsSectionLabel(section, first: first));
+      out.add(
+        SettingsSectionLabel(
+          settingsSectionTitle(context.l10n, section),
+          first: first,
+        ),
+      );
       first = false;
       out.add(
         SettingsCard(
@@ -1045,7 +1057,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           padding: const EdgeInsets.fromLTRB(22, 40, 22, 40),
           child: Center(
             child: Text(
-              'No settings match "${_searchCtrl.text}"',
+              context.l10n.settingsNoMatch(_searchCtrl.text),
               style: AppText.body.copyWith(color: AppColors.textTertiary),
               textAlign: TextAlign.center,
             ),
@@ -1066,9 +1078,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (items.isEmpty) continue;
       tiles.add(
         SettingsTile(
-          icon: _sectionIcon(section),
-          title: section,
-          subtitle: _sectionSummary(section),
+          icon: settingsSectionIcon(section),
+          title: settingsSectionTitle(context.l10n, section),
+          subtitle: settingsSectionSummary(context.l10n, section),
           iconAccent: tiles.isEmpty, // accent the lead row
           // A section with a single destination (Playback, History,
           // Notifications) opens it directly — no redundant one-row sub-page.
@@ -1102,7 +1114,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(width: 2),
             Expanded(
               child: Text(
-                section,
+                settingsSectionTitle(context.l10n, section),
                 style: AppText.headline.copyWith(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
@@ -1120,36 +1132,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     ),
   );
 
-  IconData _sectionIcon(String section) => switch (section) {
-    'Account & sync' => Icons.person_outline_rounded,
-    'Sources' => Icons.dns_rounded,
-    'Playback' => Icons.play_circle_outline_rounded,
-    'Reading' => Icons.menu_book_outlined,
-    'History' => Icons.history_rounded,
-    'Downloads' => Icons.download_outlined,
-    'Interface' => Icons.tune_rounded,
-    'Notifications' => Icons.notifications_none_rounded,
-    'Advanced' => Icons.build_outlined,
-    'About' => Icons.info_outline_rounded,
-    _ => Icons.settings_outlined,
-  };
-
-  String _sectionSummary(String section) => switch (section) {
-    'Account & sync' => 'Trackers, Discord, backup, sync',
-    'Sources' => 'Providers, active source, updates',
-    'Playback' => 'Quality, autoplay, speed',
-    'Reading' => 'Manga & novel reader defaults',
-    'History' => 'Shows you\'ve watched',
-    'Downloads' => 'Downloads, storage, torrents',
-    'Interface' => 'Appearance, search layout',
-    'Notifications' => 'New-episode alerts',
-    'Advanced' => 'DNS, privacy, logs',
-    'About' => 'Updates, support, version',
-    _ => '',
-  };
-
-  /// "Settings" with a coral "." — used both big (the scroll-away title) and
-  /// small (the centered nav-bar title that fades in on collapse).
   Widget _settingsWordmark({required double size}) {
     return Text.rich(
       TextSpan(
@@ -1160,7 +1142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           letterSpacing: -0.5,
         ),
         children: [
-          TextSpan(text: 'Settings'),
+          TextSpan(text: context.l10n.settingsTitle),
           TextSpan(text: '.', style: TextStyle(color: AppColors.accent)),
         ],
       ),

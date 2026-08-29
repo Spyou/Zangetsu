@@ -24,6 +24,7 @@ import 'cloudstream_sources_screen.dart';
 import 'lnreader_sources_screen.dart';
 import 'mihon_sources_screen.dart';
 import 'zangetsu_sources_screen.dart';
+import '../../l10n/l10n.dart';
 
 const Widget _kChevron = Icon(
   Icons.chevron_right_rounded,
@@ -133,7 +134,7 @@ class _HubPhoneView extends StatelessWidget {
         1 + (showCs ? 1 : 0) + (showAniyomi ? 1 : 0) + (showMihon ? 1 : 0);
 
     final activeId = sl<ActiveSourceCubit>().state;
-    final activeName = activeId.isEmpty ? 'None' : _activeSourceLabel(activeId);
+    final activeName = activeId.isEmpty ? context.l10n.subtitleOutlineNone : _activeSourceLabel(activeId);
     final activeIsCs = activeId.startsWith('cs:');
     final activeIsAni = activeId.startsWith('ani:');
     final activeIsMihon = activeId.startsWith('mihon:');
@@ -156,7 +157,7 @@ class _HubPhoneView extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Providers'),
+      appBar: settingsAppBar(context.l10n.providers),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
         children: [
@@ -175,7 +176,7 @@ class _HubPhoneView extends StatelessWidget {
           const SizedBox(height: 12),
           _EcoRow(
             icon: Icons.dns_rounded,
-            title: 'Zangetsu',
+            title: context.l10n.zangetsu,
             desc: 'Built-in JS providers',
             info: '$zangetsuCount sources',
             // Reading sources are Zangetsu providers too (activeIsZangetsu
@@ -191,7 +192,7 @@ class _HubPhoneView extends StatelessWidget {
             const SizedBox(height: 12),
             _EcoRow(
               icon: Icons.extension_outlined,
-              title: 'CloudStream',
+              title: context.l10n.cloudStream,
               desc: 'CloudStream extensions',
               info: '$csInstalled sources · $csRepos repo${csRepos == 1 ? '' : 's'}',
               active: activeIsCs,
@@ -203,7 +204,7 @@ class _HubPhoneView extends StatelessWidget {
             const SizedBox(height: 12),
             _EcoRow(
               icon: Icons.movie_filter_outlined,
-              title: 'Aniyomi',
+              title: context.l10n.aniyomi,
               desc: 'Aniyomi extensions',
               info: '$aniCount sources',
               active: activeIsAni,
@@ -228,7 +229,7 @@ class _HubPhoneView extends StatelessWidget {
             if (showMihon)
               _EcoRow(
                 icon: Icons.menu_book_outlined,
-                title: 'Mihon',
+                title: context.l10n.mihon,
                 desc: 'Mihon manga extensions',
                 info: '$mihonCount sources',
                 active: activeIsMihon,
@@ -239,7 +240,7 @@ class _HubPhoneView extends StatelessWidget {
             if (showLnReader)
               _EcoRow(
                 icon: Icons.auto_stories_outlined,
-                title: 'LNReader',
+                title: context.l10n.lnreader,
                 desc: 'Novel sources',
                 info: '$lnrCount sources',
                 active: activeIsLnReader,
@@ -598,7 +599,7 @@ class _HubTvViewState extends State<_HubTvView> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text('Providers', style: AppText.largeTitle),
+                  child: Text(context.l10n.providers, style: AppText.largeTitle),
                 ),
                 Expanded(
                   child: ListView(
@@ -606,7 +607,7 @@ class _HubTvViewState extends State<_HubTvView> {
                     children: [
                       row(
                         icon: Icons.dns_rounded,
-                        title: 'Zangetsu providers',
+                        title: context.l10n.zangetsuProviders,
                         subtitle: '$zangetsuCount installed',
                         tint: AppColors.accent,
                         onTap: () => _open(const ZangetsuSourcesScreen()),
@@ -614,7 +615,7 @@ class _HubTvViewState extends State<_HubTvView> {
                       if (showCs)
                         row(
                           icon: Icons.extension_outlined,
-                          title: 'CloudStream',
+                          title: context.l10n.cloudStream,
                           subtitle: _csSubtitle(),
                           tint: _csBlue,
                           onTap: () => _open(const CloudStreamSourcesScreen()),
@@ -622,7 +623,7 @@ class _HubTvViewState extends State<_HubTvView> {
                       if (showAniyomi)
                         row(
                           icon: Icons.movie_filter_outlined,
-                          title: 'Aniyomi',
+                          title: context.l10n.aniyomi,
                           subtitle: _aniyomiSubtitle(),
                           tint: _aniGreen,
                           onTap: () => _open(const AniyomiSourcesScreen()),

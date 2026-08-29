@@ -47,7 +47,7 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    tooltip: 'Back',
+                    tooltip: context.l10n.back,
                     onPressed: widget.onBack,
                   ),
                   const SizedBox(width: 4),
@@ -150,7 +150,7 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                                     Icons.replay_10,
                                     color: Colors.white,
                                   ),
-                                  tooltip: 'Rewind 10 seconds',
+                                  tooltip: context.l10n.rewind10Seconds,
                                   onPressed: () {
                                     final target =
                                         castCtrl.position -
@@ -183,7 +183,7 @@ class _CastRemotePanelState extends State<_CastRemotePanel> {
                                     Icons.forward_10,
                                     color: Colors.white,
                                   ),
-                                  tooltip: 'Forward 10 seconds',
+                                  tooltip: context.l10n.forward10Seconds,
                                   onPressed: () {
                                     final dur = castCtrl.duration;
                                     final target =

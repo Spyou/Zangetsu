@@ -44,6 +44,7 @@ import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
+import '../locale/locale_controller.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
@@ -256,6 +257,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ReaderOverrideStore>(ReaderOverrideStore());
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
+  await LocaleController.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();

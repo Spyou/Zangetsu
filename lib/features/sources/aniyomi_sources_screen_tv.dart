@@ -45,7 +45,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
               child: Padding(
                 padding: EdgeInsets.all(40),
                 child: Text(
-                  "Aniyomi isn't available on this device.",
+                  context.l10n.aniyomiIsnTAvailableOnThisDevice,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 16),
                 ),
@@ -66,21 +66,21 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text('Aniyomi', style: AppText.largeTitle),
+                  child: Text(context.l10n.aniyomi, style: AppText.largeTitle),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
                   child: Row(
                     children: [
                       _AniTvTabChip(
-                        title: 'Installed',
+                        title: context.l10n.installed,
                         selected: _tab == 0,
                         autofocus: true,
                         onTap: () => setState(() => _tab = 0),
                       ),
                       const SizedBox(width: 12),
                       _AniTvTabChip(
-                        title: 'Repositories',
+                        title: context.l10n.repositories,
                         selected: _tab == 1,
                         onTap: () => setState(() => _tab = 1),
                       ),
@@ -101,7 +101,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                           context,
                           sl<AnimeLangPrefs>(),
                         ),
-                        semanticLabel: 'Languages',
+                        semanticLabel: context.l10n.languages,
                         child: ExcludeSemantics(
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -140,7 +140,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                               padding: const EdgeInsets.only(top: 8),
                               child: TvListFocusable(
                                 onTap: widget.onAddRepo,
-                                semanticLabel: 'Add Aniyomi repo',
+                                semanticLabel: context.l10n.addAniyomiRepo,
                                 child: ExcludeSemantics(
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
@@ -161,7 +161,7 @@ class _AniScreenTvViewState extends State<_AniScreenTvView> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          'Add Aniyomi repo',
+                                          context.l10n.addAniyomiRepo,
                                           style: AppText.headline.copyWith(
                                             color: AppColors.accent,
                                           ),
@@ -276,7 +276,7 @@ class _AniScreenTvInstalledContent extends StatelessWidget {
             child: EmptyState(
               icon: Icons.extension_outlined,
               message: query.trim().isEmpty
-                  ? 'No Aniyomi sources installed.'
+                  ? context.l10n.noAniyomiSourcesInstalled
                   : 'No installed sources match "${query.trim()}".',
             ),
           );
@@ -350,7 +350,7 @@ class _AniScreenTvSourceRowState extends State<_AniScreenTvSourceRow> {
             ..clearSnackBars()
             ..showSnackBar(
                 SnackBar(
-                    content: Text('Active source: ${source.displayName}')),
+                    content: Text(context.l10n.activeSourceColon(source.displayName))),
               );
         },
         semanticLabel: active
@@ -431,10 +431,10 @@ class _AniScreenTvContent extends StatelessWidget {
   Future<void> _removeRepo(BuildContext context, String url) async {
     final ok = await _aniScreenTvConfirm(
       context,
-      title: 'Remove repo?',
+      title: context.l10n.removeRepo,
       body:
           'Already-installed extensions stay installed. You can re-add the repo later.',
-      confirmLabel: 'Remove',
+      confirmLabel: context.l10n.removeDownloadTooltip,
     );
     if (!ok) return;
     onRemoveRepo(url);
@@ -443,12 +443,11 @@ class _AniScreenTvContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (repoUrls.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 16),
         child: EmptyState(
           icon: Icons.extension_outlined,
-          message:
-              'No Aniyomi repos added yet.\nPress "Add Aniyomi repo" to add one.',
+          message: context.l10n.noAniyomiReposAddedYetNPressAddAniyomiRepoToAddOne,
         ),
       );
     }
@@ -620,9 +619,9 @@ class _AniScreenTvRepoSectionState extends State<_AniScreenTvRepoSection> {
                   ExcludeSemantics(
                     child: Text(
                       _fetching
-                          ? 'Loading…'
+                          ? context.l10n.loading
                           : _fetchError != null
-                          ? 'Error'
+                          ? context.l10n.error
                           : '${entries.length} ext.',
                       style: AppText.caption,
                     ),
@@ -695,11 +694,12 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-            SnackBar(content: Text('Installed ${widget.entry.name}')));
+            SnackBar(content: Text(context.l10n.installedName(widget.entry.name))),
+        );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -708,9 +708,9 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
   Future<void> _uninstall() async {
     final ok = await _aniScreenTvConfirm(
       context,
-      title: 'Uninstall ${widget.entry.name}?',
-      body: 'This removes the extension from installed sources.',
-      confirmLabel: 'Uninstall',
+      title: context.l10n.uninstallNameQuestion(widget.entry.name),
+      body: context.l10n.thisRemovesTheExtensionFromYourInstalledSources,
+      confirmLabel: context.l10n.uninstall,
     );
     if (!ok) return;
     if (!mounted) return;
@@ -728,11 +728,12 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-            SnackBar(content: Text('Uninstalled ${widget.entry.name}')));
+            SnackBar(content: Text(context.l10n.uninstalledName(widget.entry.name))),
+        );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -795,7 +796,7 @@ class _AniScreenTvExtensionRowState extends State<_AniScreenTvExtensionRow> {
                   )
                 else
                   Text(
-                    installed ? 'Installed' : 'Install',
+                    installed ? context.l10n.installed : context.l10n.install,
                     style: AppText.caption.copyWith(
                       color: installed
                           ? AppColors.textSecondary
@@ -830,7 +831,7 @@ class _AniScreenNsfwBadge extends StatelessWidget {
         border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
       ),
       child: Text(
-        'NSFW',
+        context.l10n.nsfw,
         style: AppText.overline.copyWith(
           color: AppColors.accent,
           fontWeight: FontWeight.w700,
@@ -890,13 +891,13 @@ Future<bool> _aniScreenTvConfirm(
                   TvListFocusable(
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    semanticLabel: 'Cancel',
+                    semanticLabel: context.l10n.cancel,
                     child: ExcludeSemantics(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 12),
                         child: Text(
-                          'Cancel',
+                          context.l10n.cancel,
                           style: AppText.body.copyWith(
                               color: AppColors.textSecondary),
                         ),
@@ -961,7 +962,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add Aniyomi repo', style: AppText.headline),
+      title: Text(context.l10n.addAniyomiRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -974,15 +975,14 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Repo base URL',
-                hintText: 'https://.../repo',
+              decoration: InputDecoration(
+                labelText: context.l10n.repoBaseUrl,
+                hintText: context.l10n.repoBaseUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              'Paste the repo base URL — the app appends '
-              '"/index.min.json" automatically.',
+              context.l10n.pasteRepoBaseUrlAniyomiTv,
               style: AppText.caption,
             ),
           ],
@@ -991,12 +991,12 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
       actions: [
         TvListFocusable(
           onTap: () => Navigator.of(context).pop(),
-          semanticLabel: 'Cancel',
+          semanticLabel: context.l10n.cancel,
           child: ExcludeSemantics(
             child: TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'Cancel',
+                context.l10n.cancel,
                 style: AppText.body.copyWith(color: AppColors.textSecondary),
               ),
             ),
@@ -1004,7 +1004,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
         ),
         TvListFocusable(
           onTap: _submit,
-          semanticLabel: 'Add',
+          semanticLabel: context.l10n.navTabsAdd,
           child: ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -1012,7 +1012,7 @@ class _AniScreenTvAddRepoDialogState extends State<_AniScreenTvAddRepoDialog> {
                 foregroundColor: Colors.white,
               ),
               onPressed: _submit,
-              child: const Text('Add'),
+              child: Text(context.l10n.navTabsAdd),
             ),
           ),
         ),

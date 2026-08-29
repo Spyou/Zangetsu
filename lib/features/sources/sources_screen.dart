@@ -14,6 +14,7 @@ import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'providers_hub_screen.dart';
+import '../../l10n/l10n.dart';
 
 /// Thin entry point for the Providers screen — delegates to
 /// [ProvidersHubScreen], which routes to a dedicated screen per ecosystem
@@ -200,23 +201,23 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall $name?', style: AppText.headline),
+        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
         content: Text(
-          'This removes the source from your installed list.',
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -255,7 +256,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstalled $name')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstalledName(name))));
     }
   }
 
@@ -267,11 +268,11 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       await apply(update);
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Updated ${update.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updatedName(update.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -314,7 +315,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: Text('Update → v${update.availableVersion}'),
+          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -325,7 +326,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(content: Text('Active source: ${source.displayName}')),
+            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
           );
       },
       child: Padding(
@@ -363,13 +364,13 @@ class _AniSourceRowState extends State<_AniSourceRow> {
               ),
             if (_hasSettings)
               IconButton(
-                tooltip: 'Source settings',
+                tooltip: context.l10n.sourceSettings,
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
               ),
             IconButton(
-              tooltip: 'Uninstall',
+              tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),

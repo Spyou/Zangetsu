@@ -32,6 +32,7 @@ import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
 import '../community/community_sheet.dart';
@@ -182,10 +183,12 @@ class _HomeViewState extends State<_HomeView>
       if (now - prefs.lastExtensionUpdateMs < dayMs) return;
       await prefs.setLastExtensionUpdateMs(now);
       final updated = await ExtensionAutoUpdater.run();
+      if (!mounted) return;
       if (updated > 0) {
+        final title = context.l10n.extensionsUpdated;
         await NotificationService.instance.showMessage(
           id: 779100,
-          title: 'Extensions updated',
+          title: title,
           body:
               '$updated extension${updated == 1 ? '' : 's'} updated to the latest version.',
         );
@@ -541,6 +544,7 @@ class _HomeViewState extends State<_HomeView>
                               'Incognito',
                               style: TextStyle(
                                 fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textSecondary,
@@ -716,7 +720,7 @@ class _HomeViewState extends State<_HomeView>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Reconnect to sync', style: AppText.body),
+                      Text(context.l10n.reconnectToSync, style: AppText.body),
                       Text(
                         'Your session expired — tap to sign in and sync your library.',
                         style: AppText.caption,
@@ -1331,7 +1335,7 @@ class _NoSourcesGuide extends StatelessWidget {
             FilledButton.icon(
               onPressed: onBrowse,
               icon: const Icon(Icons.add_rounded, size: 20),
-              label: const Text('Browse sources'),
+              label: Text(context.l10n.browseSources),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
@@ -1424,7 +1428,7 @@ class _SourceUnavailable extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () => onSolveCloudflare!(),
               icon: const Icon(Icons.shield_rounded, size: 20),
-              label: const Text('Solve Cloudflare'),
+              label: Text(context.l10n.solveCloudflare),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _cloudflareOrange,
                 foregroundColor: Colors.white,
@@ -1444,7 +1448,7 @@ class _SourceUnavailable extends StatelessWidget {
             TextButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Retry'),
+              label: Text(context.l10n.retry),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.textSecondary,
               ),
@@ -1453,7 +1457,7 @@ class _SourceUnavailable extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh_rounded, size: 20),
-              label: const Text('Retry'),
+              label: Text(context.l10n.retry),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,

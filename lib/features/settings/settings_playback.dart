@@ -26,16 +26,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   // The main picker: Off + the three filters. The GPU tier (Mid/High) is a
   // separate row below.
-  static const List<(String, String)> _shaderStyleOptions = [
-    ('off', 'Off'),
-    ('a', 'Sharpen — clean 1080p sources'),
-    ('b', 'De-blur — blurry / soft sources'),
-    ('c', 'Denoise — grainy / compressed'),
-  ];
-  static const List<(String, String)> _shaderTierOptions = [
-    ('mid', 'Mid-range GPU — light, smooth'),
-    ('high', 'High-end GPU — heavier, sharpest'),
-  ];
 
   @override
   void initState() {
@@ -66,7 +56,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (!ok) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Shader download failed — check network')));
+      ).showSnackBar(SnackBar(content: Text(context.l10n.shaderDownloadFailedCheckNetwork)));
     } else {
       // Default to Sharpen so the download has an immediate, visible effect.
       if (_prefs.videoShaderStyle == 'off') {
@@ -77,9 +67,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickShaderStyle() async {
+    final l10n = context.l10n;
     final picked = await _pick<String>(
-      title: 'Anime4K Enhancement',
-      options: _shaderStyleOptions,
+      title: l10n.anime4kEnhancement,
+      options: shaderStylePickerOptions(l10n),
       current: _prefs.videoShaderStyle,
     );
     if (picked == null) return;
@@ -88,9 +79,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickShaderTier() async {
+    final l10n = context.l10n;
     final picked = await _pick<String>(
-      title: 'Anime4K GPU tier',
-      options: _shaderTierOptions,
+      title: l10n.anime4kGPUTier,
+      options: shaderTierPickerOptions(l10n),
       current: _prefs.videoShaderTier,
     );
     if (picked == null) return;
@@ -109,28 +101,26 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Cache cleared')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.cacheCleared)));
   }
 
-  static const List<(String, String)> _bufferSizeOptions = [
-    ('low', 'Low (32 MB) — low-RAM / TV'),
-    ('default', 'Default (128 MB)'),
-    ('high', 'High (512 MB) — smoother'),
+  static List<(String, String)> _bufferSizeOptions(AppLocalizations l10n) => [
+    ('low', l10n.bufferSizeLow),
+    ('default', l10n.bufferSizeDefault),
+    ('high', l10n.bufferSizeHigh),
   ];
-  // Length only — there's no 'max' size. The size preset still caps memory, so
-  // a longer buffer costs nothing extra in the worst case; it just fills more
-  // of the same ceiling on lower-bitrate streams.
-  static const List<(String, String)> _bufferLengthOptions = [
-    ('low', 'Low (15s) — low-RAM / TV'),
-    ('default', 'Default (60s)'),
-    ('high', 'High (120s) — smoother'),
-    ('max', 'Max (300s) — longest'),
+  static List<(String, String)> _bufferLengthOptions(AppLocalizations l10n) => [
+    ('low', l10n.bufferLengthLow),
+    ('default', l10n.bufferLengthDefault),
+    ('high', l10n.bufferLengthHigh),
+    ('max', l10n.bufferLengthMax),
   ];
 
   Future<void> _pickBufferSize() async {
+    final l10n = context.l10n;
     final picked = await _pick<String>(
-      title: 'Video buffer size',
-      options: _bufferSizeOptions,
+      title: l10n.videoBufferSize,
+      options: _bufferSizeOptions(l10n),
       current: _prefs.videoBufferSize,
     );
     if (picked == null) return;
@@ -139,9 +129,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickBufferLength() async {
+    final l10n = context.l10n;
     final picked = await _pick<String>(
-      title: 'Video buffer length',
-      options: _bufferLengthOptions,
+      title: l10n.videoBufferLength,
+      options: _bufferLengthOptions(l10n),
       current: _prefs.videoBufferLength,
     );
     if (picked == null) return;
@@ -171,20 +162,19 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 2),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Player info overlay', style: AppText.headline),
+                  child: Text(context.l10n.playerInfoOverlay, style: AppText.headline),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Pick what shows over the video (appears with the '
-                    'controls). Like YouTube\'s "Stats for nerds".',
+                    context.l10n.pickWhatShowsOverVideo,
                     style: AppText.caption,
                   ),
                 ),
@@ -250,31 +240,6 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   ];
 
   static const List<(int, String)> _skipOptions = [(5, '5s'), (10, '10s'), (15, '15s'), (30, '30s')];
-
-  static const List<(String, String)> _decoderOptions = [
-    ('copy', 'Hardware+ (recommended)'),
-    ('direct', 'Hardware (faster)'),
-    ('sw', 'Software (most compatible)'),
-    ('auto', 'Auto'),
-  ];
-
-  // How mpv paints the video. Only worth changing when the video is black but
-  // the audio and controls work — that's the GPU renderer failing on a device
-  // whose driver can't run it, and no source or decoder change will help.
-  // MediaCodec Embed skips that renderer entirely (the decoder draws straight
-  // to the surface), at the cost of Anime4K and burned-in subtitle styling.
-  static const List<(String, String)> _rendererOptions = [
-    ('auto', 'Auto (recommended)'),
-    ('gpu', 'GPU — standard renderer'),
-    ('gpu-next', 'GPU Next — Vulkan, experimental'),
-    ('mediacodec_embed', 'MediaCodec Embed — fixes black video'),
-  ];
-
-  static const List<(String, String)> _closeConfirmOptions = [
-    ('double_back', 'Double back — press back twice to exit'),
-    ('confirm', 'Close confirmation — ask before leaving'),
-    ('direct', 'Close directly — exit immediately'),
-  ];
 
   String _labelFor<T>(List<(T, String)> options, T value, String fallback) {
     for (final (v, label) in options) {
@@ -391,7 +356,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   Future<void> _pickQuality() async {
     final picked = await _pick<String>(
-      title: 'Default quality',
+      title: context.l10n.defaultQuality,
       options: _qualityOptions,
       current: _prefs.defaultQuality,
     );
@@ -401,44 +366,47 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   }
 
   Future<void> _pickDecoder() async {
-    final picked = await _pick<String>(title: 'Video decoder', options: _decoderOptions, current: _prefs.videoDecoder);
+    final l10n = context.l10n;
+    final picked = await _pick<String>(title: l10n.videoDecoder, options: videoDecoderOptions(l10n), current: _prefs.videoDecoder);
     if (picked == null) return;
     await _prefs.setVideoDecoder(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickRenderer() async {
-    final picked = await _pick<String>(title: 'Video renderer', options: _rendererOptions, current: _prefs.videoOutput);
+    final l10n = context.l10n;
+    final picked = await _pick<String>(title: l10n.videoRenderer, options: videoRendererOptions(l10n), current: _prefs.videoOutput);
     if (picked == null) return;
     await _prefs.setVideoOutput(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickAudio() async {
-    final picked = await _pick<String>(title: 'Default audio', options: _audioOptions, current: _prefs.defaultCategory);
+    final picked = await _pick<String>(title: context.l10n.defaultAudio, options: _audioOptions, current: _prefs.defaultCategory);
     if (picked == null) return;
     await _prefs.setDefaultCategory(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickSpeed() async {
-    final picked = await _pick<double>(title: 'Default speed', options: _speedOptions, current: _prefs.defaultSpeed);
+    final picked = await _pick<double>(title: context.l10n.defaultSpeed, options: _speedOptions, current: _prefs.defaultSpeed);
     if (picked == null) return;
     await _prefs.setDefaultSpeed(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickSkip() async {
-    final picked = await _pick<int>(title: 'Double-tap skip', options: _skipOptions, current: _prefs.doubleTapSeconds);
+    final picked = await _pick<int>(title: context.l10n.doubleTapSkip, options: _skipOptions, current: _prefs.doubleTapSeconds);
     if (picked == null) return;
     await _prefs.setDoubleTapSeconds(picked);
     if (mounted) setState(() {});
   }
 
   Future<void> _pickCloseConfirmation() async {
+    final l10n = context.l10n;
     final picked = await _pick<String>(
-      title: 'Close confirmation',
-      options: _closeConfirmOptions,
+      title: l10n.closeConfirmation,
+      options: closeConfirmPickerOptions(l10n),
       current: _prefs.closeConfirmation,
     );
     if (picked == null) return;
@@ -460,7 +428,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   Future<void> _pickMegaSkipDuration() async {
     final picked = await _pick<int>(
-      title: 'MegaSkip duration',
+      title: context.l10n.megaSkipDuration,
       options: _megaSkipDurationOptions,
       current: _prefs.megaSkipSeconds,
     );
@@ -480,21 +448,16 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     // extras they read, so external subtitles and the resume position may be
     // dropped. Flagged rather than hidden: it's a real caveat, not a blocker.
     final options = <(String, String)>[
-      ('', 'Built-in player'),
-      for (final p in players) (p.package, p.known ? p.label : '${p.label}  ·  no subs/resume'),
+      ('', context.l10n.builtInPlayer),
+      for (final p in players) (p.package, p.known ? p.label : '${p.label}${context.l10n.noSubsResumeSuffix}'),
     ];
     if (players.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'No other video apps found. Install MX Player, VLC, mpv, '
-            'Just Player or Next Player.',
-          ),
-        ),
+        SnackBar(content: Text(context.l10n.noOtherVideoAppsFound)),
       );
     }
     final picked = await _pick<String>(
-      title: 'Default player',
+      title: context.l10n.defaultPlayer,
       options: options,
       current: _prefs.externalPlayerPackage,
     );
@@ -552,7 +515,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Text(
-                    'MegaSkip duration',
+                    context.l10n.megaSkipDuration,
                     style: AppText.headline.copyWith(
                       color: AppColors.textPrimary,
                       fontWeight: FontWeight.w500,
@@ -561,7 +524,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   ),
                 ),
                 Text(
-                  '${val.round()}s',
+                  context.l10n.secondsShort(val.round()),
                   style: AppText.headline.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700, fontSize: 15),
                 ),
               ],
@@ -582,7 +545,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                       max: PlaybackPrefs.megaSkipMax.toDouble(),
                       divisions: PlaybackPrefs.megaSkipMax - PlaybackPrefs.megaSkipMin,
                       value: val,
-                      label: '${val.round()}s',
+                      label: context.l10n.secondsShort(val.round()),
                       onChanged: (v) => setLocal(() => val = v),
                       onChangeEnd: (v) async {
                         await _prefs.setMegaSkipSeconds(v.round());
@@ -604,7 +567,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Playback'),
+      appBar: settingsAppBar(context.l10n.playback),
       body: ListView(
         // TV focus chrome paints outside the row, so it must not be clipped.
         // Phone has no focus ring — keep the normal clip so rows don't bleed
@@ -613,25 +576,25 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
           // ── Quality & audio ─────────────────────────────────────────────
-          const SettingsSectionLabel('Quality & audio'),
+          SettingsSectionLabel(context.l10n.qualityAndAudio),
           SettingsCard(
             children: [
               SettingsTile(
                 autofocus: true,
                 icon: Icons.high_quality_outlined,
-                title: 'Default quality',
+                title: context.l10n.defaultQuality,
                 subtitle: _labelFor(_qualityOptions, _prefs.defaultQuality, _prefs.defaultQuality),
                 onTap: _pickQuality,
               ),
               SettingsTile(
                 icon: Icons.translate_rounded,
-                title: 'Default audio (anime sub/dub)',
+                title: context.l10n.defaultAudioAnimeSubDub,
                 subtitle: _labelFor(_audioOptions, _prefs.defaultCategory, _prefs.defaultCategory),
                 onTap: _pickAudio,
               ),
               SettingsTile(
                 icon: Icons.speed_outlined,
-                title: 'Default speed',
+                title: context.l10n.defaultSpeed,
                 subtitle: _labelFor(_speedOptions, _prefs.defaultSpeed, '${_prefs.defaultSpeed}x'),
                 onTap: _pickSpeed,
               ),
@@ -640,8 +603,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (!sl<AppMode>().isTv)
                 SettingsTile(
                   icon: Icons.memory_outlined,
-                  title: 'Video decoder',
-                  subtitle: _labelFor(_decoderOptions, _prefs.videoDecoder, 'Hardware+ (recommended)'),
+                  title: context.l10n.videoDecoder,
+                  subtitle: _labelFor(videoDecoderOptions(context.l10n), _prefs.videoDecoder, context.l10n.decoderHardwareRecommended),
                   onTap: _pickDecoder,
                 ),
               // Escape hatch for black video with working audio — see
@@ -650,8 +613,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (!sl<AppMode>().isTv)
                 SettingsTile(
                   icon: Icons.display_settings_outlined,
-                  title: 'Video renderer',
-                  subtitle: _labelFor(_rendererOptions, _prefs.videoOutput, 'Auto (recommended)'),
+                  title: context.l10n.videoRenderer,
+                  subtitle: _labelFor(videoRendererOptions(context.l10n), _prefs.videoOutput, context.l10n.rendererAutoRecommended),
                   onTap: _pickRenderer,
                 ),
               // Anime4K GLSL upscaling — downloaded on demand. One row = Off /
@@ -659,12 +622,12 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (!sl<AppMode>().isTv)
                 SettingsTile(
                   icon: Icons.auto_awesome_outlined,
-                  title: 'Anime4K Enhancement',
+                  title: context.l10n.anime4kEnhancement,
                   subtitle: _shaderDownloading
-                      ? 'Downloading… ${(_shaderProgress * 100).round()}%'
+                      ? context.l10n.downloadingPercent((_shaderProgress * 100).round())
                       : (!_shadersReady
-                            ? 'Tap to download shaders (~0.8 MB)'
-                            : ShaderPresets.styleById(_prefs.videoShaderStyle).label),
+                            ? context.l10n.tapToDownloadShaders
+                            : shaderStylePickerLabel(context.l10n, _prefs.videoShaderStyle)),
                   trailing: _shaderDownloading
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : null,
@@ -673,8 +636,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (!sl<AppMode>().isTv && _shadersReady && _prefs.videoShaderStyle != 'off')
                 SettingsTile(
                   icon: Icons.speed_outlined,
-                  title: 'Anime4K GPU tier',
-                  subtitle: ShaderPresets.tierLabel(_prefs.videoShaderTier),
+                  title: context.l10n.anime4kGPUTier,
+                  subtitle: shaderTierPickerLabel(context.l10n, _prefs.videoShaderTier),
                   onTap: _pickShaderTier,
                 ),
             ],
@@ -684,21 +647,21 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           // External-player handoff is phone-only; the TV plays in its own
           // native player, so hide this whole section on TV.
           if (Platform.isAndroid && !sl<AppMode>().isTv) ...[
-            const SettingsSectionLabel('Player'),
+            SettingsSectionLabel(context.l10n.sectionPlayer),
             SettingsCard(
               children: [
                 SettingsTile(
                   icon: Icons.smart_display_outlined,
-                  title: 'Default player',
+                  title: context.l10n.defaultPlayer,
                   subtitle: _prefs.externalPlayerPackage.isEmpty
-                      ? 'Built-in'
-                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : 'External app'),
+                      ? context.l10n.builtIn
+                      : (_prefs.externalPlayerLabel.isNotEmpty ? _prefs.externalPlayerLabel : context.l10n.externalApp),
                   onTap: _pickPlayer,
                 ),
                 SettingsTile(
                   icon: Icons.tune_rounded,
-                  title: 'Player controls',
-                  subtitle: 'Reorder or hide the buttons on the player bar',
+                  title: context.l10n.playerControls,
+                  subtitle: context.l10n.reorderOrHideTheButtonsOnThePlayerBar,
                   onTap: () async {
                     await Navigator.of(
                       context,
@@ -711,13 +674,13 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           ],
 
           // ── Playback behaviour ──────────────────────────────────────────
-          const SettingsSectionLabel('Playback'),
+          SettingsSectionLabel(context.l10n.playback),
           SettingsCard(
             children: [
               _toggleRow(
                 icon: Icons.history_outlined,
-                title: 'Resume playback',
-                subtitle: 'Continue from where you left off',
+                title: context.l10n.resumePlayback,
+                subtitle: context.l10n.continueFromWhereYouLeftOff,
                 value: _prefs.autoResume,
                 onChanged: (v) async {
                   await _prefs.setAutoResume(v);
@@ -726,10 +689,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.visibility_outlined,
-                title: 'Ask before jumping',
-                subtitle:
-                    'Opening something other than where you left off offers to '
-                    'look without moving your progress',
+                title: context.l10n.askBeforeJumping,
+                subtitle: context.l10n.askBeforeJumpingSubtitle,
                 value: _prefs.askOnJump,
                 onChanged: (v) async {
                   await _prefs.setAskOnJump(v);
@@ -738,8 +699,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.playlist_add_check_rounded,
-                title: 'Auto-add to My List',
-                subtitle: 'Add a title to My List when you start watching it',
+                title: context.l10n.autoAddToMyList,
+                subtitle: context.l10n.addATitleToMyListWhenYouStartWatchingIt,
                 value: _prefs.autoAddToMyList,
                 onChanged: (v) async {
                   await _prefs.setAutoAddToMyList(v);
@@ -748,10 +709,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.sync_rounded,
-                title: 'Auto-track',
-                subtitle:
-                    'Update AniList, MyAnimeList and Simkl as you watch. '
-                    'Off still lets you track a title by hand',
+                title: context.l10n.autoTrack,
+                subtitle: context.l10n.autoTrackSubtitle,
                 value: _prefs.autoTrack,
                 onChanged: (v) async {
                   await _prefs.setAutoTrack(v);
@@ -760,17 +719,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               SettingsTile(
                 icon: Icons.exit_to_app_outlined,
-                title: 'Close confirmation',
+                title: context.l10n.closeConfirmation,
                 subtitle: switch (_prefs.closeConfirmation) {
-                  'confirm' => 'Ask before leaving the player',
-                  'direct' => 'Exit immediately',
-                  _ => 'Press back twice to exit',
+                  'confirm' => context.l10n.closeConfirmationAsk,
+                  'direct' => context.l10n.closeConfirmationDirect,
+                  _ => context.l10n.closeConfirmationDoubleBack,
                 },
                 onTap: _pickCloseConfirmation,
               ),
               _toggleRow(
                 icon: Icons.skip_next_outlined,
-                title: 'Autoplay next episode',
+                title: context.l10n.autoplayNextEpisode,
                 value: _prefs.autoplayNext,
                 onChanged: (v) async {
                   await _prefs.setAutoplayNext(v);
@@ -779,10 +738,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_outlined,
-                title: 'Auto-skip filler episodes',
-                subtitle:
-                    'Jump past filler when going to the next episode '
-                    '(anime only)',
+                title: context.l10n.autoSkipFillerEpisodes,
+                subtitle: context.l10n.autoSkipFillerSubtitle,
                 value: _prefs.autoSkipFiller,
                 onChanged: (v) async {
                   await _prefs.setAutoSkipFiller(v);
@@ -791,8 +748,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.movie_outlined,
-                title: 'Autoplay trailer',
-                subtitle: 'Play a title\'s trailer on its detail page',
+                title: context.l10n.autoplayTrailer,
+                subtitle: context.l10n.playATitleSTrailerOnItsDetailPage,
                 value: _prefs.autoplayTrailer,
                 onChanged: (v) async {
                   await _prefs.setAutoplayTrailer(v);
@@ -801,10 +758,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.high_quality_outlined,
-                title: 'Play trailers in HD',
-                subtitle:
-                    'Up to 1080p when available — falls back to standard '
-                    'if not. Uses more data',
+                title: context.l10n.playTrailersInHD,
+                subtitle: context.l10n.playTrailersInHDSubtitle,
                 value: _prefs.trailerHd,
                 onChanged: (v) async {
                   await _prefs.setTrailerHd(v);
@@ -813,8 +768,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_outlined,
-                title: 'Skip intro button',
-                subtitle: 'Show Skip opening/ending on anime (when detected)',
+                title: context.l10n.skipIntroButton,
+                subtitle: context.l10n.showSkipOpeningEndingOnAnimeWhenDetected,
                 value: _prefs.skipIntro,
                 onChanged: (v) async {
                   await _prefs.setSkipIntro(v);
@@ -823,8 +778,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_rounded,
-                title: 'Auto-skip opening',
-                subtitle: 'Jump past the OP on its own, no tap',
+                title: context.l10n.autoSkipOpening,
+                subtitle: context.l10n.jumpPastTheOPOnItsOwnNoTap,
                 value: _prefs.autoSkipOp,
                 onChanged: (v) async {
                   await _prefs.setAutoSkipOp(v);
@@ -833,8 +788,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_rounded,
-                title: 'Auto-skip recap',
-                subtitle: "Jump past the \"previously on\" recap, no tap",
+                title: context.l10n.autoSkipRecap,
+                subtitle: context.l10n.jumpPastThePreviouslyOnRecapNoTap,
                 value: _prefs.autoSkipRecap,
                 onChanged: (v) async {
                   await _prefs.setAutoSkipRecap(v);
@@ -843,8 +798,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.fast_forward_rounded,
-                title: 'Auto-skip ending',
-                subtitle: 'Jump past the ED on its own, no tap',
+                title: context.l10n.autoSkipEnding,
+                subtitle: context.l10n.jumpPastTheEDOnItsOwnNoTap,
                 value: _prefs.autoSkipEd,
                 onChanged: (v) async {
                   await _prefs.setAutoSkipEd(v);
@@ -853,8 +808,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.keyboard_double_arrow_right_rounded,
-                title: 'MegaSkip button',
-                subtitle: 'A jump-forward button in the player (any video)',
+                title: context.l10n.megaskipButton,
+                subtitle: context.l10n.aJumpForwardButtonInThePlayerAnyVideo,
                 value: _prefs.megaSkip,
                 onChanged: (v) async {
                   await _prefs.setMegaSkip(v);
@@ -867,14 +822,14 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 sl<AppMode>().isTv
                     ? SettingsTile(
                         icon: Icons.timer_outlined,
-                        title: 'MegaSkip duration',
-                        subtitle: '${_prefs.megaSkipSeconds}s',
+                        title: context.l10n.megaSkipDuration,
+                        subtitle: context.l10n.secondsShort(_prefs.megaSkipSeconds),
                         onTap: _pickMegaSkipDuration,
                       )
                     : _megaSkipDurationRow(),
               _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
-                title: 'Keep screen on',
+                title: context.l10n.keepScreenOn,
                 value: _prefs.keepScreenOn,
                 onChanged: (v) async {
                   await _prefs.setKeepScreenOn(v);
@@ -884,10 +839,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (sl<AppMode>().isTv)
                 _toggleRow(
                   icon: Icons.tv_outlined,
-                  title: 'Native TV player',
-                  subtitle:
-                      'Recommended. Turn off only if you prefer the old '
-                      'player',
+                  title: context.l10n.nativeTVPlayer,
+                  subtitle: context.l10n.nativeTvPlayerSubtitle,
                   value: _prefs.nativeTvPlayer,
                   onChanged: (v) async {
                     await _prefs.setNativeTvPlayer(v);
@@ -897,10 +850,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (sl<AppMode>().isTv && _prefs.nativeTvPlayer)
                 _toggleRow(
                   icon: Icons.surround_sound_outlined,
-                  title: 'Software audio (Dolby/DTS)',
-                  subtitle:
-                      'Turn on only if Dolby/DTS audio is silent — may be '
-                      'unstable on some TVs',
+                  title: context.l10n.softwareAudioDolbyDTS,
+                  subtitle: context.l10n.softwareAudioSubtitle,
                   value: _prefs.tvSoftwareDecoding,
                   onChanged: (v) async {
                     await _prefs.setTvSoftwareDecoding(v);
@@ -925,8 +876,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (Platform.isAndroid && !sl<AppMode>().isTv)
                 _toggleRow(
                   icon: Icons.picture_in_picture_alt_outlined,
-                  title: 'Auto picture-in-picture',
-                  subtitle: 'Shrink to a floating window when you leave the app',
+                  title: context.l10n.autoPictureInPicture,
+                  subtitle: context.l10n.shrinkToAFloatingWindowWhenYouLeaveTheApp,
                   value: _prefs.autoPip,
                   onChanged: (v) async {
                     await _prefs.setAutoPip(v);
@@ -935,40 +886,40 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
               SettingsTile(
                 icon: Icons.info_outline_rounded,
-                title: 'Player info overlay',
+                title: context.l10n.playerInfoOverlay,
                 subtitle: _prefs.playerInfoFields.isEmpty
-                    ? 'Off'
-                    : '${_prefs.playerInfoFields.length} fields (ⓘ button)',
+                    ? context.l10n.playerInfoOff
+                    : context.l10n.playerInfoFieldsCount(_prefs.playerInfoFields.length),
                 onTap: _pickPlayerInfo,
               ),
               _toggleRow(
                 icon: Icons.high_quality_outlined,
-                title: 'Show quality label',
-                subtitle: 'Plain quality text (e.g. 1080p) on the top-bar right',
+                title: context.l10n.showQualityLabel,
+                subtitle: context.l10n.plainQualityTextEG1080pOnTheTopBarRight,
                 value: _prefs.alwaysShowQuality,
                 onChanged: (v) async {
                   await _prefs.setAlwaysShowQuality(v);
                   if (mounted) setState(() {});
-                },
-              ),
+                  },
+                ),
             ],
           ),
 
           // ── Gestures (touch-only — hidden on TV) ────────────────────────
           if (!sl<AppMode>().isTv) ...[
-            const SettingsSectionLabel('Gestures'),
+            SettingsSectionLabel(context.l10n.sectionGestures),
             SettingsCard(
               children: [
                 SettingsTile(
                   icon: Icons.touch_app_outlined,
-                  title: 'Double-tap skip',
+                  title: context.l10n.doubleTapSkip,
                   subtitle: _labelFor(_skipOptions, _prefs.doubleTapSeconds, '${_prefs.doubleTapSeconds}s'),
                   onTap: _pickSkip,
                 ),
                 _toggleRow(
                   icon: Icons.swipe_outlined,
-                  title: 'Gesture controls',
-                  subtitle: 'Swipe left for brightness, right for volume',
+                  title: context.l10n.gestureControls,
+                  subtitle: context.l10n.swipeLeftForBrightnessRightForVolume,
                   value: _prefs.gestureControls,
                   onChanged: (v) async {
                     await _prefs.setGestureControls(v);
@@ -977,8 +928,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
                 _toggleRow(
                   icon: Icons.swap_horiz_rounded,
-                  title: 'Swipe to seek',
-                  subtitle: 'Drag left or right across the video to scrub',
+                  title: context.l10n.swipeToSeek,
+                  subtitle: context.l10n.dragLeftOrRightAcrossTheVideoToScrub,
                   value: _prefs.swipeSeek,
                   onChanged: (v) async {
                     await _prefs.setSwipeSeek(v);
@@ -987,8 +938,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
                 _toggleRow(
                   icon: Icons.fast_forward_rounded,
-                  title: 'Hold for 2× speed',
-                  subtitle: 'Long-press the video to play at 2× while held',
+                  title: context.l10n.holdFor2Speed,
+                  subtitle: context.l10n.longPressTheVideoToPlayAt2WhileHeld,
                   value: _prefs.holdSpeed,
                   onChanged: (v) async {
                     await _prefs.setHoldSpeed(v);
@@ -1000,24 +951,24 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           ],
 
           // ── Cache (buffering + clear) ───────────────────────────────────
-          const SettingsSectionLabel('Cache'),
+          SettingsSectionLabel(context.l10n.sectionCache),
           SettingsCard(
             children: [
               SettingsTile(
                 icon: Icons.memory_rounded,
-                title: 'Video buffer size',
-                subtitle: _labelFor(_bufferSizeOptions, _prefs.videoBufferSize, 'Default (128 MB)'),
+                title: context.l10n.videoBufferSize,
+                subtitle: _labelFor(_bufferSizeOptions(context.l10n), _prefs.videoBufferSize, context.l10n.bufferSizeDefault),
                 onTap: _pickBufferSize,
               ),
               SettingsTile(
                 icon: Icons.timelapse_rounded,
-                title: 'Video buffer length',
-                subtitle: _labelFor(_bufferLengthOptions, _prefs.videoBufferLength, 'Default (60s)'),
+                title: context.l10n.videoBufferLength,
+                subtitle: _labelFor(_bufferLengthOptions(context.l10n), _prefs.videoBufferLength, context.l10n.bufferLengthDefault),
                 onTap: _pickBufferLength,
               ),
               SettingsTile(
                 icon: Icons.delete_outline_rounded,
-                title: 'Clear image & video cache',
+                title: context.l10n.clearImageVideoCache,
                 subtitle: MediaCache.formatBytes(_cacheBytes),
                 onTap: _clearCache,
               ),
@@ -1025,7 +976,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
           ),
 
           // ── Subtitles ───────────────────────────────────────────────────
-          const SettingsSectionLabel('Subtitles'),
+          SettingsSectionLabel(context.l10n.subtitles),
           SettingsCard(
             children: [
               // libass is the mpv renderer's .ass styling — the native TV
@@ -1033,10 +984,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (!sl<AppMode>().isTv)
                 _toggleRow(
                   icon: Icons.subtitles_outlined,
-                  title: 'Styled subtitles (libass)',
-                  subtitle:
-                      'Real .ass styling — fonts, positions, karaoke, '
-                      'signs. Best for anime. Applies from the next episode.',
+                  title: context.l10n.styledSubtitlesLibass,
+                  subtitle: context.l10n.styledSubtitlesLibassSubtitlePlayback,
                   value: _prefs.styledSubtitles,
                   onChanged: (v) async {
                     await _prefs.setStyledSubtitles(v);
@@ -1045,37 +994,35 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 ),
               SettingsTile(
                 icon: Icons.text_fields_rounded,
-                title: 'Subtitle style',
-                subtitle:
-                    'Font, colour, outline, opacity, size, position — '
-                    'with live preview',
+                title: context.l10n.subtitleStyle,
+                subtitle: context.l10n.subtitleStyleSubtitle,
                 onTap: () => openSubtitleStyleSheet(context, null, () {
                   if (mounted) setState(() {});
                 }),
               ),
               SettingsTile(
                 icon: Icons.vpn_key_outlined,
-                title: 'OpenSubtitles API key',
+                title: context.l10n.opensubtitlesAPIKey,
                 subtitle: _prefs.subtitleApiKey.trim().isEmpty
-                    ? 'Required for online subtitle search'
-                    : 'Key saved — online search enabled',
+                    ? context.l10n.requiredForOnlineSubtitleSearch
+                    : context.l10n.keySavedOnlineSearchEnabled,
                 onTap: _editSubtitleApiKey,
               ),
               SettingsTile(
                 icon: Icons.language_outlined,
-                title: 'Subtitle language',
+                title: context.l10n.subtitleLanguage,
                 subtitle: () {
                   final p = _prefs.subtitlePreference;
-                  if (p.isEmpty) return 'Auto';
-                  if (p == 'off') return 'Off';
+                  if (p.isEmpty) return context.l10n.auto;
+                  if (p == 'off') return context.l10n.off;
                   return languageByPref(p)?.name ?? p.toUpperCase();
                 }(),
                 onTap: _pickSubtitleLanguage,
               ),
               _toggleRow(
                 icon: Icons.download_outlined,
-                title: 'Auto-download subtitles',
-                subtitle: 'When the source has no subtitle in your language',
+                title: context.l10n.autoDownloadSubtitles,
+                subtitle: context.l10n.whenTheSourceHasNoSubtitleInYourLanguage,
                 value: _prefs.autoDownloadSubtitles,
                 onChanged: (v) async {
                   await _prefs.setAutoDownloadSubtitles(v);
@@ -1084,8 +1031,8 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.translate_outlined,
-                title: 'Auto-translate subtitles',
-                subtitle: 'Translate to your language on play (when the source has none)',
+                title: context.l10n.autoTranslateSubtitles,
+                subtitle: context.l10n.translateToYourLanguageOnPlayWhenTheSourceHasNone,
                 value: _prefs.autoTranslateSubtitles,
                 onChanged: (v) async {
                   await _prefs.setAutoTranslateSubtitles(v);
@@ -1095,9 +1042,9 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
               if (_prefs.autoTranslateSubtitles)
                 SettingsTile(
                   icon: Icons.g_translate_outlined,
-                  title: 'Translate subtitles to',
+                  title: context.l10n.translateSubtitlesTo,
                   subtitle: _prefs.translateSubtitleTo.isEmpty
-                      ? 'Pick a language'
+                      ? context.l10n.pickALanguage
                       : (languageByPref(_prefs.translateSubtitleTo)?.name ?? _prefs.translateSubtitleTo.toUpperCase()),
                   onTap: _pickTranslateLanguage,
                 ),
@@ -1110,7 +1057,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
 
   Future<void> _pickTranslateLanguage() async {
     final picked = await _pick<String>(
-      title: 'Translate subtitles to',
+      title: context.l10n.translateSubtitlesTo,
       options: [for (final l in kSubtitleLanguages) (l.iso1, l.name)],
       current: _prefs.translateSubtitleTo,
     );

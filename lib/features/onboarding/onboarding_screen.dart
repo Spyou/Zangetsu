@@ -8,6 +8,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../sources/providers_hub_screen.dart';
 import 'onboarding_screen_tv.dart';
+import '../../l10n/l10n.dart';
 
 /// First-run flag, stored in the shared 'app_prefs' Hive box (opened during
 /// [initDependencies]). True once the user has completed onboarding.
@@ -225,7 +226,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       child: TextButton(
                         onPressed: _later,
                         child: Text(
-                          'Skip',
+                          context.l10n.skip,
                           style: AppText.caption.copyWith(
                             color: AppColors.textTertiary,
                           ),
@@ -359,14 +360,13 @@ class _BrandPage extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'Good to have you here.',
+                  context.l10n.goodToHaveYouHere,
                   style: AppText.title,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Anime, manga and novels — all in one app, set up '
-                  'exactly the way you want it.',
+                  context.l10n.onboardingIntro,
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -399,13 +399,13 @@ class _HowItWorksPage extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'You choose what\'s inside',
+                  context.l10n.youChooseWhatsInside,
                   style: AppText.title,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Add the sources you want — here\'s how.',
+                  context.l10n.addTheSourcesYouWant,
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -415,17 +415,17 @@ class _HowItWorksPage extends StatelessWidget {
           const SizedBox(height: 30),
           Transform.translate(
             offset: Offset(delta * 10, 0),
-            child: const Row(
+            child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _EcosystemTile(
                   icon: Icons.movie_filter_outlined,
-                  label: 'Streaming',
+                  label: context.l10n.modeStreaming,
                 ),
-                _EcosystemTile(icon: Icons.menu_book_outlined, label: 'Manga'),
+                _EcosystemTile(icon: Icons.menu_book_outlined, label: context.l10n.modeManga),
                 _EcosystemTile(
                   icon: Icons.auto_stories_outlined,
-                  label: 'Novel',
+                  label: context.l10n.modeNovel,
                 ),
               ],
             ),
@@ -433,13 +433,13 @@ class _HowItWorksPage extends StatelessWidget {
           const SizedBox(height: 32),
           Transform.translate(
             offset: Offset(delta * 22, 0),
-            child: const Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Step(number: 1, label: 'Open Providers'),
-                _Step(number: 2, label: 'Pick streaming, manga or novels'),
-                _Step(number: 3, label: 'Paste in a repository link'),
-                _Step(number: 4, label: 'Browse it and grab what looks good'),
+                _Step(number: 1, label: context.l10n.openProviders),
+                _Step(number: 2, label: context.l10n.pickStreamingMangaOrNovels),
+                _Step(number: 3, label: context.l10n.pasteInARepositoryLink),
+                _Step(number: 4, label: context.l10n.browseAndGrab),
               ],
             ),
           ),
@@ -545,14 +545,13 @@ class _GetGoingPage extends StatelessWidget {
             child: Column(
               children: [
                 Text(
-                  'Ready when you are.',
+                  context.l10n.readyWhenYouAre,
                   style: AppText.title,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Add a source now, or have a look around first — '
-                  'Providers is always waiting in Settings.',
+                  context.l10n.providersWaitingInSettings,
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -573,7 +572,7 @@ class _GetGoingPage extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'Add sources now',
+                context.l10n.addSourcesNow,
                 style: AppText.button.copyWith(color: Colors.white),
               ),
             ),
@@ -582,7 +581,7 @@ class _GetGoingPage extends StatelessWidget {
           TextButton(
             onPressed: onLater,
             child: Text(
-              "I'll do it later",
+              context.l10n.illDoItLater,
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
             ),
           ),

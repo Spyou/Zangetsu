@@ -4,6 +4,7 @@ import '../../core/di/injector.dart';
 import '../../core/torrent/torrent_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
 
 /// Per-torrent behavior settings — currently just the mobile-data gate that
@@ -20,11 +21,11 @@ class _TorrentSettingsScreenState extends State<TorrentSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Torrents'),
+      appBar: settingsAppBar(context.l10n.torrents),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Data'),
+          SettingsSectionLabel(context.l10n.dataSection),
           SettingsCard(
             children: [
               SwitchListTile.adaptive(
@@ -41,7 +42,7 @@ class _TorrentSettingsScreenState extends State<TorrentSettingsScreen> {
                   size: 22,
                 ),
                 title: Text(
-                  'Use mobile data for torrents',
+                  context.l10n.useMobileDataForTorrents,
                   style: AppText.headline.copyWith(
                     color: AppColors.textPrimary,
                     fontWeight: FontWeight.w500,
@@ -54,8 +55,7 @@ class _TorrentSettingsScreenState extends State<TorrentSettingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'Off = torrents only run on Wi-Fi (saves mobile data). '
-              'Streaming a torrent uses a lot of data.',
+              context.l10n.torrentsOffWifiBlurb,
               style: AppText.caption,
             ),
           ),

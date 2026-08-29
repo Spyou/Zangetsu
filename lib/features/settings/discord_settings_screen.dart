@@ -5,6 +5,7 @@ import '../../core/discord/discord_config.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'discord_login_screen.dart';
 
@@ -34,7 +35,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
     setState(() => _busy = false);
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Discord connected')));
+    ).showSnackBar(SnackBar(content: Text(context.l10n.discordConnected)));
   }
 
   Future<void> _disconnect() async {
@@ -42,19 +43,18 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Disconnect Discord?'),
-        content: const Text(
-          'Rich Presence stops and your token is removed from this device. Your '
-          'Discord account is not changed — you can reconnect anytime.',
+        title: Text(context.l10n.disconnectDiscord),
+        content: Text(
+          context.l10n.disconnectDiscordBody,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, true),
-            child: Text('Disconnect', style: TextStyle(color: AppColors.accent)),
+            child: Text(context.l10n.disconnect, style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -72,19 +72,18 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
-        title: const Text('Discord'),
+        title: Text(context.l10n.discord),
       ),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
           if (!DiscordConfig.configured)
-            const SettingsCard(
+            SettingsCard(
               children: [
                 SettingsTile(
                   icon: Icons.warning_amber_rounded,
-                  title: 'Not configured',
-                  subtitle:
-                      'A Discord Application ID must be set in the build first.',
+                  title: context.l10n.notConfigured,
+                  subtitle: context.l10n.aDiscordApplicationIDMustBeSetInTheBuildFirst,
                 ),
               ],
             ),
@@ -94,10 +93,10 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
                 SettingsTile(
                   autofocus: true,
                   icon: Icons.link_rounded,
-                  title: _busy ? 'Connecting…' : 'Connect Discord',
+                  title: _busy ? context.l10n.connectingEllipsis : context.l10n.connectDiscord,
                   subtitle: _busy
                       ? null
-                      : 'Sign in so your status can show on your profile',
+                      : context.l10n.signInSoYourStatusCanShow,
                   onTap: _busy ? null : _connect,
                   trailing: _busy
                       ? const SizedBox(
@@ -114,8 +113,8 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
               children: [
                 SettingsTile(
                   icon: Icons.gamepad_outlined,
-                  title: 'Rich Presence',
-                  subtitle: "Show what you're watching on your profile",
+                  title: context.l10n.richPresence,
+                  subtitle: context.l10n.showWhatYouReWatchingOnYourProfile,
                   onTap: () async {
                     await _rpc.setEnabled(!_rpc.enabled);
                     if (mounted) setState(() {});
@@ -135,7 +134,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
               children: [
                 SettingsTile(
                   icon: Icons.logout_rounded,
-                  title: 'Disconnect',
+                  title: context.l10n.disconnect,
                   destructive: true,
                   onTap: _disconnect,
                 ),
@@ -145,9 +144,7 @@ class _DiscordSettingsScreenState extends State<DiscordSettingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'Shows “Watching <title> • Episode N” (and what you’re browsing) on '
-              'your Discord profile while the app is open. Uses your Discord '
-              'login, stored only on this device. Turn off anytime.',
+              context.l10n.discordPresenceBlurb,
               style: AppText.caption,
             ),
           ),
