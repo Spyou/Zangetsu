@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../core/aniyomi/aniyomi_image_provider.dart';
+import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
@@ -33,8 +35,7 @@ import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
-import '../player/tv_exo_player_screen.dart';
-import '../player/tv_native_player.dart';
+import '../player/tv_playback_launch.dart';
 import '../sources/providers_hub_screen.dart';
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
@@ -60,9 +61,26 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   /// _metaCache; futures are stored so carousel rotation never re-fetches.
   final Map<String, Future<HeroMeta?>> _metaCache = {};
 
+  /// tvOS: defer the Hive listenable until after the shell's first frame lands.
+  bool _historyLive = !isAppleTv;
+
   @override
   void initState() {
     super.initState();
+    if (isAppleTv) {
+      // Let shell chrome paint first, then fetch from the now-loaded provider.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() => _historyLive = true);
+        final cubit = context.read<HomeCubit>();
+        if (tvosProvidersReady &&
+            cubit.state.sections == null &&
+            !cubit.state.loading) {
+          cubit.load();
+        }
+      });
+      return;
+    }
     // Kick the first load ourselves, exactly like the phone home does. main()
     // only calls HomeCubit.load() when isOnboarded() was already true at boot,
     // so someone who just finished onboarding lands here with sections == null
@@ -95,61 +113,28 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       episodes = const [];
     }
     if (!mounted || episodes.isEmpty) return;
-    resolveSources(String u) => sl<SourceRepository>().sources(
-      u,
+    resolveSources(String u) =>
+        sl<SourceRepository>().sources(u, sourceId: item.sourceId, fast: true);
+    await launchTvPlayback(
+      context: context,
       sourceId: item.sourceId,
-      fast: true,
-    );
-    // Beta: fully-native TV player (real-window SurfaceView) for TVs that
-    // black-screen the Flutter platform-view player. Opt-in; phone unaffected.
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      await TvNativePlayer.play(
-        sourceId: item.sourceId,
-        episodes: episodes,
-        startIndex: 0,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: item.url,
-        showTitle: item.title,
-        cover: item.cover,
-        coverHeaders: item.coverHeaders,
-        category: category,
-        availableCategories: [
-          if ((item.subCount ?? 0) > 0) 'sub',
-          if ((item.dubCount ?? 0) > 0) 'dub',
-        ],
-        malId: item.malId,
-        scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
-        tmdbId: item.tmdbId,
-        tmdbIsTv: item.tmdbIsTv,
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: item.sourceId,
-          episodes: episodes,
-          startIndex: 0,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showTitle: item.title,
-          showUrl: item.url,
-          cover: item.cover,
-          coverHeaders: item.coverHeaders,
-          category: category,
-          availableCategories: [
-            if ((item.subCount ?? 0) > 0) 'sub',
-            if ((item.dubCount ?? 0) > 0) 'dub',
-          ],
-          malId: item.malId,
-          scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
-          tmdbId: item.tmdbId,
-          tmdbIsTv: item.tmdbIsTv,
-        ),
-      ),
+      episodes: episodes,
+      startIndex: 0,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: item.url,
+      showTitle: item.title,
+      cover: item.cover,
+      coverHeaders: item.coverHeaders,
+      category: category,
+      availableCategories: [
+        if ((item.subCount ?? 0) > 0) 'sub',
+        if ((item.dubCount ?? 0) > 0) 'dub',
+      ],
+      malId: item.malId,
+      scrobbleTitle: item.type == ProviderType.anime ? item.title : null,
+      tmdbId: item.tmdbId,
+      tmdbIsTv: item.tmdbIsTv,
     );
     if (mounted) setState(() {});
   }
@@ -171,47 +156,22 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     if (!mounted || episodes.isEmpty) return;
     var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
     if (idx < 0) idx = 0;
-    resolveSources(String u) => sl<SourceRepository>().sources(
-      u,
+    resolveSources(String u) =>
+        sl<SourceRepository>().sources(u, sourceId: e.sourceId, fast: true);
+    await launchTvPlayback(
+      context: context,
       sourceId: e.sourceId,
-      fast: true,
-    );
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      await TvNativePlayer.play(
-        sourceId: e.sourceId,
-        episodes: episodes,
-        startIndex: idx,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: e.showUrl,
-        showTitle: e.showTitle,
-        cover: e.cover,
-        coverHeaders: e.coverHeaders,
-        category: e.category,
-        malId: e.malId,
-        scrobbleTitle: e.malId != null ? e.showTitle : null,
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    await Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: e.sourceId,
-          episodes: episodes,
-          startIndex: idx,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showTitle: e.showTitle,
-          showUrl: e.showUrl,
-          cover: e.cover,
-          coverHeaders: e.coverHeaders,
-          category: e.category,
-          malId: e.malId,
-          scrobbleTitle: e.malId != null ? e.showTitle : null,
-        ),
-      ),
+      episodes: episodes,
+      startIndex: idx,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: e.showUrl,
+      showTitle: e.showTitle,
+      cover: e.cover,
+      coverHeaders: e.coverHeaders,
+      category: e.category,
+      malId: e.malId,
+      scrobbleTitle: e.malId != null ? e.showTitle : null,
     );
     if (mounted) setState(() {});
   }
@@ -482,7 +442,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       // off history.isEmpty) reacts the instant the cloud pull lands — the pull
       // finishes AFTER this build on login / boot-migration. The box is opened
       // at boot; guard for a signed-out render and the test env where it isn't.
-      body: (loggedIn && Hive.isBoxOpen(WatchHistory.boxName))
+      body: (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
           ? ValueListenableBuilder(
               valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
               builder: (context, _, _) =>

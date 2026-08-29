@@ -509,6 +509,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
                             thumb.isNotEmpty
                                 ? CachedNetworkImage(
                                     imageUrl: thumb,
+                                    cacheManager: AppImageCache.cacheManagerOrDefault,
                                     httpHeaders: widget.coverHeaders,
                                     fit: BoxFit.cover,
                                     memCacheWidth: 240,

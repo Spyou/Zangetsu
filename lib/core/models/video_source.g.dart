@@ -49,6 +49,9 @@ VideoSource _$VideoSourceFromJson(Map<String, dynamic> json) => VideoSource(
           ?.map((e) => Subtitle.fromJson(e as Map<String, dynamic>))
           .toList() ??
       [],
+  subtitleSkewSeconds: (json['subtitleSkewSeconds'] as num?)?.toDouble(),
+  subtitleSkewAfterSeconds:
+      (json['subtitleSkewAfterSeconds'] as num?)?.toDouble(),
 );
 
 Map<String, dynamic> _$VideoSourceToJson(VideoSource instance) =>
@@ -61,6 +64,8 @@ Map<String, dynamic> _$VideoSourceToJson(VideoSource instance) =>
       'kind': _$AudioKindEnumMap[instance.kind]!,
       'audioLang': instance.audioLang,
       'subtitles': instance.subtitles.map((e) => e.toJson()).toList(),
+      'subtitleSkewSeconds': instance.subtitleSkewSeconds,
+      'subtitleSkewAfterSeconds': instance.subtitleSkewAfterSeconds,
     };
 
 const _$SourceContainerEnumMap = {

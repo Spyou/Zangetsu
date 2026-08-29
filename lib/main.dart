@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
@@ -10,10 +11,12 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
+import 'core/app_mode.dart';
 import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
 import 'core/logging/app_logger.dart';
+import 'core/platform/apple_tv.dart';
 import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
@@ -28,6 +31,7 @@ import 'core/state/active_source_cubit.dart';
 import 'core/locale/locale_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/tv/tv_viewport.dart';
 import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
@@ -40,7 +44,8 @@ import 'features/watch_together/ui/party_bar.dart';
 Future<void> main() async {
   // Run inside a guarded zone so uncaught async errors land in the shareable
   // in-app log (binding + runApp must share this zone — hence both inside).
-  runZonedGuarded(() async {
+  runZonedGuarded(
+    () async {
     WidgetsFlutterBinding.ensureInitialized();
     await AppLogger.instance.init();
     // Mirror debugPrint into the log (still prints to the console too).
@@ -77,6 +82,11 @@ Future<void> main() async {
     } catch (e, st) {
       AppLogger.instance.logError(e, st);
     }
+    // Resolve Apple TV before Supabase / media_kit — Dart reports tvOS as iOS,
+    // and the version string often has no "tvos" token, so we ask the native
+    // runner. Must run before Supabase: its default auth deep-link observer uses
+    // app_links, which has no tvOS plugin (MissingPluginException).
+    final appleTv = await resolveAppleTv();
     // Bounded + guarded like Firebase/MediaKit: on a dead/slow network the
     // session-restore inside initialize can HANG (a hang never throws, so a
     // try/catch alone wouldn't save us), and this runs BEFORE runApp — an
@@ -89,6 +99,8 @@ Future<void> main() async {
       await Supabase.initialize(
         url: Environment.supabaseUrl,
         anonKey: Environment.supabaseAnonKey,
+        // TV auth uses QR pairing, not OAuth redirect deep links.
+          authOptions: FlutterAuthClientOptions(detectSessionInUri: !appleTv),
       ).timeout(const Duration(seconds: 8));
       supabaseOk = true;
     } catch (e, st) {
@@ -97,22 +109,25 @@ Future<void> main() async {
     // Boot init failed (dead/slow network) → keep retrying in the background so
     // login + cloud sync self-heal when the network returns, no restart needed.
     if (!supabaseOk) unawaited(_retrySupabaseInit());
-    // The media_kit mpv fork's native init throws on some old Android 8 / Fire TV
-    // devices (its newer native libs don't load there). Uncaught, that throw
-    // skips runApp below and the whole app black-screens with no widget tree —
-    // which is exactly what those devices showed. Guard it so the UI always
-    // renders; playback may be unavailable on that hardware, but the app works.
-    try {
-      MediaKit.ensureInitialized();
-    } catch (e, st) {
-      AppLogger.instance.logError(e, st);
+    // media_kit (libmpv) has no tvOS libs — Apple TV plays via AVPlayer instead.
+    // Calling ensureInitialized here prints + throws and used to derail boot.
+    // On old Android 8 / Fire TV the native libs can also fail to load; guard
+    // those so the UI still comes up (playback may be unavailable there).
+    if (!appleTv) {
+      try {
+        MediaKit.ensureInitialized();
+      } catch (e, st) {
+        AppLogger.instance.logError(e, st);
+      }
     }
     // Dependency init happens inside the boot gate so the splash shows
     // immediately instead of a blank screen.
     runApp(const WatchApp());
-  }, (error, stack) {
+    },
+    (error, stack) {
     AppLogger.instance.logError(error, stack);
-  });
+    },
+  );
 }
 
 /// True once Supabase.initialize has set up its singleton. Accessing
@@ -139,6 +154,7 @@ Future<void> _retrySupabaseInit() async {
       await Supabase.initialize(
         url: Environment.supabaseUrl,
         anonKey: Environment.supabaseAnonKey,
+        authOptions: FlutterAuthClientOptions(detectSessionInUri: !isAppleTv),
       ).timeout(const Duration(seconds: 8));
       break; // initialized
     } catch (_) {
@@ -166,14 +182,72 @@ class WatchApp extends StatefulWidget {
 
 class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// Startup, with a watchdog. NOT `late final` — Try again reassigns it.
-  ///
-  /// The timeout matters as much as the try/catch: a boot step that HANGS
-  /// (a network read with no deadline, a wedged plugin) never throws, so
-  /// without a deadline the splash stays up forever exactly as if it had
-  /// crashed. 45s is far beyond a normal cold start on slow hardware.
   late Future<void> _boot = _startBoot();
+  bool _bootReady = false;
+
+  /// True once [initDependencies] finishes — cubits exist for the shell route.
+  bool _depsReady = false;
+
+  /// True once [Navigator.pushReplacement] has swapped splash → shell (non-tvOS).
+  bool _shellRoutePushed = false;
+
+  /// Drives the already-mounted tvOS initial route directly. Rebuilding
+  /// MaterialApp does not update that route on physical Apple TV.
+  final ValueNotifier<bool> _tvShellGate = ValueNotifier<bool>(false);
+  bool _bootFailed = false;
+  Object? _bootError;
+  StackTrace? _bootStack;
 
   Future<void> _startBoot() => _run().timeout(const Duration(seconds: 45));
+
+  void _watchBoot(Future<void> boot) {
+    boot
+        .then((_) {
+          if (!mounted) return;
+          setState(() => _bootReady = true);
+          if (isAppleTv) {
+            // Never mount RootShell during pushReplacement on tvOS — building the
+            // full shell synchronously wedged the isolate for seconds while the
+            // splash frame stayed composited. Load provider JS first, then reveal
+            // the already-mounted [_TvBootGate].
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              unawaited(_finishAppleTvBoot());
+            });
+          } else {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _pushShellRouteIfNeeded();
+            });
+          }
+          if (!_handledLaunchTaps) {
+            _handledLaunchTaps = true;
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => NotificationService.instance.handleLaunch(),
+            );
+          }
+        })
+        .catchError((Object e, StackTrace st) {
+          if (!mounted) return;
+          setState(() {
+            _bootFailed = true;
+            _bootError = e;
+            _bootStack = st;
+          });
+        });
+  }
+
+  /// tvOS-only second boot phase: provider eval, then reveal the shell.
+  Future<void> _finishAppleTvBoot() async {
+    await runDeferredAppleTvBootTasks();
+    if (!mounted || !_bootReady || _bootFailed || !_depsReady) {
+      debugPrint(
+        '[boot] tvOS shell reveal skipped · mounted=$mounted '
+        'boot=$_bootReady deps=$_depsReady failed=$_bootFailed',
+      );
+      return;
+    }
+    _tvShellGate.value = true;
+    setState(() {});
+  }
 
   /// Re-runs startup after a failure. GetIt must be cleared first — every
   /// registerSingleton in initDependencies throws if the type is already
@@ -182,9 +256,29 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Future<void> _retryBoot() async {
     try {
       await sl.reset();
-    } catch (_) {/* nothing registered yet — fine */}
-    if (mounted) setState(() => _boot = _startBoot());
+    } catch (_) {
+      /* nothing registered yet — fine */
   }
+    if (!mounted) return;
+    if (!isAppleTv) {
+      rootNavigatorKey.currentState?.pushReplacement(
+        MaterialPageRoute<void>(builder: (_) => const SplashScreen()),
+      );
+    }
+    setState(() {
+      _bootReady = false;
+      _depsReady = false;
+      _shellRoutePushed = false;
+      _bootFailed = false;
+      _bootError = null;
+      _bootStack = null;
+      _handledLaunchTaps = false;
+      _boot = _startBoot();
+    });
+    _tvShellGate.value = false;
+    _watchBoot(_boot);
+  }
+
   bool? _onboardedOverride; // set true once onboarding finishes this session
   bool _handledLaunchTaps = false; // route a notification-tap launch once
 
@@ -194,7 +288,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   static const Duration _syncFreshness = Duration(minutes: 2);
 
   void _onThemeChanged() {
-    if (mounted) setState(() {}); // accent changed → rebuild so the app recolours
+    if (mounted) {
+      setState(() {}); // accent changed → rebuild so the app recolours
+    }
   }
 
   void _onLocaleChanged() {
@@ -207,6 +303,7 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
     LocaleController.revision.addListener(_onLocaleChanged);
+    _watchBoot(_boot);
   }
 
   @override
@@ -214,31 +311,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     ThemeController.revision.removeListener(_onThemeChanged);
     LocaleController.revision.removeListener(_onLocaleChanged);
     WidgetsBinding.instance.removeObserver(this);
+    _tvShellGate.dispose();
     super.dispose();
-  }
-
-  MaterialApp _rootMaterialApp({
-    required Widget home,
-    GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey,
-    GlobalKey<NavigatorState>? navigatorKey,
-    List<NavigatorObserver>? navigatorObservers,
-    TransitionBuilder? builder,
-  }) {
-    return MaterialApp(
-      title: kAppName,
-      theme: buildAppTheme(),
-      debugShowCheckedModeBanner: false,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: LocaleController.locale,
-      localeResolutionCallback: (locale, supported) =>
-          resolveAppLocale(locale, supported),
-      scaffoldMessengerKey: scaffoldMessengerKey,
-      navigatorKey: navigatorKey,
-      navigatorObservers: navigatorObservers ?? const [],
-      home: home,
-      builder: builder,
-    );
   }
 
   @override
@@ -264,7 +338,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// [MyListStore.pullFromCloudIfStale], so rapid app-switching doesn't hammer
   /// the DB). Also flushes any un-synced My List adds.
   void _syncOnResume() {
-    if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) return;
+    if (!sl.isRegistered<AuthCubit>() || !sl<AuthCubit>().state.isLoggedIn) {
+      return;
+    }
     unawaited(sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
     unawaited(sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness));
@@ -280,6 +356,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   Future<void> _run() async {
     final start = DateTime.now();
     await initDependencies();
+    if (mounted) {
+      setState(() => _depsReady = true);
+      if (_bootReady) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _pushShellRouteIfNeeded();
+        });
+      }
+    }
     // Show the real build version in Settings/About instead of a stale literal.
     try {
       final info = await PackageInfo.fromPlatform();
@@ -294,33 +378,32 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     try {
       await sl<AuthCubit>().restore().timeout(const Duration(seconds: 5));
       if (sl<AuthCubit>().state.isLoggedIn) {
-        // One-time-per-account backfill: push local library up BEFORE the pull
-        // so a sparse/orphaned cloud (e.g. rows stranded under an old id by the
-        // Appwrite→Supabase move) can't wipe this device's local cache. No-op
-        // after it succeeds once.
+        Future<void> cloudSync() async {
         await Future.wait([
           sl<MyListStore>().seedCloudIfNeeded(),
           sl<WatchHistory>().seedCloudIfNeeded(),
           sl<ReadHistory>().seedCloudIfNeeded(),
         ]).timeout(const Duration(seconds: 8));
-        // Launch path: re-pull when the local cache is older than a couple of
-        // minutes so a device that was away picks up the other device's changes
-        // on open. Reads are tiny SELECTs (whole library is a few KB) and writes
-        // stay throttled, so this is cheap on the DB. Also pulled on resume.
         await Future.wait([
           sl<MyListStore>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<WatchHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<ReadHistory>().pullFromCloudIfStale(maxAge: _syncFreshness),
           sl<CategoryStore>().pullFromCloud(),
         ]).timeout(const Duration(seconds: 6));
-        // Self-heal: push up any local My List adds that never reached the cloud
-        // (e.g. a past write outage). No-op when nothing is pending, so it makes
-        // zero writes in normal use. Fire-and-forget so it never delays launch.
         unawaited(sl<MyListStore>().retryPending());
+      }
+
+        // tvOS: never block the splash on cloud I/O — sync after the shell is up.
+        if (isAppleTv) {
+          unawaited(cloudSync().catchError((_) {}));
+        } else {
+          await cloudSync();
+        }
       }
     } catch (_) {}
     if (isOnboarded()) {
-      sl<HomeCubit>().load(); // fire-and-forget warm for the active source
+      // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
+      if (!isAppleTv) sl<HomeCubit>().load();
       // CloudStream-style "new episode" check: once the app is up, re-fetch
       // each subscribed show's episodes (JS or CS) and notify on any increase.
       // Fire-and-forget + delayed so it doesn't compete with the splash/home.
@@ -352,16 +435,26 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   /// listener mounts, so no double pull).
   Future<void> _onAuthChange(BuildContext context, AuthState state) async {
     if (state.status == AuthStatus.authenticated) {
-      // Backfill local → cloud once (per account) before the destructive pull,
-      // so a sparse/orphaned cloud can't wipe this device's local library.
+      Future<void> sync() async {
       await sl<MyListStore>().seedCloudIfNeeded();
       await sl<WatchHistory>().seedCloudIfNeeded();
       await sl<ReadHistory>().seedCloudIfNeeded();
       await sl<MyListStore>().pullFromCloud();
       await sl<WatchHistory>().pullFromCloud();
       await sl<ReadHistory>().pullFromCloud();
-      unawaited(sl<MyListStore>().retryPending()); // flush any un-synced adds
-      sl<HomeCubit>().load(); // surface pulled Continue Watching
+        unawaited(sl<MyListStore>().retryPending());
+        if (!isAppleTv || tvosProvidersReady) {
+          sl<HomeCubit>().load();
+        }
+      }
+
+      if (isAppleTv) {
+        unawaited(
+          sync().timeout(const Duration(seconds: 20)).catchError((_) {}),
+        );
+      } else {
+        await sync();
+      }
     } else if (state.status == AuthStatus.unauthenticated) {
       await sl<MyListStore>().clearLocal();
       await sl<WatchHistory>().clearLocal();
@@ -369,63 +462,85 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _boot,
-      builder: (context, snap) {
-        // Startup failed (threw, or the watchdog fired). This used to fall into
-        // the splash branch below and sit there forever — no message, nothing
-        // to tap, reinstall the only way out. Show what happened and offer a
-        // way back instead.
-        if (snap.hasError) {
-          AppLogger.instance.logError(
-            snap.error ?? 'startup failed',
-            snap.stackTrace,
+  Widget _buildShellHome() {
+    final onboarded = _onboardedOverride ?? isOnboarded();
+    return onboarded
+        ? RootShell()
+        : OnboardingScreen(
+            onDone: () {
+              setState(() => _onboardedOverride = true);
+              if (isAppleTv) {
+                // The Navigator retains its initial _TvBootGate route. Its
+                // boolean is already true, so parent setState alone cannot
+                // replace the Onboarding child; notify the mounted gate again.
+                _tvShellGate
+                  ..value = false
+                  ..value = true;
+              } else {
+                rootNavigatorKey.currentState?.pushReplacement(
+                  MaterialPageRoute<void>(builder: (_) => RootShell()),
           );
-          return _rootMaterialApp(
-            home: BootErrorScreen(
-              details: '${snap.error}\n\n${snap.stackTrace ?? ''}'.trim(),
-              onRetry: _retryBoot,
-            ),
+              }
+            },
           );
         }
-        // Still initializing → splash. No cubits are needed yet, so a bare
-        // MaterialApp is enough.
-        if (snap.connectionState != ConnectionState.done) {
-          return _rootMaterialApp(home: const SplashScreen());
+
+  /// Swaps the splash route for the real shell (phone / Android TV only).
+  void _pushShellRouteIfNeeded() {
+    if (isAppleTv) return;
+    if (_shellRoutePushed || !_bootReady || _bootFailed || !_depsReady) return;
+    final nav = rootNavigatorKey.currentState;
+    if (nav == null) return;
+    nav.pushReplacement(
+      PageRouteBuilder<void>(
+        pageBuilder: (_, _, _) => _buildShellHome(),
+        transitionDuration: Duration.zero,
+        reverseTransitionDuration: Duration.zero,
+      ),
+          );
+    _shellRoutePushed = true;
+    if (mounted) setState(() {});
         }
-        // Dependencies ready — sl<> is resolvable from here on.
-        final onboarded = _onboardedOverride ?? isOnboarded();
-        final Widget home = onboarded
-            ? RootShell() // not const: rebuilds to recolour on accent change
-            : OnboardingScreen(
-                onDone: () => setState(() => _onboardedOverride = true),
+
+  Widget _buildHome() {
+    if (_bootFailed) {
+      AppLogger.instance.logError(_bootError ?? 'startup failed', _bootStack);
+      return BootErrorScreen(
+        details: '$_bootError\n\n${_bootStack ?? ''}'.trim(),
+        onRetry: _retryBoot,
               );
-        // Once the real UI (with the global navigator) is up, open the show if
-        // the app was launched by tapping a "new episode" notification.
-        if (!_handledLaunchTaps) {
-          _handledLaunchTaps = true;
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => NotificationService.instance.handleLaunch(),
+    }
+    if (isAppleTv) {
+      // Keep ONE widget as [MaterialApp.home] for the app lifetime — changing
+      // `home` from SplashScreen to RootShell does not replace the Navigator's
+      // initial route on tvOS (logs show "shell visible" while splash stays up).
+      return _TvBootGate(
+        showShell: _tvShellGate,
+        shellBuilder: _buildShellHome,
           );
         }
-        // Providers wrap the MaterialApp so its Navigator (and every pushed
-        // route) is a descendant of them.
-        return MultiBlocProvider(
-          providers: [
-            BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
-            BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
-          ],
-          child: BlocListener<AuthCubit, AuthState>(
-            listenWhen: (p, c) => p.status != c.status,
-            listener: _onAuthChange,
-            child: _rootMaterialApp(
-              scaffoldMessengerKey: rootMessengerKey,
+    return const SplashScreen();
+  }
+
+  Widget _buildMaterialApp({required bool shellFeatures}) {
+    return MaterialApp(
+              title: kAppName,
+              theme: buildAppTheme(),
+              debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: LocaleController.locale,
+      localeResolutionCallback: (locale, supported) =>
+          resolveAppLocale(locale, supported),
+      scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
               navigatorKey: rootNavigatorKey,
-              navigatorObservers: [Analytics.observer, appRouteObserver],
-              home: home,
-              builder: (context, child) => Stack(
+      navigatorObservers: shellFeatures
+          ? [Analytics.observer, appRouteObserver]
+          : const [],
+      home: _buildHome(),
+      builder: (_, child) {
+        final content = shellFeatures
+            ? Stack(
                 children: [
                   ?child,
                   const Positioned(
@@ -440,10 +555,53 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
                     ),
                   ),
                 ],
-              ),
-            ),
+              )
+            : (child ?? const SizedBox.shrink());
+        final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+        return isTv ? TvViewport(child: content) : content;
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shellFeatures = isAppleTv
+        ? (_tvShellGate.value && _depsReady && !_bootFailed)
+        : (_shellRoutePushed && !_bootFailed);
+    final app = _buildMaterialApp(shellFeatures: shellFeatures);
+
+    if (!_depsReady) return app;
+
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<ActiveSourceCubit>.value(value: sl<ActiveSourceCubit>()),
+        BlocProvider<AuthCubit>.value(value: sl<AuthCubit>()),
+      ],
+      child: BlocListener<AuthCubit, AuthState>(
+        listenWhen: (p, c) => p.status != c.status,
+        listener: _onAuthChange,
+        child: app,
           ),
         );
+  }
+}
+
+/// tvOS boot gate: always the [MaterialApp.home] route so toggling [showShell]
+/// swaps children in-place instead of changing `home` (which does not replace
+/// the Navigator's initial route after first paint on physical Apple TV).
+class _TvBootGate extends StatelessWidget {
+  const _TvBootGate({required this.showShell, required this.shellBuilder});
+
+  final ValueListenable<bool> showShell;
+  final Widget Function() shellBuilder;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: showShell,
+      builder: (_, visible, _) {
+        if (visible) return RepaintBoundary(child: shellBuilder());
+        return const SplashScreen();
       },
     );
   }

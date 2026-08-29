@@ -31,7 +31,7 @@
 
         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|start" android:layout_marginStart="44dp" android:layout_marginTop="30dp" android:orientation="vertical">
 
-            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="760dp" android:ellipsize="end" android:maxLines="1" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" tools:ignore="HardcodedText" />
+            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="500dp" android:ellipsize="marquee" android:maxLines="1" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" tools:ignore="HardcodedText" />
 
             <TextView android:id="@+id/episode_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textColor="#CCFFFFFF" android:textSize="15sp" />
 
@@ -78,6 +78,8 @@
                 <TextView android:id="@+id/btn_episodes" style="@style/TvPillButtonSmall" android:drawableStart="@drawable/ic_tv_episodes" android:text="Episodes" tools:ignore="HardcodedText" />
 
                 <TextView android:id="@+id/btn_next" style="@style/TvPillButtonSmall" android:layout_marginStart="10dp" android:drawableStart="@drawable/ic_tv_next" android:text="Next Episode" tools:ignore="HardcodedText" />
+
+                <TextView android:id="@+id/btn_ratio" style="@style/TvPillButtonSmall" android:layout_marginStart="10dp" android:drawableStart="@drawable/ic_aspect_ratio_fit" android:text="Fit" tools:ignore="HardcodedText" />
 
                 <!-- MegaSkip: manual jump-forward N seconds (Aniyomi-style).
                      Text + visibility set in code from the megaSkip prefs. -->

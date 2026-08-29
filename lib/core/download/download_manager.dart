@@ -14,6 +14,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../logging/app_logger.dart';
 import '../models/episode.dart';
 import '../models/video_source.dart';
+import '../platform/apple_tv.dart';
 import '../repository/source_repository.dart';
 import '../torrent/torrent_download_service.dart';
 import '../torrent/torrent_prefs.dart';
@@ -51,7 +52,8 @@ class DownloadManager extends ChangeNotifier {
   }
 
   Box<Map> get _box => Hive.box<Map>(boxName);
-  final FileDownloader _dl = FileDownloader();
+  FileDownloader? _dl;
+  FileDownloader get _fileDownloader => _dl ??= FileDownloader();
   // Throttles direct-file (MP4) downloads to the "Parallel downloads" setting.
   // background_downloader runs enqueued tasks concurrently, so without this the
   // limit was silently HLS-only. The queue holds extras until a slot frees.
@@ -80,16 +82,23 @@ class DownloadManager extends ChangeNotifier {
       final r = DownloadRecord.fromMap(raw);
       _records[r.id] = r;
     }
-    _dl.configureNotification(
+    // background_downloader persists to Application Support, which tvOS cannot
+    // create — constructing FileDownloader there logs errors and can stall boot.
+    if (isAppleTv) {
+      _listenTorrentDownloads();
+      return;
+    }
+    final dl = _fileDownloader;
+    dl.configureNotification(
       running: const TaskNotification('Downloading', '{filename}'),
       complete: const TaskNotification('Downloaded', '{filename}'),
       error: const TaskNotification('Download failed', '{filename}'),
       progressBar: true,
     );
-    _sub = _dl.updates.listen(_onUpdate);
+    _sub = dl.updates.listen(_onUpdate);
     // Route MP4 downloads through the concurrency-limited queue.
     _mp4Queue.maxConcurrent = _downloadPrefs.parallelDownloads;
-    _dl.addTaskQueue(_mp4Queue);
+    dl.addTaskQueue(_mp4Queue);
     // A task the queue couldn't enqueue at all (rare) → same fallback as a
     // failed start: try the next mirror, else mark failed.
     _mp4Queue.enqueueErrors.listen((task) async {
@@ -123,65 +132,78 @@ class DownloadManager extends ChangeNotifier {
     // so nudge it, otherwise raising the limit wouldn't start queued downloads
     // until the current one ended.
     _mp4Queue.advanceQueue();
-    DownloadService.instance.invoke('setParallel', {'n': v});
+    if (!isAppleTv) {
+      try {
+        DownloadService.instance.invoke('setParallel', {'n': v});
+      } catch (_) {}
+    }
   }
 
   /// Apply progress/done/failed events the foreground-service isolate sends for
   /// HLS downloads (live, while the UI is alive).
   void _listenBackgroundService() {
-    final svc = DownloadService.instance;
-    svc.on('progress').listen((d) {
-      final id = d?['id'] as String?;
-      if (id == null) return;
-      final rec = _records[id];
-      if (rec == null || rec.status == DownloadStatus.canceled) return;
-      final p = (d?['progress'] as num?)?.toDouble() ?? rec.progress;
-      _put(rec.copyWith(status: DownloadStatus.downloading, progress: p));
-      notifyListeners();
-    });
-    svc.on('done').listen((d) async {
-      final id = d?['id'] as String?;
-      if (id == null) return;
-      final rec = _records[id];
-      if (rec == null) return;
-      _candidates.remove(id);
-      var path = d?['filePath'] as String?;
-      // The isolate handed back the local .ts temp; remux it to a real .mp4
-      // (Android) and move it into shared storage / the user's SAF folder here.
-      if (path != null && d?['needsFinalize'] == true) {
-        final finalized = await _finalizeHls(
-          path,
-          customUri: d?['customUri'] as String?,
-          subDir: d?['sharedSubDir'] as String?,
+    // tvOS (and any host without the plugin) — touching FlutterBackgroundService
+    // throws as soon as the platform instance is read.
+    if (isAppleTv) return;
+    try {
+      final svc = DownloadService.instance;
+      svc.on('progress').listen((d) {
+        final id = d?['id'] as String?;
+        if (id == null) return;
+        final rec = _records[id];
+        if (rec == null || rec.status == DownloadStatus.canceled) return;
+        final p = (d?['progress'] as num?)?.toDouble() ?? rec.progress;
+        _put(rec.copyWith(status: DownloadStatus.downloading, progress: p));
+        notifyListeners();
+      });
+      svc.on('done').listen((d) async {
+        final id = d?['id'] as String?;
+        if (id == null) return;
+        final rec = _records[id];
+        if (rec == null) return;
+        _candidates.remove(id);
+        var path = d?['filePath'] as String?;
+        // The isolate handed back the local .ts temp; remux it to a real .mp4
+        // (Android) and move it into shared storage / the user's SAF folder here.
+        if (path != null && d?['needsFinalize'] == true) {
+          final finalized = await _finalizeHls(
+            path,
+            customUri: d?['customUri'] as String?,
+            subDir: d?['sharedSubDir'] as String?,
+          );
+          if (finalized != null) path = finalized;
+        }
+        await _markDone(rec, path);
+        notifyListeners();
+      });
+      svc.on('failed').listen((d) async {
+        final id = d?['id'] as String?;
+        if (id == null) return;
+        final rec = _records[id];
+        if (rec == null || d?['canceled'] == true) return;
+        final err = d?['error'] as String? ?? 'Download failed';
+        AppLogger.instance.log(
+          '[download] HLS failed — ${rec.showTitle} · ${rec.episodeTitle} '
+          '[${rec.quality}]: $err',
+          level: 'E',
         );
-        if (finalized != null) path = finalized;
-      }
-      await _markDone(rec, path);
-      notifyListeners();
-    });
-    svc.on('failed').listen((d) async {
-      final id = d?['id'] as String?;
-      if (id == null) return;
-      final rec = _records[id];
-      if (rec == null || d?['canceled'] == true) return;
-      final err = d?['error'] as String? ?? 'Download failed';
-      AppLogger.instance.log(
-        '[download] HLS failed — ${rec.showTitle} · ${rec.episodeTitle} '
-        '[${rec.quality}]: $err',
-        level: 'E',
-      );
-      if (await _tryNext(rec)) return; // fell back to another mirror
-      _put(rec.copyWith(
-        status: DownloadStatus.failed,
-        error: () => err,
-      ));
-      notifyListeners();
-    });
+        if (await _tryNext(rec)) return; // fell back to another mirror
+        _put(rec.copyWith(
+          status: DownloadStatus.failed,
+          error: () => err,
+        ));
+        notifyListeners();
+      });
+    } catch (_) {
+      // Plugin absent — HLS background path unavailable on this platform.
+    }
   }
 
   /// Apply progress events from the native torrent download engine onto records
   /// (peers/speed are cached in [torrentProgress] for the UI).
   void _listenTorrentDownloads() {
+    // Android-only Method/EventChannel — tvOS has no torrent engine.
+    if (isAppleTv) return;
     _torrentSvc.events().listen((p) async {
       final rec = _records[p.id];
       if (rec == null || rec.status == DownloadStatus.canceled) return;
@@ -529,6 +551,11 @@ class DownloadManager extends ChangeNotifier {
           '${dir.path}/${safeShow}_E${rec.episodeNumber?.toInt() ?? ''}'
           '_${_safe(rec.quality)}.ts';
 
+      // Background HLS isolate needs flutter_background_service (Android/iOS only).
+      if (isAppleTv) {
+        throw UnsupportedError('Background HLS downloads are not available on Apple TV');
+      }
+
       if (!await DownloadService.instance.isRunning()) {
         await DownloadService.instance.startService();
       }
@@ -664,7 +691,7 @@ class DownloadManager extends ChangeNotifier {
       return moved ?? publish;
     }
     try {
-      final moved = await _dl.moveFileToSharedStorage(
+      final moved = await _fileDownloader.moveFileToSharedStorage(
         publish,
         SharedStorage.downloads,
         directory: dir,
@@ -777,7 +804,7 @@ class DownloadManager extends ChangeNotifier {
       return;
     }
     final t = _tasks[rec.id];
-    if (t != null) await _dl.pause(t);
+    if (t != null) await _fileDownloader.pause(t);
   }
 
   Future<void> resume(DownloadRecord rec) async {
@@ -791,7 +818,7 @@ class DownloadManager extends ChangeNotifier {
     }
     final t = _tasks[rec.id];
     if (t != null) {
-      await _dl.resume(t);
+      await _fileDownloader.resume(t);
     } else {
       // Task object lost (e.g. after restart) — re-resolve and enqueue.
       await _resolveAndEnqueue(rec.copyWith(status: DownloadStatus.queued));
@@ -828,9 +855,13 @@ class DownloadManager extends ChangeNotifier {
     }
     _mp4Queue.removeTasksWithIds([rec.id]); // drop it if still waiting in line
     try {
-      await _dl.cancelTaskWithId(rec.id); // direct-file task (if enqueued/running)
+      await _fileDownloader.cancelTaskWithId(rec.id); // direct-file task (if enqueued/running)
     } catch (_) {}
-    DownloadService.instance.invoke('cancel', {'id': rec.id}); // HLS job (if any)
+    if (!isAppleTv) {
+      try {
+        DownloadService.instance.invoke('cancel', {'id': rec.id}); // HLS job (if any)
+      } catch (_) {}
+    }
     _tasks.remove(rec.id);
   }
 
@@ -848,9 +879,13 @@ class DownloadManager extends ChangeNotifier {
       torrentProgress.remove(rec.id);
     }
     try {
-      await _dl.cancelTaskWithId(rec.id);
+      await _fileDownloader.cancelTaskWithId(rec.id);
     } catch (_) {}
-    DownloadService.instance.invoke('cancel', {'id': rec.id}); // stop HLS job
+    if (!isAppleTv) {
+      try {
+        DownloadService.instance.invoke('cancel', {'id': rec.id}); // stop HLS job
+      } catch (_) {}
+    }
     _tasks.remove(rec.id);
     // Remove any saved subtitle sidecar files too.
     for (final s in rec.subtitles) {
@@ -1092,7 +1127,7 @@ class DownloadManager extends ChangeNotifier {
       final size = await _documentSize(path);
       if (size > 0 && size < 524288) {
         try {
-          await _dl.uri.deleteFile(Uri.parse(path));
+          await _fileDownloader.uri.deleteFile(Uri.parse(path));
         } catch (_) {}
         if (await _tryNext(rec)) return;
         _put(
@@ -1137,7 +1172,7 @@ class DownloadManager extends ChangeNotifier {
         path = await _moveToVolume(await task.filePath(), loc, subDir);
       } else {
         try {
-          path = await _dl.moveToSharedStorage(
+          path = await _fileDownloader.moveToSharedStorage(
             task,
             SharedStorage.downloads,
             directory: subDir,
@@ -1165,7 +1200,7 @@ class DownloadManager extends ChangeNotifier {
     if (fp == null || fp.isEmpty) return;
     try {
       if (isUriPath(fp)) {
-        await _dl.uri.deleteFile(Uri.parse(fp));
+        await _fileDownloader.uri.deleteFile(Uri.parse(fp));
       } else {
         final f = File(fp);
         try {
@@ -1173,7 +1208,7 @@ class DownloadManager extends ChangeNotifier {
         } catch (_) {}
         if (await f.exists()) {
           try {
-            await _dl.uri.deleteFile(f.uri);
+            await _fileDownloader.uri.deleteFile(f.uri);
           } catch (_) {}
         }
         try {

@@ -14,7 +14,6 @@ import '../../core/download/download_record.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/video_source.dart';
-import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/torrent/torrent_download_service.dart';
 import '../../core/playback/watch_history.dart';
@@ -24,8 +23,7 @@ import '../../core/ui/states.dart';
 import '../../l10n/l10n.dart';
 import '../settings/download_location_screen.dart';
 import '../player/player_screen.dart';
-import '../player/tv_exo_player_screen.dart';
-import '../player/tv_native_player.dart';
+import '../player/tv_playback_launch.dart';
 import 'chapter_downloads_screen.dart';
 import 'downloads_screen_tv.dart';
 
@@ -703,42 +701,20 @@ Future<void> launchDownloadedEpisode(
   final scrobbleTitle = record.malId != null ? record.showTitle : null;
 
   if (sl<AppMode>().isTv) {
-    // Mirrors the TV streaming launch (detail_screen_tv.dart): the native
-    // player by default, the platform-view one when it's switched off.
-    if (sl<PlaybackPrefs>().nativeTvPlayer) {
-      await TvNativePlayer.play(
-        sourceId: record.sourceId,
-        episodes: [ep],
-        startIndex: 0,
-        resume: sl<ResumeStore>(),
-        resolveSources: resolveSources,
-        showUrl: record.showUrl,
-        showTitle: record.showTitle,
-        cover: record.cover,
-        coverHeaders: record.coverHeaders,
-        category: record.category,
-        malId: record.malId,
-        scrobbleTitle: scrobbleTitle,
-      );
-      return;
-    }
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => TvExoPlayerScreen(
-          sourceId: record.sourceId,
-          episodes: [ep],
-          startIndex: 0,
-          resume: sl<ResumeStore>(),
-          resolveSources: resolveSources,
-          showUrl: record.showUrl,
-          showTitle: record.showTitle,
-          cover: record.cover,
-          coverHeaders: record.coverHeaders,
-          category: record.category,
-          malId: record.malId,
-          scrobbleTitle: scrobbleTitle,
-        ),
-      ),
+    await launchTvPlayback(
+      context: context,
+      sourceId: record.sourceId,
+      episodes: [ep],
+      startIndex: 0,
+      resume: sl<ResumeStore>(),
+      resolveSources: resolveSources,
+      showUrl: record.showUrl,
+      showTitle: record.showTitle,
+      cover: record.cover,
+      coverHeaders: record.coverHeaders,
+      category: record.category,
+      malId: record.malId,
+      scrobbleTitle: scrobbleTitle,
     );
     return;
   }

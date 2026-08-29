@@ -10,6 +10,7 @@ import 'package:flutter/services.dart'
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../../core/platform/app_paths.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/app_mode.dart';
@@ -829,11 +830,8 @@ class PlayerCubit extends Cubit<PlayerState> {
   /// style picker) can actually resolve them. Best-effort, never throws.
   Future<void> _setupSubtitleFonts(NativePlayer p) async {
     try {
-      final dir = Directory(
-        '${(await getApplicationSupportDirectory()).path}/sub_fonts',
-      );
+      final dir = await writableAppSubdir('sub_fonts');
       if (!_subFontsExtracted) {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
         // Only Inter (UI) + Noto Sans (libass fallback) ship in the APK; the
         // other subtitle fonts are download-on-demand (SubtitleFontService).
         const fontAssets = <String>[

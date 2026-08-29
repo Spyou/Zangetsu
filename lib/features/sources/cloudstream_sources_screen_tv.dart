@@ -1153,14 +1153,10 @@ class _CsScreenTvAddRepoDialog extends StatefulWidget {
 
 class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
   final _urlCtrl = TextEditingController();
-  // Not auto-focused on purpose: auto-focusing the field would raise the
-  // leanback IME and cover the dialog. D-pad to the field + OK to type a URL.
-  final _urlFocus = FocusNode();
 
   @override
   void dispose() {
     _urlCtrl.dispose();
-    _urlFocus.dispose();
     super.dispose();
   }
 
@@ -1176,12 +1172,11 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            TvTextField(
               controller: _urlCtrl,
-              focusNode: _urlFocus,
+              autofocus: true,
               keyboardType: TextInputType.url,
-              cursorColor: AppColors.accent,
-              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
               decoration: InputDecoration(
                 labelText: context.l10n.repoUrl,

@@ -38,6 +38,7 @@ import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
+import 'package:watch_app/core/tv/tv_viewport.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
@@ -370,6 +371,94 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Home'), findsOneWidget);
       expect(find.text('Settings'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'TV viewport keeps Settings at the same screen-relative height',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(960, 540));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: MaterialApp(
+            builder: (_, child) => TvViewport(child: child!),
+            home: const RootShellTv(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      double settingsHeightFraction(Size viewport) {
+        final box = tester.renderObject<RenderBox>(find.text('Settings'));
+        final center = box.localToGlobal(box.size.center(Offset.zero));
+        return center.dy / viewport.height;
+      }
+
+      final androidLikeFraction = settingsHeightFraction(
+        const Size(960, 540),
+      );
+
+      await tester.binding.setSurfaceSize(const Size(1920, 1080));
+      await tester.pumpAndSettle();
+      final appleTvLikeFraction = settingsHeightFraction(
+        const Size(1920, 1080),
+      );
+
+      expect(appleTvLikeFraction, closeTo(androidLikeFraction, 0.001));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'Settings nav item stays inside the rail drawer with TV viewport',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(960, 540));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MultiBlocProvider(
+          providers: [
+            BlocProvider<ActiveSourceCubit>.value(value: activeSource),
+            BlocProvider<AuthCubit>.value(value: authCubit),
+          ],
+          child: MaterialApp(
+            builder: (_, child) => TvViewport(child: child!),
+            home: const RootShellTv(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final rail = find.byWidgetPredicate(
+        (w) => w is Focus && (w as Focus).focusNode?.debugLabel == 'tv-rail-scope',
+      );
+      final settingsInRail = find.descendant(
+        of: rail,
+        matching: find.text('Settings'),
+      );
+      expect(settingsInRail, findsOneWidget);
+
+      final settingsFocusable = find.ancestor(
+        of: settingsInRail,
+        matching: find.byType(TvFocusable),
+      );
+      tester.widget<TvFocusable>(settingsFocusable).focusNode?.requestFocus();
+      await tester.pumpAndSettle();
+
+      final railBox = tester.renderObject<RenderBox>(rail);
+      final settingsBox = tester.renderObject<RenderBox>(settingsInRail);
+      final railBottom = railBox.localToGlobal(Offset.zero).dy + railBox.size.height;
+      final settingsBottom =
+          settingsBox.localToGlobal(Offset.zero).dy + settingsBox.size.height;
+
+      expect(settingsBottom, lessThanOrEqualTo(railBottom + 0.5));
+      expect(tester.takeException(), isNull);
     },
   );
 

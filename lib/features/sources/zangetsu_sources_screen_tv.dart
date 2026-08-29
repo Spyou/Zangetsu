@@ -899,25 +899,13 @@ class _ZTvAddRepoDialog extends StatefulWidget {
 class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
   final _urlCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
-  // Explicit FocusNode + postFrameCallback reliably raises the leanback IME on
-  // Android TV, where autofocus: true alone often fails inside an AlertDialog.
-  final _urlFocus = FocusNode();
   bool _loading = false;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _urlFocus.requestFocus();
-    });
-  }
 
   @override
   void dispose() {
     _urlCtrl.dispose();
     _nameCtrl.dispose();
-    _urlFocus.dispose();
     super.dispose();
   }
 
@@ -953,11 +941,11 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
+          // TvTextField: focus without opening IME; OK/Select shows the keyboard
+          // (bare TextField autofocus eats the remote and often never shows IME on TV).
+          TvTextField(
             controller: _nameCtrl,
             enabled: !_loading,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
             textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(
                 labelText: context.l10n.customNameOptional,
@@ -965,16 +953,18 @@ class _ZTvAddRepoDialogState extends State<_ZTvAddRepoDialog> {
               ),
           ),
           const SizedBox(height: 12),
-          TextField(
+          TvTextField(
             controller: _urlCtrl,
+            autofocus: true,
             enabled: !_loading,
-            focusNode: _urlFocus,
             keyboardType: TextInputType.url,
-            cursorColor: AppColors.accent,
-            style: AppText.body.copyWith(color: AppColors.textPrimary),
+            textInputAction: TextInputAction.done,
             onSubmitted: (_) => _submit(),
-            decoration: InputDecoration(labelText: context.l10n.manifestUrl, hintText: context.l10n.manifestUrlHint),
-              ),
+            decoration: InputDecoration(
+              labelText: context.l10n.manifestUrl,
+              hintText: context.l10n.manifestUrlHint,
+            ),
+          ),
           const SizedBox(height: 10),
           Text(context.l10n.pasteRepoIndexJsonUrlShort, style: AppText.caption),
           if (_error != null) ...[

@@ -11,6 +11,7 @@ import '../environment.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
+import '../platform/apple_tv.dart';
 import 'tracker.dart';
 
 /// Simkl tracker (movies + TV + anime). OAuth2 authorization-code with a client
@@ -19,6 +20,8 @@ import 'tracker.dart';
 /// goes to `/sync/add-to-list`, watched episodes to `/sync/history`.
 class SimklService extends ChangeNotifier implements Tracker {
   SimklService(this._dio) {
+    // app_links has no tvOS impl; TV connects trackers via phone QR pairing.
+    if (isAppleTv) return;
     _linkSub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     _appLinks.getInitialLink().then((uri) {
       if (uri != null) _onLink(uri);

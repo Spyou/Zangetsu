@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
-import 'package:path_provider/path_provider.dart';
+import '../../core/platform/app_paths.dart';
 
 /// Anime4K — real-time GLSL upscaling (MIT-licensed, bloc97). Two dimensions:
 ///   • STYLE (the filter): off / a Sharpen / b De-blur / c Denoise
@@ -110,9 +110,7 @@ class ShaderPresets {
 
   static Directory? _cachedDir;
   static Future<Directory> _dir() async {
-    return _cachedDir ??= Directory(
-      '${(await getApplicationSupportDirectory()).path}/shaders/anime4k',
-    );
+    return _cachedDir ??= await writableAppSubdir('shaders/anime4k');
   }
 
   /// Cached "are the shaders on disk?" flag so sync UI (the in-player picker)

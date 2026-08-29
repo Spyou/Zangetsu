@@ -12,9 +12,11 @@ import '../../l10n/l10n.dart';
 
 /// First-run flag, stored in the shared 'app_prefs' Hive box (opened during
 /// [initDependencies]). True once the user has completed onboarding.
-bool isOnboarded() =>
-    Hive.box(ActiveSourceCubit.boxName).get('onboarded', defaultValue: false)
-        as bool;
+bool isOnboarded() {
+  if (!Hive.isBoxOpen(ActiveSourceCubit.boxName)) return false;
+  return Hive.box(ActiveSourceCubit.boxName)
+      .get('onboarded', defaultValue: false) as bool;
+}
 
 Future<void> _markOnboarded() =>
     Hive.box(ActiveSourceCubit.boxName).put('onboarded', true);

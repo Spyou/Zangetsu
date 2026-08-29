@@ -14,6 +14,7 @@ import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/tracker/tracker_hub.dart';
@@ -1995,11 +1996,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _loadSubtitleFromFile() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final file = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: const ['srt', 'vtt', 'ass', 'ssa', 'sub'],
       );
-      final path = result?.files.single.path;
+      final path = file?.path;
       if (path != null) {
         await _c.setSubtitleFromFile(path);
       }

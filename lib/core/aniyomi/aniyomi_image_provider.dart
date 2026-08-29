@@ -32,6 +32,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
+import '../cache/app_image_cache.dart';
+
 const MethodChannel _kAniChannel = MethodChannel('zangetsu/aniyomi');
 
 /// [ImageProvider] that fetches image bytes via the native Aniyomi OkHttpClient.
@@ -109,5 +111,5 @@ ImageProvider aniyomiCoverProvider(String url, Map<String, String>? headers) {
     final id = int.tryParse(marker);
     if (id != null) return AniyomiImage(id, url);
   }
-  return CachedNetworkImageProvider(url, headers: headers);
+  return AppImageCache.imageProvider(url, headers: headers);
 }

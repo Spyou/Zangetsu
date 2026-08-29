@@ -1,6 +1,7 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../cache/app_image_cache.dart';
 import '../di/injector.dart';
 import '../playback/playback_prefs.dart';
 
@@ -157,6 +158,7 @@ class _PosterCardState extends State<PosterCard> {
                       else
                         CachedNetworkImage(
                           imageUrl: widget.imageUrl!,
+                          cacheManager: AppImageCache.manager,
                           httpHeaders: widget.headers,
                           memCacheWidth: memW,
                           fit: BoxFit.cover,

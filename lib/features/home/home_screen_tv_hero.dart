@@ -104,7 +104,7 @@ class _TvHeroState extends State<_TvHero> {
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();
     final provider =
-        hasCover ? aniyomiCoverProvider(cover, item.coverHeaders) : null;
+        hasCover ? nativeCoverProvider(cover, item.coverHeaders) : null;
 
     return SizedBox(
       height: mq.size.height * 0.72,
@@ -170,6 +170,7 @@ class _TvHeroState extends State<_TvHero> {
                           alignment: Alignment.centerLeft,
                           child: CachedNetworkImage(
                             imageUrl: _logoUrl!,
+                            cacheManager: AppImageCache.manager,
                             fit: BoxFit.contain,
                             alignment: Alignment.centerLeft,
                             memCacheWidth: memW,

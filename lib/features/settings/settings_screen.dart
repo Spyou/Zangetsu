@@ -18,6 +18,7 @@ import '../../core/tracker/tracker.dart';
 import '../player/player_screen.dart' show openSubtitleStyleSheet;
 import '../player/shader_presets.dart';
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/playback/external_player.dart';
 import '../../core/playback/my_list.dart';
 import '../../core/playback/playback_prefs.dart';
@@ -68,6 +69,7 @@ import '../sources/sources_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'player_controls_screen.dart';
 import 'settings_screen_tv.dart';
+import 'settings_search_index.dart';
 import 'cubit/settings_cubit.dart';
 
 part 'settings_playback.dart';
@@ -1030,11 +1032,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final q = query.toLowerCase();
     final out = <Widget>[];
     var first = true;
+    // Settings that live inside a sub-page aren't in [entries], so a search
+    // could only ever return the category row. Each leaf names its category by
+    // title; that row supplies the icon and the tap, so a hit opens the page
+    // holding the setting.
+    final byTitle = {for (final e in entries) e.title: e};
+    final leaves = q.isEmpty
+        ? const <SettingsLeaf>[]
+        : settingsLeaves
+              .where((l) => l.matches(q) && byTitle.containsKey(l.parent))
+              .toList();
     for (final section in _sectionOrder) {
       final items = entries
           .where((e) => e.section == section && (q.isEmpty || e.matches(q)))
           .toList();
-      if (items.isEmpty) continue;
+      final hits = leaves
+          .where((l) => byTitle[l.parent]!.section == section)
+          .toList();
+      if (items.isEmpty && hits.isEmpty) continue;
       out.add(
         SettingsSectionLabel(
           settingsSectionTitle(context.l10n, section),
@@ -1047,6 +1062,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             for (var i = 0; i < items.length; i++)
               items[i].toTile(iconAccent: i == 0),
+            for (var i = 0; i < hits.length; i++)
+              _leafTile(
+                hits[i],
+                byTitle[hits[i].parent]!,
+                iconAccent: items.isEmpty && i == 0,
+              ),
           ],
         ),
       );
@@ -1067,6 +1088,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     return out;
   }
+
+  /// A search hit for a setting one level down. Reads as the setting itself
+  /// with its category beneath, and opens the page that owns it — we can't
+  /// scroll a sub-page to a specific row, so landing on the right page is the
+  /// useful part.
+  Widget _leafTile(
+    SettingsLeaf leaf,
+    _SettingsEntry parent, {
+    bool iconAccent = false,
+  }) => SettingsTile(
+    icon: parent.icon,
+    title: leaf.title,
+    subtitle: parent.title,
+    onTap: parent.onTap,
+    iconAccent: iconAccent,
+  );
 
   /// One tappable row per section (browse view). Each drills into the section's
   /// sub-page. Built from the same [entries], so counts/conditionals stay in

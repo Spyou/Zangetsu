@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/apple_tv.dart';
 import 'download_prefs.dart';
 import 'hls_downloader.dart';
 
@@ -25,25 +26,34 @@ class DownloadService {
   static const String resultsDirName = '.results';
 
   /// Configure the service once at app start (does not start it).
+  ///
+  /// No-op on Apple TV / any platform without a registered background-service
+  /// plugin — tvOS has none, and [FlutterBackgroundServicePlatform.instance]
+  /// throws a string if nothing registered.
   static Future<void> initialize() async {
-    await _service.configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: downloadServiceOnStart,
-        autoStart: false,
-        isForegroundMode: true,
-        autoStartOnBoot: false,
-        // Leave notificationChannelId null so the plugin creates + uses its own
-        // default channel (it only auto-creates one when this is null).
-        initialNotificationTitle: 'Zangetsu',
-        initialNotificationContent: 'Preparing downloads…',
-        foregroundServiceTypes: [AndroidForegroundType.dataSync],
-      ),
-      iosConfiguration: IosConfiguration(
-        autoStart: false,
-        onForeground: downloadServiceOnStart,
-        onBackground: _iosOnBackground,
-      ),
-    );
+    if (isAppleTv) return;
+    try {
+      await _service.configure(
+        androidConfiguration: AndroidConfiguration(
+          onStart: downloadServiceOnStart,
+          autoStart: false,
+          isForegroundMode: true,
+          autoStartOnBoot: false,
+          // Leave notificationChannelId null so the plugin creates + uses its own
+          // default channel (it only auto-creates one when this is null).
+          initialNotificationTitle: 'Zangetsu',
+          initialNotificationContent: 'Preparing downloads…',
+          foregroundServiceTypes: [AndroidForegroundType.dataSync],
+        ),
+        iosConfiguration: IosConfiguration(
+          autoStart: false,
+          onForeground: downloadServiceOnStart,
+          onBackground: _iosOnBackground,
+        ),
+      );
+    } catch (_) {
+      // Unsupported platform (tvOS, desktop, tests) — downloads stay UI-bound.
+    }
   }
 
   /// Directory where the background isolate drops completion markers.

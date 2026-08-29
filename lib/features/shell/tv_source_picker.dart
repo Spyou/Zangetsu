@@ -1,6 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
+import '../../core/provider/provider_manager.dart';
+import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -96,10 +102,7 @@ class TvSourcePicker extends StatelessWidget {
                     autofocus: index == activeIndex,
                     semanticLabel: row.label,
                     onTap: () {
-                      context
-                          .read<ActiveSourceCubit>()
-                          .setSource(row.sourceId!);
-                      Navigator.of(context).pop();
+                      unawaited(_selectSource(context, row.sourceId!));
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -145,6 +148,27 @@ class TvSourcePicker extends StatelessWidget {
       ),
     );
   }
+}
+
+Future<void> _selectSource(BuildContext context, String sourceId) async {
+  if (isAppleTv) {
+    final ok = await sl<ProviderRegistry>()
+        .ensureRuntimeLoaded(sourceId)
+        .catchError((_) => false);
+    if (!context.mounted) return;
+    if (!ok || sl<ProviderManager>().get(sourceId) == null) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not load that source on Apple TV'),
+        ),
+      );
+      return;
+    }
+  }
+  if (!context.mounted) return;
+  context.read<ActiveSourceCubit>().setSource(sourceId);
+  Navigator.of(context).pop();
 }
 
 /// Internal model for a row in the picker list.
