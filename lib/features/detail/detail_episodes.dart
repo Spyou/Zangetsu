@@ -1115,6 +1115,7 @@ class _ChapterRow extends StatelessWidget {
                   child: art.isNotEmpty
                       ? CachedNetworkImage(
                           imageUrl: art,
+                          cacheManager: AppImageCache.cacheManagerOrDefault,
                           httpHeaders: coverHeaders,
                           fit: BoxFit.cover,
                           memCacheWidth: 140,
@@ -1300,6 +1301,7 @@ class _EpisodeRow extends StatelessWidget {
                           thumbUrl.isNotEmpty
                               ? CachedNetworkImage(
                                   imageUrl: thumbUrl,
+                                  cacheManager: AppImageCache.cacheManagerOrDefault,
                                   httpHeaders: coverHeaders,
                                   fit: BoxFit.cover,
                                   memCacheWidth: 320,

@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/painting.dart';
 
 import '../aniyomi/aniyomi_image_provider.dart';
+import '../cache/app_image_cache.dart';
 import '../mihon/mihon_image_provider.dart';
 
 /// Central cover-image provider dispatcher for the shared card/hero widgets.
@@ -22,5 +23,5 @@ ImageProvider nativeCoverProvider(String url, Map<String, String>? headers) {
     final id = int.tryParse(mihon);
     if (id != null) return MihonImage(id, url);
   }
-  return CachedNetworkImageProvider(url, headers: headers);
+  return AppImageCache.imageProvider(url, headers: headers);
 }

@@ -527,6 +527,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                               child: coverUrl.isNotEmpty
                                   ? CachedNetworkImage(
                                       imageUrl: coverUrl,
+                                      cacheManager: AppImageCache.cacheManagerOrDefault,
                                       httpHeaders: coverHeaders,
                                       fit: BoxFit.cover,
                                       width: double.infinity,

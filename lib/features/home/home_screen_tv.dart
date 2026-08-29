@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';

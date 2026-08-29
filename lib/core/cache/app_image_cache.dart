@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../platform/app_paths.dart';
@@ -39,5 +40,27 @@ class AppImageCache {
       );
     }
     return manager;
+  }
+
+  /// Pass to [CachedNetworkImage.cacheManager] / [CachedNetworkImageProvider].
+  /// On Apple TV the default sqflite-backed cache is read-only — callers that
+  /// omit this get empty/error images on device.
+  static CacheManager? get cacheManagerOrDefault =>
+      isAppleTv ? manager : null;
+
+  /// [ImageProvider] for network covers when not using [CachedNetworkImage].
+  static CachedNetworkImageProvider imageProvider(
+    String url, {
+    Map<String, String>? headers,
+    int? maxWidth,
+    int? maxHeight,
+  }) {
+    return CachedNetworkImageProvider(
+      url,
+      headers: headers,
+      maxWidth: maxWidth,
+      maxHeight: maxHeight,
+      cacheManager: cacheManagerOrDefault,
+    );
   }
 }

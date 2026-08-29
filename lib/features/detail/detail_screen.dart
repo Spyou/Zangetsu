@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/ui/jump_prompt.dart';
 import '../../core/app_mode.dart';
+import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
 import '../../core/metadata/episode_metadata_service.dart';
