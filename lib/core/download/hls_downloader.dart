@@ -376,7 +376,7 @@ Uint8List? hlsUnwrapSegment(Uint8List seg, {int scanLimit = 128 * 1024}) {
   final limit = seg.length < scanLimit ? seg.length : scanLimit;
   const ts = 188;
   final tsEnd = limit - ts * 3;
-  for (var i = 1; i < tsEnd; i++) {
+  for (var i = 1; i <= tsEnd; i++) {
     if (seg[i] == 0x47 &&
         seg[i + ts] == 0x47 &&
         seg[i + ts * 2] == 0x47 &&
