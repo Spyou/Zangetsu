@@ -420,10 +420,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             ),
           ),
         ),
-        Expanded(
-          child: AnimatedOpacity(
-            opacity: _navOpen ? 1 : 0,
-            duration: const Duration(milliseconds: 160),
+        if (_navOpen) ...[
+          Expanded(
             child: Image.asset(
               'assets/icon/wordmark.png',
               key: const ValueKey('tv-rail-wordmark'),
@@ -432,8 +430,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
               alignment: Alignment.centerLeft,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
       ],
     );
   }
@@ -475,38 +473,36 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                     ),
                   ),
                   Expanded(
-                    child: AnimatedOpacity(
-                      opacity: _navOpen ? 1 : 0,
-                      duration: const Duration(milliseconds: 160),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'SOURCE',
-                            style: TextStyle(
-                              color: lblColor,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            clean,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: nameColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    child: _navOpen
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'SOURCE',
+                                style: TextStyle(
+                                  color: lblColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                clean,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: nameColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
                   ),
-                  const SizedBox(width: 12),
+                  if (_navOpen) const SizedBox(width: 12),
                 ],
               ),
             );
@@ -546,29 +542,24 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                 ),
               ),
               Expanded(
-                child: AnimatedOpacity(
-                  opacity: _navOpen ? 1 : 0,
-                  duration: const Duration(milliseconds: 160),
-                  // The TvFocusable's semanticLabel already announces this
-                  // item — exclude the label Text so TalkBack doesn't say it
-                  // twice (same pattern as TvPosterTile).
-                  child: ExcludeSemantics(
-                    child: Text(
-                      item.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        color: fg,
-                        fontSize: 18,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
+                child: _navOpen
+                    ? ExcludeSemantics(
+                        child: Text(
+                          item.label,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.clip,
+                          style: TextStyle(
+                            color: fg,
+                            fontSize: 18,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
-              const SizedBox(width: 12),
+              if (_navOpen) const SizedBox(width: 12),
             ],
           ),
         );
@@ -648,34 +639,32 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                   ),
                 ),
                 Expanded(
-                  child: AnimatedOpacity(
-                    opacity: _navOpen ? 1 : 0,
-                    duration: const Duration(milliseconds: 160),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: focused
-                                    ? Colors.black
-                                    : AppColors.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700)),
-                        Text(sub,
-                            maxLines: 1,
-                            style: TextStyle(
-                                color: focused
-                                    ? const Color(0xFF555555)
-                                    : AppColors.textTertiary,
-                                fontSize: 12)),
-                      ],
-                    ),
-                  ),
+                  child: _navOpen
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: focused
+                                        ? Colors.black
+                                        : AppColors.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700)),
+                            Text(sub,
+                                maxLines: 1,
+                                style: TextStyle(
+                                    color: focused
+                                        ? const Color(0xFF555555)
+                                        : AppColors.textTertiary,
+                                    fontSize: 12)),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                const SizedBox(width: 12),
+                if (_navOpen) const SizedBox(width: 12),
               ],
             ),
           ),
@@ -692,6 +681,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     return SafeArea(
       left: false,
       right: false,
+      top: false,
+      bottom: false,
       // Inset so pill scale (~1.04) + shadow stay inside the drawer bounds when
       // the parent uses Clip.none (avoids cropped focus chrome).
       child: Padding(
@@ -699,30 +690,29 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
-            _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 12),
-            _avatarBlock(), // profile
-            const SizedBox(height: 4),
-            _sourceIndicator(), // source switch right under the profile
+            _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 8),
+            _avatarBlock(), // profile
+            const SizedBox(height: 6),
+            _sourceIndicator(), // source switch right under the profile
+            const SizedBox(height: 6),
             const Divider(
                 height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
-            const SizedBox(height: 8),
-            // Nav items in a flexible scroller so the column never overflows.
+            const SizedBox(height: 6),
+            // Spread nav items across the remaining height (Android-TV style) so
+            // Settings stays visible at the bottom instead of clipping off.
             Expanded(
-              child: SingleChildScrollView(
-                clipBehavior: Clip.none,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    for (var i = 0; i < _kRailItems.length; i++)
-                      _navItem(i, _kRailItems[i]),
-                  ],
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (var i = 0; i < _kRailItems.length; i++)
+                    _navItem(i, _kRailItems[i]),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
         ),
       ),
@@ -812,10 +802,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
-                    // When collapsed, must clip so OverflowBox labels don't spill.
-                    // When open (D-pad on the rail), Clip.none so pill scale/shadow
-                    // isn't cropped by the rounded drawer.
-                    clipBehavior: _navOpen ? Clip.none : Clip.antiAlias,
+                    // Always clip to the rounded drawer. Nav focus chrome is kept
+                    // inside via [_railColumn] insets + scroll padding above.
+                    clipBehavior: Clip.antiAlias,
                     child: OverflowBox(
                       minWidth: _kNavExpanded,
                       maxWidth: _kNavExpanded,

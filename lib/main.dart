@@ -11,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 
 import 'core/analytics/analytics.dart';
 import 'core/app_config.dart';
+import 'core/app_mode.dart';
 import 'core/di/injector.dart';
 import 'core/discord/discord_rpc.dart';
 import 'core/environment.dart';
@@ -29,6 +30,7 @@ import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/tv/tv_viewport.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
@@ -523,8 +525,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
           ? [Analytics.observer, appRouteObserver]
           : const [],
       home: _buildHome(),
-      builder: (_, child) => shellFeatures
-          ? Stack(
+      builder: (_, child) {
+        final content = shellFeatures
+            ? Stack(
                 children: [
                   ?child,
                   const Positioned(
@@ -539,8 +542,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
                     ),
                   ),
                 ],
-            )
-          : (child ?? const SizedBox.shrink()),
+              )
+            : (child ?? const SizedBox.shrink());
+        final isTv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+        return isTv ? TvViewport(child: content) : content;
+      },
     );
   }
 
