@@ -31,6 +31,7 @@ import '../../core/models/episode.dart';
 import '../../core/models/episode_title.dart';
 import '../../core/models/media_detail.dart';
 import 'chapter_meta.dart';
+import '../../core/tv/tv_episode_range_chips.dart';
 import 'episode_filter.dart';
 import '../../core/models/media_item.dart';
 import '../../core/models/media_extras.dart';

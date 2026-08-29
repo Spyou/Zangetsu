@@ -90,16 +90,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         "classic" to "com.spyou.watch_app.MainActivityClassic",
     )
 
-    /// The enabled alias, or "default" when nothing has been set. A component
+    /// The enabled alias, or "classic" when nothing has been set. A component
     /// left at COMPONENT_ENABLED_STATE_DEFAULT takes the manifest's
-    /// android:enabled, which is true only for the default alias.
+    /// android:enabled, which is true only for the Classic alias — so that is
+    /// what an untouched install is really showing. Must match
+    /// `AppIconService.defaultId` and the manifest.
     private fun currentIconAlias(): String {
         val pm = packageManager
         for ((id, cls) in ICON_ALIASES) {
             val state = pm.getComponentEnabledSetting(ComponentName(this, cls))
             if (state == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) return id
         }
-        return "default"
+        return "classic"
     }
 
     /// Enables [id]'s alias and disables the others.
@@ -1075,6 +1077,16 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
         // alone don't clear that gate. Dart falls back to Dio itself if this
         // channel throws or is missing, so a bad response here never breaks
         // a working source.
+        // The novel client must present the device's real WebView UA — see
+        // NovelHttp.deviceUserAgent. Best-effort: this can throw while WebView
+        // is being updated, and a null just leaves the old behaviour.
+        if (NovelHttp.deviceUserAgent == null) {
+            NovelHttp.deviceUserAgent = runCatching {
+                android.webkit.WebSettings.getDefaultUserAgent(this)
+                    .replace("; wv", "")
+                    .takeIf { it.isNotBlank() }
+            }.getOrNull()
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "zangetsu/novel_http")
             .setMethodCallHandler { call, result ->
                 if (call.method != "request") {
@@ -1100,6 +1112,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                                     "body" to resp.body,
                                     "url" to resp.url,
                                     "headers" to resp.headers,
+                                    "cloudflare" to resp.cloudflare,
                                 ),
                             )
                         }

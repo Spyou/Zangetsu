@@ -100,6 +100,28 @@
                 <!-- TV pairing QR: zangetsu://pair?code=… (see OpenLinkService). -->
                 <data android:scheme="zangetsu" android:host="pair"/>
             </intent-filter>
+            <!-- "Open with" for local video files, so a file manager / Downloads
+                 offers Zangetsu the way it offers any other player.
+
+                 Deliberately NOT http/https: claiming those would put Zangetsu
+                 in the chooser for every video link on the web, which is the
+                 fast way to make the app feel like spyware. file:// and
+                 content:// only — something the user already has on the device.
+
+                 Separate <intent-filter> from the zangetsu:// block above on
+                 purpose: within one filter Android ORs the schemes with the
+                 mime types, so merging them would also claim zangetsu://*
+                 video/* and, worse, every file:// host for the tracker hosts. -->
+            <intent-filter android:label="Zangetsu">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="file"/>
+                <data android:scheme="content"/>
+                <data android:mimeType="video/*"/>
+                <data android:mimeType="application/x-mpegURL"/>
+                <data android:mimeType="application/vnd.apple.mpegurl"/>
+            </intent-filter>
         </activity>
 
         <!-- Home-screen icon choices. Each alias is the same MainActivity behind a
@@ -116,7 +138,7 @@
             android:name=".MainActivityDefault"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:enabled="true"
+            android:enabled="false"
             android:icon="@mipmap/ic_launcher"
             android:label="Zangetsu">
             <intent-filter>
@@ -128,7 +150,7 @@
             android:name=".MainActivityClassic"
             android:targetActivity=".MainActivity"
             android:exported="true"
-            android:enabled="false"
+            android:enabled="true"
             android:icon="@mipmap/ic_launcher_classic"
             android:label="Zangetsu">
             <intent-filter>

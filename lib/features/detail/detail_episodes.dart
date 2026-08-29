@@ -86,10 +86,6 @@ class _EpisodesTab extends StatefulWidget {
 }
 
 class _EpisodesTabState extends State<_EpisodesTab> {
-  /// Long seasons are split into chunks of this size (CloudStream-style) so
-  /// hundreds/thousands of episodes stay navigable via range chips.
-  static const int _chunk = 50;
-
   bool _grid = false;
 
   /// Selected scanlation group, or null for "All". Several groups release the
@@ -124,10 +120,10 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // Against the FILTERED list — the range index addresses what's on screen,
     // and a scanlator filter makes that a different list to seasonEps.
     final local = _filteredEps.indexOf(resumeEp);
-    return local < 0 ? 0 : local ~/ _chunk;
+    return episodeRangeIndex(local);
   }
 
-  int get _rangeCount => (_filteredEps.length / _chunk).ceil();
+  int get _rangeCount => episodeRangeCount(_filteredEps.length);
 
   /// Scanlation groups on offer, first-seen order (which is the source's own
   /// ordering, so the group a reader is following tends to come first).
@@ -150,9 +146,6 @@ class _EpisodesTabState extends State<_EpisodesTab> {
         if (e.scanlator?.trim() == want) e,
     ];
   }
-
-  String _numLabel(Episode e, int fallback) =>
-      (e.number?.toInt() ?? fallback).toString();
 
   /// Reading progress lives in [ReadStore] (page index / scroll permille),
   /// keyed by showId — the video [ResumeStore] never holds a mark for a
@@ -230,7 +223,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     if (local < 0 && n >= 1 && n <= eps.length) local = n - 1;
     if (local < 0) return;
     setState(() {
-      _rangeIndex = local ~/ _chunk;
+      _rangeIndex = episodeRangeIndex(local);
       _grid = true; // the grid makes the jumped-to episode easy to spot
       _highlightEpId = eps[local].id;
     });
@@ -251,9 +244,8 @@ class _EpisodesTabState extends State<_EpisodesTab> {
     // index past the end, so clamp before slicing.
     final maxRange = _rangeCount == 0 ? 0 : _rangeCount - 1;
     final rangeIndex = _rangeIndex.clamp(0, maxRange);
-    final start = (rangeIndex * _chunk).clamp(0, total);
-    final end = (start + _chunk).clamp(0, total);
-    final visible = eps.sublist(start, end);
+    final slice = episodeRangeSlice(rangeIndex, total);
+    final visible = eps.sublist(slice.start, slice.end);
     final showRanges = _rangeCount > 1;
     final groups = _scanlators;
 
@@ -330,12 +322,7 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             child: _RangeChips(
               count: _rangeCount,
               selected: rangeIndex,
-              labelFor: (i) {
-                final s = (i * _chunk).clamp(0, total - 1);
-                final e = ((i + 1) * _chunk - 1).clamp(0, total - 1);
-                return '${_numLabel(eps[s], s + 1)}'
-                    '–${_numLabel(eps[e], e + 1)}';
-              },
+              labelFor: (i) => episodeRangeLabel(eps, i),
               onSelect: (i) => setState(() {
                 _rangeIndex = i;
                 _highlightEpId = null;
@@ -343,9 +330,9 @@ class _EpisodesTabState extends State<_EpisodesTab> {
             ),
           ),
         if (_grid)
-          _buildGrid(store, visible, start)
+          _buildGrid(store, visible, slice.start)
         else
-          _buildList(store, visible, start),
+          _buildList(store, visible, slice.start),
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
       ],
     );

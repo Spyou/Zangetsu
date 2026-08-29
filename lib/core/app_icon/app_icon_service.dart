@@ -33,18 +33,27 @@ class AppIconService {
   static const String boxName = 'app_prefs';
   static const String _key = 'appIconId';
 
-  static const String defaultId = 'default';
+  /// The icon a fresh install shows — i.e. the alias that ships
+  /// `android:enabled="true"`. NOT the same thing as the option whose id
+  /// happens to be the string `'default'`: that id is the Zangetsu mark and is
+  /// persisted, so it can never be renamed. Keep this in step with the manifest
+  /// and with `MainActivity.currentIconAlias()`'s fallback — all three have to
+  /// name the same icon or the launcher shows one thing while Settings claims
+  /// another.
+  static const String defaultId = 'classic';
 
+  /// [defaultId] first — the picker leads with what a fresh install is
+  /// actually wearing.
   static const List<AppIconOption> options = [
-    AppIconOption(
-      id: defaultId,
-      label: 'Zangetsu',
-      asset: 'assets/icon/preview_default.png',
-    ),
     AppIconOption(
       id: 'classic',
       label: 'Classic',
       asset: 'assets/icon/preview_classic.png',
+    ),
+    AppIconOption(
+      id: 'default',
+      label: 'Zangetsu',
+      asset: 'assets/icon/preview_default.png',
     ),
   ];
 
