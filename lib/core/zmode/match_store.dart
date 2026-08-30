@@ -18,7 +18,7 @@ class SourceMatch {
   final String showId;
   final String showTitle;
 
-  /// Set by the user through "Wrong show?". A pinned match is never replaced
+  /// Set by the user through "Wrong title?". A pinned match is never replaced
   /// by a guess.
   final bool pinned;
 

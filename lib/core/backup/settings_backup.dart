@@ -14,6 +14,8 @@ import 'package:hive/hive.dart';
 ///                           written. Add only with per-key handling.
 ///   - `pinned_sources`, `subscriptions` — reference source ids the restoring
 ///                           device may not have installed
+///   - `zmode_matches`     — same reason: it is nothing but source ids
+///                           (which source plays each metadata title)
 ///
 /// Every box here must be OPENED DURING BOOTSTRAP. [_boxFor] returns null for a
 /// closed box and [build] skips it silently, so a lazily-opened box would look
@@ -36,7 +38,6 @@ class SettingsBackup {
     'torrent_prefs', // torrent settings
     'locale_prefs', // app language override
     'zmode_prefs', // Zangetsu Mode toggle + stream kind
-    'zmode_matches', // Zangetsu Mode: which source plays each metadata title
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.

@@ -70,6 +70,7 @@ import '../../core/trailer/trailer_service.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
@@ -111,6 +112,11 @@ String _friendlySourceId(String sourceId) {
 /// "Source · Repo" label for the detail screen, so the user can see which repo
 /// a source came from. Falls back to just the name when no repo is resolvable.
 String _sourceLabel(String sourceId) {
+  // Zangetsu Mode's pseudo source: "AniList"/"TMDB" per the current browse
+  // kind, not the raw "zm" id.
+  if (sourceId == ZmodeIds.sourceId) {
+    return sl<MetadataRepository>().displayName(sourceId);
+  }
   // Aniyomi sources (ani:<id>) resolve to their extension's display name;
   // otherwise the detail screen would show the raw "ani:4383278740…" id.
   if (sourceId.startsWith('ani:')) {
@@ -312,6 +318,9 @@ class _DetailViewState extends State<_DetailView>
   /// reuses the work. Fire-and-forget; cancelled implicitly by leaving (the
   /// result just lands in the repo's prefetch cache, unused).
   void _maybePrefetch(String epUrl, String sourceId) {
+    // SourceRepository.prefetch isn't on CatalogueRepository and throws for
+    // the zm pseudo source — skip it, the metadata catalogue has no prefetch.
+    if (sourceId == ZmodeIds.sourceId) return;
     if (_prefetchedEpUrl == epUrl) return;
     _prefetchedEpUrl = epUrl;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -728,10 +737,14 @@ class _DetailViewState extends State<_DetailView>
         // next thing you usually want is a different mirror. Auto-playing
         // takes that choice away and tends to fail again on the same source.
         // Re-primes in the background so the play you do make is still quick.
-        sl<SourceRepository>().prefetch(
-          ep.url,
-          sourceId: widget.item.sourceId,
-        );
+        // (SourceRepository.prefetch has no metadata-catalogue equivalent and
+        // throws for the zm pseudo source, so skip it there.)
+        if (widget.item.sourceId != ZmodeIds.sourceId) {
+          sl<SourceRepository>().prefetch(
+            ep.url,
+            sourceId: widget.item.sourceId,
+          );
+        }
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
@@ -1208,7 +1221,7 @@ class _DetailViewState extends State<_DetailView>
             availableCategories: availableCategories,
             coverUrl: detail.cover ?? widget.item.cover ?? '',
             coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-            resolve: (ep) => sl<SourceRepository>().sources(
+            resolve: (ep) => sl<CatalogueRepository>().sources(
               ep.url,
               sourceId: widget.item.sourceId,
             ),
@@ -1222,7 +1235,7 @@ class _DetailViewState extends State<_DetailView>
   /// Re-resolve a title's episodes for a given sub/dub [category] (without
   /// touching the detail page's own toggle), grouped by season.
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
-    final d = await sl<SourceRepository>().detail(
+    final d = await sl<CatalogueRepository>().detail(
       widget.item.url,
       category: category,
       sourceId: widget.item.sourceId,
@@ -1296,7 +1309,7 @@ class _DetailViewState extends State<_DetailView>
           builder: (_) => _SourcePickerSheet(
             title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
             resolve: () =>
-                sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+                sl<CatalogueRepository>().sources(ep.url, sourceId: item.sourceId),
           ),
         );
     if (res == null || !mounted) return;
