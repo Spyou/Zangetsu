@@ -26,5 +26,7 @@ void main() {
     });
     expect(item.cover, isNull);
     expect(item.englishTitle, isNull);
+    // Non-Z-Mode sources never set a hero banner — only AniList/TMDB do.
+    expect(item.banner, isNull);
   });
 }

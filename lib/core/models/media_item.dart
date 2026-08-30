@@ -18,6 +18,11 @@ class MediaItem extends Equatable {
   final String? englishTitle;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Wide 16:9 art (AniList `bannerImage` / TMDB `backdrop_path`), for the
+  /// home hero. Null outside Z Mode — every existing source keeps rendering
+  /// its hero from [cover], exactly as before this field existed.
+  final String? banner;
   final String url;
   final ProviderType type;
   final String sourceId;
@@ -72,6 +77,7 @@ class MediaItem extends Equatable {
     this.englishTitle,
     this.cover,
     this.coverHeaders,
+    this.banner,
     required this.url,
     required this.type,
     required this.sourceId,
@@ -104,6 +110,7 @@ class MediaItem extends Equatable {
     englishTitle: englishTitle,
     cover: cover,
     coverHeaders: coverHeaders,
+    banner: banner,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
@@ -124,6 +131,7 @@ class MediaItem extends Equatable {
     englishTitle,
     cover,
     coverHeaders,
+    banner,
     url,
     type,
     sourceId,

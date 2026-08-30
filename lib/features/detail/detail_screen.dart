@@ -1434,8 +1434,9 @@ class _DetailViewState extends State<_DetailView>
               ? context.l10n.continueEpisode(episodeNum)
               : context.l10n.play);
 
-    // Cover / backdrop.
-    final coverUrl = detail.cover ?? item.cover ?? '';
+    // Cover / backdrop — the wide banner when Z Mode supplied one, else the
+    // regular poster cover, exactly as before [MediaDetail.banner] existed.
+    final coverUrl = detail.banner ?? item.banner ?? detail.cover ?? item.cover ?? '';
     final coverHeaders = detail.coverHeaders ?? item.coverHeaders;
     final hasCover = coverUrl.isNotEmpty;
 
