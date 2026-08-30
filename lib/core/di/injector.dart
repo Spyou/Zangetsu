@@ -44,10 +44,12 @@ import '../provider/provider_manager.dart';
 import '../share/open_link_service.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
+import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
+import '../zmode/zmode_module.dart';
 import '../zmode/zmode_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
@@ -841,6 +843,10 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // Z Mode: the catalogue router and its metadata side. Off by default;
+  // registering it costs nothing but makes the toggle instant.
+  await registerZangetsuMode(sl);
+
   // Now that SourceRepository can enumerate loaded sources, make sure the
   // restored content mode points at a source that belongs to it (e.g. a
   // novel-mode launch shouldn't show an anime source). No-op for anime mode
@@ -902,7 +908,9 @@ Future<void> initDependencies() async {
   // Home data cubit as a singleton so the splash can warm it (preload the
   // rows for the active source) while the intro animation plays — Home then
   // appears already populated instead of flashing skeletons.
-  sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>()));
+  sl.registerLazySingleton<HomeCubit>(
+    () => HomeCubit(sl<CatalogueRepository>()),
+  );
 
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is

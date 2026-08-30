@@ -9,7 +9,7 @@ import '../../../core/error/exceptions.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
-import '../../../core/repository/source_repository.dart';
+import '../../../core/repository/catalogue_repository.dart';
 
 /// Immutable view-state for the Home screen. The rows are CloudStream-style:
 /// the active provider decides what sections exist (and what they're named),
@@ -59,7 +59,7 @@ class HomeState extends Equatable {
 class HomeCubit extends Cubit<HomeState> {
   HomeCubit(this._repo) : super(const HomeState());
 
-  final SourceRepository _repo;
+  final CatalogueRepository _repo;
 
   /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
   /// it's still the latest. This makes source switches "latest wins" — a slow

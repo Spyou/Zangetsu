@@ -62,6 +62,7 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -187,7 +188,7 @@ class DetailScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => DetailCubit(
-        repo: sl<SourceRepository>(),
+        repo: sl<CatalogueRepository>(),
         url: item.url,
         sourceId: item.sourceId,
         prefs: sl<TitlePrefsStore>(),
@@ -495,7 +496,7 @@ class _DetailViewState extends State<_DetailView>
   Future<void> _openRelation(MediaRelation r) async {
     _snack(context.l10n.findingTitle(r.title));
     try {
-      final results = await sl<SourceRepository>().search(
+      final results = await sl<CatalogueRepository>().search(
         r.title,
         sourceId: widget.item.sourceId,
       );
@@ -934,7 +935,7 @@ class _DetailViewState extends State<_DetailView>
           episodes: episodes,
           startIndex: index,
           resume: sl<ResumeStore>(),
-          resolveSources: (u) => sl<SourceRepository>().sources(
+          resolveSources: (u) => sl<CatalogueRepository>().sources(
             u,
             sourceId: widget.item.sourceId,
             fast: true,
@@ -942,7 +943,7 @@ class _DetailViewState extends State<_DetailView>
           // The resolve above returns on the first usable link so playback
           // starts fast; the remaining mirrors keep resolving natively. This
           // lets the Sources sheet pick them up once they land.
-          pollSources: (u) => sl<SourceRepository>().polledSources(
+          pollSources: (u) => sl<CatalogueRepository>().polledSources(
             u,
             sourceId: widget.item.sourceId,
           ),
@@ -985,8 +986,8 @@ class _DetailViewState extends State<_DetailView>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => NovelReaderScreen(
-              sourceId: widget.item.sourceId,
-              showId: widget.item.id,
+              sourceId: detail.sourceId,
+              showId: detail.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,
@@ -1001,8 +1002,8 @@ class _DetailViewState extends State<_DetailView>
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => MangaReaderScreen(
-              sourceId: widget.item.sourceId,
-              showId: widget.item.id,
+              sourceId: detail.sourceId,
+              showId: detail.id,
               showTitle: detail.title,
               cover: detail.cover ?? widget.item.cover,
               chapters: chapters,

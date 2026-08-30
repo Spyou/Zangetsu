@@ -9,7 +9,7 @@ import '../../../core/models/media_detail.dart';
 import '../../../core/models/media_extras.dart';
 import '../../../core/models/provider_info.dart';
 import '../../../core/playback/title_prefs.dart';
-import '../../../core/repository/source_repository.dart';
+import '../../../core/repository/catalogue_repository.dart';
 
 export '../../../core/models/episode_title.dart' show cleanTitle;
 
@@ -84,7 +84,7 @@ class DetailState extends Equatable {
 
 class DetailCubit extends Cubit<DetailState> {
   DetailCubit({
-    required SourceRepository repo,
+    required CatalogueRepository repo,
     required String url,
     String? sourceId,
     TitlePrefsStore? prefs,
@@ -114,7 +114,7 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  final SourceRepository _repo;
+  final CatalogueRepository _repo;
   final String _url;
   final TitlePrefsStore _prefs;
 

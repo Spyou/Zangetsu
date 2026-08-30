@@ -28,6 +28,7 @@ import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/reading/read_history.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -87,7 +88,7 @@ class _HomeView extends StatefulWidget {
 
 class _HomeViewState extends State<_HomeView>
     with SingleTickerProviderStateMixin {
-  final _repo = sl<SourceRepository>();
+  final _repo = sl<CatalogueRepository>();
   final _myList = sl<MyListStore>();
 
   /// Hero metadata cache: key = "sourceId:id". Futures are stored so they're
@@ -688,9 +689,11 @@ class _HomeViewState extends State<_HomeView>
           onLongPress: _showInfo,
           // Only paginable rows (Aniyomi popular/latest, CloudStream mainPage)
           // carry a `more` descriptor; everything else stays a fixed list.
+          // Pagination isn't part of CatalogueRepository — go straight to the
+          // source for it, same as it always has.
           onLoadMore: section.more == null
               ? null
-              : (page) => _repo.browseMore(section.more!, page),
+              : (page) => sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     ).then((_) {

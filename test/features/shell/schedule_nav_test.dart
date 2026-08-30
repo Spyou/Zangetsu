@@ -25,6 +25,7 @@ import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/schedule/airing_service.dart';
 import 'package:watch_app/core/schedule/coming_soon_service.dart';
@@ -302,6 +303,7 @@ void main() {
     sl.registerSingleton<PlaybackPrefs>(PlaybackPrefs());
     sl.registerSingleton<TrackerHub>(TrackerHub(const []));
     sl.registerSingleton<SourceRepository>(fakeRepo);
+    sl.registerSingleton<CatalogueRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<SearchHistory>(_FakeSearchHistory());
     sl.registerSingleton<SearchPrefs>(_FakeSearchPrefs());
