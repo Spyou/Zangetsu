@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
 import '../shell/dock_icons.dart';
@@ -28,8 +29,11 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   late List<DockTab> _shown = List.of(_prefs.tabs);
 
-  List<DockTab> get _hidden =>
-      [for (final t in DockTab.values) if (!_shown.contains(t)) t];
+  List<DockTab> get _hidden => [
+    for (final t in DockTab.values)
+      if (!_shown.contains(t) && !(ZModePrefs.enabled && t == DockTab.search))
+        t,
+  ];
 
   bool get _canRemove => _shown.length > NavPrefs.minTabs;
   bool get _canAdd => _shown.length < NavPrefs.maxTabs;
