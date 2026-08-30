@@ -12,11 +12,13 @@ Map<String, dynamic> _media({
   int? chapters,
   String status = 'FINISHED',
   int? nextEp,
+  String? banner = 'https://img/banner.jpg',
 }) => {
   'id': id,
   'idMal': idMal,
   'title': {'romaji': romaji, 'english': english},
   'coverImage': {'large': 'https://img/$id.jpg', 'extraLarge': null},
+  'bannerImage': banner,
   'episodes': episodes,
   'chapters': chapters,
   'status': status,
@@ -27,15 +29,26 @@ Map<String, dynamic> _media({
   'nextAiringEpisode': nextEp == null ? null : {'episode': nextEp},
 };
 
+/// Answers a home() aliased request: `r0: Page(...){ media{...} }` etc — pull
+/// out however many `rN:` aliases the query actually asked for and answer
+/// each with the same page of [media], mirroring what AniList's real
+/// response shape looks like for an aliased multi-query.
+Map<String, dynamic> _aliasedResponse(String query, {List<dynamic>? media}) {
+  final aliases = RegExp(r'(r\d+):').allMatches(query).map((m) => m.group(1)!);
+  return {for (final a in aliases) a: {'media': media ?? [_media()]}};
+}
+
 void main() {
-  test('home builds one section per query and maps items', () async {
-    final seen = <String>[];
+  test('home issues exactly one request for every row and maps items', () async {
+    var calls = 0;
     final cat = AniListCatalogue((q, v) async {
-      seen.add(v['sort']?.toString() ?? v.toString());
-      return {'Page': {'media': [_media()]}};
+      calls++;
+      return _aliasedResponse(q);
     });
     final rows = await cat.home(ZKind.anime);
-    expect(rows.length, 4);
+    expect(calls, 1); // one round-trip for the whole page, not one per row
+    expect(rows.length, 7); // Trending, this season, next season, all-time
+                             // popular, top rated, Action, Romance
     expect(rows.first.title, 'Trending');
     final item = rows.first.items.single;
     expect(item.url, 'zm://anime/mal:100');
@@ -44,6 +57,38 @@ void main() {
     expect(item.malId, 100);
     expect(item.title, 'Fullmetal Alchemist');
     expect(item.englishTitle, 'FMA');
+    expect(item.banner, 'https://img/banner.jpg');
+  });
+
+  test('home for manga/novel also issues one request and maps items', () async {
+    var calls = 0;
+    final cat = AniListCatalogue((q, v) async {
+      calls++;
+      return _aliasedResponse(q);
+    });
+    final rows = await cat.home(ZKind.manga);
+    expect(calls, 1);
+    expect(rows.length, 5); // Trending, Popular, Top rated, Action, Romance
+  });
+
+  test('a malformed/partial multi-row response still yields the rows it can',
+      () async {
+    final cat = AniListCatalogue((q, v) async {
+      // r0 is fine, r1 is the wrong shape, r2 is simply missing — the rest
+      // (if any) never get a key either, which is the "missing" case too.
+      return {
+        'r0': {'media': [_media()]},
+        'r1': {'media': 'not-a-list'},
+      };
+    });
+    final rows = await cat.home(ZKind.anime);
+    expect(rows.length, 1);
+    expect(rows.single.title, 'Trending');
+  });
+
+  test('a null response yields an empty home, not a throw', () async {
+    final cat = AniListCatalogue((q, v) async => null);
+    expect(await cat.home(ZKind.anime), isEmpty);
   });
 
   test('falls back to the AniList id when there is no MAL id', () async {
@@ -110,8 +155,9 @@ void main() {
     expect(vars[1], {'id': 77});
   });
 
-  test('a null response yields an empty home, not a throw', () async {
-    final cat = AniListCatalogue((q, v) async => null);
-    expect(await cat.home(ZKind.anime), isEmpty);
+  test('detail carries the banner image through', () async {
+    final cat = AniListCatalogue((q, v) async => {'Media': _media()});
+    final d = await cat.detail(const ZCanonical(ZKind.anime, 'mal:100'));
+    expect(d.banner, 'https://img/banner.jpg');
   });
 }

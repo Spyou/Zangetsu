@@ -40,23 +40,32 @@ class TmdbCatalogue {
     ('Popular movies', '/movie/popular'),
     ('Popular series', '/tv/popular'),
     ('Top rated', '/movie/top_rated'),
+    ('Now playing', '/movie/now_playing'),
+    ('Upcoming', '/movie/upcoming'),
   ];
 
+  /// All rows fired concurrently — TMDB has no aliased multi-query like
+  /// AniList, so this is the closest equivalent to one round-trip: the user
+  /// waits for the slowest row, not the sum of all of them. `Future.wait`
+  /// keeps the results in the same order as [_rows] regardless of which
+  /// finishes first.
   Future<List<HomeSection>> home() async {
-    final out = <HomeSection>[];
-    for (final (title, path) in _rows) {
-      // List endpoints under /movie/* and /tv/* don't carry a `media_type`
-      // field, so the endpoint itself says what it holds. Mixed endpoints
-      // (/trending/all, /search/multi) do carry it, so let _items read it.
-      final forcedTv = path.startsWith('/tv/')
-          ? true
-          : path.startsWith('/movie/')
-              ? false
-              : null;
-      final items = _items(await _get(path, const {}), forcedTv: forcedTv);
-      if (items.isNotEmpty) out.add(HomeSection(title: title, items: items));
-    }
-    return out;
+    final sections = await Future.wait(_rows.map(_fetchRow));
+    return [for (final s in sections) ?s];
+  }
+
+  Future<HomeSection?> _fetchRow((String, String) row) async {
+    final (title, path) = row;
+    // List endpoints under /movie/* and /tv/* don't carry a `media_type`
+    // field, so the endpoint itself says what it holds. Mixed endpoints
+    // (/trending/all, /search/multi) do carry it, so let _items read it.
+    final forcedTv = path.startsWith('/tv/')
+        ? true
+        : path.startsWith('/movie/')
+            ? false
+            : null;
+    final items = _items(await _get(path, const {}), forcedTv: forcedTv);
+    return items.isEmpty ? null : HomeSection(title: title, items: items);
   }
 
   Future<List<MediaItem>> search(String q) async =>
@@ -72,6 +81,7 @@ class TmdbCatalogue {
       id: c.id,
       title: (isTv ? m['name'] : m['title']) as String? ?? '',
       cover: _poster(m['poster_path'] as String?),
+      banner: _backdrop(m['backdrop_path'] as String?),
       url: ZmodeIds.showUrl(c),
       description: m['overview'] as String?,
       status: switch (m['status'] as String?) {
@@ -107,6 +117,10 @@ class TmdbCatalogue {
   static String? _poster(String? path) =>
       path == null ? null : '${Tmdb.img}/w500$path';
 
+  /// Wide 16:9 art for the hero — TMDB's `backdrop_path`.
+  static String? _backdrop(String? path) =>
+      path == null ? null : '${Tmdb.img}/w780$path';
+
   /// [forcedTv]: list endpoints don't carry `media_type`, so the caller says
   /// (see [home]); null means read `media_type` off each result and skip
   /// anything that's neither `movie` nor `tv` (e.g. `person` from search).
@@ -132,6 +146,7 @@ class TmdbCatalogue {
         id: c.id,
         title: ((isTv ? m['name'] : m['title']) as String?) ?? '',
         cover: _poster(m['poster_path'] as String?),
+        banner: _backdrop(m['backdrop_path'] as String?),
         url: ZmodeIds.showUrl(c),
         type: ProviderType.movie,
         sourceId: ZmodeIds.sourceId,
