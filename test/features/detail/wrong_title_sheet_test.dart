@@ -18,6 +18,8 @@ class _Src implements SourceRepository {
   @override
   List<({String id, String name})> get loadedSources => [(id: 'allanime', name: 'AllAnime')];
   @override
+  bool hasSource(String sourceId) => sourceId == 'allanime';
+  @override
   String displayName(String id) => 'AllAnime';
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async => [

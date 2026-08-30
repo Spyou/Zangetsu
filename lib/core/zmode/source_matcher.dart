@@ -24,7 +24,7 @@ class EpisodeNotOnSource implements Exception {
 }
 
 /// Finds the source show behind a metadata title. It is a guess by title, so
-/// the result is remembered and can be corrected ("Wrong show?"), and a
+/// the result is remembered and can be corrected ("Wrong title?"), and a
 /// correction is never re-guessed.
 class SourceMatcher {
   SourceMatcher({
@@ -59,7 +59,14 @@ class SourceMatcher {
     int? malId,
   }) async {
     final saved = _store.get(c);
-    if (saved != null) return saved;
+    if (saved != null) {
+      // A pinned match is the user's own choice — honour it even if the
+      // source is gone; re-guessing would silently override them. Whatever
+      // then tries to use the dead sourceId hits the normal no-source path.
+      // An unpinned GUESS whose source was since uninstalled is worthless —
+      // fall through and search again instead of returning it forever.
+      if (saved.pinned || _sources.hasSource(saved.sourceId)) return saved;
+    }
 
     for (final s in _candidates(c.kind)) {
       List<MediaItem> results;
