@@ -11,7 +11,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "es": [
@@ -26,7 +27,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "fr": [
@@ -41,7 +43,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "it": [
@@ -56,7 +59,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "ja": [
@@ -71,7 +75,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "zh": [
@@ -86,7 +91,8 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ],
 
   "zh_TW": [
@@ -101,6 +107,7 @@
     "noSourceHasThisYet",
     "pickTheRightTitle",
     "searchThisSource",
-    "matchSaved"
+    "matchSaved",
+    "chooseSource"
   ]
 }
