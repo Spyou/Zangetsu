@@ -13,18 +13,17 @@ import 'package:watch_app/features/detail/cubit/wrong_title_cubit.dart';
 class _Src implements SourceRepository {
   _Src({this.fail = false});
   final bool fail;
+  final searched = <String>[];
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
-  List<({String id, String name})> get loadedSources => const [
-    (id: 'allanime', name: 'AllAnime'),
-    (id: 'hianime', name: 'HiAnime'),
-  ];
+  bool hasSource(String sourceId) => true;
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async {
+    searched.add(sourceId!);
     if (fail) throw StateError('dead');
     return [MediaItem(id: 'fmab', title: 'FMA: Brotherhood',
-        url: 'https://$sourceId/fmab', type: ProviderType.anime, sourceId: sourceId!)];
+        url: 'https://$sourceId/fmab', type: ProviderType.anime, sourceId: sourceId)];
   }
 }
 
@@ -33,10 +32,12 @@ void main() {
   late MatchStore store;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
 
-  WrongTitleCubit build(_Src src) => WrongTitleCubit(
+  WrongTitleCubit build(_Src src, {String sourceId = 'allanime'}) => WrongTitleCubit(
     sources: src,
-    matcher: SourceMatcher(sources: src, store: store, candidates: (_) => src.loadedSources),
+    matcher: SourceMatcher(sources: src, store: store,
+        candidates: (_) => [(id: 'allanime', name: 'AllAnime'), (id: 'hianime', name: 'HiAnime')]),
     canonical: fma,
+    sourceId: sourceId,
   );
 
   setUp(() async {
@@ -49,26 +50,20 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  test('starts on the first source with no results', () {
+  test('starts with no results, scoped to the given source', () {
     final c = build(_Src());
-    expect(c.state.sourceId, 'allanime');
+    expect(c.sourceId, 'allanime');
     expect(c.state.results, isEmpty);
     expect(c.state.loading, isFalse);
   });
 
-  test('search fills results and clears loading', () async {
-    final c = build(_Src());
+  test('search only ever searches the fixed source', () async {
+    final src = _Src();
+    final c = build(src, sourceId: 'hianime');
     await c.search('fma');
-    expect(c.state.results.single.id, 'fmab');
-    expect(c.state.loading, isFalse);
-  });
-
-  test('picking a source re-searches against it', () async {
-    final c = build(_Src());
-    c.pickSource('hianime');
-    await c.search('fma');
-    expect(c.state.sourceId, 'hianime');
+    expect(src.searched, ['hianime']);
     expect(c.state.results.single.sourceId, 'hianime');
+    expect(c.state.loading, isFalse);
   });
 
   test('a dead source empties results instead of throwing', () async {
@@ -78,11 +73,12 @@ void main() {
     expect(c.state.loading, isFalse);
   });
 
-  test('choose pins the pick', () async {
-    final c = build(_Src());
+  test('choose pins the pick for its source', () async {
+    final c = build(_Src(), sourceId: 'hianime');
     await c.search('fma');
     final m = await c.choose(c.state.results.single);
     expect(m.pinned, isTrue);
-    expect(store.get(fma)?.showId, 'fmab');
+    expect(store.get(fma, 'hianime')?.showId, 'fmab');
+    expect(store.selectedSource(fma), 'hianime');
   });
 }

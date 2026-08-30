@@ -8,49 +8,45 @@ import '../../../core/zmode/source_matcher.dart';
 import '../../../core/zmode/zmode_ids.dart';
 
 class WrongTitleState {
-  const WrongTitleState({this.sourceId, this.results = const [], this.loading = false});
+  const WrongTitleState({this.results = const [], this.loading = false});
 
-  /// Which installed source is being searched.
-  final String? sourceId;
   final List<MediaItem> results;
   final bool loading;
 
-  WrongTitleState copyWith({String? sourceId, List<MediaItem>? results, bool? loading}) =>
+  WrongTitleState copyWith({List<MediaItem>? results, bool? loading}) =>
       WrongTitleState(
-        sourceId: sourceId ?? this.sourceId,
         results: results ?? this.results,
         loading: loading ?? this.loading,
       );
 }
 
-/// Manual re-match: search one source at a time and pin the right show.
+/// Manual re-match against ONE source (the one already selected on the
+/// Detail screen): search it and pin the right result.
 class WrongTitleCubit extends Cubit<WrongTitleState> {
   WrongTitleCubit({
     required SourceRepository sources,
     required SourceMatcher matcher,
     required ZCanonical canonical,
+    required this.sourceId,
   }) : _sources = sources,
        _matcher = matcher,
        _canonical = canonical,
-       super(WrongTitleState(sourceId: sources.loadedSources.firstOrNull?.id));
+       super(const WrongTitleState());
 
   final SourceRepository _sources;
   final SourceMatcher _matcher;
   final ZCanonical _canonical;
 
-  List<({String id, String name})> get sources => _sources.loadedSources;
-
-  void pickSource(String id) => emit(state.copyWith(sourceId: id, results: const []));
+  /// The one source this correction applies to.
+  final String sourceId;
 
   Future<void> search(String query) async {
-    final id = state.sourceId;
-    if (id == null) return;
     emit(state.copyWith(loading: true));
     try {
-      final r = await _sources.search(query.trim(), sourceId: id);
+      final r = await _sources.search(query.trim(), sourceId: sourceId);
       if (!isClosed) emit(state.copyWith(results: r, loading: false));
     } catch (e) {
-      debugPrint('[zmode] manual search on $id failed: $e');
+      debugPrint('[zmode] manual search on $sourceId failed: $e');
       if (!isClosed) emit(state.copyWith(results: const [], loading: false));
     }
   }

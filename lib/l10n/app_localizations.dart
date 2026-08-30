@@ -8297,8 +8297,14 @@ abstract class AppLocalizations {
   /// No description provided for @matchSaved.
   ///
   /// In en, this message translates to:
-  /// **'Saved. This title will always use {name} now.'**
+  /// **'Saved. Matched to {name} now.'**
   String matchSaved(String name);
+
+  /// No description provided for @chooseSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a source'**
+  String get chooseSource;
 }
 
 class _AppLocalizationsDelegate

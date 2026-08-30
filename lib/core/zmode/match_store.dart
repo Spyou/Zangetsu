@@ -44,33 +44,59 @@ class SourceMatch {
   }
 }
 
-/// Canonical id → [SourceMatch]. One Hive box, backed up with settings.
+/// Per-title, per-source matches, plus which source is currently selected for
+/// each title. One Hive box, two key shapes:
+///  - a match:            `'${c.key}@$sourceId'` → [SourceMatch.toMap]
+///  - a title's selection: `'sel:${c.key}'`       → `{'sourceId': ...}`
+///
+/// The `@`/`sel:` prefixes can never collide with each other or with a plain
+/// `c.key` — so an entry written by the old (pre-per-source) scheme, keyed by
+/// bare `c.key`, is simply never looked up again under this one. It re-matches
+/// on next open instead of migrating; no code reads that orphaned key.
 class MatchStore {
   MatchStore._(this._box);
   final Box<Map> _box;
 
   static const String boxName = 'zmode_matches';
+  static const String _selPrefix = 'sel:';
 
   static Future<MatchStore> open() async =>
       MatchStore._(await openBoxSafely<Map>(boxName));
 
-  SourceMatch? get(ZCanonical c) => SourceMatch.fromMap(_box.get(c.key));
+  String _key(ZCanonical c, String sourceId) => '${c.key}@$sourceId';
 
-  /// A guess. Does nothing if the user has pinned this title.
+  SourceMatch? get(ZCanonical c, String sourceId) =>
+      SourceMatch.fromMap(_box.get(_key(c, sourceId)));
+
+  /// A guess for [m.sourceId]. Does nothing if that source is already pinned
+  /// for this title.
   Future<void> save(ZCanonical c, SourceMatch m) async {
-    if (get(c)?.pinned == true) return;
-    await _box.put(c.key, m.toMap());
+    if (get(c, m.sourceId)?.pinned == true) return;
+    await _box.put(_key(c, m.sourceId), m.toMap());
   }
 
-  /// The user's choice. Always wins.
-  Future<void> pin(ZCanonical c, SourceMatch m) =>
-      _box.put(c.key, SourceMatch(
-        sourceId: m.sourceId,
-        showUrl: m.showUrl,
-        showId: m.showId,
-        showTitle: m.showTitle,
-        pinned: true,
-      ).toMap());
+  /// The user's choice for [m.sourceId]. Always wins for that source.
+  Future<void> pin(ZCanonical c, SourceMatch m) => _box.put(
+    _key(c, m.sourceId),
+    SourceMatch(
+      sourceId: m.sourceId,
+      showUrl: m.showUrl,
+      showId: m.showId,
+      showTitle: m.showTitle,
+      pinned: true,
+    ).toMap(),
+  );
 
-  Future<void> forget(ZCanonical c) => _box.delete(c.key);
+  Future<void> forget(ZCanonical c, String sourceId) =>
+      _box.delete(_key(c, sourceId));
+
+  /// Which source plays this title. Null until something has resolved or the
+  /// user has picked one.
+  String? selectedSource(ZCanonical c) {
+    final v = _box.get('$_selPrefix${c.key}')?['sourceId'];
+    return v is String ? v : null;
+  }
+
+  Future<void> selectSource(ZCanonical c, String sourceId) =>
+      _box.put('$_selPrefix${c.key}', {'sourceId': sourceId});
 }

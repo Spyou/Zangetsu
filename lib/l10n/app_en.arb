@@ -2796,6 +2796,7 @@
 	"noSourceHasThisYet": "No source has this yet",
 	"pickTheRightTitle": "Pick the right title",
 	"searchThisSource": "Search this source",
-	"matchSaved": "Saved. This title will always use {name} now.",
-	"@matchSaved": {"placeholders": {"name": {"type": "String"}}}
+	"matchSaved": "Saved. Matched to {name} now.",
+	"@matchSaved": {"placeholders": {"name": {"type": "String"}}},
+	"chooseSource": "Choose a source"
 }

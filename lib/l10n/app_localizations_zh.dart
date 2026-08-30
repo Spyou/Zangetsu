@@ -4670,8 +4670,11 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String matchSaved(String name) {
-    return 'Saved. This title will always use $name now.';
+    return 'Saved. Matched to $name now.';
   }
+
+  @override
+  String get chooseSource => 'Choose a source';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
