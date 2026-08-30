@@ -120,6 +120,7 @@ class MetadataRepository implements CatalogueRepository {
         title: d.title,
         englishTitle: d.englishTitle,
         cover: d.cover,
+        banner: d.banner,
         url: d.url,
         description: d.description,
         status: d.status,

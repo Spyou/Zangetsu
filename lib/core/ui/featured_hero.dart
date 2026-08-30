@@ -91,10 +91,15 @@ class _FeaturedHeroState extends State<FeaturedHero> {
     _loadLogo();
   }
 
+  /// The hero's own art: the wide banner when the item has one (Z Mode),
+  /// else the regular poster cover — same as every hero before [MediaItem.banner]
+  /// existed.
+  static String? _art(MediaItem item) => item.banner ?? item.cover;
+
   @override
   void didUpdateWidget(FeaturedHero old) {
     super.didUpdateWidget(old);
-    if (old.item.cover != widget.item.cover) {
+    if (_art(old.item) != _art(widget.item)) {
       _artColor = null;
       _logoUrl = null;
       _loadPalette();
@@ -115,7 +120,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   }
 
   Future<void> _loadPalette() async {
-    final cover = widget.item.cover;
+    final cover = _art(widget.item);
     if (cover == null || cover.isEmpty) return;
     final cached = _paletteCache[cover];
     if (cached != null) {
@@ -151,7 +156,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final cover = item.cover;
+    final cover = _art(item);
     final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();
