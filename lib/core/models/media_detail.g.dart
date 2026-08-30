@@ -14,6 +14,7 @@ MediaDetail _$MediaDetailFromJson(Map<String, dynamic> json) => MediaDetail(
   coverHeaders: (json['coverHeaders'] as Map<String, dynamic>?)?.map(
     (k, e) => MapEntry(k, e as String),
   ),
+  banner: json['banner'] as String?,
   url: json['url'] as String,
   description: json['description'] as String?,
   status:
@@ -54,6 +55,7 @@ Map<String, dynamic> _$MediaDetailToJson(MediaDetail instance) =>
       'englishTitle': instance.englishTitle,
       'cover': instance.cover,
       'coverHeaders': instance.coverHeaders,
+      'banner': instance.banner,
       'url': instance.url,
       'description': instance.description,
       'status': _$MediaStatusEnumMap[instance.status]!,

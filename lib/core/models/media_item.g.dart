@@ -14,6 +14,7 @@ MediaItem _$MediaItemFromJson(Map<String, dynamic> json) => MediaItem(
   coverHeaders: (json['coverHeaders'] as Map<String, dynamic>?)?.map(
     (k, e) => MapEntry(k, e as String),
   ),
+  banner: json['banner'] as String?,
   url: json['url'] as String,
   type: $enumDecode(_$ProviderTypeEnumMap, json['type']),
   sourceId: json['sourceId'] as String,
@@ -35,6 +36,7 @@ Map<String, dynamic> _$MediaItemToJson(MediaItem instance) => <String, dynamic>{
   'englishTitle': instance.englishTitle,
   'cover': instance.cover,
   'coverHeaders': instance.coverHeaders,
+  'banner': instance.banner,
   'url': instance.url,
   'type': _$ProviderTypeEnumMap[instance.type]!,
   'sourceId': instance.sourceId,
