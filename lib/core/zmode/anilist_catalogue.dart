@@ -42,7 +42,7 @@ class AniListCatalogue {
   };
 
   static const _fields =
-      'id idMal title{romaji english} coverImage{large extraLarge} '
+      'id idMal title{romaji english} coverImage{large extraLarge} bannerImage '
       'episodes chapters status genres description(asHtml:false) seasonYear '
       'studios(isMain:true){nodes{name}} nextAiringEpisode{episode}';
 
@@ -59,7 +59,11 @@ class AniListCatalogue {
     _ => ProviderType.anime,
   };
 
-  /// (row title, extra media() arguments) — the four home rows.
+  /// (row title, extra media() arguments) — the home rows. Anime gets a
+  /// season-aware "this season"/"next season" pair plus a couple of genre
+  /// rows so the page feels populated instead of a wall of sort variants;
+  /// manga/novel keep it shorter since AniList has thinner season data for
+  /// them.
   static List<(String, String)> _rows(ZKind k) {
     final now = DateTime.now();
     final season = switch (now.month) {
@@ -68,24 +72,49 @@ class AniListCatalogue {
       7 || 8 || 9 => 'SUMMER',
       _ => 'FALL',
     };
+    if (k != ZKind.anime) {
+      return [
+        ('Trending', 'sort:TRENDING_DESC'),
+        ('Popular', 'sort:POPULARITY_DESC'),
+        ('Top rated', 'sort:SCORE_DESC'),
+        ('Action', 'genre_in:["Action"],sort:POPULARITY_DESC'),
+        ('Romance', 'genre_in:["Romance"],sort:POPULARITY_DESC'),
+      ];
+    }
+    final (nextSeason, nextYear) = switch (season) {
+      'WINTER' => ('SPRING', now.year),
+      'SPRING' => ('SUMMER', now.year),
+      'SUMMER' => ('FALL', now.year),
+      _ => ('WINTER', now.year + 1),
+    };
     return [
       ('Trending', 'sort:TRENDING_DESC'),
-      if (k == ZKind.anime)
-        ('Popular this season',
-            'sort:POPULARITY_DESC,season:$season,seasonYear:${now.year}')
-      else
-        ('Popular', 'sort:POPULARITY_DESC'),
+      ('Popular this season',
+          'sort:POPULARITY_DESC,season:$season,seasonYear:${now.year}'),
+      ('Upcoming next season',
+          'sort:POPULARITY_DESC,season:$nextSeason,seasonYear:$nextYear,'
+              'status:NOT_YET_RELEASED'),
+      ('All-time popular', 'sort:POPULARITY_DESC'),
       ('Top rated', 'sort:SCORE_DESC'),
-      ('Upcoming', 'sort:POPULARITY_DESC,status:NOT_YET_RELEASED'),
+      ('Action', 'genre_in:["Action"],sort:POPULARITY_DESC'),
+      ('Romance', 'genre_in:["Romance"],sort:POPULARITY_DESC'),
     ];
   }
 
+  /// One request for every row, via aliased `Page` fields — `r0`, `r1`, …,
+  /// one per entry in [_rows] — instead of a round-trip per row. A malformed
+  /// or partial response (missing alias, non-list `media`, or no response at
+  /// all) just drops that row rather than throwing.
   Future<List<HomeSection>> home(ZKind kind) async {
+    final rows = _rows(kind);
+    final query = rows.indexed.map((e) {
+      final (i, (_, args)) = e;
+      return 'r$i: Page(perPage:30){ media(type:${_type(kind)}${_format(kind)},$args){ $_fields } }';
+    }).join(' ');
+    final data = await _gql('query{ $query }', const {});
     final out = <HomeSection>[];
-    for (final (title, args) in _rows(kind)) {
-      final q =
-          'query{ Page(perPage:20){ media(type:${_type(kind)}${_format(kind)},$args){ $_fields } } }';
-      final items = _items(await _gql(q, {'sort': args}), kind);
+    for (final (i, (title, _)) in rows.indexed) {
+      final items = _itemsFromPage(data?['r$i'], kind);
       if (items.isNotEmpty) out.add(HomeSection(title: title, items: items));
     }
     return out;
@@ -113,6 +142,7 @@ class AniListCatalogue {
       title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
       englishTitle: t['english'] as String?,
       cover: (cover['extraLarge'] ?? cover['large']) as String?,
+      banner: map['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),
       description: map['description'] as String?,
       status: _status(map['status'] as String?),
@@ -147,8 +177,17 @@ class AniListCatalogue {
     return ZCanonical(kind, mal != null ? 'mal:$mal' : 'al:${m['id']}');
   }
 
-  static List<MediaItem> _items(Map<String, dynamic>? data, ZKind kind) {
-    final media = (data?['Page'] as Map?)?['media'];
+  static List<MediaItem> _items(Map<String, dynamic>? data, ZKind kind) =>
+      _itemsFromPage(data?['Page'], kind);
+
+  /// [page] is a `Page(){ media }` result — top-level for search/detail,
+  /// or one aliased row (`data['r0']`, `data['r1']`, …) for [home]. Anything
+  /// short of a well-shaped `{media: [...]}` map degrades to no items rather
+  /// than throwing, so a partial multi-row response still yields the rows it
+  /// legitimately has.
+  static List<MediaItem> _itemsFromPage(dynamic page, ZKind kind) {
+    if (page is! Map) return const [];
+    final media = page['media'];
     if (media is! List) return const [];
     return [
       for (final m in media)
@@ -164,6 +203,7 @@ class AniListCatalogue {
       title: (t['romaji'] as String?) ?? (t['english'] as String?) ?? '',
       englishTitle: t['english'] as String?,
       cover: (m['coverImage'] as Map?)?['large'] as String?,
+      banner: m['bannerImage'] as String?,
       url: ZmodeIds.showUrl(c),
       type: _providerType(kind),
       sourceId: ZmodeIds.sourceId,
