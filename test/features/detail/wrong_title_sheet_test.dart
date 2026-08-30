@@ -24,6 +24,11 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  String baseUrlFor(String id) =>
+      id.startsWith('ani:') || id.startsWith('mihon:') || id.startsWith('lnr:')
+          ? 'https://example.test'
+          : '';
+  @override
   List<({String id, String name})> get loadedSources =>
       [for (final id in bySource.keys) (id: id, name: _name(id))];
   // .contains rather than == so a kind-prefixed id (e.g. 'mihon:allanime',
