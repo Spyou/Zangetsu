@@ -139,10 +139,18 @@ class _MatchLineState extends State<MatchLine> {
               ),
             );
           }
-          if (state.selectedId == null) {
+          if (state.loading && state.selectedId == null) {
             return const SizedBox(height: 20); // first resolve still in flight
           }
-          final name = sl<SourceRepository>().displayName(state.selectedId!);
+          // Candidates exist and the resolve finished, but nothing genuinely
+          // matched anywhere and nothing has been picked by hand yet — the
+          // row still opens the picker (there IS something to choose from),
+          // it just has no source to name yet and nothing for "Wrong title?"
+          // to correct until one is picked.
+          final selectedId = state.selectedId;
+          final label = selectedId == null
+              ? l10n.noSourceHasThisYet
+              : l10n.sourceLabel(sl<SourceRepository>().displayName(selectedId));
           final hasMatch = state.match != null;
           return Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -158,7 +166,7 @@ class _MatchLineState extends State<MatchLine> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Flexible(
-                          child: Text(l10n.sourceLabel(name), style: AppText.caption,
+                          child: Text(label, style: AppText.caption,
                               maxLines: 1, overflow: TextOverflow.ellipsis),
                         ),
                         Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textSecondary),
@@ -166,12 +174,14 @@ class _MatchLineState extends State<MatchLine> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                InkWell(
-                  onTap: () => _fix(state.selectedId!),
-                  child: Text(l10n.wrongTitle,
-                      style: AppText.caption.copyWith(color: AppColors.accent)),
-                ),
+                if (selectedId != null) ...[
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: () => _fix(selectedId),
+                    child: Text(l10n.wrongTitle,
+                        style: AppText.caption.copyWith(color: AppColors.accent)),
+                  ),
+                ],
               ],
             ),
           );
