@@ -37,6 +37,7 @@ import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/reading/read_history.dart';
 import 'package:watch_app/core/reading/read_store.dart';
 import 'package:watch_app/core/reading/reader_prefs.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
@@ -363,6 +364,7 @@ void main() {
 
       final stub = _StubSourceRepository(_novelDetail);
       sl.registerSingleton<SourceRepository>(stub);
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
 
       await tester.pumpWidget(
         const MaterialApp(home: DetailScreen(item: _novelItem)),
@@ -406,6 +408,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(_novelDetail),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
       // Chapter 1 (c1) is saved as FINISHED (pos >= total-1) — the reader
       // should resume on chapter 2 (c2), not restart chapter 1. Overrides
       // setUp's empty default.
@@ -445,6 +448,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(_novelDetail),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
       // ReadStore stays empty (setUp's default) — nothing marked on THIS
       // device — but ReadHistory (synced from elsewhere) says chapter 1 was
       // finished, so the reader should resume on chapter 2, same as a local
@@ -495,6 +499,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(_animeDetail),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
 
       final observer = _RecordingNavigatorObserver();
       await tester.pumpWidget(
@@ -562,6 +567,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(novelWithDates(twoDaysAgo)),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
 
       await tester.pumpWidget(
         const MaterialApp(home: DetailScreen(item: _novelItem)),
@@ -602,6 +608,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(novelWithDates(null)),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
 
       await tester.pumpWidget(
         const MaterialApp(home: DetailScreen(item: _novelItem)),
@@ -628,6 +635,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(novelWithDates(null)),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
       sl.unregister<ReadStore>();
       sl.registerSingleton<ReadStore>(
         _FakeReadStore({
@@ -670,6 +678,7 @@ void main() {
       sl.registerSingleton<SourceRepository>(
         _StubSourceRepository(_animeDetail),
       );
+      sl.registerSingleton<CatalogueRepository>(sl<SourceRepository>());
 
       await tester.pumpWidget(
         const MaterialApp(home: DetailScreen(item: _animeItem)),

@@ -18,6 +18,7 @@ import '../../core/playback/search_source_prefs.dart';
 import '../../core/playback/source_health_store.dart' show SourceOutcome;
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -69,7 +70,7 @@ class SearchScreen extends StatelessWidget {
     return BlocProvider(
       create: (_) {
         final bloc = SearchBloc(
-          repo: sl<SourceRepository>(),
+          repo: sl<CatalogueRepository>(),
           history: sl<SearchHistory>(),
         )..add(const SearchStarted());
         final q = initialQuery?.trim();
@@ -130,7 +131,7 @@ class _SearchViewState extends State<_SearchView>
     with TickerProviderStateMixin {
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
-  final _repo = sl<SourceRepository>();
+  final _repo = sl<CatalogueRepository>();
   final _myList = sl<MyListStore>();
   final _history = sl<SearchHistory>();
   final _searchPrefs = sl<SearchPrefs>();
@@ -257,7 +258,8 @@ class _SearchViewState extends State<_SearchView>
         .aniFiltersBySource[sourceId];
     final List<AniyomiFilter> filters = (stored != null && stored.isNotEmpty)
         ? AniyomiFilters.parse(stored)
-        : await _repo.aniFilters(sourceId);
+        // Source-specific filter schema — not a CatalogueRepository call.
+        : await sl<SourceRepository>().aniFilters(sourceId);
     if (!mounted) return;
     if (filters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -288,7 +290,8 @@ class _SearchViewState extends State<_SearchView>
         .mihonFiltersBySource[sourceId];
     final List<MihonFilter> filters = (stored != null && stored.isNotEmpty)
         ? MihonFilters.parse(stored)
-        : await _repo.mihonFilters(sourceId);
+        // Source-specific filter schema — not a CatalogueRepository call.
+        : await sl<SourceRepository>().mihonFilters(sourceId);
     if (!mounted) return;
     if (filters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1549,7 +1552,7 @@ class _SearchViewState extends State<_SearchView>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  sl<SourceRepository>().displayName(sourceId),
+                  sl<CatalogueRepository>().displayName(sourceId),
                   style: AppText.body.copyWith(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
@@ -1583,7 +1586,7 @@ class _SearchViewState extends State<_SearchView>
   /// per source instead of the old blanket "try again".
   Widget _errorView(SearchState state) {
     final failed = state.failedSources.entries.toList();
-    final repo = sl<SourceRepository>();
+    final repo = sl<CatalogueRepository>();
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
