@@ -14,6 +14,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/metadata/metadata_enrichment.dart';
+import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/media_extras.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -37,6 +38,32 @@ class _StubSourceRepository implements SourceRepository {
     String category = 'sub',
     String? sourceId,
   }) async => _detail;
+}
+
+/// Hands back [first] on the opening fetch and [second] on every later one —
+/// what a match change looks like to the cubit: same url, different source
+/// behind it, so a whole new episode list arrives.
+class _SwappingRepository implements SourceRepository {
+  _SwappingRepository(this.first, this.second);
+  final MediaDetail first;
+  final MediaDetail second;
+  int calls = 0;
+
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+
+  @override
+  Future<void> clearHttpCache() async {}
+
+  @override
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+  }) async {
+    calls++;
+    return calls == 1 ? first : second;
+  }
 }
 
 class _FakeTitlePrefs extends TitlePrefsStore {
@@ -176,6 +203,69 @@ void main() {
     test('anime still enriches (unchanged)', () async {
       await loadCubit(_idLessDetail(ProviderType.anime));
       expect(fakeEnrichment.fetchedTypes, [ProviderType.anime]);
+    });
+  });
+
+  // A match change re-fetches through refresh(). Everything _enrich produced
+  // lives only on the in-memory detail, so a bare re-emit of the repo's copy
+  // silently un-resolves the title and strips per-episode metadata — and
+  // _enrich's own guard (Cast/Relations already present) stops it healing
+  // itself. Both halves are asserted here.
+  group('refresh() after a match change', () {
+    // Enriched once: carries an id and has relations, so the guard is armed.
+    final enriched = MediaDetail(
+      id: 't1',
+      title: 'Some Title',
+      url: 'http://test/t1',
+      type: ProviderType.anime,
+      sourceId: 'test',
+      malId: 42,
+      relations: const [MediaRelation(title: 'Sequel')],
+      episodes: const [Episode(id: '1', title: 'Ep 1', url: 'u1', number: 1)],
+    );
+    // What the new source returns: no id of its own, a different list.
+    final swapped = MediaDetail(
+      id: 't1',
+      title: 'Some Title',
+      url: 'http://test/t1',
+      type: ProviderType.anime,
+      sourceId: 'test',
+      relations: const [MediaRelation(title: 'Sequel')],
+      episodes: const [
+        Episode(id: '1', title: 'Ep 1', url: 'v1', number: 1),
+        Episode(id: '2', title: 'Ep 2', url: 'v2', number: 2),
+      ],
+    );
+
+    Future<DetailCubit> loadThenRefresh() async {
+      final cubit = DetailCubit(
+        repo: _SwappingRepository(enriched, swapped),
+        url: enriched.url,
+        prefs: _FakeTitlePrefs(),
+      );
+      await cubit.load();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await cubit.refresh();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      return cubit;
+    }
+
+    test('keeps an id the repo no longer supplies', () async {
+      final cubit = await loadThenRefresh();
+      expect(cubit.state.detail!.malId, 42,
+          reason: 'a resolved id must survive the re-fetch, or the scrobbler '
+              'loses the id it keys off');
+      expect(cubit.state.detail!.episodes.length, 2,
+          reason: 'the new list must still replace the old one');
+      await cubit.close();
+    });
+
+    test('re-runs enrichment for the new episode list', () async {
+      final cubit = await loadThenRefresh();
+      expect(fakeEnrichment.fetchedTypes.length, 2,
+          reason: 'enrichment must run again after the list is swapped; the '
+              'already-enriched guard would otherwise skip it');
+      await cubit.close();
     });
   });
 }
