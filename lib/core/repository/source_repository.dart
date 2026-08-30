@@ -125,6 +125,7 @@ class SourceRepository implements CatalogueRepository {
   /// Drop the search cache when the set of loaded sources changed since the last
   /// call (a source was added, removed, or enabled/disabled) — so cached results
   /// never outlive a source-list change. Cheap; call once before a search batch.
+  @override
   void syncSearchCache() {
     final sig = loadedSources.map((s) => s.id).join(',');
     if (sig != _searchSourcesSig) {
@@ -152,6 +153,7 @@ class SourceRepository implements CatalogueRepository {
   static bool _isLnReader(String id) => id.startsWith('lnr:');
 
   /// The currently-active source identifier.
+  @override
   String get sourceId => _active.state;
 
   /// All currently-loaded sources (id + display name), for cross-source search
@@ -168,6 +170,7 @@ class SourceRepository implements CatalogueRepository {
   /// "MangaDex" chips, an unreadable picker, and a stack of identical result
   /// sections. Only names that actually collide get the suffix, so a
   /// single-language source reads exactly as before.
+  @override
   List<({String id, String name})> get loadedSources {
     final raw = _rawLoadedSources;
     final counts = <String, int>{};
@@ -280,6 +283,7 @@ class SourceRepository implements CatalogueRepository {
   }
 
   /// Human-friendly name for a source id (falls back to the id itself).
+  @override
   String displayName(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.get(sourceId)?.displayName ?? sourceId;
@@ -300,6 +304,7 @@ class SourceRepository implements CatalogueRepository {
   /// this device. Read-only — does not affect resolution or health.
   /// CS ids use identity-compatible lookup ([resolveCompatible]); Aniyomi and JS
   /// ids use their respective manager registries.
+  @override
   bool hasSource(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.resolveCompatible(sourceId) != null;
@@ -360,6 +365,7 @@ class SourceRepository implements CatalogueRepository {
   /// dropped). When it doesn't, we synthesize the legacy three rows from
   /// [popular] so older providers keep working. Each underlying fetch is
   /// fail-safe — one broken row never kills the others.
+  @override
   Future<List<HomeSection>> home({
     String category = 'sub',
     String? sourceId,
@@ -428,6 +434,7 @@ class SourceRepository implements CatalogueRepository {
     }
   }
 
+  @override
   Future<List<MediaItem>> search(
     String query, {
     String category = 'sub',
@@ -457,6 +464,7 @@ class SourceRepository implements CatalogueRepository {
   /// [cache] opts this call into the short-TTL search cache + in-flight dedup
   /// (see [_searchCache]). Off by default so probes/tests and filter-apply always
   /// hit the network fresh; the cross-source search fan-out passes `cache: true`.
+  @override
   Future<({List<MediaItem> items, SourceOutcome outcome})> searchStatus(
     String query, {
     String category = 'sub',
@@ -594,6 +602,7 @@ class SourceRepository implements CatalogueRepository {
     return SourceOutcome.error;
   }
 
+  @override
   Future<MediaDetail> detail(
     String url, {
     String category = 'sub',
@@ -602,8 +611,10 @@ class SourceRepository implements CatalogueRepository {
 
   /// Drop the native source HTTP cache (Mihon/Aniyomi) so a subsequent fetch is
   /// fresh — used by pull-to-refresh. No-op on platforms/sources without it.
+  @override
   Future<void> clearHttpCache() => clearMihonHttpCache();
 
+  @override
   Future<List<Episode>> episodes(
     String url, {
     String category = 'sub',
@@ -619,6 +630,7 @@ class SourceRepository implements CatalogueRepository {
   /// CloudStream sources only — every other provider resolves in one shot, so
   /// there is nothing to poll. Those (and any failure) report `done: true` with
   /// no sources, which tells a caller to simply stop asking.
+  @override
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {
     String? sourceId,
@@ -638,6 +650,7 @@ class SourceRepository implements CatalogueRepository {
   /// Resolve playable sources. [fast] (playback) returns as soon as the first
   /// link(s) are ready; downloads leave it false to get every mirror. A fast
   /// call reuses a fresh [prefetch] for the same episode when one exists.
+  @override
   Future<List<VideoSource>> sources(
     String episodeUrl, {
     String? sourceId,
