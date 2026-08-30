@@ -99,4 +99,26 @@ void main() {
     expect(r.pinned, isTrue);
     expect(store.get(fma)?.pinned, isTrue);
   });
+
+  test('no source genuinely has the title returns null and saves nothing', () async {
+    final repo = _FakeSources({
+      'allanime': [_hit('allanime', 'Naruto')],
+      'hianime': [_hit('hianime', 'One Piece')],
+    });
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
+    expect(r, isNull);
+    expect(store.get(fma), isNull);
+  });
+
+  test('a genuine match on the first source stops the search', () async {
+    final repo = _FakeSources({
+      'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
+      'hianime': [_hit('hianime', 'Should not be reached')],
+    });
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
+    expect(r?.sourceId, 'allanime');
+    expect(repo.searched, ['allanime']);
+  });
 }
