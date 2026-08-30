@@ -37,8 +37,8 @@ class SourceMatch {
     return SourceMatch(
       sourceId: sourceId,
       showUrl: showUrl,
-      showId: (m['showId'] as String?) ?? '',
-      showTitle: (m['showTitle'] as String?) ?? '',
+      showId: m['showId'] is String ? m['showId'] as String : '',
+      showTitle: m['showTitle'] is String ? m['showTitle'] as String : '',
       pinned: m['pinned'] == true,
     );
   }
@@ -47,12 +47,12 @@ class SourceMatch {
 /// Canonical id → [SourceMatch]. One Hive box, backed up with settings.
 class MatchStore {
   MatchStore._(this._box);
-  final Box _box;
+  final Box<Map> _box;
 
   static const String boxName = 'zmode_matches';
 
   static Future<MatchStore> open() async =>
-      MatchStore._(await openBoxSafely(boxName));
+      MatchStore._(await openBoxSafely<Map>(boxName));
 
   SourceMatch? get(ZCanonical c) => SourceMatch.fromMap(_box.get(c.key));
 

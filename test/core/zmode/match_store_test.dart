@@ -55,4 +55,37 @@ void main() {
     await store.forget(fma);
     expect(store.get(fma), isNull);
   });
+
+  test('malformed optional fields (wrong types) deserialize to empty strings, not throw',
+      () async {
+    final store = await MatchStore.open();
+    // Put a map with int values for showId/showTitle, simulating upgrade-stale data
+    final box = Hive.box<Map>(MatchStore.boxName);
+    await box.put(fma.key, {
+      'sourceId': 'test',
+      'showUrl': 'https://test.com',
+      'showId': 123, // int instead of String
+      'showTitle': 456, // int instead of String
+      'pinned': false,
+    });
+    // Should deserialize gracefully with empty strings
+    final match = store.get(fma);
+    expect(match, isNotNull);
+    expect(match?.sourceId, 'test');
+    expect(match?.showId, '');
+    expect(match?.showTitle, '');
+  });
+
+  test('missing required field (sourceId) returns null, not throw', () async {
+    final store = await MatchStore.open();
+    final box = Hive.box<Map>(MatchStore.boxName);
+    await box.put(fma.key, {
+      'showUrl': 'https://test.com',
+      'showId': 'id',
+      'showTitle': 'title',
+      'pinned': false,
+    });
+    // Should return null, not throw
+    expect(store.get(fma), isNull);
+  });
 }
