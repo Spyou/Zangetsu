@@ -46,6 +46,13 @@ class AniListCatalogue {
       'episodes chapters status genres description(asHtml:false) seasonYear '
       'studios(isMain:true){nodes{name}} nextAiringEpisode{episode}';
 
+  /// Exactly what [_item] reads, and nothing else. Home asks for 7 rows of 30
+  /// in one request, so every field here is paid for 210 times: carrying the
+  /// detail-only half of [_fields] (description, studios, airing schedule)
+  /// through it more than doubled the response for data no list cell shows.
+  static const _listFields =
+      'id idMal title{romaji english} coverImage{large} bannerImage genres';
+
   static String _type(ZKind k) => k == ZKind.anime ? 'ANIME' : 'MANGA';
   static String _format(ZKind k) => switch (k) {
     ZKind.novel => ',format_in:[NOVEL]',
@@ -109,7 +116,7 @@ class AniListCatalogue {
     final rows = _rows(kind);
     final query = rows.indexed.map((e) {
       final (i, (_, args)) = e;
-      return 'r$i: Page(perPage:30){ media(type:${_type(kind)}${_format(kind)},$args){ $_fields } }';
+      return 'r$i: Page(perPage:30){ media(type:${_type(kind)}${_format(kind)},$args){ $_listFields } }';
     }).join(' ');
     final data = await _gql('query{ $query }', const {});
     final out = <HomeSection>[];
@@ -123,7 +130,7 @@ class AniListCatalogue {
   Future<List<MediaItem>> search(String q, ZKind kind) async {
     const query = r'query($q:String,$n:Int){ Page(perPage:$n){ media(search:$q,type:';
     final full =
-        '$query${_type(kind)}${_format(kind)}){ $_fields } } }';
+        '$query${_type(kind)}${_format(kind)}){ $_listFields } } }';
     return _items(await _gql(full, {'q': q, 'n': 20}), kind);
   }
 
