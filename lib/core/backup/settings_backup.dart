@@ -35,6 +35,7 @@ class SettingsBackup {
     'novel_lang_prefs', // novel language filter
     'torrent_prefs', // torrent settings
     'locale_prefs', // app language override
+    'zmode_prefs', // Zangetsu Mode toggle + stream kind
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.
