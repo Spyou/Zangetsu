@@ -29,14 +29,16 @@ class SourceMatcher {
   final MatchStore _store;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
-  /// The remembered match, or a fresh guess searched across every installed
-  /// source of this kind. Null when nothing has it — never throws.
+  /// The remembered match, or a fresh guess searched source-by-source, in
+  /// order, stopping at the first genuine hit. Null when nothing genuinely
+  /// matches anywhere — never throws.
   ///
-  /// Every source's results are pooled before ranking, not accepted
-  /// source-by-source: [bestTitleMatch] falls back to its first argument's
-  /// first item when nothing matches exactly, so ranking one source's
-  /// results at a time would let an irrelevant hit from an earlier source
-  /// win over a real match sitting in a later one.
+  /// [bestTitleMatch] falls back to a source's top result when nothing in it
+  /// matches exactly, so its verdict is only used to rank a source's own
+  /// results — the hit is then checked against [_isGenuine] before it's
+  /// trusted, otherwise an unrelated top result from an early source would
+  /// get accepted as this title and "no source has this yet" would become
+  /// unreachable.
   Future<SourceMatch?> resolve(
     ZCanonical c, {
     required String title,
@@ -46,26 +48,40 @@ class SourceMatcher {
     final saved = _store.get(c);
     if (saved != null) return saved;
 
-    final pool = <MediaItem>[];
     for (final s in _candidates(c.kind)) {
+      List<MediaItem> results;
       try {
-        pool.addAll(await _sources.search(title, sourceId: s.id));
+        results = await _sources.search(title, sourceId: s.id);
       } catch (e) {
         debugPrint('[zmode] ${s.id} search failed for "$title": $e');
+        continue;
       }
+      final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
+      if (hit == null || !_isGenuine(hit, title: title, altTitle: altTitle, malId: malId)) {
+        continue;
+      }
+      final m = SourceMatch(
+        sourceId: hit.sourceId,
+        showUrl: hit.url,
+        showId: hit.id,
+        showTitle: hit.title,
+        pinned: false,
+      );
+      await _store.save(c, m);
+      return m;
     }
+    return null;
+  }
 
-    final hit = bestTitleMatch(pool, title, altTitle: altTitle, wantedMalId: malId);
-    if (hit == null) return null;
-    final m = SourceMatch(
-      sourceId: hit.sourceId,
-      showUrl: hit.url,
-      showId: hit.id,
-      showTitle: hit.title,
-      pinned: false,
-    );
-    await _store.save(c, m);
-    return m;
+  /// Whether [hit] is actually this title, not just [bestTitleMatch]'s
+  /// fallback-to-first-result when nothing in a source's results matched.
+  bool _isGenuine(MediaItem hit, {required String title, String? altTitle, int? malId}) {
+    if (malId != null && hit.malId == malId) return true;
+    final wants = <String>{
+      normalizeTitle(title),
+      if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
+    };
+    return wants.contains(normalizeTitle(hit.title));
   }
 
   /// The user picked [picked] by hand. Pinned, so it sticks.
