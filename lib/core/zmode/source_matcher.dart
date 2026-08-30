@@ -13,6 +13,16 @@ class NoSourceMatch implements Exception {
   String toString() => 'No installed source has $canonical';
 }
 
+/// Thrown when a title's matched source has no episode with this number —
+/// the show was found, this episode was not.
+class EpisodeNotOnSource implements Exception {
+  const EpisodeNotOnSource(this.canonical, this.episode);
+  final ZCanonical canonical;
+  final int episode;
+  @override
+  String toString() => 'Episode $episode is not on the source for $canonical';
+}
+
 /// Finds the source show behind a metadata title. It is a guess by title, so
 /// the result is remembered and can be corrected ("Wrong show?"), and a
 /// correction is never re-guessed.
@@ -28,6 +38,9 @@ class SourceMatcher {
   final SourceRepository _sources;
   final MatchStore _store;
   final List<({String id, String name})> Function(ZKind) _candidates;
+
+  /// The remembered match, without searching. Null when nothing is stored.
+  SourceMatch? saved(ZCanonical c) => _store.get(c);
 
   /// The remembered match, or a fresh guess searched source-by-source, in
   /// order, stopping at the first genuine hit. Null when nothing genuinely
