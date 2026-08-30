@@ -4630,6 +4630,44 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get closeConfirmExitImmediatelyLabel => '直接关闭——立即出口';
+
+  @override
+  String get zMode => 'Z Mode';
+
+  @override
+  String get zModeSubtitle =>
+      'Browse from AniList and TMDB, play from your sources';
+
+  @override
+  String get zModeExperimental => 'Experimental';
+
+  @override
+  String get modeAnime => 'Anime';
+
+  @override
+  String get modeMovieTv => 'Movie/TV';
+
+  @override
+  String sourceLabel(String name) {
+    return 'Source: $name';
+  }
+
+  @override
+  String get wrongShow => 'Wrong show?';
+
+  @override
+  String get noSourceHasThisYet => 'No source has this yet';
+
+  @override
+  String get pickTheRightShow => 'Pick the right show';
+
+  @override
+  String get searchThisSource => 'Search this source';
+
+  @override
+  String matchSaved(String name) {
+    return 'Saved. This title will always use $name now.';
+  }
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
