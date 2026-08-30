@@ -20,6 +20,11 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  String baseUrlFor(String id) =>
+      id.startsWith('ani:') || id.startsWith('mihon:') || id.startsWith('lnr:')
+          ? 'https://example.test'
+          : '';
+  @override
   bool hasSource(String sourceId) => bySource.containsKey(sourceId);
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>

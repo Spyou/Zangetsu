@@ -28,6 +28,11 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  String baseUrlFor(String id) =>
+      id.startsWith('ani:') || id.startsWith('mihon:') || id.startsWith('lnr:')
+          ? 'https://example.test'
+          : '';
+  @override
   List<({String id, String name})> get loadedSources =>
       [for (final id in bySource.keys) (id: id, name: _name(id))];
   static String _name(String id) => id == 'ani:1' ? 'HiAnime' : 'AllAnime';
@@ -140,6 +145,36 @@ void main() {
     expect(find.text('Choose a source'), findsOneWidget);
     expect(sl<MatchStore>().selectedSource(fma), before);
     expect(aniCalls.any((c) => c.method == 'openSourceSettings'), isTrue);
+  });
+
+  // Home already routes Mihon, Aniyomi and LNReader challenges through the one
+  // solver, so scoping the picker's shield to `mihon:` hid a control that
+  // works. The gate is the source's base url: site-backed ecosystems have one,
+  // CloudStream/JS items are absolute and have none.
+  testWidgets('the Cloudflare shield follows the base url, not the ecosystem',
+      (t) async {
+    await t.runAsync(
+      () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
+    );
+    await t.pumpWidget(harness(const MatchLine(
+        canonical: fma, title: 'Fullmetal Alchemist (2003)')));
+    await t.pumpAndSettle();
+
+    await t.tap(find.textContaining('HiAnime'));
+    await t.pumpAndSettle();
+
+    // ani:1 is site-backed and gets the shield; allanime is a JS provider
+    // with no base url and must not.
+    expect(find.byIcon(Icons.shield_rounded), findsOneWidget);
+    final shieldRow = find.ancestor(
+      of: find.byIcon(Icons.shield_rounded),
+      matching: find.byType(ListTile),
+    );
+    expect(
+      find.descendant(of: shieldRow, matching: find.text('HiAnime')),
+      findsOneWidget,
+      reason: 'the shield must sit on the site-backed row, not the JS one',
+    );
   });
 }
 
