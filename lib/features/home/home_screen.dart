@@ -568,19 +568,7 @@ class _HomeViewState extends State<_HomeView>
             ),
             // Header bell is parked for now (design TBD) — re-add
             // `_notificationBell(context)` here once one is chosen.
-            BlocBuilder<ActiveSourceCubit, String>(
-              builder: (context, id) => SourceSwitcher(
-                currentId: id,
-                onChanged: (newId) =>
-                    context.read<ActiveSourceCubit>().setSource(newId),
-                onInstallSources: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) =>
-                        const ZangetsuSourcesScreen(openToRepos: true),
-                  ),
-                ),
-              ),
-            ),
+            const HomeSourceSwitcherSlot(),
           ],
         ),
       ),
@@ -1276,6 +1264,43 @@ class _HomeViewState extends State<_HomeView>
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The header's source switcher. Hidden while Z Mode is on — home content
+/// there comes from the metadata catalogue, so the active source doesn't
+/// affect anything on screen and the control would be misleading.
+///
+/// Reactive to [ZModePrefs.revision] (a [ValueListenableBuilder], not a
+/// listener on [_HomeViewState]) so flipping the toggle updates this
+/// immediately without needing the rest of Home to rebuild.
+///
+/// Extracted as its own widget — rather than inlined in [_HomeViewState]'s
+/// build — so this is testable without pumping the real [HomeScreen], whose
+/// `initState` fires a real network call.
+class HomeSourceSwitcherSlot extends StatelessWidget {
+  const HomeSourceSwitcherSlot({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: ZModePrefs.revision,
+      builder: (context, _, _) => ZModePrefs.enabled
+          ? const SizedBox.shrink()
+          : BlocBuilder<ActiveSourceCubit, String>(
+              builder: (context, id) => SourceSwitcher(
+                currentId: id,
+                onChanged: (newId) =>
+                    context.read<ActiveSourceCubit>().setSource(newId),
+                onInstallSources: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        const ZangetsuSourcesScreen(openToRepos: true),
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }
