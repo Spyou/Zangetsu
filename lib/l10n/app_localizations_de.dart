@@ -2590,6 +2590,10 @@ class AppLocalizationsDe extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'Alle Tabs befinden sich in der Leiste.';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'Ziehen Sie die Elemente, um sie neu anzuordnen. $minTabs–$maxTabs Tabs passen in die Leiste.\n\nDas Profil ist angeheftet, da es der einzige Weg zu den Einstellungen ist – würde man es ausblenden, gäbe es keinen Weg zurück zu diesem Bildschirm. Der Sendeplan wird nur im Streaming-Modus angezeigt; während des Lesens wird kein Sendeplan angezeigt.';
   }

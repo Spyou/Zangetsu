@@ -2509,6 +2509,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'すべての勘定はバーカウンターに記されている。';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'ドラッグして並べ替えてください。 $minTabs～$maxTabs 個のタブがバーに表示されます。\n\nプロフィールは設定画面への唯一のアクセス方法であるため、ピン留めされています。非表示にすると、この画面に戻る方法がなくなります。スケジュールはストリーミングモードでのみ表示されます。閲覧中は放送スケジュールは表示されません。';
   }
