@@ -34,6 +34,7 @@ import '../../core/privacy/incognito_mode.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../core/announce/announcement.dart';
 import '../announce/announcement_sheet.dart';
@@ -61,6 +62,7 @@ import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
+import 'search_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
 import 'see_all_screen.dart';
@@ -1140,8 +1142,37 @@ class _HomeViewState extends State<_HomeView>
                         ),
                       ),
 
+                      // ── Z Mode search bar (Search left the dock) ──────────────
+                      if (ZModePrefs.enabled)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(13),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                                decoration: BoxDecoration(
+                                  color: AppColors.settingsCard,
+                                  borderRadius: BorderRadius.circular(13),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.search_rounded, size: 18, color: AppColors.textTertiary),
+                                    const SizedBox(width: 9),
+                                    Text(context.l10n.search, style: AppText.body.copyWith(color: AppColors.textTertiary)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+
                       // ── Mode cards (switch Anime / Manga / Novel) ─────────────
-                      SliverToBoxAdapter(child: _modeCards()),
+                      if (!ZModePrefs.enabled)
+                        SliverToBoxAdapter(child: _modeCards()),
 
                       // ── Reconnect banner (session lapsed → sync is off) ───────
                       if (needsReconnect)
