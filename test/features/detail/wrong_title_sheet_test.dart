@@ -267,6 +267,34 @@ void main() {
     expect(repo.detailCalls, greaterThan(0));
   });
 
+  testWidgets(
+      'candidates exist but nothing matches anywhere: still says so, still opens '
+      'the picker, but there is nothing yet for Wrong title? to correct',
+      (t) async {
+    // Neither source has anything resembling this title.
+    await sl.reset();
+    Hive.init(dir.path);
+    final store = await MatchStore.open();
+    final src = _Src({'allanime': [], 'hianime': []});
+    sl.registerSingleton<SourceRepository>(src);
+    sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<SourceMatcher>(SourceMatcher(
+        sources: src, store: store, candidates: (_) => src.loadedSources));
+
+    await t.pumpWidget(harness(const MatchLine(canonical: fma, title: 'nothing like it')));
+    await t.pumpAndSettle();
+
+    expect(find.text('No source has this yet'), findsOneWidget);
+    expect(find.text('Wrong title?'), findsNothing);
+
+    // Still tappable — there ARE candidates, the user can still pick one.
+    await t.tap(find.text('No source has this yet'));
+    await t.pumpAndSettle();
+    expect(find.text('Choose a source'), findsOneWidget);
+    expect(find.text('AllAnime'), findsOneWidget);
+    expect(find.text('HiAnime'), findsOneWidget);
+  });
+
   testWidgets('no installed source at all says so, with nothing to switch or fix', (t) async {
     await sl.reset();
     Hive.init(dir.path);
