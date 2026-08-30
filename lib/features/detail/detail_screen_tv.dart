@@ -189,7 +189,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final launchCategory = availableCategories.contains(preferred)
         ? preferred
         : category;
-    resolveSources(String u) => sl<SourceRepository>().sources(
+    resolveSources(String u) => sl<CatalogueRepository>().sources(
       u,
       sourceId: widget.item.sourceId,
       fast: true,
@@ -331,7 +331,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         availableCategories: availableCategories,
         coverUrl: detail.cover ?? widget.item.cover ?? '',
         coverHeaders: detail.coverHeaders ?? widget.item.coverHeaders,
-        resolve: (ep) => sl<SourceRepository>().sources(ep.url, sourceId: widget.item.sourceId),
+        resolve: (ep) => sl<CatalogueRepository>().sources(ep.url, sourceId: widget.item.sourceId),
         resolveEpisodes: _episodesByCategory,
       ),
     );
@@ -340,7 +340,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }
 
   Future<Map<int, List<Episode>>> _episodesByCategory(String category) async {
-    final d = await sl<SourceRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
+    final d = await sl<CatalogueRepository>().detail(widget.item.url, category: category, sourceId: widget.item.sourceId);
     final byS = <int, List<Episode>>{};
     for (final e in d.episodes) {
       (byS[seasonOf(e) ?? 1] ??= <Episode>[]).add(e);
@@ -358,7 +358,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _SourcePickerSheet(
         title: ep.title.trim().isNotEmpty ? ep.title : detail.title,
-        resolve: () => sl<SourceRepository>().sources(ep.url, sourceId: item.sourceId),
+        resolve: () => sl<CatalogueRepository>().sources(ep.url, sourceId: item.sourceId),
       ),
     );
     if (res == null || !mounted) return;
@@ -409,7 +409,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   Future<void> _openRelation(MediaRelation r) async {
     _snack(context.l10n.findingTitle(r.title));
     try {
-      final results = await sl<SourceRepository>().search(r.title, sourceId: widget.item.sourceId);
+      final results = await sl<CatalogueRepository>().search(r.title, sourceId: widget.item.sourceId);
       if (!mounted) return;
       if (results.isEmpty) {
         _snack(context.l10n.titleIsntOnThisSource(r.title));

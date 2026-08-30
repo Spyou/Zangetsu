@@ -10,7 +10,7 @@ import '../../../core/playback/search_history.dart';
 import '../../../core/playback/search_prefs.dart';
 import '../../../core/playback/search_source_prefs.dart';
 import '../../../core/playback/source_health_store.dart';
-import '../../../core/repository/source_repository.dart';
+import '../../../core/repository/catalogue_repository.dart';
 import '../../../core/search/title_suggestion_service.dart';
 import '../../../core/state/active_source_cubit.dart';
 // sourceTypeOf lives with the source picker; search_screen.dart reaches for it
@@ -21,7 +21,7 @@ import 'search_state.dart';
 
 class SearchBloc extends Bloc<SearchEvent, SearchState> {
   SearchBloc({
-    required SourceRepository repo,
+    required CatalogueRepository repo,
     required SearchHistory history,
     SearchPrefs? prefs,
     TitleSuggestionService? suggestions,
@@ -63,7 +63,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     }
   }
 
-  final SourceRepository _repo;
+  final CatalogueRepository _repo;
   final SearchHistory _history;
   final SearchPrefs _prefs;
   final TitleSuggestionService _suggestions;
