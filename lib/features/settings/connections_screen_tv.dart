@@ -8,6 +8,7 @@ import '../../core/tracker/mal_service.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../l10n/l10n.dart';
 import '../auth/tv_tracker_connect_screen.dart';
 
 /// TV-native tracker Connections: each of AniList / MAL / Simkl with its status
@@ -45,7 +46,7 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
       appBar: AppBar(
         backgroundColor: AppColors.bg,
         automaticallyImplyLeading: false,
-        title: Text('Connections', style: AppText.headline),
+        title: Text(context.l10n.connections, style: AppText.headline),
       ),
       body: Column(
         children: [
@@ -59,8 +60,10 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                 final r = _rows[i];
                 final connected = r.t.isConnected;
                 final who = connected
-                    ? (r.t.viewerName != null ? 'Connected as ${r.t.viewerName}' : 'Connected')
-                    : 'Not connected';
+                    ? (r.t.viewerName != null
+                        ? context.l10n.connectedAs(r.t.viewerName!)
+                        : context.l10n.connected)
+                    : context.l10n.notConnected;
                 return TvListFocusable(
                   autofocus: i == 0,
                   semanticLabel: '${r.label}, $who',
@@ -94,7 +97,7 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
                           ),
                         ),
                         Text(
-                          connected ? 'Disconnect' : 'Connect',
+                          connected ? context.l10n.disconnect : context.l10n.connect,
                           style: AppText.body.copyWith(
                             color: connected
                                 ? Colors.redAccent
@@ -112,7 +115,7 @@ class _ConnectionsScreenTvState extends State<ConnectionsScreenTv> {
           Padding(
             padding: const EdgeInsets.fromLTRB(40, 0, 40, 40),
             child: Text(
-              'Disconnecting here only signs this tracker out on the TV — your phone stays connected.',
+              context.l10n.disconnectingHereOnlySignsThisTrackerOutOnTheTVYourPhoneStaysConnected,
               style: AppText.caption.copyWith(color: AppColors.textTertiary),
               textAlign: TextAlign.center,
             ),

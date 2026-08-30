@@ -6,6 +6,7 @@ import '../../core/models/media_item.dart';
 import '../../core/playback/search_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/tv/tv_poster_tile.dart';
@@ -91,7 +92,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   /// run the search (same path as pressing OK on the keyboard).
   Future<void> _startVoice() async {
     try {
-      final text = await _voiceChannel.invokeMethod<String>('listen', {'prompt': 'Speak the title'});
+      final text = await _voiceChannel.invokeMethod<String>('listen', {'prompt': context.l10n.speakTheTitle});
       if (!mounted || text == null || text.isEmpty) return;
       _controller.value = TextEditingValue(
         text: text,
@@ -156,7 +157,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                       style: AppText.title.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w400),
                       cursorColor: Colors.white,
                       decoration: InputDecoration(
-                        hintText: 'Search…',
+                        hintText: context.l10n.search2,
                         hintStyle: AppText.title.copyWith(color: AppColors.textTertiary, fontWeight: FontWeight.w400),
                         border: UnderlineInputBorder(borderSide: BorderSide(color: AppColors.hairline, width: 1)),
                         enabledBorder: UnderlineInputBorder(
@@ -179,7 +180,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                       variant: TvFocusVariant.float,
                       scale: 1.08,
                       onTap: _startVoice,
-                      semanticLabel: 'Voice search',
+                      semanticLabel: context.l10n.voiceSearch,
                       child: Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(color: AppColors.surface2, shape: BoxShape.circle),
@@ -253,7 +254,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                     children: [
                       chip(
                         key: const ValueKey('tv-search-scope-all'),
-                        label: 'All sources',
+                        label: context.l10n.allSources,
                         icon: Icons.travel_explore_rounded,
                         selected: !current,
                         value: false,
@@ -261,7 +262,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                       const SizedBox(width: 10),
                       chip(
                         key: const ValueKey('tv-search-scope-current'),
-                        label: 'Current source',
+                        label: context.l10n.currentSource,
                         icon: Icons.filter_center_focus_rounded,
                         selected: current,
                         value: true,
@@ -289,7 +290,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                         child: SkeletonGrid(crossAxisCount: _crossAxisCount),
                       );
                     case SearchStatus.error:
-                      return const EmptyState(icon: Icons.error_outline, message: 'Search failed — try again');
+                      return EmptyState(icon: Icons.error_outline, message: context.l10n.searchFailedTryAgain);
                     case SearchStatus.success:
                       // Current source = one source → flat grid (best overview
                       // of a single source). All sources = CloudStream-style
@@ -314,7 +315,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
     final history = widget.history;
     final recent = history?.recent() ?? const <String>[];
     if (history == null || recent.isEmpty) {
-      return const EmptyState(icon: Icons.search_rounded, message: 'Search for something to watch');
+      return EmptyState(icon: Icons.search_rounded, message: context.l10n.searchForSomethingToWatch);
     }
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -323,11 +324,11 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           padding: const EdgeInsets.fromLTRB(48, 8, 48, 12),
           child: Row(
             children: [
-              Expanded(child: Text('Recent searches', style: AppText.overline)),
+              Expanded(child: Text(context.l10n.recentSearches, style: AppText.overline)),
               TvFocusable(
                 key: const ValueKey('tv-search-clear-history'),
                 variant: TvFocusVariant.pill,
-                semanticLabel: 'Clear search history',
+                semanticLabel: context.l10n.clearSearchHistory,
                 onTap: () async {
                   await history.clear();
                   if (mounted) setState(() {});
@@ -337,7 +338,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Text(
-                      'Clear',
+                      context.l10n.clear,
                       style: TextStyle(color: fg, fontSize: 15, fontWeight: FontWeight.w700),
                     ),
                   );
@@ -422,15 +423,16 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
   /// Shared "nothing matched" panel — used by both the flat grid (current
   /// source) and the grouped rows (all sources).
   Widget _noResults(SearchState state) {
+    final l10n = context.l10n;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           const Icon(Icons.search_off_rounded, size: 52, color: AppColors.textTertiary),
           const SizedBox(height: 14),
-          Text('No results for "${state.query}"', textAlign: TextAlign.center, style: AppText.headline),
+          Text(l10n.noResultsFor(state.query), textAlign: TextAlign.center, style: AppText.headline),
           const SizedBox(height: 6),
-          const Text('Check the spelling or try a different title.', textAlign: TextAlign.center, style: AppText.body),
+          Text(l10n.checkTheSpellingOrTryADifferentTitle, textAlign: TextAlign.center, style: AppText.body),
         ],
       ),
     );
@@ -457,7 +459,7 @@ class _SearchScreenTvState extends State<SearchScreenTv> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(48, 18, 48, 10),
-              child: Text('${g.sourceName}  ·  ${g.items.length}', style: AppText.headline),
+              child: Text(context.l10n.sourceNameItemCount(g.sourceName, g.items.length), style: AppText.headline),
             ),
             SizedBox(
               // Poster (130 × 195 at 2:3) + title + focus-scale headroom.

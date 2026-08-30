@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'app_colors.dart';
+import 'app_text.dart';
 
 ThemeData buildAppTheme() {
   final scheme = ColorScheme.dark(
@@ -10,7 +11,8 @@ ThemeData buildAppTheme() {
   );
   return ThemeData(
     useMaterial3: true,
-    fontFamily: 'Inter',
+    fontFamily: AppText.fontFamily,
+    fontFamilyFallback: AppText.fontFamilyFallback,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.bg,
     splashFactory: InkSparkle.splashFactory,

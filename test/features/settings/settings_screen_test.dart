@@ -17,12 +17,14 @@ import 'package:watch_app/core/torrent/torrent_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
+import 'package:watch_app/core/locale/locale_controller.dart';
 import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
       invoke: (_, __) async => const {'ok': false},
@@ -90,6 +92,8 @@ void main() {
     await Hive.openBox(DownloadPrefs.boxName);
     await Hive.openBox(TorrentPrefs.boxName);
     await Hive.openBox(ThemeController.boxName);
+    await Hive.openBox(LocaleController.boxName);
+    await LocaleController.init();
     await Hive.openBox(PlaybackPrefs.boxName);
     await ReaderPrefs.init();
     final sl = GetIt.instance;
@@ -130,7 +134,11 @@ void main() {
           BlocProvider<AuthCubit>.value(value: authCubit),
           BlocProvider<ActiveSourceCubit>.value(value: activeCubit),
         ],
-        child: const MaterialApp(home: SettingsScreen()),
+        child: MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: const SettingsScreen(),
+        ),
       ),
     );
     await tester.pumpAndSettle();

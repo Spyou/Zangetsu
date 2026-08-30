@@ -40,15 +40,15 @@ class _CsTvViewState extends State<_CsTvView> {
           SnackBar(
             content: Text(
               count == 0
-                  ? 'Repo added.'
-                  : 'Repo added — $count source${count == 1 ? '' : 's'} available.',
+                  ? context.l10n.repoAdded
+                  : context.l10n.repoAddedWithSourcesAvailable(count),
             ),
           ),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Failed to add repo: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.failedToAddRepo('$e'))));
     }
   }
 
@@ -65,7 +65,7 @@ class _CsTvViewState extends State<_CsTvView> {
               child: Padding(
                 padding: EdgeInsets.all(40),
                 child: Text(
-                  "CloudStream isn't available on this device.",
+                  context.l10n.cloudstreamIsnTAvailableOnThisDevice,
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white70, fontSize: 16),
                 ),
@@ -86,21 +86,21 @@ class _CsTvViewState extends State<_CsTvView> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text('CloudStream', style: AppText.largeTitle),
+                  child: Text(context.l10n.cloudStream, style: AppText.largeTitle),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(40, 0, 40, 16),
                   child: Row(
                     children: [
                       _CsTvTabChip(
-                        title: 'Installed',
+                        title: context.l10n.installed,
                         selected: _tab == 0,
                         autofocus: true,
                         onTap: () => setState(() => _tab = 0),
                       ),
                       const SizedBox(width: 12),
                       _CsTvTabChip(
-                        title: 'Repositories',
+                        title: context.l10n.repositories,
                         selected: _tab == 1,
                         onTap: () => setState(() => _tab = 1),
                       ),
@@ -133,7 +133,7 @@ class _CsTvViewState extends State<_CsTvView> {
                               padding: const EdgeInsets.only(top: 8),
                               child: TvListFocusable(
                                 onTap: _showAddCsRepoDialog,
-                                semanticLabel: 'Add CS repo',
+                                semanticLabel: context.l10n.addCSRepo,
                                 child: ExcludeSemantics(
                                   child: Container(
                                     padding: const EdgeInsets.symmetric(
@@ -154,7 +154,7 @@ class _CsTvViewState extends State<_CsTvView> {
                                         ),
                                         const SizedBox(width: 8),
                                         Text(
-                                          'Add CS repo',
+                                          context.l10n.addCSRepo,
                                           style: AppText.headline.copyWith(
                                             color: AppColors.accent,
                                           ),
@@ -268,7 +268,7 @@ class _CsScreenTvInstalledContent extends StatelessWidget {
         child: EmptyState(
           icon: Icons.dns_rounded,
           message: query.trim().isEmpty
-              ? 'No CloudStream sources installed.'
+              ? context.l10n.noCloudStreamSourcesInstalled
               : 'No installed sources match "${query.trim()}".',
         ),
       );
@@ -305,7 +305,7 @@ class _CsScreenTvInstalledGroupState
   @override
   Widget build(BuildContext context) {
     final title =
-        widget.group.name.isNotEmpty ? widget.group.name : 'CloudStream';
+        widget.group.name.isNotEmpty ? widget.group.name : context.l10n.cloudStream;
     final sources = widget.group.sources;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -421,7 +421,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
                   ..clearSnackBars()
                   ..showSnackBar(
                     SnackBar(
-                      content: Text('Active source: ${source.displayName}'),
+                      content: Text(context.l10n.activeSourceColon(source.displayName)),
                     ),
                   );
               },
@@ -445,7 +445,7 @@ class _CsScreenTvSourceRow extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text('cloudstream', style: AppText.caption),
+                      Text(context.l10n.cloudstream, style: AppText.caption),
                     ],
                   ),
                 ),
@@ -532,8 +532,8 @@ class _CsScreenTvReposContent extends StatelessWidget {
         child: EmptyState(
           icon: Icons.cloud_outlined,
           message: searching
-              ? 'No extensions match "${query.trim()}".'
-              : 'No CloudStream repos added yet.\nPress "Add CS repo" to add one.',
+              ? context.l10n.noExtensionsMatchQuery(query.trim())
+              : context.l10n.noCloudStreamReposAddedYetPress(context.l10n.addCSRepo),
         ),
       );
     }
@@ -612,7 +612,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..clearSnackBars()
-      ..showSnackBar(const SnackBar(content: Text('Checking for updates…')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.checkingForUpdates)));
     try {
       final updates =
           await sl<CloudStreamManager>().checkRepoUpdates(group.url);
@@ -622,15 +622,15 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
           SnackBar(
             content: Text(
               updates.isEmpty
-                  ? 'Up to date'
-                  : '${updates.length} update(s) available',
+                  ? context.l10n.upToDate
+                  : context.l10n.nUpdatesAvailable(updates.length),
             ),
           ),
         );
     } catch (e) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Check failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.checkFailed('$e'))));
     }
   }
 
@@ -638,7 +638,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..clearSnackBars()
-      ..showSnackBar(const SnackBar(content: Text('Updating…')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.updating)));
     try {
       final count = await sl<CloudStreamManager>().updateRepo(group.url);
       messenger
@@ -646,14 +646,14 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
         ..showSnackBar(
           SnackBar(
             content: Text(
-              count == 0 ? 'Already up to date' : 'Updated $count source(s)',
+              count == 0 ? context.l10n.alreadyUpToDate : context.l10n.updatedNSources(count),
             ),
           ),
         );
     } catch (e) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     }
   }
 
@@ -661,15 +661,15 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await _csScreenTvConfirm(
       context,
-      title: 'Remove repository?',
-      body: 'Remove this repository and its sources?',
-      confirmLabel: 'Remove',
+      title: context.l10n.removeRepository2,
+      body: context.l10n.removeThisRepositoryAndItsSources,
+      confirmLabel: context.l10n.removeDownloadTooltip,
     );
     if (!ok) return;
     await sl<CloudStreamManager>().deleteRepo(group.url);
     messenger
       ..clearSnackBars()
-      ..showSnackBar(const SnackBar(content: Text('Removed')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.removed)));
   }
 
   @override
@@ -678,7 +678,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
     final isOther = group.url.isEmpty;
     final updates = isOther ? const <CsUpdate>[] : manager.updatesFor(group.url);
     final catalog = isOther ? _otherCatalog : group.catalog;
-    final title = group.name.isNotEmpty ? group.name : 'CloudStream';
+    final title = group.name.isNotEmpty ? group.name : context.l10n.cloudStream;
     final installedCount = isOther
         ? group.sources.length
         : catalog
@@ -690,7 +690,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
     final subtitle = isOther
         ? '${group.sources.length} installed'
         : (catalog.isEmpty
-              ? (group.owner.isNotEmpty ? group.owner : 'cloudstream')
+              ? (group.owner.isNotEmpty ? group.owner : context.l10n.cloudstream)
               : '$installedCount of ${catalog.length} installed'
                     '${group.owner.isNotEmpty ? ' • ${group.owner}' : ''}');
 
@@ -753,7 +753,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                 if (updates.isNotEmpty)
                   TvListFocusable(
                     onTap: _applyUpdates,
-                    semanticLabel: '$title, apply ${updates.length == 1 ? '1 update' : '${updates.length} updates'}',
+                    semanticLabel: '$title, apply ${updates.length == 1 ? context.l10n.oneUpdate : '${updates.length} updates'}',
                     child: ExcludeSemantics(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
@@ -764,7 +764,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                         ),
                         child: Text(
                           updates.length == 1
-                              ? '1 update'
+                              ? context.l10n.oneUpdate
                               : '${updates.length} updates',
                           style: AppText.caption.copyWith(
                             color: AppColors.accent,
@@ -774,7 +774,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                       ),
                     ),
                   ),
-                // "Check updates" — real repos only (no synthetic Other group).
+                // context.l10n.checkUpdates — real repos only (no synthetic Other group).
                 if (group.url.isNotEmpty)
                   TvListFocusable(
                     onTap: _checkUpdates,
@@ -783,13 +783,13 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
-                        child: Text('Check updates',
+                        child: Text(context.l10n.checkUpdates,
                             style: AppText.caption
                                 .copyWith(color: AppColors.textSecondary)),
                       ),
                     ),
                   ),
-                // "Remove repo" — real repos only.
+                // context.l10n.removeRepo2 — real repos only.
                 if (group.url.isNotEmpty)
                   TvListFocusable(
                     onTap: _removeRepo,
@@ -798,7 +798,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
-                        child: Text('Remove',
+                        child: Text(context.l10n.removeDownloadTooltip,
                             style: AppText.caption
                                 .copyWith(color: AppColors.textSecondary)),
                       ),
@@ -836,7 +836,7 @@ class _CsScreenTvRepoSectionState extends State<_CsScreenTvRepoSection> {
                           padding:
                               const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            'No installable sources found in this repo.',
+                            context.l10n.noInstallableSourcesFoundInThisRepo,
                             textAlign: TextAlign.center,
                             style: AppText.caption,
                           ),
@@ -905,7 +905,7 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
       if (widget.plugin.tvTypes.isNotEmpty)
         widget.plugin.tvTypes.join(' / '),
     ];
-    return parts.isEmpty ? 'cloudstream' : parts.join(' • ');
+    return parts.isEmpty ? context.l10n.cloudstream : parts.join(' • ');
   }
 
   Future<void> _install() async {
@@ -917,12 +917,12 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Installed ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.installedName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -939,12 +939,12 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Updated ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.updatedName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -953,9 +953,9 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
   Future<void> _uninstall() async {
     final ok = await _csScreenTvConfirm(
       context,
-      title: 'Uninstall ${widget.plugin.name}?',
-      body: 'This removes the source from your installed list.',
-      confirmLabel: 'Uninstall',
+      title: context.l10n.uninstallNameQuestion(widget.plugin.name),
+      body: context.l10n.thisRemovesTheSourceFromYourInstalledList,
+      confirmLabel: context.l10n.uninstall,
     );
     if (!ok) return;
     if (!mounted) return;
@@ -967,12 +967,12 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Uninstalled ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.uninstalledName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1031,7 +1031,7 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
           else if (installed)
             TvActionChip(
               autofocus: widget.autofocus,
-              label: 'Installed',
+              label: context.l10n.installed,
               emphasized: false,
               onTap: _uninstall,
               semanticLabel: '${widget.plugin.name}, uninstall',
@@ -1039,7 +1039,7 @@ class _CsScreenTvPluginRowState extends State<_CsScreenTvPluginRow> {
           else
             TvActionChip(
               autofocus: widget.autofocus,
-              label: 'Install',
+              label: context.l10n.install,
               onTap: _install,
               semanticLabel: '${widget.plugin.name}, install',
             ),
@@ -1098,13 +1098,13 @@ Future<bool> _csScreenTvConfirm(
                   TvListFocusable(
                     autofocus: true,
                     onTap: () => Navigator.pop(ctx, false),
-                    semanticLabel: 'Cancel',
+                    semanticLabel: context.l10n.cancel,
                     child: ExcludeSemantics(
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 20, vertical: 12),
                         child: Text(
-                          'Cancel',
+                          context.l10n.cancel,
                           style: AppText.body.copyWith(
                               color: AppColors.textSecondary),
                         ),
@@ -1166,7 +1166,7 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add CS repo', style: AppText.headline),
+      title: Text(context.l10n.addCSRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1178,14 +1178,14 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
               keyboardType: TextInputType.url,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Repo URL',
-                hintText: 'https://.../repo.json',
+              decoration: InputDecoration(
+                labelText: context.l10n.repoUrl,
+                hintText: context.l10n.repoUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              'Press OK on the field to type a CloudStream repository URL.',
+              context.l10n.pasteACloudStreamRepositoryURL,
               style: AppText.caption,
             ),
           ],
@@ -1194,12 +1194,12 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
       actions: [
         TvListFocusable(
           onTap: () => Navigator.of(context).pop(),
-          semanticLabel: 'Cancel',
+          semanticLabel: context.l10n.cancel,
           child: ExcludeSemantics(
             child: TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: Text(
-                'Cancel',
+                context.l10n.cancel,
                 style: AppText.body.copyWith(color: AppColors.textSecondary),
               ),
             ),
@@ -1207,7 +1207,7 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
         ),
         TvListFocusable(
           onTap: _submit,
-          semanticLabel: 'Add',
+          semanticLabel: context.l10n.navTabsAdd,
           child: ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -1215,7 +1215,7 @@ class _CsScreenTvAddRepoDialogState extends State<_CsScreenTvAddRepoDialog> {
                 foregroundColor: Colors.white,
               ),
               onPressed: _submit,
-              child: const Text('Add'),
+              child: Text(context.l10n.navTabsAdd),
             ),
           ),
         ),

@@ -25,7 +25,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
     ];
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Connections'),
+      appBar: settingsAppBar(context.l10n.connections),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
@@ -36,8 +36,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
                   icon: Icons.sync_alt_rounded,
                   title: t.displayName,
                   subtitle: t.isConnected
-                      ? (t.viewerName ?? 'Connected')
-                      : 'Sync progress as you watch',
+                      ? (t.viewerName ?? context.l10n.connected)
+                      : context.l10n.syncProgressAsYouWatch,
                   onTap: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -52,8 +52,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'Sync watch progress and list status to your accounts. Anime syncs '
-              'to all three; movies and series sync to Simkl.',
+              context.l10n.connectionsBlurb,
               style: AppText.caption,
             ),
           ),

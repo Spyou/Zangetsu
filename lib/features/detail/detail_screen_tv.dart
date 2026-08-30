@@ -30,7 +30,11 @@ class DetailScreenTv extends StatefulWidget {
 
 class _DetailScreenTvState extends State<DetailScreenTv> {
   int _tab = 0;
-  static const _tabLabels = ['Episodes', 'Cast', 'Relations', 'Details'];
+  List<String> _tabLabels(BuildContext context) {
+    final l = context.l10n;
+    return [l.episodes, l.cast, l.relations, l.details];
+  }
+
 
   // Episode search. The query is typed in a DIALOG (opened from the left-pane
   // button) rather than an inline TextField: a focused TextField eats the
@@ -57,24 +61,27 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Search episodes'),
+        title: Text(ctx.l10n.searchEpisodes),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: AppText.body,
           cursorColor: AppColors.accent,
           decoration: InputDecoration(
-            hintText: 'Title or episode number',
+            hintText: ctx.l10n.titleOrEpisodeNumber,
             hintStyle: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
           onSubmitted: (q) => Navigator.pop(ctx, q),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Clear')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ''),
+            child: Text(ctx.l10n.clear),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             style: TextButton.styleFrom(foregroundColor: AppColors.accent),
-            child: const Text('Search'),
+            child: Text(ctx.l10n.search),
           ),
         ],
       ),
@@ -303,7 +310,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
   }) async {
     final total = episodesBySeason.values.fold<int>(0, (a, b) => a + b.length);
     if (total == 0) {
-      _snack('No episodes to download');
+      _snack(context.l10n.noEpisodesToDownload);
       return;
     }
     if (total == 1) {
@@ -372,7 +379,7 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         malId: detail.malId ?? item.malId,
       ),
     );
-    _snack('Added to downloads');
+    _snack(context.l10n.addedToDownloads);
   }
 
   void _startDownload(MediaDetail detail, String category, String quality, List<Episode> episodes) {
@@ -392,21 +399,25 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         malId: detail.malId ?? item.malId,
       ),
     );
-    _snack(episodes.length == 1 ? 'Added to downloads' : 'Downloading ${episodes.length} episodes');
+    _snack(
+      episodes.length == 1
+          ? context.l10n.addedToDownloads
+          : context.l10n.downloadingNEpisodes(episodes.length),
+    );
   }
 
   Future<void> _openRelation(MediaRelation r) async {
-    _snack('Finding "${r.title}"…');
+    _snack(context.l10n.findingTitle(r.title));
     try {
       final results = await sl<SourceRepository>().search(r.title, sourceId: widget.item.sourceId);
       if (!mounted) return;
       if (results.isEmpty) {
-        _snack('"${r.title}" isn\'t on this source');
+        _snack(context.l10n.titleIsntOnThisSource(r.title));
         return;
       }
       Navigator.of(context).push(DetailScreen.route(results.first));
     } catch (_) {
-      if (mounted) _snack('Couldn\'t open "${r.title}"');
+      if (mounted) _snack(context.l10n.couldntOpenTitle(r.title));
     }
   }
 
@@ -437,7 +448,10 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
         if (state.status == DetailStatus.error || state.detail == null) {
           return Scaffold(
             backgroundColor: AppColors.bg,
-            body: EmptyState(icon: Icons.error_outline, message: 'Failed to load this title'),
+            body: EmptyState(
+              icon: Icons.error_outline,
+              message: context.l10n.failedToLoadThisTitle,
+            ),
           );
         }
         return _buildTwoPane(context, state, state.detail!);
@@ -458,9 +472,15 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     // Resume / play label (mirrors _DetailViewState._buildBody).
     final resume = _resumeTarget(eps);
     final resumeIdx = resume.index;
-    final hasAnyMark = eps.any((e) => store.get(item.sourceId, item.url, e.id) != null);
-    final episodeNum = eps.isNotEmpty ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1) : 1;
-    final buttonLabel = resume.hasResume ? 'Continue E$episodeNum' : 'Play';
+    final hasAnyMark = eps.any(
+      (e) => store.get(item.sourceId, item.url, e.id) != null,
+    );
+    final episodeNum = eps.isNotEmpty
+        ? (eps[resumeIdx].number?.toInt() ?? resumeIdx + 1)
+        : 1;
+    final buttonLabel = resume.hasResume
+        ? context.l10n.continueEpisode(episodeNum)
+        : context.l10n.play;
 
     // Cover.
     final coverUrl = detail.cover ?? item.cover ?? '';
@@ -490,9 +510,9 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
     final metaParts = <String>[];
     if ((detail.year ?? '').isNotEmpty) metaParts.add(detail.year!);
     if (hasMultipleSeasons) {
-      metaParts.add('${seasonSet.length} Seasons');
+      metaParts.add(context.l10n.seasonCount(seasonSet.length));
     } else if (eps.isNotEmpty) {
-      metaParts.add('${eps.length} Episode${eps.length == 1 ? '' : 's'}');
+      metaParts.add(context.l10n.episodeCount(eps.length));
     }
     if (statusStr.isNotEmpty) metaParts.add(statusStr);
     final metaLine = metaParts.join('  ·  ');
@@ -595,12 +615,12 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     episodesBySeason: episodesBySeason,
                                     initialSeason: currentSeason,
                                   ),
-                                  semanticLabel: 'Download',
+                                  semanticLabel: context.l10n.download,
                                   // _DownloadButton is shared with the phone
                                   // view — exclude its Text, same as Play above.
                                   child: ExcludeSemantics(
                                     child: _DownloadButton(
-                                      label: 'Download',
+                                      label: context.l10n.download,
                                       onPressed: () => _openDownloadSheet(
                                         detail: detail,
                                         category: category,
@@ -619,15 +639,19 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   key: const ValueKey('tv-detail-ep-search'),
                                   variant: TvFocusVariant.pill,
                                   onTap: _openEpisodeSearch,
-                                  semanticLabel: _epQuery.isEmpty ? 'Search episodes' : 'Search: $_epQuery',
+                                  semanticLabel: _epQuery.isEmpty
+                                      ? context.l10n.searchEpisodes
+                                      : context.l10n.searchColon(_epQuery),
                                   // _IconAction is shared with the phone view —
                                   // exclude its own label, same as Play above.
                                   child: ExcludeSemantics(
                                     child: _IconAction(
                                       icon: _epQuery.isEmpty ? Icons.search_rounded : Icons.filter_alt_rounded,
                                       active: _epQuery.isNotEmpty,
-                                      label: _epQuery.isEmpty ? 'Search episodes' : 'Search: $_epQuery',
-                                      tooltip: 'Search episodes',
+                                      label: _epQuery.isEmpty
+                                          ? context.l10n.searchEpisodes
+                                          : context.l10n.searchColon(_epQuery),
+                                      tooltip: context.l10n.searchEpisodes,
                                       onTap: _openEpisodeSearch,
                                     ),
                                   ),
@@ -638,15 +662,18 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                   key: const ValueKey('tv-detail-mylist'),
                                   variant: TvFocusVariant.pill,
                                   onTap: () => _openListSheet(detail),
-                                  semanticLabel: _status?.shortLabel ?? 'My List',
+                                  semanticLabel:
+                                      _status?.shortLabel ?? context.l10n.myList,
                                   // _IconAction is shared with the phone view —
                                   // exclude its own label, same as Play above.
                                   child: ExcludeSemantics(
                                     child: _IconAction(
                                       icon: _inMyList ? Icons.check_rounded : Icons.add_rounded,
                                       active: _inMyList,
-                                      label: _status?.shortLabel ?? 'My List',
-                                      tooltip: _inMyList ? 'Change status' : 'Add to My List',
+                                      label: _status?.shortLabel ?? context.l10n.myList,
+                                      tooltip: _inMyList
+                                          ? context.l10n.changeStatus
+                                          : context.l10n.addToMyList,
                                       onTap: () => _openListSheet(detail),
                                     ),
                                   ),
@@ -659,16 +686,17 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                                     key: const ValueKey('tv-detail-tracking'),
                                     variant: TvFocusVariant.pill,
                                     onTap: () => _openTrackingSheet(detail),
-                                    semanticLabel: 'Tracking',
+                                    semanticLabel: context.l10n.tracking,
                                     child: ExcludeSemantics(
                                       child: _IconAction(
                                         icon: _tracked ? Icons.published_with_changes_rounded : Icons.sync_rounded,
                                         active: _tracked,
-                                        label: 'Tracking',
+                                        label: context.l10n.tracking,
                                         tooltip: _tracked
-                                            ? 'Tracked — edit status, score '
-                                                  '& progress'
-                                            : 'Sync status, score & progress',
+                                            ? context
+                                                  .l10n
+                                                  .trackedEditStatusScoreProgress
+                                            : context.l10n.syncStatusScoreProgress,
                                         onTap: () => _openTrackingSheet(detail),
                                       ),
                                     ),
@@ -700,21 +728,21 @@ class _DetailScreenTvState extends State<DetailScreenTv> {
                             padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                             child: Row(
                               children: [
-                                for (int i = 0; i < _tabLabels.length; i++)
+                                for (int i = 0; i < _tabLabels(context).length; i++)
                                   Padding(
                                     padding: const EdgeInsets.only(right: 4),
                                     child: TvFocusable(
                                       key: ValueKey('tv-detail-tab-$i'),
                                       variant: TvFocusVariant.pill,
                                       onTap: () => setState(() => _tab = i),
-                                      semanticLabel: _tabLabels[i],
+                                      semanticLabel: _tabLabels(context)[i],
                                       builder: (focused) => Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                         // Excluded — semanticLabel above
                                         // already announces the tab name.
                                         child: ExcludeSemantics(
                                           child: Text(
-                                            _tabLabels[i],
+                                            _tabLabels(context)[i],
                                             style: AppText.headline.copyWith(
                                               fontSize: 15,
                                               // Active tab reads from bright
@@ -892,7 +920,10 @@ class _TvEpisodeListState extends State<_TvEpisodeList> {
     final eps = widget.eps;
     final filtered = _filteredEps;
     if (widget.seasonEps.isEmpty) {
-      return const EmptyState(icon: Icons.video_library_outlined, message: 'No episodes available from this source');
+      return EmptyState(
+        icon: Icons.video_library_outlined,
+        message: context.l10n.noEpisodesAvailableFromThisSource,
+      );
     }
     final store = sl<ResumeStore>();
     final total = filtered.length;
@@ -905,7 +936,12 @@ class _TvEpisodeListState extends State<_TvEpisodeList> {
 
     final Widget listView;
     if (filtered.isEmpty) {
-      listView = const EmptyState(icon: Icons.search_off_rounded, message: 'No episodes match your search');
+      // Query matched nothing — keep the search field on screen (it's above),
+      // just swap the list for a hint.
+      listView = EmptyState(
+        icon: Icons.search_off_rounded,
+        message: context.l10n.noEpisodesMatchYourSearch,
+      );
     } else {
       listView = ListView.builder(
         padding: const EdgeInsets.only(bottom: 32),

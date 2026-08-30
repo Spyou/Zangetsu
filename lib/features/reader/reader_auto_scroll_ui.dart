@@ -4,6 +4,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'reader_auto_scroll.dart';
 import 'reader_chrome.dart';
+import '../../l10n/l10n.dart';
 
 /// Small floating play/pause for auto-scroll, parked above the bottom chrome.
 ///
@@ -70,7 +71,7 @@ class _ReaderAutoScrollButtonState extends State<ReaderAutoScrollButton> {
             valueListenable: widget.autoScroll.paused,
             builder: (context, paused, _) => Semantics(
               button: true,
-              label: 'Auto-scroll settings',
+              label: context.l10n.autoScrollSettings,
               child: GestureDetector(
                 // Both on one detector so a press either taps or drags — the
                 // gesture arena sorts out which, and a drag never fires the tap.
@@ -149,14 +150,14 @@ class _ReaderAutoScrollSheetState extends State<ReaderAutoScrollSheet> {
   Widget build(BuildContext context) {
     return readerSheetBody(
       context: context,
-      title: 'Auto-scroll',
-      subtitle: 'Touch the page to pause — it picks up again when you let go.',
+      title: context.l10n.autoScroll,
+      subtitle: context.l10n.touchThePageToPauseItPicksUpAgainWhenYouLetGo,
       children: [
         readerSheetSection('Scrolling'),
         readerSheetGroup([
           readerSheetRow(
             icon: Icons.play_circle_outline_rounded,
-            label: 'Auto-scroll',
+            label: context.l10n.autoScroll,
             trailing: Switch(
               value: _running,
               activeThumbColor: AppColors.accent,
@@ -171,7 +172,7 @@ class _ReaderAutoScrollSheetState extends State<ReaderAutoScrollSheet> {
           ),
           readerSheetRow(
             icon: Icons.speed_rounded,
-            label: 'Speed',
+            label: context.l10n.speed,
             trailing: Text(
               _speed.round().toString(),
               style: AppText.caption.copyWith(color: AppColors.textSecondary),
@@ -193,7 +194,7 @@ class _ReaderAutoScrollSheetState extends State<ReaderAutoScrollSheet> {
         readerSheetGroup([
           readerSheetRow(
             icon: Icons.smart_button_rounded,
-            label: 'Floating button',
+            label: context.l10n.floatingButton,
             trailing: Switch(
               value: _showButton,
               activeThumbColor: AppColors.accent,

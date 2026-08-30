@@ -21,6 +21,7 @@ import 'bloc/sources_event.dart';
 import 'bloc/sources_state.dart';
 import 'source_settings_screen.dart';
 import 'sources_search_field.dart';
+import '../../l10n/l10n.dart';
 
 part 'zangetsu_sources_screen_phone.dart';
 part 'zangetsu_sources_screen_tv.dart';

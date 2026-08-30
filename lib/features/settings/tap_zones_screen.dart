@@ -6,6 +6,7 @@ import '../../core/reading/tap_zones.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../l10n/l10n.dart';
 
 /// Assign what tapping each part of the page does, per reading mode.
 ///
@@ -26,9 +27,9 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
 
   /// Mirrors the reader's own modes: left-to-right and right-to-left share the
   /// paged layout, vertical is the strip.
-  static const _modes = <({String id, String label})>[
-    (id: TapZoneLayout.paged, label: 'Paged'),
-    (id: TapZoneLayout.webtoon, label: 'Vertical'),
+  List<({String id, String label})> get _modes => [
+    (id: TapZoneLayout.paged, label: context.l10n.paged),
+    (id: TapZoneLayout.webtoon, label: context.l10n.vertical),
   ];
 
   /// Only what makes sense for the mode being edited — offering "next page" on
@@ -96,7 +97,7 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
     setState(() {});
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
-      ..showSnackBar(const SnackBar(content: Text('Tap zones reset')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.tapZonesReset)));
   }
 
   @override
@@ -105,12 +106,12 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
-        'Tap zones',
+        context.l10n.tapZones,
         actions: [
           TextButton(
             onPressed: _reset,
             child: Text(
-              'Reset',
+              context.l10n.reset,
               style: AppText.button.copyWith(color: AppColors.accent),
             ),
           ),
@@ -119,7 +120,7 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Mode', first: true),
+          SettingsSectionLabel(context.l10n.modeLabel, first: true),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
@@ -137,7 +138,7 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
               ],
             ),
           ),
-          const SettingsSectionLabel('Tap a zone to change it'),
+          SettingsSectionLabel(context.l10n.tapAZoneToChangeIt),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: AspectRatio(
@@ -154,10 +155,8 @@ class _TapZonesScreenState extends State<TapZonesScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Text(
               _layoutId == TapZoneLayout.webtoon
-                  ? 'Used in vertical mode, where the chapter is one '
-                        'continuous strip.'
-                  : 'Used when pages turn left and right. In right-to-left '
-                        'mode the two paging zones swap over.',
+                  ? context.l10n.usedInVerticalMode
+                  : context.l10n.usedWhenPagesTurn,
               style: AppText.caption,
             ),
           ),

@@ -16,6 +16,7 @@ import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
 import '../auth/reconnect.dart';
 import '../downloads/downloads_screen.dart';
+import '../../l10n/l10n.dart';
 import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
@@ -63,14 +64,43 @@ class _RailItem {
 }
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
-const List<_RailItem> _kRailItems = [
-  _RailItem(label: 'Home', icon: Icons.home_outlined, selectedIcon: Icons.home_filled),
-  _RailItem(label: 'Search', icon: Icons.search, selectedIcon: Icons.search),
-  _RailItem(label: 'My List', icon: Icons.bookmark_outline, selectedIcon: Icons.bookmark),
-  _RailItem(label: 'Downloads', icon: Icons.download_outlined, selectedIcon: Icons.download),
-  _RailItem(label: 'Schedule', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  _RailItem(label: 'Settings', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
-];
+const int _kRailItemCount = 6;
+
+List<_RailItem> _railItems(BuildContext context) {
+  final l = context.l10n;
+  return [
+    _RailItem(
+      label: l.home,
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_filled,
+    ),
+    _RailItem(
+      label: l.search,
+      icon: Icons.search,
+      selectedIcon: Icons.search,
+    ),
+    _RailItem(
+      label: l.myList,
+      icon: Icons.bookmark_outline,
+      selectedIcon: Icons.bookmark,
+    ),
+    _RailItem(
+      label: l.downloads,
+      icon: Icons.download_outlined,
+      selectedIcon: Icons.download,
+    ),
+    _RailItem(
+      label: l.schedule,
+      icon: Icons.calendar_month_outlined,
+      selectedIcon: Icons.calendar_month,
+    ),
+    _RailItem(
+      label: l.settingsTitle,
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+    ),
+  ];
+}
 
 /// App-root override of [DirectionalFocusAction] so the TV shell can open/close
 /// the nav rail on LEFT/RIGHT from wherever focus happens to be. Unlike the
@@ -110,7 +140,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   // One focus node per nav item so entering the rail can land straight on the
   // CURRENT page's item (so you always see where you are).
   final List<FocusNode> _navNodes =
-      List.generate(_kRailItems.length, (_) => FocusNode());
+      List.generate(_kRailItemCount, (_) => FocusNode());
 
   @override
   void initState() {
@@ -378,9 +408,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-        const SnackBar(
-          content: Text('Press back again to exit'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(context.l10n.pressBackAgainToExitTv),
+          duration: const Duration(seconds: 2),
         ),
       );
   }
@@ -479,7 +509,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'SOURCE',
+                                context.l10n.sourceNavLabel,
                                 style: TextStyle(
                                   color: lblColor,
                                   fontSize: 11,
@@ -595,8 +625,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
         final loggedIn = auth.isLoggedIn;
-        final name = loggedIn ? auth.displayName : 'Sign in';
-        final sub = loggedIn ? 'Signed in' : 'Sync your list';
+        final name = loggedIn ? auth.displayName : context.l10n.signIn;
+        final sub = loggedIn ? context.l10n.signedIn : context.l10n.syncYourListNav;
         final avatar = auth.avatarUrl;
         final initial =
             (loggedIn && name.isNotEmpty) ? name[0].toUpperCase() : null;
@@ -703,13 +733,15 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             // Spread nav items across the remaining height (Android-TV style) so
             // Settings stays visible at the bottom instead of clipping off.
             Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (var i = 0; i < _kRailItems.length; i++)
-                    _navItem(i, _kRailItems[i]),
-                ],
+              child: SingleChildScrollView(
+                clipBehavior: Clip.none,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var i = 0; i < _kRailItemCount; i++)
+                      _navItem(i, _railItems(context)[i]),
+                  ],
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -856,7 +888,7 @@ class TvLogoutSheet extends StatelessWidget {
                       size: 20,
                       color: focused ? Colors.black : const Color(0xFFFF5C5C)),
                   const SizedBox(width: 12),
-                  Text('Log out',
+                  Text(context.l10n.logOut,
                       style: TextStyle(
                         color: focused ? Colors.black : const Color(0xFFFF5C5C),
                         fontSize: 16,
@@ -877,7 +909,7 @@ class TvLogoutSheet extends StatelessWidget {
                       size: 20,
                       color: focused ? Colors.black : AppColors.textSecondary),
                   const SizedBox(width: 12),
-                  Text('Cancel',
+                  Text(context.l10n.cancel,
                       style: TextStyle(
                         color: focused ? Colors.black : AppColors.textSecondary,
                         fontSize: 16,

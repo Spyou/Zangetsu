@@ -22,6 +22,8 @@ import '../../core/repository/source_repository.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -115,15 +117,8 @@ const int _kSourcePreviewCap = 12;
 
 /// Plain-English reason a source failed, from the outcome the repository
 /// already classified (see `SourceRepository._outcomeFromError`).
-///
-/// Deliberately says what the user can act on rather than naming the
-/// mechanism — "blocked" tells them to try another source, a stack trace
-/// doesn't.
-String outcomeReason(SourceOutcome outcome) => switch (outcome) {
-  SourceOutcome.timeout => 'Timed out',
-  SourceOutcome.blocked => 'Blocked by the site',
-  _ => "Couldn't be reached",
-};
+String outcomeReason(AppLocalizations l10n, SourceOutcome outcome) =>
+    sourceOutcomeLabel(l10n, outcome);
 
 IconData _outcomeIcon(SourceOutcome outcome) => switch (outcome) {
   SourceOutcome.timeout => Icons.hourglass_empty_rounded,
@@ -202,8 +197,8 @@ class _SearchViewState extends State<_SearchView>
     context.read<SearchBloc>().add(const SearchQueryChanged(''));
   }
 
-  String _typeLabel(ProviderType t) =>
-      t == ProviderType.movie ? 'Movie' : 'Anime';
+  String _typeLabel(AppLocalizations l10n, ProviderType t) =>
+      t == ProviderType.movie ? l10n.movieLabel : l10n.anime;
 
   Future<MediaDetail?> _detailOf(String url, String sourceId) async {
     try {
@@ -266,7 +261,7 @@ class _SearchViewState extends State<_SearchView>
     if (!mounted) return;
     if (filters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This source has no filters')),
+        SnackBar(content: Text(context.l10n.thisSourceHasNoFilters)),
       );
       return;
     }
@@ -297,7 +292,7 @@ class _SearchViewState extends State<_SearchView>
     if (!mounted) return;
     if (filters.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This source has no filters')),
+        SnackBar(content: Text(context.l10n.thisSourceHasNoFilters)),
       );
       return;
     }
@@ -348,7 +343,7 @@ class _SearchViewState extends State<_SearchView>
       englishTitle: item.englishTitle,
       cover: item.cover,
       headers: item.coverHeaders,
-      typeLabel: _typeLabel(item.type),
+      typeLabel: _typeLabel(context.l10n, item.type),
       subCount: item.subCount,
       dubCount: item.dubCount,
       detail: _detailOf(item.url, item.sourceId),
@@ -474,7 +469,7 @@ class _SearchViewState extends State<_SearchView>
                 size: 20,
               ),
               onPressed: () => Navigator.pop(context),
-              tooltip: 'Back',
+              tooltip: context.l10n.back,
             ),
           Expanded(
             child: DecoratedBox(
@@ -492,7 +487,7 @@ class _SearchViewState extends State<_SearchView>
                       size: 20,
                       color: AppColors.textTertiary,
                     ),
-                    tooltip: 'Search',
+                    tooltip: context.l10n.search,
                     onPressed: () {
                       FocusScope.of(context).unfocus();
                       context.read<SearchBloc>().add(
@@ -528,8 +523,8 @@ class _SearchViewState extends State<_SearchView>
                         color: AppColors.textPrimary,
                       ),
                       cursorColor: AppColors.accent,
-                      decoration: const InputDecoration(
-                        hintText: 'Search…',
+                      decoration: InputDecoration(
+                        hintText: context.l10n.search2,
                         hintStyle: AppText.body,
                         border: InputBorder.none,
                         isDense: true,
@@ -548,7 +543,7 @@ class _SearchViewState extends State<_SearchView>
                               size: 18,
                               color: AppColors.textTertiary,
                             ),
-                            tooltip: 'Clear',
+                            tooltip: context.l10n.clear,
                             onPressed: _clear,
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(
@@ -582,7 +577,7 @@ class _SearchViewState extends State<_SearchView>
           builder: (context, activeId) {
             final value = currentOnly
                 ? _repo.displayName(activeId)
-                : 'All sources';
+                : context.l10n.allSources;
             return GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => _openSourcePicker(context),
@@ -598,7 +593,7 @@ class _SearchViewState extends State<_SearchView>
                 child: Row(
                   children: [
                     Text(
-                      'Searching',
+                      context.l10n.searching,
                       style: AppText.caption.copyWith(fontSize: 12.5),
                     ),
                     const SizedBox(width: 5),
@@ -679,7 +674,7 @@ class _SearchViewState extends State<_SearchView>
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('Search in', style: AppText.headline),
+                  child: Text(context.l10n.searchIn, style: AppText.headline),
                 ),
               ),
               const SizedBox(height: 4),
@@ -692,7 +687,7 @@ class _SearchViewState extends State<_SearchView>
                   itemBuilder: (context, i) {
                     if (i == 0) {
                       return _sourcePickerRow(
-                        label: 'All sources',
+                        label: context.l10n.allSources,
                         selected: !currentOnly,
                         onTap: () {
                           Navigator.pop(ctx);
@@ -709,7 +704,7 @@ class _SearchViewState extends State<_SearchView>
                       // Point out the active source even when the scope is "All
                       // sources" — otherwise nothing on this sheet says which
                       // one "current source" actually means.
-                      hint: activeId == s.id ? 'current' : null,
+                      hint: activeId == s.id ? context.l10n.activeSourceHint : null,
                       onTap: () {
                         Navigator.pop(ctx);
                         if (selected) return;
@@ -874,7 +869,7 @@ class _SearchViewState extends State<_SearchView>
           final count = state.activeFilterCount + (sourceExcluded ? 1 : 0);
           return _iconWithBadge(
             icon: Icons.tune_rounded,
-            tooltip: 'Filters',
+            tooltip: context.l10n.filters,
             count: count,
             onPressed: () => _openFilterSheet(context),
           );
@@ -992,7 +987,7 @@ class _SearchViewState extends State<_SearchView>
                     ? AppColors.accent
                     : AppColors.textTertiary,
               ),
-              tooltip: 'Source filters',
+              tooltip: context.l10n.sourceFilters,
               constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
             );
           },
@@ -1032,11 +1027,13 @@ class _SearchViewState extends State<_SearchView>
       // sort/filter icons and has less height to spend.
       labelStyle: const TextStyle(
         fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
       unselectedLabelStyle: const TextStyle(
         fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
@@ -1134,7 +1131,7 @@ class _SearchViewState extends State<_SearchView>
         padding: const EdgeInsets.symmetric(horizontal: 16),
         children: [
           _chip(
-            label: 'All ${state.totalCount}',
+            label: context.l10n.allCount(state.totalCount),
             selected: state.sourceFilter == kAllSources,
             onTap: () => context.read<SearchBloc>().add(
               const SearchSourceFilterChanged(kAllSources),
@@ -1144,7 +1141,7 @@ class _SearchViewState extends State<_SearchView>
             Padding(
               padding: const EdgeInsets.only(left: 8),
               child: _chip(
-                label: '${g.sourceName} ${state.countFor(g)}',
+                label: context.l10n.sourceCountBadge(g.sourceName, state.countFor(g)),
                 selected: state.sourceFilter == g.sourceId,
                 onTap: () => context.read<SearchBloc>().add(
                   SearchSourceFilterChanged(g.sourceId),
@@ -1361,7 +1358,7 @@ class _SearchViewState extends State<_SearchView>
                       ? AppColors.accent
                       : AppColors.textTertiary,
                 ),
-                tooltip: 'Source filters',
+                tooltip: context.l10n.sourceFilters,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
               ),
@@ -1375,7 +1372,7 @@ class _SearchViewState extends State<_SearchView>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        'See all',
+                        context.l10n.seeAll,
                         style: AppText.caption.copyWith(
                           color: AppColors.textTertiary,
                           fontWeight: FontWeight.w600,
@@ -1562,7 +1559,7 @@ class _SearchViewState extends State<_SearchView>
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(outcomeReason(outcome), style: AppText.caption),
+                Text(outcomeReason(context.l10n, outcome), style: AppText.caption),
               ],
             ),
           ),
@@ -1570,7 +1567,7 @@ class _SearchViewState extends State<_SearchView>
             onPressed: () =>
                 context.read<SearchBloc>().add(SearchRetryRequested(sourceId)),
             child: Text(
-              'Retry',
+              context.l10n.retry,
               style: AppText.button.copyWith(
                 fontSize: 13,
                 color: AppColors.accent,
@@ -1604,8 +1601,8 @@ class _SearchViewState extends State<_SearchView>
               // at all (nothing switched on to search).
               state.error ??
                   (failed.length == 1
-                      ? 'That source could not be reached'
-                      : 'No source could be reached'),
+                      ? context.l10n.thatSourceCouldNotBeReached
+                      : context.l10n.noSourceCouldBeReached),
               textAlign: TextAlign.center,
               style: AppText.headline,
             ),
@@ -1618,7 +1615,7 @@ class _SearchViewState extends State<_SearchView>
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
                     '${repo.displayName(f.key)} — '
-                    '${outcomeReason(f.value).toLowerCase()}',
+                    '${outcomeReason(context.l10n, f.value).toLowerCase()}',
                     textAlign: TextAlign.center,
                     style: AppText.caption,
                   ),
@@ -1627,7 +1624,7 @@ class _SearchViewState extends State<_SearchView>
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
                   child: Text(
-                    'and ${failed.length - 4} more',
+                    context.l10n.andNMore(failed.length - 4),
                     style: AppText.caption,
                   ),
                 ),
@@ -1637,7 +1634,7 @@ class _SearchViewState extends State<_SearchView>
                   const SearchRetryRequested(),
                 ),
                 child: Text(
-                  'Retry',
+                  context.l10n.retry,
                   style: AppText.button.copyWith(color: AppColors.accent),
                 ),
               ),
@@ -1682,15 +1679,15 @@ class _SearchViewState extends State<_SearchView>
             ),
             const SizedBox(height: 14),
             Text(
-              'No results for “${state.query}”',
+              context.l10n.noResultsFor(state.query),
               textAlign: TextAlign.center,
               style: AppText.headline,
             ),
             const SizedBox(height: 6),
             Text(
               state.hasActiveFilter
-                  ? 'Try clearing your filters or searching a different title.'
-                  : 'Check the spelling or try a different title.',
+                  ? context.l10n.tryClearingYourFiltersOrSearchDifferentTitle
+                  : context.l10n.checkTheSpellingOrTryADifferentTitle,
               textAlign: TextAlign.center,
               style: AppText.caption,
             ),
@@ -1707,7 +1704,7 @@ class _SearchViewState extends State<_SearchView>
                     ..add(const SearchGenreFilterChanged(null));
                 },
                 child: Text(
-                  'Clear filters',
+                  context.l10n.clearFilters,
                   style: AppText.body.copyWith(color: AppColors.accent),
                 ),
               ),
@@ -1768,14 +1765,14 @@ class _SearchViewState extends State<_SearchView>
     final trending = browsing ? state.filteredBrowse : state.trending;
 
     if (recent.isEmpty && trending.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.search_rounded, size: 48, color: AppColors.textTertiary),
+            const Icon(Icons.search_rounded, size: 48, color: AppColors.textTertiary),
             SizedBox(height: 12),
             Text(
-              'Search for something to watch',
+              context.l10n.searchForSomethingToWatch,
               textAlign: TextAlign.center,
               style: AppText.body,
             ),
@@ -1811,7 +1808,7 @@ class _SearchViewState extends State<_SearchView>
             Row(
               children: [
                 Expanded(
-                  child: Text('Recent searches', style: AppText.overline),
+                  child: Text(context.l10n.recentSearches, style: AppText.overline),
                 ),
                 GestureDetector(
                   onTap: () async {
@@ -1819,7 +1816,7 @@ class _SearchViewState extends State<_SearchView>
                     if (mounted) setState(() {});
                   },
                   child: Text(
-                    'Clear',
+                    context.l10n.clear,
                     style: AppText.caption.copyWith(color: AppColors.accent),
                   ),
                 ),
@@ -1839,7 +1836,9 @@ class _SearchViewState extends State<_SearchView>
                 children: [
                   Expanded(
                     child: Text(
-                      'Filtered · ${_repo.displayName(state.filteredBrowseSourceId)}',
+                      context.l10n.filteredSource(
+                        _repo.displayName(state.filteredBrowseSourceId),
+                      ),
                       style: AppText.overline,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1857,7 +1856,7 @@ class _SearchViewState extends State<_SearchView>
                         vertical: 2,
                       ),
                       child: Text(
-                        'Clear',
+                        context.l10n.clear,
                         style: TextStyle(
                           color: AppColors.accent,
                           fontSize: 12,
@@ -1869,7 +1868,7 @@ class _SearchViewState extends State<_SearchView>
                 ],
               )
             else
-              const Text('Top picks', style: AppText.overline),
+              Text(context.l10n.topPicks, style: AppText.overline),
             const SizedBox(height: 12),
             GridView.builder(
               shrinkWrap: true,
@@ -2028,19 +2027,23 @@ class _SearchViewState extends State<_SearchView>
 /// source_switcher.dart. A top-level function (not inlined in
 /// [_SearchFilterSheet]) so it's unit-testable without a real [SearchBloc].
 List<({String title, List<({String id, String label, String? repo})> rows})>
-searchFilterSections(SourceBuckets buckets, ContentMode mode) {
+searchFilterSections(
+  SourceBuckets buckets,
+  ContentMode mode,
+  AppLocalizations l10n,
+) {
   final readingBucket = mode == ContentMode.manga
       ? buckets.manga
       : buckets.novel;
   return [
     if (!mode.isReading && buckets.anime.isNotEmpty)
-      (title: 'Anime', rows: buckets.anime),
+      (title: l10n.anime, rows: buckets.anime),
     if (!mode.isReading && buckets.movies.isNotEmpty)
-      (title: 'Movies & Series', rows: buckets.movies),
+      (title: l10n.moviesSeries, rows: buckets.movies),
     if (!mode.isReading && buckets.nsfw.isNotEmpty)
-      (title: 'NSFW', rows: buckets.nsfw),
+      (title: l10n.nsfw, rows: buckets.nsfw),
     if (mode.isReading && readingBucket.isNotEmpty)
-      (title: mode.label, rows: readingBucket),
+      (title: contentModeLabel(l10n, mode), rows: readingBucket),
   ];
 }
 
@@ -2084,17 +2087,19 @@ class SearchSourcesEmptyView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!mode.isReading) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 28),
-        child: Center(child: Text('No sources installed', style: AppText.body)),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Text(context.l10n.noSourcesInstalled, style: AppText.body),
+        ),
       );
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 28),
       child: EmptyState(
         icon: Icons.source_outlined,
-        message: 'No ${mode.label} sources yet',
-        actionLabel: 'Browse repositories',
+        message: context.l10n.noModeSourcesYet(contentModeLabel(context.l10n, mode)),
+        actionLabel: context.l10n.browseRepositories,
         onAction: onInstallSources,
       ),
     );
@@ -2140,7 +2145,7 @@ class _SearchFilterSheet extends StatelessWidget {
         : ContentMode.anime;
     final buckets = filterBucketsForMode(categorizedSources(), mode);
     final prefs = sl<SearchSourcePrefs>();
-    final sections = searchFilterSections(buckets, mode);
+    final sections = searchFilterSections(buckets, mode, context.l10n);
     final allIds = [for (final s in sections) ...s.rows.map((r) => r.id)];
     final showTypeAudio = searchTypeAudioGroupsVisible(mode);
 
@@ -2203,7 +2208,7 @@ class _SearchFilterSheet extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
       child: Row(
         children: [
-          Text('Filters', style: AppText.headline),
+          Text(context.l10n.filters, style: AppText.headline),
           const SizedBox(width: 8),
           BlocBuilder<SearchBloc, SearchState>(
             buildWhen: (p, c) =>
@@ -2246,7 +2251,7 @@ class _SearchFilterSheet extends StatelessWidget {
               return TextButton(
                 onPressed: () => _reset(context, allIds),
                 child: Text(
-                  'Reset',
+                  context.l10n.reset,
                   style: AppText.body.copyWith(color: AppColors.accent),
                 ),
               );
@@ -2298,7 +2303,7 @@ class _SearchFilterSheet extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Reset'),
+                      child: Text(context.l10n.reset),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -2313,7 +2318,7 @@ class _SearchFilterSheet extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: Text('Show $n result${n == 1 ? '' : 's'}'),
+                    child: Text(context.l10n.filterShowResults(n)),
                   ),
                 ),
               ],
@@ -2377,7 +2382,7 @@ class _SearchFilterSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterLabel('SORT'),
+          _filterLabel(context.l10n.sortUpper),
           const SizedBox(height: 10),
           BlocBuilder<SearchBloc, SearchState>(
             buildWhen: (p, c) => p.sort != c.sort,
@@ -2410,7 +2415,7 @@ class _SearchFilterSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterLabel('TYPE'),
+          _filterLabel(context.l10n.typeUpper),
           const SizedBox(height: 10),
           BlocBuilder<SearchBloc, SearchState>(
             buildWhen: (p, c) => p.contentFilter != c.contentFilter,
@@ -2443,7 +2448,7 @@ class _SearchFilterSheet extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _filterLabel('AUDIO'),
+          _filterLabel(context.l10n.audioUpper),
           const SizedBox(height: 10),
           BlocBuilder<SearchBloc, SearchState>(
             buildWhen: (p, c) => p.audioFilter != c.audioFilter,
@@ -2491,7 +2496,7 @@ class _SearchFilterSheet extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  _filterLabel('GENRE'),
+                  _filterLabel(context.l10n.genreUpper),
                   const SizedBox(width: 6),
                   Text(
                     '· from your results',
@@ -2509,7 +2514,7 @@ class _SearchFilterSheet extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   _pill(
-                    label: 'Any',
+                    label: context.l10n.any,
                     selected: state.genreFilter == null,
                     onTap: () => context.read<SearchBloc>().add(
                       const SearchGenreFilterChanged(null),
@@ -2568,7 +2573,7 @@ class _SearchFilterSheet extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _filterLabel('STATUS'),
+              _filterLabel(context.l10n.status2),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
@@ -2616,7 +2621,7 @@ class _SearchFilterSheet extends StatelessWidget {
         child: Row(
           children: [
             Text(
-              'Search in sources',
+              context.l10n.searchInSources,
               style: AppText.body.copyWith(
                 fontSize: 13.5,
                 color: AppColors.textPrimary,
@@ -2681,7 +2686,7 @@ class _SearchFilterSheet extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Search in sources', style: AppText.headline),
+                    child: Text(subCtx.l10n.searchInSources, style: AppText.headline),
                   ),
                 ),
                 Flexible(
@@ -2704,7 +2709,7 @@ class _SearchFilterSheet extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 8),
                           children: [
                             for (final sec in sections) ...[
-                              _categoryHeader(prefs, sec.title, sec.rows),
+                              _categoryHeader(subCtx, prefs, sec.title, sec.rows),
                               for (final r in sec.rows) _sourceRow(prefs, r),
                             ],
                           ],
@@ -2723,7 +2728,7 @@ class _SearchFilterSheet extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      child: const Text('Done'),
+                      child: Text(subCtx.l10n.done),
                     ),
                   ),
                 ),
@@ -2736,6 +2741,7 @@ class _SearchFilterSheet extends StatelessWidget {
   }
 
   Widget _categoryHeader(
+    BuildContext context,
     SearchSourcePrefs prefs,
     String title,
     List<({String id, String label, String? repo})> rows,
@@ -2764,7 +2770,7 @@ class _SearchFilterSheet extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 8),
             ),
             child: Text(
-              allOn ? 'Turn all off' : 'Turn all on',
+              allOn ? context.l10n.turnAllOff : context.l10n.turnAllOn,
               style: AppText.caption.copyWith(color: AppColors.accent),
             ),
           ),

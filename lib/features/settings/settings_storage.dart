@@ -20,7 +20,7 @@ class StorageSettingsScreen extends StatelessWidget {
       // that matters for freeing memory immediately.
     }
     messenger.showSnackBar(
-      const SnackBar(content: Text('Image cache cleared')),
+      SnackBar(content: Text(context.l10n.imageCacheCleared)),
     );
   }
 
@@ -28,7 +28,7 @@ class StorageSettingsScreen extends StatelessWidget {
     final messenger = ScaffoldMessenger.of(context);
     await sl<ProviderDownloader>().clear();
     messenger.showSnackBar(
-      const SnackBar(content: Text('Provider cache cleared')),
+      SnackBar(content: Text(context.l10n.providerCacheCleared)),
     );
   }
 
@@ -36,7 +36,7 @@ class StorageSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Storage'),
+      appBar: settingsAppBar(context.l10n.storage),
       body: ListView(
         clipBehavior: sl<AppMode>().isTv ? Clip.none : Clip.hardEdge,
         padding: const EdgeInsets.only(top: 8),
@@ -46,13 +46,13 @@ class StorageSettingsScreen extends StatelessWidget {
               SettingsTile(
                 autofocus: true,
                 icon: Icons.image_outlined,
-                title: 'Clear image cache',
+                title: context.l10n.clearImageCache,
                 onTap: () => _clearImageCache(context),
               ),
               SettingsTile(
                 icon: Icons.cleaning_services_outlined,
-                title: 'Clear provider cache',
-                subtitle: 'Cached source .js files',
+                title: context.l10n.clearProviderCache,
+                subtitle: context.l10n.cachedSourceJsFiles,
                 onTap: () => _clearProviderCache(context),
               ),
             ],

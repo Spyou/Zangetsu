@@ -13,6 +13,7 @@ import '../search/bloc/search_bloc.dart' show SearchBloc;
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../l10n/l10n.dart';
 
 /// "Test sources" — probes every enabled source concurrently and shows, per
 /// source, whether it's Working / Slow / Dead (with the reason). A probe asks
@@ -78,7 +79,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
   /// Search caps ONE source the user is actively waiting on, so it can afford
   /// 60s. This screen probes every installed source, so a long cap just pins a
   /// worker slot on a host that isn't answering and starves the rest of the
-  /// list. A source slower than this reads "Timed out" here and may still work
+  /// list. A source slower than this reads context.l10n.timedOut here and may still work
   /// in search — that's the honest trade, and it's why the label says timed out
   /// rather than dead.
   static const Duration _probeTimeout = Duration(seconds: 20);
@@ -272,38 +273,38 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
         SourceOutcome.ok => (
           color: _green,
           icon: Icons.check_circle_rounded,
-          label: 'Working',
+          label: context.l10n.working,
         ),
         SourceOutcome.slow => (
           color: _amber,
           icon: Icons.hourglass_bottom_rounded,
-          label: 'Slow',
+          label: context.l10n.slow,
         ),
         SourceOutcome.empty => (
           color: _amber,
           icon: Icons.search_off_rounded,
-          label: 'No results',
+          label: context.l10n.noResults,
         ),
         SourceOutcome.timeout => (
           color: _amber,
           icon: Icons.hourglass_empty_rounded,
-          label: 'Timed out',
+          label: context.l10n.timedOut,
         ),
         SourceOutcome.blocked => (
           color: _amber,
           icon: Icons.shield_outlined,
-          label: 'Blocked',
+          label: context.l10n.blocked,
         ),
         SourceOutcome.error => (
           color: AppColors.accent,
           icon: Icons.cancel_rounded,
-          label: 'Dead',
+          label: context.l10n.dead,
         ),
       };
 
   @override
   Widget build(BuildContext context) {
-    // "Working" means it returned results — not merely that it answered.
+    // context.l10n.working means it returned results — not merely that it answered.
     final working = _results
         .where((r) => !r.running && r.outcome == SourceOutcome.ok)
         .length;
@@ -314,7 +315,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
-        'Source health',
+        context.l10n.sourceHealth,
         actions: [
           IconButton(
             tooltip: 'Deep test (opens a title from each source)',
@@ -327,7 +328,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
             onPressed: () => _runTests(deep: true),
           ),
           IconButton(
-            tooltip: 'Re-test',
+            tooltip: context.l10n.reTest,
             icon: const Icon(Icons.refresh_rounded),
             color: AppColors.textPrimary,
             onPressed: _testing ? null : () => _runTests(),
@@ -337,7 +338,7 @@ class _SourceHealthScreenState extends State<SourceHealthScreen> {
       body: _results.isEmpty
           ? Center(
               child: Text(
-                'No enabled sources to test.',
+                context.l10n.noEnabledSourcesToTest,
                 style: AppText.body,
               ),
             )
@@ -434,7 +435,7 @@ class _HealthRow extends StatelessWidget {
     // actually open anything?"), so when it ran it's the more useful line.
     final note = result.deepNote;
     if (note != null) return note;
-    // No timing — response speed was misleading ("Slow" sources are fine). Just
+    // No timing — response speed was misleading (context.l10n.slow sources are fine). Just
     // surface the result count when the source returned hits.
     final c = result.resultCount;
     if (c != null && c > 0) return '$c result${c == 1 ? '' : 's'}';
@@ -448,12 +449,12 @@ class _HealthRow extends StatelessWidget {
     final o = result.outcome;
     var p = o == null ? null : present(o);
     // Searching fine but opening nothing is exactly the case a search-only
-    // probe called "Working". Don't let the green tick stand.
+    // probe called context.l10n.working. Don't let the green tick stand.
     if (p != null && result.deepOk == false) {
       p = (
         color: const Color(0xFFE0A33A),
         icon: Icons.error_outline_rounded,
-        label: 'Not usable',
+        label: context.l10n.notUsable,
       );
     }
     return Padding(
@@ -474,7 +475,7 @@ class _HealthRow extends StatelessWidget {
                 Row(
                   children: [
                     if (result.running)
-                      Text('Testing…', style: AppText.caption)
+                      Text(context.l10n.testing, style: AppText.caption)
                     else if (p != null) ...[
                       Icon(p.icon, size: 14, color: p.color),
                       const SizedBox(width: 5),
@@ -502,7 +503,7 @@ class _HealthRow extends StatelessWidget {
                 if (!result.running && !searchIncluded) ...[
                   const SizedBox(height: 3),
                   Text(
-                    'Not searched',
+                    context.l10n.notSearched,
                     style: AppText.overline.copyWith(
                       color: AppColors.textTertiary,
                     ),
@@ -529,7 +530,7 @@ class _HealthRow extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
                       child: Text(
-                        'Remove',
+                        context.l10n.removeDownloadTooltip,
                         style: AppText.body.copyWith(color: AppColors.accent),
                       ),
                     ),
@@ -538,7 +539,7 @@ class _HealthRow extends StatelessWidget {
                     onPressed: onDisable,
                     style: TextButton.styleFrom(
                         foregroundColor: AppColors.accent),
-                    child: const Text('Remove'),
+                    child: Text(context.l10n.navTabsRemove),
                   ),
         ],
       ),

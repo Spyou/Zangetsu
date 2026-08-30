@@ -6,6 +6,7 @@ import '../../../core/di/injector.dart';
 import '../../../core/ui/global_messenger.dart';
 import '../watch_together_controller.dart';
 import 'room_panel.dart';
+import '../../../l10n/l10n.dart';
 
 /// App-wide party bar that overlays the top of every screen when a Watch Party
 /// is active. Returns [SizedBox.shrink] when no party is running so it has
@@ -22,7 +23,7 @@ class PartyBar extends StatelessWidget {
         final room = controller.room;
         if (room == null) return const SizedBox.shrink();
 
-        final roleLabel = controller.isHost ? 'Hosting' : 'Watching';
+        final roleLabel = controller.isHost ? 'Hosting' : context.l10n.statusWatching;
         final code = room.code;
         final count = controller.participants.length;
         final modeLabel = controller.mode == 'playing' ? 'Playing' : 'Choosing…';
@@ -55,17 +56,17 @@ class PartyBar extends StatelessWidget {
                   const SizedBox(width: 6),
                   _BarButton(
                     icon: Icons.link,
-                    label: 'Invite',
+                    label: context.l10n.invite,
                     onTap: () => _copyInvite(code),
                   ),
                   _BarButton(
                     icon: Icons.chat_bubble_outline,
-                    label: 'Chat',
+                    label: context.l10n.chat,
                     onTap: () => _openSheet(showRoomChatSheet),
                   ),
                   _BarButton(
                     icon: Icons.exit_to_app,
-                    label: 'Leave',
+                    label: context.l10n.leave,
                     onTap: () => sl<WatchTogetherController>().leave(),
                     color: Colors.redAccent,
                   ),
@@ -88,10 +89,12 @@ class PartyBar extends StatelessWidget {
 
   Future<void> _copyInvite(String code) async {
     await Clipboard.setData(ClipboardData(text: 'zangetsu://room/$code'));
+    final ctx = rootNavigatorKey.currentState?.overlay?.context;
+    if (ctx == null) return;
     rootMessengerKey.currentState?.showSnackBar(
-      const SnackBar(
-        content: Text('Invite copied'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(ctx.l10n.inviteCopied),
+        duration: const Duration(seconds: 2),
       ),
     );
   }

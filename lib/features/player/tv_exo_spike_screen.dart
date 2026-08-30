@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../l10n/l10n.dart';
+
 /// Dev-only SP0 spike: plays a test stream through the native ExoPlayer
 /// SurfaceView (Hybrid Composition) so smoothness can be compared to the
 /// media_kit player on the TV. Reachable only behind --dart-define=EXO_SPIKE=1.
@@ -88,9 +90,9 @@ class _TvExoSpikeScreenState extends State<TvExoSpikeScreen> {
                   child: TextField(
                     controller: _urlCtrl,
                     style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      hintText: 'Stream URL',
-                      hintStyle: TextStyle(color: Colors.white54),
+                    decoration: InputDecoration(
+                      hintText: context.l10n.streamURL,
+                      hintStyle: const TextStyle(color: Colors.white54),
                       filled: true,
                       fillColor: Colors.black54,
                     ),
@@ -101,12 +103,12 @@ class _TvExoSpikeScreenState extends State<TvExoSpikeScreen> {
               ],
             ),
           ),
-          const Positioned(
+          Positioned(
             top: 16,
             left: 16,
             child: Text(
-              'ExoPlayer SurfaceView spike (SP0)',
-              style: TextStyle(color: Colors.white70),
+              context.l10n.exoplayerSurfaceViewSpikeSP0,
+              style: const TextStyle(color: Colors.white70),
             ),
           ),
         ],

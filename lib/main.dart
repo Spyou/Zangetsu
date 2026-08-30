@@ -28,9 +28,11 @@ import 'core/playback/my_list.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
+import 'core/locale/locale_controller.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_viewport.dart';
+import 'l10n/app_localizations.dart';
 import 'core/ui/global_messenger.dart';
 import 'features/auth/auth_cubit.dart';
 import 'features/home/cubit/home_cubit.dart';
@@ -291,17 +293,23 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     }
   }
 
+  void _onLocaleChanged() {
+    if (mounted) setState(() {}); // language changed → rebuild MaterialApp.locale
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
+    LocaleController.revision.addListener(_onLocaleChanged);
     _watchBoot(_boot);
   }
 
   @override
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
+    LocaleController.revision.removeListener(_onLocaleChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();
@@ -519,6 +527,11 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
               title: kAppName,
               theme: buildAppTheme(),
               debugShowCheckedModeBanner: false,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: LocaleController.locale,
+      localeResolutionCallback: (locale, supported) =>
+          resolveAppLocale(locale, supported),
       scaffoldMessengerKey: shellFeatures ? rootMessengerKey : null,
               navigatorKey: rootNavigatorKey,
       navigatorObservers: shellFeatures

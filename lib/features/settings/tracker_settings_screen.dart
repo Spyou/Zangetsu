@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/ui/settings_widgets.dart';
 
@@ -31,8 +32,8 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
       SnackBar(
         content: Text(
           ok
-              ? 'Connected as ${_t.viewerName}'
-              : '${_t.displayName} connection canceled',
+              ? context.l10n.connectedAs(_t.viewerName ?? '')
+              : context.l10n.trackerConnectionCanceled(_t.displayName),
         ),
       ),
     );
@@ -43,19 +44,18 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Disconnect ${_t.displayName}?'),
+        title: Text(context.l10n.disconnectTrackerQuestion(_t.displayName)),
         content: Text(
-          'Auto-sync will stop. Your ${_t.displayName} account is not changed — '
-          'you can reconnect anytime.',
+          context.l10n.trackerDisconnectBody(_t.displayName),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, true),
-            child: Text('Disconnect', style: TextStyle(color: AppColors.accent)),
+            child: Text(context.l10n.disconnect, style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -84,8 +84,8 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
                   children: [
                     SettingsTile(
                       icon: Icons.link_rounded,
-                      title: _busy ? 'Connecting…' : 'Connect ${_t.displayName}',
-                      subtitle: _busy ? null : 'Sign in to link your account',
+                      title: _busy ? context.l10n.connectingEllipsis : context.l10n.connectTracker(_t.displayName),
+                      subtitle: _busy ? null : context.l10n.signInToLinkYourAccount,
                       onTap: _busy ? null : _connect,
                       trailing: _busy
                           ? const SizedBox(
@@ -102,8 +102,8 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
                   children: [
                     SettingsTile(
                       icon: Icons.sync_rounded,
-                      title: 'Auto-sync',
-                      subtitle: 'Update ${_t.displayName} as you watch',
+                      title: context.l10n.autoSync,
+                      subtitle: context.l10n.updateTrackerAsYouWatch(_t.displayName),
                       trailing: Switch.adaptive(
                         value: _t.autoSync,
                         activeThumbColor: AppColors.accent,
@@ -116,7 +116,7 @@ class _TrackerSettingsScreenState extends State<TrackerSettingsScreen> {
                   children: [
                     SettingsTile(
                       icon: Icons.logout_rounded,
-                      title: 'Disconnect',
+                      title: context.l10n.disconnect,
                       destructive: true,
                       onTap: _disconnect,
                     ),

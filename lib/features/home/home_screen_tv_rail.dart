@@ -81,27 +81,27 @@ class TvRail extends StatelessWidget {
                           onTap: onSeeAll!,
                           variant: TvFocusVariant.float,
                           scale: 1.10,
-                          semanticLabel: 'See all',
+                          semanticLabel: context.l10n.seeAll,
                           child: Container(
                             decoration: BoxDecoration(
                               color: AppColors.surface2,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             alignment: Alignment.center,
-                            child: const Column(
+                            child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(
+                                const Icon(
                                   Icons.arrow_forward_rounded,
                                   color: AppColors.textPrimary,
                                   size: 28,
                                 ),
-                                SizedBox(height: 8),
+                                const SizedBox(height: 8),
                                 // Excluded — the focusable above already
                                 // announces 'See all' via semanticLabel.
                                 ExcludeSemantics(
                                   child: Text(
-                                    'See all',
+                                    context.l10n.seeAll,
                                     style: TextStyle(
                                       color: AppColors.textPrimary,
                                       fontSize: 14,

@@ -20,6 +20,7 @@ import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
+import '../../l10n/l10n.dart';
 import '../settings/download_location_screen.dart';
 import '../player/player_screen.dart';
 import '../player/tv_playback_launch.dart';
@@ -79,7 +80,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// "Saving to: `folder` · Change" — surfaces the download location right here
   /// (opens the existing picker) instead of only burying it in Settings.
   Widget _locationHeader() {
-    final label = sl<DownloadPrefs>().locationLabel ?? 'Download/Zangetsu';
+    final l10n = context.l10n;
+    final label = sl<DownloadPrefs>().locationLabel ?? l10n.downloadsZangetsu;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 2),
       child: Row(
@@ -96,7 +98,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Saving to',
+                  l10n.savingTo,
                   style: AppText.caption.copyWith(color: AppColors.textTertiary),
                 ),
                 Text(
@@ -118,7 +120,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               if (mounted) setState(() {}); // refresh the shown folder
             },
             child: Text(
-              'Change',
+              l10n.change,
               style: AppText.body.copyWith(
                 color: AppColors.accent,
                 fontWeight: FontWeight.w600,
@@ -133,6 +135,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// Bottom sheet with the CloudStream-style download concurrency sliders.
   /// Applies to the NEXT downloads started (running HLS jobs aren't retimed).
   void _openDownloadSettings() {
+    final l10n = context.l10n;
     final prefs = sl<DownloadPrefs>();
     // Hold the live drag value in local state so the sliders move smoothly —
     // each tick isn't an async Hive write/read round-trip. Persist + apply on
@@ -203,17 +206,16 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 8, 20, 12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Download settings', style: AppText.title),
+                    child: Text(l10n.downloadSettings, style: AppText.title),
                   ),
                 ),
                 slider(
-                  title: 'Parallel downloads',
-                  subtitle: 'How many episodes download at the same time. '
-                      'Chapters always download one at a time.',
+                  title: l10n.parallelDownloads,
+                  subtitle: l10n.parallelDownloadsSubtitle,
                   value: parallel,
                   min: DownloadPrefs.parallelMin,
                   max: DownloadPrefs.parallelMax,
@@ -228,10 +230,8 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                 ),
                 const SizedBox(height: 8),
                 slider(
-                  title: 'Connections per download',
-                  subtitle: 'Segment connections an episode uses, and pages '
-                      'fetched at once in a chapter. Higher = faster, more '
-                      'data at once.',
+                  title: l10n.connectionsPerDownload,
+                  subtitle: l10n.connectionsPerDownloadSubtitle,
                   value: connections,
                   min: DownloadPrefs.connectionsMin,
                   max: DownloadPrefs.connectionsMax,
@@ -256,10 +256,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
         showBack: widget.showBack,
-        'Downloads',
+        context.l10n.downloads,
         actions: [
           IconButton(
-            tooltip: 'Download settings',
+            tooltip: context.l10n.downloadSettings,
             icon: const Icon(Icons.tune_rounded),
             onPressed: _openDownloadSettings,
           ),
@@ -274,10 +274,10 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               _locationHeader(),
               _chapterLinks(store),
               if (groups.isEmpty)
-                const Expanded(
+                Expanded(
                   child: EmptyState(
                     icon: Icons.download_outlined,
-                    message: 'Episodes you download appear here',
+                    message: context.l10n.episodesYouDownloadAppearHere,
                   ),
                 )
               else ...[
@@ -321,6 +321,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
   /// a screen down.
   Widget _chapterCard(ContentMode mode, int count) {
     final novel = mode == ContentMode.novel;
+    final l10n = context.l10n;
     return Material(
       color: AppColors.surface,
       borderRadius: BorderRadius.circular(12),
@@ -343,7 +344,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      novel ? 'Novels' : 'Manga',
+                      novel ? l10n.novels : l10n.modeManga,
                       style: AppText.body.copyWith(
                         color: AppColors.textPrimary,
                         fontWeight: FontWeight.w600,
@@ -352,7 +353,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      '$count ${count == 1 ? 'chapter' : 'chapters'}',
+                      l10n.chapterCount(count),
                       style: AppText.caption,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -381,7 +382,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         decoration: InputDecoration(
           isDense: true,
-          hintText: 'Search downloads',
+          hintText: context.l10n.searchDownloads,
           hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
           prefixIcon: const Icon(
             Icons.search_rounded,
@@ -452,9 +453,9 @@ class _DownloadsScreenState extends State<DownloadsScreen>
     }
 
     if (rows.isEmpty) {
-      return const EmptyState(
+      return EmptyState(
         icon: Icons.search_off_rounded,
-        message: 'No downloads match your search',
+        message: context.l10n.noDownloadsMatchYourSearch,
       );
     }
 
@@ -496,7 +497,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
           ),
           const SizedBox(width: 6),
           Text(
-            '$count downloaded · ${fmtDownloadSize(bytes)}',
+            context.l10n.downloadedSummary(count, fmtDownloadSize(bytes)),
             style: AppText.caption,
           ),
           const Spacer(),
@@ -509,7 +510,7 @@ class _DownloadsScreenState extends State<DownloadsScreen>
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             child: Text(
-              anyExpanded ? 'Collapse all' : 'Expand all',
+              anyExpanded ? context.l10n.collapseAll : context.l10n.expandAll,
               style: AppText.caption.copyWith(color: AppColors.accent),
             ),
           ),
@@ -546,6 +547,7 @@ class _ShowGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final head = records.first;
     final doneRecs =
         records.where((r) => r.status == DownloadStatus.done).toList();
@@ -589,7 +591,8 @@ class _ShowGroup extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${doneRecs.length} of ${records.length}$sizeSuffix',
+                        l10n.ofTotalDownloaded(doneRecs.length, records.length) +
+                            sizeSuffix,
                         style: AppText.caption,
                       ),
                     ],
@@ -602,7 +605,7 @@ class _ShowGroup extends StatelessWidget {
                     color: AppColors.textTertiary,
                     size: 22,
                   ),
-                  tooltip: 'Delete all episodes',
+                  tooltip: l10n.deleteAllEpisodesTooltip,
                   onPressed: () => _confirmDeleteAll(context),
                 ),
                 AnimatedRotation(
@@ -626,29 +629,29 @@ class _ShowGroup extends StatelessWidget {
 
   /// Confirm, then wipe every episode of this show in one go.
   Future<void> _confirmDeleteAll(BuildContext context) async {
+    final l10n = context.l10n;
     final n = records.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Delete all downloads?', style: AppText.headline),
+        title: Text(l10n.deleteAllDownloads, style: AppText.headline),
         content: Text(
-          'Remove all $n ${n == 1 ? 'episode' : 'episodes'} of '
-          '“${records.first.showTitle}” from this device?',
+          l10n.removeAllEpisodesOfShow(n, records.first.showTitle),
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dctx, false),
             child: Text(
-              'Cancel',
+              l10n.cancel,
               style: AppText.button.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dctx, true),
             child: Text(
-              'Delete all',
+              l10n.deleteAll,
               style: AppText.button.copyWith(color: AppColors.accent),
             ),
           ),
@@ -742,47 +745,58 @@ class DownloadTile extends StatelessWidget {
   final DownloadRecord record;
   final DownloadManager manager;
 
-  String get _epLabel {
+  String _epLabel(AppLocalizations l10n) {
     final n = record.episodeNumber?.toInt();
-    final base = n != null ? 'E$n' : 'Episode';
     final t = record.episodeTitle.trim();
-    return (t.isEmpty || t == base) ? base : '$base · $t';
+    if (n != null) {
+      final short = l10n.episodeNumberShort(n);
+      if (t.isEmpty || t == short || t == l10n.episodeLabel(n)) return short;
+      return l10n.episodeWithTitleDot(n, t);
+    }
+    final generic =
+        l10n.episodeSemantic(1).replaceFirst(' 1', '').replaceFirst('1', '');
+    return (t.isEmpty || t == generic) ? generic : '$generic · $t';
   }
 
-  String get _subtitle {
+  String _subtitle(AppLocalizations l10n) {
     // A finished torrent is streamed into the user's folder — surface that phase.
     if (record.isTorrent &&
         manager.torrentProgress[record.id]?.status == 'copying') {
-      return 'Saving to your folder…';
+      return l10n.savingToYourFolder;
     }
+    final pct = (record.progress * 100).round();
     return switch (record.status) {
-      DownloadStatus.done =>
-        record.bytesTotal > 0 ? fmtDownloadSize(record.bytesTotal) : 'Downloaded',
-      DownloadStatus.downloading =>
-        '${(record.progress * 100).round()}%'
-            '${record.bytesTotal > 0 ? ' of ${fmtDownloadSize(record.bytesTotal)}' : ''}'
-            '$_torrentSuffix',
-      DownloadStatus.paused => 'Paused · ${(record.progress * 100).round()}%',
-      DownloadStatus.queued => 'Queued',
-      DownloadStatus.resolving => 'Preparing…',
-      DownloadStatus.unsupported => record.error ?? 'Not available offline yet',
-      DownloadStatus.failed => record.error ?? 'Failed',
-      DownloadStatus.canceled => 'Canceled',
+      DownloadStatus.done => record.bytesTotal > 0
+          ? fmtDownloadSize(record.bytesTotal)
+          : l10n.downloaded,
+      DownloadStatus.downloading => record.bytesTotal > 0
+          ? l10n.downloadProgressPercentOfSize(
+              pct,
+              fmtDownloadSize(record.bytesTotal),
+            ) + _torrentSuffix(l10n)
+          : l10n.downloadProgressPercent(pct) + _torrentSuffix(l10n),
+      DownloadStatus.paused => l10n.downloadPausedProgress(pct),
+      DownloadStatus.queued => l10n.downloadQueued,
+      DownloadStatus.resolving => l10n.downloadPreparing,
+      DownloadStatus.unsupported =>
+        record.error ?? l10n.notAvailableOfflineYet,
+      DownloadStatus.failed => record.error ?? l10n.downloadFailedStatus,
+      DownloadStatus.canceled => l10n.downloadCanceled,
     };
   }
 
   /// " · N peers · X MB/s" for an active torrent download (empty otherwise).
-  String get _torrentSuffix {
+  String _torrentSuffix(AppLocalizations l10n) {
     if (!record.isTorrent) return '';
     final TorrentDownloadProgress? p = manager.torrentProgress[record.id];
     if (p == null) return '';
     final parts = <String>[];
-    if (p.peers > 0) parts.add('${p.peers} peers');
+    if (p.peers > 0) parts.add(l10n.peerCount(p.peers));
     if (p.downSpeedBps > 0) {
       final mb = p.downSpeedBps / (1024 * 1024);
       parts.add(mb >= 1
-          ? '${mb.toStringAsFixed(1)} MB/s'
-          : '${(p.downSpeedBps / 1024).round()} KB/s');
+          ? l10n.downloadSpeedMbps(mb.toStringAsFixed(1))
+          : l10n.downloadSpeedKbps((p.downSpeedBps / 1024).round()));
     }
     return parts.isEmpty ? '' : ' · ${parts.join(' · ')}';
   }
@@ -792,13 +806,14 @@ class DownloadTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final isDone = record.status == DownloadStatus.done;
     return ListTile(
       contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
       onTap: isDone ? () => _play(context) : null,
       leading: _StatusGlyph(record: record),
       title: Text(
-        _epLabel,
+        _epLabel(l10n),
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -806,7 +821,7 @@ class DownloadTile extends StatelessWidget {
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_subtitle, style: AppText.caption),
+          Text(_subtitle(l10n), style: AppText.caption),
           if (record.status == DownloadStatus.downloading ||
               record.status == DownloadStatus.paused) ...[
             const SizedBox(height: 6),
@@ -895,6 +910,7 @@ class _TileMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final r = record;
     return PopupMenuButton<String>(
       icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
@@ -916,13 +932,13 @@ class _TileMenu extends StatelessWidget {
       },
       itemBuilder: (context) => [
         if (r.status == DownloadStatus.downloading)
-          _item('pause', Icons.pause_rounded, 'Pause'),
+          _item('pause', Icons.pause_rounded, l10n.pause),
         if (r.status == DownloadStatus.paused)
-          _item('resume', Icons.play_arrow_rounded, 'Resume'),
+          _item('resume', Icons.play_arrow_rounded, l10n.resume),
         if (r.status == DownloadStatus.failed && !r.isTorrent)
-          _item('retry', Icons.refresh_rounded, 'Retry'),
-        if (r.isActive) _item('cancel', Icons.close_rounded, 'Cancel'),
-        _item('delete', Icons.delete_outline_rounded, 'Delete'),
+          _item('retry', Icons.refresh_rounded, l10n.retry),
+        if (r.isActive) _item('cancel', Icons.close_rounded, l10n.cancel),
+        _item('delete', Icons.delete_outline_rounded, l10n.delete),
       ],
     );
   }

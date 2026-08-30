@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
@@ -14,6 +15,7 @@ import '../../core/theme/app_text.dart';
 import '../home/search_screen.dart';
 import 'schedule_cubit.dart';
 import 'schedule_screen_tv.dart';
+import '../../l10n/l10n.dart';
 
 /// The Schedule tab: a monthly/weekly anime airing calendar + upcoming
 /// movies/TV. Self-contained (creates its own ScheduleCubit) so it can sit
@@ -50,45 +52,48 @@ void openTitle(BuildContext context, String title) {
 /// coral-only), scoped to the Schedule screen.
 const Color _live = Color(0xFF3ED598);
 
-const _wdShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']; // Mon=1..Sun=7
-const _monShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const _monFull = ['January','February','March','April','May','June','July',
-  'August','September','October','November','December'];
-
 DateTime _dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
 
 /// "6:30" + separate "PM" — split so the rail can stack them.
-({String hm, String ap}) _timeParts(DateTime d) {
+({String hm, String ap}) _timeParts(DateTime d, String locale) {
   final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
   final m = d.minute.toString().padLeft(2, '0');
-  return (hm: '$h:$m', ap: d.hour < 12 ? 'AM' : 'PM');
+  final ap = DateFormat('a', locale).format(d);
+  return (hm: '$h:$m', ap: ap);
 }
 
-String _monthYear(DateTime d) => '${_monFull[d.month - 1]} ${d.year}';
-String _monthDay(DateTime d) => '${_monShort[d.month - 1]} ${d.day}, ${d.year}';
+String _monthYear(DateTime d, String locale) =>
+    DateFormat.yMMMM(locale).format(d);
 
-String _selectedHeader(DateTime day, DateTime today) {
-  if (day == today) return 'Today';
-  if (day == today.add(const Duration(days: 1))) return 'Tomorrow';
-  return '${_wdShort[day.weekday - 1]}, ${_monShort[day.month - 1]} ${day.day}';
+String _monthDay(DateTime d, String locale) =>
+    DateFormat.yMMMd(locale).format(d);
+
+String _selectedHeader(AppLocalizations l10n, String locale, DateTime day, DateTime today) {
+  if (day == today) return l10n.relativeToday;
+  if (day == today.add(const Duration(days: 1))) return l10n.relativeTomorrow;
+  return DateFormat('EEE, MMM d', locale).format(day);
 }
 
 /// Time-of-day slot label for grouping the timeline.
-String _slotLabel(int hour) {
-  if (hour < 5 || hour >= 21) return 'LATE NIGHT';
-  if (hour < 12) return 'MORNING';
-  if (hour < 17) return 'AFTERNOON';
-  return 'EVENING';
+String _slotLabel(AppLocalizations l10n, int hour) {
+  if (hour < 5 || hour >= 21) return l10n.scheduleSlotLateNight;
+  if (hour < 12) return l10n.scheduleSlotMorning;
+  if (hour < 17) return l10n.scheduleSlotAfternoon;
+  return l10n.scheduleSlotEvening;
 }
 
 /// Countdown/live status for an episode. `live` = aired within the last 30 min.
-({String text, bool live}) _airStatus(DateTime airs, DateTime now) {
+({String text, bool live}) _airStatus(
+  AppLocalizations l10n,
+  DateTime airs,
+  DateTime now,
+) {
   final diff = airs.difference(now);
   if (diff.isNegative) {
     if (now.difference(airs) < const Duration(minutes: 30)) {
-      return (text: '● LIVE', live: true);
+      return (text: l10n.scheduleLive, live: true);
     }
-    return (text: 'Aired', live: false);
+    return (text: l10n.scheduleAired, live: false);
   }
   if (diff.inMinutes < 60) return (text: '${diff.inMinutes}m', live: false);
   if (diff.inHours < 24) {
@@ -148,7 +153,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context, state, cubit),
-                _tabRow(state, cubit),
+                _tabRow(context, state, cubit),
                 Expanded(
                   child: TabBarView(
                     controller: _tabs,
@@ -175,7 +180,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
       padding: const EdgeInsets.fromLTRB(16, 10, 12, 6),
       child: Row(
         children: [
-          Expanded(child: Text('Schedule', style: AppText.largeTitle)),
+          Expanded(child: Text(context.l10n.schedule, style: AppText.largeTitle)),
           // My List filter only applies to the anime tab; slide it in/out.
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
@@ -210,7 +215,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
             Icon(on ? Icons.bookmark : Icons.bookmark_border,
                 size: 16, color: on ? AppColors.accent : AppColors.textSecondary),
             const SizedBox(width: 5),
-            Text('My List',
+            Text(context.l10n.myList,
                 style: AppText.caption.copyWith(
                   fontWeight: FontWeight.w600,
                   color: on ? AppColors.accent : AppColors.textSecondary,
@@ -222,7 +227,8 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── Anime/Movies TabBar (animated sliding underline) + Week/Month pill ──
-  Widget _tabRow(ScheduleState state, ScheduleCubit cubit) {
+  Widget _tabRow(BuildContext context, ScheduleState state, ScheduleCubit cubit) {
+    final l10n = context.l10n;
     Widget wm(String label, ScheduleView v) {
       final on = state.view == v;
       return GestureDetector(
@@ -268,7 +274,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               labelStyle: AppText.headline.copyWith(fontSize: 14),
               unselectedLabelStyle:
                   AppText.headline.copyWith(fontSize: 14, fontWeight: FontWeight.w600),
-              tabs: const [Tab(text: 'Anime'), Tab(text: 'Movies & TV')],
+              tabs: [Tab(text: context.l10n.anime), Tab(text: context.l10n.moviesTV)],
             ),
           ),
           const SizedBox(width: 8),
@@ -279,8 +285,8 @@ class _ScheduleBodyState extends State<ScheduleBody>
               borderRadius: BorderRadius.circular(9),
             ),
             child: Row(children: [
-              wm('Week', ScheduleView.week),
-              wm('Month', ScheduleView.month),
+              wm(l10n.weekView, ScheduleView.week),
+              wm(l10n.monthView, ScheduleView.month),
             ]),
           ),
         ],
@@ -314,8 +320,8 @@ class _ScheduleBodyState extends State<ScheduleBody>
               child: KeyedSubtree(
                 key: ValueKey('sel-$isMonth-${state.monthAnchor}'),
                 child: isMonth
-                    ? _monthSelector(state, cubit, today, selected, counts)
-                    : _weekTabs(cubit, today, selected, counts),
+                    ? _monthSelector(context, state, cubit, today, selected, counts)
+                    : _weekTabs(context, cubit, today, selected, counts),
               ),
             ),
           ),
@@ -362,6 +368,8 @@ class _ScheduleBodyState extends State<ScheduleBody>
 
   Widget _dayContent(BuildContext context, ScheduleState state, DateTime today,
       DateTime selected, bool forMovies) {
+    final l10n = context.l10n;
+    final locale = Localizations.localeOf(context).toString();
     if (_loadingFor(state, forMovies)) return const _SkeletonTimeline();
 
     if (!forMovies) {
@@ -377,11 +385,16 @@ class _ScheduleBodyState extends State<ScheduleBody>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _dayHead(_selectedHeader(selected, today), list.length, 'airing'),
+          _dayHead(
+            context,
+            _selectedHeader(l10n, locale, selected, today),
+            list.length,
+            l10n.scheduleNounAiring,
+          ),
           if (list.isEmpty)
             _empty(state.myListOnly
-                ? 'None of the anime you follow air on this day.'
-                : 'Nothing airing on this day.')
+                ? l10n.noneOfFollowedAirOnThisDay
+                : l10n.nothingAiringOnThisDay)
           else
             _timeline(context, list),
         ],
@@ -392,17 +405,22 @@ class _ScheduleBodyState extends State<ScheduleBody>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _dayHead(_selectedHeader(selected, today), list.length, 'releasing'),
+        _dayHead(
+          context,
+          _selectedHeader(l10n, locale, selected, today),
+          list.length,
+          l10n.scheduleNounReleasing,
+        ),
         if (list.isEmpty)
-          _empty('Nothing releasing on this day.')
+          _empty(l10n.nothingReleasingOnThisDay)
         else
           for (final e in list)
             _ReleaseCard(
               title: e.title,
               imageUrl: e.posterUrl,
               subtitle: e.isTv
-                  ? 'Series · ${_monthDay(e.releaseDate ?? selected)}'
-                  : 'Movie · ${_monthDay(e.releaseDate ?? selected)}',
+                  ? l10n.seriesWithDate(_monthDay(e.releaseDate ?? selected, locale))
+                  : l10n.movieWithDate(_monthDay(e.releaseDate ?? selected, locale)),
               onTap: () => openTitle(context, e.title),
             ),
       ],
@@ -410,8 +428,10 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── week day tabs (Dantotsu-style: "Mon, Jul 13 (12)", scrollable) ──
-  Widget _weekTabs(ScheduleCubit cubit, DateTime today, DateTime selected,
+  Widget _weekTabs(BuildContext context, ScheduleCubit cubit, DateTime today, DateTime selected,
       Map<DateTime, ({int count, bool followed})> counts) {
+    final l10n = context.l10n;
+    final locale = Localizations.localeOf(context).toString();
     final days = [for (var i = 0; i < 7; i++) today.add(Duration(days: i))];
     return SizedBox(
       height: 46,
@@ -424,8 +444,8 @@ class _ScheduleBodyState extends State<ScheduleBody>
           final on = d == selected;
           final n = counts[d]?.count ?? 0;
           final label = d == today
-              ? 'Today, ${_monShort[d.month - 1]} ${d.day}'
-              : '${_wdShort[d.weekday - 1]}, ${_monShort[d.month - 1]} ${d.day}';
+              ? l10n.todayWithDate(DateFormat('MMM d', locale).format(d))
+              : DateFormat('EEE, MMM d', locale).format(d);
           return GestureDetector(
             onTap: () => cubit.selectDay(d),
             behavior: HitTestBehavior.opaque,
@@ -489,8 +509,9 @@ class _ScheduleBodyState extends State<ScheduleBody>
   }
 
   // ── month nav + calendar grid ──
-  Widget _monthSelector(ScheduleState state, ScheduleCubit cubit, DateTime today,
+  Widget _monthSelector(BuildContext context, ScheduleState state, ScheduleCubit cubit, DateTime today,
       DateTime selected, Map<DateTime, ({int count, bool followed})> byDay) {
+    final locale = Localizations.localeOf(context).toString();
     final anchor = state.monthAnchor ?? DateTime(today.year, today.month, 1);
     return Column(
       children: [
@@ -501,7 +522,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
               _navArrow(Icons.chevron_left,
                   () => cubit.goToMonth(DateTime(anchor.year, anchor.month - 1, 1))),
               Expanded(
-                child: Text(_monthYear(anchor),
+                child: Text(_monthYear(anchor, locale),
                     textAlign: TextAlign.center,
                     style: AppText.headline.copyWith(fontWeight: FontWeight.w800)),
               ),
@@ -533,7 +554,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
         ),
       );
 
-  Widget _dayHead(String label, int count, String noun) => Padding(
+  Widget _dayHead(BuildContext context, String label, int count, String noun) => Padding(
         padding: const EdgeInsets.fromLTRB(18, 14, 18, 2),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -543,7 +564,7 @@ class _ScheduleBodyState extends State<ScheduleBody>
                 style: AppText.headline.copyWith(fontWeight: FontWeight.w800)),
             const SizedBox(width: 8),
             if (count > 0)
-              Text('· $count $noun',
+              Text(context.l10n.scheduleCountDot(count, noun),
                   style: AppText.caption.copyWith(color: AppColors.textSecondary)),
           ],
         ),
@@ -551,12 +572,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
 
   // Timeline: episodes sorted by time, grouped by slot header, time on the rail.
   Widget _timeline(BuildContext context, List<AiringEntry> list) {
+    final l10n = context.l10n;
+    final locale = Localizations.localeOf(context).toString();
     final now = DateTime.now();
     final rows = <Widget>[];
     String? lastSlot;
     for (var i = 0; i < list.length; i++) {
       final e = list[i];
-      final slot = _slotLabel(e.airsAtLocal.hour);
+      final slot = _slotLabel(l10n, e.airsAtLocal.hour);
       if (slot != lastSlot) {
         rows.add(Padding(
           padding: EdgeInsets.fromLTRB(18, i == 0 ? 8 : 14, 18, 6),
@@ -572,9 +595,11 @@ class _ScheduleBodyState extends State<ScheduleBody>
       }
       rows.add(_TimelineRow(
         entry: e,
-        status: _airStatus(e.airsAtLocal, now),
+        status: _airStatus(l10n, e.airsAtLocal, now),
+        timeParts: _timeParts(e.airsAtLocal, locale),
+        episodeLabel: l10n.episodeLabel(e.episode),
         last: i == list.length - 1 ||
-            _slotLabel(list[i + 1].airsAtLocal.hour) != slot,
+            _slotLabel(l10n, list[i + 1].airsAtLocal.hour) != slot,
         onTap: () => openTitle(context, e.title),
       ));
     }
@@ -639,6 +664,11 @@ class _CalendarGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context).toString();
+    final weekdayLabels = List.generate(
+      7,
+      (i) => DateFormat('EEEEE', locale).format(DateTime(2024, 1, 1 + i)),
+    );
     final first = DateTime(anchor.year, anchor.month, 1);
     final daysInMonth = DateTime(anchor.year, anchor.month + 1, 0).day;
     final leading = first.weekday - 1; // Mon-first
@@ -650,7 +680,7 @@ class _CalendarGrid extends StatelessWidget {
         children: [
           Row(
             children: [
-              for (final w in const ['M', 'T', 'W', 'T', 'F', 'S', 'S'])
+              for (final w in weekdayLabels)
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 6),
@@ -764,17 +794,21 @@ class _TimelineRow extends StatelessWidget {
   const _TimelineRow({
     required this.entry,
     required this.status,
+    required this.timeParts,
+    required this.episodeLabel,
     required this.last,
     required this.onTap,
   });
   final AiringEntry entry;
   final ({String text, bool live}) status;
+  final ({String hm, String ap}) timeParts;
+  final String episodeLabel;
   final bool last;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final t = _timeParts(entry.airsAtLocal);
+    final t = timeParts;
     final live = status.live;
     return IntrinsicHeight(
       child: Padding(
@@ -841,7 +875,7 @@ class _TimelineRow extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis),
                             const SizedBox(height: 2),
-                            Text('Episode ${entry.episode}',
+                            Text(episodeLabel,
                                 style: AppText.caption.copyWith(
                                   fontSize: 10.5,
                                   fontWeight: FontWeight.w700,

@@ -30,7 +30,7 @@ class _CsPhoneViewState extends State<_CsPhoneView> {
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text('CloudStream', style: AppText.barTitle),
+          title: Text(context.l10n.cloudStream, style: AppText.barTitle),
           bottom: TabBar(
             indicatorColor: AppColors.accent,
             indicatorSize: TabBarIndicatorSize.label,
@@ -39,9 +39,9 @@ class _CsPhoneViewState extends State<_CsPhoneView> {
             labelStyle: AppText.headline,
             unselectedLabelStyle: AppText.headline,
             dividerHeight: 0,
-            tabs: const [
-              Tab(text: 'Installed'),
-              Tab(text: 'Repositories'),
+            tabs: [
+              Tab(text: context.l10n.installed),
+              Tab(text: context.l10n.repositories),
             ],
           ),
         ),
@@ -51,7 +51,7 @@ class _CsPhoneViewState extends State<_CsPhoneView> {
           onPressed: () => _showAddCsRepoDialog(context),
           icon: const Icon(Icons.add),
           label: Text(
-            'Add CloudStream repo',
+            context.l10n.addCloudStreamRepo,
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
@@ -114,7 +114,7 @@ class _CsInstalledTab extends StatelessWidget {
           EmptyState(
             icon: Icons.dns_rounded,
             message: query.trim().isEmpty
-                ? 'No CloudStream sources installed.'
+                ? context.l10n.noCloudStreamSourcesInstalled
                 : 'No installed sources match "${query.trim()}".',
           )
         else
@@ -166,8 +166,8 @@ class _CsReposTab extends StatelessWidget {
           EmptyState(
             icon: Icons.cloud_outlined,
             message: searching
-                ? 'No extensions match "${query.trim()}".'
-                : 'No CloudStream repos added yet.\nTap "Add CS repo" to add one.',
+                ? context.l10n.noExtensionsMatchQuery(query.trim())
+                : context.l10n.noCloudStreamReposAddedYetTap(context.l10n.addCSRepo),
           )
         else
           BlocBuilder<ActiveSourceCubit, String>(
@@ -207,16 +207,15 @@ Future<void> _showAddCsRepoDialog(BuildContext context) async {
         SnackBar(
           content: Text(
             count == 0
-                ? 'Repo added.'
-                : 'Repo added — $count source${count == 1 ? '' : 's'} '
-                      'available. Install the ones you want.',
+                ? context.l10n.repoAdded
+                : context.l10n.repoAddedWithSourcesAvailable(count),
           ),
         ),
       );
   } catch (e) {
     messenger
       ..clearSnackBars()
-      ..showSnackBar(SnackBar(content: Text('Failed to add repo: $e')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.failedToAddRepo('$e'))));
   }
 }
 
@@ -248,7 +247,7 @@ class _CsScreenInstalledGroupState extends State<_CsScreenInstalledGroup> {
     final sources = widget.group.sources;
     final title = widget.group.name.isNotEmpty
         ? widget.group.name
-        : 'CloudStream';
+        : context.l10n.cloudStream;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -327,7 +326,7 @@ class _CsScreenInstalledGroupState extends State<_CsScreenInstalledGroup> {
 
 /// The shared CloudStream source row — no leading icon, `Padding(16,8,6,8)`
 /// over a name (accented + w600 when this is the active source, dimmed when
-/// disabled) and a `'cloudstream'` meta line, then a [Switch.adaptive] for
+/// disabled) and a `context.l10n.cloudstream` meta line, then a [Switch.adaptive] for
 /// enable/disable. The row body (not the switch) is tappable to make this the
 /// active source. CloudStream has no per-source settings screen state beyond
 /// the shared [SourceSettingsScreen], reached via the tune icon.
@@ -353,7 +352,7 @@ class _CsScreenSourceRow extends StatelessWidget {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(content: Text('Active source: ${source.displayName}')),
+            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
           );
       },
       child: Padding(
@@ -375,7 +374,7 @@ class _CsScreenSourceRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
-                  Text('cloudstream', style: AppText.caption),
+                  Text(context.l10n.cloudstream, style: AppText.caption),
                 ],
               ),
             ),
@@ -385,7 +384,7 @@ class _CsScreenSourceRow extends StatelessWidget {
               onChanged: (v) => manager.setEnabled(source.sourceId, v),
             ),
             IconButton(
-              tooltip: 'Source settings',
+              tooltip: context.l10n.sourceSettings,
               icon: const Icon(Icons.tune_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => Navigator.of(context).push(
@@ -411,30 +410,30 @@ class _CsScreenSourceRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 /// Confirms then removes an entire CloudStream repo (its sources too) via
-/// [CloudStreamManager.deleteRepo]; shows a "Removed" snackbar on success.
+/// [CloudStreamManager.deleteRepo]; shows a context.l10n.removed snackbar on success.
 Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async {
   final messenger = ScaffoldMessenger.of(context);
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Remove repository?', style: AppText.headline),
+      title: Text(context.l10n.removeRepository2, style: AppText.headline),
       content: Text(
-        'Remove this repository and its sources?',
+        context.l10n.removeThisRepositoryAndItsSources,
         style: AppText.body,
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, true),
           child: Text(
-            'Remove',
+            context.l10n.removeDownloadTooltip,
             style: AppText.body.copyWith(color: AppColors.accent),
           ),
         ),
@@ -445,18 +444,18 @@ Future<void> _confirmDeleteCsRepo(BuildContext context, CsRepoGroup group) async
   await sl<CloudStreamManager>().deleteRepo(group.url);
   messenger
     ..clearSnackBars()
-    ..showSnackBar(const SnackBar(content: Text('Removed')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.removed)));
 }
 
 /// READ-ONLY check of a CloudStream repo for plugin updates via
 /// [CloudStreamManager.checkRepoUpdates] (no download). Reports how many
-/// updates are available; the accent badge + per-plugin "Update" buttons then
+/// updates are available; the accent badge + per-plugin context.l10n.update buttons then
 /// appear.
 Future<void> _checkCsUpdates(BuildContext context, CsRepoGroup group) async {
   final messenger = ScaffoldMessenger.of(context);
   messenger
     ..clearSnackBars()
-    ..showSnackBar(const SnackBar(content: Text('Checking for updates…')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.checkingForUpdates)));
   try {
     final updates = await sl<CloudStreamManager>().checkRepoUpdates(group.url);
     messenger
@@ -465,15 +464,15 @@ Future<void> _checkCsUpdates(BuildContext context, CsRepoGroup group) async {
         SnackBar(
           content: Text(
             updates.isEmpty
-                ? 'Up to date'
-                : '${updates.length} update(s) available',
+                ? context.l10n.upToDate
+                : context.l10n.nUpdatesAvailable(updates.length),
           ),
         ),
       );
   } catch (e) {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Check failed: $e')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.checkFailed('$e'))));
   }
 }
 
@@ -483,7 +482,7 @@ Future<void> _applyCsRepoUpdates(BuildContext context, CsRepoGroup group) async 
   final messenger = ScaffoldMessenger.of(context);
   messenger
     ..clearSnackBars()
-    ..showSnackBar(const SnackBar(content: Text('Updating…')));
+    ..showSnackBar(SnackBar(content: Text(context.l10n.updating)));
   try {
     final count = await sl<CloudStreamManager>().updateRepo(group.url);
     messenger
@@ -491,14 +490,14 @@ Future<void> _applyCsRepoUpdates(BuildContext context, CsRepoGroup group) async 
       ..showSnackBar(
         SnackBar(
           content: Text(
-            count == 0 ? 'Already up to date' : 'Updated $count source(s)',
+            count == 0 ? context.l10n.alreadyUpToDate : context.l10n.updatedNSources(count),
           ),
         ),
       );
   } catch (e) {
     messenger
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+      ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
   }
 }
 
@@ -588,14 +587,14 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                 ),
               )
               .length;
-    final title = group.name.isNotEmpty ? group.name : 'CloudStream';
+    final title = group.name.isNotEmpty ? group.name : context.l10n.cloudStream;
     final owner = group.owner.isNotEmpty
         ? group.owner
         : (group.url.isNotEmpty ? group.url : null);
     final subtitle = isOther
         ? '${group.sources.length} installed'
         : (catalog.isEmpty
-              ? (owner ?? 'cloudstream')
+              ? (owner ?? context.l10n.cloudstream)
               : '$installedCount of ${catalog.length} installed'
                     '${owner != null ? ' • $owner' : ''}');
     return Container(
@@ -672,7 +671,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                       ),
                       child: Text(
                         updates.length == 1
-                            ? '1 update'
+                            ? context.l10n.oneUpdate
                             : '${updates.length} updates',
                         style: AppText.caption.copyWith(
                           color: AppColors.accent,
@@ -699,7 +698,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                       PopupMenuItem(
                         value: 'check',
                         child: Text(
-                          'Check for updates',
+                          context.l10n.checkForUpdates,
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -718,7 +717,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                       PopupMenuItem(
                         value: 'remove',
                         child: Text(
-                          'Remove repo',
+                          context.l10n.removeRepo2,
                           style: AppText.body.copyWith(
                             color: AppColors.textPrimary,
                           ),
@@ -758,7 +757,7 @@ class _CsScreenRepoSectionState extends State<_CsScreenRepoSection> {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            'No installable sources found in this repo.',
+                            context.l10n.noInstallableSourcesFoundInThisRepo,
                             textAlign: TextAlign.center,
                             style: AppText.caption,
                           ),
@@ -815,7 +814,7 @@ class _CsScreenPluginRow extends StatefulWidget {
   final String repoUrl;
 
   /// A newer version available for this (installed) plugin, or null. When
-  /// set, the row shows an "Update" button instead of "Installed".
+  /// set, the row shows an context.l10n.update button instead of context.l10n.installed.
   final CsUpdate? update;
 
   @override
@@ -830,7 +829,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       if (widget.plugin.language != null) widget.plugin.language!,
       if (widget.plugin.tvTypes.isNotEmpty) widget.plugin.tvTypes.join(' / '),
     ];
-    return parts.isEmpty ? 'cloudstream' : parts.join(' • ');
+    return parts.isEmpty ? context.l10n.cloudstream : parts.join(' • ');
   }
 
   Future<void> _install() async {
@@ -842,12 +841,12 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Installed ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.installedName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -864,12 +863,12 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Updated ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.updatedName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -881,23 +880,23 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall ${widget.plugin.name}?', style: AppText.headline),
+        title: Text(context.l10n.uninstallNameQuestion(widget.plugin.name), style: AppText.headline),
         content: Text(
-          'This removes the source from your installed list.',
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -912,12 +911,12 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
       messenger
         ..clearSnackBars()
         ..showSnackBar(
-          SnackBar(content: Text('Uninstalled ${widget.plugin.name}')),
+          SnackBar(content: Text(context.l10n.uninstalledName(widget.plugin.name))),
         );
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstall failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstallFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -977,7 +976,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: Text('Update → v${widget.update!.onlineVersion}'),
+              child: Text(context.l10n.updateArrowVersion('${widget.update!.onlineVersion}')),
             )
           else if (installed)
             OutlinedButton(
@@ -992,7 +991,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Installed'),
+              child: Text(context.l10n.installed),
             )
           else
             FilledButton(
@@ -1006,7 +1005,7 @@ class _CsScreenPluginRowState extends State<_CsScreenPluginRow> {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Install'),
+              child: Text(context.l10n.install),
             ),
         ],
       ),
@@ -1046,7 +1045,7 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add CS repo', style: AppText.headline),
+      title: Text(context.l10n.addCSRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1059,15 +1058,14 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Repo URL',
-                hintText: 'https://.../repo.json',
+              decoration: InputDecoration(
+                labelText: context.l10n.repoUrl,
+                hintText: context.l10n.repoUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              "Paste a CloudStream repository URL — the app loads every "
-              'source it lists.',
+              context.l10n.pasteCloudStreamRepoUrlFull,
               style: AppText.caption,
             ),
           ],
@@ -1077,7 +1075,7 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
@@ -1087,7 +1085,7 @@ class _CsScreenAddRepoDialogState extends State<_CsScreenAddRepoDialog> {
             foregroundColor: Colors.white,
           ),
           onPressed: _submit,
-          child: const Text('Add'),
+          child: Text(context.l10n.navTabsAdd),
         ),
       ],
     );

@@ -5,6 +5,7 @@ import '../../../core/di/injector.dart';
 import '../../../core/tv/tv_focusable.dart';
 import '../watch_together_controller.dart';
 import 'room_panel.dart';
+import '../../../l10n/l10n.dart';
 
 /// Portrait screen shown to a viewer whose party is in `mode: lobby` —
 /// i.e. the host hasn't started playing anything yet.
@@ -68,8 +69,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                           const SizedBox(height: 24),
 
                           // Title.
-                          const Text(
-                            'Host is choosing…',
+                          Text(context.l10n.hostIsChoosing,
                             style: TextStyle(
                               color: Colors.white,
                               fontSize: 20,
@@ -81,8 +81,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                           const SizedBox(height: 10),
 
                           // Subtitle.
-                          const Text(
-                            "You'll start watching automatically when the host plays something.",
+                          Text(context.l10n.youLlStartWatchingAutomaticallyWhenTheHostPlaysSomething,
                             style: TextStyle(
                               color: Colors.white54,
                               fontSize: 14,
@@ -148,7 +147,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                       Expanded(
                         child: _ActionButton(
                           icon: Icons.chat_bubble_outline_rounded,
-                          label: 'Chat',
+                          label: context.l10n.chat,
                           active: _chatOpen,
                           autofocus: true,
                           onTap: () => setState(() => _chatOpen = !_chatOpen),
@@ -160,7 +159,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                       Expanded(
                         child: _ActionButton(
                           icon: Icons.group_outlined,
-                          label: 'Participants',
+                          label: context.l10n.participants,
                           onTap: () =>
                               showRoomParticipantsSheet(context, controller),
                         ),
@@ -171,7 +170,7 @@ class _HostChoosingScreenState extends State<HostChoosingScreen> {
                       Expanded(
                         child: _ActionButton(
                           icon: Icons.exit_to_app_rounded,
-                          label: 'Leave',
+                          label: context.l10n.leave,
                           destructive: true,
                           onTap: () async {
                             final nav = Navigator.of(context);

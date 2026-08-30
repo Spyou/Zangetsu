@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../sources/providers_hub_screen.dart';
+import '../../l10n/l10n.dart';
 
 Future<void> _markOnboarded() =>
     Hive.box(ActiveSourceCubit.boxName).put('onboarded', true);
@@ -71,15 +72,13 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
               children: [
                 const Spacer(flex: 2),
                 Text(
-                  'Welcome to $kAppName',
+                  context.l10n.welcomeToApp(kAppName),
                   style: AppText.title,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  '$kAppName comes with no sources built in — you add your own. '
-                  'Add a repository and pick what to install, any time from '
-                  'Settings → Providers.',
+                  context.l10n.onboardingTvSubtitle(kAppName),
                   style: AppText.body.copyWith(color: AppColors.textSecondary),
                   textAlign: TextAlign.center,
                 ),
@@ -87,18 +86,18 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _bullet(Icons.explore_outlined, 'Open Providers'),
+                    _bullet(Icons.explore_outlined, context.l10n.openProviders),
                     _bullet(
                       Icons.category_outlined,
-                      'Pick an ecosystem — Streaming, Manga or Novel',
+                      context.l10n.onboardingPickEcosystem,
                     ),
                     _bullet(
                       Icons.link_rounded,
-                      'Add a repository by pasting its URL',
+                      context.l10n.onboardingAddRepository,
                     ),
                     _bullet(
                       Icons.download_outlined,
-                      'Browse it and install what you want',
+                      context.l10n.onboardingBrowseAndInstall,
                     ),
                   ],
                 ),
@@ -125,7 +124,7 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                           ),
                         ),
                         child: Text(
-                          'Add sources now',
+                          context.l10n.addSourcesNow,
                           style: AppText.button.copyWith(color: Colors.white),
                         ),
                       ),
@@ -143,7 +142,7 @@ class _OnboardingScreenTvState extends State<OnboardingScreenTv> {
                       child: TextButton(
                         onPressed: _later,
                         child: Text(
-                          "I'll do it later",
+                          context.l10n.illDoItLater,
                           style: AppText.caption.copyWith(
                             color: AppColors.textTertiary,
                           ),

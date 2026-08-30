@@ -17,6 +17,7 @@ import '../../core/tv/tv_text_field.dart';
 import '../../core/ui/states.dart';
 import 'source_settings_screen.dart';
 import 'sources_search_field.dart';
+import '../../l10n/l10n.dart';
 
 part 'cloudstream_sources_screen_phone.dart';
 part 'cloudstream_sources_screen_tv.dart';

@@ -8,6 +8,7 @@ import 'package:get_it/get_it.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
+import 'package:watch_app/core/locale/locale_controller.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
@@ -17,6 +18,7 @@ import 'package:watch_app/core/tv/tv_list_focusable.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/settings/settings_screen_tv.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 MigrationBridge _fakeBridge() => MigrationBridge(
       invoke: (_, __) async => const {'ok': false},
@@ -85,7 +87,11 @@ Widget _buildUnderTest({
         BlocProvider<AuthCubit>.value(value: authCubit),
         BlocProvider<ActiveSourceCubit>.value(value: activeCubit),
       ],
-      child: const MaterialApp(home: SettingsScreenTv()),
+      child: MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: const SettingsScreenTv(),
+      ),
     );
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -100,6 +106,8 @@ void main() {
     // that box open succeeds instead of throwing "Hive not initialized".
     hiveDir = await Directory.systemTemp.createTemp('settings_tv_test');
     Hive.init(hiveDir.path);
+    await Hive.openBox(LocaleController.boxName);
+    await LocaleController.init();
     _registerStubs();
     // ActiveSourceCubit with box=null falls back to 'allanime' — no Hive.
     activeCubit = ActiveSourceCubit();

@@ -23,6 +23,8 @@ import '../../core/playback/watch_history.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/ui/list_status_sheet.dart';
@@ -231,8 +233,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     });
   }
 
-  String _typeLabel(ProviderType t) =>
-      t == ProviderType.movie ? 'Movie' : 'Anime';
+  String _typeLabel(AppLocalizations l10n, ProviderType t) =>
+      t == ProviderType.movie ? l10n.movieLabel : l10n.anime;
 
   Future<MediaDetail?> _detailOf(String url, String sourceId) async {
     try {
@@ -251,7 +253,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       englishTitle: item.englishTitle,
       cover: item.cover,
       headers: item.coverHeaders,
-      typeLabel: _typeLabel(item.type),
+      typeLabel: _typeLabel(context.l10n, item.type),
       subCount: item.subCount,
       dubCount: item.dubCount,
       detail: _detailOf(item.url, item.sourceId),
@@ -291,11 +293,14 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       headers: e.coverHeaders,
       detail: _detailOf(e.showUrl, e.sourceId),
       inMyList: _inList(stub),
-      playLabel: 'Resume',
+      playLabel: context.l10n.resume,
       progress: e.progress,
       progressLabel: e.episodeNumber != null
-          ? 'Episode ${e.episodeNumber!.toInt()} · $pct% watched'
-          : '$pct% watched',
+          ? context.l10n.episodeWatchedPct(
+              e.episodeNumber!.toInt(),
+              pct,
+            )
+          : context.l10n.percentWatched(pct),
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
       onToggleMyList: () async {
@@ -459,11 +464,12 @@ class _TvNoSourcesGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (icon, noun) = switch (mode) {
+    final (icon, _) = switch (mode) {
       ContentMode.anime => (Icons.live_tv_rounded, 'shows'),
       ContentMode.manga => (Icons.auto_stories_rounded, 'manga'),
       ContentMode.novel => (Icons.menu_book_rounded, 'novels'),
     };
+    final l10n = context.l10n;
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -479,13 +485,13 @@ class _TvNoSourcesGuide extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'No ${mode.label} sources yet',
+            l10n.noModeSourcesYet(contentModeLabel(l10n, mode)),
             textAlign: TextAlign.center,
             style: AppText.headline.copyWith(fontSize: 26),
           ),
           const SizedBox(height: 12),
           Text(
-            'Add a source from Providers and your $noun will show up here.',
+            l10n.addSourceFromProvidersHint(contentModeContentNoun(l10n, mode)),
             textAlign: TextAlign.center,
             style: AppText.body.copyWith(
               color: AppColors.textSecondary,
@@ -512,7 +518,7 @@ class _TvNoSourcesGuide extends StatelessWidget {
                     ),
                   ),
                   icon: const Icon(Icons.add_rounded, size: 22),
-                  label: const Text('Browse sources'),
+                  label: Text(l10n.browseSources),
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.accent,
                     foregroundColor: Colors.white,

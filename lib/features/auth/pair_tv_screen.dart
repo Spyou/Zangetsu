@@ -9,6 +9,7 @@ import '../../core/tracker/relay/tracker_relay.dart';
 import '../../core/tracker/relay/tracker_relay_crypto.dart';
 import 'auth_cubit.dart';
 import 'tv_pairing_service.dart';
+import '../../l10n/l10n.dart';
 
 /// Phone: approve a TV pairing. Enter the code shown on the TV (or arrive here
 /// via the pairing QR — `zangetsu://pair?code=…`, or an https `/pair/` link
@@ -56,7 +57,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
   Future<void> _lookup() async {
     final code = _code.text.trim();
     if (code.length < 6) {
-      setState(() => _error = 'Enter the code shown on your TV.');
+      setState(() => _error = context.l10n.enterTheCodeShownOnTV);
       return;
     }
     setState(() {
@@ -68,7 +69,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
     setState(() {
       _busy = false;
       if (name == null) {
-        _error = "That code wasn't found — it may have expired.";
+        _error = context.l10n.codeNotFoundExpired;
       } else {
         _deviceName = name;
         _phase = _P.confirm;
@@ -89,7 +90,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
       if (ok) {
         _phase = _P.done;
       } else {
-        _error = 'Approval failed. Try again.';
+        _error = context.l10n.approvalFailed;
       }
     });
   }
@@ -112,7 +113,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Pair a TV'),
+        title: Text(context.l10n.pairATV),
         backgroundColor: AppColors.bg,
         elevation: 0,
       ),
@@ -132,7 +133,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
 
   Widget _notSignedIn() => Center(
         child: Text(
-          'Sign in to your account first,\nthen pair your TV.',
+          context.l10n.signInToYourAccountFirstNthenPairYourTV,
           textAlign: TextAlign.center,
           style: AppText.body.copyWith(color: AppColors.textSecondary),
         ),
@@ -141,9 +142,9 @@ class _PairTvScreenState extends State<PairTvScreen> {
   Widget _enter() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Enter the code from your TV', style: AppText.headline),
+          Text(context.l10n.enterTheCodeFromYourTV, style: AppText.headline),
           const SizedBox(height: 8),
-          Text('Open Zangetsu on your TV and sign in with your phone to see it.',
+          Text(context.l10n.openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt,
               style: AppText.body.copyWith(color: AppColors.textSecondary)),
           const SizedBox(height: 24),
           TextField(
@@ -153,8 +154,8 @@ class _PairTvScreenState extends State<PairTvScreen> {
             maxLength: 9,
             inputFormatters: [UpperCaseFormatter()],
             style: AppText.title.copyWith(letterSpacing: 6),
-            decoration: const InputDecoration(
-              hintText: 'ABCD 2345',
+            decoration: InputDecoration(
+              hintText: context.l10n.abcd2345,
               counterText: '',
             ),
             onSubmitted: (_) => _lookup(),
@@ -164,7 +165,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
             Text(_error!, style: AppText.caption.copyWith(color: Colors.redAccent)),
           ],
           const SizedBox(height: 24),
-          _primary('Continue', _busy ? null : _lookup),
+          _primary(context.l10n.continueLabel, _busy ? null : _lookup),
         ],
       );
 
@@ -173,16 +174,16 @@ class _PairTvScreenState extends State<PairTvScreen> {
         children: [
           Icon(Icons.tv_rounded, size: 48, color: AppColors.accent),
           const SizedBox(height: 16),
-          Text('Sign in on ${_deviceName ?? 'this TV'}?', style: AppText.headline),
+          Text(context.l10n.signInOnDevice(_deviceName ?? context.l10n.thisTV), style: AppText.headline),
           const SizedBox(height: 8),
-          Text('This TV will sign into your account. You can sign it out later.',
+          Text(context.l10n.thisTVWillSignIntoYourAccountYouCanSignItOutLater,
               style: AppText.body.copyWith(color: AppColors.textSecondary)),
           if (widget.nonce != null) ...[
             const SizedBox(height: 12),
             Row(children: [
               const Icon(Icons.sync_rounded, size: 16, color: AppColors.textSecondary),
               const SizedBox(width: 6),
-              Expanded(child: Text('Also send your trackers (AniList, MyAnimeList, Simkl)',
+              Expanded(child: Text(context.l10n.alsoSendTrackers,
                   style: AppText.caption.copyWith(color: AppColors.textSecondary))),
             ]),
           ],
@@ -191,7 +192,7 @@ class _PairTvScreenState extends State<PairTvScreen> {
             Text(_error!, style: AppText.caption.copyWith(color: Colors.redAccent)),
           ],
           const SizedBox(height: 24),
-          _primary('Approve', _busy ? null : _approve),
+          _primary(context.l10n.approve, _busy ? null : _approve),
         ],
       );
 
@@ -201,13 +202,13 @@ class _PairTvScreenState extends State<PairTvScreen> {
           children: [
             const Icon(Icons.check_circle_rounded, size: 56, color: Colors.green),
             const SizedBox(height: 16),
-            Text('Your TV is signed in', style: AppText.headline),
+            Text(context.l10n.yourTVIsSignedIn, style: AppText.headline),
             const SizedBox(height: 8),
-            Text('It should switch to your account in a moment.',
+            Text(context.l10n.itShouldSwitchToYourAccountInAMoment,
                 textAlign: TextAlign.center,
                 style: AppText.body.copyWith(color: AppColors.textSecondary)),
             const SizedBox(height: 24),
-            _primary('Done', () => Navigator.of(context).maybePop()),
+            _primary(context.l10n.done, () => Navigator.of(context).maybePop()),
           ],
         ),
       );

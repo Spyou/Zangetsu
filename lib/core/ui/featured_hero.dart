@@ -417,6 +417,7 @@ class _FeaturedHeroState extends State<FeaturedHero> {
                 widget.reading ? 'Read' : 'Play',
                 style: TextStyle(
                   fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                   color: AppColors.bg,
                   fontWeight: FontWeight.w700,
                   fontSize: 15,

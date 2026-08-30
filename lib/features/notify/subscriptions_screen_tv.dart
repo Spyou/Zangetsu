@@ -11,6 +11,7 @@ import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/states.dart';
 import '../detail/detail_screen.dart';
+import '../../l10n/l10n.dart';
 
 /// TV Notifications / Subscriptions list — D-pad focusable vertical list of
 /// subscribed shows. Reuses the existing subscription row widget (ListTile +
@@ -64,7 +65,7 @@ class _SubscriptionsScreenTvState extends State<SubscriptionsScreenTv> {
                 // ── Title header ──────────────────────────────────────────────
                 Padding(
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text('Notifications', style: AppText.largeTitle),
+                  child: Text(context.l10n.notifications, style: AppText.largeTitle),
                 ),
                 // ── Subscription list ─────────────────────────────────────────
                 Expanded(

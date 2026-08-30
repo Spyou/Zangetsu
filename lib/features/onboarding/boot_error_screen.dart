@@ -5,6 +5,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../l10n/l10n.dart';
 
 /// Shown when startup doesn't finish — either a boot step threw, or it hung
 /// past the watchdog.
@@ -47,22 +48,20 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Reset app data?', style: AppText.title),
-        content: const Text(
-          'This clears what Zangetsu has saved on this device so it can start '
-          'fresh.\n\nYour account and anything synced to the cloud are not '
-          'touched — sign in again and your library comes back.',
+        title: Text(ctx.l10n.resetAppDataTitle, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetAppDataBody,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             autofocus: true,
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(ctx.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Reset', style: TextStyle(color: AppColors.accent)),
+            child: Text(ctx.l10n.reset, style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -81,16 +80,16 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: const Text('Done', style: AppText.title),
-        content: const Text(
-          'Close Zangetsu completely and open it again.',
+        title: Text(ctx.l10n.done, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetAppDataDone,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             autofocus: true,
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('OK'),
+            child: Text(ctx.l10n.ok),
           ),
         ],
       ),
@@ -136,15 +135,12 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                     color: AppColors.accent,
                   ),
                   const SizedBox(height: 18),
-                  const Text(
-                    "Zangetsu didn't finish starting",
+                  Text(context.l10n.bootErrorTitle,
                     style: AppText.headline,
                   ),
                   const SizedBox(height: 10),
-                  const Text(
-                    'Something saved on this device is stopping it from '
-                    'opening. Nothing is lost — your account and anything '
-                    'synced to the cloud are safe.',
+                  Text(
+                    context.l10n.bootErrorBody,
                     style: AppText.body,
                   ),
                   const SizedBox(height: 24),
@@ -160,7 +156,7 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                             backgroundColor: AppColors.accent,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ),
-                          child: const Text('Try again'),
+                          child: Text(context.l10n.tryAgain),
                         ),
                       ),
                     ),
@@ -185,7 +181,7 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                                   strokeWidth: 2,
                                 ),
                               )
-                            : const Text('Reset app data'),
+                            : Text(context.l10n.resetAppData),
                       ),
                     ),
                   ),
@@ -198,7 +194,7 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                       child: Row(
                         children: [
                           Text(
-                            _showDetails ? 'Hide details' : 'Show details',
+                            _showDetails ? context.l10n.hideDetails : context.l10n.showDetails,
                             style: AppText.caption.copyWith(
                               color: AppColors.textTertiary,
                             ),
@@ -241,10 +237,8 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                         );
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text(
-                              'Details copied — send them to us',
-                            ),
+                          SnackBar(
+                            content: Text(context.l10n.detailsCopied),
                           ),
                         );
                       },
@@ -255,15 +249,13 @@ class _BootErrorScreenState extends State<BootErrorScreen> {
                           );
                           if (!context.mounted) return;
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Details copied — send them to us',
-                              ),
+                            SnackBar(
+                              content: Text(context.l10n.detailsCopied),
                             ),
                           );
                         },
                         icon: const Icon(Icons.copy_rounded, size: 16),
-                        label: const Text('Copy details'),
+                        label: Text(context.l10n.copyDetails),
                       ),
                     ),
                   ],

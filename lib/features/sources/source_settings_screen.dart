@@ -11,6 +11,7 @@ import '../../core/repository/provider_settings_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
+import '../../l10n/l10n.dart';
 
 /// Generic per-provider settings form rendered from the provider's
 /// `getSettings()` schema. The composite `(repoUrl, sourceId)` key keeps
@@ -233,9 +234,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
             builder: (context, nativeSnap) {
               final hasNative = nativeSnap.data ?? false;
               if (schema == null && !hasNative) {
-                return const EmptyState(
+                return EmptyState(
                   icon: Icons.tune,
-                  message: 'This source has no settings',
+                  message: context.l10n.thisSourceHasNoSettings,
                 );
               }
               return ListView(
@@ -258,7 +259,7 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
                           size: 20,
                         ),
                         label: Text(
-                          'Reset to defaults',
+                          context.l10n.resetToDefaults,
                           style: AppText.body.copyWith(
                             color: AppColors.textSecondary,
                           ),
@@ -279,9 +280,9 @@ class _SourceSettingsScreenState extends State<SourceSettingsScreen> {
   Widget _providerSettingsCard() => _card(
     child: ListTile(
       leading: Icon(Icons.tune_rounded, color: AppColors.accent),
-      title: Text('Provider settings', style: AppText.body),
+      title: Text(context.l10n.providerSettings, style: AppText.body),
       subtitle: Text(
-        "Open this source's own settings (e.g. server, language)",
+        context.l10n.openThisSourceSOwnSettingsEGServerLanguage,
         style: AppText.caption,
       ),
       trailing: const Icon(

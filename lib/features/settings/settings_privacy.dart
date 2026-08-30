@@ -26,20 +26,19 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text('Enable NSFW sources?', style: AppText.title),
+          title: Text(context.l10n.enableNSFWSources, style: AppText.title),
           content: Text(
-            'This shows sources marked 18+ in the source list and switcher. '
-            'Only turn this on if you want adult content.',
+            context.l10n.enableNsfwSourcesBody,
             style: AppText.body,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text(context.l10n.cancel),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Enable'),
+              child: Text(context.l10n.enable),
             ),
           ],
         ),
@@ -60,20 +59,19 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text('Show NSFW Aniyomi sources?', style: AppText.title),
+          title: Text(context.l10n.showNSFWAniyomiSources, style: AppText.title),
           content: Text(
-            'This shows Aniyomi extensions flagged as 18+ in the source list '
-            'and switcher. Only turn this on if you want adult content.',
+            context.l10n.showNsfwAniyomiSourcesBody,
             style: AppText.body,
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel'),
+              child: Text(context.l10n.cancel),
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Enable'),
+              child: Text(context.l10n.enable),
             ),
           ],
         ),
@@ -133,7 +131,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Privacy'),
+      appBar: settingsAppBar(context.l10n.privacy),
       body: ListView(
         padding: const EdgeInsets.only(top: 8, bottom: 24),
         children: [
@@ -142,8 +140,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               SettingsTile(
                 autofocus: true,
                 icon: Icons.visibility_off_outlined,
-                title: 'Incognito mode',
-                subtitle: 'Pause history, tracking & Discord presence',
+                title: context.l10n.incognitoMode,
+                subtitle: context.l10n.pauseHistoryTrackingDiscordPresence,
                 onTap: () => IncognitoMode.set(!IncognitoMode.on),
                 trailing: ValueListenableBuilder<bool>(
                   valueListenable: IncognitoMode.notifier,
@@ -159,8 +157,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
             child: Text(
-              'While on, searches, watch history, tracker scrobbling and Discord '
-              'presence are paused — nothing is recorded until you turn it off.',
+              context.l10n.incognitoModeBlurb,
               style: AppText.caption,
             ),
           ),
@@ -168,8 +165,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
             children: [
               SettingsTile(
                 icon: Icons.shield_outlined,
-                title: 'Enable NSFW sources',
-                subtitle: 'Show sources marked 18+',
+                title: context.l10n.enableNSFWSources2,
+                subtitle: context.l10n.showSourcesMarked18,
                 onTap: () => _onNsfwChanged(!_nsfw),
                 trailing: Switch.adaptive(
                   value: _nsfw,
@@ -179,8 +176,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
               ),
               SettingsTile(
                 icon: Icons.extension_outlined,
-                title: 'Show NSFW sources',
-                subtitle: 'Adult Aniyomi extensions',
+                title: context.l10n.showNSFWSources,
+                subtitle: context.l10n.adultAniyomiExtensions,
                 onTap: () => _onNsfwAniChanged(!_nsfwAni),
                 trailing: Switch.adaptive(
                   value: _nsfwAni,
@@ -193,8 +190,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
             child: Text(
-              'Sources marked 18+ stay hidden from the source list and switcher '
-              'unless this is on.',
+              context.l10n.sourcesMarked18Hidden,
               style: AppText.caption,
             ),
           ),
@@ -232,7 +228,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('OpenSubtitles API key', style: AppText.headline),
+      title: Text(context.l10n.opensubtitlesAPIKey, style: AppText.headline),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,15 +238,15 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             autofocus: true,
             cursorColor: AppColors.accent,
             style: AppText.body.copyWith(color: AppColors.textPrimary),
-            decoration: const InputDecoration(
-              labelText: 'API key',
-              hintText: 'Paste your key',
-            ),
+            decoration: InputDecoration(
+              labelText: context.l10n.apiKeyLabel,
+              hintText: context.l10n.pasteYourKey,
+              ),
             onSubmitted: (v) => Navigator.pop(context, v.trim()),
           ),
           const SizedBox(height: 10),
           Text(
-            'Create a free key at opensubtitles.com → Consumers.',
+            context.l10n.createAFreeKeyAtOpensubtitlesComConsumers,
             style: AppText.caption,
           ),
         ],
@@ -259,7 +255,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
@@ -269,7 +265,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             foregroundColor: Colors.white,
           ),
           onPressed: () => Navigator.pop(context, _controller.text.trim()),
-          child: const Text('Save'),
+          child: Text(context.l10n.save),
         ),
       ],
     );

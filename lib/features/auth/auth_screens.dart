@@ -15,11 +15,14 @@ import 'auth_cubit.dart';
 import 'auth_screens_tv.dart';
 import 'pair_tv_screen.dart';
 import 'reconnect.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 
 /// Returns true if logged in. Otherwise shows a "Sign in to {action}" snackbar
 /// with a Sign-in action and returns false — the gate for My List / history.
-bool requireLogin(BuildContext context, {String action = 'use this'}) {
+bool requireLogin(BuildContext context, {String? action}) {
   if (context.read<AuthCubit>().state.isLoggedIn) return true;
+  final act = action ?? context.l10n.signInToUseThis;
   ScaffoldMessenger.of(context)
     ..clearSnackBars()
     ..showSnackBar(
@@ -27,11 +30,11 @@ bool requireLogin(BuildContext context, {String action = 'use this'}) {
         backgroundColor: AppColors.surface2,
         behavior: SnackBarBehavior.floating,
         content: Text(
-          'Sign in to $action',
+          context.l10n.signInToAction(act),
           style: AppText.body.copyWith(color: Colors.white),
         ),
         action: SnackBarAction(
-          label: 'Sign in',
+          label: context.l10n.signIn,
           textColor: AppColors.accent,
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
@@ -116,14 +119,14 @@ class _LoginScreenState extends State<LoginScreen> {
     if (ok && context.mounted) Navigator.of(context).pop();
   }
 
-  /// "Forgot password?" — ask for the account email and send an Appwrite
+  /// context.l10n.forgotPassword — ask for the account email and send an Appwrite
   /// recovery link (completed on the hosted reset page). Works while signed out.
   Future<void> _forgotPassword(BuildContext context) async {
     final controller = TextEditingController(text: _email.text.trim());
     final email = await showDialog<String>(
       context: context,
       builder: (dctx) => AlertDialog(
-        title: const Text('Reset password'),
+        title: Text(context.l10n.resetPassword),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -136,9 +139,9 @@ class _LoginScreenState extends State<LoginScreen> {
               controller: controller,
               autofocus: true,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                hintText: 'you@example.com',
+              decoration: InputDecoration(
+                labelText: context.l10n.email,
+                hintText: context.l10n.youExampleCom,
               ),
               onSubmitted: (v) => Navigator.of(dctx).pop(v.trim()),
             ),
@@ -147,11 +150,11 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dctx).pop(),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dctx).pop(controller.text.trim()),
-            child: const Text('Send link'),
+            child: Text(context.l10n.sendLink),
           ),
         ],
       ),
@@ -162,7 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(err ?? 'Reset link sent — check your email (and spam).'),
+        content: Text(err ?? context.l10n.resetLinkSent),
       ),
     );
   }
@@ -171,32 +174,32 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const LoginScreenTv();
     return _AuthScaffold(
-      title: 'Welcome back',
-      subtitle: 'Sign in to sync your list across devices.',
+      title: context.l10n.welcomeBack,
+      subtitle: context.l10n.signInToSyncYourListAcrossDevices,
       children: [
-        _Field(controller: _email, hint: 'Email', icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
+        _Field(controller: _email, hint: context.l10n.email, icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
         const SizedBox(height: 12),
-        _Field(controller: _password, hint: 'Password', icon: Icons.lock_outline, obscure: true),
+        _Field(controller: _password, hint: context.l10n.password, icon: Icons.lock_outline, obscure: true),
         Align(
           alignment: Alignment.centerRight,
           child: TextButton(
             onPressed: () => _forgotPassword(context),
-            child: const Text('Forgot password?'),
+            child: Text(context.l10n.forgotPassword),
           ),
         ),
         const SizedBox(height: 8),
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) => _SubmitBlock(
-            label: 'Log in',
+            label: context.l10n.logIn,
             busy: state.busy,
-            error: state.error,
+            error: localizeAuthError(context.l10n, state.error),
             onPressed: () => _submit(context),
           ),
         ),
         const SizedBox(height: 14),
         _SwitchLink(
-          prompt: "Don't have an account?",
-          action: 'Sign up',
+          prompt: context.l10n.dontHaveAnAccount,
+          action: context.l10n.signUp,
           onTap: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const SignupScreen()),
           ),
@@ -250,7 +253,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (_password.text.length < 8) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.passwordMustBeAtLeast8Characters)));
       return;
     }
     final auth = context.read<AuthCubit>();
@@ -269,29 +272,29 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const SignupScreenTv();
     return _AuthScaffold(
-      title: 'Create account',
-      subtitle: 'Save your list and continue watching anywhere.',
+      title: context.l10n.createAccount,
+      subtitle: context.l10n.saveYourListAndContinueWatchingAnywhere,
       children: [
         Center(child: _AvatarPicker(path: _avatarPath, onTap: _pickAvatar)),
         const SizedBox(height: 24),
-        _Field(controller: _name, hint: 'Name', icon: Icons.person_outline),
+        _Field(controller: _name, hint: context.l10n.name, icon: Icons.person_outline),
         const SizedBox(height: 12),
-        _Field(controller: _email, hint: 'Email', icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
+        _Field(controller: _email, hint: context.l10n.email, icon: Icons.mail_outline, keyboard: TextInputType.emailAddress),
         const SizedBox(height: 12),
-        _Field(controller: _password, hint: 'Password (8+ characters)', icon: Icons.lock_outline, obscure: true),
+        _Field(controller: _password, hint: context.l10n.password8Characters, icon: Icons.lock_outline, obscure: true),
         const SizedBox(height: 20),
         BlocBuilder<AuthCubit, AuthState>(
           builder: (context, state) => _SubmitBlock(
-            label: 'Create account',
+            label: context.l10n.createAccount,
             busy: state.busy,
-            error: state.error,
+            error: localizeAuthError(context.l10n, state.error),
             onPressed: () => _submit(context),
           ),
         ),
         const SizedBox(height: 14),
         _SwitchLink(
           prompt: 'Already have an account?',
-          action: 'Log in',
+          action: context.l10n.logIn,
           onTap: () => Navigator.of(context).pushReplacement(
             MaterialPageRoute(builder: (_) => const LoginScreen()),
           ),
@@ -329,24 +332,24 @@ class ProfileScreen extends StatelessWidget {
     final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Edit name'),
+        title: Text(context.l10n.editName),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           textCapitalization: TextCapitalization.words,
           textInputAction: TextInputAction.done,
           maxLength: 40,
-          decoration: const InputDecoration(hintText: 'Your name'),
+          decoration: InputDecoration(hintText: context.l10n.yourName),
           onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('Save'),
+            child: Text(context.l10n.save),
           ),
         ],
       ),
@@ -358,7 +361,7 @@ class ProfileScreen extends StatelessWidget {
     final ok = await context.read<AuthCubit>().updateName(name);
     if (!ok) {
       messenger.showSnackBar(
-        const SnackBar(content: Text("Couldn't update your name")),
+        SnackBar(content: Text(context.l10n.couldnTUpdateYourName)),
       );
     }
   }
@@ -368,11 +371,11 @@ class ProfileScreen extends StatelessWidget {
     if (sl<AppMode>().isTv) return const ProfileScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Profile'),
+      appBar: settingsAppBar(context.l10n.profile),
       body: BlocBuilder<AuthCubit, AuthState>(
         builder: (context, state) {
           if (!state.isLoggedIn) {
-            return const Center(child: Text('Not signed in'));
+            return Center(child: Text(context.l10n.notSignedIn));
           }
           return ListView(
             padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
@@ -450,7 +453,7 @@ class ProfileScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: SecondaryButton(
-                  label: 'Pair a TV',
+                  label: context.l10n.pairATV,
                   icon: Icons.tv_rounded,
                   onPressed: () =>
                       Navigator.of(context).push(PairTvScreen.route()),
@@ -460,7 +463,7 @@ class ProfileScreen extends StatelessWidget {
               SizedBox(
                 width: double.infinity,
                 child: SecondaryButton(
-                  label: 'Log out',
+                  label: context.l10n.logOut,
                   icon: Icons.logout_rounded,
                   onPressed: () async {
                     // Backs up an un-synced library first / warns before wiping.
@@ -482,7 +485,7 @@ class ProfileScreen extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /// Circular avatar picker for the signup form — shows the chosen image or a
-/// placeholder with a camera badge + "Add photo" caption.
+/// placeholder with a camera badge + context.l10n.addPhoto caption.
 class _AvatarPicker extends StatelessWidget {
   const _AvatarPicker({required this.path, required this.onTap});
   final String? path;
@@ -521,7 +524,7 @@ class _AvatarPicker extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            path == null ? 'Add photo' : 'Change photo',
+            path == null ? context.l10n.addPhoto : context.l10n.changePhoto,
             style: AppText.caption.copyWith(color: AppColors.textSecondary),
           ),
         ],

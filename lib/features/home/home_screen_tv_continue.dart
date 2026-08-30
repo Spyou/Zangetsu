@@ -32,10 +32,10 @@ class _TvContinueRail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 48),
             child: Text(
-              'Continue Watching',
+              context.l10n.continueWatching,
               style: TextStyle(
                 color: AppColors.textPrimary,
                 fontSize: 18,
@@ -100,9 +100,10 @@ class _TvContinueCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = entry;
+    final l10n = context.l10n;
     final sub = e.episodeNumber != null
-        ? 'Continue · E${e.episodeNumber!.toInt()}'
-        : 'Continue';
+        ? l10n.continueDotEpisode(e.episodeNumber!.toInt())
+        : l10n.continueLabel;
     return SizedBox(
       width: width,
       child: Column(

@@ -6,6 +6,7 @@ import '../../auth/auth_cubit.dart';
 import '../model/room_state.dart';
 import '../watch_together_controller.dart';
 import 'host_choosing_screen.dart';
+import '../../../l10n/l10n.dart';
 
 /// Create/Join entry screen for Watch Party.
 ///
@@ -32,7 +33,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
 
   void _showNotLoggedIn() {
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Sign in to use Watch Party')),
+      SnackBar(content: Text(context.l10n.signInToUseWatchParty)),
     );
   }
 
@@ -49,7 +50,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
     final messenger = ScaffoldMessenger.of(context);
     if (controller.room != null) {
       messenger.showSnackBar(
-        const SnackBar(content: Text("You're already in a party")),
+        SnackBar(content: Text(context.l10n.youReAlreadyInAParty)),
       );
       return;
     }
@@ -119,7 +120,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
 
     if (!ok) {
       messenger.showSnackBar(
-        const SnackBar(content: Text('Room not found')),
+        SnackBar(content: Text(context.l10n.roomNotFound)),
       );
       return;
     }
@@ -137,8 +138,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
         backgroundColor: const Color(0xFF0E0E0E),
         foregroundColor: Colors.white,
         elevation: 0,
-        title: const Text(
-          'Watch Party',
+        title: Text(context.l10n.watchParty,
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
@@ -169,8 +169,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                const Text(
-                  'Watch together',
+                Text(context.l10n.watchTogether2,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 22,
@@ -180,8 +179,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                const Text(
-                  'Create a party and invite friends, or join an existing one with a code.',
+                Text(context.l10n.createAPartyAndInviteFriendsOrJoinAnExistingOneWithACode,
                   style: TextStyle(
                     color: Colors.white54,
                     fontSize: 14,
@@ -221,7 +219,7 @@ class _WatchPartyLobbyScreenState extends State<WatchPartyLobbyScreen> {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.login),
-                    label: const Text('Join with a code'),
+                    label: Text(context.l10n.joinWithACode),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
                       side: BorderSide(
@@ -271,21 +269,21 @@ Future<String?> _askCode(BuildContext context) {
   return showDialog<String>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('Enter room code'),
+      title: Text(context.l10n.enterRoomCode),
       content: TextField(
         controller: ctrl,
         autofocus: true,
         textCapitalization: TextCapitalization.characters,
-        decoration: const InputDecoration(hintText: 'e.g. ABC234'),
-      ),
+        decoration: InputDecoration(hintText: context.l10n.eGABC234),
+              ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx),
-          child: const Text('Cancel'),
+          child: Text(context.l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-          child: const Text('Join'),
+          child: Text(context.l10n.join),
         ),
       ],
     ),

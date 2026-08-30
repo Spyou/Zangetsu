@@ -13,7 +13,10 @@ import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/locale/app_language_picker.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
@@ -84,7 +87,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => _TvOptionPicker<int>(
-        title: 'DNS',
+        title: ctx.l10n.dns,
         options: CsDns.labels.entries.map((e) => (e.key, e.value)).toList(),
         current: _dnsChoice,
       ),
@@ -100,8 +103,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
       context: context,
       barrierColor: Colors.black54,
       builder: (ctx) => _TvOptionPicker<SearchLayout>(
-        title: 'Search layout',
-        options: SearchLayout.values.map((l) => (l, l.label)).toList(),
+        title: ctx.l10n.searchLayout,
+        options: SearchLayout.values.map((l) => (l, l.localizedLabel(ctx))).toList(),
         current: prefs.layout,
       ),
     );
@@ -126,12 +129,15 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     final url = await showDialog<String>(context: context, builder: (_) => const _TvAddRepoDialog());
     if (url == null || url.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
+    final l10n = context.l10n;
     try {
       final count = await _csManager.addRepo(url);
-      messenger.showSnackBar(SnackBar(content: Text('Added — $count CloudStream source(s) available')));
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(l10n.addedCloudStreamSourcesCount(count))));
+      setState(() {});
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Failed to add repository: $e')));
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(l10n.failedToAddRepository('$e'))));
     }
   }
 
@@ -179,8 +185,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
             SettingsTile(
               autofocus: true,
               icon: Icons.person_outline_rounded,
-              title: 'Sign in',
-              subtitle: 'Sync your list & continue watching',
+              title: context.l10n.signIn,
+              subtitle: context.l10n.signInSubtitleTv,
               onTap: () => _push(const LoginScreen()),
             ),
           ],
@@ -191,6 +197,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final enabledCount = _registry.getAll().where((e) => e.enabled).length;
     final activeId = context.watch<ActiveSourceCubit>().state;
     return Scaffold(
@@ -201,7 +208,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(56, 24, 48, 16),
-              child: Text('Settings', style: AppText.largeTitle),
+              child: Text(l10n.settingsTitle, style: AppText.largeTitle),
             ),
             Expanded(
               child: ListView(
@@ -215,8 +222,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.cloud_sync_outlined,
-                        title: 'Backup & Restore',
-                        subtitle: 'Save your sources, list & settings',
+                        title: l10n.backupAndRestore,
+                        subtitle: l10n.backupAndRestoreSubtitle,
                         onTap: () => _push(const BackupScreen()),
                       ),
                     ],
@@ -226,8 +233,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.dns_rounded,
-                        title: 'Providers',
-                        subtitle: '$enabledCount enabled',
+                        title: l10n.providers,
+                        subtitle: l10n.providersEnabledCount(enabledCount),
                         onTap: () async {
                           await _push(const SourcesScreen());
                           if (mounted) setState(() {});
@@ -235,28 +242,28 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       ),
                       SettingsTile(
                         icon: Icons.swap_horiz_rounded,
-                        title: 'Active source',
+                        title: l10n.activeSource,
                         subtitle: _activeLabel(activeId),
                         onTap: _pickActiveSourceTv,
                       ),
                       SettingsTile(
                         icon: Icons.health_and_safety_outlined,
-                        title: 'Source health',
-                        subtitle: 'Test which sources are working',
+                        title: l10n.sourceHealth,
+                        subtitle: l10n.sourceHealthSubtitle,
                         onTap: () => _push(const SourceHealthScreen()),
                       ),
                       if (Platform.isAndroid) ...[
                         SettingsTile(
                           icon: Icons.extension_outlined,
-                          title: 'Add CloudStream repository',
-                          subtitle: 'Install CloudStream sources',
+                          title: l10n.addCloudStreamRepository,
+                          subtitle: l10n.installCloudStreamSources,
                           onTap: _addCloudStreamRepo,
                         ),
                         SettingsTile(
                           icon: Icons.vpn_lock_outlined,
-                          title: 'DNS',
+                          title: l10n.dns,
                           subtitle: _dnsChoice == CsDns.off
-                              ? 'Off · bypass ISP blocks on CS sources'
+                              ? l10n.dnsOffTvSubtitle
                               : CsDns.labelFor(_dnsChoice),
                           onTap: _pickDnsTv,
                         ),
@@ -268,39 +275,48 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.help_outline_rounded,
-                        title: 'How it works',
-                        subtitle: 'New here? A quick guide',
+                        title: l10n.howItWorks,
+                        subtitle: l10n.howItWorksSubtitle,
                         onTap: () => _push(const HowItWorksScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.play_circle_outline,
-                        title: 'Playback',
-                        subtitle: 'Quality, autoplay, speed',
+                        title: l10n.playback,
+                        subtitle: l10n.playbackSubtitle,
                         onTap: () => _push(const PlaybackSettingsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.download_outlined,
-                        title: 'Downloads',
-                        subtitle: 'Watch offline',
+                        title: l10n.downloads,
+                        subtitle: l10n.downloadsSubtitleTv,
                         onTap: () => _push(const DownloadsScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.search_rounded,
-                        title: 'Search layout',
-                        subtitle: sl<SearchPrefs>().layout.label,
+                        title: l10n.searchLayout,
+                        subtitle: sl<SearchPrefs>().layout.localizedLabel(context),
                         onTap: _pickSearchLayoutTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.language_rounded,
+                        title: l10n.appLanguage,
+                        subtitle: appLanguageValueLabel(context),
+                        onTap: () async {
+                          await pickAppLanguageTv(context);
+                          if (mounted) setState(() {});
+                        },
                       ),
                       if (Platform.isAndroid) ...[
                         SettingsTile(
                           icon: Icons.notifications_none_rounded,
-                          title: 'Notifications',
-                          subtitle: 'New-episode alerts for subscribed shows',
+                          title: l10n.notifications,
+                          subtitle: l10n.notificationsSubtitle,
                           onTap: () => _push(const SubscriptionsScreen()),
                         ),
                         SettingsTile(
                           icon: Icons.update_rounded,
-                          title: 'Source updates',
-                          subtitle: 'Notify when installed sources have updates',
+                          title: l10n.sourceUpdates,
+                          subtitle: l10n.sourceUpdatesSubtitle,
                           onTap: () async {
                             final cm = sl<CloudStreamManager>();
                             await cm.setNotifyUpdates(!cm.notifyUpdates);
@@ -317,8 +333,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         ),
                         SettingsTile(
                           icon: Icons.science_outlined,
-                          title: 'Beta updates',
-                          subtitle: 'Get pre-release builds early — may be unstable',
+                          title: l10n.betaUpdates,
+                          subtitle: l10n.betaUpdatesSubtitle,
                           subtitleMaxLines: null,
                           onTap: () async {
                             final v = !_betaUpdates;
@@ -354,7 +370,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.sd_storage_outlined,
-                        title: 'Storage',
+                        title: l10n.storage,
                         onTap: () => _push(const StorageSettingsScreen()),
                       ),
                     ],
@@ -364,8 +380,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.sync_alt_rounded,
-                        title: 'Connections',
-                        subtitle: 'AniList, MyAnimeList, Simkl',
+                        title: l10n.connections,
+                        subtitle: l10n.connectionsTvSubtitle,
                         onTap: () async {
                           await _push(const ConnectionsScreenTv());
                           if (mounted) setState(() {});
@@ -374,8 +390,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                       if (!isAppleTv)
                         SettingsTile(
                           icon: Icons.gamepad_outlined,
-                          title: 'Discord',
-                          subtitle: 'Rich Presence — show your status',
+                          title: l10n.discord,
+                          subtitle: l10n.discordSubtitle,
                           onTap: () async {
                             await _push(const DiscordSettingsScreen());
                             if (mounted) setState(() {});
@@ -383,8 +399,8 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         ),
                       SettingsTile(
                         icon: Icons.shield_outlined,
-                        title: 'Privacy',
-                        subtitle: 'NSFW sources',
+                        title: l10n.privacy,
+                        subtitle: l10n.privacySubtitle,
                         onTap: () async {
                           await _push(const PrivacySettingsScreen());
                           if (mounted) setState(() {});
@@ -397,31 +413,31 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     children: [
                       SettingsTile(
                         icon: Icons.coffee_rounded,
-                        title: 'Support the app',
-                        subtitle: 'Buy me a coffee',
+                        title: l10n.supportTheApp,
+                        subtitle: l10n.buyMeACoffee,
                         onTap: () => _push(const DonateScreen()),
                       ),
                       SettingsTile(
                         icon: Icons.system_update_rounded,
-                        title: 'Check for updates',
-                        subtitle: 'Get the latest version from GitHub',
+                        title: l10n.checkForUpdates,
+                        subtitle: l10n.checkForUpdatesSubtitle,
                         onTap: () {
                           ScaffoldMessenger.of(
                             context,
-                          ).showSnackBar(const SnackBar(content: Text('Checking for updates…')));
+                          ).showSnackBar(SnackBar(content: Text(l10n.checkingForUpdates)));
                           maybeShowUpdateDialog(context, manual: true);
                         },
                       ),
                       if (kExoSpikeEnabled)
                         SettingsTile(
                           icon: Icons.speed_rounded,
-                          title: 'ExoPlayer spike (dev)',
-                          subtitle: 'SP0 — test SurfaceView playback smoothness',
+                          title: l10n.exoplayerSpikeDev,
+                          subtitle: l10n.sp0TestSurfaceViewPlaybackSmoothness,
                           onTap: () => _push(const TvExoSpikeScreen()),
                         ),
                       SettingsTile(
                         icon: Icons.info_outline_rounded,
-                        title: 'About',
+                        title: l10n.about,
                         subtitle: 'v$kAppVersion',
                         onTap: () => _push(const AboutSettingsScreen()),
                       ),
@@ -509,7 +525,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add CloudStream repository', style: AppText.headline),
+      title: Text(context.l10n.addCloudStreamRepository, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -521,7 +537,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
               keyboardType: TextInputType.url,
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
-              decoration: const InputDecoration(labelText: 'Repository URL', hintText: 'https://.../repo.json'),
+              decoration: InputDecoration(labelText: context.l10n.repositoryUrlLabel, hintText: 'https://.../repo.json'),
               onSubmitted: (v) => Navigator.pop(context, v.trim()),
             ),
           ],
@@ -531,12 +547,12 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
         TvFocusable(
           variant: TvFocusVariant.pill,
           onTap: () => Navigator.pop(context),
-          semanticLabel: 'Cancel',
+          semanticLabel: context.l10n.cancel,
           builder: (focused) => ExcludeSemantics(
             child: TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text(
-                'Cancel',
+                context.l10n.cancel,
                 style: AppText.body.copyWith(color: focused ? Colors.black : AppColors.textSecondary),
               ),
             ),
@@ -545,7 +561,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
         TvFocusable(
           variant: TvFocusVariant.pill,
           onTap: () => Navigator.pop(context, _controller.text.trim()),
-          semanticLabel: 'Add',
+          semanticLabel: context.l10n.add,
           builder: (focused) => ExcludeSemantics(
             child: FilledButton(
               style: FilledButton.styleFrom(
@@ -553,7 +569,7 @@ class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
                 foregroundColor: Colors.white,
               ),
               onPressed: () => Navigator.pop(context, _controller.text.trim()),
-              child: const Text('Add'),
+              child: Text(context.l10n.add),
             ),
           ),
         ),

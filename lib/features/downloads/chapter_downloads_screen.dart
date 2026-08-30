@@ -14,6 +14,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/settings_widgets.dart';
 import '../../core/ui/states.dart';
+import '../../l10n/l10n.dart';
 import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 
@@ -59,9 +60,12 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
   Widget build(BuildContext context) {
     final store = sl<ChapterDownloadStore>();
     final isNovel = widget.mode == ContentMode.novel;
+    final l10n = context.l10n;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar(isNovel ? 'Novel downloads' : 'Manga downloads'),
+      appBar: settingsAppBar(
+        isNovel ? l10n.novelDownloads : l10n.mangaDownloads,
+      ),
       // Only the box is watched here. The downloader fires per page, and
       // rebuilding a few thousand rows twice a second for a progress bar on one
       // of them is what made this screen crawl — the progress tiles subscribe
@@ -74,11 +78,11 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
             return EmptyState(
               icon: isNovel ? Icons.article_outlined : Icons.menu_book_outlined,
               message: isNovel
-                  ? 'Novel chapters you download appear here'
-                  : 'Manga chapters you download appear here',
+                  ? l10n.novelChaptersYouDownloadAppearHere
+                  : l10n.mangaChaptersYouDownloadAppearHere,
             );
           }
-          final sections = _sections(all);
+          final sections = _sections(all, l10n);
           return Column(
             children: [
               _searchField(),
@@ -102,7 +106,10 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
   /// what's saved grouped by show. [ChapterDownloadStore.all] is already
   /// newest-first, so filling the map in that order puts the newest show's
   /// group first for free.
-  List<Widget Function()> _sections(List<ChapterDownload> all) {
+  List<Widget Function()> _sections(
+    List<ChapterDownload> all,
+    AppLocalizations l10n,
+  ) {
     final downloader = sl<ChapterDownloader>();
     final live = Map<String, ChapterDownload>.fromEntries(
       downloader.inFlight.entries.where((e) => e.value.mode == widget.mode),
@@ -135,19 +142,19 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
     return [
       if (active.isNotEmpty) ...[
         () => _sectionHeader(
-          'Downloading',
+          l10n.downloadingSection,
           // Cancelling a big queue an X at a time isn't realistic, so the stop
           // lives up here where it covers the lot.
-          action: running > 0 ? 'Stop all ($running)' : null,
-          onAction: running > 0 ? () => _confirmStopAll(running) : null,
-          extra: failed > 0 ? 'Clear failed ($failed)' : null,
-          onExtra: failed > 0 ? _clearFailed : null,
+          action: running > 0 ? l10n.stopAllCount(running) : null,
+          onAction: running > 0 ? () => _confirmStopAll(running, l10n) : null,
+          extra: failed > 0 ? l10n.clearFailedCount(failed) : null,
+          onExtra: failed > 0 ? () => _clearFailed(l10n) : null,
         ),
         for (final c in active)
           () => _ChapterProgressTile(id: c.id, fallback: c),
       ],
       if (byShow.isNotEmpty) ...[
-        () => _sectionHeader('Downloaded'),
+        () => _sectionHeader(l10n.downloaded),
         for (final e in byShow.entries)
           () => _ChapterGroup(
             chapters: e.value,
@@ -194,29 +201,28 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
     ),
   );
 
-  Future<void> _confirmStopAll(int n) async {
+  Future<void> _confirmStopAll(int n, AppLocalizations l10n) async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Stop downloading?', style: AppText.headline),
+        title: Text(l10n.stopDownloading, style: AppText.headline),
         content: Text(
-          'Cancel $n queued ${n == 1 ? 'chapter' : 'chapters'}. '
-          'Chapters already downloaded are kept.',
+          l10n.stopDownloadingBody(n),
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dctx, false),
             child: Text(
-              'Keep going',
+              l10n.keepGoing,
               style: AppText.button.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dctx, true),
             child: Text(
-              'Stop all',
+              l10n.stopAll,
               style: AppText.button.copyWith(color: AppColors.accent),
             ),
           ),
@@ -227,13 +233,13 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
     await sl<ChapterDownloader>().cancelAll();
   }
 
-  Future<void> _clearFailed() async {
+  Future<void> _clearFailed(AppLocalizations l10n) async {
     final n = await sl<ChapterDownloader>().clearFailed();
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-        SnackBar(content: Text('Cleared $n failed')),
+        SnackBar(content: Text(l10n.clearedFailedCount(n))),
       );
   }
 
@@ -246,7 +252,7 @@ class _ChapterDownloadsScreenState extends State<ChapterDownloadsScreen> {
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         decoration: InputDecoration(
           isDense: true,
-          hintText: 'Search downloads',
+          hintText: context.l10n.searchDownloads,
           hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
           prefixIcon: const Icon(
             Icons.search_rounded,
@@ -301,27 +307,39 @@ class _ChapterProgressTile extends StatelessWidget {
       listenable: sl<ChapterDownloader>(),
       builder: (context, _) {
         final running = sl<ChapterDownloader>().inFlight[id];
-        return _tile(running ?? fallback, running != null);
+        return _tile(context, running ?? fallback, running != null);
       },
     );
   }
 
-  static String _titleOf(ChapterDownload chapter) =>
-      chapter.chapterTitle.trim().isEmpty ? 'Chapter' : chapter.chapterTitle;
+  static String _titleOf(AppLocalizations l10n, ChapterDownload chapter) =>
+      chapter.chapterTitle.trim().isEmpty
+          ? l10n.chapter
+          : chapter.chapterTitle;
 
-  static String _subtitleOf(ChapterDownload chapter, bool live) {
-    if (!live) return '${chapter.showTitle} · ${chapter.error ?? 'Failed'}';
+  static String _subtitleOf(
+    AppLocalizations l10n,
+    ChapterDownload chapter,
+    bool live,
+  ) {
+    if (!live) {
+      return l10n.showTitleWithError(
+        chapter.showTitle,
+        chapter.error ?? l10n.downloadFailedStatus,
+      );
+    }
     if (chapter.status == ChapterDownloadStatus.queued) {
-      return '${chapter.showTitle} · Queued';
+      return l10n.showTitleQueued(chapter.showTitle);
     }
     if (chapter.pageCount > 0) {
       return '${chapter.showTitle} · '
-          '${chapter.pagesDone}/${chapter.pageCount} pages';
+          '${l10n.chapterPagesProgress(chapter.pagesDone, chapter.pageCount)}';
     }
-    return '${chapter.showTitle} · Downloading…';
+    return l10n.showTitleDownloading(chapter.showTitle);
   }
 
-  Widget _tile(ChapterDownload chapter, bool live) {
+  Widget _tile(BuildContext context, ChapterDownload chapter, bool live) {
+    final l10n = context.l10n;
     return ListTile(
       contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
       leading: Icon(
@@ -330,7 +348,7 @@ class _ChapterProgressTile extends StatelessWidget {
         size: 26,
       ),
       title: Text(
-        _titleOf(chapter),
+        _titleOf(l10n, chapter),
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
@@ -339,7 +357,7 @@ class _ChapterProgressTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _subtitleOf(chapter, live),
+            _subtitleOf(l10n, chapter, live),
             style: AppText.caption,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -360,7 +378,7 @@ class _ChapterProgressTile extends StatelessWidget {
       ),
       trailing: IconButton(
         visualDensity: VisualDensity.compact,
-        tooltip: live ? 'Cancel' : 'Remove',
+        tooltip: live ? l10n.cancelDownloadTooltip : l10n.removeDownloadTooltip,
         icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
         onPressed: () => unawaited(
           live
@@ -401,6 +419,7 @@ class _ChapterGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final head = chapters.first;
     final bytes = chapters.fold<int>(0, (s, c) => s + c.bytes);
     final n = chapters.length;
@@ -443,8 +462,7 @@ class _ChapterGroup extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '$n ${n == 1 ? 'chapter' : 'chapters'} · '
-                        '${fmtDownloadSize(bytes)}',
+                        l10n.chaptersWithSize(n, fmtDownloadSize(bytes)),
                         style: AppText.caption,
                       ),
                     ],
@@ -457,8 +475,8 @@ class _ChapterGroup extends StatelessWidget {
                     color: AppColors.textTertiary,
                     size: 22,
                   ),
-                  tooltip: 'Delete all chapters',
-                  onPressed: () => _confirmDeleteAll(context),
+                  tooltip: l10n.deleteAllChaptersTooltip,
+                  onPressed: () => _confirmDeleteAll(context, l10n),
                 ),
                 AnimatedRotation(
                   turns: expanded ? 0.25 : 0.0,
@@ -483,30 +501,32 @@ class _ChapterGroup extends StatelessWidget {
     );
   }
 
-  Future<void> _confirmDeleteAll(BuildContext context) async {
+  Future<void> _confirmDeleteAll(
+    BuildContext context,
+    AppLocalizations l10n,
+  ) async {
     final n = chapters.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Delete all chapters?', style: AppText.headline),
+        title: Text(l10n.deleteAllChapters2, style: AppText.headline),
         content: Text(
-          'Remove all $n ${n == 1 ? 'chapter' : 'chapters'} of '
-          '“${chapters.first.showTitle}” from this device?',
+          l10n.removeAllChaptersOfShow(n, chapters.first.showTitle),
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dctx, false),
             child: Text(
-              'Cancel',
+              l10n.cancel,
               style: AppText.button.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(dctx, true),
             child: Text(
-              'Delete all',
+              l10n.deleteAll,
               style: AppText.button.copyWith(color: AppColors.accent),
             ),
           ),
@@ -572,23 +592,26 @@ class _SavedChapterTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
       leading: Icon(chapterIcon(chapter.mode), color: AppColors.accent, size: 26),
       title: Text(
-        chapter.chapterTitle.trim().isEmpty ? 'Chapter' : chapter.chapterTitle,
+        chapter.chapterTitle.trim().isEmpty
+            ? l10n.chapter
+            : chapter.chapterTitle,
         style: AppText.body.copyWith(color: AppColors.textPrimary),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        chapter.bytes > 0 ? fmtDownloadSize(chapter.bytes) : 'Downloaded',
+        chapter.bytes > 0 ? fmtDownloadSize(chapter.bytes) : l10n.downloaded,
         style: AppText.caption,
       ),
       trailing: IconButton(
         visualDensity: VisualDensity.compact,
-        tooltip: 'Delete',
+        tooltip: l10n.delete,
         icon: const Icon(
           Icons.delete_outline_rounded,
           color: AppColors.textTertiary,

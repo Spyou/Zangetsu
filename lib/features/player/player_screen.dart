@@ -53,6 +53,7 @@ import 'seek_preview.dart';
 import 'color_profiles.dart';
 import 'shader_presets.dart';
 import 'drm_player_screen.dart';
+import '../../l10n/l10n.dart';
 
 part 'player_cast_panel.dart';
 part 'player_overlays.dart';
@@ -681,8 +682,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           if (mounted) {
             setState(() {});
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Using the built-in player for this source.'),
+              SnackBar(
+                content: Text(context.l10n.usingTheBuiltInPlayerForThisSource),
               ),
             );
           }
@@ -694,10 +695,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
           _initInApp(); // proxy unavailable → built-in (never a black screen)
           setState(() {});
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'This source needs special headers your external player can’t '
-                'send — using the built-in player.',
+                context.l10n.thisSourceNeedsSpecialHeadersUsingBuiltIn,
               ),
             ),
           );
@@ -972,16 +972,16 @@ class _PlayerScreenState extends State<PlayerScreen> {
         final ok = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Close video?'),
-            content: const Text('Are you sure you want to close the video?'),
+            title: Text(ctx.l10n.closeVideo),
+            content: Text(ctx.l10n.areYouSureYouWantToCloseTheVideo),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
+                child: Text(ctx.l10n.cancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('Close'),
+                child: Text(ctx.l10n.close),
               ),
             ],
           ),
@@ -1001,8 +1001,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            const SnackBar(
-              content: Text('Press back again to exit'),
+            SnackBar(
+              content: Text(context.l10n.pressBackAgainToExit),
               duration: Duration(seconds: 2),
               behavior: SnackBarBehavior.floating,
             ),
@@ -1509,11 +1509,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (!ShaderPresets.downloaded) {
       _sheet<void>(
         _SheetColumn(
-          header: 'Anime4K Enhancement',
+          header: context.l10n.anime4kEnhancement,
           children: [
             _SheetRow(
-              label: 'Download in Settings',
-              subtitle: 'Get the Anime4K shaders (~0.6 MB), then turn it on',
+              label: context.l10n.downloadInSettings,
+              subtitle: context.l10n.getTheAnime4KShaders06MBThenTurnItOn,
               active: false,
               onTap: () => Navigator.pop(context),
             ),
@@ -1527,7 +1527,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final currentTier = prefs.videoShaderTier;
     _sheet<void>(
       _SheetColumn(
-        header: 'Anime4K Enhancement',
+        header: context.l10n.anime4kEnhancement,
         children: [
           for (final s in ShaderPresets.styles)
             _SheetRow(
@@ -1545,7 +1545,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
             child: Text(
-              'GPU TIER',
+              context.l10n.gpuTIER,
               style: AppText.caption.copyWith(
                 color: AppColors.textTertiary,
                 letterSpacing: 1.2,
@@ -1617,27 +1617,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
     _sheet<void>(
       StatefulBuilder(
         builder: (context, setSheet) => _SheetColumn(
-          header: 'Sleep timer',
+          header: context.l10n.sleepTimer,
           children: [
             _SheetRow(
-              label: 'Off',
+              label: context.l10n.off,
               active: !_sleepActive,
               onTap: () => choose(null),
             ),
             for (final m in const [5, 15, 30, 45, 60])
               _SheetRow(
-                label: '$m minutes',
+                label: context.l10n.timerMinutes(m),
                 active: false,
                 onTap: () => choose(Duration(minutes: m)),
               ),
             _SheetRow(
-              label: 'End of episode',
+              label: context.l10n.endOfEpisode,
               active: _sleepEndOfEpisode,
               onTap: () => choose(null, endOfEpisode: true),
             ),
             _SheetRow(
-              label: 'Close app when timer ends',
-              subtitle: 'Exit the app to save battery',
+              label: context.l10n.closeAppWhenTimerEnds,
+              subtitle: context.l10n.exitTheAppToSaveBattery,
               active: false,
               toggleValue: _sleepCloseApp,
               onTap: () => setSheet(() => _sleepCloseApp = !_sleepCloseApp),
@@ -1770,7 +1770,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                 const SizedBox(width: 10),
                 Semantics(
                   button: true,
-                  label: 'Dismiss',
+                  label: context.l10n.dismiss,
                   child: GestureDetector(
                     onTap: _dismissUpNext,
                     child: Container(
@@ -1868,8 +1868,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     // picture while you choose.
     _sheet<void>(
       _SheetChips(
-        header: 'Playback Speed',
-        labels: [for (final r in rates) r == 1.0 ? 'Normal' : '${r}x'],
+        header: context.l10n.playbackSpeed,
+        labels: [for (final r in rates) r == 1.0 ? context.l10n.normalSpeed : '${r}x'],
         selected: rates.indexWhere((r) => (current - r).abs() < 0.01),
         onSelect: (i) {
           Navigator.pop(context);
@@ -1901,7 +1901,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final current = _c.decoderMode;
     _sheet<void>(
       _SheetColumn(
-        header: 'Video decoder',
+        header: context.l10n.videoDecoder,
         children: [
           for (final (mode, label) in modes)
             _SheetRow(
@@ -1976,7 +1976,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     final pref = sl<PlaybackPrefs>().translateSubtitleTo;
     _sheet<void>(
       _SheetColumn(
-        header: 'Translate subtitles to',
+        header: context.l10n.translateSubtitlesTo,
         children: [
           for (final lang in kSubtitleLanguages)
             _SheetRow(
@@ -2008,7 +2008,11 @@ class _PlayerScreenState extends State<PlayerScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Could not load subtitle: $e')));
+        ).showSnackBar(
+          SnackBar(
+            content: Text(context.l10n.couldNotLoadSubtitle(e.toString())),
+          ),
+        );
       }
     }
     _bumpControls();
@@ -2058,7 +2062,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
     if (_c.state.qualities.isNotEmpty) {
       rows = [
         _SheetRow(
-          label: 'Auto',
+          label: context.l10n.auto,
           active: _c.state.activeQuality == null,
           onTap: () {
             Navigator.pop(context);
@@ -2101,14 +2105,14 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return;
     }
     if (rows.isEmpty) return;
-    _sheet<void>(_SheetColumn(header: 'Quality', children: rows));
+    _sheet<void>(_SheetColumn(header: context.l10n.quality, children: rows));
   }
 
   void _openSourceSheet() {
     final kinds = availableKinds(_c.state.sources);
     _sheet<void>(
       _SheetColumn(
-        header: 'Sources',
+        header: context.l10n.sources,
         children: [
           for (final k in kinds)
             for (final s in sortByQuality(sourcesForKind(_c.state.sources, k)))
@@ -2199,7 +2203,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   const SizedBox(height: 18),
                   FilledButton(
                     onPressed: () => Navigator.of(context).maybePop(),
-                    child: const Text('Back'),
+                    child: Text(context.l10n.back),
                   ),
                 ],
               ),

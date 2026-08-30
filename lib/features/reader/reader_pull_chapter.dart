@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import 'reader_chrome.dart';
+import '../../l10n/l10n.dart';
 
 /// Pull past the end of a chapter to open the next one, with the pull shown
 /// as progress.
@@ -54,7 +55,7 @@ class _ReaderPullChapterState extends State<ReaderPullChapter> {
 
   /// Clearance from each edge, measured against the chrome that lives there:
   /// the top pill row (16 inset + 50 tall) and, at the bottom, the taller of
-  /// the bottom pill (12 + 50) and the "Next chapter →" overlay (24 + ~48).
+  /// the bottom pill (12 + 50) and the context.l10n.nextChapter2 overlay (24 + ~48).
   static const double _kTopInset = 82;
   static const double _kBottomInset = 96;
 
@@ -136,7 +137,7 @@ class _ReaderPullChapterState extends State<ReaderPullChapter> {
         children: [
           Positioned.fill(child: widget.child),
           // IgnorePointer so the scrollable underneath still gets the drag.
-          // Inset clears the chrome: the "Next chapter" overlay sits at
+          // Inset clears the chrome: the context.l10n.nextChapter overlay sits at
           // bottom:24 and shows at the same moment this does, so they'd stack.
           if (showing)
             Positioned(
@@ -154,8 +155,8 @@ class _ReaderPullChapterState extends State<ReaderPullChapter> {
                       armed: _armed,
                       pullingBack: _pullingBack,
                       label: _pullingBack
-                          ? (widget.prevLabel ?? 'Previous chapter')
-                          : (widget.nextLabel ?? 'Next chapter'),
+                          ? (widget.prevLabel ?? context.l10n.previousChapter)
+                          : (widget.nextLabel ?? context.l10n.nextChapter),
                     ),
                   ),
                 ),

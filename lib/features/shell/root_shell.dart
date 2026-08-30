@@ -11,6 +11,8 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../l10n/ui_strings.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
@@ -160,9 +162,9 @@ class _RootShellState extends State<RootShell>
           color: const Color(0xF01C1C1E),
           borderRadius: BorderRadius.circular(24),
         ),
-        child: const Text(
-          'Press BACK again to exit',
-          style: TextStyle(color: Colors.white, fontSize: 14),
+        child: Text(
+          context.l10n.pressBackAgainToExit,
+          style: const TextStyle(color: Colors.white, fontSize: 14),
         ),
       ),
     );
@@ -326,7 +328,7 @@ class _FloatingDock extends StatelessWidget {
                     )
                   else
                     _DockItem(
-                      label: t.label,
+                      label: t.localizedLabel(context),
                       glyph: dockGlyphFor(t),
                       icon: _iconFor(t),
                       selected: active == t,

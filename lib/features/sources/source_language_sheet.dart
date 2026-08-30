@@ -5,6 +5,7 @@ import '../../core/prefs/source_lang_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../l10n/l10n.dart';
 
 /// Multi-select language picker for the Mihon/Aniyomi catalogs. One row per
 /// filterable language ([sortedSourceLangCodes]); toggling writes straight
@@ -35,7 +36,7 @@ Future<void> showSourceLanguageSheet(BuildContext context, LangPrefs prefs) {
                   padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
                   child: Row(
                     children: [
-                      Text('Languages', style: AppText.headline),
+                      Text(context.l10n.languages, style: AppText.headline),
                       const Spacer(),
                       Text(
                         '${enabled.where(kSourceLanguages.containsKey).length} of ${codes.length}',
@@ -108,7 +109,7 @@ Future<void> showSourceLanguageSheetTv(BuildContext context, LangPrefs prefs) {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
-                    child: Text('Languages', style: AppText.headline),
+                    child: Text(context.l10n.languages, style: AppText.headline),
                   ),
                   Flexible(
                     child: ListView(
