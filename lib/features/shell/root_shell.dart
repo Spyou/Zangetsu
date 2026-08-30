@@ -11,18 +11,21 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/ui_strings.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import '../auth/auth_cubit.dart';
+import '../home/cubit/home_cubit.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
 import 'dock_icons.dart';
+import 'mode_bar.dart';
 import '../../core/ui/dock_visibility.dart';
 import 'root_shell_tv.dart';
 
@@ -56,6 +59,11 @@ class _RootShellState extends State<RootShell>
   /// The tab showing, by identity. Was an int index into a hardcoded five —
   /// which stopped meaning anything once the dock became reorderable.
   DockTab _tab = DockTab.home;
+
+  /// Whether the floating mode bar (Anime / Movie/TV / Manga / Novel) is
+  /// showing above the dock. Z Mode only — the centre button that toggles it
+  /// doesn't exist otherwise.
+  bool _modeBarOpen = false;
 
   /// Falls back to an unregistered instance rather than throwing.
   ///
@@ -93,6 +101,18 @@ class _RootShellState extends State<RootShell>
     );
     _switch = CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic);
     _navPrefs.addListener(_onTabsChanged);
+    ZModePrefs.revision.addListener(_onZMode);
+  }
+
+  /// The toggle changed: Search enters or leaves the dock, so an active tab
+  /// that just disappeared has to move somewhere real.
+  void _onZMode() {
+    if (!mounted) return;
+    setState(() {
+      _modeBarOpen = false;
+      final visible = _visibleTabs();
+      if (!visible.contains(_tab)) _tab = visible.first;
+    });
   }
 
   /// The dock was edited in Settings. If the tab we're on just got hidden,
@@ -110,14 +130,19 @@ class _RootShellState extends State<RootShell>
   List<DockTab> _visibleTabs() {
     final mode = sl<ContentModeCubit>().state;
     final tabs = _navPrefs.tabs;
-    if (!mode.isReading) return tabs;
-    final out = [for (final t in tabs) if (!t.isAnimeOnly) t];
-    return out.isEmpty ? tabs : out;
+    // Z Mode: Search moves to the top of Home, so it leaves the dock.
+    final base = ZModePrefs.enabled
+        ? [for (final t in tabs) if (t != DockTab.search) t]
+        : tabs;
+    if (!mode.isReading) return base;
+    final out = [for (final t in base) if (!t.isAnimeOnly) t];
+    return out.isEmpty ? base : out;
   }
 
   @override
   void dispose() {
     _navPrefs.removeListener(_onTabsChanged);
+    ZModePrefs.revision.removeListener(_onZMode);
     _switchCtrl.dispose();
     _searchFocusSignal.dispose();
     super.dispose();
@@ -261,18 +286,54 @@ class _RootShellState extends State<RootShell>
               // Settings (Profile, last) tab is the one showing — every other tab
               // keeps its dock.
               final hide = sectionOpen && _tab == DockTab.profile;
-              return AnimatedSlide(
-                offset: hide ? const Offset(0, 1.6) : Offset.zero,
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
-                child: IgnorePointer(
-                  ignoring: hide,
-                  child: _FloatingDock(
-                    tabs: _visibleTabs(),
-                    active: _tab,
-                    onSelected: _onTabSelected,
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (ZModePrefs.enabled)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: BlocBuilder<ContentModeCubit, ContentMode>(
+                        bloc: sl<ContentModeCubit>(),
+                        builder: (_, mode) => ModeBar(
+                          open: _modeBarOpen,
+                          current: (mode, ZModePrefs.streamKind),
+                          onPicked: (m, k) async {
+                            setState(() => _modeBarOpen = false);
+                            await ZModePrefs.setStreamKind(k);
+                            await sl<ContentModeCubit>().setMode(m);
+                            if (m == ContentMode.anime) {
+                              // Same content mode, different catalogue → reload.
+                              sl<HomeCubit>().load(reset: true);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  AnimatedSlide(
+                    offset: hide ? const Offset(0, 1.6) : Offset.zero,
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    child: IgnorePointer(
+                      ignoring: hide,
+                      child: _FloatingDock(
+                        tabs: _visibleTabs(),
+                        active: _tab,
+                        onSelected: _onTabSelected,
+                        centre: ZModePrefs.enabled
+                            ? BlocBuilder<ContentModeCubit, ContentMode>(
+                                bloc: sl<ContentModeCubit>(),
+                                builder: (_, mode) => ModeFab(
+                                  open: _modeBarOpen,
+                                  icon: iconForMode(mode, ZModePrefs.streamKind),
+                                  onTap: () =>
+                                      setState(() => _modeBarOpen = !_modeBarOpen),
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               );
             },
           ),
@@ -291,6 +352,7 @@ class _FloatingDock extends StatelessWidget {
     required this.tabs,
     required this.active,
     required this.onSelected,
+    this.centre,
   });
 
   /// Exactly what to draw, already ordered and already filtered for the
@@ -299,9 +361,29 @@ class _FloatingDock extends StatelessWidget {
   final DockTab active;
   final ValueChanged<DockTab> onSelected;
 
+  /// The Z Mode centre button. Not a [DockTab] — it isn't reorderable,
+  /// hideable, or counted toward the tab limit. Null when Z Mode is off.
+  final Widget? centre;
+
+  Widget _item(BuildContext context, DockTab t) => t == DockTab.profile
+      ? _ProfileDockItem(
+          selected: active == t,
+          onTap: () => onSelected(t),
+        )
+      : _DockItem(
+          label: t.localizedLabel(context),
+          glyph: dockGlyphFor(t),
+          icon: _iconFor(t),
+          selected: active == t,
+          onTap: () => onSelected(t),
+        );
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final half = tabs.length ~/ 2;
+    final first = tabs.sublist(0, half);
+    final rest = tabs.sublist(half);
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
       child: ClipRRect(
@@ -320,20 +402,13 @@ class _FloatingDock extends StatelessWidget {
             ),
             child: Row(
               children: [
-                for (final t in tabs)
-                  if (t == DockTab.profile)
-                    _ProfileDockItem(
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                    )
-                  else
-                    _DockItem(
-                      label: t.localizedLabel(context),
-                      glyph: dockGlyphFor(t),
-                      icon: _iconFor(t),
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                    ),
+                for (final t in first) _item(context, t),
+                if (centre != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: centre!,
+                  ),
+                for (final t in rest) _item(context, t),
               ],
             ),
           ),

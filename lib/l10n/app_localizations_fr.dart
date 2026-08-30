@@ -2599,6 +2599,10 @@ class AppLocalizationsFr extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'Chaque onglet est sur le bar.';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'Faites glisser pour réorganiser. Les onglets $minTabsà$maxTabs tiennent sur la barre.\n\nLe profil est épinglé car c\'est le seul accès aux paramètres ; le masquer empêcherait de revenir à cet écran. La grille des programmes s\'affiche uniquement en mode streaming ; aucune grille de programmes n\'est visible pendant la lecture.';
   }

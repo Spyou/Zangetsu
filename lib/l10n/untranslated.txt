@@ -1,5 +1,6 @@
 {
   "de": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -14,6 +15,7 @@
   ],
 
   "es": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -28,6 +30,7 @@
   ],
 
   "fr": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -42,6 +45,7 @@
   ],
 
   "it": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -56,6 +60,7 @@
   ],
 
   "ja": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -70,6 +75,7 @@
   ],
 
   "zh": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",
@@ -84,6 +90,7 @@
   ],
 
   "zh_TW": [
+    "searchMovesToHomeInZMode",
     "zMode",
     "zModeSubtitle",
     "zModeExperimental",

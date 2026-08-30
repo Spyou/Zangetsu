@@ -886,6 +886,7 @@
 	},
 	"navTabsNotShown": "Not shown",
 	"navTabsEveryTabOnBar": "Every tab is on the bar.",
+	"searchMovesToHomeInZMode": "Search moves to the top of Home in Z Mode.",
 	"navTabsHelp": "Drag to reorder. {minTabs}–{maxTabs} tabs fit on the bar.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.",
 	"@navTabsHelp": {
 		"placeholders": {

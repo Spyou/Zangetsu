@@ -2591,6 +2591,10 @@ class AppLocalizationsEs extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'Todas las pestañas están en la barra.';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'Arrastra para reordenar. Las pestañas ${minTabs}a$maxTabs caben en la barra.\n\nEl perfil está fijado porque es la única forma de acceder a Configuración; si lo ocultaras, no habría forma de volver a esta pantalla. La programación solo aparece en el modo de transmisión; no se muestra la programación mientras lees.';
   }
