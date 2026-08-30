@@ -81,7 +81,9 @@ class SourceMatcher {
       normalizeTitle(title),
       if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
     };
-    return wants.contains(normalizeTitle(hit.title));
+    return wants.contains(normalizeTitle(hit.title)) ||
+        (hit.englishTitle != null &&
+            wants.contains(normalizeTitle(hit.englishTitle!)));
   }
 
   /// The user picked [picked] by hand. Pinned, so it sticks.
