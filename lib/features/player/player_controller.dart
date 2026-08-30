@@ -1731,6 +1731,17 @@ class PlayerCubit extends Cubit<PlayerState> {
       emit(
         state.copyWith(loadingSources: false, error: () => 'No source has this yet'),
       );
+    } on EpisodeNotOnSource catch (e) {
+      // The show matched fine — this one episode just isn't on that source.
+      // Its own toString() carries the canonical (a raw storage key), so
+      // build the message by hand instead of interpolating $e.
+      if (gen != _gen) return;
+      emit(
+        state.copyWith(
+          loadingSources: false,
+          error: () => "Episode ${e.episode} isn't on this source yet",
+        ),
+      );
     } catch (e) {
       if (gen != _gen) return;
       emit(
