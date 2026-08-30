@@ -2494,6 +2494,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get navTabsEveryTabOnBar => '所有标签页都在工具栏上。';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return '拖动即可重新排序。工具栏最多可容纳 $minTabs–$maxTabs 个标签页。\n\n个人资料页面已置顶，因为它是进入“设置”的唯一入口——隐藏它将导致无法返回此屏幕。节目表仅在流媒体模式下显示；阅读时不会显示播出时间表。';
   }

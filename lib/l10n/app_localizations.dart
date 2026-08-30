@@ -4928,6 +4928,12 @@ abstract class AppLocalizations {
   /// **'Every tab is on the bar.'**
   String get navTabsEveryTabOnBar;
 
+  /// No description provided for @searchMovesToHomeInZMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Search moves to the top of Home in Z Mode.'**
+  String get searchMovesToHomeInZMode;
+
   /// No description provided for @navTabsHelp.
   ///
   /// In en, this message translates to:

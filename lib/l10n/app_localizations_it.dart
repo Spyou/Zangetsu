@@ -2592,6 +2592,10 @@ class AppLocalizationsIt extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'Ogni conto è sul bancone.';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'Trascina per riordinare. $minTabs–$maxTabs schede si adattano alla barra.\n\nIl profilo è bloccato perché è l\'unico modo per accedere alle Impostazioni: nasconderlo non lascerebbe modo di tornare a questa schermata. La programmazione viene visualizzata solo in modalità streaming; non è presente alcuna programmazione durante la lettura.';
   }
