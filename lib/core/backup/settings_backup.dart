@@ -36,6 +36,7 @@ class SettingsBackup {
     'torrent_prefs', // torrent settings
     'locale_prefs', // app language override
     'zmode_prefs', // Zangetsu Mode toggle + stream kind
+    'zmode_matches', // Zangetsu Mode: which source plays each metadata title
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.
