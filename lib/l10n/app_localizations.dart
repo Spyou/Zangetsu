@@ -8264,11 +8264,11 @@ abstract class AppLocalizations {
   /// **'Source: {name}'**
   String sourceLabel(String name);
 
-  /// No description provided for @wrongShow.
+  /// No description provided for @wrongTitle.
   ///
   /// In en, this message translates to:
-  /// **'Wrong show?'**
-  String get wrongShow;
+  /// **'Wrong title?'**
+  String get wrongTitle;
 
   /// No description provided for @noSourceHasThisYet.
   ///
@@ -8276,11 +8276,11 @@ abstract class AppLocalizations {
   /// **'No source has this yet'**
   String get noSourceHasThisYet;
 
-  /// No description provided for @pickTheRightShow.
+  /// No description provided for @pickTheRightTitle.
   ///
   /// In en, this message translates to:
-  /// **'Pick the right show'**
-  String get pickTheRightShow;
+  /// **'Pick the right title'**
+  String get pickTheRightTitle;
 
   /// No description provided for @searchThisSource.
   ///
