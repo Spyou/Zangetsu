@@ -14,13 +14,21 @@ MediaItem _hit(String src, String title, {int? malId, String? englishTitle}) => 
   sourceId: src, malId: malId, englishTitle: englishTitle);
 
 /// search() per source id. Sources not listed throw, like a dead source.
+/// [installed] backs [hasSource] — defaults to the searchable ids, but can be
+/// set separately to test a source that's installed yet finds nothing, or a
+/// saved match whose source was since uninstalled.
 class _FakeSources implements SourceRepository {
-  _FakeSources(this.bySource);
+  _FakeSources(this.bySource, {Set<String>? installed})
+      : installed = installed ?? bySource.keys.toSet();
   final Map<String, List<MediaItem>> bySource;
+  final Set<String> installed;
   final searched = <String>[];
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+
+  @override
+  bool hasSource(String sourceId) => installed.contains(sourceId);
 
   @override
   Future<List<MediaItem>> search(String query, {String category = 'sub', String? sourceId}) async {
@@ -58,12 +66,33 @@ void main() {
     expect(store.get(fma)?.sourceId, 'hianime');
   });
 
-  test('a saved match short-circuits the search', () async {
+  test('a saved match on a still-installed source short-circuits the search', () async {
     await store.save(fma, const SourceMatch(sourceId: 'allanime',
         showUrl: 'u', showId: 'i', showTitle: 't', pinned: false));
-    final repo = _FakeSources({});
+    final repo = _FakeSources({}, installed: {'allanime'});
     final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
     final r = await m.resolve(fma, title: 'anything');
+    expect(r?.sourceId, 'allanime');
+    expect(repo.searched, isEmpty);
+  });
+
+  test('a saved unpinned match on an uninstalled source searches again', () async {
+    await store.save(fma, const SourceMatch(sourceId: 'allanime',
+        showUrl: 'u', showId: 'i', showTitle: 't', pinned: false));
+    // allanime was uninstalled since the match was saved; only hianime is left.
+    final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]});
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    final r = await m.resolve(fma, title: 'FMA');
+    expect(r?.sourceId, 'hianime');
+    expect(store.get(fma)?.sourceId, 'hianime');
+  });
+
+  test('a saved PINNED match on an uninstalled source is still honoured', () async {
+    await store.pin(fma, const SourceMatch(sourceId: 'allanime',
+        showUrl: 'u', showId: 'i', showTitle: 't', pinned: true));
+    final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]});
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    final r = await m.resolve(fma, title: 'FMA');
     expect(r?.sourceId, 'allanime');
     expect(repo.searched, isEmpty);
   });

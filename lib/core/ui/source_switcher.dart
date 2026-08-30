@@ -16,6 +16,9 @@ import '../provider/provider_manager.dart';
 import '../provider/provider_registry.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text.dart';
+import '../zmode/zmode_ids.dart';
+import '../zmode/zmode_module.dart';
+import '../zmode/zmode_prefs.dart';
 import 'states.dart';
 
 /// Installed-and-enabled sources bucketed by category, each as an `(id, label)`
@@ -202,6 +205,17 @@ SourceBuckets categorizedSources() {
 /// bucketing default, so an id with no cached manifest type still counts as
 /// anime (matching today's behavior when a mode filter isn't applied).
 ProviderType sourceTypeOf(String id) {
+  // Zangetsu Mode's pseudo source has no manifest to type — its "type" is
+  // whatever catalogue kind is currently browsed. `movie`/`anime`/`tv` all
+  // fall under `anime` here since ContentMode.anime.matchesProvider accepts
+  // either; the caller only needs to know which ContentMode bucket it's in.
+  if (id == ZmodeIds.sourceId) {
+    return switch (browseKindFor(sl<ContentModeCubit>().state, ZModePrefs.streamKind)) {
+      ZKind.manga => ProviderType.manga,
+      ZKind.novel => ProviderType.novel,
+      ZKind.anime || ZKind.movie || ZKind.tv => ProviderType.anime,
+    };
+  }
   if (id.startsWith('cs:')) {
     final p = sl<CloudStreamManager>().get(id);
     return p is CloudStreamProvider ? p.providerType : ProviderType.anime;

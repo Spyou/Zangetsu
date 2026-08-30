@@ -1085,12 +1085,17 @@ class _HomeViewState extends State<_HomeView>
                   // it's safe to run every build (unlike categorizedSources()).
                   // Anime's own zero-source case (skipped setup) has no source to
                   // load and flows through `loadedEmpty` → HomeLoadedEmptyView.
+                  // Z Mode manga/novel rows come from AniList, not an installed
+                  // `mihon:`/`lnr:` source, so the active-source prefix check
+                  // would wrongly call a fetch that just succeeded "no sources".
                   final activeId = context.read<ActiveSourceCubit>().state;
-                  final noSourceForMode = switch (sl<ContentModeCubit>().state) {
-                    ContentMode.manga => !activeId.startsWith('mihon:'),
-                    ContentMode.novel => !activeId.startsWith('lnr:'),
-                    ContentMode.anime => false,
-                  };
+                  final noSourceForMode = ZModePrefs.enabled
+                      ? false
+                      : switch (sl<ContentModeCubit>().state) {
+                          ContentMode.manga => !activeId.startsWith('mihon:'),
+                          ContentMode.novel => !activeId.startsWith('lnr:'),
+                          ContentMode.anime => false,
+                        };
                   return CustomScrollView(
                     slivers: [
                       // ── Hero + floating header (first sliver) ─────────────────
