@@ -4653,13 +4653,13 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get wrongShow => 'Wrong show?';
+  String get wrongTitle => 'Wrong title?';
 
   @override
   String get noSourceHasThisYet => 'No source has this yet';
 
   @override
-  String get pickTheRightShow => 'Pick the right show';
+  String get pickTheRightTitle => 'Pick the right title';
 
   @override
   String get searchThisSource => 'Search this source';
