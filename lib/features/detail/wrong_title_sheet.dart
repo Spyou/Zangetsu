@@ -100,20 +100,30 @@ class _MatchLineState extends State<MatchLine> {
     ({String id, String name}) s,
     SourceSelectState state,
   ) {
-    final isMihon = s.id.startsWith('mihon:');
+    // The solver just opens a native WebView at a URL, and Home already routes
+    // Mihon, Aniyomi and LNReader challenges through this same call. Those are
+    // exactly the ecosystems baseUrlFor can answer for; CloudStream and JS
+    // items are absolute and it returns '', which doubles as the honest signal
+    // that there is no site to solve against. Gating on the URL rather than an
+    // id prefix keeps the two from drifting apart.
+    final cloudflareUrl = sl<SourceRepository>().baseUrlFor(s.id);
     return ListTile(
-      title: Text(s.name, style: AppText.body),
+      title: Text(
+        s.name,
+        style: AppText.body,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (isMihon)
+          if (cloudflareUrl.isNotEmpty)
             IconButton(
               tooltip: sheetContext.l10n.solveCloudflare,
               icon: const Icon(Icons.shield_rounded, size: 18),
               color: AppColors.textSecondary,
-              onPressed: () => MihonExtensionService.solveCloudflare(
-                sl<SourceRepository>().baseUrlFor(s.id),
-              ),
+              onPressed: () =>
+                  MihonExtensionService.solveCloudflare(cloudflareUrl),
             ),
           FutureBuilder<bool>(
             future: _hasSourceSettings(s.id),
