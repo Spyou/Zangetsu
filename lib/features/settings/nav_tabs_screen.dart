@@ -7,6 +7,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
 import '../shell/dock_icons.dart';
@@ -28,8 +29,11 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   late List<DockTab> _shown = List.of(_prefs.tabs);
 
-  List<DockTab> get _hidden =>
-      [for (final t in DockTab.values) if (!_shown.contains(t)) t];
+  List<DockTab> get _hidden => [
+    for (final t in DockTab.values)
+      if (!_shown.contains(t) && !(ZModePrefs.enabled && t == DockTab.search))
+        t,
+  ];
 
   bool get _canRemove => _shown.length > NavPrefs.minTabs;
   bool get _canAdd => _shown.length < NavPrefs.maxTabs;
@@ -93,6 +97,14 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
         children: [
           _preview(),
+          if (ZModePrefs.enabled)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+              child: Text(
+                l10n.searchMovesToHomeInZMode,
+                style: AppText.caption.copyWith(color: AppColors.textTertiary),
+              ),
+            ),
           const SizedBox(height: 4),
           SettingsSectionLabel(
             // The cap is visible before you hit it, rather than discovered as
@@ -146,7 +158,16 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   /// The dock as it will actually look — same frosted capsule, same glyphs,
   /// same outline→fill active state, redrawn as you edit.
+  ///
+  /// Display-only filter, not persistence: while Z Mode is on, Search never
+  /// renders in the real dock ([RootShell]), so it's dropped here too even
+  /// though it's still sitting in [_shown] (and stays there — [_save] must
+  /// never see a filtered copy, or turning Z Mode back off would silently
+  /// lose the user's Search tab).
   Widget _preview() {
+    final shown = ZModePrefs.enabled
+        ? [for (final t in _shown) if (t != DockTab.search) t]
+        : _shown;
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: SizedBox(
@@ -184,8 +205,8 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
                         children: [
                           // First tab drawn active, exactly as the dock lands
                           // on open.
-                          for (var i = 0; i < _shown.length; i++)
-                            Expanded(child: _previewItem(_shown[i], i == 0)),
+                          for (var i = 0; i < shown.length; i++)
+                            Expanded(child: _previewItem(shown[i], i == 0)),
                         ],
                       ),
                     ),

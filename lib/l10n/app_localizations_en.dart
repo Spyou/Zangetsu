@@ -2573,6 +2573,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get navTabsEveryTabOnBar => 'Every tab is on the bar.';
 
   @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
+
+  @override
   String navTabsHelp(int minTabs, int maxTabs) {
     return 'Drag to reorder. $minTabs–$maxTabs tabs fit on the bar.\n\nProfile is pinned because it is the only way into Settings — hiding it would leave no way back to this screen. Schedule only appears in Streaming mode; there is no airing schedule to show while you are reading.';
   }
