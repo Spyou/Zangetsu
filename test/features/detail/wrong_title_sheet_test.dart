@@ -182,6 +182,38 @@ void main() {
     expect(sl<MatchStore>().get(fma, 'hianime'), isNull);
   });
 
+  testWidgets('Wrong title? correction on a video (anime) kind refreshes the Detail screen', (t) async {
+    // Anime is a VIDEO kind — the store write is correct either way, but this
+    // proves the Detail screen actually re-fetches for it too, not only for
+    // manga/novel (see MetadataRepository.detail: video kinds now take their
+    // episode list from the matched source as well).
+    await t.runAsync(
+      () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
+    );
+    final repo = _Repo();
+    await t.pumpWidget(harness(
+      const MatchLine(canonical: fma, title: 'Fullmetal Alchemist (2003)'),
+      repo: repo,
+    ));
+    await t.pumpAndSettle();
+    expect(repo.detailCalls, 0); // nothing corrected yet — no reload
+
+    await t.tap(find.text('Wrong title?'));
+    await t.pumpAndSettle();
+    // The sheet only ever searches the selected source (allanime) — its one
+    // result is the (2003) title already resolved above.
+    expect(find.text('Fullmetal Alchemist (2003)'), findsWidgets);
+
+    await t.runAsync(() async {
+      await t.tap(find.text('Fullmetal Alchemist (2003)').last);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await t.pumpAndSettle();
+
+    expect(sl<MatchStore>().get(fma, 'allanime')?.pinned, isTrue);
+    expect(repo.detailCalls, greaterThan(0));
+  });
+
   testWidgets('a source with no match still appears in the picker; choosing it shows the honest empty state',
       (t) async {
     // hianime is installed but genuinely has nothing matching this title —

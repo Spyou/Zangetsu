@@ -47,23 +47,18 @@ class _MatchLineState extends State<MatchLine> {
     malId: widget.malId,
   )..load();
 
-  bool get _isReading =>
-      widget.canonical.kind == ZKind.manga || widget.canonical.kind == ZKind.novel;
-
   @override
   void dispose() {
     _cubit.close();
     super.dispose();
   }
 
-  /// Reading titles substitute their chapter list per matched source (see
-  /// `MetadataRepository.detail`) — refresh so the Detail screen picks up the
-  /// newly selected/corrected source's chapters. Video kinds always show the
-  /// same AniList/TMDB episode list regardless of source, so there's nothing
-  /// to refresh there.
-  void _refreshEpisodesIfReading() {
-    if (_isReading) context.read<DetailCubit>().refresh();
-  }
+  /// Every kind's episode/chapter list is substituted from the matched source
+  /// (see `MetadataRepository.detail`) — anime and movie/TV now take their
+  /// titles and count from the source too, not just manga/novel. So any
+  /// change of selection or correction must re-fetch the Detail screen,
+  /// regardless of kind.
+  void _refreshAfterMatchChange() => context.read<DetailCubit>().refresh();
 
   /// Picking a row selects it directly (rather than popping an id for the
   /// caller to act on afterward) so the real store write is a direct
@@ -94,7 +89,7 @@ class _MatchLineState extends State<MatchLine> {
                   Navigator.of(sheetContext).pop();
                   if (s.id == state.selectedId) return;
                   await _cubit.selectSource(s.id);
-                  if (mounted) _refreshEpisodesIfReading();
+                  if (mounted) _refreshAfterMatchChange();
                 },
               ),
             const SizedBox(height: 8),
@@ -113,7 +108,7 @@ class _MatchLineState extends State<MatchLine> {
     );
     if (picked == null || !mounted) return;
     _cubit.applyPinned(picked);
-    _refreshEpisodesIfReading();
+    _refreshAfterMatchChange();
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(context.l10n.matchSaved(
