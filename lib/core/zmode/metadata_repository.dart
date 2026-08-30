@@ -148,12 +148,18 @@ class MetadataRepository implements CatalogueRepository {
     return d.copyWith(episodes: episodes);
   }
 
-  /// [e] with its display kept but id/url replaced by the canonical,
-  /// position-numbered zm:// form — see the comment in [detail].
+  /// [e] with its display kept but id/url/number replaced by the canonical,
+  /// position-numbered form — see the comment in [detail]. [number] in
+  /// particular is read as ground truth by trackers (AniList/MAL/Simkl
+  /// scrobbling), filler lookups and skip-time lookups — all keyed by the
+  /// canonical episode count, not whatever the source calls it (a source
+  /// that restarts numbering per season would otherwise scrobble the wrong
+  /// episode). The source's own number, if worth showing, belongs in the
+  /// title, never here.
   static Episode _canonicalize(Episode e, ZCanonical c, int n) => Episode(
     id: '$n',
     title: e.title,
-    number: e.number,
+    number: n.toDouble(),
     url: ZmodeIds.episodeUrl(c, n),
     date: e.date,
     thumbnail: e.thumbnail,
@@ -184,23 +190,19 @@ class MetadataRepository implements CatalogueRepository {
     return _src.polledSources(ep.url, sourceId: ep.sourceId);
   }
 
-  /// The source episode behind a `zm://…/ep/n` url: same number, else — only
-  /// when the source doesn't number its episodes at all — the n-th entry.
-  /// A numbered source with no matching number is an honest "not found", not
-  /// a guess: [EpisodeNotOnSource], not [NoSourceMatch] (the show did match).
+  /// The source episode behind a `zm://…/ep/n` url: the n-th entry of that
+  /// same source's episode list — the exact list [detail] builds the
+  /// DISPLAY from, fetched the exact same way, so position is not a guess,
+  /// it's the same lookup. Out of range is an honest "not found", not a
+  /// guess: [EpisodeNotOnSource], not [NoSourceMatch] (the show did match).
   Future<({String url, String sourceId})> _sourceEpisode(String episodeUrl) async {
     final p = ZmodeIds.parseEpisode(episodeUrl);
     if (p == null) throw ArgumentError('not a metadata episode url: $episodeUrl');
     final m = await _matchFor(p.show);
     final eps = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-    final byNumber = eps.where((e) => e.number == p.episode.toDouble()).firstOrNull;
     final i = p.episode - 1;
-    final byIndex = byNumber == null && i >= 0 && i < eps.length && eps[i].number == null
-        ? eps[i]
-        : null;
-    final ep = byNumber ?? byIndex;
-    if (ep == null) throw EpisodeNotOnSource(p.show, p.episode);
-    return (url: ep.url, sourceId: m.sourceId);
+    if (i < 0 || i >= eps.length) throw EpisodeNotOnSource(p.show, p.episode);
+    return (url: eps[i].url, sourceId: m.sourceId);
   }
 
   Future<SourceMatch> _matchFor(ZCanonical c) async {
