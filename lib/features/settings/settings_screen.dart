@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
@@ -791,6 +792,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: () => _push(const TorrentSettingsScreen()),
       ),
       // Interface & notifications
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.auto_awesome_outlined,
+        title: l10n.zMode,
+        subtitle: l10n.zModeSubtitle,
+        keywords: 'zangetsu mode metadata anilist tmdb experimental catalogue',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _value(l10n.zModeExperimental),
+            const SizedBox(width: 6),
+            Switch.adaptive(
+              value: ZModePrefs.enabled,
+              activeThumbColor: AppColors.accent,
+              onChanged: (v) async {
+                await ZModePrefs.setEnabled(v);
+                if (mounted) setState(() {});
+              },
+            ),
+          ],
+        ),
+      ),
       _SettingsEntry(
         section: SettingsSection.interface,
         id: LeafParent.appearance,
