@@ -9,9 +9,9 @@ import 'package:watch_app/core/zmode/match_store.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
-MediaItem _hit(String src, String title, {int? malId}) => MediaItem(
+MediaItem _hit(String src, String title, {int? malId, String? englishTitle}) => MediaItem(
   id: title.toLowerCase(), title: title, url: 'https://$src/$title', type: ProviderType.anime,
-  sourceId: src, malId: malId);
+  sourceId: src, malId: malId, englishTitle: englishTitle);
 
 /// search() per source id. Sources not listed throw, like a dead source.
 class _FakeSources implements SourceRepository {
@@ -120,5 +120,18 @@ void main() {
     final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
     expect(r?.sourceId, 'allanime');
     expect(repo.searched, ['allanime']);
+  });
+
+  test('a romaji title with a matching englishTitle is accepted', () async {
+    final repo = _FakeSources({
+      'allanime': [_hit('allanime', 'Hagane no Renkinjutsushi',
+          englishTitle: 'Fullmetal Alchemist: Brotherhood')],
+      'hianime': [_hit('hianime', 'Should not be reached')],
+    });
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
+    expect(r?.sourceId, 'allanime');
+    expect(r?.showTitle, 'Hagane no Renkinjutsushi');
+    expect(store.get(fma)?.sourceId, 'allanime');
   });
 }
