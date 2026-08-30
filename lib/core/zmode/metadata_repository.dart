@@ -107,7 +107,11 @@ class MetadataRepository implements CatalogueRepository {
     // Reading: the reader screens fetch pages/text from SourceRepository with
     // the detail's sourceId + id, so hand them the matched source's chapters.
     final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
-    if (m == null) return d;
+    // No match: AniList may still have synthesised a full zm://…/ep/n chapter
+    // list (it knows the chapter count for plenty of completed manga), but
+    // those urls have no source behind them — drop them rather than hand the
+    // reader a real-looking list that throws when it tries to read one.
+    if (m == null) return d.copyWith(episodes: const <Episode>[]);
     final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     return MediaDetail(
       id: m.showId,
@@ -145,20 +149,30 @@ class MetadataRepository implements CatalogueRepository {
     return _src.polledSources(ep.url, sourceId: ep.sourceId);
   }
 
-  /// The source episode behind a `zm://…/ep/n` url: same number, else the
-  /// n-th entry.
+  /// The source episode behind a `zm://…/ep/n` url: same number, else — only
+  /// when the source doesn't number its episodes at all — the n-th entry.
+  /// A numbered source with no matching number is an honest "not found", not
+  /// a guess: [EpisodeNotOnSource], not [NoSourceMatch] (the show did match).
   Future<({String url, String sourceId})> _sourceEpisode(String episodeUrl) async {
     final p = ZmodeIds.parseEpisode(episodeUrl);
     if (p == null) throw ArgumentError('not a metadata episode url: $episodeUrl');
     final m = await _matchFor(p.show);
     final eps = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     final byNumber = eps.where((e) => e.number == p.episode.toDouble()).firstOrNull;
-    final ep = byNumber ?? (p.episode - 1 < eps.length ? eps[p.episode - 1] : null);
-    if (ep == null) throw NoSourceMatch(p.show);
+    final i = p.episode - 1;
+    final byIndex = byNumber == null && i >= 0 && i < eps.length && eps[i].number == null
+        ? eps[i]
+        : null;
+    final ep = byNumber ?? byIndex;
+    if (ep == null) throw EpisodeNotOnSource(p.show, p.episode);
     return (url: ep.url, sourceId: m.sourceId);
   }
 
   Future<SourceMatch> _matchFor(ZCanonical c) async {
+    // Already matched (e.g. from a previous run): skip the metadata round
+    // trip entirely, since resolve() wouldn't have used the title anyway.
+    final saved = _matcher.saved(c);
+    if (saved != null) return saved;
     var t = _titles[c.key];
     if (t == null) {
       final d = _isTmdb(c.kind) ? await _tmdb.detail(c) : await _al.detail(c);
