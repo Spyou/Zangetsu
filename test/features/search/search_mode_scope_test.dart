@@ -116,6 +116,9 @@ class _FakeSourceHealthStore extends SourceHealthStore {
 /// fan-out before it reached the network layer, since a source dropped by
 /// mode-filtering never gets this far at all.
 class _FakeRepo implements SourceRepository {
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
   /// What `loadedSources` reports as installed — set per test to a mixed
   /// anime+manga list.
   List<({String id, String name})> loadedSourcesSeed = const [];

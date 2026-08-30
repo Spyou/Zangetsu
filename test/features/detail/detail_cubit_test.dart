@@ -31,6 +31,8 @@ class _StubSourceRepository implements SourceRepository {
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   Future<MediaDetail> detail(
@@ -51,6 +53,8 @@ class _SwappingRepository implements SourceRepository {
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   Future<void> clearHttpCache() async {}

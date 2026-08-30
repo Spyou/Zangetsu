@@ -20,6 +20,8 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+  @override
   String baseUrlFor(String id) =>
       id.startsWith('ani:') || id.startsWith('mihon:') || id.startsWith('lnr:')
           ? 'https://example.test'

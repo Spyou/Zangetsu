@@ -54,10 +54,17 @@ List<({String id, String name})> candidatesForKind(
   SourceRepository repo,
   ZKind kind,
 ) {
-  final all = repo.loadedSources;
+  // pickableSources, not loadedSources: this is an explicit per-title choice,
+  // so a source the language preference hides from browse must still be
+  // offerable here. The two lists had already drifted — the home switcher
+  // showed Aniyomi sources this picker did not.
+  final all = repo.pickableSources;
   return switch (kind) {
     ZKind.manga => [for (final s in all) if (s.id.startsWith('mihon:')) s],
     ZKind.novel => [for (final s in all) if (s.id.startsWith('lnr:')) s],
+    // Anime and movie/TV share one streaming pool. Which of the two a title
+    // is has already been decided by the metadata catalogue; the source only
+    // has to be able to play it, and plenty carry both.
     _ => [
       for (final s in all)
         if (!s.id.startsWith('mihon:') && !s.id.startsWith('lnr:')) s,

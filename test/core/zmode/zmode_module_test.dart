@@ -9,6 +9,8 @@ class _Repo implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+  @override
   List<({String id, String name})> get loadedSources => const [
     (id: 'allanime', name: 'AllAnime'),
     (id: 'mihon:1', name: 'MangaDex'),

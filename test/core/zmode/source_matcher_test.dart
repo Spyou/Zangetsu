@@ -26,6 +26,8 @@ class _FakeSources implements SourceRepository {
 
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   bool hasSource(String sourceId) => installed.contains(sourceId);
