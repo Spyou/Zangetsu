@@ -27,11 +27,20 @@ class SendTrackersToTvScreen extends StatefulWidget {
 }
 
 class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
-  late final _rows = <({String id, String label, Tracker t})>[
-    (id: 'anilist', label: context.l10n.anilist, t: sl<AniListService>()),
-    (id: 'mal', label: context.l10n.myAnimeList, t: sl<MalService>()),
-    (id: 'simkl', label: context.l10n.simkl, t: sl<SimklService>()),
+  // No labels here: [initState] reads this list, and resolving translations
+  // needs an inherited widget lookup, which isn't allowed until initState has
+  // finished. Labels come from [_labelFor] at build time instead.
+  late final _rows = <({String id, Tracker t})>[
+    (id: 'anilist', t: sl<AniListService>()),
+    (id: 'mal', t: sl<MalService>()),
+    (id: 'simkl', t: sl<SimklService>()),
   ];
+
+  String _labelFor(String id, AppLocalizations l10n) => switch (id) {
+    'anilist' => l10n.anilist,
+    'mal' => l10n.myAnimeList,
+    _ => l10n.simkl,
+  };
   final _selected = <String>{};
   bool _busy = false;
   String? _error;
@@ -103,7 +112,7 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
             for (final r in _rows)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(r.label, style: AppText.body),
+                title: Text(_labelFor(r.id, context.l10n), style: AppText.body),
                 trailing: r.t.isConnected
                     ? Checkbox(
                         value: _selected.contains(r.id),

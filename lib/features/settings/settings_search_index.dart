@@ -6,120 +6,137 @@
 /// and anything nobody had hand-typed into a `keywords` string (e.g. "anime4k")
 /// returned "No settings match" despite being a real setting.
 ///
-/// Each leaf below names one row a sub-page renders. A search result built from
-/// it shows the setting's own title with its category underneath, and opens the
-/// page that owns it — the parent entry supplies the icon and the tap.
+/// Each leaf names one row a sub-page renders. A search result built from it
+/// shows the setting's own title with its category underneath, and opens the
+/// page that owns it — [parentId] points at the category row supplying the icon
+/// and the tap.
 ///
-/// `settings_search_index_test.dart` reads the sub-page sources and fails if a
-/// rendered setting is missing here, so this can't quietly rot as settings are
-/// added.
+/// **Titles are read through [AppLocalizations], not stored as text**, so the
+/// results are in the reader's language and a search in that language matches.
+/// Referencing the getter also means a renamed ARB key fails to compile rather
+/// than silently dropping a setting out of search.
+///
+/// `settings_search_index_test.dart` reads the sub-page sources and fails when
+/// a rendered setting isn't indexed, so this can't quietly rot.
 library;
 
+import '../../l10n/app_localizations.dart';
+
+/// Category rows that own a sub-page with searchable settings inside.
+abstract final class LeafParent {
+  static const playback = 'playback';
+  static const reader = 'reader';
+  static const appearance = 'appearance';
+  static const privacy = 'privacy';
+  static const storage = 'storage';
+  static const downloads = 'downloads';
+}
+
 class SettingsLeaf {
-  const SettingsLeaf(this.title, this.parent, {this.keywords = ''});
+  const SettingsLeaf(this.parentId, this.title, {this.keywords = ''});
 
-  /// The row's label, spelled exactly as its sub-page renders it.
-  final String title;
+  /// Which category row opens the page holding this setting.
+  final String parentId;
 
-  /// Title of the top-level entry that opens the page holding this setting.
-  final String parent;
+  /// The row's label, read from the active translations.
+  final String Function(AppLocalizations) title;
 
   /// Extra terms that never render — synonyms and abbreviations people type
-  /// instead of the label ("pip", "op", "subs").
+  /// instead of the label ("pip", "op", "subs"). English only: they widen an
+  /// English search, while the localized [title] carries every other language.
   final String keywords;
 
-  bool matches(String q) =>
-      '$title $parent $keywords'.toLowerCase().contains(q);
+  bool matches(String q, AppLocalizations l10n) =>
+      '${title(l10n)} $keywords'.toLowerCase().contains(q);
 }
 
 /// Every setting reachable one level below the category rows.
-const settingsLeaves = <SettingsLeaf>[
+final settingsLeaves = <SettingsLeaf>[
   // Playback → PlaybackSettingsScreen
-  SettingsLeaf('Default quality', 'Playback', keywords: 'resolution 1080p 720p'),
-  SettingsLeaf('Default audio', 'Playback', keywords: 'sub dub language'),
-  SettingsLeaf('Default audio (anime sub/dub)', 'Playback', keywords: 'sub dub'),
-  SettingsLeaf('Default speed', 'Playback', keywords: 'playback rate faster'),
-  SettingsLeaf('Video decoder', 'Playback', keywords: 'hardware software codec'),
-  SettingsLeaf('Video renderer', 'Playback', keywords: 'output gpu vulkan'),
-  SettingsLeaf('Anime4K Enhancement', 'Playback', keywords: 'upscale shader glsl'),
-  SettingsLeaf('Anime4K GPU tier', 'Playback', keywords: 'upscale shader quality'),
-  SettingsLeaf('Default player', 'Playback', keywords: 'external mpv exoplayer vlc'),
-  SettingsLeaf('Player controls', 'Playback', keywords: 'buttons reorder hide bar'),
-  SettingsLeaf('Resume playback', 'Playback', keywords: 'continue where left off'),
-  SettingsLeaf('Ask before jumping', 'Playback', keywords: 'confirm resume'),
-  SettingsLeaf('Auto-add to My List', 'Playback', keywords: 'library watchlist'),
-  SettingsLeaf('Auto-track', 'Playback', keywords: 'scrobble anilist mal simkl'),
-  SettingsLeaf('Close confirmation', 'Playback', keywords: 'exit confirm'),
-  SettingsLeaf('Autoplay next episode', 'Playback', keywords: 'auto play continue'),
-  SettingsLeaf('Auto-skip filler episodes', 'Playback', keywords: 'filler jikan'),
-  SettingsLeaf('Autoplay trailer', 'Playback', keywords: 'auto play preview detail'),
-  SettingsLeaf('Play trailers in HD', 'Playback', keywords: 'trailer 1080p quality'),
-  SettingsLeaf('Skip intro button', 'Playback', keywords: 'opening op ending ed'),
-  SettingsLeaf('Auto-skip opening', 'Playback', keywords: 'op intro'),
-  SettingsLeaf('Auto-skip recap', 'Playback', keywords: 'previously on'),
-  SettingsLeaf('Auto-skip ending', 'Playback', keywords: 'ed outro credits'),
-  SettingsLeaf('MegaSkip button', 'Playback', keywords: 'jump forward'),
-  SettingsLeaf('MegaSkip duration', 'Playback', keywords: 'jump forward seconds'),
-  SettingsLeaf('Keep screen on', 'Playback', keywords: 'wakelock awake display'),
-  SettingsLeaf('Native TV player', 'Playback', keywords: 'exoplayer tv android'),
-  SettingsLeaf('Software audio (Dolby/DTS)', 'Playback', keywords: 'passthrough ac3'),
-  SettingsLeaf('Seek preview (online)', 'Playback', keywords: 'thumbnails scrub'),
-  SettingsLeaf('Auto picture-in-picture', 'Playback', keywords: 'pip floating window'),
-  SettingsLeaf('Player info overlay', 'Playback', keywords: 'stats debug hud'),
-  SettingsLeaf('Show quality label', 'Playback', keywords: 'resolution badge 1080p'),
-  SettingsLeaf('Double-tap skip', 'Playback', keywords: 'seek seconds gesture'),
-  SettingsLeaf('Gesture controls', 'Playback', keywords: 'swipe brightness volume'),
-  SettingsLeaf('Swipe to seek', 'Playback', keywords: 'drag scrub gesture'),
-  SettingsLeaf('Hold for 2× speed', 'Playback', keywords: 'long press fast'),
-  SettingsLeaf('Video buffer size', 'Playback', keywords: 'cache memory mb'),
-  SettingsLeaf('Video buffer length', 'Playback', keywords: 'cache seconds'),
-  SettingsLeaf('Clear image & video cache', 'Playback', keywords: 'storage free space'),
-  SettingsLeaf('Styled subtitles (libass)', 'Playback', keywords: 'ass ssa styling'),
-  SettingsLeaf('Subtitle style', 'Playback', keywords: 'subs font colour outline size'),
-  SettingsLeaf('Subtitle language', 'Playback', keywords: 'subs preferred language'),
-  SettingsLeaf('OpenSubtitles API key', 'Playback', keywords: 'subs download account'),
-  SettingsLeaf('Auto-download subtitles', 'Playback', keywords: 'subs opensubtitles'),
-  SettingsLeaf('Auto-translate subtitles', 'Playback', keywords: 'subs translate google'),
-  SettingsLeaf('Translate subtitles to', 'Playback', keywords: 'subs language translate'),
+  SettingsLeaf(LeafParent.playback, (l) => l.defaultQuality, keywords: 'resolution 1080p 720p'),
+  SettingsLeaf(LeafParent.playback, (l) => l.defaultAudio, keywords: 'sub dub language'),
+  SettingsLeaf(LeafParent.playback, (l) => l.defaultAudioAnimeSubDub, keywords: 'sub dub'),
+  SettingsLeaf(LeafParent.playback, (l) => l.defaultSpeed, keywords: 'playback rate faster'),
+  SettingsLeaf(LeafParent.playback, (l) => l.videoDecoder, keywords: 'hardware software codec'),
+  SettingsLeaf(LeafParent.playback, (l) => l.videoRenderer, keywords: 'output gpu vulkan'),
+  SettingsLeaf(LeafParent.playback, (l) => l.anime4kEnhancement, keywords: 'upscale shader glsl anime4k'),
+  SettingsLeaf(LeafParent.playback, (l) => l.anime4kGPUTier, keywords: 'upscale shader quality anime4k'),
+  SettingsLeaf(LeafParent.playback, (l) => l.defaultPlayer, keywords: 'external mpv exoplayer vlc'),
+  SettingsLeaf(LeafParent.playback, (l) => l.playerControls, keywords: 'buttons reorder hide bar'),
+  SettingsLeaf(LeafParent.playback, (l) => l.resumePlayback, keywords: 'continue where left off'),
+  SettingsLeaf(LeafParent.playback, (l) => l.askBeforeJumping, keywords: 'confirm resume'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoAddToMyList, keywords: 'library watchlist'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoTrack, keywords: 'scrobble anilist mal simkl'),
+  SettingsLeaf(LeafParent.playback, (l) => l.closeConfirmation, keywords: 'exit confirm'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoplayNextEpisode, keywords: 'auto play continue'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoSkipFillerEpisodes, keywords: 'filler jikan'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoplayTrailer, keywords: 'auto play preview detail'),
+  SettingsLeaf(LeafParent.playback, (l) => l.playTrailersInHD, keywords: 'trailer 1080p quality'),
+  SettingsLeaf(LeafParent.playback, (l) => l.skipIntroButton, keywords: 'opening op ending ed'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoSkipOpening, keywords: 'op intro'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoSkipRecap, keywords: 'previously on'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoSkipEnding, keywords: 'ed outro credits'),
+  SettingsLeaf(LeafParent.playback, (l) => l.megaskipButton, keywords: 'jump forward megaskip'),
+  SettingsLeaf(LeafParent.playback, (l) => l.megaSkipDuration, keywords: 'jump forward seconds megaskip'),
+  SettingsLeaf(LeafParent.playback, (l) => l.keepScreenOn, keywords: 'wakelock awake display'),
+  SettingsLeaf(LeafParent.playback, (l) => l.nativeTVPlayer, keywords: 'exoplayer tv android'),
+  SettingsLeaf(LeafParent.playback, (l) => l.softwareAudioDolbyDTS, keywords: 'passthrough ac3 dolby dts'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoPictureInPicture, keywords: 'pip floating window'),
+  SettingsLeaf(LeafParent.playback, (l) => l.playerInfoOverlay, keywords: 'stats debug hud'),
+  SettingsLeaf(LeafParent.playback, (l) => l.showQualityLabel, keywords: 'resolution badge 1080p'),
+  SettingsLeaf(LeafParent.playback, (l) => l.doubleTapSkip, keywords: 'seek seconds gesture'),
+  SettingsLeaf(LeafParent.playback, (l) => l.gestureControls, keywords: 'swipe brightness volume'),
+  SettingsLeaf(LeafParent.playback, (l) => l.swipeToSeek, keywords: 'drag scrub gesture'),
+  SettingsLeaf(LeafParent.playback, (l) => l.holdFor2Speed, keywords: 'long press fast 2x'),
+  SettingsLeaf(LeafParent.playback, (l) => l.videoBufferSize, keywords: 'cache memory mb'),
+  SettingsLeaf(LeafParent.playback, (l) => l.videoBufferLength, keywords: 'cache seconds'),
+  SettingsLeaf(LeafParent.playback, (l) => l.clearImageVideoCache, keywords: 'storage free space'),
+  SettingsLeaf(LeafParent.playback, (l) => l.styledSubtitlesLibass, keywords: 'ass ssa styling subs libass'),
+  SettingsLeaf(LeafParent.playback, (l) => l.subtitleStyle, keywords: 'subs font colour outline size'),
+  SettingsLeaf(LeafParent.playback, (l) => l.subtitleLanguage, keywords: 'subs preferred language'),
+  SettingsLeaf(LeafParent.playback, (l) => l.opensubtitlesAPIKey, keywords: 'subs download account opensubtitles'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoDownloadSubtitles, keywords: 'subs opensubtitles'),
+  SettingsLeaf(LeafParent.playback, (l) => l.autoTranslateSubtitles, keywords: 'subs translate google'),
+  SettingsLeaf(LeafParent.playback, (l) => l.translateSubtitlesTo, keywords: 'subs language translate'),
 
   // Reading → ReaderSettingsScreen
-  SettingsLeaf('Reading mode', 'Reader', keywords: 'manga direction webtoon'),
-  SettingsLeaf('Fit', 'Reader', keywords: 'width height page scale'),
-  SettingsLeaf('Crop borders', 'Reader', keywords: 'trim margins whitespace'),
-  SettingsLeaf('Double-page (landscape)', 'Reader', keywords: 'spread facing pages'),
-  SettingsLeaf('Preload pages', 'Reader', keywords: 'ahead buffer manga'),
-  SettingsLeaf('Tap zones', 'Reader', keywords: 'tapping regions navigation'),
-  SettingsLeaf('Orientation lock', 'Reader', keywords: 'rotate portrait landscape'),
-  SettingsLeaf('Keep screen on', 'Reader', keywords: 'wakelock awake display'),
-  SettingsLeaf('Background', 'Reader', keywords: 'colour theme page'),
-  SettingsLeaf('Colour filter', 'Reader', keywords: 'tint warmth night'),
-  SettingsLeaf('Theme', 'Reader', keywords: 'novel colour sepia dark'),
-  SettingsLeaf('Font', 'Reader', keywords: 'novel typeface family'),
-  SettingsLeaf('Font size', 'Reader', keywords: 'novel text bigger smaller'),
-  SettingsLeaf('Line height', 'Reader', keywords: 'novel leading spacing'),
-  SettingsLeaf('Paragraph spacing', 'Reader', keywords: 'novel gap'),
-  SettingsLeaf('Margin', 'Reader', keywords: 'novel padding edge'),
-  SettingsLeaf('Justify text', 'Reader', keywords: 'novel align'),
-  SettingsLeaf('Text direction', 'Reader', keywords: 'novel rtl ltr'),
-  SettingsLeaf('Paginated', 'Reader', keywords: 'novel pages scroll book'),
+  SettingsLeaf(LeafParent.reader, (l) => l.readingMode, keywords: 'manga direction webtoon'),
+  SettingsLeaf(LeafParent.reader, (l) => l.fit, keywords: 'width height page scale'),
+  SettingsLeaf(LeafParent.reader, (l) => l.cropBorders, keywords: 'trim margins whitespace'),
+  SettingsLeaf(LeafParent.reader, (l) => l.doublePageLandscape, keywords: 'spread facing pages'),
+  SettingsLeaf(LeafParent.reader, (l) => l.preloadPages, keywords: 'ahead buffer manga'),
+  SettingsLeaf(LeafParent.reader, (l) => l.tapZones, keywords: 'tapping regions navigation'),
+  SettingsLeaf(LeafParent.reader, (l) => l.orientationLock, keywords: 'rotate portrait landscape'),
+  SettingsLeaf(LeafParent.reader, (l) => l.keepScreenOn, keywords: 'wakelock awake display'),
+  SettingsLeaf(LeafParent.reader, (l) => l.background, keywords: 'colour theme page'),
+  SettingsLeaf(LeafParent.reader, (l) => l.colourFilter, keywords: 'tint warmth night'),
+  SettingsLeaf(LeafParent.reader, (l) => l.theme, keywords: 'novel colour sepia dark'),
+  SettingsLeaf(LeafParent.reader, (l) => l.font, keywords: 'novel typeface family'),
+  SettingsLeaf(LeafParent.reader, (l) => l.fontSize, keywords: 'novel text bigger smaller'),
+  SettingsLeaf(LeafParent.reader, (l) => l.lineHeight, keywords: 'novel leading spacing'),
+  SettingsLeaf(LeafParent.reader, (l) => l.paragraphSpacing, keywords: 'novel gap'),
+  SettingsLeaf(LeafParent.reader, (l) => l.margin, keywords: 'novel padding edge'),
+  SettingsLeaf(LeafParent.reader, (l) => l.justifyText, keywords: 'novel align'),
+  SettingsLeaf(LeafParent.reader, (l) => l.textDirection, keywords: 'novel rtl ltr'),
+  SettingsLeaf(LeafParent.reader, (l) => l.paginated, keywords: 'novel pages scroll book'),
 
   // Interface → AppearanceScreen
-  SettingsLeaf('Material You', 'Appearance', keywords: 'wallpaper colours dynamic theme'),
-  SettingsLeaf('Pure black background', 'Appearance', keywords: 'oled amoled dark'),
-  SettingsLeaf('Poster badges', 'Appearance', keywords: 'quality sub dub badge'),
-  SettingsLeaf('Animate lists', 'Appearance', keywords: 'fade scroll animation'),
-  SettingsLeaf('Animation style', 'Appearance', keywords: 'transition motion'),
+  SettingsLeaf(LeafParent.appearance, (l) => l.materialYou, keywords: 'wallpaper colours dynamic theme'),
+  SettingsLeaf(LeafParent.appearance, (l) => l.pureBlackBackground, keywords: 'oled amoled dark'),
+  SettingsLeaf(LeafParent.appearance, (l) => l.posterBadges, keywords: 'quality sub dub badge'),
+  SettingsLeaf(LeafParent.appearance, (l) => l.animateLists, keywords: 'fade scroll animation'),
+  SettingsLeaf(LeafParent.appearance, (l) => l.animationStyle, keywords: 'transition motion'),
 
   // Advanced → PrivacySettingsScreen
-  SettingsLeaf('Incognito mode', 'Privacy', keywords: 'private pause history tracking'),
-  SettingsLeaf('Show NSFW sources', 'Privacy', keywords: 'adult 18+ nsfw'),
-  SettingsLeaf('Enable NSFW sources', 'Privacy', keywords: 'adult 18+ aniyomi'),
+  SettingsLeaf(LeafParent.privacy, (l) => l.incognitoMode, keywords: 'private pause history tracking'),
+  SettingsLeaf(LeafParent.privacy, (l) => l.showNSFWSources, keywords: 'adult 18+ nsfw'),
+  SettingsLeaf(LeafParent.privacy, (l) => l.enableNSFWSources2, keywords: 'adult 18+ nsfw aniyomi'),
 
   // Downloads → StorageSettingsScreen
-  SettingsLeaf('Clear image cache', 'Storage', keywords: 'free space covers'),
-  SettingsLeaf('Clear provider cache', 'Storage', keywords: 'free space js sources'),
+  SettingsLeaf(LeafParent.storage, (l) => l.clearImageCache, keywords: 'free space covers'),
+  SettingsLeaf(LeafParent.storage, (l) => l.clearProviderCache, keywords: 'free space js sources'),
 
   // Downloads → DownloadLocationScreen
-  SettingsLeaf('Choose folder…', 'Downloads', keywords: 'location saf path storage'),
-  SettingsLeaf('Reset to default', 'Downloads', keywords: 'location folder path'),
+  SettingsLeaf(LeafParent.downloads, (l) => l.chooseFolder, keywords: 'location saf path storage'),
+  SettingsLeaf(LeafParent.downloads, (l) => l.resetToDefault, keywords: 'location folder path'),
 ];

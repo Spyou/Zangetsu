@@ -34,6 +34,7 @@ class SettingsBackup {
     'privacy_prefs', // incognito
     'novel_lang_prefs', // novel language filter
     'torrent_prefs', // torrent settings
+    'locale_prefs', // app language override
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.

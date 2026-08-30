@@ -736,6 +736,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Playback & downloads
       _SettingsEntry(
         section: SettingsSection.playback,
+        id: LeafParent.playback,
         icon: Icons.play_circle_outline,
         title: l10n.playback,
         subtitle: l10n.playbackSubtitle,
@@ -744,6 +745,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: SettingsSection.reading,
+        id: LeafParent.reader,
         icon: Icons.menu_book_outlined,
         title: l10n.reader,
         subtitle: l10n.readerSubtitle,
@@ -764,6 +766,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: SettingsSection.downloads,
+        id: LeafParent.downloads,
         icon: Icons.download_outlined,
         title: l10n.downloads,
         subtitle: l10n.downloadsSubtitle,
@@ -772,6 +775,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: SettingsSection.downloads,
+        id: LeafParent.storage,
         icon: Icons.sd_storage_outlined,
         title: l10n.storage,
         subtitle: l10n.storageSubtitle,
@@ -789,6 +793,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Interface & notifications
       _SettingsEntry(
         section: SettingsSection.interface,
+        id: LeafParent.appearance,
         icon: Icons.palette_outlined,
         title: l10n.appearance,
         subtitle: l10n.appearanceSubtitle,
@@ -881,6 +886,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       _SettingsEntry(
         section: SettingsSection.advanced,
+        id: LeafParent.privacy,
         icon: Icons.shield_outlined,
         title: l10n.privacy,
         subtitle: l10n.privacySubtitle,
@@ -1034,20 +1040,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
     var first = true;
     // Settings that live inside a sub-page aren't in [entries], so a search
     // could only ever return the category row. Each leaf names its category by
-    // title; that row supplies the icon and the tap, so a hit opens the page
-    // holding the setting.
-    final byTitle = {for (final e in entries) e.title: e};
+    // id; that row supplies the icon and the tap, so a hit opens the page
+    // holding the setting. Leaf titles come from l10n, so they match and read
+    // in the same language as the rest of the results.
+    final l10n = context.l10n;
+    final byId = {
+      for (final e in entries)
+        if (e.id != null) e.id!: e,
+    };
     final leaves = q.isEmpty
         ? const <SettingsLeaf>[]
         : settingsLeaves
-              .where((l) => l.matches(q) && byTitle.containsKey(l.parent))
+              .where((l) => l.matches(q, l10n) && byId.containsKey(l.parentId))
               .toList();
     for (final section in _sectionOrder) {
       final items = entries
           .where((e) => e.section == section && (q.isEmpty || e.matches(q)))
           .toList();
       final hits = leaves
-          .where((l) => byTitle[l.parent]!.section == section)
+          .where((l) => byId[l.parentId]!.section == section)
           .toList();
       if (items.isEmpty && hits.isEmpty) continue;
       out.add(
@@ -1065,7 +1076,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             for (var i = 0; i < hits.length; i++)
               _leafTile(
                 hits[i],
-                byTitle[hits[i].parent]!,
+                byId[hits[i].parentId]!,
+                l10n,
                 iconAccent: items.isEmpty && i == 0,
               ),
           ],
@@ -1095,11 +1107,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// useful part.
   Widget _leafTile(
     SettingsLeaf leaf,
-    _SettingsEntry parent, {
+    _SettingsEntry parent,
+    AppLocalizations l10n, {
     bool iconAccent = false,
   }) => SettingsTile(
     icon: parent.icon,
-    title: leaf.title,
+    title: leaf.title(l10n),
     subtitle: parent.title,
     onTap: parent.onTap,
     iconAccent: iconAccent,
@@ -1209,6 +1222,7 @@ class _SettingsEntry {
     required this.section,
     required this.icon,
     required this.title,
+    this.id,
     this.subtitle,
     this.keywords = '',
     this.trailing,
@@ -1216,6 +1230,11 @@ class _SettingsEntry {
   });
 
   final String section;
+
+  /// Stable [LeafParent] id, set only on rows whose sub-page holds settings
+  /// listed in [settingsLeaves]. Titles are translated, so search results can't
+  /// find their category row by name.
+  final String? id;
   final IconData icon;
   final String title;
   final String? subtitle;
