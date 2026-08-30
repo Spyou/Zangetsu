@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/di/injector.dart';
+import '../../core/mihon/mihon_extension_service.dart';
+import '../../core/provider/cloudstream_provider.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -10,6 +13,7 @@ import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../l10n/l10n.dart';
+import '../sources/source_settings_screen.dart';
 import 'cubit/detail_cubit.dart';
 import 'cubit/source_select_cubit.dart';
 import 'cubit/wrong_title_cubit.dart';
@@ -79,24 +83,108 @@ class _MatchLineState extends State<MatchLine> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Text(sheetContext.l10n.chooseSource, style: AppText.headline),
             ),
-            for (final s in state.sources)
-              ListTile(
-                title: Text(s.name, style: AppText.body),
-                trailing: s.id == state.selectedId
-                    ? Icon(Icons.check, color: AppColors.accent)
-                    : null,
-                onTap: () async {
-                  Navigator.of(sheetContext).pop();
-                  if (s.id == state.selectedId) return;
-                  await _cubit.selectSource(s.id);
-                  if (mounted) _refreshAfterMatchChange();
-                },
-              ),
+            for (final s in state.sources) _sourceTile(sheetContext, s, state),
             const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  /// One picker row: the source name (tap selects it), plus its own
+  /// settings gear and Cloudflare solve — each shown only when that
+  /// ecosystem actually has the entry point, and neither one selects the
+  /// row or refreshes the match.
+  Widget _sourceTile(
+    BuildContext sheetContext,
+    ({String id, String name}) s,
+    SourceSelectState state,
+  ) {
+    final isMihon = s.id.startsWith('mihon:');
+    return ListTile(
+      title: Text(s.name, style: AppText.body),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isMihon)
+            IconButton(
+              tooltip: sheetContext.l10n.solveCloudflare,
+              icon: const Icon(Icons.shield_rounded, size: 18),
+              color: AppColors.textSecondary,
+              onPressed: () => MihonExtensionService.solveCloudflare(
+                sl<SourceRepository>().baseUrlFor(s.id),
+              ),
+            ),
+          FutureBuilder<bool>(
+            future: _hasSourceSettings(s.id),
+            builder: (context, snapshot) {
+              if (snapshot.data != true) return const SizedBox.shrink();
+              return IconButton(
+                tooltip: sheetContext.l10n.sourceSettings,
+                icon: const Icon(Icons.tune_rounded, size: 18),
+                color: AppColors.textSecondary,
+                onPressed: () =>
+                    _openSourceSettings(sheetContext, s.id, s.name),
+              );
+            },
+          ),
+          if (s.id == state.selectedId)
+            Icon(Icons.check, color: AppColors.accent),
+        ],
+      ),
+      onTap: () async {
+        Navigator.of(sheetContext).pop();
+        if (s.id == state.selectedId) return;
+        await _cubit.selectSource(s.id);
+        if (mounted) _refreshAfterMatchChange();
+      },
+    );
+  }
+
+  /// Whether [id] has its own settings, dispatched by ecosystem. Aniyomi and
+  /// Mihon expose a real check; CloudStream's is the plugin's own native
+  /// settings UI. Anything else (LNReader, plain sources) has none.
+  Future<bool> _hasSourceSettings(String id) {
+    if (id.startsWith('ani:')) {
+      final raw = int.tryParse(id.substring(4));
+      return raw == null
+          ? Future.value(false)
+          : AniyomiExtensionService().hasSourceSettings(raw);
+    }
+    if (id.startsWith('mihon:')) {
+      final raw = int.tryParse(id.substring(6));
+      return raw == null
+          ? Future.value(false)
+          : MihonExtensionService().hasSourceSettings(raw);
+    }
+    if (id.startsWith('cs:')) return csPluginHasSettings(id.substring(3));
+    return Future.value(false);
+  }
+
+  /// Opens [id]'s settings via its ecosystem's own entry point.
+  Future<void> _openSourceSettings(
+    BuildContext context,
+    String id,
+    String name,
+  ) async {
+    if (id.startsWith('ani:')) {
+      final raw = int.tryParse(id.substring(4));
+      if (raw != null) await AniyomiExtensionService().openSourceSettings(raw);
+      return;
+    }
+    if (id.startsWith('mihon:')) {
+      final raw = int.tryParse(id.substring(6));
+      if (raw != null) await MihonExtensionService().openSourceSettings(raw);
+      return;
+    }
+    if (id.startsWith('cs:') && context.mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) =>
+              SourceSettingsScreen(sourceId: id, repoUrl: '', displayName: name),
+        ),
+      );
+    }
   }
 
   Future<void> _fix(String sourceId) async {
