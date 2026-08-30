@@ -35,7 +35,7 @@ class SourceMatcher {
   ///
   /// [bestTitleMatch] falls back to a source's top result when nothing in it
   /// matches exactly, so its verdict is only used to rank a source's own
-  /// results — the hit is then checked against [_isGenuine] before it's
+  /// results — the hit is then checked against [titleMatches] before it's
   /// trusted, otherwise an unrelated top result from an early source would
   /// get accepted as this title and "no source has this yet" would become
   /// unreachable.
@@ -57,7 +57,7 @@ class SourceMatcher {
         continue;
       }
       final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
-      if (hit == null || !_isGenuine(hit, title: title, altTitle: altTitle, malId: malId)) {
+      if (hit == null || !titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId)) {
         continue;
       }
       final m = SourceMatch(
@@ -71,19 +71,6 @@ class SourceMatcher {
       return m;
     }
     return null;
-  }
-
-  /// Whether [hit] is actually this title, not just [bestTitleMatch]'s
-  /// fallback-to-first-result when nothing in a source's results matched.
-  bool _isGenuine(MediaItem hit, {required String title, String? altTitle, int? malId}) {
-    if (malId != null && hit.malId == malId) return true;
-    final wants = <String>{
-      normalizeTitle(title),
-      if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
-    };
-    return wants.contains(normalizeTitle(hit.title)) ||
-        (hit.englishTitle != null &&
-            wants.contains(normalizeTitle(hit.englishTitle!)));
   }
 
   /// The user picked [picked] by hand. Pinned, so it sticks.
