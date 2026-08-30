@@ -46,8 +46,8 @@ class _Src implements SourceRepository {
 }
 
 /// A [SourceRepository] whose search always matches "FMA" on `allanime` but
-/// whose episode list is whatever the test hands it — for exercising the
-/// number/index fallback in `_sourceEpisode`.
+/// whose episode list is whatever the test hands it — for exercising
+/// `_sourceEpisode`'s positional resolution.
 class _EpSrc implements SourceRepository {
   _EpSrc(this._eps);
   final List<Episode> _eps;
@@ -214,7 +214,7 @@ void main() {
     expect(() => r.sources('zm://anime/mal:100/ep/5'), throwsA(isA<EpisodeNotOnSource>()));
   });
 
-  test('unnumbered source episodes fall back to positional index', () async {
+  test('unnumbered source episodes resolve by position', () async {
     final store = await MatchStore.open();
     final es = _EpSrc(const [
       Episode(id: 'a', title: 'Ch 1', url: 'https://src/fma/1'),
@@ -233,7 +233,12 @@ void main() {
     expect(es.log, ['sources:https://src/fma/2:allanime']);
   });
 
-  test('a zero-based source does not silently guess the wrong episode', () async {
+  // A source whose numbering restarts at 0 (or otherwise isn't 1-based
+  // sequential) used to make `_sourceEpisode`'s number-matching resolve a
+  // different episode than position-based display would show. Now that
+  // detail() displays this same list in this same order, position is the
+  // one true lookup for both — so what's shown at a spot is what plays.
+  test('a non-sequentially-numbered source plays the same episode it displays', () async {
     final store = await MatchStore.open();
     final es = _EpSrc(const [
       Episode(id: 'a', title: 'Ep 0', number: 0, url: 'https://src/fma/0'),
@@ -248,7 +253,16 @@ void main() {
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => ZKind.anime,
     );
-    expect(() => r.sources('zm://anime/mal:100/ep/2'), throwsA(isA<EpisodeNotOnSource>()));
+    final d = await r.detail('zm://anime/mal:100');
+    // position 1 shows the source's first entry, "Ep 0" — canonically
+    // renumbered to 1 so trackers/filler/skip lookups stay show-relative.
+    expect(d.episodes[0].title, 'Ep 0');
+    expect(d.episodes[0].number, 1.0);
+    expect(d.episodes[0].url, 'zm://anime/mal:100/ep/1');
+    expect(d.episodes[1].title, 'Ep 1');
+    expect(d.episodes[1].number, 2.0);
+    await r.sources(d.episodes[0].url, fast: true);
+    expect(es.log, ['sources:https://src/fma/0:allanime']); // plays "Ep 0", not "Ep 1"
   });
 
   test('a saved match skips the metadata round trip entirely', () async {
