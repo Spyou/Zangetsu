@@ -28,6 +28,10 @@ Future<void> pickAppLanguagePhone(BuildContext context) async {
   final picked = await showModalBottomSheet<String>(
     context: context,
     backgroundColor: AppColors.surface,
+    isScrollControlled: true,
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+    ),
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -56,22 +60,30 @@ Future<void> pickAppLanguagePhone(BuildContext context) async {
               ),
             ),
             const Divider(color: AppColors.hairline, height: 1),
-            ListTile(
-              title: Text(l10n.appLanguageSystem, style: AppText.body),
-              subtitle: Text(systemSubtitle, style: AppText.caption),
-              trailing: current == LocaleController.systemTag
-                  ? Icon(Icons.check_rounded, color: AppColors.accent)
-                  : null,
-              onTap: () => Navigator.pop(ctx, LocaleController.systemTag),
-            ),
-            for (final (tag, name) in LocaleController.options)
-              ListTile(
-                title: Text(name, style: AppText.body),
-                trailing: tag == current
-                    ? Icon(Icons.check_rounded, color: AppColors.accent)
-                    : null,
-                onTap: () => Navigator.pop(ctx, tag),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                children: [
+                  ListTile(
+                    title: Text(l10n.appLanguageSystem, style: AppText.body),
+                    subtitle: Text(systemSubtitle, style: AppText.caption),
+                    trailing: current == LocaleController.systemTag
+                        ? Icon(Icons.check_rounded, color: AppColors.accent)
+                        : null,
+                    onTap: () => Navigator.pop(ctx, LocaleController.systemTag),
+                  ),
+                  for (final (tag, name) in LocaleController.options)
+                    ListTile(
+                      title: Text(name, style: AppText.body),
+                      trailing: tag == current
+                          ? Icon(Icons.check_rounded, color: AppColors.accent)
+                          : null,
+                      onTap: () => Navigator.pop(ctx, tag),
+                    ),
+                ],
               ),
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -92,62 +104,99 @@ Future<void> pickAppLanguageTv(BuildContext context) async {
   );
 
   final options = <(String, String)>[
-    (LocaleController.systemTag, '${l10n.appLanguageSystem}\n$systemSubtitle'),
+    (LocaleController.systemTag, l10n.appLanguageSystem),
     ...LocaleController.options,
   ];
 
   final picked = await showDialog<String>(
     context: context,
     barrierColor: Colors.black54,
-    builder: (ctx) => Dialog(
-      backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
-      child: SizedBox(
-        width: 400,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
-              child: Text(
-                l10n.appLanguage,
-                style: AppText.title.copyWith(color: AppColors.textPrimary),
-              ),
-            ),
-            const Divider(height: 1, color: AppColors.hairline),
-            for (var i = 0; i < options.length; i++)
-              TvListFocusable(
-                autofocus: options[i].$1 == current,
-                onTap: () => Navigator.of(ctx).pop(options[i].$1),
-                semanticLabel: options[i].$2.split('\n').first,
-                child: ExcludeSemantics(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 14,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            options[i].$2,
-                            style: AppText.headline,
-                          ),
-                        ),
-                        if (options[i].$1 == current)
-                          Icon(Icons.check, color: AppColors.accent, size: 20),
-                      ],
-                    ),
-                  ),
+    builder: (ctx) {
+      final maxHeight = MediaQuery.sizeOf(ctx).height - 96;
+      // Title + divider + bottom inset — cap the scroll region explicitly so
+      // ListView scrolls instead of expanding the dialog past the screen.
+      const headerExtent = 80.0;
+      return Dialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 400, maxHeight: maxHeight),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 12),
+                child: Text(
+                  l10n.appLanguage,
+                  style: AppText.title.copyWith(color: AppColors.textPrimary),
                 ),
               ),
-            const SizedBox(height: 12),
-          ],
+              const Divider(height: 1, color: AppColors.hairline),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: maxHeight - headerExtent,
+                ),
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (var i = 0; i < options.length; i++)
+                      TvListFocusable(
+                        autofocus: options[i].$1 == current,
+                        onTap: () => Navigator.of(ctx).pop(options[i].$1),
+                        semanticLabel: options[i].$2,
+                        child: ExcludeSemantics(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 14,
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: options[i].$1 == LocaleController.systemTag
+                                      ? Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              l10n.appLanguageSystem,
+                                              style: AppText.headline,
+                                            ),
+                                            Text(
+                                              systemSubtitle,
+                                              style: AppText.caption,
+                                            ),
+                                          ],
+                                        )
+                                      : Text(
+                                          options[i].$2,
+                                          style: AppText.headline,
+                                        ),
+                                ),
+                                if (options[i].$1 == current)
+                                  Icon(
+                                    Icons.check,
+                                    color: AppColors.accent,
+                                    size: 20,
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
   if (picked == null || picked == current) return;
   await LocaleController.setTag(picked);
