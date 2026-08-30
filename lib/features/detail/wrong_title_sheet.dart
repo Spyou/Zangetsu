@@ -245,36 +245,76 @@ class _MatchLineState extends State<MatchLine> {
               ? l10n.noSourceHasThisYet
               : l10n.sourceLabel(sl<SourceRepository>().displayName(selectedId));
           final hasMatch = state.match != null;
+          // Sized and coloured to match _DownloadButton directly above it, so
+          // the three actions read as one stack. "Wrong title?" stays a small
+          // caption underneath — it is a correction, not a third button.
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Column(
               children: [
-                Icon(Icons.hub_outlined, size: 15,
-                    color: hasMatch ? AppColors.textSecondary : AppColors.textTertiary),
-                const SizedBox(width: 6),
-                Flexible(
+                Material(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(8),
                   child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
                     onTap: () => _pickSource(state),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Flexible(
-                          child: Text(label, style: AppText.caption,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        ),
-                        Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textSecondary),
-                      ],
+                    child: SizedBox(
+                      height: 52,
+                      width: double.infinity,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.hub_outlined,
+                            size: 22,
+                            // Dimmer than the label when nothing matched —
+                            // the row still opens the picker, but there is no
+                            // source behind it yet.
+                            color: hasMatch
+                                ? Colors.white
+                                : AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              label,
+                              style: AppText.button.copyWith(
+                                color: hasMatch
+                                    ? Colors.white
+                                    : AppColors.textSecondary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            size: 22,
+                            color: AppColors.textSecondary,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-                if (selectedId != null) ...[
-                  const SizedBox(width: 10),
-                  InkWell(
-                    onTap: () => _fix(selectedId),
-                    child: Text(l10n.wrongTitle,
-                        style: AppText.caption.copyWith(color: AppColors.accent)),
+                if (selectedId != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: InkWell(
+                      onTap: () => _fix(selectedId),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
+                        child: Text(
+                          l10n.wrongTitle,
+                          style: AppText.caption
+                              .copyWith(color: AppColors.accent),
+                        ),
+                      ),
+                    ),
                   ),
-                ],
               ],
             ),
           );
