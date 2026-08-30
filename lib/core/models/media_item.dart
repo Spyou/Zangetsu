@@ -139,6 +139,27 @@ class MediaItem extends Equatable {
   ];
 }
 
+/// Whether [m] is the title being looked for: same MAL id, or a normalized
+/// title (or English title) equal to [wanted] or [altTitle]. This is the
+/// acceptance rule [bestTitleMatch] ranks by, exposed so callers that must
+/// reject its fallback-to-first-result can apply the same test.
+bool titleMatches(
+  MediaItem m,
+  String wanted, {
+  String? altTitle,
+  int? wantedMalId,
+}) {
+  if (wantedMalId != null && m.malId != null && m.malId == wantedMalId) {
+    return true;
+  }
+  final wants = <String>{
+    normalizeTitle(wanted),
+    if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
+  }..removeWhere((s) => s.isEmpty);
+  return wants.contains(normalizeTitle(m.title)) ||
+      (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)));
+}
+
 /// Pick the search result that best matches a tapped relation / work. Prefers a
 /// [MediaItem.malId] match (exact + unique), then an exact normalized match on
 /// EITHER the English [wanted] or the Romaji [altTitle] against the result's
@@ -148,6 +169,10 @@ class MediaItem extends Equatable {
 /// sources index by Romaji — tapping "Mushoku Tensei: Jobless Reincarnation
 /// Season 2 Part 2" must still find the source's "Mushoku Tensei II: Isekai
 /// Ittara Honki Dasu Part 2". Returns null only when [results] is empty.
+///
+/// The malId pass and the title pass stay separate (rather than one loop
+/// calling [titleMatches] once per item) so a malId match anywhere in
+/// [results] still wins over a title match on an earlier item.
 MediaItem? bestTitleMatch(
   List<MediaItem> results,
   String wanted, {
@@ -160,16 +185,8 @@ MediaItem? bestTitleMatch(
       if (m.malId != null && m.malId == wantedMalId) return m;
     }
   }
-  final wants = <String>{
-    normalizeTitle(wanted),
-    if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
-  }..removeWhere((s) => s.isEmpty);
   for (final m in results) {
-    if (wants.contains(normalizeTitle(m.title)) ||
-        (m.englishTitle != null &&
-            wants.contains(normalizeTitle(m.englishTitle!)))) {
-      return m;
-    }
+    if (titleMatches(m, wanted, altTitle: altTitle)) return m;
   }
   return results.first;
 }

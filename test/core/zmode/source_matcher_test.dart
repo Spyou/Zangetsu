@@ -134,4 +134,12 @@ void main() {
     expect(r?.showTitle, 'Hagane no Renkinjutsushi');
     expect(store.get(fma)?.sourceId, 'allanime');
   });
+
+  test('the last candidate source throwing does not propagate', () async {
+    // allanime is alive but has nothing; hianime (the last candidate) is dead.
+    final repo = _FakeSources({'allanime': []});
+    final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+    expect(await m.resolve(fma, title: 'anything'), isNull);
+    expect(store.get(fma), isNull);
+  });
 }
