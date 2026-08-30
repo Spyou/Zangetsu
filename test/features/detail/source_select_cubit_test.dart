@@ -51,6 +51,15 @@ void main() {
         title: 'Fullmetal Alchemist: Brotherhood',
       );
 
+  test('candidates exist but nothing matches anywhere: loading clears with no selection',
+      () async {
+    final c = build(_Src({'allanime': [], 'hianime': []}));
+    await c.load();
+    expect(c.state.selectedId, isNull);
+    expect(c.state.match, isNull);
+    expect(c.state.loading, isFalse);
+  });
+
   test('load resolves a fresh title and reflects the auto-picked source', () async {
     final c = build(_Src({'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')]}));
     await c.load();
