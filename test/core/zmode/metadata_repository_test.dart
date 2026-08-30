@@ -26,6 +26,8 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  bool hasSource(String sourceId) => true;
+  @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>
       [MediaItem(id: 'fma', title: 'FMA', url: 'https://src/fma', type: ProviderType.anime, sourceId: 'allanime')];
   @override
@@ -52,6 +54,8 @@ class _EpSrc implements SourceRepository {
   final log = <String>[];
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  bool hasSource(String sourceId) => true;
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>
       [MediaItem(id: 'fma', title: 'FMA', url: 'https://src/fma', type: ProviderType.anime, sourceId: 'allanime')];
@@ -219,6 +223,7 @@ void main() {
     await store.save(canonical, const SourceMatch(
       sourceId: 'allanime', showUrl: 'https://src/fma', showId: 'fma', showTitle: 'FMA', pinned: false,
     ));
+    await store.selectSource(canonical, 'allanime');
     var gqlCalls = 0;
     final r = MetadataRepository(
       anilist: AniListCatalogue((q, v) async {
@@ -243,6 +248,8 @@ void main() {
 class _NoHits implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  bool hasSource(String sourceId) => true;
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async => const [];
 }

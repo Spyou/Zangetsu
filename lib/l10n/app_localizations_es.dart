@@ -4839,6 +4839,9 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String matchSaved(String name) {
-    return 'Saved. This title will always use $name now.';
+    return 'Saved. Matched to $name now.';
   }
+
+  @override
+  String get chooseSource => 'Choose a source';
 }

@@ -8,11 +8,16 @@ import '../../core/theme/app_text.dart';
 import '../../core/zmode/match_store.dart';
 import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
+import '../../core/zmode/zmode_module.dart';
 import '../../l10n/l10n.dart';
+import 'cubit/detail_cubit.dart';
+import 'cubit/source_select_cubit.dart';
 import 'cubit/wrong_title_cubit.dart';
 
-/// "Source: AllAnime · Wrong title?" under a metadata title. Resolves the match
-/// on first build; the link opens [showWrongTitleSheet] and re-resolves after.
+/// "Source: AllAnime ▾  Wrong title?" under a metadata title. Tapping the
+/// source name opens a picker of installed sources for this title's kind
+/// (each keeping its own remembered match); "Wrong title?" corrects the
+/// match for whichever source is currently selected.
 class MatchLine extends StatefulWidget {
   const MatchLine({
     super.key,
@@ -32,27 +37,83 @@ class MatchLine extends StatefulWidget {
 }
 
 class _MatchLineState extends State<MatchLine> {
-  late Future<SourceMatch?> _match = _resolve();
-
-  Future<SourceMatch?> _resolve() => sl<SourceMatcher>().resolve(
-    widget.canonical,
+  late final SourceSelectCubit _cubit = SourceSelectCubit(
+    store: sl<MatchStore>(),
+    matcher: sl<SourceMatcher>(),
+    canonical: widget.canonical,
+    sources: candidatesForKind(sl<SourceRepository>(), widget.canonical.kind),
     title: widget.title,
     altTitle: widget.altTitle,
     malId: widget.malId,
-  );
+  )..load();
 
-  Future<void> _fix() async {
+  bool get _isReading =>
+      widget.canonical.kind == ZKind.manga || widget.canonical.kind == ZKind.novel;
+
+  @override
+  void dispose() {
+    _cubit.close();
+    super.dispose();
+  }
+
+  /// Reading titles substitute their chapter list per matched source (see
+  /// `MetadataRepository.detail`) — refresh so the Detail screen picks up the
+  /// newly selected/corrected source's chapters. Video kinds always show the
+  /// same AniList/TMDB episode list regardless of source, so there's nothing
+  /// to refresh there.
+  void _refreshEpisodesIfReading() {
+    if (_isReading) context.read<DetailCubit>().refresh();
+  }
+
+  /// Picking a row selects it directly (rather than popping an id for the
+  /// caller to act on afterward) so the real store write is a direct
+  /// continuation of the tap that triggers it, not of the sheet closing.
+  Future<void> _pickSource(SourceSelectState state) {
+    return showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(sheetContext.l10n.chooseSource, style: AppText.headline),
+            ),
+            for (final s in state.sources)
+              ListTile(
+                title: Text(s.name, style: AppText.body),
+                trailing: s.id == state.selectedId
+                    ? Icon(Icons.check, color: AppColors.accent)
+                    : null,
+                onTap: () async {
+                  Navigator.of(sheetContext).pop();
+                  if (s.id == state.selectedId) return;
+                  await _cubit.selectSource(s.id);
+                  if (mounted) _refreshEpisodesIfReading();
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _fix(String sourceId) async {
     final picked = await showWrongTitleSheet(
       context,
       canonical: widget.canonical,
       title: widget.title,
+      sourceId: sourceId,
     );
     if (picked == null || !mounted) return;
-    // A block body, not `=> _match = ...` — that arrow's value is the
-    // assignment's Future, and setState() rejects a callback that returns one.
-    setState(() {
-      _match = Future.value(picked);
-    });
+    _cubit.applyPinned(picked);
+    _refreshEpisodesIfReading();
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(context.l10n.matchSaved(
@@ -62,46 +123,71 @@ class _MatchLineState extends State<MatchLine> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    return FutureBuilder<SourceMatch?>(
-      future: _match,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(height: 20);
-        }
-        final m = snap.data;
-        final label = m == null
-            ? l10n.noSourceHasThisYet
-            : l10n.sourceLabel(sl<SourceRepository>().displayName(m.sourceId));
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Row(
-            children: [
-              Icon(Icons.hub_outlined, size: 15,
-                  color: m == null ? AppColors.textTertiary : AppColors.textSecondary),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(label, style: AppText.caption,
-                    maxLines: 1, overflow: TextOverflow.ellipsis),
+    return BlocProvider.value(
+      value: _cubit,
+      child: BlocBuilder<SourceSelectCubit, SourceSelectState>(
+        builder: (context, state) {
+          if (state.sources.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Row(
+                children: [
+                  Icon(Icons.hub_outlined, size: 15, color: AppColors.textTertiary),
+                  const SizedBox(width: 6),
+                  Text(l10n.noSourceHasThisYet, style: AppText.caption),
+                ],
               ),
-              const SizedBox(width: 10),
-              InkWell(
-                onTap: _fix,
-                child: Text(l10n.wrongTitle,
-                    style: AppText.caption.copyWith(color: AppColors.accent)),
-              ),
-            ],
-          ),
-        );
-      },
+            );
+          }
+          if (state.selectedId == null) {
+            return const SizedBox(height: 20); // first resolve still in flight
+          }
+          final name = sl<SourceRepository>().displayName(state.selectedId!);
+          final hasMatch = state.match != null;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              children: [
+                Icon(Icons.hub_outlined, size: 15,
+                    color: hasMatch ? AppColors.textSecondary : AppColors.textTertiary),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: InkWell(
+                    onTap: () => _pickSource(state),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(l10n.sourceLabel(name), style: AppText.caption,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                        Icon(Icons.arrow_drop_down, size: 16, color: AppColors.textSecondary),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                InkWell(
+                  onTap: () => _fix(state.selectedId!),
+                  child: Text(l10n.wrongTitle,
+                      style: AppText.caption.copyWith(color: AppColors.accent)),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 }
 
-/// Pick a source, search it, tap the right result. Returns the pinned match.
+/// Pick a result, correcting the match for exactly [sourceId]. Returns the
+/// pinned match.
 Future<SourceMatch?> showWrongTitleSheet(
   BuildContext context, {
   required ZCanonical canonical,
   required String title,
+  required String sourceId,
 }) {
   return showModalBottomSheet<SourceMatch>(
     context: context,
@@ -110,14 +196,23 @@ Future<SourceMatch?> showWrongTitleSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (_) => _WrongTitleBody(canonical: canonical, initialQuery: title),
+    builder: (_) => _WrongTitleBody(
+      canonical: canonical,
+      initialQuery: title,
+      sourceId: sourceId,
+    ),
   );
 }
 
 class _WrongTitleBody extends StatelessWidget {
-  const _WrongTitleBody({required this.canonical, required this.initialQuery});
+  const _WrongTitleBody({
+    required this.canonical,
+    required this.initialQuery,
+    required this.sourceId,
+  });
   final ZCanonical canonical;
   final String initialQuery;
+  final String sourceId;
 
   @override
   Widget build(BuildContext context) {
@@ -126,6 +221,7 @@ class _WrongTitleBody extends StatelessWidget {
         sources: sl<SourceRepository>(),
         matcher: sl<SourceMatcher>(),
         canonical: canonical,
+        sourceId: sourceId,
       )..search(initialQuery),
       child: _WrongTitleView(initialQuery: initialQuery),
     );
@@ -152,7 +248,6 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final cubit = context.read<WrongTitleCubit>();
-    final sources = cubit.sources;
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
@@ -163,71 +258,45 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
               children: [
                 const SizedBox(height: 12),
                 Text(l10n.pickTheRightTitle, style: AppText.headline),
+                const SizedBox(height: 2),
+                Text(l10n.sourceLabel(sl<SourceRepository>().displayName(cubit.sourceId)),
+                    style: AppText.caption.copyWith(color: AppColors.textSecondary)),
                 const SizedBox(height: 10),
-                if (sources.isEmpty)
-                  Expanded(
-                    child: Center(
-                      child: Text(l10n.noSourceHasThisYet, style: AppText.body),
-                    ),
-                  )
-                else ...[
-                  SizedBox(
-                    height: 40,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      children: [
-                        for (final s in sources)
-                          Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: ChoiceChip(
-                              label: Text(s.name),
-                              selected: s.id == state.sourceId,
-                              onSelected: (_) {
-                                cubit.pickSource(s.id);
-                                cubit.search(_ctrl.text);
-                              },
-                            ),
-                          ),
-                      ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+                  child: TextField(
+                    controller: _ctrl,
+                    onSubmitted: cubit.search,
+                    textInputAction: TextInputAction.search,
+                    style: AppText.body,
+                    decoration: InputDecoration(
+                      hintText: l10n.searchThisSource,
+                      prefixIcon: const Icon(Icons.search_rounded),
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-                    child: TextField(
-                      controller: _ctrl,
-                      onSubmitted: cubit.search,
-                      textInputAction: TextInputAction.search,
-                      style: AppText.body,
-                      decoration: InputDecoration(
-                        hintText: l10n.searchThisSource,
-                        prefixIcon: const Icon(Icons.search_rounded),
-                      ),
-                    ),
+                ),
+                if (state.loading) const LinearProgressIndicator(minHeight: 2),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: state.results.length,
+                    itemBuilder: (_, i) {
+                      final r = state.results[i];
+                      return ListTile(
+                        leading: r.cover == null
+                            ? null
+                            : Image.network(r.cover!, width: 40, fit: BoxFit.cover),
+                        title: Text(r.title, style: AppText.body),
+                        subtitle: r.englishTitle == null
+                            ? null
+                            : Text(r.englishTitle!, style: AppText.caption),
+                        onTap: () async {
+                          final m = await cubit.choose(r);
+                          if (context.mounted) Navigator.of(context).pop(m);
+                        },
+                      );
+                    },
                   ),
-                  if (state.loading) const LinearProgressIndicator(minHeight: 2),
-                  Expanded(
-                    child: ListView.builder(
-                      itemCount: state.results.length,
-                      itemBuilder: (_, i) {
-                        final r = state.results[i];
-                        return ListTile(
-                          leading: r.cover == null
-                              ? null
-                              : Image.network(r.cover!, width: 40, fit: BoxFit.cover),
-                          title: Text(r.title, style: AppText.body),
-                          subtitle: r.englishTitle == null
-                              ? null
-                              : Text(r.englishTitle!, style: AppText.caption),
-                          onTap: () async {
-                            final m = await cubit.choose(r);
-                            if (context.mounted) Navigator.of(context).pop(m);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ],
             ),
           ),
