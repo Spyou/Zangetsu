@@ -26,6 +26,8 @@ class _Src implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+  @override
   bool hasSource(String sourceId) => true;
   @override
   Future<List<MediaItem>> search(String q, {String category = 'sub', String? sourceId}) async =>
@@ -54,6 +56,8 @@ class _EpSrc implements SourceRepository {
   final log = <String>[];
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
   @override
   bool hasSource(String sourceId) => true;
   @override
@@ -302,6 +306,8 @@ void main() {
 class _NoHits implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
   @override
   bool hasSource(String sourceId) => true;
   @override

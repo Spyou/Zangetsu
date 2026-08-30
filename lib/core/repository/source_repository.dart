@@ -170,9 +170,19 @@ class SourceRepository implements CatalogueRepository {
   /// "MangaDex" chips, an unreadable picker, and a stack of identical result
   /// sections. Only names that actually collide get the suffix, so a
   /// single-language source reads exactly as before.
+  /// Every installed, enabled, non-hidden source — including ones the language
+  /// preference narrows out of [loadedSources]. For explicit per-title source
+  /// pickers only; browse and search must keep using [loadedSources].
+  List<({String id, String name})> get pickableSources =>
+      _named(_rawSources(narrowByLang: false));
+
   @override
-  List<({String id, String name})> get loadedSources {
-    final raw = _rawLoadedSources;
+  List<({String id, String name})> get loadedSources => _named(_rawLoadedSources);
+
+  /// Disambiguates same-named sources by appending their language code.
+  List<({String id, String name})> _named(
+    List<({String id, String name, String? lang})> raw,
+  ) {
     final counts = <String, int>{};
     for (final s in raw) {
       counts[s.name] = (counts[s.name] ?? 0) + 1;
@@ -221,7 +231,17 @@ class SourceRepository implements CatalogueRepository {
   bool _langOk(String? lang, Set<String>? enabled) =>
       enabled == null || sourceLangVisible(lang ?? '', enabled);
 
-  List<({String id, String name, String? lang})> get _rawLoadedSources => [
+  List<({String id, String name, String? lang})> get _rawLoadedSources =>
+      _rawSources(narrowByLang: true);
+
+  /// [narrowByLang] false keeps sources the LANGUAGE preference would drop.
+  /// Browse and search narrow by language so a multi-language extension does
+  /// not fan a query across a dozen copies of itself. A per-title picker is
+  /// the opposite situation: the user is choosing one source by hand, and an
+  /// installed source missing from that list just reads as broken.
+  List<({String id, String name, String? lang})> _rawSources({
+    required bool narrowByLang,
+  }) => [
     ..._manager.all.map(
       (p) => (id: p.sourceId, name: p.displayName, lang: null),
     ),
@@ -242,7 +262,7 @@ class SourceRepository implements CatalogueRepository {
             lang: p is AniyomiProvider ? p.info.lang : null,
           ),
         )
-        .where((s) => _langOk(s.lang, _langsFor(_animeLangs))),
+        .where((s) => !narrowByLang || _langOk(s.lang, _langsFor(_animeLangs))),
     // Mihon manga sources. There is no Mihon-specific NSFW pref, so these
     // reuse the general "show NSFW sources" toggle rather than inventing a
     // third one — same default (off), so an 18+ manga source stays hidden
@@ -255,7 +275,7 @@ class SourceRepository implements CatalogueRepository {
         // every one — Hebrew results for a user who'd chosen English. The
         // sources screen already filtered its list this way; the source list
         // that actually gets searched never did.
-        .where((s) => _langOk(s.lang, _langsFor(_mangaLangs))),
+        .where((s) => !narrowByLang || _langOk(s.lang, _langsFor(_mangaLangs))),
     // LNReader novel sources — already `{id, name}` shaped, straight from
     // stored plugin meta (no NSFW concept for these yet).
     if (_lnrManager != null)

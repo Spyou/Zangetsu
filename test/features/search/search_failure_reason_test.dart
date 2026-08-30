@@ -118,6 +118,9 @@ class _FakeSourceHealthStore extends SourceHealthStore {
 }
 
 class _FakeRepo implements SourceRepository {
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
   List<({String id, String name})> loadedSourcesSeed = const [];
 
   /// What each source hands back. Missing → empty-but-alive.
