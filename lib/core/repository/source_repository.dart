@@ -23,11 +23,12 @@ import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
+import 'catalogue_repository.dart';
 
 /// Facade over the active provider runtime for the UI layer.
 /// The active source is driven by [activeSource] so callers can switch at
 /// runtime without recreating the repository.
-class SourceRepository {
+class SourceRepository implements CatalogueRepository {
   SourceRepository({
     required ProviderManager manager,
     required CloudStreamManager csManager,
