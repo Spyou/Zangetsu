@@ -102,34 +102,69 @@ class MetadataRepository implements CatalogueRepository {
     if (c == null) throw ArgumentError('not a metadata url: $url');
     final d = _isTmdb(c.kind) ? await _tmdb.detail(c) : await _al.detail(c);
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
-    if (c.kind != ZKind.manga && c.kind != ZKind.novel) return d;
 
-    // Reading: the reader screens fetch pages/text from SourceRepository with
-    // the detail's sourceId + id, so hand them the matched source's chapters.
+    if (c.kind == ZKind.manga || c.kind == ZKind.novel) {
+      // Reading: the reader screens fetch pages/text from SourceRepository
+      // with the detail's sourceId + id, so hand them the matched source's
+      // chapters, real urls and all — progress there is keyed off that.
+      final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
+      // No match: AniList may still have synthesised a full zm://…/ep/n
+      // chapter list (it knows the chapter count for plenty of completed
+      // manga), but those urls have no source behind them — drop them rather
+      // than hand the reader a real-looking list that throws when it tries
+      // to read one.
+      if (m == null) return d.copyWith(episodes: const <Episode>[]);
+      final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
+      return MediaDetail(
+        id: m.showId,
+        title: d.title,
+        englishTitle: d.englishTitle,
+        cover: d.cover,
+        url: d.url,
+        description: d.description,
+        status: d.status,
+        genres: d.genres,
+        studios: d.studios,
+        episodes: chapters,
+        year: d.year,
+        type: d.type,
+        sourceId: m.sourceId,
+        malId: d.malId,
+      );
+    }
+
+    // Watching: playback is already routed through zm://…/ep/n (see
+    // _sourceEpisode below), and resume progress is keyed off that same
+    // canonical id/url — never the source's own. So only the DISPLAY comes
+    // from the matched source here: titles, thumbnails, dates, descriptions,
+    // and the count. id/url are rewritten back to the canonical, numbered-by-
+    // position form so progress keeps following the title, not the source.
     final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
-    // No match: AniList may still have synthesised a full zm://…/ep/n chapter
-    // list (it knows the chapter count for plenty of completed manga), but
-    // those urls have no source behind them — drop them rather than hand the
-    // reader a real-looking list that throws when it tries to read one.
-    if (m == null) return d.copyWith(episodes: const <Episode>[]);
-    final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
-    return MediaDetail(
-      id: m.showId,
-      title: d.title,
-      englishTitle: d.englishTitle,
-      cover: d.cover,
-      url: d.url,
-      description: d.description,
-      status: d.status,
-      genres: d.genres,
-      studios: d.studios,
-      episodes: chapters,
-      year: d.year,
-      type: d.type,
-      sourceId: m.sourceId,
-      malId: d.malId,
-    );
+    if (m == null) return d; // no match: metadata's synthesised list stands.
+    final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
+    final episodes = [
+      for (var i = 0; i < srcEpisodes.length; i++) _canonicalize(srcEpisodes[i], c, i + 1),
+    ];
+    return d.copyWith(episodes: episodes);
   }
+
+  /// [e] with its display kept but id/url replaced by the canonical,
+  /// position-numbered zm:// form — see the comment in [detail].
+  static Episode _canonicalize(Episode e, ZCanonical c, int n) => Episode(
+    id: '$n',
+    title: e.title,
+    number: e.number,
+    url: ZmodeIds.episodeUrl(c, n),
+    date: e.date,
+    thumbnail: e.thumbnail,
+    filler: e.filler,
+    season: e.season,
+    scanlator: e.scanlator,
+    description: e.description,
+    metaTitle: e.metaTitle,
+    rating: e.rating,
+    runtimeMinutes: e.runtimeMinutes,
+  );
 
   @override
   Future<List<Episode>> episodes(String url, {String category = 'sub', String? sourceId}) async =>

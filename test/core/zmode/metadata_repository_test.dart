@@ -138,11 +138,45 @@ void main() {
     expect(d.title, 'FMA'); // metadata title kept
   });
 
-  test('anime detail keeps zm episode urls', () async {
+  test('matched anime detail shows the source titles and count, canonical ids/urls', () async {
     kind = ZKind.anime;
     final d = await repo.detail('zm://anime/mal:100');
+    expect(d.sourceId, ZmodeIds.sourceId); // plumbing stays canonical
+    expect(d.id, 'mal:100');
+    // display: the source's titles and count (2), not AniList's synthesised 12.
+    expect(d.episodes.length, 2);
+    expect(d.episodes.map((e) => e.title), ['Ep 1', 'Ep 2']);
+    // progress-invariance guard: ids/urls stay the canonical, numbered-by-
+    // position zm:// form regardless of what the source calls them.
+    expect(d.episodes[0].id, '1');
+    expect(d.episodes[0].url, 'zm://anime/mal:100/ep/1');
+    expect(d.episodes[1].id, '2');
+    expect(d.episodes[1].url, 'zm://anime/mal:100/ep/2');
+  });
+
+  test('unmatched anime detail keeps the synthesised episode list', () async {
+    final store = await MatchStore.open();
+    final dead = _NoHits();
+    final r = MetadataRepository(
+      anilist: AniListCatalogue((q, v) async =>
+          q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
+      tmdb: TmdbCatalogue((p, q) async => null),
+      sources: dead,
+      matcher: SourceMatcher(sources: dead, store: store,
+          candidates: (_) => [(id: 'x', name: 'X')]),
+      browseKind: () => ZKind.anime,
+    );
+    final d = await r.detail('zm://anime/mal:100');
+    expect(d.episodes.length, 12);
+    expect(d.episodes.first.title, 'Episode 1');
     expect(d.sourceId, ZmodeIds.sourceId);
-    expect(d.episodes.first.url, 'zm://anime/mal:100/ep/1');
+  });
+
+  test('sources() plays the episode url that detail() displays', () async {
+    kind = ZKind.anime;
+    final d = await repo.detail('zm://anime/mal:100');
+    await repo.sources(d.episodes[1].url, fast: true);
+    expect(src.log.last, 'sources:https://src/fma/2:allanime');
   });
 
   test('unmatched manga detail drops the synthesised chapter list', () async {
