@@ -1603,12 +1603,18 @@ class _DetailViewState extends State<_DetailView>
 
         // ── 3. White Play + gray Download buttons (full-width, stacked) ─────
         // (The hero banner autoplays the trailer; tap it for fullscreen.)
+        //
+        // Each button carries its own 16px side padding (rather than one
+        // Padding wrapping the whole Column) so the Z Mode selector below
+        // can sit as a plain last child: it already supplies its own 16px
+        // side padding (it's normally a top-level sliver child), and a
+        // shared wrapper would double that indent.
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
-            child: Column(
-              children: [
-                _PlayButton(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
+                child: _PlayButton(
                   label: buttonLabel,
                   icon: isReading
                       ? Icons.menu_book_rounded
@@ -1617,10 +1623,12 @@ class _DetailViewState extends State<_DetailView>
                       ? () => _openPlayer(eps, resumeIdx, detail, category)
                       : null,
                 ),
-                // Reading downloads are out of scope for this plan.
-                if (!isReading) ...[
-                  const SizedBox(height: 10),
-                  _DownloadButton(
+              ),
+              // Reading downloads are out of scope for this plan.
+              if (!isReading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: _DownloadButton(
                     label: downloadLabel,
                     onPressed: () => _openDownloadSheet(
                       detail: detail,
@@ -1629,9 +1637,17 @@ class _DetailViewState extends State<_DetailView>
                       initialSeason: currentSeason,
                     ),
                   ),
-                ],
-              ],
-            ),
+                ),
+              // Z Mode: matched source + "Wrong title?", kept with the
+              // actions it controls instead of under the synopsis.
+              if (ZmodeIds.isZ(widget.item.url))
+                MatchLine(
+                  canonical: ZmodeIds.parseShow(widget.item.url)!,
+                  title: detail.title,
+                  altTitle: detail.englishTitle,
+                  malId: detail.malId,
+                ),
+            ],
           ),
         ),
 
@@ -1646,17 +1662,6 @@ class _DetailViewState extends State<_DetailView>
                 // than expanding inline; the header stays clamped to 3 lines.
                 onReadMore: () => _revealTab(3),
               ),
-            ),
-          ),
-
-        // ── 4.5. Z Mode: matched source + "Wrong title?" ────────────────────
-        if (ZmodeIds.isZ(widget.item.url))
-          SliverToBoxAdapter(
-            child: MatchLine(
-              canonical: ZmodeIds.parseShow(widget.item.url)!,
-              title: detail.title,
-              altTitle: detail.englishTitle,
-              malId: detail.malId,
             ),
           ),
 
