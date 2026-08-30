@@ -70,6 +70,7 @@ import '../../core/trailer/trailer_service.dart';
 import '../../core/tv/tv_back_button.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/aniyomi/aniyomi_image_provider.dart';
 import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/ui/badge.dart';
@@ -81,6 +82,7 @@ import '../reader/manga_reader_screen.dart';
 import '../reader/novel_reader_screen.dart';
 import '../trailer/trailer_screen.dart';
 import 'cubit/detail_cubit.dart';
+import 'wrong_title_sheet.dart';
 import '../../l10n/l10n.dart';
 
 part 'detail_hero.dart';
@@ -564,9 +566,12 @@ class _DetailViewState extends State<_DetailView>
     final item = widget.item;
     final reading =
         detail.type == ProviderType.manga || detail.type == ProviderType.novel;
+    // Read before the first await: nothing below needs a fresh BuildContext,
+    // and grabbing it up front avoids holding context across the async gaps.
+    final l10n = context.l10n;
     if (_subscribed) {
       await store.remove(item.sourceId, item.url);
-      _snack(context.l10n.notificationsOffFor(item.title));
+      _snack(l10n.notificationsOffFor(item.title));
     } else {
       await store.add(
         Subscription(
@@ -586,8 +591,8 @@ class _DetailViewState extends State<_DetailView>
       await NotificationService.instance.init(); // ask for permission now
       _snack(
         reading
-            ? context.l10n.youllBeNotifiedOfNewChaptersFor(item.title)
-            : context.l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
+            ? l10n.youllBeNotifiedOfNewChaptersFor(item.title)
+            : l10n.youllBeNotifiedOfNewEpisodesFor(item.title),
       );
     }
     // Mirror CS subs to native so the background worker picks up the change.
@@ -1627,6 +1632,17 @@ class _DetailViewState extends State<_DetailView>
                 // than expanding inline; the header stays clamped to 3 lines.
                 onReadMore: () => _revealTab(3),
               ),
+            ),
+          ),
+
+        // ── 4.5. Z Mode: matched source + "Wrong title?" ────────────────────
+        if (ZmodeIds.isZ(widget.item.url))
+          SliverToBoxAdapter(
+            child: MatchLine(
+              canonical: ZmodeIds.parseShow(widget.item.url)!,
+              title: detail.title,
+              altTitle: detail.englishTitle,
+              malId: detail.malId,
             ),
           ),
 
