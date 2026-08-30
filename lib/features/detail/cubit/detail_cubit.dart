@@ -151,22 +151,34 @@ class DetailCubit extends Cubit<DetailState> {
     }
   }
 
-  /// Pull-to-refresh. Drops the source's HTTP cache first so the re-fetch is
-  /// genuinely fresh (new chapters show now instead of after the 10-min cache
-  /// expires), then reloads detail+chapters for the current category. Keeps the
-  /// current content on screen while refreshing — no skeleton flash — and a
-  /// failed refresh leaves the page as-is rather than wiping it. Cast/Relations
-  /// are already loaded and don't change, so enrichment isn't re-run.
+  /// Re-fetch. Drops the source's HTTP cache first so the re-fetch is genuinely
+  /// fresh (new chapters show now instead of after the 10-min cache expires),
+  /// then reloads detail+chapters for the current category. Keeps the current
+  /// content on screen while refreshing — no skeleton flash — and a failed
+  /// refresh leaves the page as-is rather than wiping it.
+  ///
+  /// Everything [_enrich] produced lives only on the in-memory detail, so a
+  /// bare re-emit throws it away: the ids it resolved and the per-episode
+  /// metadata. Ids are carried across; enrichment is re-run with `force`
+  /// because its usual guard (Cast/Relations already present) would otherwise
+  /// skip it. A match change makes that mandatory — the episode list is new,
+  /// so its per-episode metadata has to be fetched again.
   Future<void> refresh() async {
     await _repo.clearHttpCache();
+    final previous = state.detail;
     try {
-      final detail = await _repo.detail(
+      final fresh = await _repo.detail(
         _url,
         category: state.category,
         sourceId: _sourceId,
       );
       if (isClosed) return;
-      emit(state.copyWith(status: DetailStatus.success, detail: detail));
+      final merged = fresh.copyWith(
+        malId: fresh.malId ?? previous?.malId,
+        tmdbId: fresh.tmdbId ?? previous?.tmdbId,
+      );
+      emit(state.copyWith(status: DetailStatus.success, detail: merged));
+      _enrich(merged, force: true);
     } catch (_) {
       // Keep what's on screen — a failed pull shouldn't blank the page.
     }
@@ -175,8 +187,11 @@ class DetailCubit extends Cubit<DetailState> {
   /// Fetch Cast + Relations in the background (AniList for anime, TMDB for
   /// movie/TV) and merge into state. Best-effort — failures leave the tabs in
   /// their empty state. Runs once per title; Sub/Dub switches keep the result.
-  Future<void> _enrich(MediaDetail detail) async {
-    if (state.cast.isNotEmpty || state.relations.isNotEmpty) return;
+  /// [force] re-runs enrichment for a detail that has already been enriched
+  /// once. Only [refresh] sets it, after a match change swaps the episode list
+  /// out from under the metadata fetched for the previous one.
+  Future<void> _enrich(MediaDetail detail, {bool force = false}) async {
+    if (!force && (state.cast.isNotEmpty || state.relations.isNotEmpty)) return;
     var d = detail;
 
     // TMDB fallback: an id-less movie/series (e.g. some CloudStream sources)
