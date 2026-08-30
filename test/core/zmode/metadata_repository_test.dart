@@ -80,9 +80,15 @@ void main() {
     src = _Src();
     final store = await MatchStore.open();
     repo = MetadataRepository(
-      anilist: AniListCatalogue((q, v) async =>
-          q.contains('Media(') ? {'Media': _al(chapters: kind == ZKind.anime ? null : 5)}
-                               : {'Page': {'media': [_al()]}}),
+      anilist: AniListCatalogue((q, v) async {
+        if (q.contains('Media(')) {
+          return {'Media': _al(chapters: kind == ZKind.anime ? null : 5)};
+        }
+        // home() asks for every row in one aliased request (r0, r1, …) —
+        // answer whichever aliases this query actually asked for.
+        final aliases = RegExp(r'(r\d+):').allMatches(q).map((m) => m.group(1)!);
+        return {for (final a in aliases) a: {'media': [_al()]}};
+      }),
       tmdb: TmdbCatalogue((p, q) async => {'results': []}),
       sources: src,
       matcher: SourceMatcher(sources: src, store: store,
