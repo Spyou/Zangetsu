@@ -8227,6 +8227,72 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close directly — exit immediately'**
   String get closeConfirmExitImmediatelyLabel;
+
+  /// No description provided for @zMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Z Mode'**
+  String get zMode;
+
+  /// No description provided for @zModeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse from AniList and TMDB, play from your sources'**
+  String get zModeSubtitle;
+
+  /// No description provided for @zModeExperimental.
+  ///
+  /// In en, this message translates to:
+  /// **'Experimental'**
+  String get zModeExperimental;
+
+  /// No description provided for @modeAnime.
+  ///
+  /// In en, this message translates to:
+  /// **'Anime'**
+  String get modeAnime;
+
+  /// No description provided for @modeMovieTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Movie/TV'**
+  String get modeMovieTv;
+
+  /// No description provided for @sourceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {name}'**
+  String sourceLabel(String name);
+
+  /// No description provided for @wrongShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong show?'**
+  String get wrongShow;
+
+  /// No description provided for @noSourceHasThisYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No source has this yet'**
+  String get noSourceHasThisYet;
+
+  /// No description provided for @pickTheRightShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the right show'**
+  String get pickTheRightShow;
+
+  /// No description provided for @searchThisSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Search this source'**
+  String get searchThisSource;
+
+  /// No description provided for @matchSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. This title will always use {name} now.'**
+  String matchSaved(String name);
 }
 
 class _AppLocalizationsDelegate

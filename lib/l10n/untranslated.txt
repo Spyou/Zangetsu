@@ -1,1 +1,99 @@
-{}
+{
+  "de": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "es": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "fr": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "it": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "ja": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "zh": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ],
+
+  "zh_TW": [
+    "zMode",
+    "zModeSubtitle",
+    "zModeExperimental",
+    "modeAnime",
+    "modeMovieTv",
+    "sourceLabel",
+    "wrongShow",
+    "noSourceHasThisYet",
+    "pickTheRightShow",
+    "searchThisSource",
+    "matchSaved"
+  ]
+}
