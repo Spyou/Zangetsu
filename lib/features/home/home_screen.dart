@@ -62,7 +62,9 @@ import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
+import '../schedule/schedule_screen.dart';
 import '../search/browse_sources_screen.dart';
+import '../shell/dock_icons.dart';
 import 'search_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
@@ -742,14 +744,18 @@ class _HomeViewState extends State<_HomeView>
     );
   }
 
-  /// A row of two cards under the banner, showing the two modes
-  /// you're NOT in. Reactive to [ContentModeCubit] so they re-label the instant
-  /// a switch lands. Tapping runs the sword-slash into that mode.
+  /// A row of cards under the banner, showing the modes you're NOT in plus —
+  /// in Anime mode only — a Schedule card (Schedule has nothing to show in a
+  /// reading mode; see [DockTab.isAnimeOnly]). Reactive to [ContentModeCubit]
+  /// so they re-label the instant a switch lands. Tapping a mode card runs
+  /// the sword-slash into that mode; Schedule opens the same [ScheduleScreen]
+  /// its dock tab does.
   Widget _modeCards() {
     return BlocBuilder<ContentModeCubit, ContentMode>(
       bloc: sl<ContentModeCubit>(),
       builder: (context, current) {
         final others = ContentMode.values.where((m) => m != current).toList();
+        final showSchedule = current == ContentMode.anime;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
           child: Row(
@@ -757,6 +763,10 @@ class _HomeViewState extends State<_HomeView>
               for (var i = 0; i < others.length; i++) ...[
                 if (i > 0) const SizedBox(width: 12),
                 Expanded(child: _modeCard(others[i])),
+              ],
+              if (showSchedule) ...[
+                if (others.isNotEmpty) const SizedBox(width: 12),
+                Expanded(child: _scheduleCard()),
               ],
             ],
           ),
@@ -797,6 +807,63 @@ class _HomeViewState extends State<_HomeView>
                     const SizedBox(width: 8),
                     Text(
                       m.label,
+                      style: AppText.body.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                        shadows: const [
+                          Shadow(color: Colors.black, blurRadius: 6),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Same card shell as [_modeCard], but for the Schedule destination rather
+  /// than a [ContentMode] — same glyph and label as the Schedule dock tab
+  /// ([dockGlyphFor]/[DockGlyph.calendar], `l10n.schedule`) so the two read as
+  /// the same feature. Opens [ScheduleScreen] directly rather than reaching
+  /// into the shell's private tab state.
+  Widget _scheduleCard() {
+    return GestureDetector(
+      key: const ValueKey('home_schedule_card'),
+      onTap: _slashing
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const ScheduleScreen()),
+            ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 52,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _modeArtBg((cover: null, headers: null)),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0xCC000000), Color(0x55000000)],
+                  ),
+                ),
+              ),
+              Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const DockIcon(DockGlyph.calendar, color: Colors.white, filled: true, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      context.l10n.schedule,
                       style: AppText.body.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,

@@ -354,6 +354,16 @@ void main() {
     child: MaterialApp(home: child),
   );
 
+  // Home now has its own Schedule card (Anime mode only, same label as the
+  // dock tab — task 11), so a bare `find.text('Schedule')` can match either
+  // one while Home is the visible tab. The floating dock is the only widget
+  // in this tree wrapped in `AnimatedSlide`, so scoping through it isolates
+  // the dock tab specifically.
+  Finder dockLabel(String label) => find.descendant(
+    of: find.byType(AnimatedSlide),
+    matching: find.text(label),
+  );
+
   testWidgets('phone shell shows a Schedule destination and no Downloads', (
     tester,
   ) async {
@@ -361,7 +371,7 @@ void main() {
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Schedule'), findsOneWidget);
+    expect(dockLabel('Schedule'), findsOneWidget);
     expect(find.text('Downloads'), findsNothing);
   });
 
@@ -387,7 +397,7 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
-    expect(find.text('Schedule'), findsOneWidget);
+    expect(dockLabel('Schedule'), findsOneWidget);
 
     // setMode emits synchronously now, but its Hive writes are still real,
     // fire-and-forget I/O — FakeAsync (which testWidgets runs in) never
@@ -399,6 +409,32 @@ void main() {
     expect(find.text('Schedule'), findsNothing);
   });
 
+  // Home's mode-cards row gained a Schedule card (task 11) alongside the
+  // Manga/Novel switcher cards — Schedule-only-in-Anime-mode, same as the
+  // dock tab (DockTab.schedule.isAnimeOnly).
+  testWidgets(
+    "Home's Schedule card shows in Anime mode, hidden in Manga/Novel",
+    (tester) async {
+      sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+      await tester.pumpWidget(wrap(const RootShell()));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+
+      await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
+
+      await tester.runAsync(() => contentMode.setMode(ContentMode.novel));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home_schedule_card')), findsNothing);
+
+      await tester.runAsync(() => contentMode.setMode(ContentMode.anime));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+    },
+  );
+
   testWidgets('switching to a reading mode while on Schedule bounces to Home', (
     tester,
   ) async {
@@ -406,7 +442,7 @@ void main() {
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Schedule'));
+    await tester.tap(dockLabel('Schedule'));
     await tester.pumpAndSettle();
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
 
