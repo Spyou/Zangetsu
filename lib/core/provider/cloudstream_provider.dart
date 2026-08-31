@@ -15,6 +15,7 @@ import '../models/search_quality.dart';
 import '../models/provider_info.dart';
 import '../models/video_source.dart';
 import 'base_provider.dart';
+import 'cf_solve_needed.dart';
 import 'cs_repo_url.dart';
 
 /// Native MethodChannel bridging to the CloudStream plugin host. All methods
@@ -1387,22 +1388,69 @@ class CloudStreamManager extends ChangeNotifier {
   /// RepositoryManager.addRepository during their load(); the native side
   /// forwards each URL here so it goes through the real [addRepo] (which
   /// dedupes, so re-adds on later boots are harmless).
+  ///
+  /// Also carries the Cloudflare-challenge push from PluginHost's shared-
+  /// client interceptor (see `cfChallengeInterceptor` in PluginHost.kt): a CS
+  /// source's HTTP runs through native OkHttp, invisible to the JS-provider
+  /// `_looksLikeCfChallenge` check, so a CF-gated CS source used to just
+  /// vanish from Z Mode matching with no icon and no way to solve. Feeding it
+  /// into the SAME `CfSolveNeeded` latch that path uses means every UI that
+  /// already reads that latch (Detail's blocked screen, the source picker's
+  /// row shield, Z Mode's `cfBlockedUrl`) picks CS sources up for free.
   void _wireRepoAddedBridge() {
     if (_bridgeWired) return;
     _bridgeWired = true;
     _csChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onRepoAdded') {
-        final url = call.arguments as String?;
-        if (url != null && url.isNotEmpty) {
-          try {
-            await addRepo(url);
-          } catch (e) {
-            debugPrint('[cloudstream] mega-repo addRepo failed: $e');
+      switch (call.method) {
+        case 'onRepoAdded':
+          final url = call.arguments as String?;
+          if (url != null && url.isNotEmpty) {
+            try {
+              await addRepo(url);
+            } catch (e) {
+              debugPrint('[cloudstream] mega-repo addRepo failed: $e');
+            }
           }
-        }
+          break;
+        case 'onCfChallenge':
+          final args = call.arguments;
+          if (args is Map) handleCfChallenge(args);
+          break;
       }
       return null;
     });
+  }
+
+  /// Handles PluginHost's native → Dart Cloudflare-challenge push (the
+  /// `onCfChallenge` case above) — pulled out so a test can call it directly
+  /// instead of simulating a full platform-channel round trip. Flags [args]'s
+  /// host in the SAME `CfSolveNeeded` latch the JS-provider path uses, once
+  /// its best-effort `sourceId` (PluginHost's native resolution key) is
+  /// translated to the `cs:`-prefixed id Z Mode actually keys everything on.
+  @visibleForTesting
+  void handleCfChallenge(Map<dynamic, dynamic> args) {
+    final host = args['host'] as String?;
+    final url = args['url'] as String?;
+    final apiKey = args['sourceId'] as String?;
+    if (host == null || host.isEmpty || url == null || url.isEmpty) return;
+    CfSolveNeeded.needsSolve(
+      host,
+      url,
+      sourceId: apiKey == null ? null : _sourceIdForHostKey(apiKey),
+    );
+  }
+
+  /// Reverses [CloudStreamProvider.hostKey] back to the `cs:`-prefixed
+  /// [CloudStreamProvider.sourceId] Z Mode actually keys everything on.
+  /// PluginHost.kt's `search()` only knows the native resolution key (the
+  /// `hostKey` it was called with); it has no way to know the Dart-side id
+  /// built from it. Null when nothing installed matches (source since
+  /// uninstalled, or the challenge came from a call this bridge doesn't tag).
+  String? _sourceIdForHostKey(String hostKey) {
+    for (final p in _providers.values) {
+      if (p.hostKey == hostKey) return p.sourceId;
+    }
+    return null;
   }
 
   /// Loads any cached/installed plugins into the provider set AND reads the

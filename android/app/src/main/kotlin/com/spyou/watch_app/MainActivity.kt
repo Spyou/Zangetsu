@@ -360,6 +360,20 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             runOnUiThread { csChannel?.invokeMethod("onRepoAdded", url) }
         }
 
+        // Same idea for a Cloudflare challenge PluginHost's shared-client
+        // interceptor sees (applyBaseClient): forward host + best-effort
+        // source id so Dart can flag it in the same CfSolveNeeded latch the
+        // JS-provider path uses. Static wiring — doesn't force `host` (the
+        // lazy PluginHost) to construct here.
+        PluginHost.onCfChallenge = { chHost, chUrl, sourceId ->
+            runOnUiThread {
+                csChannel?.invokeMethod(
+                    "onCfChallenge",
+                    mapOf("host" to chHost, "url" to chUrl, "sourceId" to sourceId),
+                )
+            }
+        }
+
         // TV ExoPlayer spike (SP0) — register the SurfaceView PlatformView.
         flutterEngine.platformViewsController.registry.registerViewFactory(
             "zangetsu/exoplayer_view",
