@@ -9,7 +9,7 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/app_mode.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/locale/locale_controller.dart';
-import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/supabase/supabase_service.dart';
@@ -27,12 +27,6 @@ MigrationBridge _fakeBridge() => MigrationBridge(
     );
 
 // ── Minimal stubs ─────────────────────────────────────────────────────────────
-
-/// [SearchPrefs] stub: overrides [layout] so no Hive box is accessed.
-class _StubSearchPrefs extends SearchPrefs {
-  @override
-  SearchLayout get layout => SearchLayout.vertical;
-}
 
 /// [ProviderRegistry] stub: returns empty entries; no Hive dependency.
 class _StubProviderRegistry implements ProviderRegistry {
@@ -53,16 +47,18 @@ class _StubProviderRegistry implements ProviderRegistry {
 
 /// Registers the minimal GetIt singletons needed for [SettingsScreenTv.build].
 ///
-/// On a non-Android host (macOS test runner) only [SearchPrefs] and
-/// [ProviderRegistry] are accessed at build time. Android-only tiles that touch
+/// On a non-Android host (macOS test runner) only [ProviderRegistry] and
+/// [PlaybackPrefs] are accessed at build time. Android-only tiles that touch
 /// [CloudStreamManager] are guarded by [Platform.isAndroid] and are never
 /// rendered in tests.
-void _registerStubs() {
+Future<void> _registerStubs() async {
+  await Hive.openBox(PlaybackPrefs.boxName);
   final sl = GetIt.instance;
   // SettingsTile / SettingsCard gate TV focus chrome on AppMode.isTv.
-  sl.registerSingleton<AppMode>(const AppMode(isTv: true));
-  sl.registerSingleton<SearchPrefs>(_StubSearchPrefs());
-  sl.registerSingleton<ProviderRegistry>(_StubProviderRegistry());
+  sl
+    ..registerSingleton<AppMode>(const AppMode(isTv: true))
+    ..registerSingleton<ProviderRegistry>(_StubProviderRegistry())
+    ..registerSingleton<PlaybackPrefs>(PlaybackPrefs());
 }
 
 /// Mocks the path_provider platform channel so that [AppwriteService] —
@@ -101,14 +97,11 @@ void main() {
   late Directory hiveDir;
 
   setUp(() async {
-    // SettingsScreenTv.initState creates an UpdateService and reads its beta
-    // opt-in, which opens the "updates" Hive box. Point Hive at a temp dir so
-    // that box open succeeds instead of throwing "Hive not initialized".
     hiveDir = await Directory.systemTemp.createTemp('settings_tv_test');
     Hive.init(hiveDir.path);
     await Hive.openBox(LocaleController.boxName);
     await LocaleController.init();
-    _registerStubs();
+    await _registerStubs();
     // ActiveSourceCubit with box=null falls back to 'allanime' — no Hive.
     activeCubit = ActiveSourceCubit();
   });
@@ -136,16 +129,19 @@ void main() {
       // Page title is displayed.
       expect(find.text('Settings'), findsOneWidget);
 
-      // Tiles that are visible in the default 800×600 test viewport (the
-      // ListView lazy-builds only what fits; Storage and below are off-screen).
+      // Section labels and tiles visible in the default 800×600 test viewport.
+      expect(find.text('ACCOUNT & SYNC'), findsOneWidget);
       expect(find.text('Sign in'), findsOneWidget);
+      expect(find.text('Connections'), findsOneWidget);
       expect(find.text('Backup & Restore'), findsOneWidget);
+      expect(find.text('Sync library to cloud'), findsOneWidget);
+      expect(find.text('SOURCES'), findsOneWidget);
       expect(find.text('Providers'), findsOneWidget);
       expect(find.text('Active source'), findsOneWidget);
       expect(find.text('Source health'), findsOneWidget);
-      expect(find.text('Playback'), findsOneWidget);
-      expect(find.text('Downloads'), findsOneWidget);
-      expect(find.text('Search layout'), findsOneWidget);
+      expect(find.text('Auto-update extensions'), findsOneWidget);
+      expect(find.text('PLAYBACK'), findsOneWidget);
+      expect(find.text('Downloads'), findsNothing);
 
       // At least several tiles are wrapped in TvFocusable (via TvListFocusable).
       final focusables =
@@ -239,7 +235,7 @@ void main() {
 
       // A few more tiles visible in the default test viewport, each a
       // single announced node (no separate title/subtitle Text nodes).
-      for (final label in ['Providers', 'Active source', 'Source health']) {
+      for (final label in ['Connections', 'Providers', 'Active source']) {
         expect(
           tester.getSemantics(find.bySemanticsLabel(label)),
           matchesSemantics(
