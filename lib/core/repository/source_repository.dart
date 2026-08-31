@@ -302,6 +302,20 @@ class SourceRepository implements CatalogueRepository {
     return p is AniyomiProvider ? p.info.baseUrl : '';
   }
 
+  /// Best-effort language code for a source (e.g. "en"), or null when the
+  /// ecosystem doesn't report one. Only Aniyomi and Mihon carry a declared
+  /// language today (mirrors [_rawSources] above, which does the same lang:
+  /// null for CloudStream/JS/LNReader) — used for display only (the browse
+  /// screen's identity tags), never for the language-filtering this class
+  /// already does elsewhere.
+  String? languageFor(String sourceId) {
+    final a = _aniManager.get(sourceId);
+    if (a is AniyomiProvider) return a.info.lang.isEmpty ? null : a.info.lang;
+    final m = _mihonManager.get(sourceId);
+    if (m != null) return m.info.lang.isEmpty ? null : m.info.lang;
+    return null;
+  }
+
   /// Human-friendly name for a source id (falls back to the id itself).
   @override
   String displayName(String sourceId) {

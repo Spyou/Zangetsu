@@ -1,34 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/poster_card.dart';
-import '../../core/ui/source_switcher.dart' show categorizedSources;
+import '../../core/ui/source_switcher.dart' show sourceTypeOf;
 import '../../l10n/l10n.dart';
 import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
+import 'bloc/search_state.dart' show ecosystemOf;
 import 'cubit/browse_source_cubit.dart';
-
-/// The "ecosystem · language" tag [BrowseSourcesList] already shows as a row
-/// subtitle — same [categorizedSources] row, found here by id so the identity
-/// header can reuse it rather than inventing a new lookup. Null when the id
-/// isn't in any bucket (nothing installed with that id any more) or carries
-/// no tag.
-String? _repoTagFor(String sourceId) {
-  final b = categorizedSources();
-  for (final list in [b.anime, b.movies, b.manga, b.novel, b.nsfw]) {
-    for (final row in list) {
-      if (row.id == sourceId) return row.repo;
-    }
-  }
-  return null;
-}
 
 /// One source's catalogue — today's Home, pinned to a chosen source.
 ///
@@ -74,11 +63,26 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // Identity header content — computed once, it never changes for the life
   // of this screen. [_displayName] is the source's clean name (unlike
   // [widget.title], which can carry an ecosystem prefix baked into the
-  // picker's label); [_repoTag] is the same "ecosystem · lang" string
-  // [BrowseSourcesList] already shows as a row subtitle.
+  // picker's label). [_ecosystem]/[_kind] reuse the app's existing id-prefix
+  // resolvers (same ones the Search ecosystem tabs and the source picker's
+  // mode filter use) rather than inventing a new classification; [_language]
+  // is null whenever the ecosystem doesn't report one (CloudStream/plain JS/
+  // LNReader today) — omitted rather than shown as "unknown".
   late final String _displayName =
       sl<SourceRepository>().displayName(widget.sourceId);
-  late final String? _repoTag = _repoTagFor(widget.sourceId);
+  late final String _ecosystem = ecosystemOf(widget.sourceId).label;
+  late final String _kind = sourceTypeOf(widget.sourceId).name;
+  late final String? _language =
+      sl<SourceRepository>().languageFor(widget.sourceId);
+
+  // Overflow-menu availability. [_baseUrl] is sync (a plain field lookup),
+  // so Cloudflare/open-in-browser gate immediately; source-settings needs a
+  // platform-channel round trip, so it stays a Future the menu awaits.
+  late final String _baseUrl = sl<SourceRepository>().baseUrlFor(widget.sourceId);
+  bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
+  bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
+  late final Future<bool> _hasSettings =
+      source_actions.hasSourceSettings(widget.sourceId);
 
   @override
   void dispose() {
@@ -117,6 +121,19 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     setState(() => _searching = false);
   }
 
+  /// Open the source's own site in the system browser — same launcher +
+  /// failure snackbar as Detail's Web button, just pointed at the source's
+  /// base url instead of one title's url (this screen has no item in hand).
+  Future<void> _openInBrowser() async {
+    final ok =
+        await launchUrl(Uri.parse(_baseUrl), mode: LaunchMode.externalApplication);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(context.l10n.couldNotOpenSourceSite)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,6 +165,18 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
                 : context.l10n.searchThisSource,
             onPressed: _searching ? () => _stopSearch(context) : _startSearch,
           ),
+          _SourceOverflowMenu(
+            hasSettings: _hasSettings,
+            canSolveCloudflare: _canSolveCloudflare,
+            canOpenInBrowser: _canOpenInBrowser,
+            onSettings: () => source_actions.openSourceSettings(
+              context,
+              widget.sourceId,
+              _displayName,
+            ),
+            onSolveCloudflare: () => MihonExtensionService.solveCloudflare(_baseUrl),
+            onOpenInBrowser: _openInBrowser,
+          ),
         ],
       ),
       body: Column(
@@ -157,7 +186,12 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           if (!_searching)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: _SourceIdentityHeader(name: _displayName, tag: _repoTag),
+              child: _SourceIdentityHeader(
+                name: _displayName,
+                ecosystem: _ecosystem,
+                language: _language,
+                kind: _kind,
+              ),
             ),
           Expanded(
             child: BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
@@ -269,60 +303,160 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   }
 }
 
-/// Rounded-square initial + name + muted "ecosystem · lang" line, above the
-/// rows — so a source's own catalogue reads as its own place rather than a
-/// bare list under an AppBar title.
+/// The search icon's neighbour: source settings, solve Cloudflare, open in
+/// browser — each entry present only when it will actually do something, no
+/// overflow button at all when none apply. No new plumbing: settings reuses
+/// [source_actions.hasSourceSettings]/[source_actions.openSourceSettings]
+/// (same check the wrong-title sheet's per-row actions use), Cloudflare
+/// reuses [MihonExtensionService.solveCloudflare], and the browser opener
+/// mirrors Detail's Web button. Never touches the active source — the three
+/// callbacks are the caller's, and none of them call ActiveSourceCubit.
+class _SourceOverflowMenu extends StatelessWidget {
+  const _SourceOverflowMenu({
+    required this.hasSettings,
+    required this.canSolveCloudflare,
+    required this.canOpenInBrowser,
+    required this.onSettings,
+    required this.onSolveCloudflare,
+    required this.onOpenInBrowser,
+  });
+
+  final Future<bool> hasSettings;
+  final bool canSolveCloudflare;
+  final bool canOpenInBrowser;
+  final VoidCallback onSettings;
+  final VoidCallback onSolveCloudflare;
+  final VoidCallback onOpenInBrowser;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: hasSettings,
+      builder: (context, snapshot) {
+        final settingsReady = snapshot.data ?? false;
+        if (!settingsReady && !canSolveCloudflare && !canOpenInBrowser) {
+          return const SizedBox.shrink();
+        }
+        return PopupMenuButton<VoidCallback>(
+          icon: const Icon(Icons.more_vert_rounded),
+          onSelected: (action) => action(),
+          itemBuilder: (context) => [
+            if (settingsReady)
+              PopupMenuItem<VoidCallback>(
+                value: onSettings,
+                child: Text(context.l10n.sourceSettings),
+              ),
+            if (canSolveCloudflare)
+              PopupMenuItem<VoidCallback>(
+                value: onSolveCloudflare,
+                child: Text(context.l10n.solveCloudflare),
+              ),
+            if (canOpenInBrowser)
+              PopupMenuItem<VoidCallback>(
+                value: onOpenInBrowser,
+                child: Text(context.l10n.openSourceSite),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// Rounded initial tile + name + small ecosystem/language/kind tag pills,
+/// above the rows — so a source's own catalogue reads as its own place
+/// rather than a bare list under an AppBar title.
 class _SourceIdentityHeader extends StatelessWidget {
-  const _SourceIdentityHeader({required this.name, required this.tag});
+  const _SourceIdentityHeader({
+    required this.name,
+    required this.ecosystem,
+    required this.language,
+    required this.kind,
+  });
 
   final String name;
-  final String? tag;
+  final String ecosystem;
+  final String? language;
+  final String kind;
 
   @override
   Widget build(BuildContext context) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 46,
-            height: 46,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.surface2,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              initial,
-              style: AppText.headline.copyWith(fontSize: 19, fontWeight: FontWeight.w800),
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: AppColors.surface2,
+            borderRadius: BorderRadius.circular(14),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  name,
-                  style: AppText.body.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+          child: Text(
+            initial,
+            style: AppText.headline.copyWith(fontSize: 21, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(width: 13),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: AppText.body.copyWith(
+                  color: AppColors.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
                 ),
-                if (tag != null && tag!.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(tag!, style: AppText.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _IdentityTag(ecosystem),
+                  if (language != null && language!.isNotEmpty)
+                    _IdentityTag(language!),
+                  _IdentityTag(kind),
                 ],
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+/// One small uppercase pill under the identity block ("MIHON", "EN",
+/// "MANGA") — never printed for data we don't actually have (see the callers
+/// above), just omitted.
+class _IdentityTag extends StatelessWidget {
+  const _IdentityTag(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.surface2,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text.toUpperCase(),
+        style: AppText.caption.copyWith(
+          color: AppColors.textSecondary,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
