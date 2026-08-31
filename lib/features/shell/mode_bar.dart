@@ -30,18 +30,26 @@ class ModeBar extends StatelessWidget {
     super.key,
     required this.open,
     required this.current,
+    required this.sourcesSelected,
     required this.onPicked,
-    required this.onSourcesTapped,
+    required this.onSourcesPicked,
   });
 
   final bool open;
   final (ContentMode, StreamKind) current;
+
+  /// True when Sources mode is active. It isn't a [ContentMode]/[StreamKind]
+  /// value (see `content_mode.dart`'s doc comment on why), so it's carried
+  /// separately rather than folded into [current] — picking Sources leaves
+  /// [current] exactly as it was for whenever the user picks a content mode
+  /// again.
+  final bool sourcesSelected;
+
   final void Function(ContentMode mode, StreamKind kind) onPicked;
 
-  /// Sources is a navigation action, not a mode switch — it never touches
-  /// [ContentMode]/[StreamKind], so it gets its own callback rather than a
-  /// sentinel value threaded through [onPicked].
-  final VoidCallback onSourcesTapped;
+  /// Picking Sources sets Zangetsu Mode's `sourcesMode` flag — its own
+  /// callback rather than a sentinel value threaded through [onPicked].
+  final VoidCallback onSourcesPicked;
 
   @override
   Widget build(BuildContext context) {
@@ -74,18 +82,18 @@ class ModeBar extends StatelessWidget {
                           child: _Choice(
                             label: c.label(context),
                             icon: c.icon,
-                            selected: c.mode == current.$1 &&
+                            selected: !sourcesSelected &&
+                                c.mode == current.$1 &&
                                 (c.mode != ContentMode.anime || c.kind == current.$2),
                             onTap: () => onPicked(c.mode, c.kind),
                           ),
                         ),
-                      // Navigation, not a mode — never "selected".
                       Expanded(
                         child: _Choice(
                           label: context.l10n.sources,
                           icon: Icons.extension_outlined,
-                          selected: false,
-                          onTap: onSourcesTapped,
+                          selected: sourcesSelected,
+                          onTap: onSourcesPicked,
                         ),
                       ),
                     ],
