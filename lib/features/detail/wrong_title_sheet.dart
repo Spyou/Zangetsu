@@ -138,7 +138,7 @@ class _MatchLineState extends State<MatchLine> {
   /// Per-source controls on a picker row: solve Cloudflare, and open that
   /// source's own settings. Each is shown only when it will actually do
   /// something, and neither changes the selection — tapping the row body does.
-  Widget? _rowActions(BuildContext sheetContext, String id) {
+  Widget _rowActions(BuildContext sheetContext, String id) {
     // Home already routes Mihon, Aniyomi and LNReader challenges through this
     // one solver, and those are exactly the ecosystems baseUrlFor answers for.
     // CloudStream/JS items are absolute and return '', which doubles as the
@@ -227,59 +227,63 @@ class _MatchLineState extends State<MatchLine> {
               ? l10n.noSourceHasThisYet
               : sl<SourceRepository>().displayName(selectedId);
           final hasMatch = state.match != null;
-          // A quiet outlined pill, right-aligned under the action buttons:
-          // picking the source is a small adjustment, not a third action the
-          // size of Play. "Wrong title?" rides the same row so it is visibly
-          // attached to the source it corrects.
+          // Sized and filled like _DownloadButton directly above, so Play,
+          // Download and Source read as one stack. The row body opens the
+          // picker; the trailing icons act on the SELECTED source and are
+          // outside that InkWell so they never double as a row tap.
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Flexible(
-                  child: Material(
-                    color: Colors.transparent,
-                    clipBehavior: Clip.antiAlias,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(99),
-                      side: const BorderSide(color: AppColors.hairline),
-                    ),
-                    child: InkWell(
-                      onTap: () => _pickSource(state),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(14, 7, 6, 7),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                label,
-                                style: AppText.caption.copyWith(
-                                  // Dimmed when nothing matched — the pill
-                                  // still opens the picker, but there is no
-                                  // source behind it yet.
-                                  color: hasMatch
-                                      ? AppColors.textPrimary
-                                      : AppColors.textTertiary,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                Material(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(8),
+                  clipBehavior: Clip.antiAlias,
+                  child: SizedBox(
+                    height: 52,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => _pickSource(state),
+                            child: Padding(
+                              padding: const EdgeInsets.only(left: 14),
+                              child: Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      label,
+                                      style: AppText.button.copyWith(
+                                        // Dimmed when nothing matched — the row
+                                        // still opens the picker, but there is
+                                        // no source behind it yet.
+                                        color: hasMatch
+                                            ? AppColors.textPrimary
+                                            : AppColors.textTertiary,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.keyboard_arrow_down_rounded,
+                                    size: 20,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ],
                               ),
                             ),
-                            Icon(
-                              Icons.arrow_drop_down,
-                              size: 18,
-                              color: AppColors.textSecondary,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
+                        if (selectedId != null) _rowActions(context, selectedId),
+                        const SizedBox(width: 4),
+                      ],
                     ),
                   ),
                 ),
-                if (selectedId != null) ...[
-                  const SizedBox(width: 10),
+                if (selectedId != null)
                   InkWell(
                     onTap: () => _fix(selectedId),
                     child: Padding(
@@ -293,7 +297,6 @@ class _MatchLineState extends State<MatchLine> {
                       ),
                     ),
                   ),
-                ],
               ],
             ),
           );
