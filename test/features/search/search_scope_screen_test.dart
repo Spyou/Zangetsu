@@ -1,9 +1,11 @@
 // Search no longer offers its own Library/Sources choice — no chips, no
 // persisted pref. The scope is DERIVED from Zangetsu Mode: Sources when Z
-// Mode is off, Library when it's on. Coverage lives entirely in the widget
-// tests below, against the real screen, since the derivation is only
-// meaningful once it decides what actually renders (no chips, and the
-// Sources-only source line shows/hides with it).
+// Mode is off, Library when it's on — or Sources regardless, when the
+// caller passes forceSources (the sources destination's own search action).
+// Coverage lives entirely in the widget tests below, against the real
+// screen, since the derivation is only meaningful once it decides what
+// actually renders (no chips, and the Sources-only source line shows/hides
+// with it).
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -120,10 +122,10 @@ void main() {
   // SearchScreen reads ActiveSourceCubit off the widget tree (same as the
   // real app's root MultiBlocProvider in main.dart), not just off GetIt —
   // see home_source_switcher_slot_test.dart for the same wiring.
-  Widget harness() => MaterialApp(
+  Widget harness({bool forceSources = false}) => MaterialApp(
     home: BlocProvider<ActiveSourceCubit>.value(
       value: sl<ActiveSourceCubit>(),
-      child: const SearchScreen(),
+      child: SearchScreen(forceSources: forceSources),
     ),
   );
 
@@ -196,4 +198,20 @@ void main() {
     expect(find.byType(ChoiceChip), findsNothing);
     expect(sourceLine, findsNothing);
   });
+
+  testWidgets(
+    'forceSources: Search stays source-scoped even with Z Mode on',
+    (t) async {
+      await t.runAsync(() async {
+        await ZModePrefs.init();
+        await ZModePrefs.setEnabled(true);
+      });
+
+      await t.pumpWidget(harness(forceSources: true));
+      await t.pumpAndSettle();
+
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(sourceLine, findsOneWidget);
+    },
+  );
 }

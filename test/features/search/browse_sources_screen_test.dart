@@ -88,4 +88,16 @@ void main() {
 
     expect(find.text('No sources installed'), findsOneWidget);
   });
+
+  // The all-sources content search action (SearchScreen(forceSources: true))
+  // isn't exercised end to end here — pushing the real SearchScreen needs the
+  // full search DI (CatalogueRepository/SearchHistory/etc.), which is already
+  // covered by search_scope_screen_test.dart. This just proves the entry
+  // point is present in the app bar.
+  testWidgets('has a search action in the app bar', (t) async {
+    await t.pumpWidget(const MaterialApp(home: BrowseSourcesScreen()));
+    await t.pumpAndSettle();
+
+    expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+  });
 }
