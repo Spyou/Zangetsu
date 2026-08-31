@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
-import '../../core/aniyomi/aniyomi_extension_service.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
-import '../../core/provider/cloudstream_provider.dart';
+import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/ui/source_switcher.dart';
@@ -14,7 +13,6 @@ import '../../core/zmode/source_matcher.dart';
 import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../l10n/l10n.dart';
-import '../sources/source_settings_screen.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'cubit/detail_cubit.dart';
 import 'cubit/source_select_cubit.dart';
@@ -93,48 +91,6 @@ class _MatchLineState extends State<MatchLine> {
     );
   }
 
-  Future<bool> _hasSourceSettings(String id) {
-    if (id.startsWith('ani:')) {
-      final raw = int.tryParse(id.substring(4));
-      return raw == null
-          ? Future.value(false)
-          : AniyomiExtensionService().hasSourceSettings(raw);
-    }
-    if (id.startsWith('mihon:')) {
-      final raw = int.tryParse(id.substring(6));
-      return raw == null
-          ? Future.value(false)
-          : MihonExtensionService().hasSourceSettings(raw);
-    }
-    if (id.startsWith('cs:')) return csPluginHasSettings(id.substring(3));
-    return Future.value(false);
-  }
-
-  Future<void> _openSourceSettings(
-    BuildContext context,
-    String id,
-    String name,
-  ) async {
-    if (id.startsWith('ani:')) {
-      final raw = int.tryParse(id.substring(4));
-      if (raw != null) await AniyomiExtensionService().openSourceSettings(raw);
-      return;
-    }
-    if (id.startsWith('mihon:')) {
-      final raw = int.tryParse(id.substring(6));
-      if (raw != null) await MihonExtensionService().openSourceSettings(raw);
-      return;
-    }
-    if (id.startsWith('cs:') && context.mounted) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) =>
-              SourceSettingsScreen(sourceId: id, repoUrl: '', displayName: name),
-        ),
-      );
-    }
-  }
-
   /// Per-source controls on a picker row: solve Cloudflare, and open that
   /// source's own settings. Each is shown only when it will actually do
   /// something, and neither changes the selection — tapping the row body does.
@@ -157,7 +113,7 @@ class _MatchLineState extends State<MatchLine> {
                 MihonExtensionService.solveCloudflare(cloudflareUrl),
           ),
         FutureBuilder<bool>(
-          future: _hasSourceSettings(id),
+          future: source_actions.hasSourceSettings(id),
           builder: (context, snapshot) {
             if (snapshot.data != true) return const SizedBox.shrink();
             return IconButton(
@@ -165,7 +121,7 @@ class _MatchLineState extends State<MatchLine> {
               tooltip: sheetContext.l10n.sourceSettings,
               icon: const Icon(Icons.tune_rounded, size: 18),
               color: AppColors.textSecondary,
-              onPressed: () => _openSourceSettings(
+              onPressed: () => source_actions.openSourceSettings(
                 sheetContext,
                 id,
                 sl<SourceRepository>().displayName(id),
