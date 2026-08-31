@@ -78,6 +78,7 @@ Future<void> launchTvPlayback({
       scrobbleTitle: scrobbleTitle,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
     );
     if (!started && context.mounted) await showTvPlaybackLoadError(context);
     return;
@@ -100,6 +101,7 @@ Future<void> launchTvPlayback({
       scrobbleTitle: scrobbleTitle,
       tmdbId: tmdbId,
       tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
     );
     if (!started && context.mounted) await showTvPlaybackLoadError(context);
     return;

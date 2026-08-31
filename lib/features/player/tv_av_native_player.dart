@@ -24,6 +24,7 @@ import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/subtitle_encode_skew.dart';
 import '../../core/playback/title_prefs.dart';
+import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -54,6 +55,7 @@ class TvAvNativePlayer {
   static Map<String, String>? _coverHeaders;
   static int? _malId;
   static String? _skipTitle;
+  static TvPlaybackTracker? _tracker;
   static List<SubtitleSearchResult> _subResults = const [];
   static String _category = 'sub';
   static ResumeStore? _resume;
@@ -88,6 +90,7 @@ class TvAvNativePlayer {
     String? scrobbleTitle,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (!Platform.isIOS) return false;
     if (startIndex < 0 || startIndex >= episodes.length) return false;
@@ -110,6 +113,13 @@ class TvAvNativePlayer {
     _skipTitle = scrobbleTitle;
     _category = category;
     _resume = resume;
+    _tracker = TvPlaybackTracker(
+      malId: malId,
+      scrobbleTitle: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+    );
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
@@ -158,6 +168,7 @@ class TvAvNativePlayer {
       positionMs: mark?.position.inMilliseconds ?? 0,
       durationMs: mark?.duration.inMilliseconds ?? 0,
     );
+    _tracker?.maybeMarkWatching();
 
     final warm = malId != null
         ? FillerService.instance.peekCache(malId)
@@ -248,6 +259,7 @@ class TvAvNativePlayer {
         }
         _category = category;
         final mark = _resume?.get(_sourceId, _showId, ep.id);
+        _tracker?.maybeMarkWatching();
         _announceWatching(
           ep,
           positionMs: mark?.position.inMilliseconds ?? 0,
@@ -262,7 +274,8 @@ class TvAvNativePlayer {
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
         final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
-        _saveProgress(index, posMs, durMs);
+        final completed = args['completed'] as bool? ?? false;
+        _saveProgress(index, posMs, durMs, completed: completed);
         if (index >= 0 && index < _episodes.length) {
           _announceWatching(
             _episodes[index],
@@ -546,7 +559,12 @@ class TvAvNativePlayer {
   static Map<String, dynamic> _streamPayload(VideoSource src, int positionMs) =>
       {..._srcMap(src), 'positionMs': positionMs};
 
-  static void _saveProgress(int index, int posMs, int durMs) {
+  static void _saveProgress(
+    int index,
+    int posMs,
+    int durMs, {
+    bool completed = false,
+  }) {
     if (index < 0 || index >= _episodes.length || durMs <= 0 || posMs <= 0) {
       return;
     }
@@ -576,6 +594,13 @@ class TvAvNativePlayer {
         malId: _malId,
       ),
       flush: true,
+    );
+    _tracker?.maybeScrobble(
+      index: index,
+      episode: ep,
+      positionMs: posMs,
+      durationMs: durMs,
+      force: completed,
     );
     debugPrint('[TvAvNativePlayer] saved ep=${ep.id} pos=$posMs');
   }

@@ -19,6 +19,7 @@ import '../../core/playback/skip_service.dart';
 import '../../core/playback/source_selection.dart';
 import '../../core/playback/subtitle_font_stage.dart';
 import '../../core/playback/subtitle_search_service.dart';
+import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/theme/app_colors.dart';
@@ -58,6 +59,7 @@ class TvNativePlayer {
   static Map<String, String>? _coverHeaders;
   static int? _malId;
   static String? _skipTitle; // anime title for AniSkip (null = no skips)
+  static TvPlaybackTracker? _tracker;
   static List<SubtitleSearchResult> _subResults = const []; // last online search
   static String _category = 'sub';
   static ResumeStore? _resume;
@@ -82,6 +84,7 @@ class TvNativePlayer {
     String? scrobbleTitle,
     int? tmdbId,
     bool tmdbIsTv = false,
+    String? imdbId,
   }) async {
     if (startIndex < 0 || startIndex >= episodes.length) return false;
 
@@ -103,6 +106,13 @@ class TvNativePlayer {
     _skipTitle = scrobbleTitle;
     _category = category;
     _resume = resume;
+    _tracker = TvPlaybackTracker(
+      malId: malId,
+      scrobbleTitle: scrobbleTitle,
+      tmdbId: tmdbId,
+      tmdbIsTv: tmdbIsTv,
+      imdbId: imdbId,
+    );
     if (!_handlerBound) {
       _ch.setMethodCallHandler(_onNativeCall);
       _handlerBound = true;
@@ -140,6 +150,7 @@ class TvNativePlayer {
       positionMs: mark?.position.inMilliseconds ?? 0,
       durationMs: mark?.duration.inMilliseconds ?? 0,
     );
+    _tracker?.maybeMarkWatching();
 
     // Filler flags: use warm cache immediately so launch isn't blocked; push an
     // update over the channel if the Jikan fetch lands after the player is up.
@@ -232,6 +243,7 @@ class TvNativePlayer {
         if (playUrl == null) return null;
         _category = category;
         final mark = _resume?.get(_sourceId, _showId, ep.id);
+        _tracker?.maybeMarkWatching();
         // Episode switch / Next Episode → advance the Discord "Watching" line.
         _announceWatching(
           ep,
@@ -248,7 +260,8 @@ class TvNativePlayer {
         final index = (args['index'] as num?)?.toInt() ?? -1;
         final posMs = (args['positionMs'] as num?)?.toInt() ?? 0;
         final durMs = (args['durationMs'] as num?)?.toInt() ?? 0;
-        _saveProgress(index, posMs, durMs);
+        final completed = args['completed'] as bool? ?? false;
+        _saveProgress(index, posMs, durMs, completed: completed);
         if (index >= 0 && index < _episodes.length) {
           _announceWatching(
             _episodes[index],
@@ -453,7 +466,12 @@ class TvNativePlayer {
         'positionMs': positionMs,
       };
 
-  static void _saveProgress(int index, int posMs, int durMs) {
+  static void _saveProgress(
+    int index,
+    int posMs,
+    int durMs, {
+    bool completed = false,
+  }) {
     if (index < 0 || index >= _episodes.length || durMs <= 0 || posMs <= 0) return;
     final ep = _episodes[index];
     _resume?.save(
@@ -481,6 +499,13 @@ class TvNativePlayer {
         malId: _malId,
       ),
       flush: true,
+    );
+    _tracker?.maybeScrobble(
+      index: index,
+      episode: ep,
+      positionMs: posMs,
+      durationMs: durMs,
+      force: completed,
     );
     debugPrint('[TvNativePlayer] saved ep=${ep.id} pos=$posMs');
   }
