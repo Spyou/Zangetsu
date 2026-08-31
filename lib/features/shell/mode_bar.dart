@@ -38,17 +38,19 @@ class ModeBar extends StatelessWidget {
   final bool open;
   final (ContentMode, StreamKind) current;
 
-  /// True when Sources mode is active. It isn't a [ContentMode]/[StreamKind]
-  /// value (see `content_mode.dart`'s doc comment on why), so it's carried
-  /// separately rather than folded into [current] — picking Sources leaves
-  /// [current] exactly as it was for whenever the user picks a content mode
-  /// again.
+  /// True when Sources mode is on. It isn't a [ContentMode]/[StreamKind]
+  /// value (see `content_mode.dart`'s doc comment on why) and it isn't part
+  /// of the content-mode group either — it's a second, independent
+  /// dimension (what to browse vs. where from), rendered past a divider as
+  /// its own switch. [current] and [sourcesSelected] can both be "on" at
+  /// once: Manga selected AND Sources on means "my installed manga sources".
   final bool sourcesSelected;
 
   final void Function(ContentMode mode, StreamKind kind) onPicked;
 
-  /// Picking Sources sets Zangetsu Mode's `sourcesMode` flag — its own
-  /// callback rather than a sentinel value threaded through [onPicked].
+  /// Flips Zangetsu Mode's `sourcesMode` flag — its own callback rather than
+  /// a sentinel value threaded through [onPicked], since it never touches
+  /// [current].
   final VoidCallback onSourcesPicked;
 
   @override
@@ -77,24 +79,33 @@ class ModeBar extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      for (final c in modeChoices)
-                        Expanded(
-                          child: _Choice(
-                            label: c.label(context),
-                            icon: c.icon,
-                            selected: !sourcesSelected &&
-                                c.mode == current.$1 &&
-                                (c.mode != ContentMode.anime || c.kind == current.$2),
-                            onTap: () => onPicked(c.mode, c.kind),
-                          ),
-                        ),
+                      // The segmented group: exactly one of these four is
+                      // selected, independent of [sourcesSelected].
                       Expanded(
-                        child: _Choice(
-                          label: context.l10n.sources,
-                          icon: Icons.extension_outlined,
-                          selected: sourcesSelected,
-                          onTap: onSourcesPicked,
+                        child: Row(
+                          children: [
+                            for (final c in modeChoices)
+                              Expanded(
+                                child: _Choice(
+                                  label: c.label(context),
+                                  icon: c.icon,
+                                  selected: c.mode == current.$1 &&
+                                      (c.mode != ContentMode.anime || c.kind == current.$2),
+                                  onTap: () => onPicked(c.mode, c.kind),
+                                ),
+                              ),
+                          ],
                         ),
+                      ),
+                      Container(
+                        width: 1,
+                        height: 30,
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        color: Colors.white.withValues(alpha: 0.10),
+                      ),
+                      _SourcesSwitch(
+                        selected: sourcesSelected,
+                        onTap: onSourcesPicked,
                       ),
                     ],
                   ),
@@ -138,6 +149,44 @@ class _Choice extends StatelessWidget {
             Icon(icon, size: 21, color: color),
             const SizedBox(height: 4),
             Text(label, style: AppText.caption.copyWith(color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Sources: an independent ON/OFF switch, not a fifth segmented choice —
+/// outlined when off, filled [AppColors.accent] when on.
+class _SourcesSwitch extends StatelessWidget {
+  const _SourcesSwitch({required this.selected, required this.onTap});
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? Colors.white : AppColors.textSecondary;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.accent : null,
+          borderRadius: BorderRadius.circular(14),
+          border: selected
+              ? null
+              : Border.all(color: AppColors.textTertiary.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.extension_outlined, size: 18, color: color),
+            const SizedBox(width: 6),
+            Text(
+              context.l10n.sources,
+              style: AppText.caption.copyWith(color: color, fontWeight: FontWeight.w700),
+            ),
           ],
         ),
       ),
