@@ -71,7 +71,7 @@ class _Repo implements CatalogueRepository {
   @override
   Future<void> clearHttpCache() async {}
   @override
-  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId}) async {
+  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId, void Function(MediaDetail partial)? onPartial}) async {
     detailCalls++;
     return const MediaDetail(
         id: 'x', title: 'x', url: 'zm://manga/mal:777', type: ProviderType.manga, sourceId: 'zm');
@@ -293,11 +293,13 @@ void main() {
     // hianime is now selected, honestly with no match — not silently left on
     // allanime, and not crashed/hidden.
     expect(find.textContaining('HiAnime'), findsOneWidget);
-    // Dimmed, so "selected but nothing behind it" still reads differently from
-    // a real match. The signal used to be the row's icon; it is now the pill's
-    // own label, since the icon went away with the outlined-pill redesign.
+    // "Selected but nothing behind it" is said in words, not just signalled by
+    // dimming the name: a picked source keeps its normal label (you need to
+    // read WHICH source is selected in order to change it) and the pill
+    // carries an explicit line underneath saying it has nothing.
     final name = t.widget<Text>(find.textContaining('HiAnime'));
-    expect(name.style?.color, AppColors.textTertiary);
+    expect(name.style?.color, AppColors.textPrimary);
+    expect(find.text('No episodes available from this source'), findsOneWidget);
     expect(sl<MatchStore>().get(fma, 'ani:2'), isNull);
   });
 
@@ -368,7 +370,14 @@ void main() {
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
         sources: src, store: store, candidates: (_) => src.loadedSources));
 
-    await t.pumpWidget(harness(const MatchLine(canonical: fma, title: 'nothing like it')));
+    // runAsync: nothing matches, so the matcher records a miss per candidate
+    // (MatchStore.rememberMiss) — real Hive writes, which never drain under
+    // the pump-driven binding.
+    await t.runAsync(() async {
+      await t.pumpWidget(
+          harness(const MatchLine(canonical: fma, title: 'nothing like it')));
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
     await t.pumpAndSettle();
 
     expect(find.text('No source has this yet'), findsOneWidget);

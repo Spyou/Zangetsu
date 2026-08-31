@@ -70,6 +70,7 @@ class _CloudflareRepo implements SourceRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   }) async {
     calls++;
     if (calls <= succeedTimes) return ok!;
@@ -95,6 +96,7 @@ class _NormalRepo implements SourceRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   }) async => okDetail;
 }
 
@@ -118,6 +120,7 @@ class _NovelLatchRepo implements SourceRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   }) async => MediaDetail(
     id: url,
     title: '',

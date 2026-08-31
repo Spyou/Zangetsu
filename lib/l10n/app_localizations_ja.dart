@@ -2232,6 +2232,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sourceSettings => 'ソース設定';
 
   @override
+  String get sourceDomain => 'ソースのドメイン';
+
+  @override
+  String get sourceDomainHint => '空欄にすると、ソース本来のドメインを使用します。';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return '$nameの保存データをリセットしますか?保存された設定、ログイン情報、Cookieが削除されます。リスト、履歴、ダウンロードには影響しません。';
   }

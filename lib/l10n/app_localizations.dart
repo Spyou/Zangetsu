@@ -4406,6 +4406,18 @@ abstract class AppLocalizations {
   /// **'Source settings'**
   String get sourceSettings;
 
+  /// No description provided for @sourceDomain.
+  ///
+  /// In en, this message translates to:
+  /// **'Source domain'**
+  String get sourceDomain;
+
+  /// No description provided for @sourceDomainHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to use the source\'s own domain.'**
+  String get sourceDomainHint;
+
   /// No description provided for @resetSourceDataConfirm.
   ///
   /// In en, this message translates to:

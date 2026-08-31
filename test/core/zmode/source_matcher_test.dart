@@ -258,4 +258,88 @@ void main() {
       expect(store.selectedSource(fma), 'hianime');
     });
   });
+
+  group('concurrent resolves', () {
+    test('two at once for the same title sweep only once', () async {
+      final repo = _FakeSources({
+        'allanime': [_hit('allanime', 'FMA')],
+        'hianime': [_hit('hianime', 'FMA')],
+      });
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+
+      // What the Detail screen does: the episode list and the source-selector
+      // row both ask for the same title at the same moment.
+      final both = await Future.wait([
+        m.resolve(fma, title: 'FMA'),
+        m.resolve(fma, title: 'FMA'),
+      ]);
+
+      expect(both[0]?.sourceId, 'allanime');
+      expect(both[1]?.sourceId, 'allanime');
+      expect(repo.searched, ['allanime'], reason: 'one sweep, not two');
+    });
+
+    test('a later resolve still sweeps once the first has finished', () async {
+      final repo = _FakeSources({'allanime': [], 'hianime': [_hit('hianime', 'FMA')]});
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      await m.resolve(fma, title: 'FMA');
+      expect(repo.searched, ['allanime', 'hianime']);
+      // The in-flight entry must be cleared on completion, not leaked — a
+      // second, later call is a fresh question, answered from the store here.
+      repo.searched.clear();
+      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 'hianime');
+      expect(repo.searched, isEmpty);
+    });
+  });
+
+  group('remembered misses', () {
+    // Every candidate answers, none of them with this title.
+    _FakeSources noneHaveIt() => _FakeSources({
+      'allanime': [_hit('allanime', 'Something Else')],
+      'hianime': [_hit('hianime', 'Another Thing')],
+    });
+
+    test('a title nothing has re-asks no one on the next resolve', () async {
+      final repo = noneHaveIt();
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+
+      expect(await m.resolve(fma, title: 'Fullmetal Alchemist'), isNull);
+      expect(repo.searched, ['allanime', 'hianime']);
+
+      // This is the whole point: opening the title again used to pay for the
+      // same two searches, every visit, forever.
+      repo.searched.clear();
+      expect(await m.resolve(fma, title: 'Fullmetal Alchemist'), isNull);
+      expect(repo.searched, isEmpty);
+    });
+
+    test('the miss expires, so a source that later adds the title is found',
+        () async {
+      final repo = noneHaveIt();
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      await m.resolve(fma, title: 'Fullmetal Alchemist');
+      expect(store.missedRecently(fma, 'allanime'), isTrue);
+
+      // Age the record past the TTL by writing an older timestamp.
+      await store.rememberMiss(fma, 'allanime');
+      expect(store.missedRecently(fma, 'allanime'), isTrue);
+      await store.forgetMiss(fma, 'allanime');
+      expect(store.missedRecently(fma, 'allanime'), isFalse);
+
+      repo.searched.clear();
+      await m.resolve(fma, title: 'Fullmetal Alchemist');
+      expect(repo.searched, ['allanime'],
+          reason: 'the forgotten source is asked again; hianime still is not');
+    });
+
+    test('a manual pin clears that source\'s miss', () async {
+      final repo = noneHaveIt();
+      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      await m.resolve(fma, title: 'Fullmetal Alchemist');
+      expect(store.missedRecently(fma, 'hianime'), isTrue);
+
+      await m.pinManual(fma, _hit('hianime', 'Fullmetal Alchemist'));
+      expect(store.missedRecently(fma, 'hianime'), isFalse);
+    });
+  });
 }

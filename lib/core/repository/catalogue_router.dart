@@ -82,7 +82,13 @@ class CatalogueRouter implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
-  }) => _forUrl(url).detail(url, category: category, sourceId: sourceId);
+    void Function(MediaDetail partial)? onPartial,
+  }) => _forUrl(url).detail(
+    url,
+    category: category,
+    sourceId: sourceId,
+    onPartial: onPartial,
+  );
 
   @override
   Future<void> clearHttpCache() => _source.clearHttpCache();

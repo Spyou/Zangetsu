@@ -1,4 +1,3 @@
-import 'cf_diag.dart';
 /// Remembers which JS-provider hosts hit a Cloudflare challenge while a
 /// solve was deliberately suppressed — see `_suppressCfSolve` in
 /// `_JsHost._runCall`/`_onFetch` (provider_manager.dart), set for the
@@ -24,26 +23,16 @@ class CfSolveNeeded {
   // for a request made outside any loaded provider's namespace.
   static final Map<String, ({String? sourceId, String url})> _hosts = {};
 
-  static void needsSolve(String host, String url, {String? sourceId}) {
-    // ignore: avoid_print
-    print('[cfneed] FLAGGED host=$host sourceId=$sourceId url=$url');
-    CfDiag.write('[cfneed] FLAGGED host=$host sourceId=$sourceId url=$url');
-    _hosts[host] = (sourceId: sourceId, url: url);
-  }
+  static void needsSolve(String host, String url, {String? sourceId}) =>
+      _hosts[host] = (sourceId: sourceId, url: url);
 
   /// Clears the flag for [host] — call once a solve for it succeeds.
   static void clear(String host) => _hosts.remove(host);
 
   static bool hostFlagged(String host) => _hosts.containsKey(host);
 
-  static bool sourceFlagged(String sourceId) {
-    final hit = _hosts.values.any((v) => v.sourceId == sourceId);
-    // ignore: avoid_print
-    print('[cfneed] check sourceId=$sourceId -> $hit');
-    CfDiag.write('[cfneed] check sourceId=$sourceId -> $hit '
-        '(flagged: ${_hosts.values.map((v) => v.sourceId).toList()})');
-    return hit;
-  }
+  static bool sourceFlagged(String sourceId) =>
+      _hosts.values.any((v) => v.sourceId == sourceId);
 
   /// The challenge url recorded for [sourceId], or null when it isn't flagged.
   static String? urlFor(String sourceId) {

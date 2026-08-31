@@ -25,6 +25,7 @@ import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
 import 'catalogue_repository.dart';
+import 'source_domain_overrides.dart';
 
 /// Facade over the active provider runtime for the UI layer.
 /// The active source is driven by [activeSource] so callers can switch at
@@ -293,6 +294,10 @@ class SourceRepository implements CatalogueRepository {
   /// `.isNotEmpty`, so a source with no known site simply hides the actions
   /// rather than offering a control that can't work.
   String baseUrlFor(String sourceId) {
+    // A domain the user set by hand outranks whatever the extension reports —
+    // that's the whole point of setting one (see [SourceDomainOverrides]).
+    final override = _domainOverride(sourceId);
+    if (override != null) return override;
     // Mihon stores `SManga.url` as a path for the same reason Aniyomi does
     // (the native side requests `baseUrl + manga.url`), so a manga item needs
     // the same relative→absolute treatment before it can be shared/opened.
@@ -333,6 +338,10 @@ class SourceRepository implements CatalogueRepository {
   /// Null when none of those is usable — callers must hide the solve action
   /// rather than open a url that can't be solved.
   Future<String?> cfSolveTargetFor(String sourceId) async {
+    // Ahead of every derived value: the user set this precisely because the
+    // derived ones were wrong.
+    final override = _domainOverride(sourceId);
+    if (override != null) return override;
     final flagged = CfSolveNeeded.urlFor(sourceId);
     if (flagged != null && flagged.isNotEmpty) return flagged;
     final c = _csManager.get(sourceId);
@@ -343,6 +352,15 @@ class SourceRepository implements CatalogueRepository {
     final cached = baseUrlFor(sourceId);
     return cached.isEmpty ? null : cached;
   }
+
+  /// The user's own domain for [sourceId], or null. Read through the locator
+  /// rather than the constructor so the many `implements SourceRepository`
+  /// fakes don't all have to grow a parameter; guarded on registration so a
+  /// test that never registers the store behaves exactly as before.
+  String? _domainOverride(String sourceId) =>
+      sl.isRegistered<SourceDomainOverrides>()
+          ? sl<SourceDomainOverrides>().get(sourceId)
+          : null;
 
   /// Best-effort language code for a source (e.g. "en"), or null when the
   /// ecosystem doesn't report one. Only Aniyomi and Mihon carry a declared
@@ -683,6 +701,9 @@ class SourceRepository implements CatalogueRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    // A source detail arrives whole — there is no slow second half to skip
+    // ahead of, so this is accepted for the interface and never called.
+    void Function(MediaDetail partial)? onPartial,
   }) => _providerFor(sourceId).getDetail(url, category: category);
 
   /// Drop the native source HTTP cache (Mihon/Aniyomi) so a subsequent fetch is

@@ -6,16 +6,26 @@ part of 'detail_screen.dart';
 /// layout (backdrop, title/meta, Play/Download, synopsis, credits) so the
 /// screen eases in instead of popping from a blank spinner to a full page.
 /// One shared [AnimationController] (same pattern as RowSkeleton/SkeletonGrid).
-class _DetailSkeleton extends StatefulWidget {
-  const _DetailSkeleton({required this.heroHeight});
+/// A flat placeholder shape in the skeleton base colour. Shared by every
+/// skeleton here so they all read as the same material.
+Widget _bone(double w, double h, [double r = 8]) => ClipRRect(
+  borderRadius: BorderRadius.circular(r),
+  child: SizedBox(width: w, height: h, child: ColoredBox(color: AppColors.surface2)),
+);
 
-  final double heroHeight;
+/// Sweeps the shimmer sheen across whatever flat shapes it wraps. Owns the
+/// controller, so a new skeleton is a tree of [_bone]s inside this rather
+/// than another copy of the animation plumbing.
+class _Shimmer extends StatefulWidget {
+  const _Shimmer({required this.child});
+
+  final Widget child;
 
   @override
-  State<_DetailSkeleton> createState() => _DetailSkeletonState();
+  State<_Shimmer> createState() => _ShimmerState();
 }
 
-class _DetailSkeletonState extends State<_DetailSkeleton>
+class _ShimmerState extends State<_Shimmer>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ctrl;
 
@@ -38,18 +48,44 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
     final base = AppColors.surface2;
     final highlight = Color.lerp(base, Colors.white, 0.14)!;
-
-    Widget box(double w, double h, [double r = 8]) => ClipRRect(
-      borderRadius: BorderRadius.circular(r),
-      child: SizedBox(
-        width: w,
-        height: h,
-        child: ColoredBox(color: base),
+    // A diagonal highlight band swept across the masked shapes — the classic
+    // shimmer sheen, far livelier than a flat opacity pulse.
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _ctrl,
+        child: widget.child,
+        builder: (context, child) {
+          final t =
+              _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
+          return ShaderMask(
+            blendMode: BlendMode.srcATop,
+            shaderCallback: (bounds) => LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [base, highlight, base],
+              stops: const [0.32, 0.5, 0.68],
+              transform: _SlideGradient(t),
+            ).createShader(bounds),
+            child: child,
+          );
+        },
       ),
     );
+  }
+}
+
+class _DetailSkeleton extends StatelessWidget {
+  const _DetailSkeleton({required this.heroHeight});
+
+  final double heroHeight;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final base = AppColors.surface2;
+    const box = _bone;
 
     // The skeleton shapes, painted in the flat base colour. A moving highlight
     // is swept across them by the ShaderMask below.
@@ -60,7 +96,7 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
         children: [
           SizedBox(
             width: double.infinity,
-            height: widget.heroHeight,
+            height: heroHeight,
             child: ColoredBox(color: base),
           ),
           Padding(
@@ -92,30 +128,46 @@ class _DetailSkeletonState extends State<_DetailSkeleton>
       ),
     );
 
-    // A diagonal highlight band swept across the masked shapes — the classic
-    // shimmer sheen, far livelier than a flat opacity pulse.
-    return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _ctrl,
-        child: shapes,
-        builder: (context, child) {
-          final t =
-              _ctrl.value * 3 - 1; // -1 → 2 : band enters left, exits right
-          return ShaderMask(
-            blendMode: BlendMode.srcATop,
-            shaderCallback: (bounds) => LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [base, highlight, base],
-              stops: const [0.32, 0.5, 0.68],
-              transform: _SlideGradient(t),
-            ).createShader(bounds),
-            child: child,
-          );
-        },
-      ),
-    );
+    return _Shimmer(child: shapes);
   }
+}
+
+/// Placeholder episode rows for the Episodes tab while the matched source's
+/// list is still being fetched — see [DetailState.episodesLoading]. The
+/// screen now paints before that fetch finishes, and an empty list there
+/// would otherwise read as "this source has nothing".
+class _EpisodeListSkeleton extends StatelessWidget {
+  const _EpisodeListSkeleton();
+
+  @override
+  Widget build(BuildContext context) => _Shimmer(
+    child: ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 6,
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
+      // Mirrors the real episode row — 116×66 thumb, title line, meta line —
+      // so the list settles in place instead of jumping when it arrives.
+      itemBuilder: (context, _) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _bone(116, 66, 10),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 6),
+                _bone(double.infinity, 13),
+                const SizedBox(height: 9),
+                _bone(120, 11),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Translates a gradient horizontally by [t] × width — used to sweep the

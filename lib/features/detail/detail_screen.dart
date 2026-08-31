@@ -1735,6 +1735,7 @@ class _DetailViewState extends State<_DetailView>
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 18, 16, 0),
                 child: _PlayButton(
+                  loading: state.episodesLoading,
                   label: buttonLabel,
                   icon: isReading
                       ? Icons.menu_book_rounded
@@ -1749,13 +1750,19 @@ class _DetailViewState extends State<_DetailView>
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                   child: _DownloadButton(
+                    // Gated exactly like Play above: with no episodes there is
+                    // nothing to download, and leaving it live on a title no
+                    // source matched just moves the dead end one tap later.
+                    loading: state.episodesLoading,
                     label: downloadLabel,
-                    onPressed: () => _openDownloadSheet(
-                      detail: detail,
-                      category: category,
-                      episodesBySeason: episodesBySeason,
-                      initialSeason: currentSeason,
-                    ),
+                    onPressed: eps.isEmpty
+                        ? null
+                        : () => _openDownloadSheet(
+                            detail: detail,
+                            category: category,
+                            episodesBySeason: episodesBySeason,
+                            initialSeason: currentSeason,
+                          ),
                   ),
                 ),
               // Z Mode: matched source + "Wrong title?", kept with the
@@ -1930,6 +1937,7 @@ class _DetailViewState extends State<_DetailView>
         children: [
           // ── Episodes ──────────────────────────────────────────────────────
           _EpisodesTab(
+            loading: state.episodesLoading,
             eps: eps,
             seasonEps: seasonEps,
             fillerEps: _fillerEps,

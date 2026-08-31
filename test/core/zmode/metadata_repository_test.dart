@@ -164,7 +164,7 @@ void main() {
     expect(d.episodes[1].url, 'zm://anime/mal:100/ep/2');
   });
 
-  test('unmatched anime detail keeps the synthesised episode list', () async {
+  test('unmatched anime detail drops the synthesised episode list', () async {
     final store = await MatchStore.open();
     final dead = _NoHits();
     final r = MetadataRepository(
@@ -177,8 +177,10 @@ void main() {
       browseKind: () => ZKind.anime,
     );
     final d = await r.detail('zm://anime/mal:100');
-    expect(d.episodes.length, 12);
-    expect(d.episodes.first.title, 'Episode 1');
+    // AniList synthesises all 12, but nothing matched, so none of those
+    // zm://…/ep/n urls can be played — the screen must show its empty state
+    // rather than a real-looking list that fails on tap.
+    expect(d.episodes, isEmpty);
     expect(d.sourceId, ZmodeIds.sourceId);
   });
 
