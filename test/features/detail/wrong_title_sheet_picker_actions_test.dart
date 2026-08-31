@@ -191,20 +191,23 @@ void main() {
       findsOneWidget,
       reason: 'the shield must sit on the site-backed row, not the JS one',
     );
+    // Task 20: an unflagged source's shield is the plain one, no badge.
+    expect(inSheet(find.byType(Badge)), findsNothing);
   });
 
-  // Task 20: a JS provider (baseUrlFor == '') gets no shield at all UNLESS
-  // CfSolveNeeded flagged it — then it gets one too, visually distinct from
-  // the plain (unflagged) shield the site-backed row already has.
+  // Task 20: a source CfSolveNeeded flagged gets a visually distinct shield
+  // (badged), not the same plain one every base-url row already has —
+  // otherwise there's nothing telling the user THIS one actually needs a
+  // solve.
   testWidgets(
       'a source flagged by CfSolveNeeded gets a distinct badged shield',
       (t) async {
     CfSolveNeeded.needsSolve(
-      'allanime.test',
-      'https://allanime.test/s?q=x',
-      sourceId: 'allanime',
+      'example.test',
+      'https://example.test/s?q=x',
+      sourceId: 'ani:1',
     );
-    addTearDown(() => CfSolveNeeded.clear('allanime.test'));
+    addTearDown(() => CfSolveNeeded.clear('example.test'));
 
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
@@ -216,21 +219,10 @@ void main() {
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
 
-    // Both rows now show a shield: ani:1's plain one (base url), allanime's
-    // badged one (flagged) — the flag alone earned allanime a control it
-    // never had before.
-    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsNWidgets(2));
+    // Still one shield (ani:1's — the only row this harness registers), now
+    // wearing the flagged badge instead of the plain unflagged one.
+    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
     expect(inSheet(find.byType(Badge)), findsOneWidget);
-
-    final badgedRow = find.ancestor(
-      of: inSheet(find.byType(Badge)),
-      matching: find.byType(InkWell),
-    );
-    expect(
-      find.descendant(of: badgedRow, matching: find.textContaining('AllAnime')),
-      findsOneWidget,
-      reason: 'the badge must sit on the flagged row, not the unflagged one',
-    );
   });
 }
 
