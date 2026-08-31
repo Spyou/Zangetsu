@@ -43,6 +43,8 @@ import '../mihon/mihon_filter_sheet.dart';
 import '../auth/auth_screens.dart';
 import '../detail/detail_screen.dart';
 import '../player/player_screen.dart';
+import '../search/browse_source_screen.dart';
+import '../search/browse_sources_list.dart';
 import '../sources/zangetsu_sources_screen.dart';
 import 'search_screen_tv.dart';
 import 'see_all_screen.dart';
@@ -478,6 +480,24 @@ class _SearchViewState extends State<_SearchView>
                   }
                   switch (state.status) {
                     case SearchStatus.idle:
+                      // Sources scope, nothing typed, no filters-only browse in
+                      // progress (that's real content — see [_idleView] — not
+                      // the true empty state): the idle screen becomes "which
+                      // source do you want to browse?" instead of recent
+                      // searches/trending, which belong to a library-wide
+                      // search that Sources scope doesn't do.
+                      if (widget.scope == SearchScope.sources &&
+                          _controller.text.isEmpty &&
+                          !state.hasFilteredBrowse) {
+                        return BrowseSourcesList(
+                          onBrowse: (id, name) => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  BrowseSourceScreen(sourceId: id, title: name),
+                            ),
+                          ),
+                        );
+                      }
                       return _idleView(state);
                     case SearchStatus.loading:
                       return const Padding(
