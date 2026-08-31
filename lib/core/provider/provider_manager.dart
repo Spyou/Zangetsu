@@ -571,6 +571,12 @@ class _JsHost {
   /// True when a response is a Cloudflare interstitial rather than real content.
   bool _looksLikeCfChallenge(Response<dynamic> resp) {
     final code = resp.statusCode ?? 0;
+    if (code == 403 || code == 503) {
+      // ignore: avoid_print
+      print('[cfdet] code=$code server="${resp.headers.value('server')}" '
+          'cf-mitigated="${resp.headers.value('cf-mitigated')}" '
+          'suppress=$_suppressCfSolve bodyLen=${resp.data?.toString().length ?? 0}');
+    }
     if (code != 403 && code != 503) return false;
     final server = (resp.headers.value('server') ?? '').toLowerCase();
     final bodyText = (resp.data?.toString() ?? '').toLowerCase();
