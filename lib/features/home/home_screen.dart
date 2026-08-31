@@ -68,6 +68,7 @@ import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
+import 'search_screen.dart';
 import 'see_all_screen.dart';
 
 /// Provides the [HomeCubit] (which owns the three browse rows + the carousel's
@@ -571,6 +572,7 @@ class _HomeViewState extends State<_HomeView>
             ),
             // Header bell is parked for now (design TBD) — re-add
             // `_notificationBell(context)` here once one is chosen.
+            const HomeSearchAction(),
             const HomeBrowseSourcesAction(),
             const HomeSourceSwitcherSlot(),
           ],
@@ -1294,6 +1296,29 @@ class _HomeViewState extends State<_HomeView>
             if (_slashing) _slashOverlay(),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Opens [SearchScreen] — the primary way into search now that it's off the
+/// dock. Shown regardless of Z Mode: [SearchScreen] itself already switches
+/// between the metadata catalogue and the active source, so the header icon
+/// that reaches it doesn't need to.
+class HomeSearchAction extends StatelessWidget {
+  const HomeSearchAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(
+        Icons.search_rounded,
+        color: AppColors.textSecondary,
+        size: 20,
+      ),
+      tooltip: context.l10n.search,
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
       ),
     );
   }
