@@ -344,6 +344,64 @@ void main() {
     );
   });
 
+  group('SearchBloc.forceMode (search opened from a specific tab)', () {
+    // Pins the fix for BrowseSourcesScreen's search action: opening search
+    // from the Manga tab must search manga sources regardless of whatever
+    // the app's global ContentModeCubit is currently set to — before the
+    // fix, `_modeSources()` always read the global mode, so a manga-tab
+    // search while the app was in Streaming mode searched anime sources.
+    test(
+      'forceMode overrides the global content mode for the fan-out',
+      () async {
+        await modeCubit.setMode(ContentMode.anime);
+        final forced = SearchBloc(
+          repo: repo,
+          history: _FakeSearchHistory(),
+          prefs: _FakeSearchPrefs(),
+          suggestions: _FakeSuggestions(),
+          forceMode: ContentMode.manga,
+        );
+        addTearDown(forced.close);
+
+        forced.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(
+          repo.searchedSourceIds.toSet(),
+          {'mihon:1'},
+          reason:
+              'forceMode: manga must search manga sources even though the '
+              "app's global content mode is anime here",
+        );
+      },
+    );
+
+    test(
+      'forceMode null falls back to the global content mode, unchanged',
+      () async {
+        await modeCubit.setMode(ContentMode.manga);
+        final unforced = SearchBloc(
+          repo: repo,
+          history: _FakeSearchHistory(),
+          prefs: _FakeSearchPrefs(),
+          suggestions: _FakeSuggestions(),
+        );
+        addTearDown(unforced.close);
+
+        unforced.add(const SearchRunRequested('naruto'));
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+
+        expect(
+          repo.searchedSourceIds.toSet(),
+          {'mihon:1'},
+          reason:
+              'with no forceMode, the global content mode (manga here) still '
+              'decides the fan-out exactly as before this fix',
+        );
+      },
+    );
+  });
+
   group('SearchBloc.respondedSources (pending-skeleton bug fix)', () {
     // Pins the fix for a source that returns EMPTY results (or errors) never
     // leaving the Search screen's per-source skeleton on screen forever — see
