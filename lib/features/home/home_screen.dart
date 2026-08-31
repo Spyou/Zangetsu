@@ -62,6 +62,7 @@ import '../auth/reconnect.dart';
 import '../detail/detail_screen.dart';
 import '../history/history_screen.dart';
 import '../player/player_screen.dart';
+import '../search/browse_sources_screen.dart';
 import 'search_screen.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
@@ -568,6 +569,7 @@ class _HomeViewState extends State<_HomeView>
             ),
             // Header bell is parked for now (design TBD) — re-add
             // `_notificationBell(context)` here once one is chosen.
+            const HomeBrowseSourcesAction(),
             const HomeSourceSwitcherSlot(),
           ],
         ),
@@ -1268,9 +1270,53 @@ class _HomeViewState extends State<_HomeView>
   }
 }
 
-/// The header's source switcher. Hidden while Z Mode is on — home content
-/// there comes from the metadata catalogue, so the active source doesn't
-/// affect anything on screen and the control would be misleading.
+/// Opens [BrowseSourcesScreen] — pick any installed source, browse its
+/// catalogue, and search within it, WITHOUT touching the active source (it
+/// never calls [ActiveSourceCubit.setSource]). That's the header's own
+/// [HomeSourceSwitcherSlot] chip's job; this is for peeking at a different
+/// source without switching what Home itself is driven by.
+///
+/// Sources-mode only: the old mode bar had its own "Sources" entry that
+/// navigated straight here. Now that picking Sources is a mode switch (see
+/// [ZModePrefs.sourcesMode]) rather than navigation, this button is what
+/// replaces that navigation once you're actually in the mode — so it's
+/// gated tighter than the switcher above (which also shows with Z Mode off
+/// entirely, where this screen was never reachable).
+///
+/// Reactive to [ZModePrefs.revision], same pattern as
+/// [HomeSourceSwitcherSlot].
+class HomeBrowseSourcesAction extends StatelessWidget {
+  const HomeBrowseSourcesAction({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: ZModePrefs.revision,
+      builder: (context, _, _) =>
+          (ZModePrefs.enabled && ZModePrefs.sourcesMode)
+          ? IconButton(
+              icon: const Icon(
+                Icons.extension_outlined,
+                color: AppColors.textSecondary,
+                size: 20,
+              ),
+              tooltip: context.l10n.sources,
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const BrowseSourcesScreen(),
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+/// The header's source switcher. Hidden while Z Mode is on browsing the
+/// metadata catalogue — the active source doesn't affect anything on screen
+/// there and the control would be misleading. Shown again in Sources mode:
+/// the user is browsing a real installed source and needs to be able to
+/// change which one, same as with Z Mode off entirely.
 ///
 /// Reactive to [ZModePrefs.revision] (a [ValueListenableBuilder], not a
 /// listener on [_HomeViewState]) so flipping the toggle updates this
@@ -1286,9 +1332,8 @@ class HomeSourceSwitcherSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) => ZModePrefs.enabled
-          ? const SizedBox.shrink()
-          : BlocBuilder<ActiveSourceCubit, String>(
+      builder: (context, _, _) => (!ZModePrefs.enabled || ZModePrefs.sourcesMode)
+          ? BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
                 onChanged: (newId) =>
@@ -1300,7 +1345,8 @@ class HomeSourceSwitcherSlot extends StatelessWidget {
                   ),
                 ),
               ),
-            ),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
