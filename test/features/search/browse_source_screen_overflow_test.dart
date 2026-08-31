@@ -28,6 +28,15 @@ class _FakeRepo implements SourceRepository {
   @override
   String baseUrlFor(String sourceId) => baseUrls[sourceId] ?? '';
 
+  // The overflow menu's solve action resolves its target through this
+  // instead of baseUrlFor directly (Task 23) — this fake has no CfSolveNeeded
+  // flags or CloudStream plugin to prefer, so it degrades to baseUrlFor.
+  @override
+  Future<String?> cfSolveTargetFor(String sourceId) async {
+    final u = baseUrlFor(sourceId);
+    return u.isEmpty ? null : u;
+  }
+
   @override
   String displayName(String sourceId) => sourceId;
 

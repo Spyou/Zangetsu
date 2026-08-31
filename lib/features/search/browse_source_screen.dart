@@ -123,6 +123,20 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     setState(() => _searching = false);
   }
 
+  /// Resolves the solve target fresh (see [SourceRepository.cfSolveTargetFor])
+  /// right before opening the solve WebView, instead of the cached [_baseUrl]
+  /// — a CloudStream plugin can rewrite its own `mainUrl` after resolving its
+  /// live domain, so the value captured when this screen was built can be
+  /// stale by the time the user taps this. A no-op (not a broken open) when
+  /// nothing usable can be found — [_canSolveCloudflare] already keeps the
+  /// menu entry hidden in the ordinary case there's truly nothing at all.
+  Future<void> _solveCloudflare() async {
+    final target =
+        await sl<SourceRepository>().cfSolveTargetFor(widget.sourceId);
+    if (target == null || target.isEmpty) return;
+    await MihonExtensionService.solveCloudflare(target);
+  }
+
   /// Open the source's own site in the system browser — same launcher +
   /// failure snackbar as Detail's Web button, just pointed at the source's
   /// base url instead of one title's url (this screen has no item in hand).
@@ -212,7 +226,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
               widget.sourceId,
               _displayName,
             ),
-            onSolveCloudflare: () => MihonExtensionService.solveCloudflare(_baseUrl),
+            onSolveCloudflare: _solveCloudflare,
             onOpenInBrowser: _openInBrowser,
             onResetData: _confirmResetData,
           ),

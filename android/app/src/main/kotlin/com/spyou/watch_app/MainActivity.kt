@@ -1080,6 +1080,19 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             result.error("cs_error", e.message, null)
                         }
                     }
+                    // The source's CURRENT mainUrl, read fresh off the loaded
+                    // plugin rather than the value captured when sources were
+                    // listed — see PluginHost.liveMainUrl. Used by the
+                    // Cloudflare-solve action so it targets the domain the
+                    // source actually uses right now.
+                    "liveMainUrl" -> {
+                        val name = call.argument<String>("name")
+                        try {
+                            result.success(host.liveMainUrl(name ?: ""))
+                        } catch (e: Exception) {
+                            result.error("cs_error", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

@@ -134,7 +134,17 @@ class _MatchLineState extends State<MatchLine> {
                   flaggedUrl,
                 );
               } else {
-                await MihonExtensionService.solveCloudflare(cloudflareUrl);
+                // Resolve the target at TAP time, not render time: a
+                // CloudStream plugin rewrites its own mainUrl once it has
+                // fetched its live domain list, so the value baseUrlFor
+                // cached at listing time is often a stale domain whose
+                // captcha key no longer matches ("Invalid domain for site
+                // key"). Resolving here keeps this synchronous to build
+                // while still opening the domain the plugin actually uses.
+                final target =
+                    await sl<SourceRepository>().cfSolveTargetFor(id) ??
+                        cloudflareUrl;
+                await MihonExtensionService.solveCloudflare(target);
               }
               // Solving clears the flag — re-run the match + detail load so
               // the user sees the result instead of retrying by hand.
