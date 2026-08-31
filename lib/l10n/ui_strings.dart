@@ -14,7 +14,6 @@ extension DockTabL10n on DockTab {
   String localizedLabel(BuildContext context) => switch (this) {
         DockTab.home => context.l10n.home,
         DockTab.schedule => context.l10n.schedule,
-        DockTab.search => context.l10n.search,
         DockTab.myList => context.l10n.myList,
         DockTab.downloads => context.l10n.downloads,
         DockTab.history => context.l10n.history,
