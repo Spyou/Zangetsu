@@ -12,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../support/picker_deps.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/provider/cf_solve_needed.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -189,6 +190,46 @@ void main() {
       find.descendant(of: shieldRow, matching: find.textContaining('HiAnime')),
       findsOneWidget,
       reason: 'the shield must sit on the site-backed row, not the JS one',
+    );
+  });
+
+  // Task 20: a JS provider (baseUrlFor == '') gets no shield at all UNLESS
+  // CfSolveNeeded flagged it — then it gets one too, visually distinct from
+  // the plain (unflagged) shield the site-backed row already has.
+  testWidgets(
+      'a source flagged by CfSolveNeeded gets a distinct badged shield',
+      (t) async {
+    CfSolveNeeded.needsSolve(
+      'allanime.test',
+      'https://allanime.test/s?q=x',
+      sourceId: 'allanime',
+    );
+    addTearDown(() => CfSolveNeeded.clear('allanime.test'));
+
+    await t.runAsync(
+      () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
+    );
+    await t.pumpWidget(harness(const MatchLine(
+        canonical: fma, title: 'Fullmetal Alchemist (2003)')));
+    await t.pumpAndSettle();
+
+    await t.tap(find.textContaining('HiAnime'));
+    await t.pumpAndSettle();
+
+    // Both rows now show a shield: ani:1's plain one (base url), allanime's
+    // badged one (flagged) — the flag alone earned allanime a control it
+    // never had before.
+    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsNWidgets(2));
+    expect(inSheet(find.byType(Badge)), findsOneWidget);
+
+    final badgedRow = find.ancestor(
+      of: inSheet(find.byType(Badge)),
+      matching: find.byType(InkWell),
+    );
+    expect(
+      find.descendant(of: badgedRow, matching: find.textContaining('AllAnime')),
+      findsOneWidget,
+      reason: 'the badge must sit on the flagged row, not the unflagged one',
     );
   });
 }

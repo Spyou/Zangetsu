@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/media_item.dart';
+import '../provider/cf_solve_needed.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
 import 'zmode_ids.dart';
@@ -146,6 +147,14 @@ class SourceMatcher {
     }
     return null;
   }
+
+  /// The Cloudflare-challenge url for a [kind] candidate that got flagged
+  /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
+  /// doesn't say WHY — this lets a caller tell "genuinely not on any
+  /// source" apart from "was on a source, but the search got suppressed by
+  /// a Cloudflare challenge" and offer a solve instead of a flat miss.
+  String? cfBlockedUrl(ZKind kind) =>
+      CfSolveNeeded.urlForAny(_candidates(kind).map((s) => s.id));
 
   /// The user picked [picked] by hand. Pinned for its source, and that
   /// source becomes the selected one for this title.
