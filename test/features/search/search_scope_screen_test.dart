@@ -1,10 +1,10 @@
-// Task 2: scope chips on the Search screen.
-//
-// Coverage lives entirely in the widget tests below — the screen-level
-// default (SearchPrefs().scope ?? (ZModePrefs.enabled ? library : sources))
-// is only meaningful once it decides which chip the real screen renders as
-// selected on first build, so it's pinned there rather than against a
-// standalone helper.
+// Search no longer offers its own Library/Sources choice — no chips, no
+// persisted pref. The scope is DERIVED from Zangetsu Mode: Sources whenever
+// the app itself is source-driven (Z Mode off, or Z Mode on with the
+// Sources mode picked), Library otherwise. Coverage lives entirely in the
+// widget tests below, against the real screen, since the derivation is only
+// meaningful once it decides what actually renders (no chips, and the
+// Sources-only source line shows/hides with it).
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -19,7 +19,6 @@ import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
-import 'package:watch_app/core/playback/search_scope.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
 import 'package:watch_app/core/playback/source_health_store.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
@@ -155,46 +154,41 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  ChoiceChip chipLabelled(WidgetTester t, String label) =>
-      t.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, label));
+  // The Sources-only source line ("Searching …") is the visible proxy for
+  // which repository the bloc was built against — see `_sourceLine` /
+  // `_repoForScope` in search_screen.dart. It shows only in Sources scope.
+  Finder sourceLine = find.text('Searching');
+
+  testWidgets('no scope chips render, in any mode', (t) async {
+    await t.runAsync(() async {
+      await ZModePrefs.init();
+      await ZModePrefs.setEnabled(true);
+      await ZModePrefs.setSourcesMode(true);
+    });
+
+    await t.pumpWidget(harness());
+    await t.pumpAndSettle();
+
+    expect(find.byType(ChoiceChip), findsNothing);
+  });
 
   testWidgets(
-    'Z Mode on, no stored scope: Library chip is selected on first build',
-    (t) async {
-      await t.runAsync(() async {
-        await ZModePrefs.init();
-        await ZModePrefs.setEnabled(true);
-      });
-
-      await t.pumpWidget(harness());
-      await t.pumpAndSettle();
-
-      expect(chipLabelled(t, 'Library').selected, isTrue);
-      expect(chipLabelled(t, 'Sources').selected, isFalse);
-    },
-  );
-
-  testWidgets(
-    'Z Mode off, no stored scope: Sources chip is selected on first build '
-    '(byte-identical default for the audience that never opted in)',
+    'Z Mode off: Search is source-scoped (byte-identical default for the '
+    'audience that never opted in)',
     (t) async {
       // ZModePrefs box deliberately left unopened — ZModePrefs.enabled reads
       // false when its box was never touched, matching a real off install.
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
 
-      expect(chipLabelled(t, 'Sources').selected, isTrue);
-      expect(chipLabelled(t, 'Library').selected, isFalse);
+      expect(find.byType(ChoiceChip), findsNothing);
+      expect(sourceLine, findsOneWidget);
     },
   );
 
-  testWidgets('picking a scope persists it and rebuilds the bloc', (
+  testWidgets('Z Mode on, Sources mode off: Search is library-scoped', (
     t,
   ) async {
-    // A scope change must construct a new SearchBloc — the old one holds
-    // results from the other index. Asserting on the persisted pref is the
-    // stable proxy; the ValueKey is what actually forces the rebuild. Start
-    // from Library (Z Mode on) so tapping Sources is an actual change.
     await t.runAsync(() async {
       await ZModePrefs.init();
       await ZModePrefs.setEnabled(true);
@@ -203,14 +197,48 @@ void main() {
     await t.pumpWidget(harness());
     await t.pumpAndSettle();
 
-    // runAsync: tapping Sources persists the scope via a real Hive write
-    // (SearchPrefs.setScope), same drain gotcha as the setup calls above.
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(sourceLine, findsNothing);
+  });
+
+  testWidgets('Z Mode on, Sources mode on: Search is source-scoped', (
+    t,
+  ) async {
     await t.runAsync(() async {
-      await t.tap(find.text('Sources'));
+      await ZModePrefs.init();
+      await ZModePrefs.setEnabled(true);
+      await ZModePrefs.setSourcesMode(true);
     });
+
+    await t.pumpWidget(harness());
     await t.pumpAndSettle();
 
-    expect(sl<SearchPrefs>().scope, SearchScope.sources);
-    expect(chipLabelled(t, 'Sources').selected, isTrue);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(sourceLine, findsOneWidget);
   });
+
+  testWidgets(
+    'picking Sources vs another mode rebuilds the bloc against the right '
+    'repository, without remounting the screen',
+    (t) async {
+      await t.runAsync(() async {
+        await ZModePrefs.init();
+        await ZModePrefs.setEnabled(true);
+      });
+
+      await t.pumpWidget(harness());
+      await t.pumpAndSettle();
+      expect(sourceLine, findsNothing); // library-scoped
+
+      // Same real Hive write drain gotcha as ZModePrefs.setEnabled above —
+      // this is what the mode bar's "Sources" pick does under the hood.
+      await t.runAsync(() => ZModePrefs.setSourcesMode(true));
+      await t.pump();
+      expect(sourceLine, findsOneWidget); // now source-scoped
+
+      await t.runAsync(() => ZModePrefs.setSourcesMode(false));
+      await t.pump();
+      expect(sourceLine, findsNothing); // back to library-scoped
+    },
+  );
 }
