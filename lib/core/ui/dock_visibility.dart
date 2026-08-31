@@ -1,5 +1,12 @@
 import 'package:flutter/foundation.dart';
 
+/// Clearance a scrollable tab needs at its bottom edge to clear the shell's
+/// floating dock. The dock overlays content (the shell uses `extendBody`),
+/// so nothing reserves space for it automatically — every scrollable tab
+/// adds this on top of its own [MediaQuery] bottom inset. Same figure the
+/// root shell's "press back again" toast uses to float above the dock.
+const double kDockClearance = 104.0;
+
 /// True while an in-tab sub-page wants the shell's floating dock hidden — set
 /// by the Settings screen when you drill into a section. The shell also gates
 /// on the active tab, so this only hides the dock while that tab is showing.

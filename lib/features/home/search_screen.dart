@@ -30,6 +30,7 @@ import '../../core/zmode/metadata_repository.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/media_info_sheet.dart';
 import '../../core/ui/row_skeleton.dart';
 import '../../core/ui/source_switcher.dart';
@@ -1358,7 +1359,7 @@ class _SearchViewState extends State<_SearchView>
     return ListView(
       padding: EdgeInsets.only(
         top: 6,
-        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
@@ -1804,7 +1805,7 @@ class _SearchViewState extends State<_SearchView>
         16,
         6,
         16,
-        24 + MediaQuery.paddingOf(context).bottom,
+        kDockClearance + MediaQuery.paddingOf(context).bottom,
       ),
       cacheExtent: 800,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -1882,7 +1883,7 @@ class _SearchViewState extends State<_SearchView>
           16,
           4,
           16,
-          24 + MediaQuery.paddingOf(context).bottom,
+          kDockClearance + MediaQuery.paddingOf(context).bottom,
         ),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
@@ -2000,7 +2001,7 @@ class _SearchViewState extends State<_SearchView>
     return ListView.builder(
       padding: EdgeInsets.only(
         top: 4,
-        bottom: 24 + MediaQuery.paddingOf(context).bottom,
+        bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
       ),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       itemCount: suggestions.length,

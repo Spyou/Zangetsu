@@ -12,6 +12,7 @@ import '../../core/schedule/coming_soon_service.dart';
 import '../../core/schedule/schedule_models.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../home/search_screen.dart';
 import 'schedule_cubit.dart';
 import 'schedule_screen_tv.dart';
@@ -307,8 +308,9 @@ class _ScheduleBodyState extends State<ScheduleBody>
       onRefresh: cubit.refresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding:
-            EdgeInsets.only(bottom: 24 + MediaQuery.paddingOf(context).bottom),
+        padding: EdgeInsets.only(
+          bottom: kDockClearance + MediaQuery.paddingOf(context).bottom,
+        ),
         children: [
           // Day selector: cross-fade between week tabs and month grid.
           AnimatedSize(

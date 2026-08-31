@@ -48,6 +48,7 @@ import '../sources/zangetsu_sources_screen.dart';
 import '../update/update_dialog.dart';
 import 'continue_section.dart';
 import '../../core/ui/content_row.dart';
+import '../../core/ui/dock_visibility.dart';
 import '../../core/ui/featured_carousel.dart';
 import '../../core/ui/featured_hero.dart';
 import '../../core/metadata/title_logo_service.dart';
@@ -1287,12 +1288,12 @@ class _HomeViewState extends State<_HomeView>
                         ),
 
                       // ── Bottom padding ────────────────────────────────────────
-                      // Clear the floating dock: its height arrives as MediaQuery
-                      // bottom padding (the shell's extendBody). A fixed gap hid the
-                      // last row's titles behind the capsule.
+                      // Clear the floating dock, which overlays content (the
+                      // shell's extendBody reserves it no space of its own).
                       SliverToBoxAdapter(
                         child: SizedBox(
-                          height: 24 + MediaQuery.paddingOf(context).bottom,
+                          height:
+                              kDockClearance + MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
                     ],
