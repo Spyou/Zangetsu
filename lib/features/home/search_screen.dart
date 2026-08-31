@@ -194,7 +194,17 @@ class _SearchViewState extends State<_SearchView>
     with TickerProviderStateMixin {
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
-  final _repo = sl<CatalogueRepository>();
+
+  /// The repository this view describes and acts on — `displayName`,
+  /// `loadedSources`, `detail`, `episodes`, `sources` all need to agree with
+  /// whatever [SearchBloc] is actually querying. In Sources scope that's
+  /// [SourceRepository] directly, same as `_repoForScope` picks for the bloc
+  /// — NOT the `CatalogueRepository` router, which can resolve a title to the
+  /// metadata catalogue and label it with the metadata pseudo-source name
+  /// instead of a real source's. Library scope keeps the router, unchanged.
+  CatalogueRepository get _repo => widget.scope == SearchScope.sources
+      ? sl<SourceRepository>()
+      : sl<CatalogueRepository>();
   final _myList = sl<MyListStore>();
   final _history = sl<SearchHistory>();
   final _searchPrefs = sl<SearchPrefs>();
