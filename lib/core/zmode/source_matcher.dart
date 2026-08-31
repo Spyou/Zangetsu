@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import '../provider/cf_diag.dart';
+
 import '../models/media_item.dart';
 import '../provider/cf_solve_needed.dart';
 import '../repository/source_repository.dart';
@@ -76,6 +78,7 @@ class SourceMatcher {
     // searched fine but title-missed, and one that came back empty because it
     // was blocked, are indistinguishable — both just vanish from matching.
     debugPrint('[zmode] $sourceId -> ${results.length} results for "$title"');
+    CfDiag.write('[zmode] $sourceId -> ${results.length} results for "$title"');
     final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
     if (hit == null || !titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId)) {
       debugPrint(

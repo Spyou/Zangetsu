@@ -21,6 +21,7 @@ import '../models/video_source.dart';
 import '../platform/apple_tv.dart';
 import 'base_provider.dart';
 import 'cf_clearance_store.dart';
+import 'cf_diag.dart';
 import 'cf_solve_needed.dart';
 import 'crypto_ops.dart';
 import 'js_bootstrap.dart';
@@ -572,6 +573,10 @@ class _JsHost {
   bool _looksLikeCfChallenge(Response<dynamic> resp) {
     final code = resp.statusCode ?? 0;
     if (code == 403 || code == 503) {
+      // ignore: avoid_print
+      CfDiag.write('[cfdet] code=$code server="${resp.headers.value('server')}" '
+          'cf-mitigated="${resp.headers.value('cf-mitigated')}" '
+          'suppress=$_suppressCfSolve bodyLen=${resp.data?.toString().length ?? 0}');
       // ignore: avoid_print
       print('[cfdet] code=$code server="${resp.headers.value('server')}" '
           'cf-mitigated="${resp.headers.value('cf-mitigated')}" '
