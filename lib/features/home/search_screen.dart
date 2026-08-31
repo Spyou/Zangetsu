@@ -58,6 +58,7 @@ class SearchScreen extends StatefulWidget {
     this.showBack = true,
     this.focusSignal,
     this.forceSources = false,
+    this.forceMode,
   });
 
   final String? initialQuery;
@@ -78,6 +79,14 @@ class SearchScreen extends StatefulWidget {
   /// way in there since Sources stopped being a mode. Every other call site
   /// leaves this off and is unaffected.
   final bool forceSources;
+
+  /// Overrides the content mode used to narrow which sources an all-sources
+  /// search fans out over (see `SearchBloc.forceMode`), instead of the app's
+  /// global [ContentModeCubit] state. Used by [BrowseSourcesScreen] so search
+  /// opened from its Streaming/Manga/Novel tabs searches that tab's sources,
+  /// not whatever mode Home happens to be in. Null (every other call site)
+  /// leaves behaviour unchanged.
+  final ContentMode? forceMode;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -115,6 +124,7 @@ class _SearchScreenState extends State<SearchScreen> {
             final bloc = SearchBloc(
               repo: _repoForScope(scope),
               history: sl<SearchHistory>(),
+              forceMode: widget.forceMode,
             )..add(const SearchStarted());
             final q = widget.initialQuery?.trim();
             // An initial query (e.g. "see all results" from Home) runs the
@@ -137,6 +147,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   showBack: widget.showBack,
                   focusSignal: widget.focusSignal,
                   scope: scope,
+                  forceMode: widget.forceMode,
                 ),
         );
       },
@@ -150,12 +161,14 @@ class _SearchView extends StatefulWidget {
     required this.showBack,
     this.focusSignal,
     required this.scope,
+    this.forceMode,
   });
 
   final String? initialQuery;
   final bool showBack;
   final ValueListenable<int>? focusSignal;
   final SearchScope scope;
+  final ContentMode? forceMode;
 
   @override
   State<_SearchView> createState() => _SearchViewState();
@@ -190,15 +203,16 @@ class _SearchViewState extends State<_SearchView>
   TabController? _ecoTabController;
   List<SearchEcosystem> _ecoTabs = const [];
 
-  /// [_repo.loadedSources] narrowed to the active content mode. Anime narrows
-  /// too — it used to short-circuit to the unfiltered list, which meant manga
-  /// (`mihon:`) and novel (`lnr:`) sources were searched and rendered while in
-  /// anime mode. Keep this in step with `SearchBloc._modeSources`, which drives
-  /// the actual fan-out; this copy drives the ecosystem tabs and the pending
-  /// skeletons, so a mismatch shows up as skeletons for sources that are never
-  /// queried.
+  /// [_repo.loadedSources] narrowed to the active content mode, or
+  /// [_SearchView.forceMode] when set. Anime narrows too — it used to
+  /// short-circuit to the unfiltered list, which meant manga (`mihon:`) and
+  /// novel (`lnr:`) sources were searched and rendered while in anime mode.
+  /// Keep this in step with `SearchBloc._modeSources` (same override), which
+  /// drives the actual fan-out; this copy drives the ecosystem tabs and the
+  /// pending skeletons, so a mismatch shows up as skeletons for sources that
+  /// are never queried.
   List<({String id, String name})> get _modeSources {
-    final mode = sl<ContentModeCubit>().state;
+    final mode = widget.forceMode ?? sl<ContentModeCubit>().state;
     return filterSourcesForMode(
       {for (final s in _repo.loadedSources) s.id: s},
       mode,

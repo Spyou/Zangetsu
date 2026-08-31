@@ -25,6 +25,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     required SearchHistory history,
     SearchPrefs? prefs,
     TitleSuggestionService? suggestions,
+    this.forceMode,
   }) : _repo = repo,
        _history = history,
        _prefs = prefs ?? sl<SearchPrefs>(),
@@ -69,6 +70,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   final TitleSuggestionService _suggestions;
   StreamSubscription<ContentMode>? _modeSub;
 
+  /// Overrides [ContentModeCubit.state] for [_modeSources] when set — the
+  /// tab a caller opened search from (see `BrowseSourcesScreen`), rather than
+  /// whatever the app's global content mode happens to be. Null keeps
+  /// today's behaviour byte-identical.
+  final ContentMode? forceMode;
+
   /// Hard cap on one source's search.
   ///
   /// [SourceRepository.searchStatus] never throws and has no timeout of its
@@ -95,14 +102,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   static ({List<MediaItem> items, SourceOutcome outcome}) _timedOut() =>
       (items: const <MediaItem>[], outcome: SourceOutcome.timeout);
 
-  /// [SourceRepository.loadedSources] narrowed to the active content mode, so an
-  /// all-sources search only fans out over sources that mode can actually show —
-  /// a manga search shouldn't query novel (or anime) sources, and vice versa.
+  /// [SourceRepository.loadedSources] narrowed to the active content mode (or
+  /// [forceMode] when a caller set one), so an all-sources search only fans
+  /// out over sources that mode can actually show — a manga search shouldn't
+  /// query novel (or anime) sources, and vice versa.
   ///
   /// Mirrors `_modeSources` in `search_screen.dart`, which already narrows the
-  /// source *list* the UI offers; without the same narrowing here the bloc
-  /// searched everything regardless of mode, so the picker and the results
-  /// disagreed.
+  /// source *list* the UI offers (with the same [forceMode] override); without
+  /// the same narrowing here the bloc searched everything regardless of mode,
+  /// so the picker and the results disagreed.
   ///
   /// Every mode narrows, anime included. Anime used to short-circuit to the
   /// unfiltered list — harmless when the only sources were video ones, but once
@@ -113,7 +121,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
   /// `sourceTypeOf` types `cs:`/`ani:`/untyped sources as anime, so the only
   /// sources this drops are the manga and novel ones.
   List<({String id, String name})> _modeSources() {
-    final mode = sl<ContentModeCubit>().state;
+    final mode = forceMode ?? sl<ContentModeCubit>().state;
     return filterSourcesForMode(
       {for (final s in _repo.loadedSources) s.id: s},
       mode,
