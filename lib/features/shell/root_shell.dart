@@ -300,21 +300,17 @@ class _RootShellState extends State<RootShell>
                           sourcesSelected: ZModePrefs.sourcesMode,
                           onPicked: (m, k) async {
                             setState(() => _modeBarOpen = false);
-                            // Leaving Sources mode also changes the catalogue,
-                            // even when the content mode itself doesn't.
-                            final wasSources = ZModePrefs.sourcesMode;
+                            // Sources is an independent dimension — picking a
+                            // content mode never touches sourcesMode.
                             await ZModePrefs.setStreamKind(k);
-                            await ZModePrefs.setSourcesMode(false);
                             await sl<ContentModeCubit>().setMode(m);
-                            if (m == ContentMode.anime || wasSources) {
-                              // Same content mode, different catalogue → reload.
-                              sl<HomeCubit>().load(reset: true);
-                            }
+                            sl<HomeCubit>().load(reset: true);
                           },
                           onSourcesPicked: () async {
                             setState(() => _modeBarOpen = false);
-                            await ZModePrefs.setSourcesMode(true);
-                            // Catalogue switched to the installed sources → reload.
+                            // Flips the switch only — content mode and stream
+                            // kind are untouched.
+                            await ZModePrefs.setSourcesMode(!ZModePrefs.sourcesMode);
                             sl<HomeCubit>().load(reset: true);
                           },
                         ),

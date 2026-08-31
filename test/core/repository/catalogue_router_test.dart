@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
+import 'package:watch_app/core/mode/content_mode_cubit.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_detail.dart';
@@ -11,6 +13,7 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/playback/source_health_store.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/catalogue_router.dart';
+import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 
 /// Records which repo a call landed on. Every method not overridden throws,
@@ -126,6 +129,7 @@ void main() {
       dir = await Directory.systemTemp.createTemp('catalogue_router_zmode');
       Hive.init(dir.path);
       await ZModePrefs.init();
+      await ActiveSourceCubit.init();
       zSource = _Spy('src');
       zMeta = _Spy('zm');
       zRouter = CatalogueRouter(
@@ -160,6 +164,31 @@ void main() {
       await zRouter.home();
       expect(zSource.calls, contains('Symbol("home")'));
       expect(zMeta.calls, isEmpty);
+    });
+
+    // The gate expression above never reads ContentMode — Sources is a
+    // second, independent dimension from what's browsed. Proves it directly:
+    // sourcesMode true routes to the source repository no matter which
+    // content mode is active, including the combination that used to be
+    // unreachable (manga + sources).
+    test('sourcesMode true: source repository, in every content mode',
+        () async {
+      await ZModePrefs.setEnabled(true);
+      await ZModePrefs.setSourcesMode(true);
+      final active = ActiveSourceCubit(box: Hive.box(ActiveSourceCubit.boxName));
+      final modeCubit = await ContentModeCubit.create(active);
+
+      for (final mode in ContentMode.values) {
+        await modeCubit.setMode(mode);
+        zSource.calls.clear();
+        zMeta.calls.clear();
+        await zRouter.home();
+        expect(zSource.calls, contains('Symbol("home")'), reason: '$mode');
+        expect(zMeta.calls, isEmpty, reason: '$mode');
+      }
+
+      await modeCubit.close();
+      await active.close();
     });
   });
 }
