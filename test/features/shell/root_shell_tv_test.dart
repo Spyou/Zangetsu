@@ -24,7 +24,6 @@ import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
-import 'package:watch_app/core/playback/search_scope.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
 import 'package:watch_app/core/provider/cloudstream_provider.dart';
 import 'package:watch_app/core/provider/provider_manager.dart';
@@ -137,12 +136,6 @@ class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
 
   @override
   bool get currentSourceOnly => true;
-
-  @override
-  SearchScope? get scope => null;
-
-  @override
-  Future<void> setScope(SearchScope value) => Future.value();
 }
 
 /// Fake SearchSourcePrefs — no excluded sources, no Hive box.
