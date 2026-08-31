@@ -504,7 +504,10 @@ class PluginHost(private val context: Context) {
     }
 
     /** Every currently-registered source. `sourcePlugin` = the .cs3 file id that
-     * registered it, used by Dart to group sources under their repo. */
+     * registered it, used by Dart to group sources under their repo. `mainUrl` is
+     * the plugin's own site (same field [resetPluginData] already trusts for its
+     * cookie clear) — lets Dart offer "Solve Cloudflare" / "Open in browser" for
+     * CS sources the same way it already does for Mihon/Aniyomi/LNReader. */
     fun installedApis(): List<Map<String, Any?>> =
         APIHolder.allProviders.map { api ->
             mapOf(
@@ -513,6 +516,7 @@ class PluginHost(private val context: Context) {
                 "hasMainPage" to api.hasMainPage,
                 "types" to api.supportedTypes.map { it.name },
                 "sourcePlugin" to api.sourcePlugin,
+                "mainUrl" to api.mainUrl,
             )
         }
 

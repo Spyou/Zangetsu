@@ -284,10 +284,13 @@ class SourceRepository implements CatalogueRepository {
       ),
   ];
 
-  /// Base site URL for a source, used to turn a relative item URL into an
-  /// absolute web link. Aniyomi stores `SAnime.url` as a path (the native side
-  /// requests `baseUrl + anime.url`); CloudStream/JS items are already
-  /// absolute, so this returns '' for them.
+  /// Base site URL for a source. For Mihon/Aniyomi/LNReader this turns a
+  /// RELATIVE item URL into an absolute web link. CloudStream/JS items are
+  /// already absolute, so this is never prepended to one of THOSE — it only
+  /// exists there so the Cloudflare-solve / open-in-browser actions (which
+  /// need a URL, not an item) have one to work with. Both gate on
+  /// `.isNotEmpty`, so a source with no known site simply hides the actions
+  /// rather than offering a control that can't work.
   String baseUrlFor(String sourceId) {
     // Mihon stores `SManga.url` as a path for the same reason Aniyomi does
     // (the native side requests `baseUrl + manga.url`), so a manga item needs
@@ -298,8 +301,14 @@ class SourceRepository implements CatalogueRepository {
     // `site`), same rationale as Mihon above.
     final l = _lnrManager?.get(sourceId);
     if (l != null) return l.site;
-    final p = _aniManager.get(sourceId);
-    return p is AniyomiProvider ? p.info.baseUrl : '';
+    final a = _aniManager.get(sourceId);
+    if (a is AniyomiProvider) return a.info.baseUrl;
+    // CloudStream plugins declare their own site as `MainAPI.mainUrl`. Their
+    // item urls are already absolute (unlike the three above), so this value
+    // is used only for the Cloudflare/browser actions, never for turning an
+    // item url into an absolute one.
+    final c = _csManager.get(sourceId);
+    return c is CloudStreamProvider ? c.mainUrl : '';
   }
 
   /// Best-effort language code for a source (e.g. "en"), or null when the
