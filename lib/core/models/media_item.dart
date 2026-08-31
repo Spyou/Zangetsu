@@ -147,8 +147,31 @@ class MediaItem extends Equatable {
   ];
 }
 
+/// Decorations source catalogues routinely bolt onto a title — a year,
+/// season/part/episode markers, "Watch ... Online" wrapper words, quality or
+/// audio tags — that carry no identifying information. [titleMatches] strips
+/// these from both sides before comparing, so "Reacher" matches "Reacher
+/// (2022)" / "Reacher Season 1" / "Watch Reacher Online" without loosening
+/// the check itself: it's still whole-string equality afterwards, never
+/// containment, so "The Reluctant Preacher" (no decorations to strip) still
+/// misses "Reacher".
+final RegExp _titleDecorations = RegExp(
+  r'\b(?:'
+  r'(?:19|20)\d{2}' // year: 2022, 2026...
+  r'|s\d{1,2}(?:e\d{1,3})?' // s01, s01e02
+  r'|season\s*\d+|part\s*\d+|episode\s*\d+'
+  r'|watch|online|full\s*movie|free'
+  r'|dual\s*audio|multi\s*audio'
+  r'|\d{3,4}p|4k|hd|cam|hdrip|webrip|bluray'
+  r')\b',
+  caseSensitive: false,
+);
+
+String _stripTitleDecorations(String s) => s.replaceAll(_titleDecorations, ' ');
+
 /// Whether [m] is the title being looked for: same MAL id, or a normalized
-/// title (or English title) equal to [wanted] or [altTitle]. This is the
+/// title (or English title) equal to [wanted] or [altTitle] once decorations
+/// (see [_stripTitleDecorations]) are stripped from both sides. This is the
 /// acceptance rule [bestTitleMatch] ranks by, exposed so callers that must
 /// reject its fallback-to-first-result can apply the same test.
 bool titleMatches(
@@ -161,11 +184,15 @@ bool titleMatches(
     return true;
   }
   final wants = <String>{
-    normalizeTitle(wanted),
-    if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
+    normalizeTitle(_stripTitleDecorations(wanted)),
+    if (altTitle != null && altTitle.isNotEmpty)
+      normalizeTitle(_stripTitleDecorations(altTitle)),
   }..removeWhere((s) => s.isEmpty);
-  return wants.contains(normalizeTitle(m.title)) ||
-      (m.englishTitle != null && wants.contains(normalizeTitle(m.englishTitle!)));
+  final title = normalizeTitle(_stripTitleDecorations(m.title));
+  final english = m.englishTitle == null
+      ? null
+      : normalizeTitle(_stripTitleDecorations(m.englishTitle!));
+  return wants.contains(title) || (english != null && wants.contains(english));
 }
 
 /// Pick the search result that best matches a tapped relation / work. Prefers a
