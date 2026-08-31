@@ -11,7 +11,6 @@ import 'package:watch_app/core/hive/safe_box.dart';
 enum DockTab {
   home('Home'),
   schedule('Schedule'),
-  search('Search'),
   myList('My List'),
   downloads('Downloads'),
   history('History'),
@@ -46,11 +45,10 @@ class NavPrefs extends ChangeNotifier {
   static const int maxTabs = 5;
 
   /// What the dock shipped with, and what a corrupt or empty value falls back
-  /// to. Search sits centre for thumb reach.
+  /// to. Search lives in the Home header now, not the dock.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
     DockTab.schedule,
-    DockTab.search,
     DockTab.myList,
     DockTab.profile,
   ];

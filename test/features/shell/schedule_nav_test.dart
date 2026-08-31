@@ -381,6 +381,17 @@ void main() {
     expect(find.text('Downloads'), findsNothing);
   });
 
+  // Task 17: Search moved from the dock to the Home header (HomeSearchAction
+  // — see home_search_action_test.dart). The dock itself should never offer
+  // it, on the default tab set the app actually ships.
+  testWidgets('the dock never offers a Search tab', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+
+    expect(dockLabel('Search'), findsNothing);
+  });
+
   testWidgets('TV shell keeps Downloads and gains a Schedule rail item', (
     tester,
   ) async {

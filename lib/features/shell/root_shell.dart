@@ -33,8 +33,10 @@ import 'root_shell_tv.dart';
 /// [RootShellTv] (TV left rail). Any change to the page set must be
 /// reflected in BOTH shells; this single function is the one source of truth.
 ///
-/// [searchFocusSignal] is bumped each time the Search tab/rail-item is
-/// (re)selected so the embedded search screen can auto-focus its field.
+/// [searchFocusSignal] is bumped each time the Search rail item is
+/// (re)selected on TV so the embedded search screen can auto-focus its
+/// field. Phone has no Search dock tab any more — Search moved to a Home
+/// header icon — so [RootShell] always passes null here.
 List<Widget> buildShellPages(ValueNotifier<int>? searchFocusSignal) => [
   const HomeScreen(),
   SearchScreen(showBack: false, focusSignal: searchFocusSignal),
@@ -42,8 +44,9 @@ List<Widget> buildShellPages(ValueNotifier<int>? searchFocusSignal) => [
   const SettingsScreen(),
 ];
 
-/// App-level navigation shell — five tabs via a custom floating dock
-/// (frosted capsule hovering over the content; no Material NavigationBar).
+/// App-level navigation shell — a reorderable dock (3-5 tabs, [NavPrefs])
+/// via a custom floating capsule (frosted, hovering over the content; no
+/// Material NavigationBar).
 ///
 /// Uses [IndexedStack] so each screen preserves its scroll/state when
 /// the user switches tabs.
@@ -85,11 +88,6 @@ class _RootShellState extends State<RootShell>
   /// nothing is rebuilt during the animation (the page is a cached layer).
   late final AnimationController _switchCtrl;
   late final Animation<double> _switch;
-
-  /// Bumped each time the Search tab is (re)selected so the search screen can
-  /// auto-focus its field and pop the keyboard, without stealing focus while
-  /// the tab sits idle in the [IndexedStack].
-  final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
 
   @override
   void initState() {
@@ -140,18 +138,12 @@ class _RootShellState extends State<RootShell>
     _navPrefs.removeListener(_onTabsChanged);
     ZModePrefs.revision.removeListener(_onZMode);
     _switchCtrl.dispose();
-    _searchFocusSignal.dispose();
     super.dispose();
   }
 
   void _onTabSelected(DockTab tab) {
-    if (tab == _tab) {
-      // Re-tapping the current tab: no transition, just re-focus Search.
-      if (tab == DockTab.search) _searchFocusSignal.value++;
-      return;
-    }
+    if (tab == _tab) return; // Re-tapping the current tab: no transition.
     setState(() => _tab = tab);
-    if (tab == DockTab.search) _searchFocusSignal.value++;
     _switchCtrl.forward(from: 0);
   }
 
@@ -195,14 +187,16 @@ class _RootShellState extends State<RootShell>
   /// [IndexedStack] index is just the tab's position in that list.
   ///
   /// [buildShellPages] stays the shared Home/Search/My List/Settings set that
-  /// the TV rail also builds from — untouched, so TV is unaffected.
+  /// the TV rail also builds from — untouched, so TV is unaffected. Search is
+  /// no longer a phone dock tab (it's a Home header icon now), so this never
+  /// places `shared[1]` — it's still built, just unused here, the same way
+  /// Settings only ever takes `shared.last`.
   List<Widget> _pagesFor(List<DockTab> tabs) {
-    final shared = buildShellPages(_searchFocusSignal);
+    final shared = buildShellPages(null);
     return [
       for (final t in tabs)
         switch (t) {
           DockTab.home => shared[0],
-          DockTab.search => shared[1],
           DockTab.myList => shared[2],
           DockTab.profile => shared.last, // Settings, shown as "Profile"
           DockTab.schedule => const ScheduleScreen(),
