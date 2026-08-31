@@ -487,7 +487,7 @@ class _SearchViewState extends State<_SearchView>
                       // searches/trending, which belong to a library-wide
                       // search that Sources scope doesn't do.
                       if (widget.scope == SearchScope.sources &&
-                          _controller.text.isEmpty &&
+                          _controller.text.trim().isEmpty &&
                           !state.hasFilteredBrowse) {
                         return BrowseSourcesList(
                           onBrowse: (id, name) => Navigator.of(context).push(
