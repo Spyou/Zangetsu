@@ -2,6 +2,8 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
+import '../../../core/error/exceptions.dart';
+import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
 import '../../../core/models/episode.dart';
@@ -33,6 +35,7 @@ class DetailState extends Equatable {
     this.error,
     this.cast = const [],
     this.relations = const [],
+    this.cloudflareUrl,
   });
 
   final DetailStatus status;
@@ -49,6 +52,12 @@ class DetailState extends Equatable {
   final bool descExpanded;
   final String? error;
 
+  /// Set when the source (Mihon/Aniyomi) throws [CloudflareRequiredException],
+  /// or a novel plugin's swallowed fetch failure is picked up from
+  /// [NovelCloudflare]'s latch — the URL to open in the visible WebView
+  /// solve. Null in every other state. Mirrors `HomeState.cloudflareUrl`.
+  final String? cloudflareUrl;
+
   DetailState copyWith({
     DetailStatus? status,
     MediaDetail? detail,
@@ -58,6 +67,8 @@ class DetailState extends Equatable {
     String? error,
     List<CastMember>? cast,
     List<MediaRelation>? relations,
+    String? cloudflareUrl,
+    bool clearCloudflareUrl = false,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -67,6 +78,9 @@ class DetailState extends Equatable {
     error: error ?? this.error,
     cast: cast ?? this.cast,
     relations: relations ?? this.relations,
+    cloudflareUrl: clearCloudflareUrl
+        ? null
+        : (cloudflareUrl ?? this.cloudflareUrl),
   );
 
   @override
@@ -79,6 +93,7 @@ class DetailState extends Equatable {
     error,
     cast,
     relations,
+    cloudflareUrl,
   ];
 }
 
@@ -137,15 +152,33 @@ class DetailCubit extends Cubit<DetailState> {
   /// Initial fetch. Emits loading then success/error for the current
   /// [DetailState.category] (the per-title remembered choice, else 'sub').
   Future<void> load() async {
-    emit(state.copyWith(status: DetailStatus.loading));
+    emit(
+      state.copyWith(status: DetailStatus.loading, clearCloudflareUrl: true),
+    );
     try {
       final detail = await _repo.detail(
         _url,
         category: state.category,
         sourceId: _sourceId,
       );
+      // A novel (LNReader) plugin swallows its own fetch failure and returns
+      // an empty detail rather than throwing (LnReaderProvider.getDetail's
+      // fallback), so a Cloudflare challenge never reaches the catch below.
+      // Pick the URL up from the same latch Home reads — only when nothing
+      // useful actually came back, so a genuinely empty (if odd) title never
+      // gets mistaken for a block.
+      final latched = detail.title.isEmpty ? NovelCloudflare.pendingUrl : null;
+      if (latched != null) {
+        emit(
+          state.copyWith(status: DetailStatus.error, cloudflareUrl: latched),
+        );
+        return;
+      }
+      NovelCloudflare.clear();
       emit(state.copyWith(status: DetailStatus.success, detail: detail));
       _enrich(detail);
+    } on CloudflareRequiredException catch (e) {
+      emit(state.copyWith(status: DetailStatus.error, cloudflareUrl: e.url));
     } catch (_) {
       emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
     }
@@ -173,12 +206,29 @@ class DetailCubit extends Cubit<DetailState> {
         sourceId: _sourceId,
       );
       if (isClosed) return;
+      // Same novel-latch fallback as load() — a swallowed fetch failure
+      // surfaces as an empty detail, not an exception.
+      final latched = fresh.title.isEmpty ? NovelCloudflare.pendingUrl : null;
+      if (latched != null) {
+        emit(state.copyWith(cloudflareUrl: latched));
+        return;
+      }
+      NovelCloudflare.clear();
       final merged = fresh.copyWith(
         malId: fresh.malId ?? previous?.malId,
         tmdbId: fresh.tmdbId ?? previous?.tmdbId,
       );
-      emit(state.copyWith(status: DetailStatus.success, detail: merged));
+      emit(
+        state.copyWith(
+          status: DetailStatus.success,
+          detail: merged,
+          clearCloudflareUrl: true,
+        ),
+      );
       _enrich(merged, force: true);
+    } on CloudflareRequiredException catch (e) {
+      if (isClosed) return;
+      emit(state.copyWith(cloudflareUrl: e.url));
     } catch (_) {
       // Keep what's on screen — a failed pull shouldn't blank the page.
     }
