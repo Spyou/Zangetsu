@@ -19,6 +19,20 @@ final List<ModeChoice> modeChoices = [
   (label: (c) => c.l10n.modeNovel, icon: Icons.menu_book_outlined, mode: ContentMode.novel, kind: StreamKind.anime),
 ];
 
+/// Sources on: Anime and Movie/TV pick the exact same catalogue (see
+/// `CatalogueRouter`/`SourceRepository` — neither reads [StreamKind]), so the
+/// two buttons are collapsed into one. Picking it sets [ContentMode.anime]
+/// and leaves [StreamKind] untouched — inert on this path, but preserved so
+/// the user's Anime/Movie choice is still there if Sources goes off again.
+/// Label reuses `modeStreaming` (already the anime-mode label elsewhere,
+/// e.g. the History tabs) since neither `modeAnime` nor `modeMovieTv` fits a
+/// combined entry.
+final List<ModeChoice> modeChoicesSourcesOn = [
+  (label: (c) => c.l10n.modeStreaming, icon: Icons.play_circle_outline_rounded, mode: ContentMode.anime, kind: StreamKind.anime),
+  (label: (c) => c.l10n.modeManga, icon: Icons.auto_stories_outlined, mode: ContentMode.manga, kind: StreamKind.anime),
+  (label: (c) => c.l10n.modeNovel, icon: Icons.menu_book_outlined, mode: ContentMode.novel, kind: StreamKind.anime),
+];
+
 IconData iconForMode(ContentMode mode, StreamKind kind) => modeChoices
     .firstWhere((c) => c.mode == mode && (mode != ContentMode.anime || c.kind == kind))
     .icon;
@@ -79,19 +93,29 @@ class ModeBar extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      // The segmented group: exactly one of these four is
-                      // selected, independent of [sourcesSelected].
+                      // The segmented group: exactly one of these is
+                      // selected, independent of [sourcesSelected]. Sources
+                      // on collapses Anime/Movie-TV into one combined entry
+                      // (see [modeChoicesSourcesOn]) since with Sources on
+                      // they browse the identical source list.
                       Expanded(
                         child: Row(
                           children: [
-                            for (final c in modeChoices)
+                            for (final c in sourcesSelected ? modeChoicesSourcesOn : modeChoices)
                               Expanded(
                                 child: _Choice(
                                   label: c.label(context),
                                   icon: c.icon,
                                   selected: c.mode == current.$1 &&
-                                      (c.mode != ContentMode.anime || c.kind == current.$2),
-                                  onTap: () => onPicked(c.mode, c.kind),
+                                      (c.mode != ContentMode.anime || sourcesSelected || c.kind == current.$2),
+                                  // The combined entry's `kind` is a fixed
+                                  // placeholder (see [modeChoicesSourcesOn]);
+                                  // pass the CURRENT kind instead so picking
+                                  // it is a StreamKind no-op, not a reset.
+                                  onTap: () => onPicked(
+                                    c.mode,
+                                    sourcesSelected && c.mode == ContentMode.anime ? current.$2 : c.kind,
+                                  ),
                                 ),
                               ),
                           ],
