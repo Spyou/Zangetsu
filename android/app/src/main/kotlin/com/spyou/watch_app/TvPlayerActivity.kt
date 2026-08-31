@@ -416,7 +416,7 @@ class TvPlayerActivity : Activity() {
                 // Autoplay the next episode when this one finishes. Honour
                 // auto-skip filler the same way the Flutter player does.
                 if (state == Player.STATE_ENDED && !switching && currentIndex < episodeCount - 1) {
-                    loadEpisode(nextAutoplayIndex())
+                    loadEpisode(nextAutoplayIndex(), completed = true)
                 }
             }
             // PlayerView also writes cues; we register after it so this wins and
@@ -502,7 +502,7 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Episode switching (via the native→Dart bridge) ───────────────────────
-    private fun loadEpisode(index: Int) {
+    private fun loadEpisode(index: Int, completed: Boolean = false) {
         if (index < 0 || index >= episodeCount || switching) return
         val bridge = MainActivity.tvBridge ?: return
         // Persist the outgoing episode before leaving it.
@@ -514,6 +514,7 @@ class TvPlayerActivity : Activity() {
                     "index" to currentIndex,
                     "positionMs" to p.currentPosition,
                     "durationMs" to p.duration,
+                    "completed" to completed,
                 ),
             )
         }

@@ -1969,17 +1969,21 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         customInfoViewControllers = [tab]
     }
 
-    private func playNext() {
+    private func playNext(completed: Bool = false) {
         let next = episodeIndex + 1
         guard next < episodeCount else { return }
-        resolveAndPlay(index: next)
+        resolveAndPlay(index: next, completed: completed)
     }
 
-    private func resolveAndPlay(index: Int, forceReload: Bool = false) {
+    private func resolveAndPlay(
+        index: Int,
+        forceReload: Bool = false,
+        completed: Bool = false
+    ) {
         if !forceReload && index == episodeIndex, player?.currentItem != nil {
             return
         }
-        persistProgress()
+        persistProgress(completed: completed)
         channel.invokeMethod(
             "resolveEpisode",
             arguments: ["index": index, "category": category]
@@ -2065,7 +2069,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         _ playerViewController: AVPlayerViewController,
         didAccept proposal: AVContentProposal
     ) {
-        playNext()
+        playNext(completed: true)
     }
 
     func playerViewController(
@@ -2084,7 +2088,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
         }
     }
 
-    private func persistProgress() {
+    private func persistProgress(completed: Bool = false) {
         guard let player else { return }
         let cur = player.currentTime().seconds
         let durS = player.currentItem?.duration.seconds ?? 0
@@ -2094,6 +2098,7 @@ final class TvSystemPlayerViewController: AVPlayerViewController, AVPlayerViewCo
             "positionMs": Int(cur * 1000),
             "durationMs": Int(durS * 1000),
             "playing": player.rate > 0,
+            "completed": completed,
         ])
     }
 

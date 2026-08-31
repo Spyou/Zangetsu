@@ -1,7 +1,8 @@
 import 'skip_service.dart';
 
 /// Pure playback decisions for the TV ExoPlayer player. Device-free and
-/// unit-tested. shouldScrobble mirrors PlayerCubit._maybeScrobble; unify in SP1d.
+/// unit-tested. [shouldScrobble] mirrors PlayerCubit._maybeScrobble; session
+/// tracking lives in [TvPlaybackTracker].
 
 /// User-selectable playback rates (UI order).
 const List<double> kTvSpeeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
@@ -12,7 +13,7 @@ int volumeBoostToMillibels(int percent) =>
     (((percent.clamp(100, 200) - 100) / 100) * 600).round();
 
 /// Whether to push episode progress now: at/after 92% watched, once.
-/// mirrors PlayerCubit._maybeScrobble; unify in SP1d.
+/// Mirrors PlayerCubit._maybeScrobble; used by [TvPlaybackTracker].
 bool shouldScrobble({
   required int positionMs,
   required int durationMs,

@@ -29,14 +29,14 @@ import 'subtitle_font_service.dart';
 import '../../core/playback/subtitle_language.dart';
 import '../../core/playback/subtitle_search_service.dart';
 import '../../core/playback/title_prefs.dart';
-import '../../core/playback/tv_playback_helpers.dart';
+import '../../core/playback/tv_playback_tracker.dart';
 import '../../core/playback/tv_track_helpers.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/torrent/torrent_prefs.dart';
 import '../../core/torrent/torrent_service.dart';
 import '../../core/torrent/torrent_util.dart';
-import '../../core/tracker/tracker_hub.dart';
+import '../../core/playback/tv_playback_helpers.dart';
 import '../../core/tv/tv_episode_range_chips.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_keys.dart';
@@ -161,8 +161,7 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   /// Interval starts (ms) already auto-skipped for the current episode.
   final Set<int> _autoSkipped = <int>{};
 
-  bool _markedWatching = false;
-  final _scrobbled = <int>{}; // episode indices already scrobbled this session
+  late final TvPlaybackTracker _tracker;
 
   String? _torrentId;
   String? _torrentPhase; // non-null while a torrent is resolving
@@ -207,6 +206,13 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         ? 0
         : widget.startIndex.clamp(0, _episodes.length - 1);
     _category = widget.category;
+    _tracker = TvPlaybackTracker(
+      malId: widget.malId,
+      scrobbleTitle: widget.scrobbleTitle,
+      tmdbId: widget.tmdbId,
+      tmdbIsTv: widget.tmdbIsTv,
+      imdbId: widget.imdbId,
+    );
     // Keep the screen awake during playback (mirrors the phone player) so TV
     // devices don't drop into a screensaver/daydream mid-episode. Gated by the
     // same user pref; released in dispose().
@@ -253,6 +259,19 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
   }
 
   void _scrobbleTick() => _maybeScrobble();
+
+  void _maybeScrobble({bool force = false}) {
+    final c = _c;
+    final ep = _ep;
+    if (c == null || ep == null) return;
+    _tracker.maybeScrobble(
+      index: _index,
+      episode: ep,
+      positionMs: c.position.value,
+      durationMs: c.duration.value,
+      force: force,
+    );
+  }
 
   /// Show the bottom controls and (re)start the 5s inactivity hide. While
   /// playing, they fade out after 5s of no input; while paused they stay.
@@ -320,49 +339,6 @@ class _TvExoPlayerScreenState extends State<TvExoPlayerScreen> {
         _pushDiscordWatchingIfDurationKnown();
       });
     }
-  }
-
-  bool get _hasTitleId =>
-      widget.malId != null ||
-      widget.scrobbleTitle != null ||
-      widget.tmdbId != null ||
-      widget.imdbId != null;
-
-  void _maybeMarkWatching() {
-    if (_markedWatching || !_hasTitleId) return;
-    _markedWatching = true;
-    sl<TrackerHub>().markWatching(
-      malId: widget.malId,
-      title: widget.scrobbleTitle,
-      tmdbId: widget.tmdbId,
-      tmdbIsTv: widget.tmdbIsTv,
-      imdbId: widget.imdbId,
-    );
-  }
-
-  void _maybeScrobble({bool force = false}) {
-    final c = _c;
-    final ep = _ep;
-    if (c == null || ep == null || !_hasTitleId) return;
-    _maybeMarkWatching();
-    final fire = force
-        ? !_scrobbled.contains(_index)
-        : shouldScrobble(
-            positionMs: c.position.value,
-            durationMs: c.duration.value,
-            alreadyScrobbled: _scrobbled.contains(_index),
-          );
-    if (!fire) return;
-    _scrobbled.add(_index);
-    final epNum = (ep.number ?? (_index + 1)).toInt();
-    sl<TrackerHub>().scrobble(
-      malId: widget.malId,
-      title: widget.scrobbleTitle,
-      tmdbId: widget.tmdbId,
-      tmdbIsTv: widget.tmdbIsTv,
-      imdbId: widget.imdbId,
-      episode: epNum,
-    );
   }
 
   bool _loadErrorDialogOpen = false;
