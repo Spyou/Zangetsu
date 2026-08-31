@@ -122,6 +122,14 @@ class PlaybackPrefs {
   int get doubleTapSeconds => seekSeconds;
   Future<void> setDoubleTapSeconds(int value) => setSeekSeconds(value);
 
+  /// Whether the player shows the seek buttons at all (only on TV). Not available for on phones,
+  /// where the double-tap gesture is the main way to seek. On by default on TV,
+  /// where double-tap isn't a thing and the only way to seek is through remote buttons.
+  /// [seekBuuttons] enables the buttons; [seekSeconds] is the jump size, clamped 5–180s (default 10).
+  bool get seekButtons => _box.get('seekButtons', defaultValue: true) as bool;
+  Future<void> setSeekButtons(bool value) => _box.put('seekButtons', value);
+
+
   /// Whether to keep the screen awake while playing.
   bool get keepScreenOn =>
       _box.get('keepScreenOn', defaultValue: true) as bool;

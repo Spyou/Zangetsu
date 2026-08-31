@@ -1156,6 +1156,20 @@ class AppLocalizationsDe extends AppLocalizations {
       'Ein Vorsprung-Button im Player (jedes Video)';
 
   @override
+  String get seekButton => 'Vorspul-Buttons im Video anzeigen';
+
+  @override
+  String get seekButtonDescription =>
+      'Vor- und zurückspulen-Buttons im Player anzeigen';
+
+  @override
+  String get seekButtonDuration => 'Vorspuldauer';
+
+  @override
+  String get selectSeekButtonDurationDescription =>
+      'Wähle die Vorspuldauer für die Vorspul-Buttons';
+
+  @override
   String get nativeTVPlayer => 'Nativer TV-Player';
 
   @override

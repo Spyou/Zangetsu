@@ -414,6 +414,17 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     if (mounted) setState(() {});
   }
 
+  Future<void> _pickSeekSecondsForTV() async {
+    final picked = await _pick<int>(
+      title: context.l10n.seekButtonDuration,
+      options: _skipOptions,
+      current: _prefs.seekSeconds,
+    );
+    if (picked == null) return;
+    await _prefs.setSeekSeconds(picked);
+    if (mounted) setState(() {});
+  }
+
   // TV picker options for MegaSkip duration (the phone uses the inline slider).
   static const List<(int, String)> _megaSkipDurationOptions = [
     (10, '10s'),
@@ -827,6 +838,24 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                         onTap: _pickMegaSkipDuration,
                       )
                     : _megaSkipDurationRow(),
+              if(sl<AppMode>().isTv && !isAppleTv)
+                _toggleRow(
+                  icon: Icons.forward_10,
+                  title: context.l10n.seekButton,
+                  subtitle: context.l10n.seekButtonDescription,
+                  value: _prefs.seekButtons,
+                  onChanged: (v) async {
+                    await _prefs.setSeekButtons(v);
+                    if (mounted) setState(() {});
+                  },
+                ),
+              if(_prefs.seekButtons)
+                SettingsTile(
+                  icon: Icons.timer_outlined,
+                  title: context.l10n.seekButtonDuration,
+                  subtitle: context.l10n.secondsShort(_prefs.seekSeconds),
+                  onTap: _pickSeekSecondsForTV,
+                ), 
               _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
                 title: context.l10n.keepScreenOn,

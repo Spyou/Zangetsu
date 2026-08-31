@@ -1121,6 +1121,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get aJumpForwardButtonInThePlayerAnyVideo => 'プレーヤーの先送りボタン（どの動画でも）';
 
   @override
+  String get seekButton => 'シークボタンを表示';
+
+  @override
+  String get seekButtonDescription => 'プレーヤーに早送り・早戻しボタンを表示します';
+
+  @override
+  String get seekButtonDuration => 'シーク時間';
+
+  @override
+  String get selectSeekButtonDurationDescription => 'シークボタンの移動時間を選択します';
+
+  @override
   String get nativeTVPlayer => 'TV 標準プレーヤー';
 
   @override

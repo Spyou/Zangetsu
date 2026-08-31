@@ -1115,6 +1115,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get aJumpForwardButtonInThePlayerAnyVideo => '播放器中的快进按钮（任意视频）';
 
   @override
+  String get seekButton => '显示视频快进快退按钮';
+
+  @override
+  String get seekButtonDescription => '在播放器中显示快进和快退按钮';
+
+  @override
+  String get seekButtonDuration => '快进时长';
+
+  @override
+  String get selectSeekButtonDurationDescription => '选择快进按钮的跳转时长';
+
+  @override
   String get nativeTVPlayer => '系统电视播放器';
 
   @override
@@ -5741,6 +5753,18 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get aJumpForwardButtonInThePlayerAnyVideo => '播放器中的快轉按鈕（任何影片）';
+
+  @override
+  String get seekButton => '顯示影片快轉快退按鈕';
+
+  @override
+  String get seekButtonDescription => '在播放器中顯示快轉與快退按鈕';
+
+  @override
+  String get seekButtonDuration => '快轉時長';
+
+  @override
+  String get selectSeekButtonDurationDescription => '選擇快轉按鈕的跳轉時長';
 
   @override
   String get nativeTVPlayer => '系統電視播放器';
