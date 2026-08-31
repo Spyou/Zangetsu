@@ -31,11 +31,17 @@ class ModeBar extends StatelessWidget {
     required this.open,
     required this.current,
     required this.onPicked,
+    required this.onSourcesTapped,
   });
 
   final bool open;
   final (ContentMode, StreamKind) current;
   final void Function(ContentMode mode, StreamKind kind) onPicked;
+
+  /// Sources is a navigation action, not a mode switch — it never touches
+  /// [ContentMode]/[StreamKind], so it gets its own callback rather than a
+  /// sentinel value threaded through [onPicked].
+  final VoidCallback onSourcesTapped;
 
   @override
   Widget build(BuildContext context) {
@@ -66,12 +72,22 @@ class ModeBar extends StatelessWidget {
                       for (final c in modeChoices)
                         Expanded(
                           child: _Choice(
-                            choice: c,
+                            label: c.label(context),
+                            icon: c.icon,
                             selected: c.mode == current.$1 &&
                                 (c.mode != ContentMode.anime || c.kind == current.$2),
                             onTap: () => onPicked(c.mode, c.kind),
                           ),
                         ),
+                      // Navigation, not a mode — never "selected".
+                      Expanded(
+                        child: _Choice(
+                          label: context.l10n.sources,
+                          icon: Icons.extension_outlined,
+                          selected: false,
+                          onTap: onSourcesTapped,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -85,8 +101,14 @@ class ModeBar extends StatelessWidget {
 }
 
 class _Choice extends StatelessWidget {
-  const _Choice({required this.choice, required this.selected, required this.onTap});
-  final ModeChoice choice;
+  const _Choice({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+  final String label;
+  final IconData icon;
   final bool selected;
   final VoidCallback onTap;
 
@@ -105,9 +127,9 @@ class _Choice extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(choice.icon, size: 21, color: color),
+            Icon(icon, size: 21, color: color),
             const SizedBox(height: 4),
-            Text(choice.label(context), style: AppText.caption.copyWith(color: color)),
+            Text(label, style: AppText.caption.copyWith(color: color)),
           ],
         ),
       ),
