@@ -43,10 +43,7 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   sl.registerSingleton<CatalogueRepository>(CatalogueRouter(
     source: sl<SourceRepository>(),
     metadata: sl<MetadataRepository>(),
-    // Metadata browsing applies only when Z Mode is on AND the user hasn't
-    // picked the Sources mode — Sources means "browse my installed sources",
-    // same as Z Mode off.
-    enabled: () => ZModePrefs.enabled && !ZModePrefs.sourcesMode,
+    enabled: () => ZModePrefs.enabled,
   ));
 }
 

@@ -57,6 +57,7 @@ class SearchScreen extends StatefulWidget {
     this.initialQuery,
     this.showBack = true,
     this.focusSignal,
+    this.forceSources = false,
   });
 
   final String? initialQuery;
@@ -70,16 +71,24 @@ class SearchScreen extends StatefulWidget {
   /// the IndexedStack. Null for the pushed (showBack) variant.
   final ValueListenable<int>? focusSignal;
 
+  /// Forces [_SearchScreenState._scope] to [SearchScope.sources] regardless
+  /// of [ZModePrefs.enabled]. Used by the sources destination (reached from
+  /// Home's header icon) to search across every installed source even while
+  /// Z Mode has Home/Search themselves on the metadata catalogue — the only
+  /// way in there since Sources stopped being a mode. Every other call site
+  /// leaves this off and is unaffected.
+  final bool forceSources;
+
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  // Derived, not user-chosen: Sources whenever the app itself is source-driven
-  // (Z Mode off, or Z Mode on with the Sources mode picked), Library
-  // otherwise. Search no longer offers its own scope choice — it follows
-  // whatever Home is browsing.
-  SearchScope get _scope => (!ZModePrefs.enabled || ZModePrefs.sourcesMode)
+  // Derived, not user-chosen: Sources whenever the app itself is
+  // source-driven (Z Mode off) or the caller forced it, Library otherwise.
+  // Search no longer offers its own scope choice — it follows whatever Home
+  // is browsing.
+  SearchScope get _scope => (widget.forceSources || !ZModePrefs.enabled)
       ? SearchScope.sources
       : SearchScope.library;
 

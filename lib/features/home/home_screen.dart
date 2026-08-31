@@ -1312,11 +1312,10 @@ class HomeBrowseSourcesAction extends StatelessWidget {
   }
 }
 
-/// The header's source switcher. Hidden while Z Mode is on browsing the
-/// metadata catalogue — the active source doesn't affect anything on screen
-/// there and the control would be misleading. Shown again in Sources mode:
-/// the user is browsing a real installed source and needs to be able to
-/// change which one, same as with Z Mode off entirely.
+/// The header's source switcher. Hidden while Z Mode is on — the active
+/// source doesn't affect anything on screen there (Home is metadata-driven)
+/// and the control would be misleading. Shown with Z Mode off, where Home is
+/// source-driven and this is how you change which one.
 ///
 /// Reactive to [ZModePrefs.revision] (a [ValueListenableBuilder], not a
 /// listener on [_HomeViewState]) so flipping the toggle updates this
@@ -1332,7 +1331,7 @@ class HomeSourceSwitcherSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) => (!ZModePrefs.enabled || ZModePrefs.sourcesMode)
+      builder: (context, _, _) => !ZModePrefs.enabled
           ? BlocBuilder<ActiveSourceCubit, String>(
               builder: (context, id) => SourceSwitcher(
                 currentId: id,
