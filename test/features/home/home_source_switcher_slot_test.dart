@@ -85,27 +85,4 @@ void main() {
     await tester.pump();
     expect(find.byType(SourceSwitcher), findsOneWidget);
   });
-
-  testWidgets('Z Mode on, Sources mode on: the source switcher shows', (tester) async {
-    await tester.runAsync(() async {
-      await ZModePrefs.setEnabled(true);
-      await ZModePrefs.setSourcesMode(true);
-    });
-    await pumpSlot(tester);
-    expect(find.byType(SourceSwitcher), findsOneWidget);
-  });
-
-  testWidgets('flipping Sources mode updates the slot without a restart', (tester) async {
-    await tester.runAsync(() => ZModePrefs.setEnabled(true));
-    await pumpSlot(tester);
-    expect(find.byType(SourceSwitcher), findsNothing);
-
-    await tester.runAsync(() => ZModePrefs.setSourcesMode(true));
-    await tester.pump();
-    expect(find.byType(SourceSwitcher), findsOneWidget);
-
-    await tester.runAsync(() => ZModePrefs.setSourcesMode(false));
-    await tester.pump();
-    expect(find.byType(SourceSwitcher), findsNothing);
-  });
 }

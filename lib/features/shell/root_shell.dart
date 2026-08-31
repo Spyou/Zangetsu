@@ -297,20 +297,10 @@ class _RootShellState extends State<RootShell>
                         builder: (_, mode) => ModeBar(
                           open: _modeBarOpen,
                           current: (mode, ZModePrefs.streamKind),
-                          sourcesSelected: ZModePrefs.sourcesMode,
                           onPicked: (m, k) async {
                             setState(() => _modeBarOpen = false);
-                            // Sources is an independent dimension — picking a
-                            // content mode never touches sourcesMode.
                             await ZModePrefs.setStreamKind(k);
                             await sl<ContentModeCubit>().setMode(m);
-                            sl<HomeCubit>().load(reset: true);
-                          },
-                          onSourcesPicked: () async {
-                            setState(() => _modeBarOpen = false);
-                            // Flips the switch only — content mode and stream
-                            // kind are untouched.
-                            await ZModePrefs.setSourcesMode(!ZModePrefs.sourcesMode);
                             sl<HomeCubit>().load(reset: true);
                           },
                         ),
@@ -331,9 +321,7 @@ class _RootShellState extends State<RootShell>
                                 bloc: sl<ContentModeCubit>(),
                                 builder: (_, mode) => ModeFab(
                                   open: _modeBarOpen,
-                                  icon: ZModePrefs.sourcesMode
-                                      ? Icons.extension_outlined
-                                      : iconForMode(mode, ZModePrefs.streamKind),
+                                  icon: iconForMode(mode, ZModePrefs.streamKind),
                                   onTap: () =>
                                       setState(() => _modeBarOpen = !_modeBarOpen),
                                 ),

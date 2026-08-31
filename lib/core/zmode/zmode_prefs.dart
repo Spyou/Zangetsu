@@ -18,7 +18,6 @@ class ZModePrefs {
   static const String boxName = 'zmode_prefs';
   static const String _kEnabled = 'enabled';
   static const String _kStreamKind = 'streamKind';
-  static const String _kSourcesMode = 'sourcesMode';
 
   /// Bumped on every change so listeners can rebuild.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
@@ -49,19 +48,6 @@ class ZModePrefs {
   static Future<void> setStreamKind(StreamKind kind) async {
     if (kind == streamKind) return;
     await Hive.box(boxName).put(_kStreamKind, kind.name);
-    revision.value++;
-  }
-
-  /// Sources is a selectable mode alongside Anime/Movie-TV/Manga/Novel, not a
-  /// `ContentMode` value — see the module doc comment on why. When true, Home
-  /// and Search are source-driven (the installed sources) instead of the
-  /// metadata catalogue, exactly like Z Mode off.
-  static bool get sourcesMode =>
-      (_boxOrNull?.get(_kSourcesMode, defaultValue: false) as bool?) ?? false;
-
-  static Future<void> setSourcesMode(bool value) async {
-    if (value == sourcesMode) return;
-    await Hive.box(boxName).put(_kSourcesMode, value);
     revision.value++;
   }
 }
