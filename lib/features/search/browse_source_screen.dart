@@ -97,6 +97,9 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             title: section.title,
             items: section.items,
             onTap: (i) => _openDetail(context, i),
+            onLoadMore: section.more == null
+                ? null
+                : (page) => sl<SourceRepository>().browseMore(section.more!, page),
           ),
         ),
       );
