@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/picker_deps.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/models/media_item.dart';
@@ -88,6 +90,7 @@ void main() {
 
     dir = await Directory.systemTemp.createTemp('wrongshow_picker');
     Hive.init(dir.path);
+    await registerPickerDeps(aniyomi: [aniSource(id: 1, name: 'HiAnime')]);
     final src = _Src({
       'ani:1': [MediaItem(id: 'a', title: 'Fullmetal Alchemist (2003)',
           url: 'https://a/1', type: ProviderType.anime, sourceId: 'ani:1')],
@@ -104,6 +107,7 @@ void main() {
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(aniChannel, null);
+    await disposePickerDeps();
     await sl.reset();
     await Hive.close();
     await dir.delete(recursive: true);
@@ -119,7 +123,8 @@ void main() {
 
     await t.tap(find.textContaining('HiAnime'));
     await t.pumpAndSettle();
-    expect(find.text('Choose a source'), findsOneWidget);
+    // The shared picker has no title row — its tabs identify it.
+    expect(find.text('Movies/Series'), findsOneWidget);
 
     expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
   });
@@ -144,7 +149,8 @@ void main() {
 
     // The sheet is still open (only a row's own body pops it) and the
     // selection is untouched.
-    expect(find.text('Choose a source'), findsOneWidget);
+    // The shared picker has no title row — its tabs identify it.
+    expect(find.text('Movies/Series'), findsOneWidget);
     expect(sl<MatchStore>().selectedSource(fma), before);
     expect(aniCalls.any((c) => c.method == 'openSourceSettings'), isTrue);
   });
@@ -168,12 +174,13 @@ void main() {
     // ani:1 is site-backed and gets the shield; allanime is a JS provider
     // with no base url and must not.
     expect(find.byIcon(Icons.shield_rounded), findsOneWidget);
+    // The shared picker builds its own row widget, not a ListTile.
     final shieldRow = find.ancestor(
       of: find.byIcon(Icons.shield_rounded),
-      matching: find.byType(ListTile),
+      matching: find.byType(InkWell),
     );
     expect(
-      find.descendant(of: shieldRow, matching: find.text('HiAnime')),
+      find.descendant(of: shieldRow, matching: find.textContaining('HiAnime')),
       findsOneWidget,
       reason: 'the shield must sit on the site-backed row, not the JS one',
     );
