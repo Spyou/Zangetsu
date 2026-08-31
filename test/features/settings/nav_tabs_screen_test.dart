@@ -1,13 +1,13 @@
-// Task 11: Search used to be excluded from the nav-tab picker's "not shown"
-// (addable) list while Z Mode was on — the picker could not offer it back
-// once removed, or preview it as addable, purely because of the toggle. That
-// special-casing is gone; Search is now just another tab, in both states.
+// Task 17: Search left the dock for good — it lives in the Home header now
+// (HomeSearchAction, beside the sources icon) — and DockTab.search was
+// removed from the enum entirely, so nothing offers it here any more, in
+// either Z Mode state.
 //
-// A bare NavPrefs (unopened Hive box) already answers `.tabs` with
-// NavPrefs.defaultTabs, which includes Search — no state to probe with. So
-// these tests give it a real, temp-dir-backed box and explicitly park Search
-// off the bar first, which is the only configuration where the old exclusion
-// was ever visible.
+// This file used to prove the opposite: that Search WAS offered as an
+// addable "not shown" row once Z Mode's old exclusion was lifted (task 11).
+// That enum member is gone, so those old assertions don't even compile any
+// more — rewritten to prove Search is absent from both the on-bar preview
+// and the "not shown" addable list.
 
 import 'dart:io';
 
@@ -29,13 +29,6 @@ void main() {
     await NavPrefs.init();
     await ZModePrefs.init();
     navPrefs = NavPrefs();
-    // Search parked off the bar — the "not shown" row is the only place the
-    // old ZModePrefs.enabled special-case ever hid it.
-    await navPrefs.setTabs(const [
-      DockTab.home,
-      DockTab.myList,
-      DockTab.profile,
-    ]);
 
     await sl.reset();
     sl.registerSingleton<NavPrefs>(navPrefs);
@@ -47,17 +40,23 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  Finder hiddenSearchRow() => find.byKey(const ValueKey('off_search'));
+  Finder notShownSearchRow() => find.byKey(const ValueKey('off_search'));
+  Finder onBarSearchRow() => find.byKey(const ValueKey('on_search'));
 
-  testWidgets('Search is offered as addable with Z Mode off', (tester) async {
+  testWidgets('Search is not offered anywhere with Z Mode off', (
+    tester,
+  ) async {
     expect(ZModePrefs.enabled, isFalse);
     await tester.pumpWidget(const MaterialApp(home: NavTabsScreen()));
     await tester.pumpAndSettle();
 
-    expect(hiddenSearchRow(), findsOneWidget);
+    expect(notShownSearchRow(), findsNothing);
+    expect(onBarSearchRow(), findsNothing);
   });
 
-  testWidgets('Search is offered as addable with Z Mode on', (tester) async {
+  testWidgets('Search is not offered anywhere with Z Mode on', (
+    tester,
+  ) async {
     // See the module doc comment on watch_app's known Hive-in-testWidgets
     // hazard: a real write here needs a genuine event-loop turn, which the
     // pump-driven test binding never gives it on its own.
@@ -67,6 +66,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: NavTabsScreen()));
     await tester.pumpAndSettle();
 
-    expect(hiddenSearchRow(), findsOneWidget);
+    expect(notShownSearchRow(), findsNothing);
+    expect(onBarSearchRow(), findsNothing);
   });
 }

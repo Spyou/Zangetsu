@@ -6,7 +6,7 @@ import '../../core/ui/nav_prefs.dart';
 /// 24×24 grid (1.7px rounded stroke), each with a solid `filled` twin used
 /// for the active tab (outline → fill is the whole active signal; nothing is
 /// drawn around the icon).
-enum DockGlyph { home, search, bookmark, calendar }
+enum DockGlyph { home, bookmark, calendar }
 
 /// The hand-drawn glyph for a tab, or null when it uses a Material icon.
 ///
@@ -16,7 +16,6 @@ enum DockGlyph { home, search, bookmark, calendar }
 /// outlined/filled pair rather than having a glyph drawn for them.
 DockGlyph? dockGlyphFor(DockTab t) => switch (t) {
   DockTab.home => DockGlyph.home,
-  DockTab.search => DockGlyph.search,
   DockTab.myList => DockGlyph.bookmark,
   DockTab.schedule => DockGlyph.calendar,
   _ => null,
@@ -84,16 +83,6 @@ class _DockIconPainter extends CustomPainter {
           ..close();
         canvas.drawPath(p, filled ? fill : stroke);
         if (filled) canvas.drawPath(p, stroke..strokeWidth = 1.2);
-
-      case DockGlyph.search:
-        const c = Offset(11, 11);
-        if (filled) canvas.drawCircle(c, 6.6, fill);
-        canvas.drawCircle(c, 6.6, stroke);
-        canvas.drawLine(
-          const Offset(16.2, 16.2),
-          const Offset(20.2, 20.2),
-          stroke..strokeWidth = filled ? 2.1 : 1.9,
-        );
 
       case DockGlyph.bookmark:
         final p = Path()
