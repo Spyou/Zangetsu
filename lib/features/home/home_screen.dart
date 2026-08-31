@@ -1235,12 +1235,7 @@ class _HomeViewState extends State<_HomeView>
                       if (showSkeletons && !noSourceForMode)
                         ...List.generate(
                           3,
-                          (_) => const SliverToBoxAdapter(
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(vertical: 10),
-                              child: RowSkeleton(),
-                            ),
-                          ),
+                          (_) => const SliverToBoxAdapter(child: RowSkeleton()),
                         )
                       else if (noSourceForMode || loadedEmpty)
                         SliverFillRemaining(
@@ -1279,12 +1274,7 @@ class _HomeViewState extends State<_HomeView>
                         )
                       else
                         ...rowSections.map(
-                          (s) => SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              child: _sectionRow(s),
-                            ),
-                          ),
+                          (s) => SliverToBoxAdapter(child: _sectionRow(s)),
                         ),
 
                       // ── Bottom padding ────────────────────────────────────────
