@@ -7,6 +7,7 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/ui/source_switcher.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/zmode/match_store.dart';
 import '../../core/zmode/source_matcher.dart';
@@ -14,6 +15,7 @@ import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_module.dart';
 import '../../l10n/l10n.dart';
 import '../sources/source_settings_screen.dart';
+import '../sources/zangetsu_sources_screen.dart';
 import 'cubit/detail_cubit.dart';
 import 'cubit/source_select_cubit.dart';
 import 'cubit/wrong_title_cubit.dart';
@@ -67,93 +69,30 @@ class _MatchLineState extends State<MatchLine> {
   /// Picking a row selects it directly (rather than popping an id for the
   /// caller to act on afterward) so the real store write is a direct
   /// continuation of the tap that triggers it, not of the sheet closing.
-  Future<void> _pickSource(SourceSelectState state) {
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: AppColors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Text(sheetContext.l10n.chooseSource, style: AppText.headline),
-            ),
-            for (final s in state.sources) _sourceTile(sheetContext, s, state),
-            const SizedBox(height: 8),
-          ],
+  /// Opens the app's own source picker — the same tabbed, searchable sheet the
+  /// Home switcher uses, so CloudStream and Aniyomi rows appear here with their
+  /// ecosystem labels and repo tags. `onPick` keeps the choice local to this
+  /// title: the app's ACTIVE source is deliberately not changed.
+  void _pickSource(SourceSelectState state) {
+    SourceSwitcher(
+      currentId: state.selectedId ?? '',
+      onChanged: (_) {},
+      onInstallSources: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ZangetsuSourcesScreen(openToRepos: true),
         ),
       ),
-    );
-  }
-
-  /// One picker row: the source name (tap selects it), plus its own
-  /// settings gear and Cloudflare solve — each shown only when that
-  /// ecosystem actually has the entry point, and neither one selects the
-  /// row or refreshes the match.
-  Widget _sourceTile(
-    BuildContext sheetContext,
-    ({String id, String name}) s,
-    SourceSelectState state,
-  ) {
-    // The solver just opens a native WebView at a URL, and Home already routes
-    // Mihon, Aniyomi and LNReader challenges through this same call. Those are
-    // exactly the ecosystems baseUrlFor can answer for; CloudStream and JS
-    // items are absolute and it returns '', which doubles as the honest signal
-    // that there is no site to solve against. Gating on the URL rather than an
-    // id prefix keeps the two from drifting apart.
-    final cloudflareUrl = sl<SourceRepository>().baseUrlFor(s.id);
-    return ListTile(
-      title: Text(
-        s.name,
-        style: AppText.body,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (cloudflareUrl.isNotEmpty)
-            IconButton(
-              tooltip: sheetContext.l10n.solveCloudflare,
-              icon: const Icon(Icons.shield_rounded, size: 18),
-              color: AppColors.textSecondary,
-              onPressed: () =>
-                  MihonExtensionService.solveCloudflare(cloudflareUrl),
-            ),
-          FutureBuilder<bool>(
-            future: _hasSourceSettings(s.id),
-            builder: (context, snapshot) {
-              if (snapshot.data != true) return const SizedBox.shrink();
-              return IconButton(
-                tooltip: sheetContext.l10n.sourceSettings,
-                icon: const Icon(Icons.tune_rounded, size: 18),
-                color: AppColors.textSecondary,
-                onPressed: () =>
-                    _openSourceSettings(sheetContext, s.id, s.name),
-              );
-            },
-          ),
-          if (s.id == state.selectedId)
-            Icon(Icons.check, color: AppColors.accent),
-        ],
-      ),
-      onTap: () async {
-        Navigator.of(sheetContext).pop();
-        if (s.id == state.selectedId) return;
-        await _cubit.selectSource(s.id);
+    ).showPicker(
+      context,
+      trailingBuilder: (id) => _rowActions(context, id),
+      onPick: (id) async {
+        if (id == state.selectedId) return;
+        await _cubit.selectSource(id);
         if (mounted) _refreshAfterMatchChange();
       },
     );
   }
 
-  /// Whether [id] has its own settings, dispatched by ecosystem. Aniyomi and
-  /// Mihon expose a real check; CloudStream's is the plugin's own native
-  /// settings UI. Anything else (LNReader, plain sources) has none.
   Future<bool> _hasSourceSettings(String id) {
     if (id.startsWith('ani:')) {
       final raw = int.tryParse(id.substring(4));
@@ -171,7 +110,6 @@ class _MatchLineState extends State<MatchLine> {
     return Future.value(false);
   }
 
-  /// Opens [id]'s settings via its ecosystem's own entry point.
   Future<void> _openSourceSettings(
     BuildContext context,
     String id,
@@ -195,6 +133,48 @@ class _MatchLineState extends State<MatchLine> {
         ),
       );
     }
+  }
+
+  /// Per-source controls on a picker row: solve Cloudflare, and open that
+  /// source's own settings. Each is shown only when it will actually do
+  /// something, and neither changes the selection — tapping the row body does.
+  Widget? _rowActions(BuildContext sheetContext, String id) {
+    // Home already routes Mihon, Aniyomi and LNReader challenges through this
+    // one solver, and those are exactly the ecosystems baseUrlFor answers for.
+    // CloudStream/JS items are absolute and return '', which doubles as the
+    // honest signal that there is no site to solve against.
+    final cloudflareUrl = sl<SourceRepository>().baseUrlFor(id);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (cloudflareUrl.isNotEmpty)
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: sheetContext.l10n.solveCloudflare,
+            icon: const Icon(Icons.shield_rounded, size: 18),
+            color: AppColors.textSecondary,
+            onPressed: () =>
+                MihonExtensionService.solveCloudflare(cloudflareUrl),
+          ),
+        FutureBuilder<bool>(
+          future: _hasSourceSettings(id),
+          builder: (context, snapshot) {
+            if (snapshot.data != true) return const SizedBox.shrink();
+            return IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: sheetContext.l10n.sourceSettings,
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              color: AppColors.textSecondary,
+              onPressed: () => _openSourceSettings(
+                sheetContext,
+                id,
+                sl<SourceRepository>().displayName(id),
+              ),
+            );
+          },
+        ),
+      ],
+    );
   }
 
   Future<void> _fix(String sourceId) async {
@@ -241,80 +221,79 @@ class _MatchLineState extends State<MatchLine> {
           // it just has no source to name yet and nothing for "Wrong title?"
           // to correct until one is picked.
           final selectedId = state.selectedId;
+          // Just the name inside the pill — the shape already reads as a
+          // control, so a "Source:" prefix only crowds it.
           final label = selectedId == null
               ? l10n.noSourceHasThisYet
-              : l10n.sourceLabel(sl<SourceRepository>().displayName(selectedId));
+              : sl<SourceRepository>().displayName(selectedId);
           final hasMatch = state.match != null;
-          // Sized and coloured to match _DownloadButton directly above it, so
-          // the three actions read as one stack. "Wrong title?" stays a small
-          // caption underneath — it is a correction, not a third button.
+          // A quiet outlined pill, right-aligned under the action buttons:
+          // picking the source is a small adjustment, not a third action the
+          // size of Play. "Wrong title?" rides the same row so it is visibly
+          // attached to the source it corrects.
           return Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-            child: Column(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                Material(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(8),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(8),
-                    onTap: () => _pickSource(state),
-                    child: SizedBox(
-                      height: 52,
-                      width: double.infinity,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.hub_outlined,
-                            size: 22,
-                            // Dimmer than the label when nothing matched —
-                            // the row still opens the picker, but there is no
-                            // source behind it yet.
-                            color: hasMatch
-                                ? Colors.white
-                                : AppColors.textTertiary,
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              label,
-                              style: AppText.button.copyWith(
-                                color: hasMatch
-                                    ? Colors.white
-                                    : AppColors.textSecondary,
+                Flexible(
+                  child: Material(
+                    color: Colors.transparent,
+                    clipBehavior: Clip.antiAlias,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(99),
+                      side: const BorderSide(color: AppColors.hairline),
+                    ),
+                    child: InkWell(
+                      onTap: () => _pickSource(state),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(14, 7, 6, 7),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                label,
+                                style: AppText.caption.copyWith(
+                                  // Dimmed when nothing matched — the pill
+                                  // still opens the picker, but there is no
+                                  // source behind it yet.
+                                  color: hasMatch
+                                      ? AppColors.textPrimary
+                                      : AppColors.textTertiary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          Icon(
-                            Icons.arrow_drop_down,
-                            size: 22,
-                            color: AppColors.textSecondary,
-                          ),
-                        ],
+                            Icon(
+                              Icons.arrow_drop_down,
+                              size: 18,
+                              color: AppColors.textSecondary,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-                if (selectedId != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 6),
-                    child: InkWell(
-                      onTap: () => _fix(selectedId),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        child: Text(
-                          l10n.wrongTitle,
-                          style: AppText.caption
-                              .copyWith(color: AppColors.accent),
-                        ),
+                if (selectedId != null) ...[
+                  const SizedBox(width: 10),
+                  InkWell(
+                    onTap: () => _fix(selectedId),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 8,
+                      ),
+                      child: Text(
+                        l10n.wrongTitle,
+                        style: AppText.caption.copyWith(color: AppColors.accent),
                       ),
                     ),
                   ),
+                ],
               ],
             ),
           );

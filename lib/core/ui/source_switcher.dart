@@ -472,7 +472,11 @@ class SourceSwitcher extends StatelessWidget {
   /// Opens the shared source picker (tabbed anime/movies list with CS·/Ani·
   /// labels + repo tags). Public so other screens (e.g. Settings → Active
   /// source) can present the exact same picker as the Home header.
-  void showPicker(BuildContext context) {
+  void showPicker(
+    BuildContext context, {
+    Widget? Function(String id)? trailingBuilder,
+    void Function(String id)? onPick,
+  }) {
     final mode = sl<ContentModeCubit>().state;
     final b = filterBucketsForMode(_buckets(), mode);
 
@@ -505,13 +509,16 @@ class SourceSwitcher extends StatelessWidget {
       builder: (ctx) => _SourcePickerSheet(
         buckets: b,
         currentId: currentId,
+        trailingBuilder: trailingBuilder,
         height: sheetH.toDouble(),
         showSearch: showSearch,
         mode: mode,
         onInstallSources: onInstallSources,
         onChoose: (id) {
           Navigator.of(ctx).pop();
-          onChanged(id);
+          // onPick lets a caller (Z Mode's per-title selector) consume the
+          // choice WITHOUT switching the app's active source.
+          (onPick ?? onChanged)(id);
         },
       ),
     );
@@ -539,6 +546,7 @@ class _SourcePickerSheet extends StatefulWidget {
     required this.mode,
     required this.onChoose,
     this.onInstallSources,
+    this.trailingBuilder,
   });
 
   final SourceBuckets buckets;
@@ -548,6 +556,7 @@ class _SourcePickerSheet extends StatefulWidget {
   final ContentMode mode;
   final void Function(String id) onChoose;
   final VoidCallback? onInstallSources;
+  final Widget? Function(String id)? trailingBuilder;
 
   @override
   State<_SourcePickerSheet> createState() => _SourcePickerSheetState();
@@ -573,6 +582,7 @@ class _SourcePickerSheetState extends State<_SourcePickerSheet> {
         repo: src.repo,
         isActive: src.id == widget.currentId,
         isPinned: PinnedSources.isPinned(src.id),
+        trailing: widget.trailingBuilder?.call(src.id),
         onTap: () => widget.onChoose(src.id),
         onLongPress: () async {
           await PinnedSources.toggle(src.id);
@@ -851,6 +861,7 @@ class _SourceRow extends StatelessWidget {
     this.repo,
     this.isPinned = false,
     this.onLongPress,
+    this.trailing,
   });
 
   final String label;
@@ -861,6 +872,10 @@ class _SourceRow extends StatelessWidget {
   final bool isPinned;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+
+  /// Extra controls for this row (Z Mode adds per-source settings and a
+  /// Cloudflare solve). Null everywhere else, so the row is untouched.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -904,6 +919,7 @@ class _SourceRow extends StatelessWidget {
                   color: AppColors.textTertiary,
                 ),
               ),
+            ?trailing,
             if (isActive)
               Icon(Icons.check, color: AppColors.accent, size: 20),
           ],

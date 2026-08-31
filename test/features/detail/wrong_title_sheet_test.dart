@@ -1,10 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/picker_deps.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart';
+import 'package:watch_app/core/mode/content_mode.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/provider_info.dart';
@@ -33,9 +37,12 @@ class _Src implements SourceRepository {
   @override
   List<({String id, String name})> get loadedSources =>
       [for (final id in bySource.keys) (id: id, name: _name(id))];
-  // .contains rather than == so a kind-prefixed id (e.g. 'mihon:allanime',
+  // .contains rather than == so a kind-prefixed id (e.g. 'mihon:1',
   // for the manga-candidates test) still resolves to a readable name.
-  static String _name(String id) => id.contains('allanime') ? 'AllAnime' : 'HiAnime';
+  // Source ids are the real `ani:<n>` / `mihon:<n>` shape now, because the
+  // picker builds its rows from the app's registries rather than this fake.
+  static String _name(String id) =>
+      (id == 'ani:1' || id == 'mihon:1') ? 'AllAnime' : 'HiAnime';
   @override
   bool hasSource(String sourceId) => bySource.containsKey(sourceId);
   @override
@@ -101,14 +108,28 @@ void main() {
   setUp(() async {
     dir = await Directory.systemTemp.createTemp('wrongshow');
     Hive.init(dir.path);
+    await registerPickerDeps(aniyomi: [
+      aniSource(id: 1, name: 'AllAnime'),
+      aniSource(id: 2, name: 'HiAnime'),
+    ]);
+    // Picker rows probe the native side for per-source settings. These tests
+    // are about matching, not settings, so answer "none" rather than let an
+    // unimplemented channel throw mid-build.
+    for (final ch in const ['zangetsu/aniyomi', 'zangetsu/mihon']) {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        MethodChannel(ch),
+        (call) async => call.method == 'hasSourceSettings' ? false : null,
+      );
+    }
     final src = _Src({
-      'allanime': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
-          url: 'https://a/2003', type: ProviderType.anime, sourceId: 'allanime')],
-      'hianime': [
+      'ani:1': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
+          url: 'https://a/2003', type: ProviderType.anime, sourceId: 'ani:1')],
+      'ani:2': [
         MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
-            url: 'https://h/2003', type: ProviderType.anime, sourceId: 'hianime'),
+            url: 'https://h/2003', type: ProviderType.anime, sourceId: 'ani:2'),
         MediaItem(id: 'fmab', title: 'Fullmetal Alchemist: Brotherhood',
-            url: 'https://h/fmab', type: ProviderType.anime, sourceId: 'hianime'),
+            url: 'https://h/fmab', type: ProviderType.anime, sourceId: 'ani:2'),
       ],
     });
     final store = await MatchStore.open();
@@ -118,6 +139,7 @@ void main() {
         sources: src, store: store, candidates: (_) => src.loadedSources));
   });
   tearDown(() async {
+    await disposePickerDeps();
     await sl.reset();
     await Hive.close();
     await dir.delete(recursive: true);
@@ -150,19 +172,20 @@ void main() {
 
     await t.tap(find.textContaining('AllAnime'));
     await t.pumpAndSettle();
-    expect(find.text('Choose a source'), findsOneWidget);
-    expect(find.text('HiAnime'), findsOneWidget);
+    // The shared picker has no title row — its tabs identify it.
+    expect(find.text('Movies/Series'), findsOneWidget);
+    expect(find.textContaining('HiAnime'), findsOneWidget);
 
     await t.runAsync(() async {
-      await t.tap(find.text('HiAnime'));
+      await t.tap(find.textContaining('HiAnime'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await t.pumpAndSettle();
 
     expect(find.textContaining('HiAnime'), findsOneWidget);
-    expect(sl<MatchStore>().selectedSource(fma), 'hianime');
+    expect(sl<MatchStore>().selectedSource(fma), 'ani:2');
     // AllAnime's own match is untouched by switching to HiAnime.
-    expect(sl<MatchStore>().get(fma, 'allanime')?.sourceId, 'allanime');
+    expect(sl<MatchStore>().get(fma, 'ani:1')?.sourceId, 'ani:1');
   });
 
   testWidgets('Wrong title? corrects the match for the selected source only', (t) async {
@@ -186,9 +209,9 @@ void main() {
     });
     await t.pumpAndSettle();
 
-    expect(sl<MatchStore>().get(fma, 'allanime')?.pinned, isTrue);
+    expect(sl<MatchStore>().get(fma, 'ani:1')?.pinned, isTrue);
     // HiAnime was never touched by this correction.
-    expect(sl<MatchStore>().get(fma, 'hianime'), isNull);
+    expect(sl<MatchStore>().get(fma, 'ani:2'), isNull);
   });
 
   testWidgets('Wrong title? correction on a video (anime) kind refreshes the Detail screen', (t) async {
@@ -219,7 +242,7 @@ void main() {
     });
     await t.pumpAndSettle();
 
-    expect(sl<MatchStore>().get(fma, 'allanime')?.pinned, isTrue);
+    expect(sl<MatchStore>().get(fma, 'ani:1')?.pinned, isTrue);
     expect(repo.detailCalls, greaterThan(0));
   });
 
@@ -231,11 +254,17 @@ void main() {
     Hive.init(dir.path);
     final store = await MatchStore.open();
     final src = _Src({
-      'allanime': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
-          url: 'https://a/2003', type: ProviderType.anime, sourceId: 'allanime')],
-      'hianime': [MediaItem(id: 'op', title: 'One Piece',
-          url: 'https://h/op', type: ProviderType.anime, sourceId: 'hianime')],
+      'ani:1': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
+          url: 'https://a/2003', type: ProviderType.anime, sourceId: 'ani:1')],
+      'ani:2': [MediaItem(id: 'op', title: 'One Piece',
+          url: 'https://h/op', type: ProviderType.anime, sourceId: 'ani:2')],
     });
+    // sl.reset() above dropped the picker's own singletons; the sheet needs
+    // them back before it can be opened.
+    await registerPickerDeps(aniyomi: [
+      aniSource(id: 1, name: 'AllAnime'),
+      aniSource(id: 2, name: 'HiAnime'),
+    ]);
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
@@ -253,10 +282,10 @@ void main() {
     await t.pumpAndSettle();
     // hianime is offered even though it can't possibly match — not filtered
     // out of the picker for lacking one.
-    expect(find.text('HiAnime'), findsOneWidget);
+    expect(find.textContaining('HiAnime'), findsOneWidget);
 
     await t.runAsync(() async {
-      await t.tap(find.text('HiAnime'));
+      await t.tap(find.textContaining('HiAnime'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await t.pumpAndSettle();
@@ -264,21 +293,33 @@ void main() {
     // hianime is now selected, honestly with no match — not silently left on
     // allanime, and not crashed/hidden.
     expect(find.textContaining('HiAnime'), findsOneWidget);
-    final icon = t.widget<Icon>(find.byIcon(Icons.hub_outlined));
-    expect(icon.color, AppColors.textTertiary);
-    expect(sl<MatchStore>().get(fma, 'hianime'), isNull);
+    // Dimmed, so "selected but nothing behind it" still reads differently from
+    // a real match. The signal used to be the row's icon; it is now the pill's
+    // own label, since the icon went away with the outlined-pill redesign.
+    final name = t.widget<Text>(find.textContaining('HiAnime'));
+    expect(name.style?.color, AppColors.textTertiary);
+    expect(sl<MatchStore>().get(fma, 'ani:2'), isNull);
   });
 
   testWidgets('switching source on a manga title refreshes the Detail screen chapters', (t) async {
     const manga = ZCanonical(ZKind.manga, 'mal:777');
     await sl.reset();
     Hive.init(dir.path);
+    // runAsync: seeding the mode writes to Hive, and a real write never drains
+    // under the pump-driven binding.
+    await t.runAsync(() => registerPickerDeps(
+          mode: ContentMode.manga,
+          mihon: [
+            mihonSource(id: 1, name: 'AllAnime'),
+            mihonSource(id: 2, name: 'HiAnime'),
+          ],
+        ));
     final store = await MatchStore.open();
     final src = _Src({
-      'mihon:allanime': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
-          url: 'https://a/2003', type: ProviderType.manga, sourceId: 'mihon:allanime')],
-      'mihon:hianime': [MediaItem(id: 'fmab', title: 'Fullmetal Alchemist: Brotherhood',
-          url: 'https://h/fmab', type: ProviderType.manga, sourceId: 'mihon:hianime')],
+      'mihon:1': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
+          url: 'https://a/2003', type: ProviderType.manga, sourceId: 'mihon:1')],
+      'mihon:2': [MediaItem(id: 'fmab', title: 'Fullmetal Alchemist: Brotherhood',
+          url: 'https://h/fmab', type: ProviderType.manga, sourceId: 'mihon:2')],
     });
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
@@ -296,11 +337,10 @@ void main() {
     ));
     await t.pumpAndSettle();
     expect(repo.detailCalls, 0); // nothing switched yet — no reload
-
     await t.tap(find.textContaining('AllAnime'));
     await t.pumpAndSettle();
     await t.runAsync(() async {
-      await t.tap(find.text('HiAnime'));
+      await t.tap(find.textContaining('HiAnime'));
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
     await t.pumpAndSettle();
@@ -316,7 +356,13 @@ void main() {
     await sl.reset();
     Hive.init(dir.path);
     final store = await MatchStore.open();
-    final src = _Src({'allanime': [], 'hianime': []});
+    final src = _Src({'ani:1': [], 'ani:2': []});
+    // sl.reset() above dropped the picker's own singletons; the sheet needs
+    // them back before it can be opened.
+    await registerPickerDeps(aniyomi: [
+      aniSource(id: 1, name: 'AllAnime'),
+      aniSource(id: 2, name: 'HiAnime'),
+    ]);
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
@@ -331,9 +377,10 @@ void main() {
     // Still tappable — there ARE candidates, the user can still pick one.
     await t.tap(find.text('No source has this yet'));
     await t.pumpAndSettle();
-    expect(find.text('Choose a source'), findsOneWidget);
-    expect(find.text('AllAnime'), findsOneWidget);
-    expect(find.text('HiAnime'), findsOneWidget);
+    // The shared picker has no title row — its tabs identify it.
+    expect(find.text('Movies/Series'), findsOneWidget);
+    expect(find.textContaining('AllAnime'), findsOneWidget);
+    expect(find.textContaining('HiAnime'), findsOneWidget);
   });
 
   testWidgets('no installed source at all says so, with nothing to switch or fix', (t) async {
