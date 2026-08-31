@@ -40,4 +40,24 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  # device_info_plus 12.4+ calls NSProcessInfo.isiOSAppOnVision, which is only
+  # declared in the iOS 26.1 SDK (Xcode >= 26.1.1). On Xcode 26.0.x the direct
+  # message send fails to compile even inside @available. Route through
+  # performSelector so older Xcode can still build; remove once CI/devs are on
+  # 26.1.1+.
+  plugin_file = File.expand_path(
+    '../.symlinks/plugins/device_info_plus/ios/device_info_plus/Sources/device_info_plus/FPPDeviceInfoPlusPlugin.m',
+    __FILE__
+  )
+  if File.exist?(plugin_file)
+    contents = File.read(plugin_file)
+    unless contents.include?('performSelector:@selector(isiOSAppOnVision)')
+      patched = contents.gsub(
+        /(\s*)if \(@available\(iOS 26\.1, \*\)\) \{\n\s*isiOSAppOnVision = \[NSNumber numberWithBool:\[info isiOSAppOnVision\]\];\n\s*\}/,
+        "\\1if (@available(iOS 26.1, *)) {\n\\1  if ([info respondsToSelector:@selector(isiOSAppOnVision)]) {\n\\1    isiOSAppOnVision = [NSNumber numberWithBool:[[info performSelector:@selector(isiOSAppOnVision)] boolValue]];\n\\1  }\n\\1}"
+      )
+      File.write(plugin_file, patched) if patched != contents
+    end
+  end
 end
