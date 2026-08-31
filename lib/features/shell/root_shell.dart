@@ -23,6 +23,7 @@ import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
+import '../search/browse_sources_screen.dart';
 import '../settings/settings_screen.dart';
 import 'dock_icons.dart';
 import 'mode_bar.dart';
@@ -305,6 +306,14 @@ class _RootShellState extends State<RootShell>
                               // Same content mode, different catalogue → reload.
                               sl<HomeCubit>().load(reset: true);
                             }
+                          },
+                          onSourcesTapped: () {
+                            setState(() => _modeBarOpen = false);
+                            Navigator.of(context).push(
+                              MaterialPageRoute<void>(
+                                builder: (_) => const BrowseSourcesScreen(),
+                              ),
+                            );
                           },
                         ),
                       ),
