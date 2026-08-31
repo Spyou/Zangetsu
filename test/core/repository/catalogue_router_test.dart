@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_detail.dart';
@@ -8,6 +11,7 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/playback/source_health_store.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/catalogue_router.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 
 /// Records which repo a call landed on. Every method not overridden throws,
 /// so an unexpected forward shows up as a failure, not a silent pass.
@@ -107,5 +111,55 @@ void main() {
     expect(router.sourceId, 'src');
     on = true;
     expect(router.sourceId, 'zm');
+  });
+
+  // Exercises `zmode_module.dart`'s actual gate expression —
+  // `ZModePrefs.enabled && !ZModePrefs.sourcesMode` — against a real
+  // [ZModePrefs] rather than a hand-rolled bool, so the combination that
+  // actually ships is what's under test.
+  group('ZModePrefs-backed gate (Sources mode)', () {
+    late Directory dir;
+    late _Spy zSource, zMeta;
+    late CatalogueRouter zRouter;
+
+    setUp(() async {
+      dir = await Directory.systemTemp.createTemp('catalogue_router_zmode');
+      Hive.init(dir.path);
+      await ZModePrefs.init();
+      zSource = _Spy('src');
+      zMeta = _Spy('zm');
+      zRouter = CatalogueRouter(
+        source: zSource,
+        metadata: zMeta,
+        enabled: () => ZModePrefs.enabled && !ZModePrefs.sourcesMode,
+      );
+    });
+
+    tearDown(() async {
+      await Hive.close();
+      await dir.delete(recursive: true);
+    });
+
+    test('Z Mode off: source repository, regardless of sourcesMode', () async {
+      await ZModePrefs.setSourcesMode(true);
+      await zRouter.home();
+      expect(zSource.calls, contains('Symbol("home")'));
+      expect(zMeta.calls, isEmpty);
+    });
+
+    test('Z Mode on, sourcesMode false: metadata repository', () async {
+      await ZModePrefs.setEnabled(true);
+      await zRouter.home();
+      expect(zMeta.calls, contains('Symbol("home")'));
+      expect(zSource.calls, isEmpty);
+    });
+
+    test('Z Mode on, sourcesMode true: source repository', () async {
+      await ZModePrefs.setEnabled(true);
+      await ZModePrefs.setSourcesMode(true);
+      await zRouter.home();
+      expect(zSource.calls, contains('Symbol("home")'));
+      expect(zMeta.calls, isEmpty);
+    });
   });
 }
