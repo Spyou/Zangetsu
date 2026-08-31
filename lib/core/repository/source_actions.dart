@@ -56,3 +56,21 @@ Future<void> openSourceSettings(
     );
   }
 }
+
+/// Whether [id]'s source can have its OWN saved state (settings + cookies)
+/// reset. Only CloudStream (`cs:`) plugins keep state reachable this way —
+/// they persist through a shared DataStore SharedPreferences file, folder-
+/// keyed by the plugin's own name, plus site cookies via WebView's
+/// CookieManager (see PluginHost.resetPluginData, native side). Mihon and
+/// Aniyomi extensions have no equivalent per-source store we can reach
+/// without a much broader native change, so they don't offer this action.
+bool canResetSourceData(String id) => id.startsWith('cs:');
+
+/// Clears [id]'s own stored state — its DataStore settings and its site's
+/// cookies — without touching anything else. Returns true only if the native
+/// side reports something was actually cleared. A no-op (false) for any
+/// source [canResetSourceData] says no to.
+Future<bool> resetSourceData(String id) {
+  if (id.startsWith('cs:')) return csPluginResetData(id.substring(3));
+  return Future.value(false);
+}

@@ -714,6 +714,7 @@
   "noCloudStreamSourcesInstalled": "No CloudStream sources installed.",
   "cloudstream": "cloudstream",
   "sourceSettings": "Source settings",
+  "resetSourceDataConfirm": "Reset {name}'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.",
   "removeRepository2": "Remove repository?",
   "removeThisRepositoryAndItsSources": "Remove this repository and its sources?",
   "removed": "Removed",

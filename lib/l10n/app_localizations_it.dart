@@ -2305,6 +2305,11 @@ class AppLocalizationsIt extends AppLocalizations {
   String get sourceSettings => 'Impostazioni della sorgente';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return 'Reimpostare i dati salvati di $name? Questo cancella le sue impostazioni salvate, l\'accesso e i cookie. La tua lista, cronologia e download restano intatti.';
+  }
+
+  @override
   String get removeRepository2 => 'Rimuovere il repository?';
 
   @override

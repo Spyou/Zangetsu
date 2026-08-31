@@ -83,6 +83,8 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
   late final Future<bool> _hasSettings =
       source_actions.hasSourceSettings(widget.sourceId);
+  late final bool _canResetData =
+      source_actions.canResetSourceData(widget.sourceId);
 
   @override
   void dispose() {
@@ -134,6 +136,41 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     }
   }
 
+  /// Confirms, then clears THIS source's own saved state (settings + its
+  /// site's cookies) via [source_actions.resetSourceData]. Destructive to
+  /// that source alone — never touches the active source, another source,
+  /// or anything app-side (My List, history, downloads).
+  Future<void> _confirmResetData() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(ctx.l10n.reset, style: AppText.title),
+        content: Text(
+          ctx.l10n.resetSourceDataConfirm(_displayName),
+          style: AppText.body,
+        ),
+        actions: [
+          TextButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(ctx.l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(ctx.l10n.reset, style: TextStyle(color: AppColors.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await source_actions.resetSourceData(widget.sourceId);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text(context.l10n.done)));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -169,6 +206,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             hasSettings: _hasSettings,
             canSolveCloudflare: _canSolveCloudflare,
             canOpenInBrowser: _canOpenInBrowser,
+            canResetData: _canResetData,
             onSettings: () => source_actions.openSourceSettings(
               context,
               widget.sourceId,
@@ -176,6 +214,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             ),
             onSolveCloudflare: () => MihonExtensionService.solveCloudflare(_baseUrl),
             onOpenInBrowser: _openInBrowser,
+            onResetData: _confirmResetData,
           ),
         ],
       ),
@@ -304,29 +343,35 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
 }
 
 /// The search icon's neighbour: source settings, solve Cloudflare, open in
-/// browser — each entry present only when it will actually do something, no
-/// overflow button at all when none apply. No new plumbing: settings reuses
-/// [source_actions.hasSourceSettings]/[source_actions.openSourceSettings]
-/// (same check the wrong-title sheet's per-row actions use), Cloudflare
-/// reuses [MihonExtensionService.solveCloudflare], and the browser opener
-/// mirrors Detail's Web button. Never touches the active source — the three
-/// callbacks are the caller's, and none of them call ActiveSourceCubit.
+/// browser, reset source data — each entry present only when it will
+/// actually do something, no overflow button at all when none apply. No new
+/// plumbing: settings reuses [source_actions.hasSourceSettings]/
+/// [source_actions.openSourceSettings] (same check the wrong-title sheet's
+/// per-row actions use), Cloudflare reuses [MihonExtensionService.solveCloudflare],
+/// the browser opener mirrors Detail's Web button, and reset reuses
+/// [source_actions.canResetSourceData]/[source_actions.resetSourceData].
+/// Never touches the active source — every callback is the caller's, and
+/// none of them call ActiveSourceCubit.
 class _SourceOverflowMenu extends StatelessWidget {
   const _SourceOverflowMenu({
     required this.hasSettings,
     required this.canSolveCloudflare,
     required this.canOpenInBrowser,
+    required this.canResetData,
     required this.onSettings,
     required this.onSolveCloudflare,
     required this.onOpenInBrowser,
+    required this.onResetData,
   });
 
   final Future<bool> hasSettings;
   final bool canSolveCloudflare;
   final bool canOpenInBrowser;
+  final bool canResetData;
   final VoidCallback onSettings;
   final VoidCallback onSolveCloudflare;
   final VoidCallback onOpenInBrowser;
+  final VoidCallback onResetData;
 
   @override
   Widget build(BuildContext context) {
@@ -334,7 +379,10 @@ class _SourceOverflowMenu extends StatelessWidget {
       future: hasSettings,
       builder: (context, snapshot) {
         final settingsReady = snapshot.data ?? false;
-        if (!settingsReady && !canSolveCloudflare && !canOpenInBrowser) {
+        if (!settingsReady &&
+            !canSolveCloudflare &&
+            !canOpenInBrowser &&
+            !canResetData) {
           return const SizedBox.shrink();
         }
         return PopupMenuButton<VoidCallback>(
@@ -355,6 +403,11 @@ class _SourceOverflowMenu extends StatelessWidget {
               PopupMenuItem<VoidCallback>(
                 value: onOpenInBrowser,
                 child: Text(context.l10n.openSourceSite),
+              ),
+            if (canResetData)
+              PopupMenuItem<VoidCallback>(
+                value: onResetData,
+                child: Text(context.l10n.reset),
               ),
           ],
         );
