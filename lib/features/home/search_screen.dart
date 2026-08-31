@@ -450,7 +450,9 @@ class _SearchViewState extends State<_SearchView>
             const SizedBox(height: 12),
             // Source line — what's being searched, one line of text, tap to
             // open the source picker. Shown idle too, so scope is always known.
-            _sourceLine(),
+            // Library scope queries the metadata catalogue, not a source, so
+            // this (and the picker it opens) is Sources-only.
+            if (widget.scope == SearchScope.sources) _sourceLine(),
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
@@ -827,7 +829,9 @@ class _SearchViewState extends State<_SearchView>
         child: Row(
           children: [
             Expanded(child: _controlRowLeft(modeSources)),
-            _sourceFilterAction(),
+            // Per-source filter sheet — Library scope has no per-source
+            // filters to apply, they'd be silently dropped.
+            if (widget.scope == SearchScope.sources) _sourceFilterAction(),
             _filterAction(),
           ],
         ),
