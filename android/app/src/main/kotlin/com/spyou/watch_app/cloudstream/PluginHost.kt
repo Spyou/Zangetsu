@@ -29,6 +29,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Collections
 import org.json.JSONObject
 import java.io.File
+import okhttp3.Interceptor
 
 /**
  * Loads `.cs3` plugins via [PathClassLoader] against the bundled CloudStream
@@ -101,9 +102,55 @@ class PluginHost(private val context: Context) {
     /** Current opt-in DNS-over-HTTPS choice (see [Doh]); [Doh.OFF] by default. */
     fun dnsChoice(): Int = csPrefs().getInt("dns_choice", Doh.OFF)
 
-    /** (Re)build the shared CS OkHttp client = cookie jar + CF interceptor + the
-     *  selected DoH. Always rebuilds from [pristineClient] so it's idempotent.
-     *  Additive + best-effort — never throws (OFF leaves DNS untouched). */
+    // The CS apiName whose call is in flight on the current thread — set by
+    // [search] for the duration of its (synchronous, this-thread) network
+    // work. Read by [cfChallengeInterceptor] to attribute a challenge to a
+    // source id. Best-effort: null on any thread the bracket wasn't set on
+    // (e.g. a provider's own background coroutine), same as everywhere else
+    // in this file that hands Dart a nullable sourceId.
+    private val currentApiName = ThreadLocal<String?>()
+
+    /** Recognises a Cloudflare challenge response on the shared CS client and
+     *  reports it to Dart's `CfSolveNeeded` latch via [onCfChallenge] — the
+     *  CloudStream counterpart of `_looksLikeCfChallenge` in
+     *  provider_manager.dart (JS providers). SAME predicate, so the two can't
+     *  drift: 403/503 AND (server: cloudflare, or a challenge marker in the
+     *  body). A network interceptor so it sees the real per-hop response.
+     *
+     *  Only ever PEEKS the body ([okhttp3.Response.peekBody], capped) — this
+     *  runs on every CS request (search/load/loadLinks for every installed
+     *  source), so consuming the real body here would hand plugins an empty
+     *  response and break CloudStream outright. Wrapped in [runCatching]
+     *  end-to-end: any failure here (a bad peek, a thrown callback) must
+     *  never stop [response] reaching the plugin that asked for it.
+     */
+    private val cfChallengeInterceptor = Interceptor { chain ->
+        val response = chain.proceed(chain.request())
+        runCatching {
+            val code = response.code
+            if (code == 403 || code == 503) {
+                val server = response.header("server")?.lowercase(java.util.Locale.ROOT) ?: ""
+                val bodyPeek = runCatching {
+                    response.peekBody(CF_PEEK_BYTES).string().lowercase(java.util.Locale.ROOT)
+                }.getOrDefault("")
+                val looksLikeCf = server.contains("cloudflare") ||
+                    bodyPeek.contains("just a moment") ||
+                    bodyPeek.contains("challenge-platform") ||
+                    bodyPeek.contains("cf-chl") ||
+                    bodyPeek.contains("enable javascript and cookies")
+                if (looksLikeCf) {
+                    val reqUrl = chain.request().url
+                    onCfChallenge?.invoke(reqUrl.host, reqUrl.toString(), currentApiName.get())
+                }
+            }
+        }
+        response
+    }
+
+    /** (Re)build the shared CS OkHttp client = cookie jar + CF interceptors +
+     *  the selected DoH. Always rebuilds from [pristineClient] so it's
+     *  idempotent. Additive + best-effort — never throws (OFF leaves DNS
+     *  untouched). */
     private fun applyBaseClient() {
         runCatching {
             val app = com.lagradost.cloudstream3.app
@@ -113,6 +160,8 @@ class PluginHost(private val context: Context) {
                 // realigns the UA to the WebView solver's on requests that carry
                 // the clearance cookie (incl. redirected hops).
                 .addNetworkInterceptor(CfClearance.interceptor)
+                // Flags a challenge so the UI can offer a solve — see above.
+                .addNetworkInterceptor(cfChallengeInterceptor)
             app.baseClient = Doh.apply(b, dnsChoice()).build()
         }
     }
@@ -669,6 +718,11 @@ class PluginHost(private val context: Context) {
         // Mark a search in progress so the CF WebView solver stays SILENT for any
         // CF-gated source hit during the fan-out (no "verifying" popup in search).
         CfClearance.searchDepth.incrementAndGet()
+        // Tag this thread with the source in flight so [cfChallengeInterceptor]
+        // can attribute a challenge hit during this call back to a source id —
+        // best-effort: only reaches network calls made synchronously on this
+        // same thread, same caveat as searchDepth above.
+        currentApiName.set(apiName)
         val res = try {
             runBlocking {
                 withTimeoutOrNull(SEARCH_TIMEOUT_MS) {
@@ -679,6 +733,7 @@ class PluginHost(private val context: Context) {
             }
         } finally {
             CfClearance.searchDepth.decrementAndGet()
+            currentApiName.remove()
         }
         return (res ?: emptyList()).map { it.toMap(apiName) }
     }
@@ -1041,6 +1096,20 @@ class PluginHost(private val context: Context) {
         @Volatile
         var INSTANCE: PluginHost? = null
             private set
+
+        /** Fired by [cfChallengeInterceptor] when the shared CS client hits a
+         *  Cloudflare challenge. host/url are the challenged request's;
+         *  sourceId is the apiName [search] tagged the calling thread with, or
+         *  null if unreachable. Wired once by MainActivity to forward all three
+         *  to Dart's `CfSolveNeeded` latch — a static (companion) callback, not
+         *  an instance one, so wiring it doesn't force the lazy [PluginHost] to
+         *  construct before anything actually needs CloudStream. */
+        var onCfChallenge: ((host: String, url: String, sourceId: String?) -> Unit)? = null
+
+        /** Bytes peeked from a 403/503 body when checking for a challenge
+         *  marker — small on purpose (see [cfChallengeInterceptor]); a
+         *  Cloudflare interstitial page carries its tells well within this. */
+        private const val CF_PEEK_BYTES = 8192L
 
         /** Per-row deadline for [getHome] so one slow category can't stall it. */
         private const val HOME_ROW_TIMEOUT_MS = 8000L
