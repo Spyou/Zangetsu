@@ -69,6 +69,43 @@ void main() {
       expect(match!.title, 'Target');
     });
 
+    test('matches a source title decorated with a year', () {
+      final results = [_item('Reacher (2022)')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Reacher (2022)');
+    });
+
+    test('matches a source title decorated with a season suffix', () {
+      final results = [_item('Reacher Season 1')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Reacher Season 1');
+    });
+
+    test('matches a source title wrapped in "Watch ... Online"', () {
+      final results = [_item('Watch Reacher Online')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Watch Reacher Online');
+    });
+
+    test('does not match an unrelated title that merely contains the substring', () {
+      // The reported bug: "Reacher" must not fall through to a result whose
+      // title happens to contain it as a substring.
+      final results = [_item('The Reluctant Preacher')];
+      final match = bestTitleMatch(results, 'Reacher');
+      expect(match, isNotNull); // falls back to first result (only one here)
+      expect(titleMatches(match!, 'Reacher'), isFalse);
+    });
+
+    test('matches a decorated title but not the bare franchise name', () {
+      final decorated = _item('Spider-Man: Brand New Day (2026)');
+      final bare = _item('Spider-Man');
+      expect(
+        titleMatches(decorated, 'Spider-Man: Brand New Day'),
+        isTrue,
+      );
+      expect(
+        titleMatches(bare, 'Spider-Man: Brand New Day'),
+        isFalse,
+      );
+    });
+
     test('matches the Romaji alt title when the source indexes by Romaji', () {
       // The real bug: metadata gives English, source lists Romaji, no malId.
       final results = [
