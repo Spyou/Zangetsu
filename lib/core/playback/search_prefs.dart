@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:watch_app/core/hive/safe_box.dart';
 import 'package:hive/hive.dart';
+import 'search_scope.dart';
 
 /// How cross-source search results are laid out.
 ///
@@ -31,6 +32,7 @@ class SearchPrefs extends ChangeNotifier {
   static const String _genreKey = 'genre';
   static const String _decadeKey = 'decade';
   static const String _currentSourceOnlyKey = 'currentSourceOnly';
+  static const String _scopeKey = 'scope';
 
   /// Opens the box. Call once during app bootstrap before constructing.
   static Future<void> init() async {
@@ -69,6 +71,25 @@ class SearchPrefs extends ChangeNotifier {
     await _box.put(_currentSourceOnlyKey, value);
     notifyListeners();
   }
+  // ── Index scope (metadata catalogue vs installed sources) ──────────────────
+  /// Which index Search queries. Null until the user picks — the caller
+  /// decides the first-run default, because it depends on the Z Mode toggle.
+  /// Stored by enum NAME, like every other enum here, so reordering the enum
+  /// cannot silently repoint an existing user's choice.
+  SearchScope? get scope {
+    final raw = _box.get(_scopeKey);
+    for (final s in SearchScope.values) {
+      if (s.name == raw) return s;
+    }
+    return null;
+  }
+
+  Future<void> setScope(SearchScope value) async {
+    if (value == scope) return;
+    await _box.put(_scopeKey, value.name);
+    notifyListeners();
+  }
+
 
   // ── Remembered filter/sort state (read once when a search runs) ───────────
   /// Stored by enum NAME so the index can shift without breaking persistence.
