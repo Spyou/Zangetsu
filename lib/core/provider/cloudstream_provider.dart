@@ -115,12 +115,21 @@ class CloudStreamProvider implements BaseProvider {
     this.sourcePlugin,
     this.disambiguate = false,
     this.repoLabel,
+    this.mainUrl = '',
   });
 
   /// The bare CloudStream source name (no `cs:` prefix).
   final String name;
   final String lang;
   final List<String> types;
+
+  /// The plugin's own site (`MainAPI.mainUrl`), e.g. `https://example.com`.
+  /// Empty when the plugin genuinely doesn't declare one — [SourceRepository.
+  /// baseUrlFor] treats that the same as any other sourceless id (Cloudflare
+  /// solve / open-in-browser stay hidden rather than offering a dead control).
+  /// Unlike Mihon/Aniyomi, CS item urls are already absolute, so this is
+  /// display/action-only — never prepended to an item url.
+  final String mainUrl;
 
   /// The `.cs3` file id (`internalName@version`) that registered this source.
   /// Used to group it under (and delete it with) its repo. Null for sources
@@ -207,8 +216,7 @@ class CloudStreamProvider implements BaseProvider {
   Future<ProviderInfo> getInfo() async => ProviderInfo(
     name: name,
     lang: lang,
-    // CloudStream plugins don't expose a single base URL; the host owns it.
-    baseUrl: '',
+    baseUrl: mainUrl,
     type: _providerType,
   );
 
@@ -1490,6 +1498,12 @@ class CloudStreamManager extends ChangeNotifier {
     _persistRepos();
   }
 
+  /// Rebuilds the provider set from a raw native `listSources`-shaped payload
+  /// — pulled out so a test can call it directly instead of a full
+  /// platform-channel round trip (native isn't reachable from a test host).
+  @visibleForTesting
+  void rebuildFromForTest(List<dynamic>? raw) => _rebuildFrom(raw);
+
   void _rebuildFrom(List<dynamic>? raw) {
     _providers.clear();
     final all = <Map<String, dynamic>>[
@@ -1572,6 +1586,9 @@ class CloudStreamManager extends ChangeNotifier {
         sourcePlugin: sourcePlugin,
         disambiguate: dup,
         repoLabel: dup ? _repoLabelFor(sourcePlugin) : null,
+        // Absent on an older native build (pre this field) → '', same as a
+        // plugin that genuinely declares no mainUrl.
+        mainUrl: (m['mainUrl'] ?? '').toString(),
       );
       _providers[provider.sourceId] = provider;
     }
