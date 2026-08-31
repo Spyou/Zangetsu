@@ -21,6 +21,7 @@ import '../models/video_source.dart';
 import '../platform/apple_tv.dart';
 import 'base_provider.dart';
 import 'cf_clearance_store.dart';
+import 'cf_solve_needed.dart';
 import 'crypto_ops.dart';
 import 'js_bootstrap.dart';
 import 'reading_provider.dart';
@@ -360,6 +361,11 @@ class _JsHost {
       final payload = _coerceMap(raw);
       id = payload['id'] as String;
       final url = payload['url'] as String;
+      // The JS bootstrap tags every fetch with its caller's __src: a real
+      // provider's sourceId, or 'ex:<extractorId>' for an extractor call —
+      // the latter names no installed source, so it's not a useful key here.
+      final src = (payload['__src'] as String?) ?? '';
+      final srcId = (src.isEmpty || src.startsWith('ex:')) ? null : src;
       final method = (payload['method'] as String?) ?? 'GET';
       final headers =
           (payload['headers'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -407,6 +413,12 @@ class _JsHost {
           _applyCf(host, hdr);
           resp = await _request(url, method, hdr, body, follow, tMs);
         }
+      } else if (_looksLikeCfChallenge(resp) && _suppressCfSolve) {
+        // Same challenge, but this call is a `search` — the solve is
+        // deliberately skipped (see [_suppressCfSolve]) rather than popping
+        // the blocking WebView mid-sweep. Stash it so the UI can offer a
+        // solve instead of the source just silently returning nothing.
+        CfSolveNeeded.needsSolve(host, url, sourceId: srcId);
       }
       // ignore: avoid_print
       print(
@@ -473,6 +485,15 @@ class _JsHost {
     return fut;
   }
 
+  /// UI-triggered solve for a host [CfSolveNeeded] flagged (the
+  /// suppressed-during-search case) — reuses [_solveCf], so a manual solve
+  /// gets the same in-flight de-dupe and cookie/UA storage an automatic one
+  /// does. Returns true once a clearance is in hand.
+  Future<bool> solveForUi(String host, String url) async {
+    await _solveCf(url, host);
+    return _cfCookie.containsKey(host);
+  }
+
   Future<void> _solveCfImpl(String url, String host) async {
     try {
       final res = await _cf.invokeMapMethod<String, dynamic>(
@@ -486,6 +507,7 @@ class _JsHost {
         _cfFailedAt.remove(host); // solved → clear any negative-cache mark
         if (ua != null && ua.isNotEmpty) _cfUa[host] = ua;
         _cfStore.remember(host, cookie, ua); // reuse across restarts
+        CfSolveNeeded.clear(host); // whatever needed the solve can retry now
         // ignore: avoid_print
         print('[cf] solved $host (ua=${(ua ?? '').split(')').first})');
       } else {
@@ -931,6 +953,16 @@ class ProviderManager implements ProviderRuntimeLoader {
     _host.providers.remove(id);
     _host.resetHealth(id);
   }
+
+  /// Manually solve Cloudflare for [host] (opening [url] in the native
+  /// solver) after the fetch path flagged it via `CfSolveNeeded` — the
+  /// search-suppressed case. Distinct from [MihonExtensionService
+  /// .solveCloudflare]: JS providers run on Dio, which has no jar reading
+  /// Android's shared CookieManager, so the solved cookie has to land in
+  /// THIS host's own cache, not just the system-wide one. Returns true once
+  /// a clearance is obtained.
+  Future<bool> solveCloudflareForHost(String host, String url) =>
+      _host.solveForUi(host, url);
 
   void disposeAll() {
     _host.providers.clear();

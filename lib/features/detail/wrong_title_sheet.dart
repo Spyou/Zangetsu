@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
+import '../../core/provider/cf_solve_needed.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
@@ -91,6 +93,11 @@ class _MatchLineState extends State<MatchLine> {
     );
   }
 
+  // Cloudflare's own brand orange — reused from the Detail-path blocked
+  // state (_DetailCloudflareBlocked in detail_screen.dart) so a flagged row
+  // reads as the same kind of "attention needed" everywhere it appears.
+  static const Color _cfOrange = Color(0xFFF48120);
+
   /// Per-source controls on a picker row: solve Cloudflare, and open that
   /// source's own settings. Each is shown only when it will actually do
   /// something, and neither changes the selection — tapping the row body does.
@@ -98,8 +105,11 @@ class _MatchLineState extends State<MatchLine> {
     // Home already routes Mihon, Aniyomi and LNReader challenges through this
     // one solver, and those are exactly the ecosystems baseUrlFor answers for.
     // CloudStream/JS items are absolute and return '', which doubles as the
-    // honest signal that there is no site to solve against.
-    final cloudflareUrl = sl<SourceRepository>().baseUrlFor(id);
+    // honest signal that there is no site to solve against — UNLESS a JS
+    // provider's search just got flagged (see CfSolveNeeded), which hands
+    // back its own challenge url even though baseUrlFor knows nothing of it.
+    final flaggedUrl = CfSolveNeeded.urlFor(id);
+    final cloudflareUrl = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -107,10 +117,31 @@ class _MatchLineState extends State<MatchLine> {
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: sheetContext.l10n.solveCloudflare,
-            icon: const Icon(Icons.shield_rounded, size: 18),
-            color: AppColors.textSecondary,
-            onPressed: () =>
-                MihonExtensionService.solveCloudflare(cloudflareUrl),
+            // Flagged rows get the Cloudflare-orange badge — an identical
+            // shield whether or not a solve is actually needed was the bug.
+            icon: flaggedUrl == null
+                ? const Icon(Icons.shield_rounded, size: 18)
+                : const Badge(
+                    backgroundColor: _cfOrange,
+                    smallSize: 8,
+                    child: Icon(Icons.shield_rounded, size: 18),
+                  ),
+            color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
+            onPressed: () async {
+              if (flaggedUrl != null) {
+                await sl<ProviderManager>().solveCloudflareForHost(
+                  Uri.parse(flaggedUrl).host,
+                  flaggedUrl,
+                );
+              } else {
+                await MihonExtensionService.solveCloudflare(cloudflareUrl);
+              }
+              // Solving clears the flag — re-run the match + detail load so
+              // the user sees the result instead of retrying by hand.
+              if (!mounted) return;
+              await _cubit.load();
+              if (mounted) _refreshAfterMatchChange();
+            },
           ),
         FutureBuilder<bool>(
           future: source_actions.hasSourceSettings(id),

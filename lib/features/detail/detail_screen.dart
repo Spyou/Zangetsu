@@ -59,7 +59,9 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/provider/cf_solve_needed.dart';
 import '../../core/provider/cloudstream_provider.dart';
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/reading/read_history.dart';
 import '../../core/reading/read_store.dart';
@@ -183,7 +185,16 @@ class _DetailCloudflareBlockedState extends State<_DetailCloudflareBlocked> {
 
   Future<void> _solve() async {
     setState(() => _solving = true);
-    await MihonExtensionService.solveCloudflare(widget.url);
+    // A Z Mode candidate flagged by CfSolveNeeded is a JS provider: that
+    // runs on Dio, not the Mihon/Aniyomi native bridges, so it needs the
+    // matching solve (the cookie has to land in THIS host's own cache, not
+    // just the system-wide one MihonExtensionService's solve populates).
+    final host = Uri.tryParse(widget.url)?.host ?? '';
+    if (CfSolveNeeded.hostFlagged(host)) {
+      await sl<ProviderManager>().solveCloudflareForHost(host, widget.url);
+    } else {
+      await MihonExtensionService.solveCloudflare(widget.url);
+    }
     if (!mounted) return;
     setState(() => _solving = false);
     context.read<DetailCubit>().load();

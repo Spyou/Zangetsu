@@ -1,3 +1,4 @@
+import '../error/exceptions.dart';
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -108,12 +109,20 @@ class MetadataRepository implements CatalogueRepository {
       // with the detail's sourceId + id, so hand them the matched source's
       // chapters, real urls and all — progress there is keyed off that.
       final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
-      // No match: AniList may still have synthesised a full zm://…/ep/n
-      // chapter list (it knows the chapter count for plenty of completed
-      // manga), but those urls have no source behind them — drop them rather
-      // than hand the reader a real-looking list that throws when it tries
-      // to read one.
-      if (m == null) return d.copyWith(episodes: const <Episode>[]);
+      if (m == null) {
+        // A candidate genuinely had this title but a Cloudflare challenge
+        // suppressed its search (see SourceMatcher.cfBlockedUrl) — surface
+        // it the same way a Mihon/Aniyomi source does, instead of the flat
+        // "no source has this yet".
+        final blocked = _matcher.cfBlockedUrl(c.kind);
+        if (blocked != null) throw CloudflareRequiredException(blocked);
+        // No match: AniList may still have synthesised a full zm://…/ep/n
+        // chapter list (it knows the chapter count for plenty of completed
+        // manga), but those urls have no source behind them — drop them
+        // rather than hand the reader a real-looking list that throws when
+        // it tries to read one.
+        return d.copyWith(episodes: const <Episode>[]);
+      }
       final chapters = await _src.episodes(m.showUrl, sourceId: m.sourceId);
       return MediaDetail(
         id: m.showId,
@@ -141,7 +150,12 @@ class MetadataRepository implements CatalogueRepository {
     // and the count. id/url are rewritten back to the canonical, numbered-by-
     // position form so progress keeps following the title, not the source.
     final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
-    if (m == null) return d; // no match: metadata's synthesised list stands.
+    if (m == null) {
+      // Same Cloudflare-suppressed-search check as the reading branch above.
+      final blocked = _matcher.cfBlockedUrl(c.kind);
+      if (blocked != null) throw CloudflareRequiredException(blocked);
+      return d; // no match: metadata's synthesised list stands.
+    }
     final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     final episodes = [
       for (var i = 0; i < srcEpisodes.length; i++) _canonicalize(srcEpisodes[i], c, i + 1),
