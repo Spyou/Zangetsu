@@ -38,6 +38,7 @@ class SettingsBackup {
     'torrent_prefs', // torrent settings
     'locale_prefs', // app language override
     'zmode_prefs', // Zangetsu Mode toggle + stream kind
+    'source_domain_overrides', // per-source domain the user set by hand
   ];
 
   /// Returns a map of `{boxName: {key: value, ...}}` for every open box.
@@ -72,14 +73,19 @@ class SettingsBackup {
   }
 
   /// The already-open box for [name] regardless of the type it was opened with:
-  /// some prefs boxes are `Box<Map>` (e.g. `title_prefs`), others are
-  /// `Box<dynamic>`, and a mismatched `Hive.box<E>(name)` throws. Null when the
-  /// box isn't open (or is an unexpected type).
+  /// some prefs boxes are `Box<Map>` (e.g. `title_prefs`), some `Box<String>`
+  /// (e.g. `source_domain_overrides`), others `Box<dynamic>`, and a mismatched
+  /// `Hive.box<E>(name)` throws. Null when the box isn't open (or is an
+  /// unexpected type) — a listed box that lands here saves NOTHING while still
+  /// looking backed up, which is why every type in [boxNames] needs a case.
   dynamic _boxFor(String name) {
     if (!Hive.isBoxOpen(name)) return null;
     try {
       return Hive.box<Map>(name);
     } catch (_) {/* not a Box<Map> */}
+    try {
+      return Hive.box<String>(name);
+    } catch (_) {/* not a Box<String> */}
     try {
       return Hive.box(name);
     } catch (_) {/* not a Box<dynamic> either */}

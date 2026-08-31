@@ -33,10 +33,19 @@ abstract interface class CatalogueRepository {
     int page = 1,
   });
 
+  /// [onPartial], when supplied, may be called ONCE with a usable but
+  /// incomplete detail before the returned future completes: the metadata is
+  /// in, the episode list is not. Only [MetadataRepository] uses it — pairing
+  /// a metadata title with a source means searching each installed source in
+  /// turn, which is what makes that call slow, and none of the title, art or
+  /// synopsis has to wait for it. A source repository already holds
+  /// everything and never calls it, so a caller that just wants the finished
+  /// detail simply omits it.
   Future<MediaDetail> detail(
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   });
 
   Future<void> clearHttpCache();

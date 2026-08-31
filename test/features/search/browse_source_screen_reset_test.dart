@@ -73,15 +73,17 @@ void main() {
     expect(find.text('Reset'), findsOneWidget);
   });
 
-  testWidgets('a Mihon source has no Reset entry (no overflow at all here)',
-      (t) async {
+  testWidgets('a Mihon source has no Reset entry', (t) async {
     await t.pumpWidget(
         harness(const BrowseSourceScreen(sourceId: 'mihon:1', title: 'MangaDex')));
     await t.pumpAndSettle();
 
-    // Nothing else applies for this source either (no base url, no
-    // settings), so the whole button is absent — Reset included.
-    expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
+    // The menu itself is always present now (Source domain is unconditional),
+    // but Reset is not offered for a source that has nothing to reset.
+    await t.tap(find.byIcon(Icons.more_vert_rounded));
+    await t.pumpAndSettle();
+    expect(find.text('Reset'), findsNothing);
+    expect(find.text('Source domain'), findsOneWidget);
   });
 
   testWidgets(

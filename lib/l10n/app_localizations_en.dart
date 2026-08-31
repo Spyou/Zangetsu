@@ -2288,6 +2288,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sourceSettings => 'Source settings';
 
   @override
+  String get sourceDomain => 'Source domain';
+
+  @override
+  String get sourceDomainHint => 'Leave blank to use the source\'s own domain.';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return 'Reset $name\'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.';
   }

@@ -2304,6 +2304,13 @@ class AppLocalizationsEs extends AppLocalizations {
   String get sourceSettings => 'Ajustes de la fuente';
 
   @override
+  String get sourceDomain => 'Dominio de la fuente';
+
+  @override
+  String get sourceDomainHint =>
+      'Déjalo vacío para usar el dominio propio de la fuente.';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return '¿Restablecer los datos guardados de $name? Esto borra su configuración guardada, el inicio de sesión y las cookies. Tu lista, historial y descargas no se ven afectados.';
   }

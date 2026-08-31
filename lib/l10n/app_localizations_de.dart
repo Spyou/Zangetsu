@@ -2304,6 +2304,13 @@ class AppLocalizationsDe extends AppLocalizations {
   String get sourceSettings => 'Quellen-Einstellungen';
 
   @override
+  String get sourceDomain => 'Quellen-Domain';
+
+  @override
+  String get sourceDomainHint =>
+      'Leer lassen, um die eigene Domain der Quelle zu verwenden.';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return '${name}s gespeicherte Daten zurücksetzen? Dadurch werden die gespeicherten Einstellungen, der Login und die Cookies gelöscht. Deine Liste, dein Verlauf und deine Downloads bleiben unberührt.';
   }

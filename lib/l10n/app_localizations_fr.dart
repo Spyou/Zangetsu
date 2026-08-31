@@ -2312,6 +2312,13 @@ class AppLocalizationsFr extends AppLocalizations {
   String get sourceSettings => 'Réglages de la source';
 
   @override
+  String get sourceDomain => 'Domaine de la source';
+
+  @override
+  String get sourceDomainHint =>
+      'Laissez vide pour utiliser le domaine propre à la source.';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return 'Réinitialiser les données enregistrées de $name ? Cela efface ses réglages enregistrés, sa connexion et ses cookies. Votre liste, historique et téléchargements restent intacts.';
   }

@@ -101,24 +101,36 @@ class _MatchLineState extends State<MatchLine> {
   /// Per-source controls on a picker row: solve Cloudflare, and open that
   /// source's own settings. Each is shown only when it will actually do
   /// something, and neither changes the selection — tapping the row body does.
+  ///
+  /// The solve action is offered wherever there is a site to solve AGAINST,
+  /// not only where a challenge has already been seen. [CfSolveNeeded] is the
+  /// record of one, but it lives in memory and is only written while a search
+  /// sweep runs — so gating visibility on it hid the action on a fresh launch
+  /// for sources that plainly need it (AnimePahe). The flag instead drives
+  /// the shield's PROMINENCE, below.
   Widget _rowActions(BuildContext sheetContext, String id) {
-    // Home already routes Mihon, Aniyomi and LNReader challenges through this
-    // one solver, and those are exactly the ecosystems baseUrlFor answers for.
-    // CloudStream/JS items are absolute and return '', which doubles as the
-    // honest signal that there is no site to solve against — UNLESS a JS
-    // provider's search just got flagged (see CfSolveNeeded), which hands
-    // back its own challenge url even though baseUrlFor knows nothing of it.
     final flaggedUrl = CfSolveNeeded.urlFor(id);
-    final cloudflareUrl = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
+    // Empty for a plain JS provider with no declared site — which doubles as
+    // the honest signal that there is nothing to solve, so it gets no shield.
+    final solveTarget = flaggedUrl ?? sl<SourceRepository>().baseUrlFor(id);
+    final showSolve = solveTarget.isNotEmpty;
+    // The native solver owns the Mihon/Aniyomi/CloudStream cookie jars; plain
+    // JS providers run on Dio and need ProviderManager's own solve. Same
+    // id-prefix routing source_actions.hasSourceSettings uses.
+    final isJs = !id.startsWith('ani:') &&
+        !id.startsWith('mihon:') &&
+        !id.startsWith('cs:') &&
+        !id.startsWith('lnr:');
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (cloudflareUrl.isNotEmpty)
+        if (showSolve)
           IconButton(
             visualDensity: VisualDensity.compact,
             tooltip: sheetContext.l10n.solveCloudflare,
-            // Flagged rows get the Cloudflare-orange badge — an identical
-            // shield whether or not a solve is actually needed was the bug.
+            // Orange + badged only when a challenge was actually seen, so
+            // "this one needs it" still reads differently from "this one
+            // offers it".
             icon: flaggedUrl == null
                 ? const Icon(Icons.shield_rounded, size: 18)
                 : const Badge(
@@ -128,22 +140,19 @@ class _MatchLineState extends State<MatchLine> {
                   ),
             color: flaggedUrl == null ? AppColors.textSecondary : _cfOrange,
             onPressed: () async {
-              if (flaggedUrl != null) {
+              // Resolve the target at TAP time, not render time: a CloudStream
+              // plugin rewrites its own mainUrl once it has fetched its live
+              // domain list, and a user-set domain override outranks both.
+              final target =
+                  await sl<SourceRepository>().cfSolveTargetFor(id) ??
+                      solveTarget;
+              if (target.isEmpty) return;
+              if (isJs) {
                 await sl<ProviderManager>().solveCloudflareForHost(
-                  Uri.parse(flaggedUrl).host,
-                  flaggedUrl,
+                  Uri.parse(target).host,
+                  target,
                 );
               } else {
-                // Resolve the target at TAP time, not render time: a
-                // CloudStream plugin rewrites its own mainUrl once it has
-                // fetched its live domain list, so the value baseUrlFor
-                // cached at listing time is often a stale domain whose
-                // captcha key no longer matches ("Invalid domain for site
-                // key"). Resolving here keeps this synchronous to build
-                // while still opening the domain the plugin actually uses.
-                final target =
-                    await sl<SourceRepository>().cfSolveTargetFor(id) ??
-                        cloudflareUrl;
                 await MihonExtensionService.solveCloudflare(target);
               }
               // Solving clears the flag — re-run the match + detail load so
@@ -210,7 +219,30 @@ class _MatchLineState extends State<MatchLine> {
             );
           }
           if (state.loading && state.selectedId == null) {
-            return const SizedBox(height: 20); // first resolve still in flight
+            // Hold the row's place. The Detail screen now paints before the
+            // source is resolved, so an empty box here left a hole between
+            // Download and the synopsis for the whole sweep — which read as
+            // "this title has no source selector" rather than "still looking".
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: Container(
+                height: 52,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 14),
+                decoration: BoxDecoration(
+                  color: AppColors.surface2,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Container(
+                  width: 120,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                ),
+              ),
+            );
           }
           // Candidates exist and the resolve finished, but nothing genuinely
           // matched anywhere and nothing has been picked by hand yet — the
@@ -252,12 +284,14 @@ class _MatchLineState extends State<MatchLine> {
                                     child: Text(
                                       label,
                                       style: AppText.button.copyWith(
-                                        // Dimmed when nothing matched — the row
-                                        // still opens the picker, but there is
-                                        // no source behind it yet.
-                                        color: hasMatch
-                                            ? AppColors.textPrimary
-                                            : AppColors.textTertiary,
+                                        // Dimmed only when there is no source
+                                        // to name at all; a source the user
+                                        // picked reads normally even when it
+                                        // came up empty — the line below the
+                                        // pill says so outright.
+                                        color: selectedId == null
+                                            ? AppColors.textTertiary
+                                            : AppColors.textPrimary,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -281,18 +315,43 @@ class _MatchLineState extends State<MatchLine> {
                   ),
                 ),
                 if (selectedId != null)
-                  InkWell(
-                    onTap: () => _fix(selectedId),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 4,
-                        vertical: 8,
+                  Row(
+                    children: [
+                      // The selected source searched fine and simply doesn't
+                      // carry this title. It goes here rather than inside the
+                      // pill because the pill's trailing icons leave too
+                      // little width (it truncated mid-word), and because
+                      // this puts the verdict beside its remedy: the two read
+                      // as one line, "nothing here" → "Wrong title?".
+                      Expanded(
+                        // Silent while the match is still resolving: the
+                        // detail screen now paints before the source sweep
+                        // finishes, so an unguarded line would claim "nothing
+                        // here" for every title during that window.
+                        child: hasMatch || state.loading
+                            ? const SizedBox.shrink()
+                            : Text(
+                                l10n.noEpisodesAvailableFromThisSource,
+                                style: AppText.caption.copyWith(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
                       ),
-                      child: Text(
-                        l10n.wrongTitle,
-                        style: AppText.caption.copyWith(color: AppColors.accent),
+                      InkWell(
+                        onTap: () => _fix(selectedId),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            l10n.wrongTitle,
+                            style: AppText.caption
+                                .copyWith(color: AppColors.accent),
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
               ],
             ),

@@ -7,6 +7,7 @@ import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_item.dart';
 import '../../core/repository/source_actions.dart' as source_actions;
+import '../../core/repository/source_domain_overrides.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -78,7 +79,9 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // Overflow-menu availability. [_baseUrl] is sync (a plain field lookup),
   // so Cloudflare/open-in-browser gate immediately; source-settings needs a
   // platform-channel round trip, so it stays a Future the menu awaits.
-  late final String _baseUrl = sl<SourceRepository>().baseUrlFor(widget.sourceId);
+  // Not `late final`: setting a domain override changes what this answers,
+  // and the menu has to reflect that without reopening the screen.
+  String get _baseUrl => sl<SourceRepository>().baseUrlFor(widget.sourceId);
   bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
   late final Future<bool> _hasSettings =
@@ -135,6 +138,58 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
         await sl<SourceRepository>().cfSolveTargetFor(widget.sourceId);
     if (target == null || target.isEmpty) return;
     await MihonExtensionService.solveCloudflare(target);
+  }
+
+  /// Let the user point this source's site actions at a domain of their own.
+  ///
+  /// An extension that has stopped being updated keeps reporting a domain
+  /// that has since died, and nothing app-side can derive the live one from
+  /// it. This does NOT redirect the extension's own fetching (see
+  /// [SourceDomainOverrides]) — it fixes the two things the app does own:
+  /// "open in browser" and the Cloudflare solve.
+  Future<void> _editDomain() async {
+    final store = sl<SourceDomainOverrides>();
+    final controller =
+        TextEditingController(text: store.get(widget.sourceId) ?? _baseUrl);
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(dialogContext.l10n.sourceDomain),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            hintText: dialogContext.l10n.sourceDomainHint,
+          ),
+          onSubmitted: (_) => Navigator.of(dialogContext).pop(true),
+        ),
+        actions: [
+          // Reset clears the override; it does not blank the site, it hands
+          // the source back to whatever domain the extension reports.
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(dialogContext.l10n.reset),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(null),
+            child: Text(dialogContext.l10n.cancel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(dialogContext.l10n.save),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (saved == null) return; // cancelled
+    if (saved) {
+      await store.set(widget.sourceId, controller.text);
+    } else {
+      await store.clear(widget.sourceId);
+    }
+    if (mounted) setState(() {}); // the menu's gating reads _baseUrl
   }
 
   /// Open the source's own site in the system browser — same launcher +
@@ -228,6 +283,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             ),
             onSolveCloudflare: _solveCloudflare,
             onOpenInBrowser: _openInBrowser,
+            onEditDomain: _editDomain,
             onResetData: _confirmResetData,
           ),
         ],
@@ -375,6 +431,7 @@ class _SourceOverflowMenu extends StatelessWidget {
     required this.onSettings,
     required this.onSolveCloudflare,
     required this.onOpenInBrowser,
+    required this.onEditDomain,
     required this.onResetData,
   });
 
@@ -385,6 +442,7 @@ class _SourceOverflowMenu extends StatelessWidget {
   final VoidCallback onSettings;
   final VoidCallback onSolveCloudflare;
   final VoidCallback onOpenInBrowser;
+  final VoidCallback onEditDomain;
   final VoidCallback onResetData;
 
   @override
@@ -393,12 +451,6 @@ class _SourceOverflowMenu extends StatelessWidget {
       future: hasSettings,
       builder: (context, snapshot) {
         final settingsReady = snapshot.data ?? false;
-        if (!settingsReady &&
-            !canSolveCloudflare &&
-            !canOpenInBrowser &&
-            !canResetData) {
-          return const SizedBox.shrink();
-        }
         return PopupMenuButton<VoidCallback>(
           icon: const Icon(Icons.more_vert_rounded),
           onSelected: (action) => action(),
@@ -418,6 +470,12 @@ class _SourceOverflowMenu extends StatelessWidget {
                 value: onOpenInBrowser,
                 child: Text(context.l10n.openSourceSite),
               ),
+            // Always offered: it exists precisely for the case where the
+            // reported domain is wrong, so it cannot gate on that domain.
+            PopupMenuItem<VoidCallback>(
+              value: onEditDomain,
+              child: Text(context.l10n.sourceDomain),
+            ),
             if (canResetData)
               PopupMenuItem<VoidCallback>(
                 value: onResetData,

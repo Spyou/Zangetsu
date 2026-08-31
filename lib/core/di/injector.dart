@@ -46,6 +46,7 @@ import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
+import '../repository/source_domain_overrides.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
@@ -326,6 +327,12 @@ Future<void> initDependencies() async {
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();
   sl.registerSingleton<SourceHealthStore>(SourceHealthStore());
+
+  // Read by SourceRepository.baseUrlFor / cfSolveTargetFor, so it has to be
+  // registered before that repository is used, not just before it is built.
+  sl.registerSingleton<SourceDomainOverrides>(
+    await SourceDomainOverrides.open(),
+  );
   // Persisted Cloudflare clearances: JS sources reuse a solved cf_clearance
   // across restarts instead of re-popping the "Verifying…" solver each session.
   await CfClearanceStore.init();
