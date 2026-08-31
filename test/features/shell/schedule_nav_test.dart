@@ -23,7 +23,10 @@ import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/playback/search_scope.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/provider/cloudstream_provider.dart';
+import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
@@ -126,6 +129,12 @@ class _FakeSearchPrefs extends ChangeNotifier implements SearchPrefs {
 
   @override
   bool get currentSourceOnly => true;
+
+  @override
+  SearchScope? get scope => null;
+
+  @override
+  Future<void> setScope(SearchScope value) => Future.value();
 }
 
 class _FakeSearchSourcePrefs extends ChangeNotifier
@@ -149,6 +158,12 @@ class _FakeProviderRegistry implements ProviderRegistry {
 
   @override
   ProviderRegistryEntry? entryFor(String sourceId) => null;
+
+  @override
+  Set<String> nsfwSourceIds() => const {};
+
+  @override
+  Map<String, String> typeMapOf() => const {};
 }
 
 class _FakeAniListService extends ChangeNotifier implements AniListService {
@@ -313,6 +328,8 @@ void main() {
     sl.registerSingleton<ListStatusStore>(ListStatusStore());
     sl.registerSingleton<DownloadManager>(DownloadManager(fakeRepo));
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
+    sl.registerSingleton<CloudStreamManager>(CloudStreamManager());
+    sl.registerSingleton<AniyomiManager>(AniyomiManager());
     sl.registerSingleton<AniListService>(_FakeAniListService());
     sl.registerSingleton<MalService>(_FakeMalService());
     sl.registerSingleton<SimklService>(_FakeSimklService());
@@ -360,6 +377,13 @@ void main() {
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: true));
     await tester.pumpWidget(wrap(const RootShellTv()));
+    await tester.pumpAndSettle();
+
+    // This fixture has zero loaded sources, so Home's initial focus lands on
+    // its own "no sources yet" Browse button rather than the rail — the rail
+    // only shows its text labels once expanded. LEFT from content opens it,
+    // same bridge root_shell_tv_test.dart exercises directly.
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
     await tester.pumpAndSettle();
 
     expect(find.text('Downloads'), findsOneWidget);
