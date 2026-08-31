@@ -177,7 +177,7 @@ class _RootShellState extends State<RootShell>
       gravity: ToastGravity.BOTTOM,
       toastDuration: const Duration(seconds: 2),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 104),
+        margin: const EdgeInsets.only(bottom: kDockClearance),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: const Color(0xF01C1C1E),
