@@ -461,15 +461,18 @@ void main() {
     expect(find.text('Schedule'), findsNothing);
   });
 
-  // Task 11: Search used to leave the dock and a search bar took its place on
-  // Home while Z Mode was on — that rule is reversed (Search dock visibility
-  // is covered by nav_tabs_screen_test.dart, against the lighter NavTabsScreen
-  // harness). Pumped as bare HomeScreen, not the full RootShell: the shell's
+  // Task 11 added a full-width "Search" bar to Home while Z Mode was on
+  // (Search having left the dock); task 17 replaced that with a header icon
+  // instead (HomeBrowseSourcesAction's sibling, HomeSearchAction — covered by
+  // home_search_action_test.dart), shown regardless of Z Mode. So this no
+  // longer asserts the search icon is absent — that icon is legitimate now —
+  // only that task 11's specific full-width caption bar never comes back.
+  // Pumped as bare HomeScreen, not the full RootShell: the shell's
   // IndexedStack also mounts SearchScreen (offstage), whose SearchScope stays
   // reactive to ZModePrefs.revision even offstage and would need a real
   // MetadataRepository the moment Z Mode flips on — nothing this test cares
   // about.
-  testWidgets("Home no longer shows the old Z Mode search bar", (
+  testWidgets("Home doesn't bring back the old full-width search bar", (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
@@ -479,8 +482,8 @@ void main() {
     await tester.runAsync(() => ZModePrefs.setEnabled(true));
     await tester.pumpAndSettle();
 
-    // The old bar's tell: a bare Icons.search_rounded row with the "Search"
-    // caption, above the mode cards. Nothing on Home draws that icon now.
-    expect(find.byIcon(Icons.search_rounded), findsNothing);
+    // The old bar's tell was a caption reading "Search" beside its icon; the
+    // header's icon-only action has a tooltip (not rendered as Text) instead.
+    expect(find.text('Search'), findsNothing);
   });
 }
