@@ -23,16 +23,24 @@ class CfSolveNeeded {
   // for a request made outside any loaded provider's namespace.
   static final Map<String, ({String? sourceId, String url})> _hosts = {};
 
-  static void needsSolve(String host, String url, {String? sourceId}) =>
-      _hosts[host] = (sourceId: sourceId, url: url);
+  static void needsSolve(String host, String url, {String? sourceId}) {
+    // ignore: avoid_print
+    print('[cfneed] FLAGGED host=$host sourceId=$sourceId url=$url');
+    _hosts[host] = (sourceId: sourceId, url: url);
+  }
 
   /// Clears the flag for [host] — call once a solve for it succeeds.
   static void clear(String host) => _hosts.remove(host);
 
   static bool hostFlagged(String host) => _hosts.containsKey(host);
 
-  static bool sourceFlagged(String sourceId) =>
-      _hosts.values.any((v) => v.sourceId == sourceId);
+  static bool sourceFlagged(String sourceId) {
+    final hit = _hosts.values.any((v) => v.sourceId == sourceId);
+    // ignore: avoid_print
+    print('[cfneed] check sourceId=$sourceId -> $hit '
+        '(flagged: ${_hosts.values.map((v) => v.sourceId).toList()})');
+    return hit;
+  }
 
   /// The challenge url recorded for [sourceId], or null when it isn't flagged.
   static String? urlFor(String sourceId) {
