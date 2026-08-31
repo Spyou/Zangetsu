@@ -5,6 +5,12 @@ import '../../core/theme/app_text.dart';
 import '../../core/ui/source_switcher.dart';
 import '../../l10n/l10n.dart';
 
+/// Restricts [BrowseSourcesList] to one kind-tab's buckets. Streaming = anime
+/// + movies combined (they're one playback pool — see `ContentModeX.
+/// matchesProvider`/`categorizedSources`); Manga and Novel map to their own
+/// buckets. Null (the default) shows every bucket — the pre-tabs behaviour.
+enum SourceListKind { streaming, manga, novel }
+
 /// "Which source do you want to browse?" — the idle state of Search's Sources
 /// scope, and the way into one source's own catalogue.
 ///
@@ -13,7 +19,12 @@ import '../../l10n/l10n.dart';
 /// right for a search fan-out, wrong for a list that claims to show what you
 /// have installed.
 class BrowseSourcesList extends StatelessWidget {
-  const BrowseSourcesList({super.key, required this.onBrowse, this.query = ''});
+  const BrowseSourcesList({
+    super.key,
+    required this.onBrowse,
+    this.query = '',
+    this.kind,
+  });
 
   final void Function(String sourceId, String name) onBrowse;
 
@@ -21,6 +32,9 @@ class BrowseSourcesList extends StatelessWidget {
   /// case-insensitive substring, empty = show everything. This narrows which
   /// installed sources are listed; it never touches content search.
   final String query;
+
+  /// Which kind-tab this list is showing; null shows every bucket.
+  final SourceListKind? kind;
 
   @override
   Widget build(BuildContext context) {
@@ -31,16 +45,24 @@ class BrowseSourcesList extends StatelessWidget {
         s.label.toLowerCase().contains(q) ||
         (s.repo?.toLowerCase().contains(q) ?? false);
 
+    final showStreaming = kind == null || kind == SourceListKind.streaming;
+    final showManga = kind == null || kind == SourceListKind.manga;
+    final showNovel = kind == null || kind == SourceListKind.novel;
+
     final groups = <(String, List<({String id, String label, String? repo})>)>[
-      (context.l10n.anime, b.anime.where(matches).toList()),
-      (context.l10n.moviesSeries, b.movies.where(matches).toList()),
-      (context.l10n.modeManga, b.manga.where(matches).toList()),
-      (context.l10n.modeNovel, b.novel.where(matches).toList()),
+      if (showStreaming) (context.l10n.anime, b.anime.where(matches).toList()),
+      if (showStreaming) (context.l10n.moviesSeries, b.movies.where(matches).toList()),
+      if (showManga) (context.l10n.modeManga, b.manga.where(matches).toList()),
+      if (showNovel) (context.l10n.modeNovel, b.novel.where(matches).toList()),
     ].where((g) => g.$2.isNotEmpty).toList();
 
     if (groups.isEmpty) {
+      // Empty regardless of the query — a real "nothing's installed for this
+      // tab", not just a query that matched nothing.
       final nothingInstalled =
-          b.anime.isEmpty && b.movies.isEmpty && b.manga.isEmpty && b.novel.isEmpty;
+          (!showStreaming || (b.anime.isEmpty && b.movies.isEmpty)) &&
+          (!showManga || b.manga.isEmpty) &&
+          (!showNovel || b.novel.isEmpty);
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
