@@ -78,7 +78,8 @@ class SourceMatcher {
     // searched fine but title-missed, and one that came back empty because it
     // was blocked, are indistinguishable — both just vanish from matching.
     debugPrint('[zmode] $sourceId -> ${results.length} results for "$title"');
-    CfDiag.write('[zmode] $sourceId -> ${results.length} results for "$title"');
+    CfDiag.write('[zmode] $sourceId -> ${results.length} results for "$title"'
+        '${results.isEmpty ? "" : " :: ${results.take(8).map((r) => r.title).join(" | ")}"}');
     final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
     if (hit == null || !titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId)) {
       debugPrint(
