@@ -23,7 +23,6 @@ import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
 import '../schedule/schedule_screen.dart';
-import '../search/browse_sources_screen.dart';
 import '../settings/settings_screen.dart';
 import 'dock_icons.dart';
 import 'mode_bar.dart';
@@ -298,22 +297,25 @@ class _RootShellState extends State<RootShell>
                         builder: (_, mode) => ModeBar(
                           open: _modeBarOpen,
                           current: (mode, ZModePrefs.streamKind),
+                          sourcesSelected: ZModePrefs.sourcesMode,
                           onPicked: (m, k) async {
                             setState(() => _modeBarOpen = false);
+                            // Leaving Sources mode also changes the catalogue,
+                            // even when the content mode itself doesn't.
+                            final wasSources = ZModePrefs.sourcesMode;
                             await ZModePrefs.setStreamKind(k);
+                            await ZModePrefs.setSourcesMode(false);
                             await sl<ContentModeCubit>().setMode(m);
-                            if (m == ContentMode.anime) {
+                            if (m == ContentMode.anime || wasSources) {
                               // Same content mode, different catalogue → reload.
                               sl<HomeCubit>().load(reset: true);
                             }
                           },
-                          onSourcesTapped: () {
+                          onSourcesPicked: () async {
                             setState(() => _modeBarOpen = false);
-                            Navigator.of(context).push(
-                              MaterialPageRoute<void>(
-                                builder: (_) => const BrowseSourcesScreen(),
-                              ),
-                            );
+                            await ZModePrefs.setSourcesMode(true);
+                            // Catalogue switched to the installed sources → reload.
+                            sl<HomeCubit>().load(reset: true);
                           },
                         ),
                       ),
@@ -333,7 +335,9 @@ class _RootShellState extends State<RootShell>
                                 bloc: sl<ContentModeCubit>(),
                                 builder: (_, mode) => ModeFab(
                                   open: _modeBarOpen,
-                                  icon: iconForMode(mode, ZModePrefs.streamKind),
+                                  icon: ZModePrefs.sourcesMode
+                                      ? Icons.extension_outlined
+                                      : iconForMode(mode, ZModePrefs.streamKind),
                                   onTap: () =>
                                       setState(() => _modeBarOpen = !_modeBarOpen),
                                 ),
