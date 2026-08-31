@@ -772,6 +772,14 @@
 	"noCloudStreamSourcesInstalled": "Aucune source CloudStream installée.",
 	"cloudstream": "flux cloud",
 	"sourceSettings": "Réglages de la source",
+	"resetSourceDataConfirm": "Réinitialiser les données enregistrées de {name} ? Cela efface ses réglages enregistrés, sa connexion et ses cookies. Votre liste, historique et téléchargements restent intacts.",
+	"@resetSourceDataConfirm": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
 	"removeRepository2": "Retirer le dépôt ?",
 	"removeThisRepositoryAndItsSources": "Retirer ce dépôt et ses sources ?",
 	"removed": "Retiré",

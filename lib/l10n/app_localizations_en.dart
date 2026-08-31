@@ -2288,6 +2288,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sourceSettings => 'Source settings';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return 'Reset $name\'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.';
+  }
+
+  @override
   String get removeRepository2 => 'Remove repository?';
 
   @override

@@ -1054,6 +1054,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             }
                         }
                     }
+                    // Clear this plugin's own DataStore-backed settings + its
+                    // site's cookies — narrow reset when a plugin's saved
+                    // state (login, chosen server, prefs) has gone stale.
+                    // Never touches any other plugin or the shared cookie jar.
+                    "resetPluginData" -> {
+                        val name = call.argument<String>("name")
+                        try {
+                            result.success(host.resetPluginData(name ?: ""))
+                        } catch (e: Exception) {
+                            result.error("cs_error", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }

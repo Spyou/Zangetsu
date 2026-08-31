@@ -772,6 +772,14 @@
 	"noCloudStreamSourcesInstalled": "No hay fuentes CloudStream instaladas.",
 	"cloudstream": "flujo de nube",
 	"sourceSettings": "Ajustes de la fuente",
+	"resetSourceDataConfirm": "¿Restablecer los datos guardados de {name}? Esto borra su configuración guardada, el inicio de sesión y las cookies. Tu lista, historial y descargas no se ven afectados.",
+	"@resetSourceDataConfirm": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
 	"removeRepository2": "¿Quitar repositorio?",
 	"removeThisRepositoryAndItsSources": "¿Quitar este repositorio y sus fuentes?",
 	"removed": "Quitado",

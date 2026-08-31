@@ -2221,6 +2221,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sourceSettings => '来源设置';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return '重置$name的已保存数据?这会清除它保存的设置、登录状态和 Cookie。你的列表、历史记录和下载不受影响。';
+  }
+
+  @override
   String get removeRepository2 => '要移除仓库吗？';
 
   @override
@@ -6892,6 +6897,11 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get sourceSettings => '來源設定';
+
+  @override
+  String resetSourceDataConfirm(String name) {
+    return '重設$name的已儲存資料?這會清除它儲存的設定、登入狀態和 Cookie。你的清單、記錄和下載不受影響。';
+  }
 
   @override
   String get removeRepository2 => '要移除儲庫嗎？';
