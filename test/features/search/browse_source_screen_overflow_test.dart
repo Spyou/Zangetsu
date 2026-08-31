@@ -85,7 +85,11 @@ void main() {
     expect(find.text('Open source site'), findsOneWidget);
   });
 
-  testWidgets('no overflow button when nothing applies', (t) async {
+  // The menu is no longer conditional: "Source domain" is always offered,
+  // because it exists precisely for the case where the reported domain is
+  // wrong or missing and so cannot gate on having one.
+  testWidgets('a source with no other action still offers Source domain',
+      (t) async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(mihonChannel, (call) async {
       mihonCalls.add(call);
@@ -98,7 +102,12 @@ void main() {
         harness(const BrowseSourceScreen(sourceId: 'mihon:2', title: 'No Actions')));
     await t.pumpAndSettle();
 
-    expect(find.byIcon(Icons.more_vert_rounded), findsNothing);
+    expect(find.byIcon(Icons.more_vert_rounded), findsOneWidget);
+    await t.tap(find.byIcon(Icons.more_vert_rounded));
+    await t.pumpAndSettle();
+    expect(find.text('Source domain'), findsOneWidget);
+    expect(find.text('Solve Cloudflare'), findsNothing);
+    expect(find.text('Open source site'), findsNothing);
   });
 
   testWidgets('tapping an overflow entry does not change the active source',

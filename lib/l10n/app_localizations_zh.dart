@@ -2221,6 +2221,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sourceSettings => '来源设置';
 
   @override
+  String get sourceDomain => '来源域名';
+
+  @override
+  String get sourceDomainHint => '留空则使用来源自带的域名。';
+
+  @override
   String resetSourceDataConfirm(String name) {
     return '重置$name的已保存数据?这会清除它保存的设置、登录状态和 Cookie。你的列表、历史记录和下载不受影响。';
   }
@@ -6897,6 +6903,12 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get sourceSettings => '來源設定';
+
+  @override
+  String get sourceDomain => '來源網域';
+
+  @override
+  String get sourceDomainHint => '留空則使用來源自帶的網域。';
 
   @override
   String resetSourceDataConfirm(String name) {

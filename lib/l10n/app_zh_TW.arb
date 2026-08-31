@@ -772,6 +772,8 @@
 	"noCloudStreamSourcesInstalled": "尚未安裝 CloudStream 來源。",
 	"cloudstream": "雲端",
 	"sourceSettings": "來源設定",
+	"sourceDomain": "來源網域",
+	"sourceDomainHint": "留空則使用來源自帶的網域。",
 	"resetSourceDataConfirm": "重設{name}的已儲存資料?這會清除它儲存的設定、登入狀態和 Cookie。你的清單、記錄和下載不受影響。",
 	"@resetSourceDataConfirm": {
 		"placeholders": {

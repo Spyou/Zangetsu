@@ -772,6 +772,8 @@
 	"noCloudStreamSourcesInstalled": "Nessuna sorgente CloudStream installata.",
 	"cloudstream": "flusso di nuvole",
 	"sourceSettings": "Impostazioni della sorgente",
+	"sourceDomain": "Dominio della sorgente",
+	"sourceDomainHint": "Lascia vuoto per usare il dominio della sorgente.",
 	"resetSourceDataConfirm": "Reimpostare i dati salvati di {name}? Questo cancella le sue impostazioni salvate, l'accesso e i cookie. La tua lista, cronologia e download restano intatti.",
 	"@resetSourceDataConfirm": {
 		"placeholders": {

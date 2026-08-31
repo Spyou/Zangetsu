@@ -98,11 +98,24 @@ class MetadataRepository implements CatalogueRepository {
   // ── a title ──────────────────────────────────────────────────────────────
 
   @override
-  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId}) async {
+  Future<MediaDetail> detail(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
+  }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
     final d = _isTmdb(c.kind) ? await _tmdb.detail(c) : await _al.detail(c);
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
+
+    // Hand the caller everything that does NOT depend on a source right now:
+    // title, art, synopsis, cast. Everything past this point waits on
+    // _matcher.resolve, which searches installed sources one at a time — the
+    // whole reason opening a title used to sit on a spinner. Episodes are
+    // stripped for the same reason the no-match branches below strip them: a
+    // synthesised list has no source behind it and can't be played.
+    onPartial?.call(d.copyWith(episodes: const <Episode>[]));
 
     if (c.kind == ZKind.manga || c.kind == ZKind.novel) {
       // Reading: the reader screens fetch pages/text from SourceRepository
@@ -154,7 +167,13 @@ class MetadataRepository implements CatalogueRepository {
       // Same Cloudflare-suppressed-search check as the reading branch above.
       final blocked = _matcher.cfBlockedUrl(c.kind);
       if (blocked != null) throw CloudflareRequiredException(blocked);
-      return d; // no match: metadata's synthesised list stands.
+      // No match: the catalogue may still have synthesised a full zm://…/ep/n
+      // list (TMDB knows a series' whole season/episode layout, AniList its
+      // episode count), but those urls have no source behind them — Play
+      // fails on the first tap. Drop them, exactly as the reading branch
+      // above does, so the honest empty state shows BEFORE the user commits
+      // to a tap instead of after it.
+      return d.copyWith(episodes: const <Episode>[]);
     }
     final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     final episodes = [

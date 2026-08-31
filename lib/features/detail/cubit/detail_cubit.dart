@@ -36,6 +36,7 @@ class DetailState extends Equatable {
     this.cast = const [],
     this.relations = const [],
     this.cloudflareUrl,
+    this.episodesLoading = false,
   });
 
   final DetailStatus status;
@@ -58,6 +59,12 @@ class DetailState extends Equatable {
   /// solve. Null in every other state. Mirrors `HomeState.cloudflareUrl`.
   final String? cloudflareUrl;
 
+  /// True between the metadata landing and the episode list arriving. The
+  /// screen is fully usable in that window — only the episode list is still
+  /// coming — so Play/Download keep their normal look and the Episodes tab
+  /// shows a skeleton instead of "no episodes".
+  final bool episodesLoading;
+
   DetailState copyWith({
     DetailStatus? status,
     MediaDetail? detail,
@@ -69,6 +76,7 @@ class DetailState extends Equatable {
     List<MediaRelation>? relations,
     String? cloudflareUrl,
     bool clearCloudflareUrl = false,
+    bool? episodesLoading,
   }) => DetailState(
     status: status ?? this.status,
     detail: detail ?? this.detail,
@@ -81,12 +89,14 @@ class DetailState extends Equatable {
     cloudflareUrl: clearCloudflareUrl
         ? null
         : (cloudflareUrl ?? this.cloudflareUrl),
+    episodesLoading: episodesLoading ?? this.episodesLoading,
   );
 
   @override
   List<Object?> get props => [
     status,
     detail,
+    episodesLoading,
     category,
     selectedSeason,
     descExpanded,
@@ -160,6 +170,19 @@ class DetailCubit extends Cubit<DetailState> {
         _url,
         category: state.category,
         sourceId: _sourceId,
+        // Metadata titles resolve their source by searching every installed
+        // one in turn; that used to hold the whole screen on the skeleton.
+        // Paint as soon as the metadata lands and let the episode list fill
+        // in when the full detail below arrives. Only ever moves the screen
+        // loading → success, so it can't clobber a finished or failed load.
+        onPartial: (partial) {
+          if (isClosed || state.status != DetailStatus.loading) return;
+          emit(state.copyWith(
+            status: DetailStatus.success,
+            detail: partial,
+            episodesLoading: true,
+          ));
+        },
       );
       // A novel (LNReader) plugin swallows its own fetch failure and returns
       // an empty detail rather than throwing (LnReaderProvider.getDetail's
@@ -169,18 +192,32 @@ class DetailCubit extends Cubit<DetailState> {
       // gets mistaken for a block.
       final latched = detail.title.isEmpty ? NovelCloudflare.pendingUrl : null;
       if (latched != null) {
-        emit(
-          state.copyWith(status: DetailStatus.error, cloudflareUrl: latched),
-        );
+        emit(state.copyWith(
+          status: DetailStatus.error,
+          cloudflareUrl: latched,
+          episodesLoading: false,
+        ));
         return;
       }
       NovelCloudflare.clear();
-      emit(state.copyWith(status: DetailStatus.success, detail: detail));
+      emit(state.copyWith(
+        status: DetailStatus.success,
+        detail: detail,
+        episodesLoading: false,
+      ));
       _enrich(detail);
     } on CloudflareRequiredException catch (e) {
-      emit(state.copyWith(status: DetailStatus.error, cloudflareUrl: e.url));
+      emit(state.copyWith(
+        status: DetailStatus.error,
+        cloudflareUrl: e.url,
+        episodesLoading: false,
+      ));
     } catch (_) {
-      emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
+      emit(state.copyWith(
+        status: DetailStatus.error,
+        error: 'load_failed',
+        episodesLoading: false,
+      ));
     }
   }
 

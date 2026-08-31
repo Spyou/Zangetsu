@@ -179,7 +179,8 @@ void main() {
     await t.pumpAndSettle();
 
     // ani:1 is site-backed and gets the shield; allanime is a JS provider
-    // with no base url and must not.
+    // with no base url and must not — "nothing to solve against" is the only
+    // thing that hides it, not "not currently blocked".
     expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
     // The shared picker builds its own row widget, not a ListTile.
     final shieldRow = find.ancestor(
@@ -191,7 +192,8 @@ void main() {
       findsOneWidget,
       reason: 'the shield must sit on the site-backed row, not the JS one',
     );
-    // Task 20: an unflagged source's shield is the plain one, no badge.
+    // An unflagged source's shield is the plain one; the badge means a
+    // challenge was actually seen.
     expect(inSheet(find.byType(Badge)), findsNothing);
   });
 
@@ -232,7 +234,7 @@ class _NoopRepo implements CatalogueRepository {
   @override
   Future<void> clearHttpCache() async {}
   @override
-  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId}) async =>
+  Future<MediaDetail> detail(String url, {String category = 'sub', String? sourceId, void Function(MediaDetail partial)? onPartial}) async =>
       const MediaDetail(
           id: 'x', title: 'x', url: 'zm://anime/mal:5114', type: ProviderType.anime, sourceId: 'zm');
 }
