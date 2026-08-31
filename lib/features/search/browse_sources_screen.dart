@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
+import '../home/search_screen.dart';
 import 'browse_source_screen.dart';
 import 'browse_sources_list.dart';
 
@@ -13,7 +14,10 @@ import 'browse_sources_list.dart';
 ///
 /// Kind tabs (Streaming / Manga / Novel) narrow [BrowseSourcesList] to one
 /// bucket group; the field above them filters by source name within
-/// whichever tab is selected.
+/// whichever tab is selected. The search action in the app bar is a
+/// different thing entirely — it's content search fanned out across every
+/// installed source (see [SearchScreen.forceSources]), the replacement for
+/// the all-sources search that left the main Search screen when Z Mode is on.
 class BrowseSourcesScreen extends StatefulWidget {
   const BrowseSourcesScreen({super.key});
 
@@ -41,6 +45,17 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
       appBar: AppBar(
         backgroundColor: AppColors.bg,
         title: Text(context.l10n.sources, style: AppText.headline),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search_rounded),
+            tooltip: context.l10n.search,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => const SearchScreen(forceSources: true),
+              ),
+            ),
+          ),
+        ],
         bottom: TabBar(
           controller: _tab,
           // Drop the default full-width hairline under the bar — same
