@@ -5,8 +5,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 class DiscordTokenStore {
   DiscordTokenStore._();
 
+  // AndroidOptions() uses RSA OAEP + AES-GCM by default (v10+). The old
+  // `encryptedSharedPreferences` flag only picked a deprecated Jetpack backend.
   static const FlutterSecureStorage _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
+    aOptions: AndroidOptions(),
   );
   static const String _key = 'discord_user_token';
 

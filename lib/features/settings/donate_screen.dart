@@ -9,6 +9,7 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
+import '../../l10n/l10n.dart';
 import '../../core/tv/tv_list_focusable.dart';
 
 /// Support / Donate screen — a short message and a few ways to tip:
@@ -46,8 +47,8 @@ class DonateScreen extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(noApp
-            ? 'No UPI app found — UPI ID copied, paste it in your UPI app'
-            : 'UPI ID copied'),
+            ? context.l10n.noUPIAppFoundUPIIDCopiedPasteItInYourUPIApp
+            : context.l10n.upiIdCopied),
       ),
     );
   }
@@ -56,7 +57,7 @@ class DonateScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Support'),
+      appBar: settingsAppBar(context.l10n.supportTitle),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 32, 24, 28),
         children: [
@@ -79,22 +80,20 @@ class DonateScreen extends StatelessWidget {
           const SizedBox(height: 22),
           Center(
             child: Text(
-              'Enjoying $kAppName?',
+              context.l10n.enjoyingApp(kAppName),
               style: AppText.largeTitle.copyWith(fontSize: 23),
               textAlign: TextAlign.center,
             ),
           ),
           const SizedBox(height: 12),
           Text(
-            "$kAppName is free and ad-free. If it's earned a spot on your home "
-            'screen, a small tip keeps it growing — new features, fixes and '
-            'faster updates. Every bit genuinely helps. Thank you! ♥',
+            context.l10n.donateBlurb(kAppName),
             style: AppText.body.copyWith(height: 1.5),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 28),
           _DonateButton(
-            label: 'Buy me a coffee',
+            label: context.l10n.buyMeACoffee,
             icon: Icons.coffee_rounded,
             bg: const Color(0xFFFFDD00),
             fg: const Color(0xFF13110A),
@@ -102,7 +101,7 @@ class DonateScreen extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _DonateButton(
-            label: 'Donate with PayPal',
+            label: context.l10n.donateWithPayPal,
             icon: Icons.account_balance_wallet_rounded,
             bg: const Color(0xFF003087),
             fg: Colors.white,
@@ -116,7 +115,7 @@ class DonateScreen extends StatelessWidget {
               Expanded(child: Divider(color: AppColors.textTertiary.withValues(alpha: 0.2))),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Text('UPI · India',
+                child: Text(context.l10n.upiIndia,
                     style: AppText.caption.copyWith(color: AppColors.textTertiary)),
               ),
               Expanded(child: Divider(color: AppColors.textTertiary.withValues(alpha: 0.2))),
@@ -124,7 +123,7 @@ class DonateScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _DonateButton(
-            label: 'Pay via UPI',
+            label: context.l10n.payViaUPI,
             icon: Icons.currency_rupee_rounded,
             bg: AppColors.accent,
             fg: Colors.white,
@@ -136,7 +135,7 @@ class DonateScreen extends StatelessWidget {
           Center(
             child: (sl.isRegistered<AppMode>() && sl<AppMode>().isTv)
                 ? TvListFocusable(
-                    semanticLabel: 'Copy UPI ID',
+                    semanticLabel: context.l10n.copyUPIID,
                     onTap: () => _copyUpi(context),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -226,6 +225,7 @@ class _DonateButton extends StatelessWidget {
               label,
               style: TextStyle(
                 fontFamily: 'Inter',
+          fontFamilyFallback: AppText.fontFamilyFallback,
                 fontWeight: FontWeight.w700,
                 fontSize: 16,
                 letterSpacing: -0.2,

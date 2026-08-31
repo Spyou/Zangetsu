@@ -90,7 +90,7 @@ class _Description extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Read more',
+            context.l10n.readMore,
             style: AppText.caption.copyWith(
               color: AppColors.accent,
               fontWeight: FontWeight.w700,

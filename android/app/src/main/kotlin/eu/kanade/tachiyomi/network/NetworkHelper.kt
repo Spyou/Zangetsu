@@ -71,6 +71,26 @@ class NetworkHelper(
      * cacheless client (`newCachelessCallWithProgress`), so only JSON lands here.
      */
     val client: OkHttpClient = sharedClient.newBuilder()
+        // Upstream Aniyomi/Mihon set these on the client they build here; this
+        // port wraps CloudStream's baseClient instead and inherited its values —
+        // a bare OkHttpClient(), so 10s connect/read and, critically, NO
+        // callTimeout at all (OkHttp's default is 0 = unlimited). connect/read
+        // only fire while a host is SILENT, so a source that trickles bytes, or
+        // loops through redirects, was bounded by nothing: browse, search,
+        // chapter lists and page loads could all hang for the life of the app.
+        //
+        // These are upstream's own numbers, so extensions are already written
+        // against them. Worst blocking wait inside this client is well under the
+        // 2-minute cap: the headless Cloudflare solve is 12s, WebViewInterceptor
+        // 30s, and the VISIBLE solve doesn't block at all (CloudflareInterceptor
+        // throws CloudflareRequiredException and the user retries afterwards).
+        // Two of the three are also looser than what we had.
+        //
+        // downloadClient below overrides callTimeout to 30 minutes, so large
+        // media downloads keep their own budget.
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(2, TimeUnit.MINUTES)
         // Mihon's default client must carry an UncaughtExceptionInterceptor FIRST
         // in the chain — some extensions (e.g. Asura Scans) assert its presence on
         // the DEFAULT client and otherwise throw "UncaughtExceptionInterceptor must

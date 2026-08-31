@@ -7,6 +7,7 @@ import 'package:watch_app/core/schedule/coming_soon_service.dart';
 import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/features/schedule/schedule_cubit.dart';
 import 'package:watch_app/features/schedule/schedule_screen.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 // A cubit we can seed with a fixed state, so no services/sl needed.
 class _StubCubit extends ScheduleCubit {
@@ -42,6 +43,8 @@ void main() {
       loadingAiring: false, loadingSoon: false,
     );
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: BlocProvider<ScheduleCubit>(
         create: (_) => _StubCubit(_FA(), _FS(), _FM(), seed),
         child: const ScheduleBody(), // the phone view widget, cubit-driven

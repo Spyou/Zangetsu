@@ -28,6 +28,7 @@ import 'reader_chrome.dart';
 import 'reader_auto_scroll.dart';
 import 'reader_auto_scroll_ui.dart';
 import 'reader_comfort.dart';
+import '../../l10n/l10n.dart';
 import 'reader_pull_chapter.dart';
 
 /// Image reader for manga chapters — the paged/webtoon counterpart of
@@ -518,7 +519,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     _autoScroll.stop();
     // Moving ON to a later chapter means the user is done with this one — mark
     // it read and let it scrobble even if they never scrolled the tail (the
-    // "Next chapter →" footer button is the common path). Going BACKWARDS is
+    // context.l10n.nextChapter2 footer button is the common path). Going BACKWARDS is
     // not completion, so it just saves the real position.
     _saveProgress(flush: true, complete: newIndex > _index);
     for (final c in _zoomControllers.values) {
@@ -857,7 +858,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   }
 
   /// One extra swipeable page after the last, when there's a chapter to go to.
-  /// The old floating "Next chapter" button sat on top of the artwork; this
+  /// The old floating context.l10n.nextChapter button sat on top of the artwork; this
   /// gets out of the way instead. Webtoon does the same thing with a footer
   /// under the strip.
   bool get _hasTransitionPage => _index < _chapters.length - 1;
@@ -1174,7 +1175,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 children: [
                   Flexible(
                     child: Text(
-                      next ?? 'Next chapter',
+                      next ?? context.l10n.nextChapter,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: AppText.body.copyWith(
@@ -1195,7 +1196,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             ),
             const SizedBox(height: 10),
             Text(
-              'or keep pulling',
+              context.l10n.orKeepPulling,
               style: AppText.caption.copyWith(
                 color: AppColors.textSecondary.withValues(alpha: 0.7),
                 fontSize: 10.5,
@@ -1205,7 +1206,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             Padding(
               padding: const EdgeInsets.only(top: 6),
               child: Text(
-                "That's the last chapter.",
+                context.l10n.thatSTheLastChapter,
                 style: AppText.caption.copyWith(color: AppColors.textSecondary),
               ),
             ),
@@ -1236,7 +1237,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
             TextButton(
               onPressed: _load,
               child: Text(
-                'Retry',
+                context.l10n.retry,
                 style: AppText.body.copyWith(color: AppColors.accent),
               ),
             ),
@@ -1275,7 +1276,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 children: [
                   ReaderPillIconButton(
                     icon: Icons.arrow_back_rounded,
-                    tooltip: 'Back',
+                    tooltip: context.l10n.back,
                     onTap: () => Navigator.of(context).maybePop(),
                   ),
                   const SizedBox(width: 9),
@@ -1294,7 +1295,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                   const SizedBox(width: 9),
                   ReaderPillIconButton(
                     icon: Icons.more_vert_rounded,
-                    tooltip: 'Reader settings',
+                    tooltip: context.l10n.readerSettings,
                     onTap: _openSettingsSheet,
                   ),
                 ],
@@ -1431,7 +1432,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
     // a dead end, so say so instead of opening it.
     if (_chapters.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No other chapters loaded yet')),
+        SnackBar(content: Text(context.l10n.noOtherChaptersLoadedYet)),
       );
       return;
     }
@@ -1463,7 +1464,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 2),
-                child: Text('Chapters', style: AppText.headline),
+                child: Text(context.l10n.chapters, style: AppText.headline),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
@@ -1617,12 +1618,12 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           // picking it clears the per-series override (same
           // setModeOverride/setFitOverride(..., null) the old null-chip did).
           final directionOptions = <({String value, String label})>[
-            (value: 'default', label: 'Default'),
+            (value: 'default', label: context.l10n.defaultLabel),
             for (final d in const ['ltr', 'rtl', 'vertical'])
               (value: d, label: _directionLabel(d)),
           ];
           final fitOptions = <({String value, String label})>[
-            (value: 'default', label: 'Default'),
+            (value: 'default', label: context.l10n.defaultLabel),
             for (final f in const [
               'contain',
               'width',
@@ -1668,14 +1669,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                         ),
-                        Text('Reader settings', style: AppText.headline),
-                        readerSheetSection('Reading'),
+                        Text(context.l10n.readerSettings, style: AppText.headline),
+                        readerSheetSection(context.l10n.statusReading),
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.swap_horiz_rounded,
-                            label: 'Direction',
+                            label: context.l10n.direction,
                             trailing: modeOverride != null
-                                ? readerOverrideTag()
+                                ? readerOverrideTag(context)
                                 : null,
                             child: ReaderSegmentedControl(
                               options: directionOptions,
@@ -1692,7 +1693,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.view_day_outlined,
-                            label: 'Auto webtoon mode',
+                            label: context.l10n.autoWebtoonMode,
                             trailing: Switch(
                               value: prefs.autoWebtoon,
                               activeThumbColor: AppColors.accent,
@@ -1704,13 +1705,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                             ),
                           ),
                         ]),
-                        readerSheetSection('Display'),
+                        readerSheetSection(context.l10n.display),
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.fit_screen_outlined,
-                            label: 'Fit',
+                            label: context.l10n.fit,
                             trailing: fitOverride != null
-                                ? readerOverrideTag()
+                                ? readerOverrideTag(context)
                                 : null,
                             child: ReaderSegmentedControl(
                               options: fitOptions,
@@ -1726,7 +1727,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.palette_outlined,
-                            label: 'Background',
+                            label: context.l10n.background,
                             child: ReaderSegmentedControl(
                               options: backgroundOptions,
                               selected: prefs.mangaBackground,
@@ -1736,7 +1737,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.tune_rounded,
-                            label: 'Filter',
+                            label: context.l10n.filter,
                             child: ReaderSegmentedControl(
                               options: filterOptions,
                               selected: prefs.colorFilter,
@@ -1746,7 +1747,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.auto_stories_outlined,
-                            label: 'Double-page (landscape)',
+                            label: context.l10n.doublePageLandscape,
                             trailing: Switch(
                               value: prefs.doublePageLandscape,
                               activeThumbColor: AppColors.accent,
@@ -1761,7 +1762,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.crop_outlined,
-                            label: 'Crop borders',
+                            label: context.l10n.cropBorders,
                             trailing: Switch(
                               value: prefs.cropBorders,
                               activeThumbColor: AppColors.accent,
@@ -1774,7 +1775,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.swipe_vertical_rounded,
-                            label: 'Pull to change chapter',
+                            label: context.l10n.pullToChangeChapter,
                             trailing: Switch(
                               value: prefs.overscrollChapter,
                               activeThumbColor: AppColors.accent,
@@ -1784,7 +1785,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.play_circle_outline_rounded,
-                            label: 'Auto-scroll',
+                            label: context.l10n.autoScroll,
                             trailing: Icon(
                               Icons.chevron_right_rounded,
                               color: AppColors.textSecondary,
@@ -1797,7 +1798,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.volume_up_rounded,
-                            label: 'Volume keys turn pages',
+                            label: context.l10n.volumeKeysTurnPages,
                             trailing: Switch(
                               value: prefs.volumeKeyPaging,
                               activeThumbColor: AppColors.accent,
@@ -1813,7 +1814,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           if (prefs.volumeKeyPaging)
                             readerSheetRow(
                               icon: Icons.swap_vert_rounded,
-                              label: 'Invert volume keys',
+                              label: context.l10n.invertVolumeKeys,
                               trailing: Switch(
                                 value: prefs.invertVolumeKeys,
                                 activeThumbColor: AppColors.accent,
@@ -1826,7 +1827,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                         readerSheetGroup([
                           readerSheetRow(
                             icon: Icons.visibility_outlined,
-                            label: 'Keep screen on',
+                            label: context.l10n.keepScreenOn,
                             trailing: Switch(
                               value: prefs.keepScreenOn,
                               activeThumbColor: AppColors.accent,
@@ -1838,7 +1839,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                           ),
                           readerSheetRow(
                             icon: Icons.brightness_6_rounded,
-                            label: 'Brightness',
+                            label: context.l10n.brightness,
                             trailing: _systemBrightnessTag(
                               prefs.brightness < 0,
                               () => apply(() {
@@ -1872,7 +1873,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
 
   String _directionLabel(String d) => switch (d) {
     'rtl' => 'Right to left',
-    'vertical' => 'Vertical',
+    'vertical' => context.l10n.vertical,
     _ => 'Left to right',
   };
 
@@ -1885,22 +1886,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
   };
 
   String _backgroundLabel(String b) => switch (b) {
-    'white' => 'White',
+    'white' => context.l10n.colourWhite,
     'gray' => 'Gray',
-    'system' => 'Theme',
-    _ => 'Black',
+    'system' => context.l10n.theme,
+    _ => context.l10n.colourBlack,
   };
 
   String _filterLabel(String f) => switch (f) {
     'grayscale' => 'Grayscale',
     'invert' => 'Invert',
     'sepia' => 'Sepia',
-    _ => 'None',
+    _ => context.l10n.subtitleOutlineNone,
   };
 
   /// Small tappable pill next to the Brightness row — jumps straight to the
   /// OS-managed brightness. Calls the exact same `setBrightness(-1.0)` +
-  /// `applyReaderComfort()` pair the old inline "System" chip did; only the
+  /// `applyReaderComfort()` pair the old inline context.l10n.system chip did; only the
   /// styling moved (from a chip in the row to a tag beside its label).
   Widget _systemBrightnessTag(bool active, VoidCallback onTap) {
     return GestureDetector(
@@ -1917,7 +1918,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
           ),
         ),
         child: Text(
-          'System',
+          context.l10n.system,
           style: AppText.caption.copyWith(
             color: active ? AppColors.accent : AppColors.textSecondary,
             fontWeight: FontWeight.w600,
@@ -1960,7 +1961,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen>
                 ),
                 _pageActionRow(
                   Icons.ios_share_rounded,
-                  'Share',
+                  context.l10n.share,
                   () => Navigator.pop(ctx, _PageAction.share),
                 ),
               ],

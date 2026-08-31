@@ -55,7 +55,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
             title: Text(
               widget.scopeToReading
                   ? 'Manga & Novel providers'
-                  : 'Zangetsu providers',
+                  : context.l10n.zangetsuProviders,
               style: AppText.barTitle,
             ),
             bottom: TabBar(
@@ -66,9 +66,9 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
               labelStyle: AppText.headline,
               unselectedLabelStyle: AppText.headline,
               dividerHeight: 0,
-              tabs: const [
-                Tab(text: 'Installed'),
-                Tab(text: 'Repositories'),
+              tabs: [
+                Tab(text: context.l10n.installed),
+                Tab(text: context.l10n.repositories),
               ],
             ),
           ),
@@ -78,7 +78,7 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
             onPressed: () => _showAddRepoDialog(context),
             icon: const Icon(Icons.add),
             label: Text(
-              'Add Zangetsu repo',
+              context.l10n.addZangetsuRepo,
               style: AppText.button.copyWith(color: Colors.white),
             ),
           ),
@@ -102,14 +102,14 @@ class _ZPhoneViewState extends State<_ZPhoneView> {
                       Expanded(
                         child: Text(
                           _showAll
-                              ? 'Showing every installed provider'
-                              : 'Showing manga & novel providers',
+                              ? context.l10n.showingEveryInstalledProvider
+                              : context.l10n.showingMangaNovelProviders,
                           style: AppText.caption,
                         ),
                       ),
                       TextButton(
                         onPressed: () => setState(() => _showAll = !_showAll),
-                        child: Text(_showAll ? 'Manga & Novel only' : 'Show all'),
+                        child: Text(_showAll ? context.l10n.mangaNovelOnly : context.l10n.showAllProviders),
                       ),
                     ],
                   ),
@@ -173,9 +173,9 @@ class _ZInstalledSection extends StatelessWidget {
             icon: Icons.dns_rounded,
             message: query.trim().isEmpty
                 ? (readingOnly
-                    ? 'No manga/novel providers installed.'
-                    : 'No providers installed.')
-                : 'No installed providers match "${query.trim()}".',
+                    ? context.l10n.noMangaNovelProvidersInstalled
+                    : context.l10n.noProvidersInstalled)
+                : context.l10n.noInstalledProvidersMatchQuery(query.trim()),
           );
         }
         // Group by origin repo. Bundled first, then repos alphabetically by
@@ -189,7 +189,7 @@ class _ZInstalledSection extends StatelessWidget {
         }
         final repoByUrl = {for (final r in state.repos) r.url: r};
         String nameFor(String repoUrl) {
-          if (repoUrl == kBundledRepoUrl) return 'Built-in';
+          if (repoUrl == kBundledRepoUrl) return context.l10n.builtIn;
           final repo = repoByUrl[repoUrl];
           if (repo != null) return repo.displayName;
           // Fall back to a display name snapshotted on an entry, else the URL.
@@ -263,8 +263,8 @@ class _ZReposSection extends StatelessWidget {
           return EmptyState(
             icon: Icons.cloud_off_rounded,
             message: searching
-                ? 'No providers match "${query.trim()}".'
-                : 'No repos added yet.\nTap "Add repo" to add one.',
+                ? context.l10n.noProvidersMatchQuery(query.trim())
+                : context.l10n.noReposAddedYetTap(context.l10n.addRepo),
           );
         }
         final installedKeys = state.installedKeys;
@@ -404,23 +404,23 @@ class _ZInstalledRow extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Remove $name?', style: AppText.headline),
+        title: Text(context.l10n.removeNameQuestion(name), style: AppText.headline),
         content: Text(
-          'The provider will be removed from your installed sources.',
+          context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Remove',
+              context.l10n.removeDownloadTooltip,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -481,7 +481,7 @@ class _ZInstalledRow extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Source settings',
+            tooltip: context.l10n.sourceSettings,
             icon: const Icon(Icons.tune_rounded, size: 20),
             color: AppColors.textSecondary,
             onPressed: () => Navigator.of(context).push(
@@ -496,7 +496,7 @@ class _ZInstalledRow extends StatelessWidget {
           ),
           if (!bundled)
             IconButton(
-              tooltip: 'Remove',
+              tooltip: context.l10n.navTabsRemove,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmRemove(context),
@@ -551,24 +551,24 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Remove repo?', style: AppText.headline),
+        title: Text(context.l10n.removeRepo, style: AppText.headline),
         content: Text(
-          'Already-installed sources from "${repo.displayName}" stay '
-          'installed. You can add the repo back later.',
+          context.l10n.alreadyInstalledSourcesFromRepoStay(repo.displayName) +
+              context.l10n.youCanAddRepoBackLater,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Remove',
+              context.l10n.removeDownloadTooltip,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -645,7 +645,7 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                       RepoUpdated(repo.url),
                     ),
                     icon: const Icon(Icons.download_rounded, size: 18),
-                    label: Text('Update all ($_updateCount)'),
+                    label: Text(context.l10n.updateAllCount(_updateCount)),
                     style: TextButton.styleFrom(
                       foregroundColor: AppColors.accent,
                     ),
@@ -669,7 +669,7 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                     PopupMenuItem(
                       value: 'refresh',
                       child: Text(
-                        'Check for updates',
+                        context.l10n.checkForUpdates,
                         style: AppText.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -686,7 +686,7 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                     PopupMenuItem(
                       value: 'remove',
                       child: Text(
-                        'Remove repo',
+                        context.l10n.removeRepo2,
                         style: AppText.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -712,7 +712,7 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
                         Padding(
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
-                            'No sources in this repo yet.',
+                            context.l10n.noSourcesInThisRepoYet,
                             textAlign: TextAlign.center,
                             style: AppText.caption,
                           ),
@@ -751,7 +751,7 @@ class _ZRepoSectionState extends State<_ZRepoSection> {
   }
 }
 
-/// Small "NSFW" chip shown next to a source flagged 18+ in its manifest.
+/// Small context.l10n.nsfw chip shown next to a source flagged 18+ in its manifest.
 class _ZNsfwBadge extends StatelessWidget {
   const _ZNsfwBadge();
 
@@ -765,7 +765,7 @@ class _ZNsfwBadge extends StatelessWidget {
         border: Border.all(color: AppColors.accent.withValues(alpha: 0.5)),
       ),
       child: Text(
-        'NSFW',
+        context.l10n.nsfw,
         style: AppText.overline.copyWith(
           color: AppColors.accent,
           fontWeight: FontWeight.w700,
@@ -808,23 +808,23 @@ class _ZRepoSourceRow extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall ${source.name}?', style: AppText.headline),
+        title: Text(context.l10n.uninstallNameQuestion(source.name), style: AppText.headline),
         content: Text(
-          'The provider will be removed from your installed sources.',
+          context.l10n.theProviderWillBeRemovedFromYourInstalledSources,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -874,7 +874,7 @@ class _ZRepoSourceRow extends StatelessWidget {
             FilledButton.icon(
               onPressed: () => _update(context),
               icon: const Icon(Icons.download_rounded, size: 18),
-              label: const Text('Update'),
+              label: Text(context.l10n.update),
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
@@ -898,7 +898,7 @@ class _ZRepoSourceRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Installed'),
+              child: Text(context.l10n.installed),
             )
           else
             FilledButton(
@@ -912,7 +912,7 @@ class _ZRepoSourceRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
               ),
-              child: const Text('Install'),
+              child: Text(context.l10n.install),
             ),
         ],
       ),
@@ -949,7 +949,7 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
   Future<void> _submit() async {
     final url = _urlCtrl.text.trim();
     if (url.isEmpty) {
-      setState(() => _error = 'Enter a manifest URL.');
+      setState(() => _error = context.l10n.enterManifestUrl);
       return;
     }
     setState(() {
@@ -978,7 +978,7 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add repo', style: AppText.headline),
+      title: Text(context.l10n.addRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -990,9 +990,9 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Custom name (optional)',
-                hintText: "Leave blank to use the repo's own name",
+              decoration: InputDecoration(
+                labelText: context.l10n.customNameOptional,
+                hintText: context.l10n.leaveBlankToUseTheRepoSOwnName,
               ),
             ),
             const SizedBox(height: 12),
@@ -1003,15 +1003,14 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
               keyboardType: TextInputType.url,
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
-              decoration: const InputDecoration(
-                labelText: 'Manifest URL',
-                hintText: 'https://.../index.json',
+              decoration: InputDecoration(
+                labelText: context.l10n.manifestUrl,
+                hintText: context.l10n.manifestUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              "Paste the repo's index.json URL — the JSON file that lists "
-              'every source in the repo, not a single provider .js URL.',
+              context.l10n.pasteRepoIndexJsonUrl,
               style: AppText.caption,
             ),
             if (_error != null) ...[
@@ -1028,7 +1027,7 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
         TextButton(
           onPressed: _loading ? null : () => Navigator.of(context).pop(),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
@@ -1047,7 +1046,7 @@ class _ZAddRepoDialogState extends State<_ZAddRepoDialog> {
                     color: Colors.white,
                   ),
                 )
-              : const Text('Add'),
+              : Text(context.l10n.navTabsAdd),
         ),
       ],
     );

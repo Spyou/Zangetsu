@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.SoundEffectConstants
@@ -13,6 +14,8 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
+import androidx.core.view.isVisible
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -21,6 +24,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
@@ -33,6 +37,7 @@ import androidx.media3.exoplayer.drm.DefaultDrmSessionManager
 import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.TimeBar
@@ -118,12 +123,24 @@ class TvPlayerActivity : Activity() {
         private const val HOLD_MS = 500L
         private const val DEFAULT_ACCENT = 0xFFFF4D5E.toInt()
         private const val UNFOCUSED_PILL = 0x59101014 // subtle dark glass (premium)
+        /** CloudStream-style chunk size — matches Dart [kEpisodeRangeChunk]. */
+        private const val EPISODE_RANGE_CHUNK = 50
+        private const val RANGE_CHIP_SURFACE = 0xFF2A2A32.toInt()
 
         /** Foreground native player, so Dart can push late filler info. */
         @JvmStatic
         @Volatile
         var active: TvPlayerActivity? = null
     }
+
+    // Aspect Ratio Stuffs
+    private val aspectRatios = listOf(
+        Triple("Fit", R.drawable.ic_aspect_ratio_fit, AspectRatioFrameLayout.RESIZE_MODE_FIT),
+        Triple("Fill", R.drawable.ic_aspect_ratio_fill, AspectRatioFrameLayout.RESIZE_MODE_FILL),
+        Triple("Zoom", R.drawable.ic_aspect_ratio_zoom, AspectRatioFrameLayout.RESIZE_MODE_ZOOM),
+    )
+    private var currentAspectRatio = 0
+    private var lastVideoRatio: Float? = null
 
     private var player: ExoPlayer? = null
     private var reported = false
@@ -171,6 +188,7 @@ class TvPlayerActivity : Activity() {
     private lateinit var btnSources: TextView
     private lateinit var btnAudioSubs: TextView
     private lateinit var btnNext: TextView
+    private lateinit var btnAspectRatio: TextView
     private lateinit var btnMegaskip: TextView
     private lateinit var btnSpeed: TextView
     // MegaSkip jump size in seconds (read from the launch extras).
@@ -226,6 +244,7 @@ class TvPlayerActivity : Activity() {
     private var scrubbing = false
     private var speedEngaged = false
     private var menuOpen = false
+    private var episodeRangeIndex = 0 // 50-ep chunk in the Episodes panel
     private var menuOpener: View? = null // the row button that opened the panel
     // Land focus on the option the user last picked (else the current selection,
     // else the first row) when a menu (re)opens — not always the first row.
@@ -347,6 +366,11 @@ class TvPlayerActivity : Activity() {
         applySubtitleStyleLive()
 
         exo.addListener(object : Player.Listener {
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                lastVideoRatio = (videoSize.width * videoSize.pixelWidthHeightRatio) / videoSize.height
+                updateAspectRatioButtonVisibility()
+            }
+
             override fun onRenderedFirstFrame() {
                 Log.i(TAG, "onRenderedFirstFrame — native surface is showing video")
             }
@@ -387,6 +411,12 @@ class TvPlayerActivity : Activity() {
                 playerView.subtitleView?.setCues(repositionCues(cueGroup.cues))
             }
         })
+
+        playerView.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                updateAspectRatioButtonVisibility()
+            }
+        }
 
         // First episode: stream data comes straight from the intent (Dart resolved
         // it before launching). Later switches come from the bridge.
@@ -444,7 +474,7 @@ class TvPlayerActivity : Activity() {
         if (!drmKid.isNullOrEmpty() && !drmKey.isNullOrEmpty()) {
             val json =
                 "{\"keys\":[{\"kty\":\"oct\",\"k\":\"$drmKey\",\"kid\":\"$drmKid\"}]," +
-                    "\"type\":\"temporary\"}"
+                        "\"type\":\"temporary\"}"
             val drmManager = DefaultDrmSessionManager.Builder()
                 .setUuidAndExoMediaDrmProvider(C.CLEARKEY_UUID, FrameworkMediaDrm.DEFAULT_PROVIDER)
                 .setMultiSession(false)
@@ -494,6 +524,32 @@ class TvPlayerActivity : Activity() {
                 }
             },
         )
+    }
+
+    private fun updateAspectRatioButtonVisibility() {
+        val videoRatio = lastVideoRatio ?: run {
+            btnAspectRatio.isVisible = false // no video size known yet
+            return
+        }
+
+        val containerWidth = playerView.width
+        val containerHeight = playerView.height
+        if (containerWidth == 0 || containerHeight == 0) return // not laid out yet
+
+        val containerRatio = containerWidth.toFloat() / containerHeight
+        val ratiosMatch = kotlin.math.abs(videoRatio - containerRatio) < 0.01f
+
+        btnAspectRatio.isVisible = !ratiosMatch
+    }
+
+    private fun changeAspectRatio() {
+        currentAspectRatio = (++currentAspectRatio) % aspectRatios.size
+
+        val currentValue = aspectRatios[currentAspectRatio]
+        playerView.resizeMode = currentValue.third
+        btnAspectRatio.text = currentValue.first
+        val drawable = ContextCompat.getDrawable(this, currentValue.second)
+        btnAspectRatio.setCompoundDrawablesWithIntrinsicBounds(drawable, null, null, null)
     }
 
     private fun applyResolved(index: Int, m: Map<String, Any?>) {
@@ -791,6 +847,38 @@ class TvPlayerActivity : Activity() {
     }
 
     // ── Options menu (Quality / Audio / Subtitles / Speed / Volume) ───────────
+    private fun resetMenuPanelLayout() {
+        val scroll = menuPanel as? LockedScrollView ?: return
+        scroll.scrollLocked = false
+        scroll.isFillViewport = false
+        menuContent.layoutParams = menuContent.layoutParams.apply {
+            height = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        }
+    }
+
+    /** Header + range rail stay fixed; only the inner episode list scrolls. */
+    private fun prepareEpisodesPanelLayout() {
+        val scroll = menuPanel as? LockedScrollView ?: return
+        scroll.scrollLocked = true
+        scroll.isFillViewport = true
+        scroll.scrollTo(0, 0)
+        menuContent.layoutParams = menuContent.layoutParams.apply {
+            height = android.view.ViewGroup.LayoutParams.MATCH_PARENT
+        }
+    }
+
+    private fun episodeListScroll(): android.widget.ScrollView =
+        android.widget.ScrollView(this).apply {
+            tag = "episode-list-scroll"
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+
     private fun showPanel() {
         // Hide the transport controls so the panel reads cleanly over the video.
         controls.visibility = View.GONE
@@ -814,6 +902,7 @@ class TvPlayerActivity : Activity() {
             avMenuActive = false
             avStack.clear()
         }
+        resetMenuPanelLayout()
         menuContent.removeAllViews()
         build()
         showPanel()
@@ -835,19 +924,312 @@ class TvPlayerActivity : Activity() {
         focusTarget = null
         avMenuActive = false
         avStack.clear()
+        episodeRangeIndex = if (episodeCount > 0) currentIndex / EPISODE_RANGE_CHUNK else 0
+        buildEpisodesPanel()
+        showPanel()
+        menuContent.post { focusEpisodeMenuTarget() }
+    }
+
+    private fun episodeRangeCount(): Int =
+        if (episodeCount <= 0) 0
+        else (episodeCount + EPISODE_RANGE_CHUNK - 1) / EPISODE_RANGE_CHUNK
+
+    private fun episodeDisplayNumber(index: Int): Int {
+        val label = episodeLabels.getOrNull(index) ?: return index + 1
+        val m = Regex("""Episode\s+(\d+)""", RegexOption.IGNORE_CASE).find(label)
+        return m?.groupValues?.get(1)?.toIntOrNull() ?: (index + 1)
+    }
+
+    private fun episodeRangeLabel(rangeIndex: Int): String {
+        if (episodeCount == 0) return ""
+        val startIdx = (rangeIndex * EPISODE_RANGE_CHUNK).coerceIn(0, episodeCount - 1)
+        val endIdx = ((rangeIndex + 1) * EPISODE_RANGE_CHUNK - 1).coerceIn(0, episodeCount - 1)
+        return "${episodeDisplayNumber(startIdx)}–${episodeDisplayNumber(endIdx)}"
+    }
+
+    private fun buildEpisodesPanel() {
         menuContent.removeAllViews()
+        resetMenuPanelLayout()
+        prepareEpisodesPanelLayout()
         sectionHeader("Episodes")
-        for (i in 0 until episodeCount) {
+        val rangeCount = episodeRangeCount()
+        if (rangeCount <= 1) {
+            val listScroll = episodeListScroll()
+            val list = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                )
+            }
+            addEpisodeRows(0, episodeCount, list)
+            listScroll.addView(list)
+            menuContent.addView(listScroll)
+            return
+        }
+        episodeRangeIndex = episodeRangeIndex.coerceIn(0, rangeCount - 1)
+        val start = episodeRangeIndex * EPISODE_RANGE_CHUNK
+        val end = minOf(start + EPISODE_RANGE_CHUNK, episodeCount)
+
+        // Pin the range rail on the left; only the episode list scrolls.
+        val body = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = Gravity.TOP
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
+        }
+
+        val rail = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                dp(96),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginEnd = dp(12)
+                gravity = Gravity.TOP
+            }
+        }
+        for (r in 0 until rangeCount) {
+            rail.addView(
+                rangeChip(
+                    rangeIndex = r,
+                    label = episodeRangeLabel(r),
+                    selected = r == episodeRangeIndex,
+                ) {
+                    if (r != episodeRangeIndex) {
+                        episodeRangeIndex = r
+                        firstSelectedRow = null
+                        focusTarget = null
+                        buildEpisodesPanel()
+                        menuContent.post { focusEpisodeMenuTarget(preferRange = true) }
+                    }
+                },
+            )
+            if (r < rangeCount - 1) {
+                rail.addView(
+                    View(this).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            dp(8),
+                        )
+                    },
+                )
+            }
+        }
+
+        // Many ranges (>~700 eps): rail gets its own locked scroll — stays put
+        // while browsing episodes; unlock only when a chip holds focus.
+        val railContainer: View = if (rangeCount > 14) {
+            LockedScrollView(this).apply {
+                tag = "range-rail-scroll"
+                scrollLocked = true
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    dp(96),
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                ).apply { marginEnd = dp(12) }
+                isVerticalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                isFocusable = false
+                addView(
+                    rail.apply {
+                        layoutParams = android.widget.FrameLayout.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+                        )
+                    },
+                )
+            }
+        } else {
+            rail
+        }
+        body.addView(railContainer)
+
+        val listScroll = episodeListScroll().apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                1f,
+            )
+        }
+        val list = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
+        addEpisodeRows(start, end, list)
+        listScroll.addView(list)
+        body.addView(listScroll)
+        menuContent.addView(body)
+        scrollRangeRailToSelected()
+    }
+
+    private fun rangeRailScroll(): LockedScrollView? =
+        menuContent.findViewWithTag("range-rail-scroll") as? LockedScrollView
+
+    private fun setRangeRailLocked(locked: Boolean) {
+        rangeRailScroll()?.scrollLocked = locked
+    }
+
+    private fun scrollRangeRailToSelected() {
+        val scroll = rangeRailScroll() ?: return
+        val chip = menuContent.findViewWithTag<View>("range-$episodeRangeIndex") ?: return
+        scroll.post { scroll.scrollToIgnoringLock(0, chip.top.coerceAtLeast(0)) }
+    }
+
+    private fun addEpisodeRows(
+        from: Int,
+        until: Int,
+        parent: android.widget.LinearLayout,
+    ) {
+        for (i in from until until) {
             val label = episodeLabels.getOrNull(i) ?: "Episode ${i + 1}"
             val isFiller = i < fillerFlags.size && fillerFlags[i]
-            val row = if (isFiller) "$label  · FILLER" else label
-            option(row, selected = i == currentIndex) { if (i != currentIndex) loadEpisode(i) }
+            val rowLabel = if (isFiller) "$label  · FILLER" else label
+            episodeOption(parent, i, rowLabel, selected = i == currentIndex) {
+                if (i != currentIndex) loadEpisode(i)
+            }
         }
-        showPanel()
-        // Land focus on the current episode (row index = currentIndex + 1 header).
-        menuContent.post {
-            val row = (currentIndex + 1).coerceIn(0, menuContent.childCount - 1)
-            menuContent.getChildAt(row)?.requestFocus()
+    }
+
+    private fun rangeChip(
+        rangeIndex: Int,
+        label: String,
+        selected: Boolean,
+        onSelect: () -> Unit,
+    ): TextView {
+        return TextView(this).apply {
+            tag = "range-$rangeIndex"
+            text = label
+            textSize = 13f
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isFocusableInTouchMode = true
+            minHeight = dp(32)
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setTextColor(if (selected) android.graphics.Color.WHITE else 0xFFE8E8EC.toInt())
+            if (selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            background = rangeChipBg(selected, focused = false)
+            onFocusChangeListener = View.OnFocusChangeListener { v, has ->
+                if (has) setRangeRailLocked(false)
+                v.background = rangeChipBg(selected, has)
+                (v as TextView).setTextColor(
+                    if (has || selected) android.graphics.Color.WHITE else 0xFFE8E8EC.toInt(),
+                )
+            }
+            bindSingleTapActivate { onSelect() }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+                    focusEpisodeFromRangeChip()
+                    true
+                } else false
+            }
+        }
+    }
+
+    private fun focusSelectedRangeChip() {
+        menuContent.findViewWithTag<View>("range-$episodeRangeIndex")?.requestFocus()
+    }
+
+    private fun focusEpisodeFromRangeChip() {
+        val rangeStart = episodeRangeIndex * EPISODE_RANGE_CHUNK
+        val rangeEnd = minOf(rangeStart + EPISODE_RANGE_CHUNK, episodeCount)
+        val target = if (currentIndex in rangeStart until rangeEnd) {
+            currentIndex
+        } else {
+            rangeStart
+        }
+        val row = menuContent.findViewWithTag<View>("ep-$target")
+        row?.requestFocus()
+        row?.let { scrollEpisodeIntoView(it) }
+    }
+
+    private fun rangeChipBg(selected: Boolean, focused: Boolean): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dp(20).toFloat()
+            setColor(if (selected) accent else RANGE_CHIP_SURFACE)
+            if (focused) setStroke(dp(2), android.graphics.Color.WHITE)
+        }
+    }
+
+    private fun episodeOption(
+        parent: android.widget.LinearLayout,
+        index: Int,
+        label: String,
+        selected: Boolean,
+        onSelect: () -> Unit,
+    ) {
+        val row = TextView(this).apply {
+            tag = "ep-$index"
+            text = (if (selected) "✓   " else "     ") + label
+            setTextColor(if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt())
+            textSize = 16.5f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            if (selected) setTypeface(typeface, android.graphics.Typeface.BOLD)
+            isFocusable = true
+            setPadding(dp(16), dp(11), dp(16), dp(11))
+            background = pillBg(0x00000000)
+            onFocusChangeListener = View.OnFocusChangeListener { v, has ->
+                if (has) setRangeRailLocked(true)
+                v.background = pillBg(if (has) accent else 0x00000000)
+                (v as TextView).setTextColor(
+                    if (has) android.graphics.Color.WHITE
+                    else if (selected) android.graphics.Color.WHITE else 0xFFB6B6C0.toInt(),
+                )
+            }
+            bindSingleTapActivate {
+                lastFocusLabel = label
+                onSelect()
+                closeMenu()
+            }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT &&
+                    episodeRangeCount() > 1
+                ) {
+                    focusSelectedRangeChip()
+                    true
+                } else false
+            }
+        }
+        if (selected && firstSelectedRow == null) firstSelectedRow = row
+        if (label == lastFocusLabel) focusTarget = row
+        parent.addView(
+            row,
+            android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
+        )
+    }
+
+    private fun focusEpisodeMenuTarget(preferRange: Boolean = false) {
+        if (preferRange) {
+            menuContent.findViewWithTag<TextView>("range-$episodeRangeIndex")?.requestFocus()
+            return
+        }
+        val target = menuContent.findViewWithTag<View>("ep-$currentIndex")
+        target?.requestFocus()
+        target?.let { scrollEpisodeIntoView(it) }
+            ?: firstSelectedRow?.requestFocus()
+            ?: firstFocusable(menuContent)?.requestFocus()
+    }
+
+    private fun scrollEpisodeIntoView(row: View) {
+        var parent = row.parent
+        while (parent != null) {
+            if (parent is android.widget.ScrollView && parent.tag == "episode-list-scroll") {
+                val scroll = parent
+                scroll.post { scroll.smoothScrollTo(0, row.top) }
+                return
+            }
+            parent = (parent as? View)?.parent
         }
     }
 
@@ -857,6 +1239,7 @@ class TvPlayerActivity : Activity() {
         avStack.clear()
         menuPanel.visibility = View.GONE
         menuContent.removeAllViews()
+        resetMenuPanelLayout()
         bumpControls()
         (menuOpener ?: root).requestFocus()
     }
@@ -1645,6 +2028,7 @@ class TvPlayerActivity : Activity() {
         btnSources = findViewById(R.id.btn_sources)
         btnAudioSubs = findViewById(R.id.btn_audio_subs)
         btnNext = findViewById(R.id.btn_next)
+        btnAspectRatio = findViewById(R.id.btn_ratio)
         btnMegaskip = findViewById(R.id.btn_megaskip)
         btnSpeed = findViewById(R.id.btn_speed)
         fillerBadge = findViewById(R.id.filler_badge)
@@ -1691,7 +2075,7 @@ class TvPlayerActivity : Activity() {
             }
         })
 
-        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnMegaskip, btnSpeed)) {
+        for (b in listOf(btnEpisodes, btnQuality, btnSources, btnAudioSubs, btnNext, btnAspectRatio, btnMegaskip, btnSpeed)) {
             // Focusable even in touch mode so requestFocus() works on emulators
             // (real TVs are always in D-pad/non-touch mode anyway).
             applyPillFocus(b, false)
@@ -1715,6 +2099,7 @@ class TvPlayerActivity : Activity() {
         btnSources.bindSingleTapActivate { openSourcesMenu() }
         btnAudioSubs.bindSingleTapActivate { openAvMenu() }
         btnNext.bindSingleTapActivate { loadEpisode(nextAutoplayIndex()) }
+        btnAspectRatio.bindSingleTapActivate { changeAspectRatio() }
         btnMegaskip.bindSingleTapActivate { seekBy(megaSkipSecs * 1000L) }
         btnSpeed.bindSingleTapActivate { openSpeedMenu() }
         updateSpeedPillLabel()
@@ -1856,8 +2241,8 @@ class TvPlayerActivity : Activity() {
     private fun syncKeepScreenOn() {
         val p = player
         playerView.keepScreenOn = p != null && p.playWhenReady &&
-            (p.playbackState == Player.STATE_READY ||
-                p.playbackState == Player.STATE_BUFFERING)
+                (p.playbackState == Player.STATE_READY ||
+                        p.playbackState == Player.STATE_BUFFERING)
     }
 
     private fun updatePlayPauseIcon() {
@@ -2048,7 +2433,7 @@ class TvPlayerActivity : Activity() {
             }
 
             KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE ->
-                { if (down) togglePlayPause(); return true }
+            { if (down) togglePlayPause(); return true }
             KeyEvent.KEYCODE_MEDIA_PLAY -> { if (down) { player?.play(); bumpControls() }; return true }
             KeyEvent.KEYCODE_MEDIA_PAUSE -> { if (down) { player?.pause(); bumpControls() }; return true }
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { if (down) seekBy(SEEK_MS); return true }
@@ -2121,13 +2506,13 @@ class TvPlayerActivity : Activity() {
     private fun goImmersive() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                or View.SYSTEM_UI_FLAG_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            )
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                        or View.SYSTEM_UI_FLAG_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                )
     }
 
     /** Hand the final position back so Flutter saves resume + Continue Watching. */

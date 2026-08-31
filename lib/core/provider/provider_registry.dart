@@ -371,6 +371,26 @@ class ProviderRegistry {
     return loaded;
   }
 
+  /// Loads [sourceId] into the JS runtime when it is installed+enabled but not
+  /// yet evaluated (e.g. a prior boot timed it out). Returns false on failure.
+  Future<bool> ensureRuntimeLoaded(
+    String sourceId, {
+    Duration timeout = const Duration(seconds: 8),
+  }) async {
+    if (_manager.get(sourceId) != null) return true;
+    final entry = entryFor(sourceId);
+    if (entry == null || !entry.enabled) return false;
+    try {
+      await _loadEntryIntoRuntime(entry).timeout(timeout);
+      return _manager.get(sourceId) != null;
+    } catch (e) {
+      debugPrint(
+        '[ProviderRegistry] ensureRuntimeLoaded failed for $sourceId: $e',
+      );
+      return false;
+    }
+  }
+
   Future<void> _loadEntryIntoRuntime(
     ProviderRegistryEntry entry, {
     bool force = false,

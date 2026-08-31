@@ -21,6 +21,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/playback/list_status_store.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/ui/buttons.dart';
@@ -150,9 +151,10 @@ class _MyListViewState extends State<_MyListView> {
         final n = hub
             .connectedForMode(sl<ContentModeCubit>().state)
             .length;
+        final l10n = context.l10n;
         final subtitle = n == 0
-            ? 'Your saved titles'
-            : 'My List + $n tracker${n == 1 ? '' : 's'}';
+            ? l10n.yourSavedTitles
+            : l10n.myListPlusTrackers(n);
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: DecoratedBox(
@@ -192,7 +194,7 @@ class _MyListViewState extends State<_MyListView> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Library',
+                            Text(context.l10n.libraryLabel,
                                 style: AppText.title.copyWith(fontSize: 19)),
                             const SizedBox(height: 1),
                             Text(
@@ -210,14 +212,14 @@ class _MyListViewState extends State<_MyListView> {
                         _typeFilter == null
                             ? Icons.tune_rounded
                             : Icons.filter_alt_rounded,
-                        'Filter',
+                        context.l10n.filter,
                         () => _openFilterSheet(context),
                         active: _typeFilter != null,
                       ),
                       const SizedBox(width: 8),
                       _pillIcon(
                         Icons.sort_rounded,
-                        'Sort',
+                        context.l10n.sort,
                         () => _openSortSheet(context),
                         active: _sort != null,
                       ),
@@ -254,7 +256,7 @@ class _MyListViewState extends State<_MyListView> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
-              child: Text('Sort by', style: AppText.title),
+              child: Text(context.l10n.sortBy, style: AppText.title),
             ),
             for (final o in options)
               ListTile(
@@ -333,23 +335,23 @@ class _MyListViewState extends State<_MyListView> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('New category', style: AppText.title),
+        title: Text(context.l10n.newCategory, style: AppText.title),
         content: TextField(
           controller: controller,
           autofocus: true,
           style: AppText.body.copyWith(color: AppColors.textPrimary),
-          decoration: const InputDecoration(hintText: 'Persona, Gym, …'),
+          decoration: InputDecoration(hintText: context.l10n.personaGym),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
             style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-            child: const Text('Create'),
+            child: Text(context.l10n.create),
           ),
         ],
       ),
@@ -359,7 +361,7 @@ class _MyListViewState extends State<_MyListView> {
     if (!mounted) return;
     if (made == null) {
       showGlobalSnack(
-        name.trim().isEmpty ? 'Give it a name' : 'You already have that one',
+        name.trim().isEmpty ? context.l10n.giveItAName : context.l10n.youAlreadyHaveThatOne,
       );
       return;
     }
@@ -389,15 +391,15 @@ class _MyListViewState extends State<_MyListView> {
             ListTile(
               leading: const Icon(Icons.edit_outlined,
                   color: AppColors.textSecondary),
-              title: const Text('Rename'),
+              title: Text(context.l10n.rename),
               onTap: () => Navigator.pop(ctx, 'rename'),
             ),
             ListTile(
               leading: Icon(Icons.delete_outline_rounded,
                   color: AppColors.accent),
-              title: Text('Delete category',
+              title: Text(context.l10n.deleteCategory,
                   style: TextStyle(color: AppColors.accent)),
-              subtitle: const Text('Your titles stay — only the label goes'),
+              subtitle: Text(context.l10n.yourTitlesStayOnlyTheLabelGoes),
               onTap: () => Navigator.pop(ctx, 'delete'),
             ),
             const SizedBox(height: 8),
@@ -422,7 +424,7 @@ class _MyListViewState extends State<_MyListView> {
       context: this.context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Rename category', style: AppText.title),
+        title: Text(context.l10n.renameCategory, style: AppText.title),
         content: TextField(
           controller: controller,
           autofocus: true,
@@ -432,12 +434,12 @@ class _MyListViewState extends State<_MyListView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
             style: FilledButton.styleFrom(backgroundColor: AppColors.accent),
-            child: const Text('Rename'),
+            child: Text(context.l10n.rename),
           ),
         ],
       ),
@@ -446,7 +448,7 @@ class _MyListViewState extends State<_MyListView> {
     final ok = await sl<CategoryStore>().rename(c.id, name);
     if (!mounted) return;
     if (!ok) {
-      showGlobalSnack('That name is taken');
+      showGlobalSnack(context.l10n.thatNameIsTaken);
       return;
     }
     setState(() {});
@@ -489,7 +491,7 @@ class _MyListViewState extends State<_MyListView> {
                 color: AppColors.accent.withValues(alpha: 0.4), width: 1.5),
           ),
           child: Text(
-            'Connect',
+            context.l10n.connect,
             style: AppText.caption.copyWith(
                 color: AppColors.accent,
                 fontWeight: FontWeight.w800,
@@ -500,7 +502,7 @@ class _MyListViewState extends State<_MyListView> {
     }
     final show = connected.take(3).toList();
     return Tooltip(
-      message: 'Manage trackers',
+      message: context.l10n.manageTrackers,
       child: GestureDetector(
         onTap: () => _openAccountsSheet(context),
         child: Container(
@@ -590,7 +592,7 @@ class _MyListViewState extends State<_MyListView> {
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 6),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: Text('Trackers', style: AppText.headline),
+                child: Text(context.l10n.trackers, style: AppText.headline),
               ),
             ),
             for (final t in hub.forMode(sl<ContentModeCubit>().state))
@@ -622,8 +624,10 @@ class _MyListViewState extends State<_MyListView> {
                     style: AppText.body.copyWith(color: AppColors.textPrimary)),
                 subtitle: Text(
                   t.isConnected
-                      ? 'Connected${t.viewerName != null ? ' · ${t.viewerName}' : ''}'
-                      : 'Not connected',
+                      ? (t.viewerName != null
+                          ? context.l10n.connectedWithViewer(t.viewerName!)
+                          : context.l10n.connected)
+                      : context.l10n.notConnected,
                   style: AppText.caption.copyWith(
                     color: t.isConnected
                         ? AppColors.accent
@@ -666,7 +670,7 @@ class _MyListViewState extends State<_MyListView> {
           VoidCallback onTap,
         })>[
           (
-            label: 'My List',
+            label: context.l10n.myList,
             icon: Icons.bookmark_rounded,
             avatarUrl: null,
             active: tlState.isMyList,
@@ -859,12 +863,12 @@ class _MyListViewState extends State<_MyListView> {
                   padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text('Show', style: AppText.headline),
+                    child: Text(context.l10n.showLabel, style: AppText.headline),
                   ),
                 ),
-                opt('All types', null, Icons.apps_rounded),
-                opt('Anime', ProviderType.anime, Icons.animation_rounded),
-                opt('Movies & TV', ProviderType.movie, Icons.movie_rounded),
+                opt(context.l10n.allTypes, null, Icons.apps_rounded),
+                opt(context.l10n.anime, ProviderType.anime, Icons.animation_rounded),
+                opt(context.l10n.moviesTV, ProviderType.movie, Icons.movie_rounded),
                 const SizedBox(height: 8),
               ],
             );
@@ -901,16 +905,16 @@ class _MyListViewState extends State<_MyListView> {
           child: CircularProgressIndicator(color: AppColors.accent),
         );
       case TrackerListStatus.error:
-        content = const EmptyState(
+        content = EmptyState(
           icon: Icons.cloud_off_rounded,
-          message: 'Couldn’t load — pull to refresh',
+          message: context.l10n.couldnTLoadPullToRefresh,
         );
       case TrackerListStatus.idle:
       case TrackerListStatus.ready:
         content = tlState.entries.isEmpty
-            ? const EmptyState(
+            ? EmptyState(
                 icon: Icons.bookmark_outline,
-                message: 'No titles in this list',
+                message: context.l10n.noTitlesInThisList,
               )
             : _grid(
                 context,
@@ -1039,7 +1043,7 @@ class _MyListViewState extends State<_MyListView> {
           child: shown.isEmpty
               ? EmptyState(
                   icon: Icons.filter_list_off_rounded,
-                  message: myListFilteredEmptyMessage(mode),
+                  message: myListFilteredEmptyMessage(context.l10n, mode),
                 )
               : GridView.builder(
                   key: ValueKey(
@@ -1158,7 +1162,7 @@ class _MyListViewState extends State<_MyListView> {
           padding: const EdgeInsets.only(left: 16),
           children: [
             tab(
-                'All',
+                context.l10n.all,
                 _statusFilter == null &&
                     _categoryFilter == null &&
                     _customListFilter == null,
@@ -1254,7 +1258,7 @@ class _MyListViewState extends State<_MyListView> {
                   size: 56, color: AppColors.textTertiary),
               const SizedBox(height: 16),
               Text(
-                'Sign in to build your list',
+                context.l10n.signInToBuildYourList,
                 style: AppText.body,
                 textAlign: TextAlign.center,
               ),
@@ -1262,7 +1266,7 @@ class _MyListViewState extends State<_MyListView> {
               SizedBox(
                 width: 180,
                 child: PrimaryButton(
-                  label: 'Sign in',
+                  label: context.l10n.signIn,
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                   ),
@@ -1275,7 +1279,7 @@ class _MyListViewState extends State<_MyListView> {
     }
     return EmptyState(
       icon: Icons.bookmark_outline,
-      message: myListEmptyMessage(sl<ContentModeCubit>().state),
+      message: myListEmptyMessage(context.l10n, sl<ContentModeCubit>().state),
     );
   }
 }
@@ -1284,16 +1288,18 @@ class _MyListViewState extends State<_MyListView> {
 /// nothing (the mode filter itself is applied before this — see [_grid]).
 /// Anime mode's wording is unchanged; a reading mode names its own content
 /// type instead of the generic "Nothing".
-String myListFilteredEmptyMessage(ContentMode mode) => switch (mode) {
-  ContentMode.anime => 'Nothing here in this filter',
-  ContentMode.manga => 'No manga here in this filter',
-  ContentMode.novel => 'No novels here in this filter',
+String myListFilteredEmptyMessage(AppLocalizations l10n, ContentMode mode) =>
+    switch (mode) {
+  ContentMode.anime => l10n.nothingHereInThisFilter,
+  ContentMode.manga => l10n.noMangaHereInThisFilter,
+  ContentMode.novel => l10n.noNovelsHereInThisFilter,
 };
 
 /// EmptyState message for a genuinely empty My List (nothing saved yet, of
 /// ANY type). Anime mode's wording is unchanged.
-String myListEmptyMessage(ContentMode mode) => switch (mode) {
-  ContentMode.anime => 'Titles you add appear here',
-  ContentMode.manga => 'Manga you add appear here',
-  ContentMode.novel => 'Novels you add appear here',
+String myListEmptyMessage(AppLocalizations l10n, ContentMode mode) =>
+    switch (mode) {
+  ContentMode.anime => l10n.titlesYouAddAppearHere,
+  ContentMode.manga => l10n.mangaYouAddAppearHere,
+  ContentMode.novel => l10n.novelsYouAddAppearHere,
 };

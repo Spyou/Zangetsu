@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../platform/app_paths.dart';
+
 /// Lightweight in-app logger: a capped ring buffer that users can export + share
 /// so the developer can debug reported issues. Captures Dart logs/errors only —
 /// native crashes (force-close) go to Android logcat, which an app can't read.
@@ -18,7 +20,7 @@ class AppLogger {
   /// Open the on-disk log (best-effort). Safe to skip in tests.
   Future<void> init() async {
     try {
-      final dir = await getApplicationSupportDirectory();
+      final dir = await getWritableAppDirectory();
       _file = File('${dir.path}/zangetsu.log');
       if (await _file!.exists()) {
         final tail = (await _file!.readAsLines());

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
 
 import '../../core/schedule/schedule_models.dart';
 import '../../core/theme/app_colors.dart';
@@ -7,25 +8,29 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'schedule_cubit.dart';
 import 'schedule_screen.dart' show openTitle;
+import '../../l10n/l10n.dart';
 
-// ponytail: three small formatters kept TV-local so the redesign doesn't
-// re-touch schedule_screen's exports.
-String _fmtTime(DateTime d) {
-  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
-  final m = d.minute.toString().padLeft(2, '0');
-  return '$h:$m ${d.hour < 12 ? 'AM' : 'PM'}';
-}
+String _fmtTime(DateTime d, String locale) => DateFormat.jm(locale).format(d);
 
-({String text, Color bg, Color fg})? _airPill(DateTime airs, DateTime now) {
+({String text, Color bg, Color fg})? _airPill(
+  AppLocalizations l10n,
+  DateTime airs,
+  DateTime now,
+) {
   final diff = airs.difference(now);
-  if (diff.isNegative) return (text: 'Aired', bg: Colors.black54, fg: AppColors.textSecondary);
-  if (diff.inMinutes < 60) return (text: 'Soon', bg: AppColors.accent, fg: Colors.white);
-  if (diff.inHours < 24) return (text: 'in ${diff.inHours}h', bg: Colors.black54, fg: Colors.white);
-  return (text: 'in ${diff.inDays}d', bg: Colors.black54, fg: Colors.white);
+  if (diff.isNegative) {
+    return (text: l10n.scheduleAired, bg: Colors.black54, fg: AppColors.textSecondary);
+  }
+  if (diff.inMinutes < 60) {
+    return (text: l10n.scheduleSoon, bg: AppColors.accent, fg: Colors.white);
+  }
+  if (diff.inHours < 24) {
+    return (text: l10n.scheduleInHours(diff.inHours), bg: Colors.black54, fg: Colors.white);
+  }
+  return (text: l10n.scheduleInDays(diff.inDays), bg: Colors.black54, fg: Colors.white);
 }
 
-const _monShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-String _monthDay(DateTime d) => '${_monShort[d.month - 1]} ${d.day}, ${d.year}';
+String _monthDay(DateTime d, String locale) => DateFormat.yMMMd(locale).format(d);
 
 /// TV Schedule: D-pad "New & Hot" — focusable top chips (Anime / Movies & TV /
 /// My List), a day-chip row for the anime tabs, and a horizontal rail of big
@@ -52,6 +57,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final state = context.watch<ScheduleCubit>().state;
     final days = [for (var i = 0; i < 7; i++) _today.add(Duration(days: i))];
     final showDays = _tab != 1; // anime + my-list use the day picker
@@ -65,7 +71,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 48),
-              child: Text('Schedule', style: AppText.title),
+              child: Text(l10n.schedule, style: AppText.title),
             ),
             const SizedBox(height: 16),
             Padding(
@@ -78,7 +84,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
                     scale: 1.0,
                     borderRadius: 20,
                     onTap: () => setState(() => _tab = 0),
-                    child: _Chip(label: 'Anime', selected: _tab == 0),
+                    child: _Chip(label: l10n.anime, selected: _tab == 0),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
@@ -86,7 +92,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
                     scale: 1.0,
                     borderRadius: 20,
                     onTap: () => setState(() => _tab = 1),
-                    child: _Chip(label: 'Movies & TV', selected: _tab == 1),
+                    child: _Chip(label: l10n.moviesTV, selected: _tab == 1),
                   ),
                   const SizedBox(width: 12),
                   TvFocusable(
@@ -94,7 +100,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
                     scale: 1.0,
                     borderRadius: 20,
                     onTap: () => setState(() => _tab = 2),
-                    child: _Chip(label: 'My List', selected: _tab == 2),
+                    child: _Chip(label: l10n.myList, selected: _tab == 2),
                   ),
                 ],
               ),
@@ -112,6 +118,7 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
   }
 
   Widget _body(ScheduleState state) {
+    final l10n = context.l10n;
     if (_tab == 1) {
       return state.loadingSoon
           ? Center(child: CircularProgressIndicator(color: AppColors.accent))
@@ -122,7 +129,9 @@ class _ScheduleScreenTvState extends State<ScheduleScreenTv> {
         ? Center(child: CircularProgressIndicator(color: AppColors.accent))
         : _AiringRail(
             entries: byDay[_selectedDay] ?? const <AiringEntry>[],
-            emptyMessage: _tab == 2 ? 'None of the anime you follow air on this day.' : 'Nothing airing on this day.',
+            emptyMessage: _tab == 2
+                ? l10n.noneOfFollowedAirOnThisDay
+                : l10n.nothingAiringOnThisDay,
           );
   }
 }
@@ -153,10 +162,9 @@ class _DayChipRow extends StatelessWidget {
   final DateTime selectedDay;
   final ValueChanged<DateTime> onSelect;
 
-  static const _wd = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
   @override
   Widget build(BuildContext context) {
+    final locale = Localizations.localeOf(context).toString();
     return SizedBox(
       height: 64,
       child: ListView.builder(
@@ -167,10 +175,11 @@ class _DayChipRow extends StatelessWidget {
         itemBuilder: (context, i) {
           final d = days[i];
           final selected = d == selectedDay;
+          final label = i == 0
+              ? context.l10n.relativeToday
+              : '${DateFormat('EEE', locale).format(d)} ${d.day}';
           return Padding(
             padding: const EdgeInsets.only(right: 12),
-            // Horizontal ListView stretches children to the 64px cross-axis;
-            // Align so the focus ring hugs the chip instead of the full row.
             child: Align(
               child: TvFocusable(
                 variant: TvFocusVariant.float,
@@ -178,7 +187,7 @@ class _DayChipRow extends StatelessWidget {
                 borderRadius: 20,
                 onTap: () => onSelect(d),
                 child: _Chip(
-                  label: i == 0 ? 'Today' : '${_wd[d.weekday - 1]} ${d.day}',
+                  label: label,
                   selected: selected,
                 ),
               ),
@@ -202,6 +211,8 @@ class _AiringRail extends StatelessWidget {
     if (entries.isEmpty) {
       return Center(child: Text(emptyMessage, style: AppText.caption));
     }
+    final l10n = context.l10n;
+    final locale = Localizations.localeOf(context).toString();
     final now = DateTime.now();
     return _Rail(
       count: entries.length,
@@ -210,8 +221,8 @@ class _AiringRail extends StatelessWidget {
         return _PosterTile(
           title: e.title,
           imageUrl: e.coverUrl,
-          subtitle: 'Ep ${e.episode} · ${_fmtTime(e.airsAtLocal)}',
-          pill: _airPill(e.airsAtLocal, now),
+          subtitle: l10n.epWithTime('${e.episode}', _fmtTime(e.airsAtLocal, locale)),
+          pill: _airPill(l10n, e.airsAtLocal, now),
           onTap: () => openTitle(context, e.title),
         );
       },
@@ -226,17 +237,19 @@ class _MoviesRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (entries.isEmpty) {
-      return Center(child: Text("Couldn't load coming soon — pull to refresh.", style: AppText.caption));
+      return Center(child: Text(context.l10n.couldnTLoadComingSoonPullToRefresh, style: AppText.caption));
     }
+    final l10n = context.l10n;
+    final locale = Localizations.localeOf(context).toString();
     return _Rail(
       count: entries.length,
       builder: (context, i) {
         final e = entries[i];
-        final date = e.releaseDate != null ? ' · ${_monthDay(e.releaseDate!)}' : '';
+        final date = e.releaseDate != null ? ' · ${_monthDay(e.releaseDate!, locale)}' : '';
         return _PosterTile(
           title: e.title,
           imageUrl: e.posterUrl,
-          subtitle: '${e.isTv ? 'Series' : 'Movie'}$date',
+          subtitle: '${e.isTv ? l10n.series : l10n.movie}$date',
           pill: null,
           onTap: () => openTitle(context, e.title),
         );
@@ -259,9 +272,6 @@ class _Rail extends StatelessWidget {
         clipBehavior: Clip.none,
         padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
         itemCount: count,
-        // Top-align: a horizontal ListView forces each cell to the full rail
-        // height, so without this the focus box stretches down the whole column
-        // instead of hugging the card.
         itemBuilder: (context, i) => Padding(
           padding: const EdgeInsets.only(right: 16),
           child: Align(alignment: Alignment.topCenter, child: builder(context, i)),
@@ -288,23 +298,17 @@ class _PosterTile extends StatelessWidget {
   final VoidCallback onTap;
 
   static const double cardWidth = 134;
-  static const double imageHeight = 190; // ~2:3
-  static const double cardHeight = imageHeight + 30; // + air-time subtitle beneath
+  static const double imageHeight = 190;
+  static const double cardHeight = imageHeight + 30;
 
   @override
   Widget build(BuildContext context) {
-    // Match the Home rail exactly: only the fixed-size poster is the focusable,
-    // with the title as a Netflix-style chip on its bottom edge (focusLabel).
-    // The air-time subtitle sits below, outside the focus box.
     return SizedBox(
       width: cardWidth,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Bound the height: focusLabel wraps the child in an all-positioned
-          // Stack that sizes to its constraints, so an unbounded height (this
-          // Column gives its children infinite main-axis room) would assert.
           SizedBox(
             height: imageHeight,
             child: TvFocusable(

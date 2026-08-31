@@ -9,6 +9,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/animation_prefs.dart';
 
 /// Dedicated Appearance page (Aniyomi-style): accent colour as preview cards
@@ -45,7 +46,7 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Custom colour', style: AppText.headline),
+        title: Text(context.l10n.customColour, style: AppText.headline),
         content: SingleChildScrollView(
           child: ColorPicker(
             pickerColor: temp,
@@ -61,13 +62,13 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: TextStyle(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, temp),
-            child: Text('Apply', style: TextStyle(color: AppColors.accent)),
+            child: Text(context.l10n.apply, style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -83,17 +84,14 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     final presets = ThemeController.accentPresets;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Appearance'),
+      appBar: settingsAppBar(context.l10n.appearance),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 32),
         children: [
           // ── Accent colour ─────────────────────────────────────────────────
           // The swatch strip stays exactly as it was, and stays first.
-          const SettingsSectionLabel('Accent colour', first: true),
-          _blurb(
-            'The highlight colour used across buttons, chips, progress and '
-            'selected items.',
-          ),
+          SettingsSectionLabel(context.l10n.accentColour, first: true),
+          _blurb(context.l10n.accentColourBlurb),
           Opacity(
             // Dimmed while the wallpaper is choosing — the swatches still work,
             // and tapping one takes you back to picking by hand.
@@ -138,22 +136,22 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             ),
           ),
           // ── Theme ─────────────────────────────────────────────────────────
-          const SettingsSectionLabel('Theme'),
+          SettingsSectionLabel(context.l10n.theme),
           SettingsCard(
             children: [
               if (_wallpaperSupported)
                 _switchTile(
                   icon: Icons.palette_outlined,
-                  title: 'Material You',
+                  title: context.l10n.materialYou,
                   // Doubles as the hint that the strip above still works.
-                  subtitle: 'Colours from your wallpaper',
+                  subtitle: context.l10n.coloursFromYourWallpaper,
                   value: ThemeController.materialYou,
                   onChanged: ThemeController.setMaterialYou,
                 ),
               _switchTile(
                 icon: Icons.dark_mode_outlined,
-                title: 'Pure black background',
-                subtitle: 'True black for OLED',
+                title: context.l10n.pureBlackBackground,
+                subtitle: context.l10n.trueBlackForOLED,
                 value: ThemeController.amoled,
                 onChanged: ThemeController.setAmoled,
               ),
@@ -161,20 +159,20 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           ),
 
           // ── Display ───────────────────────────────────────────────────────
-          const SettingsSectionLabel('Display'),
+          SettingsSectionLabel(context.l10n.display),
           SettingsCard(
             children: [
               _switchTile(
                 icon: Icons.sell_outlined,
-                title: 'Poster badges',
-                subtitle: 'Quality and Sub/Dub badges',
+                title: context.l10n.posterBadges,
+                subtitle: context.l10n.qualityAndSubDubBadges,
                 value: sl<PlaybackPrefs>().qualityBadges,
                 onChanged: sl<PlaybackPrefs>().setQualityBadges,
               ),
               _switchTile(
                 icon: Icons.auto_awesome_motion_outlined,
-                title: 'Animate lists',
-                subtitle: 'Cards fade in as you scroll',
+                title: context.l10n.animateLists,
+                subtitle: context.l10n.cardsFadeInAsYouScroll,
                 value: AnimationPrefs.listAnimations,
                 onChanged: AnimationPrefs.setListAnimations,
               ),
@@ -182,9 +180,9 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
               if (AnimationPrefs.listAnimations)
                 SettingsTile(
                   icon: Icons.animation_outlined,
-                  title: 'Animation style',
-                  subtitle: _animStyleBlurb,
-                  trailing: Text(_animStyleName, style: AppText.caption),
+                  title: context.l10n.animationStyle,
+                  subtitle: _animStyleBlurb(context),
+                  trailing: Text(_animStyleName(context), style: AppText.caption),
                   onTap: _pickAnimStyle,
                 ),
             ],
@@ -193,11 +191,8 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           // ── App icon ──────────────────────────────────────────────────────
           // Android-only: iOS has an unrelated API and TV has no icon picker.
           if (_icons.supported) ...[
-            const SettingsSectionLabel('App icon'),
-            _blurb(
-              'The icon on your home screen. Zangetsu closes when you change '
-              'it — Android has to swap the launcher entry.',
-            ),
+            SettingsSectionLabel(context.l10n.appIcon),
+            _blurb(context.l10n.appIconBlurb),
             const SizedBox(height: 10),
             _iconPicker(),
           ],
@@ -222,8 +217,8 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
           color: const Color(0xF01C1C1E),
           borderRadius: BorderRadius.circular(24),
         ),
-        child: const Text(
-          'Turn off Material You to pick a colour yourself',
+        child: Text(
+          context.l10n.turnOffMaterialYouToPickAColourYourself,
           style: TextStyle(color: Colors.white, fontSize: 14),
         ),
       ),
@@ -264,18 +259,18 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
     );
   }
 
-  static const List<(ListAnimStyle, String, String)> _animStyles = [
-    (ListAnimStyle.rise, 'Rise', 'Lifts and fades in'),
-    (ListAnimStyle.fade, 'Fade', 'Fades in, no movement'),
-    (ListAnimStyle.zoom, 'Zoom', 'Scales up as it appears'),
+  static List<(ListAnimStyle, String, String)> _animStyles(BuildContext context) => [
+    (ListAnimStyle.rise, context.l10n.animRise, context.l10n.animRiseDesc),
+    (ListAnimStyle.fade, context.l10n.animFade, context.l10n.animFadeDesc),
+    (ListAnimStyle.zoom, context.l10n.animZoom, context.l10n.animZoomDesc),
   ];
 
-  (ListAnimStyle, String, String) get _animStyle => _animStyles.firstWhere(
+  (ListAnimStyle, String, String) _animStyle(BuildContext context) => _animStyles(context).firstWhere(
     (o) => o.$1 == AnimationPrefs.style,
-    orElse: () => _animStyles.first,
+    orElse: () => _animStyles(context).first,
   );
-  String get _animStyleName => _animStyle.$2;
-  String get _animStyleBlurb => _animStyle.$3;
+  String _animStyleName(BuildContext context) => _animStyle(context).$2;
+  String _animStyleBlurb(BuildContext context) => _animStyle(context).$3;
 
   /// Style picker. Was three rows always on the page; a sheet keeps the screen
   /// short and matches how the other settings pickers behave.
@@ -293,11 +288,11 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Row(
-                children: [Text('Animation style', style: AppText.headline)],
+                children: [Text(context.l10n.animationStyle, style: AppText.headline)],
               ),
             ),
             const Divider(color: AppColors.hairline, height: 1),
-            for (final (style, name, blurb) in _animStyles)
+            for (final (style, name, blurb) in _animStyles(context))
               ListTile(
                 onTap: () => Navigator.pop(ctx, style),
                 title: Text(
@@ -352,21 +347,19 @@ class _AppearanceScreenState extends State<AppearanceScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Use the ${o.label} icon?', style: AppText.title),
-        content: const Text(
-          'Zangetsu will close so Android can apply the new icon. Open it '
-          'again from your home screen afterwards.\n\nIf you have Zangetsu in '
-          'a folder or dock, you may need to add it again.',
+        title: Text(context.l10n.useTheIcon(o.label), style: AppText.title),
+        content: Text(
+          context.l10n.useTheIconBody,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Change', style: TextStyle(color: AppColors.accent)),
+            child: Text(context.l10n.change, style: TextStyle(color: AppColors.accent)),
           ),
         ],
       ),
@@ -417,7 +410,7 @@ class _AccentCard extends StatelessWidget {
               SizedBox(height: 58, child: _preview(color, selected)),
               const SizedBox(height: 8),
               Text(
-                isDefault ? 'Default' : name,
+                isDefault ? context.l10n.defaultLabel : name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(
@@ -505,7 +498,7 @@ class _CustomCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Custom',
+                context.l10n.custom,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: AppText.caption.copyWith(

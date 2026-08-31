@@ -1,5 +1,6 @@
 package com.spyou.watch_app
 
+import android.webkit.CookieManager
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,42 @@ private class InMemoryCookieJar : CookieJar {
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
-        return store[url.host]?.filter { it.expiresAt > now } ?: emptyList()
+        val own = store[url.host]?.filter { it.expiresAt > now } ?: emptyList()
+        return own + webViewCookies(url, own)
+    }
+
+    /**
+     * Cookies the WebView holds for this host, merged in READ-ONLY.
+     *
+     * This is what carries a `cf_clearance` earned in the visible solver into
+     * the novel client. It only works alongside [NovelHttp.deviceUserAgent]:
+     * a clearance is bound to the User-Agent that earned it, so the WebView's
+     * cookie is rejected unless our requests present the same UA. Removing
+     * either half puts the source straight back to blocked — verified by
+     * removing this and watching Novel Updates fail again.
+     *
+     * Deliberately one-way: nothing received here is written back to the
+     * WebView jar, so the novel lane still cannot disturb CloudStream or Mihon
+     * cookie state. Locally-held names win, so a fresh response cookie is never
+     * shadowed by a stale WebView one.
+     */
+    private fun webViewCookies(url: HttpUrl, own: List<Cookie>): List<Cookie> {
+        val raw = runCatching {
+            CookieManager.getInstance().getCookie(url.toString())
+        }.getOrNull() ?: return emptyList()
+        if (raw.isBlank()) return emptyList()
+        val have = own.map { it.name }.toSet()
+        return raw.split(';').mapNotNull { pair ->
+            val t = pair.trim()
+            val eq = t.indexOf('=')
+            if (eq <= 0) return@mapNotNull null
+            val name = t.substring(0, eq)
+            if (name in have) return@mapNotNull null
+            runCatching {
+                Cookie.Builder().name(name).value(t.substring(eq + 1))
+                    .domain(url.host).build()
+            }.getOrNull()
+        }
     }
 }
 
@@ -41,6 +77,22 @@ private class InMemoryCookieJar : CookieJar {
  * bespoke one would throw away the exact stack this file exists to use.
  */
 object NovelHttp {
+    /**
+     * The device's real WebView User-Agent, set once from MainActivity.
+     *
+     * Dart sends a fixed desktop-Chrome string, and Cloudflare cross-checks the
+     * UA against the TLS fingerprint and client hints — a Windows Chrome UA
+     * arriving on an Android BoringSSL handshake is an obvious mismatch, and
+     * novelupdates.com answers it with `cf-mitigated: challenge`. The real
+     * LNReader app sends the device's own UA (its persisted getUserAgent), so
+     * its UA and its TLS agree. NetworkHelper already does exactly this for the
+     * Mihon lane, for the same reason.
+     *
+     * Null until set (tests, or before MainActivity runs) — the caller's own
+     * header is used then, which is the behaviour that existed before.
+     */
+    @Volatile
+    var deviceUserAgent: String? = null
     // Built on first use, not at app boot — stays dormant unless a novel
     // source actually needs it.
     private val client: OkHttpClient by lazy {
@@ -62,7 +114,23 @@ object NovelHttp {
         val body: String,
         val url: String,
         val headers: Map<String, String>,
+        /** Cloudflare wants a human to pass a challenge. Dart surfaces this as
+         *  the "Solve Cloudflare" prompt — without it a fresh install can never
+         *  mint the cf_clearance that [InMemoryCookieJar.webViewCookies] then
+         *  carries, and the source stays blocked forever. */
+        val cloudflare: Boolean,
     )
+
+    /** `cf-mitigated: challenge` is Cloudflare saying so outright; 403/503 from
+     *  a cloudflare server is the older signal. The cloudflare server header is
+     *  required either way, so a plain 403 from the site is never mistaken. */
+    private fun looksLikeChallenge(status: Int, headers: okhttp3.Headers): Boolean {
+        val server = headers["server"]?.lowercase().orEmpty()
+        if (!server.contains("cloudflare")) return false
+        if (headers["cf-mitigated"]?.lowercase() == "challenge") return true
+        return status == 403 || status == 503
+    }
+
 
     /** Runs the call off the calling thread. */
     suspend fun request(
@@ -80,6 +148,16 @@ object NovelHttp {
         }
         val requestBuilder = Request.Builder().url(url).method(verb, reqBody)
         headers.forEach { (k, v) -> requestBuilder.header(k, v) }
+        // Override the caller's UA with the device's own, so it matches the TLS
+        // stack this client rides. A plugin that deliberately sets its own UA is
+        // left alone — only the generic default is replaced.
+        deviceUserAgent?.let { ua ->
+            val sent = headers.entries
+                .firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
+            if (sent == null || sent.contains("Windows NT")) {
+                requestBuilder.header("User-Agent", ua)
+            }
+        }
 
         client.newCall(requestBuilder.build()).execute().use { response ->
             val respBody = response.body?.string() ?: ""
@@ -88,7 +166,13 @@ object NovelHttp {
             val respHeaders = response.headers.names().associateWith { name ->
                 response.headers.values(name).joinToString(", ")
             }
-            Response(response.code, respBody, response.request.url.toString(), respHeaders)
+            Response(
+                response.code,
+                respBody,
+                response.request.url.toString(),
+                respHeaders,
+                looksLikeChallenge(response.code, response.headers),
+            )
         }
     }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/update/update_service.dart';
+import '../../l10n/l10n.dart';
 
 /// Check for an update and, if one exists, show the update dialog.
 ///
@@ -23,7 +24,7 @@ Future<void> maybeShowUpdateDialog(
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            "You're on the latest version${v.isEmpty ? '' : ' (v$v)'}.",
+            context.l10n.onLatestVersion(v.isEmpty ? '' : ' (v$v)'),
           ),
         ),
       );
@@ -56,15 +57,13 @@ Future<bool> confirmJoinBeta(BuildContext context) async {
                 Icon(Icons.science_outlined, color: AppColors.accent, size: 26),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text('Join beta updates?', style: AppText.title),
+                  child: Text(ctx.l10n.joinBetaUpdates, style: AppText.title),
                 ),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              "You'll get pre-release builds early. They can be unstable — if "
-              "one acts up, just turn this off and you'll move back to stable on "
-              "the next update. You can leave anytime.",
+              ctx.l10n.joinBetaUpdatesBody,
               style: AppText.body.copyWith(
                 color: AppColors.textSecondary,
                 height: 1.4,
@@ -80,7 +79,7 @@ Future<bool> confirmJoinBeta(BuildContext context) async {
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),
                     child: Text(
-                      'Not now',
+                      ctx.l10n.notNow,
                       style: AppText.button.copyWith(
                         color: AppColors.textSecondary,
                       ),
@@ -92,7 +91,7 @@ Future<bool> confirmJoinBeta(BuildContext context) async {
                     ),
                     onPressed: () => Navigator.of(ctx).pop(true),
                     child: Text(
-                      'Join beta',
+                      ctx.l10n.joinBeta,
                       style: AppText.button.copyWith(color: Colors.white),
                     ),
                   ),
@@ -145,9 +144,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       } else {
         setState(() {
           _busy = false;
-          _error =
-              'Couldn\'t open the installer. Enable "Install unknown apps" '
-              'for Zangetsu in system settings, then try again.';
+          _error = context.l10n.couldnTOpenInstaller;
         });
       }
     } catch (_) {
@@ -155,7 +152,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
       setState(() {
         _busy = false;
         _progress = null;
-        _error = 'Download failed — check your connection and try again.';
+        _error = context.l10n.downloadFailedCheckConnection;
       });
     }
   }
@@ -184,8 +181,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                 Expanded(
                   child: Text(
                     widget.info.isPrerelease
-                        ? 'Beta update available'
-                        : 'Update available',
+                        ? context.l10n.betaUpdateAvailable
+                        : context.l10n.updateAvailable,
                     style: AppText.title,
                   ),
                 ),
@@ -198,7 +195,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
             ),
             const SizedBox(height: 14),
             if (notes.isNotEmpty) ...[
-              Text("What's new", style: AppText.caption),
+              Text(context.l10n.whatSNew, style: AppText.caption),
               const SizedBox(height: 6),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 220),
@@ -221,8 +218,8 @@ class _UpdateDialogState extends State<_UpdateDialog> {
               const SizedBox(height: 6),
               Text(
                 _progress! >= 1
-                    ? 'Starting installer…'
-                    : 'Downloading… ${(_progress! * 100).round()}%',
+                    ? context.l10n.startingInstaller
+                    : context.l10n.downloadingPercent((_progress! * 100).round()),
                 style: AppText.caption,
               ),
               const SizedBox(height: 8),
@@ -247,7 +244,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                         if (context.mounted) Navigator.of(context).pop();
                       },
                       child: Text(
-                        'Skip',
+                        context.l10n.skip,
                         style: AppText.button.copyWith(
                           color: AppColors.textTertiary,
                         ),
@@ -257,7 +254,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
                       child: Text(
-                        'Later',
+                        context.l10n.later,
                         style: AppText.button.copyWith(
                           color: AppColors.textSecondary,
                         ),
@@ -269,7 +266,7 @@ class _UpdateDialogState extends State<_UpdateDialog> {
                     ),
                     onPressed: _busy ? null : _startUpdate,
                     child: Text(
-                      _error != null ? 'Retry' : 'Update',
+                      _error != null ? context.l10n.retry : context.l10n.update,
                       style: AppText.button.copyWith(color: Colors.white),
                     ),
                   ),

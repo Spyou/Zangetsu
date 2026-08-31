@@ -16,6 +16,7 @@ import '../../core/ui/states.dart';
 import '../announce/announcement_sheet.dart';
 import '../detail/detail_screen.dart';
 import 'subscriptions_screen_tv.dart';
+import '../../l10n/l10n.dart';
 
 /// The Notifications screen: developer announcements (history) on top, then the
 /// "new episode" subscriptions (the shows the bell on Detail subscribed to).
@@ -64,7 +65,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   Future<void> _checkNow() async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(content: Text('Checking for new episodes…')),
+      SnackBar(content: Text(context.l10n.checkingForNewEpisodes)),
     );
     await sl<SubscriptionChecker>().checkAll(); // JS sources
     await CsNotify.checkNow(); // CS sources (native worker)
@@ -83,33 +84,31 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: settingsAppBar(
-        'Notifications',
+        context.l10n.notifications,
         actions: [
           if (subs.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.refresh_rounded),
-              tooltip: 'Check now',
+              tooltip: context.l10n.checkNow,
               onPressed: _checkNow,
             ),
         ],
       ),
       body: empty
-          ? const EmptyState(
+          ? EmptyState(
               icon: Icons.notifications_none_rounded,
-              message:
-                  'No notifications yet.\nTap the bell on a show to get alerted '
-                  'when a new episode is out.',
+              message: context.l10n.noNotificationsYet,
             )
           : ListView(
               padding: const EdgeInsets.symmetric(vertical: 8),
               children: [
                 if (announcements.isNotEmpty) ...[
-                  _header('Announcements'),
+                  _header(context.l10n.announcements),
                   for (final a in announcements) _announcementTile(a),
                 ],
                 if (subs.isNotEmpty) ...[
                   if (announcements.isNotEmpty) const SizedBox(height: 8),
-                  _header('Subscribed shows'),
+                  _header(context.l10n.subscribedShows),
                   for (final s in subs) _subscriptionTile(s),
                 ],
               ],
@@ -208,7 +207,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         Icons.notifications_off_outlined,
         color: AppColors.textSecondary,
       ),
-      tooltip: 'Turn off',
+      tooltip: context.l10n.turnOff,
       onPressed: () => _remove(s),
     ),
   );

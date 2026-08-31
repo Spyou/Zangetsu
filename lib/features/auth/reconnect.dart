@@ -7,6 +7,8 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/buttons.dart';
 import 'auth_cubit.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 
 /// Make sure the app has a LIVE Supabase session before a cloud write. When the
 /// session has lapsed (the user is logged-in from cache only) this prompts for
@@ -56,7 +58,7 @@ Future<bool> safeLogout(BuildContext context) async {
         context: context,
         builder: (_) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text('Back up before logging out?', style: AppText.title),
+          title: Text(context.l10n.backUpBeforeLoggingOut, style: AppText.title),
           content: Text(
             "Your library isn't saved to the cloud yet, so logging out will "
             'remove it from this device. Reconnect to back it up first?',
@@ -65,16 +67,16 @@ Future<bool> safeLogout(BuildContext context) async {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, 'cancel'),
-              child: Text('Cancel', style: AppText.button),
+              child: Text(context.l10n.cancel, style: AppText.button),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, 'anyway'),
-              child: Text('Log out anyway',
+              child: Text(context.l10n.logOutAnyway,
                   style: AppText.button.copyWith(color: AppColors.textSecondary)),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context, 'reconnect'),
-              child: Text('Reconnect', style: AppText.button.copyWith(color: AppColors.accent)),
+              child: Text(context.l10n.reconnect, style: AppText.button.copyWith(color: AppColors.accent)),
             ),
           ],
         ),
@@ -123,7 +125,8 @@ class _ReconnectDialogState extends State<_ReconnectDialog> {
     } else {
       setState(() {
         _busy = false;
-        _error = sl<AuthCubit>().state.error ?? 'Wrong password';
+        _error = localizeAuthError(context.l10n, sl<AuthCubit>().state.error) ??
+            context.l10n.wrongPassword;
       });
     }
   }
@@ -140,11 +143,11 @@ class _ReconnectDialogState extends State<_ReconnectDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Reconnect to sync', style: AppText.title),
+            Text(context.l10n.reconnectToSync, style: AppText.title),
             const SizedBox(height: 6),
             Text(
               'Your session expired. Enter your password to reconnect '
-              '${email.isEmpty ? "your account" : email} and sync your library.',
+              '${email.isEmpty ? context.l10n.yourAccount : email} and sync your library.',
               style: AppText.caption,
             ),
             const SizedBox(height: 16),
@@ -156,7 +159,7 @@ class _ReconnectDialogState extends State<_ReconnectDialog> {
               onSubmitted: (_) => _submit(),
               style: AppText.body,
               decoration: InputDecoration(
-                hintText: 'Password',
+                hintText: context.l10n.password,
                 hintStyle: AppText.body.copyWith(color: AppColors.textTertiary),
                 filled: true,
                 fillColor: AppColors.surface2,
@@ -174,7 +177,7 @@ class _ReconnectDialogState extends State<_ReconnectDialog> {
             SizedBox(
               width: double.infinity,
               child: PrimaryButton(
-                label: _busy ? 'Reconnecting…' : 'Reconnect',
+                label: _busy ? context.l10n.reconnecting : context.l10n.reconnect,
                 onPressed: _busy ? null : _submit,
               ),
             ),

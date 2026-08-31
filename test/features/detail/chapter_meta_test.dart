@@ -1,9 +1,11 @@
 // Line 2 of the reading-mode chapter row: how the meta line degrades when the
 // source gives us little or nothing.
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/episode.dart';
 import 'package:watch_app/features/detail/chapter_meta.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 Episode chapter({String? date, String? scanlator}) => Episode(
       id: 'c1',
@@ -16,7 +18,9 @@ Episode chapter({String? date, String? scanlator}) => Episode(
 
 void main() {
   final now = DateTime(2026, 8, 7, 12);
+  final l10n = lookupAppLocalizations(const Locale('en'));
   String? at(Duration ago) => relativeDate(
+        l10n,
         now.subtract(ago).toIso8601String(),
         now: now,
       );
@@ -27,6 +31,7 @@ void main() {
     test('shows group and date together', () {
       expect(
         chapterMetaLine(
+          l10n,
           chapter(scanlator: 'Asura Scans', date: now.toIso8601String()),
           now: now,
         ),
@@ -36,14 +41,14 @@ void main() {
 
     test('group alone when the source gives no date', () {
       expect(
-        chapterMetaLine(chapter(scanlator: 'Hades Scans'), now: now),
+        chapterMetaLine(l10n, chapter(scanlator: 'Hades Scans'), now: now),
         'Hades Scans',
       );
     });
 
     test('date alone when there is no group — unchanged from before', () {
       expect(
-        chapterMetaLine(chapter(date: now.toIso8601String()), now: now),
+        chapterMetaLine(l10n, chapter(date: now.toIso8601String()), now: now),
         'Today',
       );
     });
@@ -64,6 +69,7 @@ void main() {
 
       expect(
         chapterMetaLine(
+          l10n,
           chapter(scanlator: scanlatorLabel('\u200B'), date: now.toIso8601String()),
           now: now,
         ),
@@ -77,11 +83,12 @@ void main() {
       // meta line trusts it — go through the same door a real chapter does
       // rather than hand-building a value the mappers can never produce.
       expect(
-        chapterMetaLine(chapter(scanlator: scanlatorLabel('   ')), now: now),
+        chapterMetaLine(l10n, chapter(scanlator: scanlatorLabel('   ')), now: now),
         isNull,
       );
       expect(
         chapterMetaLine(
+          l10n,
           chapter(scanlator: scanlatorLabel('  '), date: now.toIso8601String()),
           now: now,
         ),
@@ -90,19 +97,19 @@ void main() {
     });
 
     test('a chapter with neither loses the line entirely', () {
-      expect(chapterMetaLine(chapter(), now: now), isNull);
+      expect(chapterMetaLine(l10n, chapter(), now: now), isNull);
     });
   });
 
   group('relativeDate', () {
     test('null / empty / whitespace gives nothing to show', () {
-      expect(relativeDate(null, now: now), isNull);
-      expect(relativeDate('', now: now), isNull);
-      expect(relativeDate('   ', now: now), isNull);
+      expect(relativeDate(l10n, null, now: now), isNull);
+      expect(relativeDate(l10n, '', now: now), isNull);
+      expect(relativeDate(l10n, '   ', now: now), isNull);
     });
 
     test('an unparseable date is passed through verbatim (trimmed)', () {
-      expect(relativeDate('  Fall 2019  ', now: now), 'Fall 2019');
+      expect(relativeDate(l10n, '  Fall 2019  ', now: now), 'Fall 2019');
     });
 
     test('buckets by whole days', () {
@@ -127,12 +134,12 @@ void main() {
       final ep = chapter(
         date: now.subtract(const Duration(days: 2)).toIso8601String(),
       );
-      expect(chapterMetaLine(ep, now: now), '2 days ago');
+      expect(chapterMetaLine(l10n, ep, now: now), '2 days ago');
     });
 
     test('is null when the chapter has no date, so the row drops the line', () {
-      expect(chapterMetaLine(chapter(), now: now), isNull);
-      expect(chapterMetaLine(chapter(date: ''), now: now), isNull);
+      expect(chapterMetaLine(l10n, chapter(), now: now), isNull);
+      expect(chapterMetaLine(l10n, chapter(date: ''), now: now), isNull);
     });
   });
 }

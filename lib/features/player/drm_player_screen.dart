@@ -11,6 +11,7 @@ import '../../core/di/injector.dart';
 import '../../core/models/video_source.dart';
 import '../../core/playback/playback_prefs.dart';
 import '../../core/theme/app_colors.dart';
+import '../../l10n/l10n.dart';
 import 'tv_exo_controller.dart';
 
 /// A dedicated fullscreen player for DRM (clearkey CENC/DASH) sources — the
@@ -153,10 +154,10 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('Sources',
-                  style: TextStyle(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(context.l10n.sources,
+                  style: const TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold)),
@@ -174,7 +175,7 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                             : Colors.white70,
                       ),
                       title: Text(
-                        s.label ?? s.quality ?? 'Source',
+                        s.label ?? s.quality ?? context.l10n.sourceFallback,
                         style: TextStyle(
                           color: s.url == _current.url
                               ? AppColors.accent
@@ -182,8 +183,8 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                         ),
                       ),
                       subtitle: s.isDrm
-                          ? const Text('DRM',
-                              style: TextStyle(color: Colors.white38, fontSize: 12))
+                          ? Text(context.l10n.drm,
+                              style: const TextStyle(color: Colors.white38, fontSize: 12))
                           : null,
                       trailing: s.url == _current.url
                           ? Icon(Icons.check_rounded, color: AppColors.accent)
@@ -292,7 +293,7 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      widget.title ?? 'Live',
+                                      widget.title ?? context.l10n.live,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
@@ -344,8 +345,8 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                                     color: AppColors.accent,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
-                                  child: const Text('LIVE',
-                                      style: TextStyle(
+                                  child: Text(context.l10n.live.toUpperCase(),
+                                      style: const TextStyle(
                                           color: Colors.white,
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold)),
@@ -376,8 +377,8 @@ class _DrmPlayerScreenState extends State<DrmPlayerScreen> {
                                 onPressed: _openSources,
                                 icon: const Icon(Icons.playlist_play_rounded,
                                     color: Colors.white, size: 20),
-                                label: const Text('Sources',
-                                    style: TextStyle(color: Colors.white)),
+                                label: Text(context.l10n.sources,
+                                    style: const TextStyle(color: Colors.white)),
                               ),
                             ],
                           ),

@@ -1,16 +1,19 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:watch_app/core/hive/safe_box.dart';
+import 'package:watch_app/core/lnreader/novel_cloudflare.dart';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart' show MethodChannel, rootBundle;
 import 'package:get_it/get_it.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../announce/announcement.dart';
 import '../announce/announcement_service.dart';
+import '../cache/app_image_cache.dart';
+import '../platform/apple_tv.dart';
+import '../platform/app_paths.dart';
 import '../playback/category_store.dart';
 import '../playback/list_status_store.dart';
 import '../playback/my_list.dart';
@@ -18,6 +21,7 @@ import '../playback/playback_prefs.dart';
 import '../playback/pinned_sources.dart';
 import '../playback/search_history.dart';
 import '../playback/search_prefs.dart';
+import '../ui/nav_prefs.dart';
 import '../playback/search_source_prefs.dart';
 import '../playback/source_health_store.dart';
 import '../schedule/airing_service.dart';
@@ -43,6 +47,7 @@ import '../provider/provider_repo_registry.dart';
 import '../repository/provider_settings_repository.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
+import '../locale/locale_controller.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
@@ -101,6 +106,33 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
+/// tvOS-only deferred boot work (provider JS load). Must not run during
+/// [initDependencies] — evaluating provider scripts on the main isolate can
+/// wedge JavaScriptCore and trap the splash (Dart timers never fire).
+Future<void> Function()? _deferredAppleTvBoot;
+
+/// Runs work queued by [initDependencies] on Apple TV. Call only after the
+/// splash gate ([WatchApp._boot]) has completed.
+Future<void> runDeferredAppleTvBootTasks() async {
+  final task = _deferredAppleTvBoot;
+  _deferredAppleTvBoot = null;
+  if (task == null) {
+    tvosProvidersReady = true;
+    return;
+  }
+  try {
+    await task().timeout(const Duration(seconds: 30));
+  } catch (e, st) {
+    debugPrint('[boot] tvOS deferred provider load failed: $e\n$st');
+  } finally {
+    tvosProvidersReady = true;
+  }
+}
+
+/// True once [runDeferredAppleTvBootTasks] has finished (success or failure).
+/// Home must not call into provider JS before this on Apple TV.
+bool tvosProvidersReady = false;
+
 /// Browser-like default headers for LNReader plugin requests — a straight
 /// mirror of LNReader's own `makeInit` (src/plugins/helpers/fetch.ts). Some
 /// novel hosts (e.g. webnovel.com) sit behind Cloudflare bot-fight that 403s
@@ -142,15 +174,19 @@ const _deviceChannel = MethodChannel('com.spyou.watch_app/device');
 Future<void> initDependencies() async {
   // Detect device class first so every subsequent registration can gate on it.
   // Wrapped in try/catch: no native handler (tests, iOS, web) → phone behavior.
+  // tvOS has no Android `isTv` channel; [isAppleTv] covers Apple TV.
   bool isTv = false;
   try {
     isTv = (await _deviceChannel.invokeMethod<bool>('isTv')) ?? false;
   } catch (_) {
     isTv = false;
   }
+  if (!isTv && isAppleTv) isTv = true;
+  if (isAppleTv) tvosProvidersReady = false;
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
 
-  await Hive.initFlutter();
+  await initHiveForApp();
+  if (isAppleTv) await AppImageCache.init();
   // Cache of the signed-in user so the logged-in UI appears INSTANTLY on boot
   // (AuthCubit reads it before the network session check). See AuthCubit.restore.
   await openBoxSafely(AuthCubit.cacheBoxName);
@@ -258,6 +294,7 @@ Future<void> initDependencies() async {
   sl.registerSingleton<ReaderOverrideStore>(ReaderOverrideStore());
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
+  await LocaleController.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();
@@ -292,6 +329,8 @@ Future<void> initDependencies() async {
   sl.registerSingleton<AnimeLangPrefs>(animeLangPrefs);
   await SearchPrefs.init();
   sl.registerSingleton<SearchPrefs>(SearchPrefs());
+  await NavPrefs.init();
+  sl.registerSingleton<NavPrefs>(NavPrefs());
   // Per-source reliability: orders search healthy-first, recoverably skips dead
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();
@@ -499,6 +538,13 @@ Future<void> initDependencies() async {
             },
           );
           if (res != null) {
+            // Cloudflare wants a human to pass a challenge. Latched rather than
+            // thrown: the plugin is JS and swallows its own fetch failures, so
+            // an exception never leaves the runtime. HomeCubit reads the latch
+            // when a load comes back empty and offers the solver.
+            if (res['cloudflare'] == true) {
+              NovelCloudflare.needsSolve(res['url'] as String? ?? url);
+            }
             return LnReaderHttpResponse(
               status: (res['status'] as num?)?.toInt() ?? 0,
               body: res['body'] as String? ?? '',
@@ -604,20 +650,45 @@ Future<void> initDependencies() async {
   //     restore the saved active source + refresh Home so their content shows
   //     without a relaunch.
   // Normal boots load in ~1-2s, well under both caps, so this is a no-op there.
-  final providerLoad =
-      registry.loadAll(perEntryTimeout: const Duration(seconds: 6));
-  await providerLoad.timeout(const Duration(seconds: 8), onTimeout: () {
-    debugPrint('[boot] provider load exceeded 8s — booting now; '
-        'remaining providers finish in the background');
-    providerLoad.whenComplete(() {
+  void onProviderLoadFinished() {
+    void apply() {
       if (sl.isRegistered<ActiveSourceCubit>()) {
         sl<ActiveSourceCubit>()
             .reapplySaved((id) => manager.installedIds.contains(id));
       }
-      if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load();
-    });
-    return const <String>[];
-  });
+      if (!isAppleTv &&
+          sl.isRegistered<HomeCubit>() &&
+          sl.isRegistered<SourceRepository>() &&
+          sl<SourceRepository>().hasSource(sl<ActiveSourceCubit>().state)) {
+        sl<HomeCubit>().load();
+      }
+    }
+    apply();
+  }
+
+  Future<void> loadProviders() async {
+    final providerLoad =
+        registry.loadAll(perEntryTimeout: const Duration(seconds: 6));
+    providerLoad.whenComplete(onProviderLoadFinished);
+    await providerLoad.timeout(
+      const Duration(seconds: 8),
+      onTimeout: () {
+        debugPrint('[boot] provider load exceeded 8s — booting now; '
+            'remaining providers finish in the background');
+        return const <String>[];
+      },
+    );
+  }
+  // Do not START provider load during init on tvOS — even unawaited, the first
+  // cached provider hits synchronous JavaScriptCore evaluate() and can wedge the
+  // isolate before ActiveSourceCubit / DownloadManager finish opening boxes.
+  if (isAppleTv) {
+    _deferredAppleTvBoot = () async {
+      await loadProviders();
+    };
+  } else {
+    await loadProviders();
+  }
 
   // Push every saved per-provider settings row into the runtime so the
   // first provider call sees the user's choices. Strip the repoUrl prefix
@@ -643,7 +714,7 @@ Future<void> initDependencies() async {
       if (box.isEmpty) {
         return; // nothing installed yet
       }
-      final support = await getApplicationSupportDirectory();
+      final support = await getWritableAppDirectory();
       final aniyomiDir = Directory('${support.path}/aniyomi');
       final service = AniyomiExtensionService();
       await service.loadInstalled(aniyomiDir.path);
@@ -704,7 +775,7 @@ Future<void> initDependencies() async {
       if (box.isEmpty) {
         return; // nothing installed yet
       }
-      final support = await getApplicationSupportDirectory();
+      final support = await getWritableAppDirectory();
       final mihonDir = Directory('${support.path}/mihon');
       final service = MihonExtensionService();
       await service.loadInstalled(mihonDir.path);

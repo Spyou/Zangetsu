@@ -38,10 +38,10 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text('Aniyomi', style: AppText.barTitle),
+          title: Text(context.l10n.aniyomi, style: AppText.barTitle),
           actions: [
             IconButton(
-              tooltip: 'Languages',
+              tooltip: context.l10n.languages,
               icon: const Icon(Icons.language_rounded),
               onPressed: () =>
                   showSourceLanguageSheet(context, sl<AnimeLangPrefs>()),
@@ -55,9 +55,9 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
             labelStyle: AppText.headline,
             unselectedLabelStyle: AppText.headline,
             dividerHeight: 0,
-            tabs: const [
-              Tab(text: 'Installed'),
-              Tab(text: 'Repositories'),
+            tabs: [
+              Tab(text: context.l10n.installed),
+              Tab(text: context.l10n.repositories),
             ],
           ),
         ),
@@ -67,7 +67,7 @@ class _AniScreenPhoneViewState extends State<_AniScreenPhoneView> {
           onPressed: widget.onAddRepo,
           icon: const Icon(Icons.add),
           label: Text(
-            'Add Aniyomi repo',
+            context.l10n.addAniyomiRepo,
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
@@ -140,7 +140,7 @@ class _AniyomiInstalledGroupState extends State<_AniyomiInstalledGroup> {
           return EmptyState(
             icon: Icons.extension_outlined,
             message: query.trim().isEmpty
-                ? 'No Aniyomi sources installed.'
+                ? context.l10n.noAniyomiSourcesInstalled
                 : 'No installed sources match "${query.trim()}".',
           );
         }
@@ -292,23 +292,23 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Uninstall $name?', style: AppText.headline),
+        title: Text(context.l10n.uninstallNameQuestion(name), style: AppText.headline),
         content: Text(
-          'This removes the source from your installed list.',
+          context.l10n.thisRemovesTheSourceFromYourInstalledList,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Uninstall',
+              context.l10n.uninstall,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -347,7 +347,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
     if (context.mounted) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Uninstalled $name')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.uninstalledName(name))));
     }
   }
 
@@ -359,11 +359,11 @@ class _AniSourceRowState extends State<_AniSourceRow> {
       await apply(update);
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Updated ${update.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updatedName(update.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Update failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.updateFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -406,7 +406,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
             shape:
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          child: Text('Update → v${update.availableVersion}'),
+          child: Text(context.l10n.updateArrowVersion('${update.availableVersion}')),
         ),
       );
     }
@@ -417,7 +417,7 @@ class _AniSourceRowState extends State<_AniSourceRow> {
         ScaffoldMessenger.of(context)
           ..clearSnackBars()
           ..showSnackBar(
-            SnackBar(content: Text('Active source: ${source.displayName}')),
+            SnackBar(content: Text(context.l10n.activeSourceColon(source.displayName))),
           );
       },
       child: Padding(
@@ -455,13 +455,13 @@ class _AniSourceRowState extends State<_AniSourceRow> {
               ),
             if (_hasSettings)
               IconButton(
-                tooltip: 'Source settings',
+                tooltip: context.l10n.sourceSettings,
                 icon: const Icon(Icons.tune_rounded, size: 20),
                 color: AppColors.textSecondary,
                 onPressed: _openSettings,
               ),
             IconButton(
-              tooltip: 'Uninstall',
+              tooltip: context.l10n.uninstall,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: () => _confirmUninstall(context),

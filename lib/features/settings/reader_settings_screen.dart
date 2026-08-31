@@ -4,6 +4,7 @@ import '../../core/di/injector.dart';
 import '../../core/reading/reader_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/ui/settings_widgets.dart';
 import 'tap_zones_screen.dart';
 
@@ -261,52 +262,52 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
     final prefs = _prefs;
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('Reader'),
+      appBar: settingsAppBar(context.l10n.reader),
       body: ListView(
         padding: const EdgeInsets.only(top: 4, bottom: 28),
         children: [
-          const SettingsSectionLabel('Manga', first: true),
+          SettingsSectionLabel(context.l10n.modeManga, first: true),
           SettingsCard(
             children: [
               _pickerRow(
                 icon: Icons.swap_horiz_rounded,
-                title: 'Reading mode',
+                title: context.l10n.readingMode,
                 options: _directionOptions,
                 current: prefs.direction,
                 onPicked: prefs.setDirection,
               ),
               _pickerRow(
                 icon: Icons.fit_screen_outlined,
-                title: 'Fit',
+                title: context.l10n.fit,
                 options: _fitOptions,
                 current: prefs.fitMode,
                 onPicked: prefs.setFitMode,
               ),
               _pickerRow(
                 icon: Icons.format_paint_outlined,
-                title: 'Background',
+                title: context.l10n.background,
                 options: _backgroundOptions,
                 current: prefs.mangaBackground,
                 onPicked: prefs.setMangaBackground,
               ),
               _pickerRow(
                 icon: Icons.filter_b_and_w_rounded,
-                title: 'Colour filter',
+                title: context.l10n.colourFilter,
                 options: _filterOptions,
                 current: prefs.colorFilter,
                 onPicked: prefs.setColorFilter,
               ),
               _pickerRow(
                 icon: Icons.screen_rotation_outlined,
-                title: 'Orientation lock',
+                title: context.l10n.orientationLock,
                 options: _orientationOptions,
                 current: prefs.orientation,
                 onPicked: prefs.setOrientation,
               ),
               _toggleRow(
                 icon: Icons.vertical_split_rounded,
-                title: 'Double-page (landscape)',
-                subtitle: 'Pair facing pages in a landscape spread',
+                title: context.l10n.doublePageLandscape,
+                subtitle: context.l10n.pairFacingPagesInALandscapeSpread,
                 value: prefs.doublePageLandscape,
                 onChanged: (v) async {
                   await prefs.setDoublePageLandscape(v);
@@ -315,8 +316,8 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.crop_outlined,
-                title: 'Crop borders',
-                subtitle: 'Trim near-uniform edge margins from a page',
+                title: context.l10n.cropBorders,
+                subtitle: context.l10n.trimNearUniformEdgeMarginsFromAPage,
                 value: prefs.cropBorders,
                 onChanged: (v) async {
                   await prefs.setCropBorders(v);
@@ -325,7 +326,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _sliderRow(
                 icon: Icons.layers_outlined,
-                title: 'Preload pages',
+                title: context.l10n.preloadPages,
                 value: prefs.preloadCount.toDouble(),
                 min: 1,
                 max: 8,
@@ -335,7 +336,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
-                title: 'Keep screen on',
+                title: context.l10n.keepScreenOn,
                 value: prefs.keepScreenOn,
                 onChanged: (v) async {
                   await prefs.setKeepScreenOn(v);
@@ -344,13 +345,13 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
             ],
           ),
-          const SettingsSectionLabel('Gestures'),
+          SettingsSectionLabel(context.l10n.gestures),
           SettingsCard(
             children: [
               SettingsTile(
                 icon: Icons.touch_app_outlined,
-                title: 'Tap zones',
-                subtitle: 'What tapping each part of the page does',
+                title: context.l10n.tapZones,
+                subtitle: context.l10n.whatTappingEachPartOfThePageDoes,
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const TapZonesScreen(),
@@ -359,26 +360,26 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
             ],
           ),
-          const SettingsSectionLabel('Novel'),
+          SettingsSectionLabel(context.l10n.modeNovel),
           SettingsCard(
             children: [
               _pickerRow(
                 icon: Icons.font_download_outlined,
-                title: 'Font',
+                title: context.l10n.font,
                 options: _fontOptions,
                 current: prefs.fontFamily,
                 onPicked: prefs.setFontFamily,
               ),
               _pickerRow(
                 icon: Icons.style_outlined,
-                title: 'Theme',
+                title: context.l10n.theme,
                 options: _themeOptions,
                 current: prefs.theme,
                 onPicked: prefs.setTheme,
               ),
               _sliderRow(
                 icon: Icons.format_size_rounded,
-                title: 'Font size',
+                title: context.l10n.fontSize,
                 value: prefs.fontSize,
                 min: 12,
                 max: 28,
@@ -387,7 +388,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _sliderRow(
                 icon: Icons.format_line_spacing_rounded,
-                title: 'Line height',
+                title: context.l10n.lineHeight,
                 value: prefs.lineHeight,
                 min: 1.2,
                 max: 2.4,
@@ -396,7 +397,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _sliderRow(
                 icon: Icons.format_indent_increase_rounded,
-                title: 'Margin',
+                title: context.l10n.margin,
                 value: prefs.marginWidth,
                 min: 0,
                 max: 48,
@@ -405,7 +406,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.format_align_justify_rounded,
-                title: 'Justify text',
+                title: context.l10n.justifyText,
                 value: prefs.textAlignJustify,
                 onChanged: (v) async {
                   await prefs.setTextAlignJustify(v);
@@ -414,14 +415,14 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _pickerRow(
                 icon: Icons.format_textdirection_r_to_l_rounded,
-                title: 'Text direction',
+                title: context.l10n.textDirection,
                 options: _textDirectionOptions,
                 current: prefs.textDirection,
                 onPicked: prefs.setTextDirection,
               ),
               _sliderRow(
                 icon: Icons.view_stream_outlined,
-                title: 'Paragraph spacing',
+                title: context.l10n.paragraphSpacing,
                 value: prefs.paragraphSpacing,
                 min: 0,
                 max: 24,
@@ -430,8 +431,8 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.auto_stories_outlined,
-                title: 'Paginated',
-                subtitle: 'Book-style pages instead of a continuous scroll',
+                title: context.l10n.paginated,
+                subtitle: context.l10n.bookStylePagesInsteadOfAContinuousScroll,
                 value: prefs.novelPaginated,
                 onChanged: (v) async {
                   await prefs.setNovelPaginated(v);
@@ -440,7 +441,7 @@ class _ReaderSettingsScreenState extends State<ReaderSettingsScreen> {
               ),
               _toggleRow(
                 icon: Icons.screen_lock_portrait_outlined,
-                title: 'Keep screen on',
+                title: context.l10n.keepScreenOn,
                 value: prefs.keepScreenOn,
                 onChanged: (v) async {
                   await prefs.setKeepScreenOn(v);

@@ -151,3 +151,14 @@ class SearchModeChanged extends SearchEvent {
   @override
   List<Object?> get props => [];
 }
+
+/// Retries a search that failed. With [sourceId] it retries just that one
+/// source in place; with null it retries everything that failed.
+class SearchRetryRequested extends SearchEvent {
+  const SearchRetryRequested([this.sourceId]);
+
+  final String? sourceId;
+
+  @override
+  List<Object?> get props => [sourceId];
+}

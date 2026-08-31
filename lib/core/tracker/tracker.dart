@@ -7,14 +7,20 @@ import '../models/watch_status.dart';
 /// movie/TV app unchanged. Novels map to [manga] at this boundary — AniList
 /// and MyAnimeList both file light novels under their manga list (there is no
 /// separate novel list to target), so a third value here would be a lie.
-enum MediaKind { anime, manga }
+/// What kind of thing is being tracked.
+///
+/// [movie] and [tv] exist for Simkl, the only tracker with a movie/TV
+/// catalogue — AniList and MAL index anime and manga only, and return nothing
+/// for them rather than answering a movie query from their anime catalogue.
+/// Note an ANIME film is still [anime]; these two mean a TMDB movie/series.
+enum MediaKind { anime, manga, movie, tv }
 
 /// Parse a persisted [MediaKind] name (e.g. from a Hive-stored queue entry).
 /// Null/unknown → [MediaKind.anime] — the same default every kind-aware
 /// method in this file already has, and what every entry written before this
 /// parameter existed implicitly meant.
-MediaKind mediaKindFromName(String? name) =>
-    name == MediaKind.manga.name ? MediaKind.manga : MediaKind.anime;
+MediaKind mediaKindFromName(String? name) => MediaKind.values
+    .firstWhere((k) => k.name == name, orElse: () => MediaKind.anime);
 
 /// One entry of the user's library read back from a tracker (AniList/MAL/Simkl).
 /// [item] is a METADATA STUB — title/cover/ids only, with `url`/`sourceId` empty

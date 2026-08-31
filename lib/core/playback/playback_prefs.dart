@@ -638,6 +638,13 @@ class PlaybackPrefs {
   Future<void> setSubtitleScale(double value) =>
       _box.put('subtitleScale', value);
 
+  /// Sideloaded subtitle delay in seconds (Apple TV AVKit overlay). Positive =
+  /// show captions later. Used when provider VTTs are ahead of the stream.
+  double get subtitleDelaySeconds =>
+      (_box.get('subtitleDelaySeconds', defaultValue: 0.0) as num).toDouble();
+  Future<void> setSubtitleDelaySeconds(double value) =>
+      _box.put('subtitleDelaySeconds', value.clamp(-60.0, 60.0));
+
   /// Subtitle text colour: 'white' | 'yellow'.
   String get subtitleColor =>
       _box.get('subtitleColor', defaultValue: 'white') as String;

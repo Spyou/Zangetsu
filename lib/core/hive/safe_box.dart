@@ -1,5 +1,23 @@
 import 'package:flutter/foundation.dart';
-import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../platform/apple_tv.dart';
+
+/// Initializes Hive in a directory this platform can actually write.
+///
+/// [Hive.initFlutter] stores boxes under Documents. On a physical Apple TV,
+/// Documents exists but rejects writes (errno 1) — the first [openBoxSafely]
+/// during boot then crashes. tvOS only permits writes to Library/Caches (and
+/// tmp); see path_provider_tvos PathProviderPlugin.
+Future<void> initHiveForApp() async {
+  if (isAppleTv) {
+    final cache = await getApplicationCacheDirectory();
+    Hive.init('${cache.path}/hive');
+    return;
+  }
+  await Hive.initFlutter();
+}
 
 /// Opens a Hive box, self-healing if the on-disk file is unreadable.
 ///

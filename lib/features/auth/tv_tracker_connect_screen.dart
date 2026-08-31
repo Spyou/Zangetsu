@@ -11,6 +11,7 @@ import '../../core/tracker/relay/tracker_blob.dart';
 import '../../core/tracker/relay/tracker_relay.dart';
 import '../../core/tracker/relay/tracker_relay_crypto.dart';
 import 'tv_pairing_service.dart';
+import '../../l10n/l10n.dart';
 
 class TvTrackerConnectScreen extends StatefulWidget {
   const TvTrackerConnectScreen({super.key, required this.trackerId});
@@ -26,9 +27,9 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
   Timer? _poll;
 
   String get _label => switch (widget.trackerId) {
-        'anilist' => 'AniList',
-        'mal' => 'MyAnimeList',
-        'simkl' => 'Simkl',
+        'anilist' => context.l10n.anilist,
+        'mal' => context.l10n.myAnimeList,
+        'simkl' => context.l10n.simkl,
         _ => widget.trackerId,
       };
 
@@ -143,8 +144,8 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                           nonce: _nonce,
                           trackers: true,
                         ),
-                        title: 'Have the app?',
-                        subtitle: 'Open Zangetsu on your\nphone and scan',
+                        title: context.l10n.haveTheApp,
+                        subtitle: context.l10n.openZangetsuOnYourNphoneAndScan,
                       ),
                       const SizedBox(width: 36),
                       // QR 2 — no app needed. Opens a web page that runs the
@@ -153,7 +154,7 @@ class _TvTrackerConnectScreenState extends State<TvTrackerConnectScreen> {
                       _qrOption(
                         data: 'https://zangetsu.online/tv-connect/'
                             '?code=$_code&nonce=$_nonce&tracker=${widget.trackerId}',
-                        title: 'No app?',
+                        title: context.l10n.noApp,
                         subtitle: 'Scan to log in with\n$_label in your browser',
                       ),
                     ],

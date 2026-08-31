@@ -1,10 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/di/injector.dart';
+import '../../core/platform/apple_tv.dart';
 import '../../core/provider/cloudstream_provider.dart';
-import '../../core/provider/provider_manager.dart' show AniyomiManager;
+import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
 import '../../core/theme/app_colors.dart';
@@ -13,6 +16,7 @@ import '../auth/auth_cubit.dart';
 import '../auth/auth_screens_tv.dart';
 import '../auth/reconnect.dart';
 import '../downloads/downloads_screen.dart';
+import '../../l10n/l10n.dart';
 import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
@@ -60,14 +64,43 @@ class _RailItem {
 }
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
-const List<_RailItem> _kRailItems = [
-  _RailItem(label: 'Home', icon: Icons.home_outlined, selectedIcon: Icons.home_filled),
-  _RailItem(label: 'Search', icon: Icons.search, selectedIcon: Icons.search),
-  _RailItem(label: 'My List', icon: Icons.bookmark_outline, selectedIcon: Icons.bookmark),
-  _RailItem(label: 'Downloads', icon: Icons.download_outlined, selectedIcon: Icons.download),
-  _RailItem(label: 'Schedule', icon: Icons.calendar_month_outlined, selectedIcon: Icons.calendar_month),
-  _RailItem(label: 'Settings', icon: Icons.settings_outlined, selectedIcon: Icons.settings),
-];
+const int _kRailItemCount = 6;
+
+List<_RailItem> _railItems(BuildContext context) {
+  final l = context.l10n;
+  return [
+    _RailItem(
+      label: l.home,
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_filled,
+    ),
+    _RailItem(
+      label: l.search,
+      icon: Icons.search,
+      selectedIcon: Icons.search,
+    ),
+    _RailItem(
+      label: l.myList,
+      icon: Icons.bookmark_outline,
+      selectedIcon: Icons.bookmark,
+    ),
+    _RailItem(
+      label: l.downloads,
+      icon: Icons.download_outlined,
+      selectedIcon: Icons.download,
+    ),
+    _RailItem(
+      label: l.schedule,
+      icon: Icons.calendar_month_outlined,
+      selectedIcon: Icons.calendar_month,
+    ),
+    _RailItem(
+      label: l.settingsTitle,
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings,
+    ),
+  ];
+}
 
 /// App-root override of [DirectionalFocusAction] so the TV shell can open/close
 /// the nav rail on LEFT/RIGHT from wherever focus happens to be. Unlike the
@@ -90,6 +123,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   static const int _searchRailItem = 1;
 
   int _index = 0;
+  /// tvOS: only mount tabs the user has opened — cloud-restore boots build a
+  /// heavy shell; building every [IndexedStack] child on the first frame can
+  /// delay the splash overlay from clearing.
+  final Set<int> _mountedPages = {0};
   bool _navOpen = false; // drawer expanded ⇔ focus is in the rail zone
   DateTime? _lastBackPress;
 
@@ -103,7 +140,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   // One focus node per nav item so entering the rail can land straight on the
   // CURRENT page's item (so you always see where you are).
   final List<FocusNode> _navNodes =
-      List.generate(_kRailItems.length, (_) => FocusNode());
+      List.generate(_kRailItemCount, (_) => FocusNode());
 
   @override
   void initState() {
@@ -327,15 +364,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
   }
 
   void _onItemSelected(int i) {
-    setState(() => _index = i);
+    setState(() {
+      _index = i;
+      if (isAppleTv) _mountedPages.add(i);
+    });
     if (i == _searchRailItem) _searchFocusSignal.value++;
-    // Hand focus to the freshly shown page so the drawer collapses and you land
-    // in the content — picking a section takes you into it (like tapping right)
-    // instead of leaving the nav open over the page. Runs for EVERY section,
-    // including Search: the TV search screen isn't wired to _searchFocusSignal
-    // (that's the phone path), so without this the rail kept focus and the
-    // drawer stayed open. On Search this lands on the search field, which also
-    // pops the keyboard.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _contentScope.traversalDescendants
@@ -343,6 +376,20 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
           .firstOrNull
           ?.requestFocus();
     });
+  }
+
+  /// tvOS: load provider JS before [HomeCubit] hits QuickJS — a cloud-restore
+  /// pick (e.g. AniKoto) can be enabled in the registry but not yet evaluated.
+  Future<void> _reloadHomeForSource(String sourceId) async {
+    if (isAppleTv) {
+      final ok = await sl<ProviderRegistry>()
+          .ensureRuntimeLoaded(sourceId)
+          .catchError((_) => false);
+      if (!ok || sl<ProviderManager>().get(sourceId) == null) {
+        return;
+      }
+    }
+    sl<HomeCubit>().load(reset: true);
   }
 
   void _handlePopInvoked(bool didPop, dynamic result) {
@@ -361,9 +408,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(
-        const SnackBar(
-          content: Text('Press back again to exit'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(context.l10n.pressBackAgainToExitTv),
+          duration: const Duration(seconds: 2),
         ),
       );
   }
@@ -376,6 +423,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       const ScheduleScreen(),
       shared.last, // Settings
     ];
+  }
+
+  Widget _pageAt(int index, List<Widget> pages) {
+    if (!isAppleTv || _mountedPages.contains(index)) return pages[index];
+    return const SizedBox.shrink();
   }
 
   // ── Drawer pieces ─────────────────────────────────────────────────────────
@@ -398,10 +450,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             ),
           ),
         ),
-        Expanded(
-          child: AnimatedOpacity(
-            opacity: _navOpen ? 1 : 0,
-            duration: const Duration(milliseconds: 160),
+        if (_navOpen) ...[
+          Expanded(
             child: Image.asset(
               'assets/icon/wordmark.png',
               key: const ValueKey('tv-rail-wordmark'),
@@ -410,8 +460,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
               alignment: Alignment.centerLeft,
             ),
           ),
-        ),
-        const SizedBox(width: 12),
+          const SizedBox(width: 12),
+        ],
       ],
     );
   }
@@ -453,38 +503,36 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                     ),
                   ),
                   Expanded(
-                    child: AnimatedOpacity(
-                      opacity: _navOpen ? 1 : 0,
-                      duration: const Duration(milliseconds: 160),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'SOURCE',
-                            style: TextStyle(
-                              color: lblColor,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.6,
-                            ),
-                          ),
-                          const SizedBox(height: 1),
-                          Text(
-                            clean,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: nameColor,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    child: _navOpen
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                context.l10n.sourceNavLabel,
+                                style: TextStyle(
+                                  color: lblColor,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                clean,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: nameColor,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          )
+                        : const SizedBox.shrink(),
                   ),
-                  const SizedBox(width: 12),
+                  if (_navOpen) const SizedBox(width: 12),
                 ],
               ),
             );
@@ -524,29 +572,24 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                 ),
               ),
               Expanded(
-                child: AnimatedOpacity(
-                  opacity: _navOpen ? 1 : 0,
-                  duration: const Duration(milliseconds: 160),
-                  // The TvFocusable's semanticLabel already announces this
-                  // item — exclude the label Text so TalkBack doesn't say it
-                  // twice (same pattern as TvPosterTile).
-                  child: ExcludeSemantics(
-                    child: Text(
-                      item.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        color: fg,
-                        fontSize: 18,
-                        fontWeight:
-                            selected ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ),
+                child: _navOpen
+                    ? ExcludeSemantics(
+                        child: Text(
+                          item.label,
+                          maxLines: 1,
+                          softWrap: false,
+                          overflow: TextOverflow.clip,
+                          style: TextStyle(
+                            color: fg,
+                            fontSize: 18,
+                            fontWeight:
+                                selected ? FontWeight.w700 : FontWeight.w500,
+                          ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
-              const SizedBox(width: 12),
+              if (_navOpen) const SizedBox(width: 12),
             ],
           ),
         );
@@ -582,8 +625,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, auth) {
         final loggedIn = auth.isLoggedIn;
-        final name = loggedIn ? auth.displayName : 'Sign in';
-        final sub = loggedIn ? 'Signed in' : 'Sync your list';
+        final name = loggedIn ? auth.displayName : context.l10n.signIn;
+        final sub = loggedIn ? context.l10n.signedIn : context.l10n.syncYourListNav;
         final avatar = auth.avatarUrl;
         final initial =
             (loggedIn && name.isNotEmpty) ? name[0].toUpperCase() : null;
@@ -626,34 +669,32 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                   ),
                 ),
                 Expanded(
-                  child: AnimatedOpacity(
-                    opacity: _navOpen ? 1 : 0,
-                    duration: const Duration(milliseconds: 160),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: focused
-                                    ? Colors.black
-                                    : AppColors.textPrimary,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700)),
-                        Text(sub,
-                            maxLines: 1,
-                            style: TextStyle(
-                                color: focused
-                                    ? const Color(0xFF555555)
-                                    : AppColors.textTertiary,
-                                fontSize: 12)),
-                      ],
-                    ),
-                  ),
+                  child: _navOpen
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                    color: focused
+                                        ? Colors.black
+                                        : AppColors.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700)),
+                            Text(sub,
+                                maxLines: 1,
+                                style: TextStyle(
+                                    color: focused
+                                        ? const Color(0xFF555555)
+                                        : AppColors.textTertiary,
+                                    fontSize: 12)),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
                 ),
-                const SizedBox(width: 12),
+                if (_navOpen) const SizedBox(width: 12),
               ],
             ),
           ),
@@ -670,6 +711,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     return SafeArea(
       left: false,
       right: false,
+      top: false,
+      bottom: false,
       // Inset so pill scale (~1.04) + shadow stay inside the drawer bounds when
       // the parent uses Clip.none (avoids cropped focus chrome).
       child: Padding(
@@ -677,30 +720,31 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 16),
-            _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 12),
-            _avatarBlock(), // profile
-            const SizedBox(height: 4),
-            _sourceIndicator(), // source switch right under the profile
+            _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 8),
+            _avatarBlock(), // profile
+            const SizedBox(height: 6),
+            _sourceIndicator(), // source switch right under the profile
+            const SizedBox(height: 6),
             const Divider(
                 height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
-            const SizedBox(height: 8),
-            // Nav items in a flexible scroller so the column never overflows.
+            const SizedBox(height: 6),
+            // Spread nav items across the remaining height (Android-TV style) so
+            // Settings stays visible at the bottom instead of clipping off.
             Expanded(
               child: SingleChildScrollView(
                 clipBehavior: Clip.none,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    for (var i = 0; i < _kRailItems.length; i++)
-                      _navItem(i, _kRailItems[i]),
+                    for (var i = 0; i < _kRailItemCount; i++)
+                      _navItem(i, _railItems(context)[i]),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
           ],
         ),
       ),
@@ -715,7 +759,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       onPopInvokedWithResult: _handlePopInvoked,
       child: BlocListener<ActiveSourceCubit, String>(
         listenWhen: (prev, curr) => prev != curr,
-        listener: (context, _) => sl<HomeCubit>().load(reset: true),
+        listener: (context, sourceId) {
+          if (isAppleTv && !tvosProvidersReady) return;
+          unawaited(_reloadHomeForSource(sourceId));
+        },
         child: Actions(
           actions: <Type, Action<Intent>>{
             DirectionalFocusIntent: _TvRailDirectionalAction(this),
@@ -742,10 +789,11 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         for (var i = 0; i < pages.length; i++)
                           ExcludeFocus(
                             excluding: i != _index,
-                            child: ExcludeSemantics(
-                              excluding: i != _index,
-                              child: pages[i],
-                            ),
+                            // IndexedStack exposes only its painted child.
+                            // Toggling ExcludeSemantics while tvOS dispatches a
+                            // scroll semantics action triggers Flutter's
+                            // _debugDoingSemantics assertion.
+                            child: _pageAt(i, pages),
                           ),
                       ],
                     ),
@@ -786,10 +834,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
                         ),
                       ],
                     ),
-                    // When collapsed, must clip so OverflowBox labels don't spill.
-                    // When open (D-pad on the rail), Clip.none so pill scale/shadow
-                    // isn't cropped by the rounded drawer.
-                    clipBehavior: _navOpen ? Clip.none : Clip.antiAlias,
+                    // Always clip to the rounded drawer. Nav focus chrome is kept
+                    // inside via [_railColumn] insets + scroll padding above.
+                    clipBehavior: Clip.antiAlias,
                     child: OverflowBox(
                       minWidth: _kNavExpanded,
                       maxWidth: _kNavExpanded,
@@ -841,7 +888,7 @@ class TvLogoutSheet extends StatelessWidget {
                       size: 20,
                       color: focused ? Colors.black : const Color(0xFFFF5C5C)),
                   const SizedBox(width: 12),
-                  Text('Log out',
+                  Text(context.l10n.logOut,
                       style: TextStyle(
                         color: focused ? Colors.black : const Color(0xFFFF5C5C),
                         fontSize: 16,
@@ -862,7 +909,7 @@ class TvLogoutSheet extends StatelessWidget {
                       size: 20,
                       color: focused ? Colors.black : AppColors.textSecondary),
                   const SizedBox(width: 12),
-                  Text('Cancel',
+                  Text(context.l10n.cancel,
                       style: TextStyle(
                         color: focused ? Colors.black : AppColors.textSecondary,
                         fontSize: 16,

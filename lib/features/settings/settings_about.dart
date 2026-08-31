@@ -45,7 +45,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: settingsAppBar('About'),
+      appBar: settingsAppBar(context.l10n.about),
       body: ListView(
         padding: const EdgeInsets.only(top: 24, bottom: 30),
         children: [
@@ -57,64 +57,64 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
               SettingsTile(
                 autofocus: true,
                 icon: Icons.group_rounded,
-                title: 'Contributors',
+                title: context.l10n.contributors,
                 onTap: () => _push(const ContributorsScreen()),
               ),
             ],
           ),
-          const SettingsSectionLabel('Social', muted: true),
+          SettingsSectionLabel(context.l10n.social, muted: true),
           SettingsCard(
             children: [
               SettingsTile(
                 icon: Icons.language_rounded,
-                title: 'Website',
+                title: context.l10n.website,
                 subtitle: 'zangetsu.online',
                 onTap: () => _open(_websiteUrl),
               ),
               SettingsTile(
                 icon: Icons.send_rounded,
-                title: 'Telegram',
-                subtitle: 'Community chat',
+                title: context.l10n.telegram,
+                subtitle: context.l10n.communityChat,
                 onTap: () => _open(_telegramUrl),
               ),
               SettingsTile(
                 icon: Icons.discord,
-                title: 'Discord',
-                subtitle: 'Join the server',
+                title: context.l10n.discord,
+                subtitle: context.l10n.joinTheServer,
                 onTap: () => _open(_discordUrl),
               ),
               SettingsTile(
                 icon: Icons.code_rounded,
-                title: 'GitHub',
-                subtitle: 'View the source code',
+                title: context.l10n.github,
+                subtitle: context.l10n.viewTheSourceCode,
                 onTap: () => _open(_githubUrl),
               ),
             ],
           ),
-          const SettingsSectionLabel('App', muted: true),
+          SettingsSectionLabel(context.l10n.appSection, muted: true),
           SettingsCard(
             children: [
               SettingsTile(
                 icon: Icons.help_outline_rounded,
-                title: 'How it works',
-                subtitle: 'New here? A quick guide',
+                title: context.l10n.howItWorks,
+                subtitle: context.l10n.howItWorksSubtitle,
                 onTap: () => _push(const HowItWorksScreen()),
               ),
               SettingsTile(
                 icon: Icons.system_update_rounded,
-                title: 'Check for updates',
-                subtitle: 'Get the latest version from GitHub',
+                title: context.l10n.checkForUpdates,
+                subtitle: context.l10n.checkForUpdatesSubtitle,
                 onTap: () {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Checking for updates…')),
+                    SnackBar(content: Text(context.l10n.checkingForUpdates)),
                   );
                   maybeShowUpdateDialog(context, manual: true);
                 },
               ),
               SettingsTile(
                 icon: Icons.science_outlined,
-                title: 'Beta updates',
-                subtitle: 'Get pre-release builds early — may be unstable',
+                title: context.l10n.betaUpdates,
+                subtitle: context.l10n.betaUpdatesSubtitle,
                 subtitleMaxLines: null,
                 trailing: Switch.adaptive(
                   value: _betaUpdates,
@@ -134,8 +134,8 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
               ),
               SettingsTile(
                 icon: Icons.favorite_border_rounded,
-                title: 'Support the app',
-                subtitle: 'Buy me a coffee',
+                title: context.l10n.supportTheApp,
+                subtitle: context.l10n.buyMeACoffee,
                 onTap: () => _push(const DonateScreen()),
               ),
             ],
@@ -229,7 +229,7 @@ class _DeveloperRow extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Lead Developer',
+                        context.l10n.leadDeveloper,
                         style: AppText.caption.copyWith(
                           color: AppColors.textSecondary,
                           fontWeight: FontWeight.w600,

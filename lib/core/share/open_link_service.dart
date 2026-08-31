@@ -7,8 +7,10 @@ import '../../features/auth/send_trackers_to_tv_screen.dart';
 import '../../features/detail/detail_screen.dart';
 import '../di/injector.dart';
 import '../models/media_item.dart';
+import '../platform/apple_tv.dart';
 import '../repository/source_repository.dart';
 import '../ui/global_messenger.dart';
+import 'local_video_link.dart';
 import 'pair_link.dart';
 import 'share_link.dart';
 
@@ -18,6 +20,8 @@ import 'share_link.dart';
 /// and ignore anything they don't own.
 class OpenLinkService {
   OpenLinkService() {
+    // app_links has no tvOS implementation — listening throws MissingPluginException.
+    if (isAppleTv) return;
     _sub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     // Cold start: the browser/OS may have launched the app straight to the link.
     _appLinks.getInitialLink().then((uri) {
@@ -29,6 +33,13 @@ class OpenLinkService {
   StreamSubscription<Uri>? _sub;
 
   void _onLink(Uri uri) {
+    // A local video handed over from a file manager / Downloads ("Open with").
+    // Checked first because it's the one case that can't be a zangetsu:// or
+    // https:// link, so it can never shadow the handlers below.
+    if (LocalVideoLink.matches(uri)) {
+      _openLocalVideo(uri);
+      return;
+    }
     // zangetsu://pair?code=… (TV QR) or HTTPS /pair/?code=… (web share /
     // landing page). Same payload either way.
     final pair = PairLink.parse(uri);
@@ -43,6 +54,23 @@ class OpenLinkService {
     final item = ShareLink.parse(uri);
     if (item == null) return; // not an open-link (or another handler's link)
     _open(item);
+  }
+
+  /// Play a file the OS handed us. Same cold-start-safe wait for the root
+  /// Navigator as the handlers below — a cold launch delivers the link before
+  /// there is anything to push onto.
+  void _openLocalVideo(Uri uri, [int attempt = 0]) {
+    final nav = rootNavigatorKey.currentState;
+    if (nav == null) {
+      if (attempt < 20) {
+        Future.delayed(
+          const Duration(milliseconds: 250),
+          () => _openLocalVideo(uri, attempt + 1),
+        );
+      }
+      return;
+    }
+    nav.push(LocalVideoLink.route(uri));
   }
 
   /// Open the phone's "Pair a TV" screen prefilled with the scanned code.

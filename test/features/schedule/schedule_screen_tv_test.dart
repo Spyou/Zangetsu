@@ -8,6 +8,7 @@ import 'package:watch_app/core/schedule/schedule_models.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
 import 'package:watch_app/features/schedule/schedule_cubit.dart';
 import 'package:watch_app/features/schedule/schedule_screen_tv.dart';
+import 'package:watch_app/l10n/app_localizations.dart';
 
 class _StubCubit extends ScheduleCubit {
   _StubCubit(super.a, super.b, super.c, ScheduleState seed) { emit(seed); }
@@ -31,6 +32,8 @@ void main() {
       loadingAiring: false, loadingSoon: false,
     );
     await tester.pumpWidget(MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: BlocProvider<ScheduleCubit>(
         create: (_) => _StubCubit(_FA(), _FS(), _FMyList(), seed),
         child: const ScheduleScreenTv(),

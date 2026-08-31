@@ -114,6 +114,13 @@ class MetadataEnrichment {
       if (d.type == ProviderType.anime && d.title.trim().isNotEmpty) {
         return await _anilist.mediaExtrasBySearch(d.title);
       }
+      // Manga/novel (Mihon, LNReader) expose no id either. Goes to AniList's
+      // MANGA side, never the video databases — see readingExtrasBySearch for
+      // why that distinction is the whole point.
+      if ((d.type == ProviderType.manga || d.type == ProviderType.novel) &&
+          d.title.trim().isNotEmpty) {
+        return await _anilist.readingExtrasBySearch(d.title);
+      }
     } catch (_) {}
     return (cast: <CastMember>[], relations: <MediaRelation>[]);
   }

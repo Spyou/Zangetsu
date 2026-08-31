@@ -14,6 +14,7 @@ import '../../core/tracker/relay/tracker_relay_crypto.dart';
 import '../../core/tv/tv_focusable.dart';
 import 'auth_cubit.dart';
 import 'tv_pairing_service.dart';
+import '../../l10n/l10n.dart';
 
 /// TV device-pairing: shows a QR + short code, the user approves on their
 /// already-signed-in phone, and the TV signs itself in. TV-only, no typing.
@@ -92,7 +93,7 @@ class _TvPairScreenState extends State<TvPairScreen> {
     }
     if (!res.approved || !mounted) return;
     // Approved → stop polling and complete sign-in. Surface any error HERE
-    // instead of hanging forever on "Signing in…".
+    // instead of hanging forever on context.l10n.signingIn.
     _poll?.cancel();
     setState(() => _phase = _Phase.signingIn);
     final err = await _svc.completeSignIn(res.appSecret!);
@@ -129,9 +130,9 @@ class _TvPairScreenState extends State<TvPairScreen> {
   }
 
   String _label(String id) => switch (id) {
-        'anilist' => 'AniList',
-        'mal' => 'MyAnimeList',
-        'simkl' => 'Simkl',
+        'anilist' => context.l10n.anilist,
+        'mal' => context.l10n.myAnimeList,
+        'simkl' => context.l10n.simkl,
         _ => id,
       };
 
@@ -172,14 +173,14 @@ class _TvPairScreenState extends State<TvPairScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Sign in with your phone', style: AppText.title),
+              Text(context.l10n.signInWithYourPhone, style: AppText.title),
               const SizedBox(height: 14),
               Text(
-                'On the Zangetsu app on your phone, open\n"Pair a TV" and enter this code — or scan the QR.',
+                context.l10n.onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR,
                 style: AppText.body.copyWith(color: AppColors.textSecondary, height: 1.5),
               ),
               const SizedBox(height: 30),
-              Text('CODE',
+              Text(context.l10n.code,
                   style: AppText.caption
                       .copyWith(letterSpacing: 3, color: AppColors.textTertiary)),
               const SizedBox(height: 6),
@@ -195,7 +196,7 @@ class _TvPairScreenState extends State<TvPairScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: AppColors.accent)),
                   const SizedBox(width: 10),
-                  Text('Signing in…', style: AppText.body),
+                  Text(context.l10n.signingIn, style: AppText.body),
                 ]),
             ],
           ),
@@ -207,14 +208,14 @@ class _TvPairScreenState extends State<TvPairScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(expired ? 'Code expired' : 'Something went wrong', style: AppText.title),
+        Text(expired ? context.l10n.codeExpired : context.l10n.somethingWentWrong, style: AppText.title),
         const SizedBox(height: 10),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 60),
           child: Text(
             expired
-                ? 'The pairing code timed out. Get a new one.'
-                : (_errMsg ?? "Couldn't start pairing — check your connection."),
+                ? context.l10n.pairingCodeTimedOut
+                : (_errMsg ?? context.l10n.couldntStartPairing),
             textAlign: TextAlign.center,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
@@ -224,7 +225,7 @@ class _TvPairScreenState extends State<TvPairScreen> {
           autofocus: true,
           variant: TvFocusVariant.pill,
           onTap: _create,
-          semanticLabel: 'Get a new code',
+          semanticLabel: context.l10n.getANewCode,
           builder: (focused) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             decoration: BoxDecoration(
@@ -232,7 +233,7 @@ class _TvPairScreenState extends State<TvPairScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              'Get a new code',
+              context.l10n.getANewCode,
               style: AppText.headline.copyWith(
                 color: focused ? Colors.black : Colors.white,
               ),

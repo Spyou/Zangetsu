@@ -88,6 +88,15 @@ class VideoSource extends Equatable {
   @JsonKey(defaultValue: <Subtitle>[])
   final List<Subtitle> subtitles;
 
+  /// Seconds to add to soft-subtitle cue times when the VTT pack's opening is
+  /// shorter/longer than the playing video (MegaPlay cross-encode dub+sub).
+  /// Measured from pack `intro`/`outro` markers — not a user preference.
+  final double? subtitleSkewSeconds;
+
+  /// Only cues with file start ≥ this (VTT-pack intro end) receive
+  /// [subtitleSkewSeconds], so pre-OP dialogue stays aligned.
+  final double? subtitleSkewAfterSeconds;
+
   /// Hidden local-proxy fallback URL (Aniyomi only): when the direct stream is
   /// Cloudflare-blocked and won't start, the player transparently re-opens this
   /// same quality via the proxy. Not serialized and NOT a separate picker entry —
@@ -117,6 +126,8 @@ class VideoSource extends Equatable {
     this.kind = AudioKind.unknown,
     this.audioLang,
     this.subtitles = const [],
+    this.subtitleSkewSeconds,
+    this.subtitleSkewAfterSeconds,
     this.proxyUrl,
     this.drmKid,
     this.drmKey,
@@ -136,5 +147,7 @@ class VideoSource extends Equatable {
     kind,
     audioLang,
     subtitles,
+    subtitleSkewSeconds,
+    subtitleSkewAfterSeconds,
   ];
 }

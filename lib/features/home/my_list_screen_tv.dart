@@ -6,6 +6,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 import '../../core/tracker/tracker.dart';
 import '../../core/tracker/tracker_hub.dart';
 import '../../core/tv/tv_focusable.dart';
@@ -61,7 +62,7 @@ class MyListScreenTv extends StatelessWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-                  child: Text('My List', style: AppText.largeTitle),
+                  child: Text(context.l10n.myList, style: AppText.largeTitle),
                 ),
                 _SourceChips(tlState: tlState),
                 // Gap so poster float rings (scale + outer outline) don't paint
@@ -85,9 +86,9 @@ class MyListScreenTv extends StatelessWidget {
     return BlocBuilder<MyListCubit, List<MyListEntry>>(
       builder: (context, entries) {
         if (entries.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.bookmark_outline,
-            message: 'Titles you add appear here',
+            message: context.l10n.titlesYouAddAppearHere,
           );
         }
         // Chips take autofocus when present; otherwise first poster.
@@ -116,16 +117,16 @@ class MyListScreenTv extends StatelessWidget {
           child: CircularProgressIndicator(color: AppColors.accent),
         );
       case TrackerListStatus.error:
-        return const EmptyState(
+        return EmptyState(
           icon: Icons.cloud_off_rounded,
-          message: 'Couldn’t load — try again from Settings',
+          message: context.l10n.couldnTLoadTryAgainFromSettings,
         );
       case TrackerListStatus.idle:
       case TrackerListStatus.ready:
         if (tlState.entries.isEmpty) {
-          return const EmptyState(
+          return EmptyState(
             icon: Icons.bookmark_outline,
-            message: 'No titles in this list',
+            message: context.l10n.noTitlesInThisList,
           );
         }
         final tracker = tlState.tracker!;
@@ -235,7 +236,7 @@ class _SourceChips extends StatelessWidget {
                   borderRadius: 20,
                   onTap: cubit.selectMyList,
                   child: _Chip(
-                    label: 'My List',
+                    label: context.l10n.myList,
                     selected: tlState.isMyList,
                   ),
                 ),

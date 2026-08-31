@@ -8,6 +8,7 @@ import '../../core/di/injector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_list_focusable.dart';
+import '../../l10n/l10n.dart';
 
 /// Fetch the announcements feed and, if something new arrived, pop the newest
 /// one as a bottom sheet over the running UI. [context] must be a live widget
@@ -174,7 +175,7 @@ class _AnnouncementSheet extends StatelessWidget {
                   ],
                   _sheetButton(
                     context,
-                    label: 'Got it',
+                    label: context.l10n.gotIt,
                     filled: true,
                     // On TV give the primary button initial focus so OK dismisses.
                     autofocus: isTv,

@@ -10,6 +10,7 @@ import '../../core/tracker/relay/tracker_relay_crypto.dart';
 import '../../core/tracker/simkl_service.dart';
 import '../../core/tracker/tracker.dart';
 import 'tv_pairing_service.dart';
+import '../../l10n/l10n.dart';
 
 /// Phone: after scanning a TV's trackers-only QR, pick which connected trackers
 /// to relay (connecting a missing one first if desired), then send.
@@ -26,11 +27,20 @@ class SendTrackersToTvScreen extends StatefulWidget {
 }
 
 class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
-  late final _rows = <({String id, String label, Tracker t})>[
-    (id: 'anilist', label: 'AniList', t: sl<AniListService>()),
-    (id: 'mal', label: 'MyAnimeList', t: sl<MalService>()),
-    (id: 'simkl', label: 'Simkl', t: sl<SimklService>()),
+  // No labels here: [initState] reads this list, and resolving translations
+  // needs an inherited widget lookup, which isn't allowed until initState has
+  // finished. Labels come from [_labelFor] at build time instead.
+  late final _rows = <({String id, Tracker t})>[
+    (id: 'anilist', t: sl<AniListService>()),
+    (id: 'mal', t: sl<MalService>()),
+    (id: 'simkl', t: sl<SimklService>()),
   ];
+
+  String _labelFor(String id, AppLocalizations l10n) => switch (id) {
+    'anilist' => l10n.anilist,
+    'mal' => l10n.myAnimeList,
+    _ => l10n.simkl,
+  };
   final _selected = <String>{};
   bool _busy = false;
   String? _error;
@@ -58,7 +68,7 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
   Future<void> _send() async {
     final code = widget.code, nonce = widget.nonce;
     if (code == null || nonce == null || _selected.isEmpty) {
-      setState(() => _error = 'Pick at least one connected tracker.');
+      setState(() => _error = context.l10n.pickAtLeastOneTracker);
       return;
     }
     setState(() {
@@ -75,13 +85,13 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
       if (ok) {
         Navigator.of(context).maybePop();
       } else {
-        setState(() => _error = 'Send failed. Try again.');
+        setState(() => _error = context.l10n.sendFailedTryAgain);
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = 'Send failed. Try again.';
+          _error = context.l10n.sendFailedTryAgain;
         });
       }
     }
@@ -91,18 +101,18 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: const Text('Send trackers'), backgroundColor: AppColors.bg),
+      appBar: AppBar(title: Text(context.l10n.sendTrackers), backgroundColor: AppColors.bg),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Choose trackers to send', style: AppText.headline),
+            Text(context.l10n.chooseTrackersToSend, style: AppText.headline),
             const SizedBox(height: 16),
             for (final r in _rows)
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(r.label, style: AppText.body),
+                title: Text(_labelFor(r.id, context.l10n), style: AppText.body),
                 trailing: r.t.isConnected
                     ? Checkbox(
                         value: _selected.contains(r.id),
@@ -111,7 +121,7 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
                       )
                     : TextButton(
                         onPressed: _busy ? null : () => _connect(r.t),
-                        child: const Text('Connect'),
+                        child: Text(context.l10n.connect),
                       ),
               ),
             if (_error != null) ...[
@@ -131,7 +141,7 @@ class _SendTrackersToTvScreenState extends State<SendTrackersToTvScreen> {
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : Text('Send to TV', style: AppText.headline.copyWith(color: Colors.white)),
+                    : Text(context.l10n.sendToTV, style: AppText.headline.copyWith(color: Colors.white)),
               ),
             ),
           ],

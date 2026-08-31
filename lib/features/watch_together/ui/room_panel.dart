@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../model/room_state.dart';
 import '../watch_together_controller.dart';
+import '../../../l10n/l10n.dart';
 
 /// Opens a bottom sheet listing room participants. The host sees a "Give
 /// control" action per other participant; viewers see a read-only list.
@@ -78,7 +79,7 @@ class _RoomParticipantsSheet extends StatelessWidget {
                       if (context.mounted) {
                         Navigator.of(context).pop();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Requested control')),
+                          SnackBar(content: Text(context.l10n.requestedControl)),
                         );
                       }
                     },
@@ -89,11 +90,11 @@ class _RoomParticipantsSheet extends StatelessWidget {
                     maxHeight: MediaQuery.of(context).size.height * 0.45,
                   ),
                   child: participants.isEmpty
-                      ? const Padding(
-                          padding: EdgeInsets.all(24),
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
                           child: Text(
-                            'No participants yet',
-                            style: TextStyle(color: Colors.white54),
+                            context.l10n.noParticipantsYet,
+                            style: const TextStyle(color: Colors.white54),
                           ),
                         )
                       : ListView.builder(
@@ -118,7 +119,7 @@ class _RoomParticipantsSheet extends StatelessWidget {
                                 ),
                               ),
                               title: Text(
-                                p.name.isEmpty ? 'Guest' : p.name,
+                                p.name.isEmpty ? context.l10n.guest : p.name,
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -127,11 +128,11 @@ class _RoomParticipantsSheet extends StatelessWidget {
                               subtitle: Row(
                                 children: [
                                   if (isThisHost)
-                                    const _Chip(
-                                        label: 'HOST', color: Colors.amber),
+                                    _Chip(
+                                        label: context.l10n.hostBadge, color: Colors.amber),
                                   if (p.wantsControl && !isThisHost) ...[
-                                    const _Chip(
-                                        label: 'Wants control',
+                                    _Chip(
+                                        label: context.l10n.wantsControl,
                                         color: Colors.blueAccent),
                                   ],
                                 ],
@@ -145,12 +146,11 @@ class _RoomParticipantsSheet extends StatelessWidget {
                                           ScaffoldMessenger.of(context)
                                               .showSnackBar(SnackBar(
                                             content: Text(
-                                                'Control given to ${p.name.isEmpty ? "Guest" : p.name}'),
+                                                'Control given to ${p.name.isEmpty ? context.l10n.guest : p.name}'),
                                           ));
                                         }
                                       },
-                                      child: const Text(
-                                        'Give control',
+                                      child: Text(context.l10n.giveControl,
                                         style: TextStyle(
                                           color: Colors.greenAccent,
                                           fontSize: 12,
@@ -175,7 +175,7 @@ class _RoomParticipantsSheet extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Viewer control banner — shown at the top of the participants sheet when the
 // local user is a non-host viewer. Explains the host controls playback and
-// provides a one-tap "Request control" button.
+// provides a one-tap context.l10n.requestControl button.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ViewerControlBanner extends StatelessWidget {
@@ -198,10 +198,10 @@ class _ViewerControlBanner extends StatelessWidget {
         children: [
           const Icon(Icons.lock_rounded, size: 14, color: Colors.white54),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
-              'Host controls playback',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
+              context.l10n.hostControlsPlayback,
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
           ),
           TextButton(
@@ -217,8 +217,7 @@ class _ViewerControlBanner extends StatelessWidget {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'Request control',
+            child: Text(context.l10n.requestControl,
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
           ),
@@ -259,7 +258,7 @@ class _Chip extends StatelessWidget {
 
 /// A compact presence strip shown in the player top-bar when a Watch Together
 /// room is active. Displays the sync state (icon), participant count + room
-/// code, and a "Leave" tap target. Tapping the participant count opens the
+/// code, and a context.l10n.leave tap target. Tapping the participant count opens the
 /// participants management sheet.
 ///
 /// Rebuild is driven by the existing _room listener in player_screen.dart (the
@@ -302,15 +301,14 @@ class RoomStrip extends StatelessWidget {
               Clipboard.setData(
                   ClipboardData(text: 'zangetsu://room/${room.code}'));
               ScaffoldMessenger.of(context)
-                  .showSnackBar(const SnackBar(content: Text('Invite copied')));
+                  .showSnackBar(SnackBar(content: Text(context.l10n.inviteCopied)));
             },
             child: const Icon(Icons.copy, size: 12, color: Colors.white54),
           ),
           const SizedBox(width: 8),
           InkWell(
             onTap: () => controller.leave(),
-            child: const Text(
-              'Leave',
+            child: Text(context.l10n.leave,
               style: TextStyle(color: Colors.redAccent, fontSize: 12),
             ),
           ),
@@ -403,8 +401,7 @@ class _RoomChatSheetState extends State<_RoomChatSheet> {
                     const Icon(Icons.chat_bubble_outline,
                         color: Colors.white70, size: 18),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Room Chat',
+                    Text(context.l10n.roomChat,
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -425,11 +422,11 @@ class _RoomChatSheetState extends State<_RoomChatSheet> {
                       maxHeight: MediaQuery.of(context).size.height * 0.5,
                     ),
                     child: messages.isEmpty
-                        ? const Padding(
-                            padding: EdgeInsets.all(24),
+                        ? Padding(
+                            padding: const EdgeInsets.all(24),
                             child: Text(
-                              'No messages yet',
-                              style: TextStyle(color: Colors.white54),
+                              context.l10n.noMessagesYet,
+                              style: const TextStyle(color: Colors.white54),
                             ),
                           )
                         : ListView.builder(
@@ -456,7 +453,7 @@ class _RoomChatSheetState extends State<_RoomChatSheet> {
                         style: const TextStyle(
                             color: Colors.white, fontSize: 14),
                         decoration: InputDecoration(
-                          hintText: 'Message…',
+                          hintText: context.l10n.message,
                           hintStyle: const TextStyle(
                               color: Colors.white38, fontSize: 14),
                           filled: true,
@@ -566,10 +563,10 @@ class _RoomChatPanelState extends State<RoomChatPanel> {
                 ),
                 child: Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Room Chat',
-                        style: TextStyle(
+                        context.l10n.roomChat,
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -591,11 +588,11 @@ class _RoomChatPanelState extends State<RoomChatPanel> {
               // Message list.
               Expanded(
                 child: messages.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'No messages yet',
-                          style:
-                              TextStyle(color: Colors.white38, fontSize: 12),
+                          context.l10n.noMessagesYet,
+                          style: const TextStyle(
+                              color: Colors.white38, fontSize: 12),
                         ),
                       )
                     : ListView.builder(
@@ -619,7 +616,7 @@ class _RoomChatPanelState extends State<RoomChatPanel> {
                         style: const TextStyle(
                             color: Colors.white, fontSize: 13),
                         decoration: InputDecoration(
-                          hintText: 'Message…',
+                          hintText: context.l10n.message,
                           hintStyle: const TextStyle(
                               color: Colors.white38, fontSize: 13),
                           filled: true,
@@ -666,7 +663,7 @@ class _ChatBubble extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            message.name.isEmpty ? 'Guest' : message.name,
+            message.name.isEmpty ? context.l10n.guest : message.name,
             style: const TextStyle(
               color: Colors.white54,
               fontSize: 10,

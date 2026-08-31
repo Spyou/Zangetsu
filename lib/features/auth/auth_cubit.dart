@@ -153,7 +153,7 @@ class AuthCubit extends Cubit<AuthState> {
   /// Restore a persisted session on boot. Silent — no busy/error UI.
   ///
   /// Optimistic: if a cached user exists we emit it IMMEDIATELY (so the
-  /// logged-in UI shows on boot with no network wait — no "Sign in" flash) and
+  /// logged-in UI shows on boot with no network wait — no context.l10n.signIn flash) and
   /// validate against Supabase in the background. Only when there is no cache
   /// (first run / signed out) do we await the network check.
   Future<void> restore() async {
@@ -173,7 +173,7 @@ class AuthCubit extends Cubit<AuthState> {
   /// Confirm the session with Supabase and refresh the cached user. If there
   /// is no Supabase session, try the invisible Case-2 migration (a still
   /// signed-in Appwrite user) before giving up. Any failure with a cached
-  /// session keeps it — a network blip shouldn't bounce the user to "Sign in".
+  /// session keeps it — a network blip shouldn't bounce the user to context.l10n.signIn.
   Future<void> _validate({required bool hadCache}) async {
     try {
       // Auto-heal: FORCE a fresh token. The stored session can look fine

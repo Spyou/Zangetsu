@@ -1,6 +1,26 @@
 // Audio & subtitles, online subtitle search, subtitle styling and colour sheets.
 part of 'player_screen.dart';
 
+String _subtitleOutlineLabel(AppLocalizations l10n, String id) => switch (id) {
+  'none' => l10n.subtitleOutlineNone,
+  'soft' => l10n.subtitleOutlineSoft,
+  'outline' => l10n.subtitleOutlineOutline,
+  'bold' => l10n.subtitleOutlineBold,
+  'shadow' => l10n.subtitleOutlineShadow,
+  'glow' => l10n.subtitleOutlineGlow,
+  _ => id,
+};
+
+String _subtitleColourLabel(AppLocalizations l10n, String hex) => switch (hex) {
+  '#FFFFFFFF' => l10n.colourWhite,
+  '#FFFF00FF' => l10n.colourYellow,
+  '#00E5FFFF' => l10n.accentCyan,
+  '#7CFC00FF' => l10n.colourGreen,
+  '#FF6B6BFF' => l10n.colourRed,
+  '#000000FF' => l10n.colourBlack,
+  _ => hex,
+};
+
 class _AudioSubsSheet extends StatefulWidget {
   const _AudioSubsSheet({
     required this.controller,
@@ -64,7 +84,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 ),
                 const Divider(color: AppColors.hairline, height: 18),
                 _DelayAdjuster(
-                  label: 'Subtitle delay',
+                  label: context.l10n.subtitleDelay,
                   initial: c.subtitleDelay,
                   onChanged: (d) => c.setSubtitleDelay(d),
                   // Aniyomi-style two-tap auto-sync (subtitle only). Captures
@@ -78,15 +98,13 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   ),
                 ),
                 _DelayAdjuster(
-                  label: 'Audio delay',
+                  label: context.l10n.audioDelay,
                   initial: c.audioDelay,
                   onChanged: (d) => c.setAudioDelay(d),
                 ),
                 _SheetRow(
-                  label: 'Audio normalization',
-                  subtitle:
-                      'Evens out the volume — boosts quiet dialogue, '
-                      'tames loud scenes',
+                  label: context.l10n.audioNormalization,
+                  subtitle: context.l10n.audioNormalizationSubtitle,
                   active: sl<PlaybackPrefs>().audioNormalize,
                   onTap: () async {
                     await c.toggleAudioNormalize();
@@ -95,7 +113,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
                 _SheetRow(
-                  label: 'Subtitle style',
+                  label: context.l10n.subtitleStyle,
                   icon: Icons.text_fields_rounded,
                   active: false,
                   onTap: () {
@@ -104,9 +122,8 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
                 _SheetRow(
-                  label: 'Styled subtitles (libass)',
-                  subtitle: 'Real .ass styling — signs, karaoke. '
-                      'Reopen episode to apply.',
+                  label: context.l10n.styledSubtitlesLibass,
+                  subtitle: context.l10n.styledSubtitlesLibassSubtitle,
                   toggleValue: c.styledSubtitlesOn,
                   active: false,
                   onTap: () {
@@ -130,7 +147,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const _SheetSectionHeader('Audio'),
+        _SheetSectionHeader(context.l10n.audio),
         Flexible(
           child: ListView(
             shrinkWrap: true,
@@ -157,7 +174,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
               if (cats.length <= 1 && tracks.length <= 1)
-                _SheetRow(label: 'Default', active: true, onTap: () {}),
+                _SheetRow(label: context.l10n.defaultLabel, active: true, onTap: () {}),
             ],
           ),
         ),
@@ -172,7 +189,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const _SheetSectionHeader('Subtitles'),
+        _SheetSectionHeader(context.l10n.subtitles),
         Flexible(
           child: ListView(
             shrinkWrap: true,
@@ -182,9 +199,11 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 label: () {
                   final p = sl<PlaybackPrefs>().subtitlePreference;
                   final name = p.isEmpty
-                      ? 'Auto'
-                      : (p == 'off' ? 'Off' : (languageByPref(p)?.name ?? p.toUpperCase()));
-                  return 'Preferred language: $name';
+                      ? context.l10n.auto
+                      : (p == 'off'
+                            ? context.l10n.off
+                            : (languageByPref(p)?.name ?? p.toUpperCase()));
+                  return context.l10n.preferredLanguageColon(name);
                 }(),
                 icon: Icons.language_rounded,
                 active: false,
@@ -198,7 +217,7 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                 },
               ),
               _SheetRow(
-                label: 'Off',
+                label: context.l10n.off,
                 active: subId == 'no',
                 onTap: () {
                   c.subtitlesOff();
@@ -226,20 +245,20 @@ class _AudioSubsSheetState extends State<_AudioSubsSheet> {
                   },
                 ),
               _SheetRow(
-                label: 'Search subtitles online',
+                label: context.l10n.searchSubtitlesOnline,
                 icon: Icons.search_rounded,
                 active: false,
                 onTap: widget.onSearchOnline,
               ),
               _SheetRow(
-                label: 'Load from file…',
+                label: context.l10n.loadFromFile,
                 icon: Icons.upload_file,
                 active: false,
                 onTap: widget.onLoadFile,
               ),
               if (c.softSubs.isNotEmpty || c.canTranslateSub)
                 _SheetRow(
-                  label: 'Translate subtitles…',
+                  label: context.l10n.translateSubtitles,
                   icon: Icons.translate_rounded,
                   active: false,
                   onTap: widget.onTranslate,
@@ -327,13 +346,17 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
       setState(() {
         _results = results;
         _searching = false;
-        if (results.isEmpty) _error = 'No subtitles found for “$q”.';
+        if (results.isEmpty) {
+          _error = context.l10n.noSubtitlesFoundFor(q);
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _searching = false;
-        _error = e is SubtitleSearchException ? e.message : 'Search failed: $e';
+        _error = e is SubtitleSearchException
+            ? e.message
+            : context.l10n.searchFailedWithError('$e');
       });
     }
   }
@@ -355,7 +378,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
         _downloading = false;
         _error = e is SubtitleSearchException
             ? e.message
-            : 'Download failed: $e';
+            : context.l10n.downloadFailedWithError('$e');
       });
     }
   }
@@ -381,7 +404,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
-            child: Text('Search subtitles online', style: AppText.headline),
+            child: Text(context.l10n.searchSubtitlesOnline, style: AppText.headline),
           ),
           // Language picker — defaults to the user's preferred subtitle
           // language (when set in Settings) and lets the user change it
@@ -391,7 +414,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
             child: Row(
               children: [
                 Text(
-                  'Language:',
+                  context.l10n.language,
                   style: AppText.caption.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -406,7 +429,7 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
                     DropdownMenuItem(
                       value: '',
                       child: Text(
-                        'Any',
+                        context.l10n.any,
                         style: AppText.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -440,11 +463,11 @@ class _OnlineSubtitleSheetState extends State<_OnlineSubtitleSheet> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               decoration: InputDecoration(
-                hintText: 'Movie or show title',
+                hintText: context.l10n.movieOrShowTitle,
                 prefixIcon: const Icon(Icons.search_rounded, size: 20),
                 suffixIcon: IconButton(
                   icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-                  tooltip: 'Search',
+                  tooltip: context.l10n.search,
                   onPressed: _search,
                 ),
               ),
@@ -614,7 +637,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
       });
       if (!ok) {
         ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text("Couldn't download $f")),
+          SnackBar(content: Text(context.l10n.couldntDownloadFile(f))),
         );
         return;
       }
@@ -623,16 +646,14 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
   }
 
   // Text-colour swatches, stored as #RRGGBBAA (opaque).
-  static const List<(String, String)> _colors = [
-    ('#FFFFFFFF', 'White'),
-    ('#FFFF00FF', 'Yellow'),
-    ('#00E5FFFF', 'Cyan'),
-    ('#7CFC00FF', 'Green'),
-    ('#FF6B6BFF', 'Red'),
-    ('#000000FF', 'Black'),
+  static const List<String> _colorHexes = [
+    '#FFFFFFFF',
+    '#FFFF00FF',
+    '#00E5FFFF',
+    '#7CFC00FF',
+    '#FF6B6BFF',
+    '#000000FF',
   ];
-
-
   Future<void> _apply(Future<void> Function() mutate) async {
     await mutate();
     await widget.controller?.applySubtitleStyle();
@@ -676,7 +697,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-            child: Text('Subtitle style', style: AppText.headline),
+            child: Text(context.l10n.subtitleStyle, style: AppText.headline),
           ),
           // Live WYSIWYG preview — built with the SAME buildSubtitleTextStyle as
           // the real overlay, so what you see here is what renders on the video.
@@ -695,7 +716,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'The quick brown fox',
+                context.l10n.theQuickBrownFox,
                 textAlign: TextAlign.center,
                 style: buildSubtitleTextStyle(_prefs, fontSize: 22.0 * size),
               ),
@@ -705,7 +726,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
             child: ListView(
               shrinkWrap: true,
               children: [
-                const _SheetSectionHeader('Font'),
+                _SheetSectionHeader(context.l10n.font),
                 ConstrainedBox(
                   constraints: BoxConstraints(maxHeight: h * 0.28),
                   child: ListView(
@@ -714,12 +735,12 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                     children: [
                       for (final f in kBundledSubtitleFonts)
                         _SheetRow(
-                          label: f.isEmpty ? 'Default' : f,
+                          label: f.isEmpty ? context.l10n.defaultLabel : f,
                           subtitle: _downloading.contains(f)
-                              ? 'Downloading…'
+                              ? context.l10n.downloading
                               : ((_fontAvailable[f] ?? true)
                                     ? null
-                                    : 'Tap to download'),
+                                    : context.l10n.tapToDownloadFont),
                           loading: _downloading.contains(f),
                           active: font == f,
                           onTap: () => _pickFont(f),
@@ -727,17 +748,17 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                     ],
                   ),
                 ),
-                const _SheetSectionHeader('Text colour'),
+                _SheetSectionHeader(context.l10n.textColour),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final (hex, name) in _colors)
+                      for (final hex in _colorHexes)
                         _ColorSwatch(
                           color: _colorFromHex(hex),
-                          label: name,
+                          label: _subtitleColourLabel(context.l10n, hex),
                           active: colorHex == hex,
                           onTap: () =>
                               _apply(() => _prefs.setSubtitleColorHex(hex)),
@@ -745,7 +766,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                     ],
                   ),
                 ),
-                const _SheetSectionHeader('Text opacity'),
+                _SheetSectionHeader(context.l10n.textOpacity),
                 _SliderRow(
                   value: _prefs.subtitleTextOpacity,
                   min: 0.1,
@@ -755,25 +776,25 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitleTextOpacity(v)),
                 ),
-                const _SheetSectionHeader('Outline style'),
-                for (final (id, name) in kSubtitleOutlineTypes)
+                _SheetSectionHeader(context.l10n.outlineStyle),
+                for (final (id, _) in kSubtitleOutlineTypes)
                   _SheetRow(
-                    label: name,
+                    label: _subtitleOutlineLabel(context.l10n, id),
                     active: _prefs.subtitleOutlineType == id,
                     onTap: () =>
                         _apply(() => _prefs.setSubtitleOutlineType(id)),
                   ),
-                const _SheetSectionHeader('Outline colour'),
+                _SheetSectionHeader(context.l10n.outlineColour),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
                   child: Wrap(
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      for (final (hex, name) in _colors)
+                      for (final hex in _colorHexes)
                         _ColorSwatch(
                           color: _colorFromHex(hex),
-                          label: name,
+                          label: _subtitleColourLabel(context.l10n, hex),
                           active:
                               _prefs.subtitleOutlineColorHex.toUpperCase() == hex,
                           onTap: () => _apply(
@@ -783,7 +804,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                     ],
                   ),
                 ),
-                const _SheetSectionHeader('Outline width'),
+                _SheetSectionHeader(context.l10n.outlineWidth),
                 _SliderRow(
                   value: _prefs.subtitleOutlineWidth,
                   min: 0,
@@ -793,7 +814,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitleOutlineWidth(v)),
                 ),
-                const _SheetSectionHeader('Background'),
+                _SheetSectionHeader(context.l10n.background),
                 _SliderRow(
                   value: _prefs.subtitleBgOpacity,
                   min: 0,
@@ -803,17 +824,19 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitleBgOpacity(v)),
                 ),
-                const _SheetSectionHeader('Position'),
+                _SheetSectionHeader(context.l10n.positionLabel),
                 _SliderRow(
                   value: _prefs.subtitlePosition.toDouble(),
                   min: 0,
                   max: 100,
                   divisions: 20,
-                  label: _prefs.subtitlePosition >= 50 ? 'Bottom' : 'Top',
+                  label: _prefs.subtitlePosition >= 50
+                      ? context.l10n.positionBottom
+                      : context.l10n.positionTop,
                   onChanged: (v) =>
                       _apply(() => _prefs.setSubtitlePosition(v.round())),
                 ),
-                const _SheetSectionHeader('Size'),
+                _SheetSectionHeader(context.l10n.subtitleSize),
                 _SliderRow(
                   value: size.clamp(0.6, 2.0),
                   min: 0.6,
@@ -827,7 +850,7 @@ class _SubtitleStyleSheetState extends State<_SubtitleStyleSheet> {
                   child: OutlinedButton.icon(
                     onPressed: _resetToDefault,
                     icon: const Icon(Icons.restart_alt_rounded, size: 19),
-                    label: const Text('Reset to default'),
+                    label: Text(context.l10n.resetToDefault),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.textPrimary,
                       side: BorderSide(color: AppColors.hairline),
@@ -1217,14 +1240,14 @@ class _ColorSheetState extends State<_ColorSheet> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Colour', style: AppText.headline),
+              Text(context.l10n.colour, style: AppText.headline),
               TextButton(
                 onPressed: () {
                   widget.controller.resetColor();
                   setState(() => _b = _c = _s = _g = _h = 0);
                   widget.onInteract();
                 },
-                child: const Text('Reset'),
+                child: Text(context.l10n.reset),
               ),
             ],
           ),
@@ -1264,11 +1287,11 @@ class _ColorSheetState extends State<_ColorSheet> {
             shrinkWrap: true,
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
             children: [
-              _slider('Brightness', 'brightness', _b, (v) => setState(() => _b = v)),
-              _slider('Contrast', 'contrast', _c, (v) => setState(() => _c = v)),
-              _slider('Saturation', 'saturation', _s, (v) => setState(() => _s = v)),
-              _slider('Gamma', 'gamma', _g, (v) => setState(() => _g = v)),
-              _slider('Hue', 'hue', _h, (v) => setState(() => _h = v)),
+              _slider(context.l10n.brightness, 'brightness', _b, (v) => setState(() => _b = v)),
+              _slider(context.l10n.contrast, 'contrast', _c, (v) => setState(() => _c = v)),
+              _slider(context.l10n.saturation, 'saturation', _s, (v) => setState(() => _s = v)),
+              _slider(context.l10n.gamma, 'gamma', _g, (v) => setState(() => _g = v)),
+              _slider(context.l10n.hue, 'hue', _h, (v) => setState(() => _h = v)),
             ],
           ),
         ),
@@ -1589,7 +1612,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
       // Both points captured → the controller applied the offset; mirror it.
       setState(() => _ms = widget.sync!.currentMs().clamp(-30000, 30000));
       final s = (delta / 1000).toStringAsFixed(2);
-      _flashNote('Aligned ${delta >= 0 ? '+' : ''}${s}s');
+      _flashNote(context.l10n.alignedDelay('${delta >= 0 ? '+' : ''}$s'));
     } else {
       setState(() {}); // reflect the single-capture highlight
     }
@@ -1623,7 +1646,9 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
               _stepBtn(
                 Icons.remove_rounded,
                 () => _bump(-_step),
-                semanticLabel: 'Decrease ${widget.label.toLowerCase()}',
+                semanticLabel: context.l10n.decreaseDelay(
+                  widget.label.toLowerCase(),
+                ),
               ),
               SizedBox(
                 width: 72,
@@ -1639,10 +1664,12 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
               _stepBtn(
                 Icons.add_rounded,
                 () => _bump(_step),
-                semanticLabel: 'Increase ${widget.label.toLowerCase()}',
+                semanticLabel: context.l10n.increaseDelay(
+                  widget.label.toLowerCase(),
+                ),
               ),
               IconButton(
-                tooltip: 'Reset',
+                tooltip: context.l10n.reset,
                 icon: const Icon(
                   Icons.restart_alt_rounded,
                   color: AppColors.textSecondary,
@@ -1666,12 +1693,10 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
     // is still pending after you reopen the sheet).
     final hint = _note ??
         (voiceOn
-            ? 'Voice captured ✓ — play until the subtitle shows, then tap '
-                  'Subtitle seen. (You can close this sheet meanwhile.)'
+            ? context.l10n.subtitleSyncVoiceCaptured
             : textOn
-            ? 'Subtitle captured ✓ — now tap Voice heard when you hear the line.'
-            : 'Auto-sync: tap when you HEAR a line, then when its SUBTITLE '
-                  'appears.');
+            ? context.l10n.subtitleSyncTextCaptured
+            : context.l10n.subtitleSyncHint);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: Column(
@@ -1704,7 +1729,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
                       vertical: 4,
                     ),
                     child: Text(
-                      'Clear',
+                      context.l10n.clear,
                       style: AppText.caption.copyWith(
                         color: AppColors.textSecondary,
                         fontWeight: FontWeight.w700,
@@ -1719,7 +1744,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
             children: [
               Expanded(
                 child: _syncBtn(
-                  'Voice heard',
+                  context.l10n.voiceHeard,
                   Icons.hearing_rounded,
                   voiceOn,
                   () => _capture(true),
@@ -1728,7 +1753,7 @@ class _DelayAdjusterState extends State<_DelayAdjuster> {
               const SizedBox(width: 8),
               Expanded(
                 child: _syncBtn(
-                  'Subtitle seen',
+                  context.l10n.subtitleSeen,
                   Icons.subtitles_rounded,
                   textOn,
                   () => _capture(false),

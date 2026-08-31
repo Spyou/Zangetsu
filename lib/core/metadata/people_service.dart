@@ -100,12 +100,19 @@ class PeopleService {
         'primaryOccupations '
         'characterMedia(sort:[POPULARITY_DESC],perPage:25){ edges{ '
         'characters{ name{ full } } '
+        'node{ idMal title{ romaji english } coverImage{ large } } } } '
+        // What this person MADE, as opposed to characterMedia's "who they
+        // voiced". A manga author voices nobody, so characterMedia comes back
+        // empty for them and their page had nothing on it — staffMedia is the
+        // field that answers "show me everything they wrote".
+        'staffMedia(sort:[POPULARITY_DESC],perPage:25){ edges{ staffRole '
         'node{ idMal title{ romaji english } coverImage{ large } } } } } }';
     final d = await _gql(q, {'id': id});
     final s = d?['Staff'];
     if (s is! Map) return null;
 
     final works = <PersonWork>[];
+    final seenTitles = <String>{};
     final edges = (s['characterMedia'] is Map) ? s['characterMedia']['edges'] : null;
     if (edges is List) {
       for (final e in edges) {
@@ -118,6 +125,7 @@ class PeopleService {
           final n = (chars.first as Map)['name'];
           if (n is Map) character = n['full'] as String?;
         }
+        if (!seenTitles.add(title)) continue;
         works.add(PersonWork(
           title: title,
           romaji: _aniRomaji(e['node']),
@@ -127,6 +135,25 @@ class PeopleService {
         ));
       }
     }
+
+    // Then the things they worked ON, deduped against the above so someone who
+    // both voiced and directed a title isn't listed twice.
+    final staffEdges = (s['staffMedia'] is Map) ? s['staffMedia']['edges'] : null;
+    if (staffEdges is List) {
+      for (final e in staffEdges) {
+        if (e is! Map) continue;
+        final title = _aniTitle(e['node']);
+        if (title == null || !seenTitles.add(title)) continue;
+        works.add(PersonWork(
+          title: title,
+          romaji: _aniRomaji(e['node']),
+          cover: _aniImage(e['node'], 'coverImage'),
+          subtitle: e['staffRole'] as String?,
+          malId: _aniMalId(e['node']),
+        ));
+      }
+    }
+
     final occ = s['primaryOccupations'];
     final subtitle = (occ is List && occ.isNotEmpty) ? '${occ.first}' : null;
     return PersonProfile(

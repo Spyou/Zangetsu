@@ -120,7 +120,7 @@ void main() {
       await _pumpSheet(tester, 0);
 
       expect(tester.takeException(), isNull);
-      expect(find.text('Source Filters'), findsOneWidget);
+      expect(find.text('Source filters'), findsOneWidget);
       expect(find.text('Apply'), findsOneWidget);
       expect(find.text('Sort order'), findsOneWidget);
     });

@@ -32,19 +32,72 @@ class _CastTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (cast.isEmpty) {
-      return _emptyTab(Icons.people_outline_rounded, 'No cast information');
+      return _emptyTab(Icons.people_outline_rounded, context.l10n.noCastInformation);
     }
-    return GridView.builder(
+    // Split characters from the people who MADE the thing. On a manga the tab
+    // holds both, and side by side in one unlabelled grid there's nothing to
+    // say which is which — an author reads as just another character with an
+    // odd subtitle. Everything else (anime, TMDB, source-supplied cast) has no
+    // staff entries, so it falls through as a single unlabelled grid exactly
+    // as before.
+    final staff = [
+      for (final m in cast)
+        if (m.person?.source == PersonSource.anilistStaff) m,
+    ];
+    if (staff.isNotEmpty && staff.length != cast.length) {
+      final people = [for (final m in cast) if (!staff.contains(m)) m];
+      return ListView(
+        padding: const EdgeInsets.only(bottom: 40),
+        children: [
+          _castSection(context.l10n.characters, people),
+          _castSection(context.l10n.creators, staff),
+        ],
+      );
+    }
+    return _grid(
+      cast,
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
+      nested: false,
+    );
+  }
+
+  Widget _castSection(String label, List<CastMember> members) {
+    if (members.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 2),
+          child: Text(
+            label.toUpperCase(),
+            style: AppText.overline.copyWith(color: AppColors.textTertiary),
+          ),
+        ),
+        _grid(members, padding: const EdgeInsets.fromLTRB(16, 8, 16, 4)),
+      ],
+    );
+  }
+
+  /// [nested] grids sit inside the sectioned ListView and must not scroll
+  /// themselves; the single-grid path is the scroll view.
+  Widget _grid(
+    List<CastMember> members, {
+    required EdgeInsets padding,
+    bool nested = true,
+  }) {
+    return GridView.builder(
+      shrinkWrap: nested,
+      physics: nested ? const NeverScrollableScrollPhysics() : null,
+      padding: padding,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
         mainAxisSpacing: 16,
         crossAxisSpacing: 12,
         childAspectRatio: 0.66,
       ),
-      itemCount: cast.length,
+      itemCount: members.length,
       itemBuilder: (_, i) {
-        final m = cast[i];
+        final m = members[i];
         final card = Column(
           children: [
             ClipRRect(
@@ -135,7 +188,7 @@ class _RelationsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (relations.isEmpty) {
-      return _emptyTab(Icons.account_tree_outlined, 'No related titles');
+      return _emptyTab(Icons.account_tree_outlined, context.l10n.noRelatedTitles);
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 40),
@@ -245,18 +298,18 @@ class _DetailsTab extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 40),
       children: [
         if (sourceName.isNotEmpty)
-          _DetailRow(label: 'Source', value: sourceName),
-        if (statusStr.isNotEmpty) _DetailRow(label: 'Status', value: statusStr),
-        if ((year ?? '').isNotEmpty) _DetailRow(label: 'Year', value: year!),
+          _DetailRow(label: context.l10n.playerInfoSource, value: sourceName),
+        if (statusStr.isNotEmpty) _DetailRow(label: context.l10n.status, value: statusStr),
+        if ((year ?? '').isNotEmpty) _DetailRow(label: context.l10n.year, value: year!),
         _DetailRow(
-            label: reading ? 'Chapters' : 'Episodes',
+            label: reading ? context.l10n.chapters : context.l10n.episodes,
             value: '$episodeCount'),
         if (studios.isNotEmpty)
-          _DetailRow(label: 'Studio', value: studios.join(', ')),
+          _DetailRow(label: context.l10n.studio, value: studios.join(', ')),
         if (genres.isNotEmpty) ...[
           const SizedBox(height: 14),
           Text(
-            'Genres',
+            context.l10n.genres,
             style: AppText.caption.copyWith(color: AppColors.textTertiary),
           ),
           const SizedBox(height: 10),
@@ -271,7 +324,7 @@ class _DetailsTab extends StatelessWidget {
         if (desc.isNotEmpty) ...[
           const SizedBox(height: 20),
           Text(
-            'Synopsis',
+            context.l10n.synopsis,
             style: AppText.caption.copyWith(color: AppColors.textTertiary),
           ),
           const SizedBox(height: 8),

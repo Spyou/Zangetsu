@@ -9,6 +9,8 @@ import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_text_field.dart';
 import 'auth_cubit.dart';
 import 'tv_pair_screen.dart';
+import '../../l10n/l10n.dart';
+import '../../l10n/ui_strings.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Login (TV)
@@ -16,7 +18,7 @@ import 'tv_pair_screen.dart';
 
 /// TV Login: email + password fields. Email is autofocused for D-pad landing
 /// but the keyboard stays closed until OK, so DOWN can reach password, Log in,
-/// and "Sign in with your phone". OK on a field raises the leanback IME.
+/// and context.l10n.signInWithYourPhone. OK on a field raises the leanback IME.
 class LoginScreenTv extends StatefulWidget {
   const LoginScreenTv({super.key});
   @override
@@ -70,9 +72,9 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
                   children: [
-                    Text('Welcome back', style: AppText.largeTitle),
+                    Text(context.l10n.welcomeBack, style: AppText.largeTitle),
                     const SizedBox(height: 8),
-                    Text('Sign in to sync your list across devices.', style: AppText.body),
+                    Text(context.l10n.signInToSyncYourListAcrossDevices, style: AppText.body),
                     const SizedBox(height: 32),
 
                     // Email — focused on entry so the remote has a starting point,
@@ -82,7 +84,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                       autofocus: true,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration('Email', Icons.mail_outline),
+                      decoration: _fieldDecoration(context.l10n.email, Icons.mail_outline),
                     ),
                     const SizedBox(height: 14),
 
@@ -92,7 +94,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                       obscureText: true,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(context),
-                      decoration: _fieldDecoration('Password', Icons.lock_outline),
+                      decoration: _fieldDecoration(context.l10n.password, Icons.lock_outline),
                     ),
                     const SizedBox(height: 24),
 
@@ -102,7 +104,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (state.error != null) ...[
-                              Text(state.error!, style: AppText.caption.copyWith(color: AppColors.accent)),
+                              Text(localizeAuthError(context.l10n, state.error)!, style: AppText.caption.copyWith(color: AppColors.accent)),
                               const SizedBox(height: 10),
                             ],
                             if (state.busy)
@@ -115,7 +117,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                               )
                             else
                               // D-pad OK on this TvFocusable submits the login form —
-                              // identical to the phone's "Log in" PrimaryButton.
+                              // identical to the phone's context.l10n.logIn PrimaryButton.
                               TvFocusable(
                                 onTap: () => _submit(context),
                                 child: SizedBox(
@@ -126,7 +128,7 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                                       borderRadius: BorderRadius.circular(14),
                                     ),
                                     child: Center(
-                                      child: Text('Log in', style: AppText.button.copyWith(color: Colors.black)),
+                                      child: Text(context.l10n.logIn, style: AppText.button.copyWith(color: Colors.black)),
                                     ),
                                   ),
                                 ),
@@ -154,11 +156,11 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text.rich(
                           TextSpan(
-                            text: 'Typing is a pain?  ',
+                            text: '${context.l10n.typingIsAPain}  ',
                             style: AppText.caption,
                             children: [
                               TextSpan(
-                                text: 'Sign in with your phone',
+                                text: context.l10n.signInWithYourPhone,
                                 style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
                               ),
                             ],
@@ -177,11 +179,11 @@ class _LoginScreenTvState extends State<LoginScreenTv> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         child: Text.rich(
                           TextSpan(
-                            text: "Don't have an account?  ",
+                            text: '${context.l10n.dontHaveAnAccount}  ',
                             style: AppText.caption,
                             children: [
                               TextSpan(
-                                text: 'Sign up',
+                                text: context.l10n.signUp,
                                 style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
                               ),
                             ],
@@ -232,7 +234,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
     if (_password.text.length < 8) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(const SnackBar(content: Text('Password must be at least 8 characters')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.passwordMustBeAtLeast8Characters)));
       return;
     }
     final ok = await context.read<AuthCubit>().signUp(_name.text.trim(), _email.text.trim(), _password.text);
@@ -270,16 +272,16 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 48),
                   children: [
-                    Text('Create account', style: AppText.largeTitle),
+                    Text(context.l10n.createAccount, style: AppText.largeTitle),
                     const SizedBox(height: 8),
-                    Text('Save your list and continue watching anywhere.', style: AppText.body),
+                    Text(context.l10n.saveYourListAndContinueWatchingAnywhere, style: AppText.body),
                     const SizedBox(height: 32),
 
                     TvTextField(
                       controller: _name,
                       autofocus: true,
                       textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration('Name', Icons.person_outline),
+                      decoration: _fieldDecoration(context.l10n.name, Icons.person_outline),
                     ),
                     const SizedBox(height: 14),
 
@@ -287,7 +289,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                       controller: _email,
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
-                      decoration: _fieldDecoration('Email', Icons.mail_outline),
+                      decoration: _fieldDecoration(context.l10n.email, Icons.mail_outline),
                     ),
                     const SizedBox(height: 14),
 
@@ -296,7 +298,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                       obscureText: true,
                       textInputAction: TextInputAction.done,
                       onSubmitted: (_) => _submit(context),
-                      decoration: _fieldDecoration('Password (8+ characters)', Icons.lock_outline),
+                      decoration: _fieldDecoration(context.l10n.password8Characters, Icons.lock_outline),
                     ),
                     const SizedBox(height: 24),
 
@@ -306,7 +308,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             if (state.error != null) ...[
-                              Text(state.error!, style: AppText.caption.copyWith(color: AppColors.accent)),
+                              Text(localizeAuthError(context.l10n, state.error)!, style: AppText.caption.copyWith(color: AppColors.accent)),
                               const SizedBox(height: 10),
                             ],
                             if (state.busy)
@@ -329,7 +331,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                                     ),
                                     child: Center(
                                       child: Text(
-                                        'Create account',
+                                        context.l10n.createAccount,
                                         style: AppText.button.copyWith(color: Colors.black),
                                       ),
                                     ),
@@ -354,7 +356,7 @@ class _SignupScreenTvState extends State<SignupScreenTv> {
                             style: AppText.caption,
                             children: [
                               TextSpan(
-                                text: 'Log in',
+                                text: context.l10n.logIn,
                                 style: AppText.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w700),
                               ),
                             ],
@@ -395,7 +397,7 @@ class ProfileScreenTv extends StatelessWidget {
             child: BlocBuilder<AuthCubit, AuthState>(
               builder: (context, state) {
                 if (!state.isLoggedIn) {
-                  return const Center(child: Text('Not signed in'));
+                  return Center(child: Text(context.l10n.notSignedIn));
                 }
                 return Center(
                   child: SizedBox(
@@ -448,7 +450,7 @@ class ProfileScreenTv extends StatelessWidget {
                                   children: [
                                     const Icon(Icons.logout_rounded, color: AppColors.textPrimary, size: 20),
                                     const SizedBox(width: 8),
-                                    Text('Log out', style: AppText.button.copyWith(color: AppColors.textPrimary)),
+                                    Text(context.l10n.logOut, style: AppText.button.copyWith(color: AppColors.textPrimary)),
                                   ],
                                 ),
                               ),

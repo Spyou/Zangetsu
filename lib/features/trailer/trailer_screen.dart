@@ -9,6 +9,8 @@ import '../../core/theme/app_text.dart';
 import '../../core/trailer/trailer_service.dart';
 import '../../core/ui/brand_loader.dart';
 
+import '../../l10n/l10n.dart';
+
 /// Fullscreen in-app trailer playback. Extracts a direct muxed stream for the
 /// YouTube id (via [TrailerService.streamUrl]) and plays it natively with
 /// media_kit — NO iframe, NO YouTube chrome (related videos / endscreen /
@@ -119,7 +121,7 @@ class _TrailerScreenState extends State<TrailerScreen> {
                     Icons.close_rounded,
                     color: AppColors.textPrimary,
                   ),
-                  tooltip: 'Close',
+                  tooltip: context.l10n.close,
                   onPressed: () => Navigator.of(context).maybePop(),
                 ),
               ),
@@ -133,7 +135,7 @@ class _TrailerScreenState extends State<TrailerScreen> {
   Widget _content() {
     switch (_resolved) {
       case null:
-        return const BrandLoader(label: 'Loading trailer…');
+        return BrandLoader(label: context.l10n.loadingTrailer);
       case false:
         return Column(
           mainAxisSize: MainAxisSize.min,
@@ -144,11 +146,11 @@ class _TrailerScreenState extends State<TrailerScreen> {
               size: 40,
             ),
             const SizedBox(height: 12),
-            Text('Trailer unavailable', style: AppText.body),
+            Text(context.l10n.trailerUnavailable, style: AppText.body),
             const SizedBox(height: 16),
             TextButton(
               onPressed: () => Navigator.of(context).maybePop(),
-              child: const Text('Close'),
+              child: Text(context.l10n.close),
             ),
           ],
         );

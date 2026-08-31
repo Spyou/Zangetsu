@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
+import '../../l10n/l10n.dart';
 
 /// Beginner-friendly "how the app works" content — a few one-line tips plus a
 /// short FAQ. Reused by the onboarding "you're all set" step AND the
@@ -14,51 +15,50 @@ class HowItWorksView extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
       children: [
-        Text('How to use the app', style: AppText.title.copyWith(fontSize: 20)),
+        Text(context.l10n.howToUseTheApp, style: AppText.title.copyWith(fontSize: 20)),
         const SizedBox(height: 4),
         Text(
-          'A few taps to anything.',
+          context.l10n.aFewTapsToAnything,
           style: AppText.caption.copyWith(color: AppColors.textTertiary),
         ),
         const SizedBox(height: 18),
-        const _Tip(
+        _Tip(
           icon: Icons.search_rounded,
-          title: 'Find something',
-          body: 'Scroll the rows on Home, or tap Search at the bottom.',
+          title: context.l10n.findSomething,
+          body: context.l10n.scrollRowsOrSearch,
         ),
-        const _Tip(
+        _Tip(
           icon: Icons.play_circle_outline,
-          title: 'Watch it',
-          body: 'Open a title and tap Play. For a series, pick an episode first.',
+          title: context.l10n.watchIt,
+          body: context.l10n.openTitleAndPlay,
         ),
-        const _Tip(
+        _Tip(
           icon: Icons.swap_horiz_rounded,
-          title: "If it won't load",
-          body: 'Tap the source name at the top and switch to another source.',
+          title: context.l10n.ifItWontLoad,
+          body: context.l10n.switchSourceAtTop,
         ),
-        const _Tip(
+        _Tip(
           icon: Icons.download_outlined,
-          title: 'Save for offline',
-          body: 'On a title, tap Download — watch it later under Downloads.',
+          title: context.l10n.saveForOffline,
+          body: context.l10n.tapDownloadForOffline,
         ),
         const SizedBox(height: 24),
         Text(
-          'Common questions',
+          context.l10n.commonQuestions,
           style: AppText.body.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
-        const _Faq(
-          q: "A source isn't working?",
-          a: 'Sources come and go. Switch source from the top, or check '
-              'Settings → Source health.',
+        _Faq(
+          q: context.l10n.faqSourceNotWorkingQ,
+          a: context.l10n.faqSourceNotWorkingA,
         ),
-        const _Faq(
-          q: 'Sub or Dub?',
-          a: 'Use the Sub / Dub toggle on an anime title.',
+        _Faq(
+          q: context.l10n.faqSubOrDubQ,
+          a: context.l10n.faqSubOrDubA,
         ),
-        const _Faq(
-          q: 'Where are my downloads?',
-          a: 'Settings → Downloads — watch them offline anytime.',
+        _Faq(
+          q: context.l10n.faqDownloadsQ,
+          a: context.l10n.faqDownloadsA,
         ),
       ],
     );
@@ -158,7 +158,7 @@ class HowItWorksScreen extends StatelessWidget {
     appBar: AppBar(
       backgroundColor: AppColors.bg,
       elevation: 0,
-      title: Text('How it works', style: AppText.title.copyWith(fontSize: 18)),
+      title: Text(context.l10n.howItWorks, style: AppText.title.copyWith(fontSize: 18)),
     ),
     body: const SafeArea(child: HowItWorksView()),
   );

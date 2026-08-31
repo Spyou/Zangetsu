@@ -13,6 +13,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/states.dart';
+import '../../l10n/l10n.dart';
 import '../settings/download_location_screen.dart' show folderLabelFromUri;
 import 'downloads_screen.dart';
 
@@ -48,7 +49,7 @@ class DownloadsScreenTv extends StatelessWidget {
             // ── Title header ─────────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(48, 24, 48, 16),
-              child: Text('Downloads', style: AppText.largeTitle),
+              child: Text(context.l10n.downloads, style: AppText.largeTitle),
             ),
             // ── Download-location header (folder picker) ─────────────────────
             _TvLocationHeader(autofocus: noDownloads),
@@ -59,9 +60,9 @@ class DownloadsScreenTv extends StatelessWidget {
                 builder: (context, _) {
                   final groups = mgr.byShow;
                   if (groups.isEmpty) {
-                    return const EmptyState(
+                    return EmptyState(
                       icon: Icons.download_outlined,
-                      message: 'Episodes you download appear here',
+                      message: context.l10n.episodesYouDownloadAppearHere,
                     );
                   }
                   final showIds = groups.keys.toList();
@@ -117,6 +118,7 @@ class _TvShowGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final head = records.first;
     final done = records.where((r) => r.status == DownloadStatus.done).length;
     return Column(
@@ -158,7 +160,7 @@ class _TvShowGroup extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '$done of ${records.length} downloaded',
+                      l10n.episodesDownloadedOfTotal(done, records.length),
                       style: AppText.caption,
                     ),
                   ],
@@ -166,7 +168,7 @@ class _TvShowGroup extends StatelessWidget {
               ),
               TvFocusable(
                 scale: 1.1,
-                semanticLabel: 'Delete all episodes',
+                semanticLabel: l10n.deleteAllEpisodesTooltip,
                 onTap: () => _confirmDeleteAllTv(context),
                 child: const Padding(
                   padding: EdgeInsets.all(8),
@@ -205,6 +207,7 @@ class _TvShowGroup extends StatelessWidget {
   /// D-pad confirm, then wipe every episode of this show. Defaults focus to
   /// Cancel so a stray OK press can't delete a whole show.
   Future<void> _confirmDeleteAllTv(BuildContext context) async {
+    final l10n = context.l10n;
     final n = records.length;
     await showDialog<void>(
       context: context,
@@ -221,37 +224,36 @@ class _TvShowGroup extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
                 child: Text(
-                  'Delete all downloads?',
+                  l10n.deleteAllDownloads,
                   style: AppText.title.copyWith(color: AppColors.textPrimary),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
                 child: Text(
-                  'Remove all $n ${n == 1 ? 'episode' : 'episodes'} of '
-                  '“${records.first.showTitle}” from this device?',
+                  l10n.removeAllEpisodesOfShow(n, records.first.showTitle),
                   style: AppText.body,
                 ),
               ),
               const Divider(height: 1, color: AppColors.hairline),
               TvListFocusable(
                 autofocus: true,
-                semanticLabel: 'Cancel',
+                semanticLabel: l10n.cancel,
                 onTap: () => Navigator.of(dctx).pop(),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   child: Row(
                     children: [
-                      Icon(Icons.close_rounded,
+                      const Icon(Icons.close_rounded,
                           color: AppColors.textPrimary, size: 22),
-                      SizedBox(width: 16),
-                      Text('Cancel', style: AppText.headline),
+                      const SizedBox(width: 16),
+                      Text(l10n.cancel, style: AppText.headline),
                     ],
                   ),
                 ),
               ),
               TvListFocusable(
-                semanticLabel: 'Delete all',
+                semanticLabel: l10n.deleteAll,
                 onTap: () {
                   Navigator.of(dctx).pop();
                   unawaited(manager.deleteAll(records));
@@ -265,7 +267,7 @@ class _TvShowGroup extends StatelessWidget {
                           color: AppColors.accent, size: 22),
                       const SizedBox(width: 16),
                       Text(
-                        'Delete all',
+                        l10n.deleteAll,
                         style: AppText.headline.copyWith(color: AppColors.accent),
                       ),
                     ],
@@ -291,26 +293,27 @@ class _TvDownloadActions extends StatelessWidget {
   final DownloadManager manager;
 
   List<(String, IconData, VoidCallback)> _actions(BuildContext context) {
+    final l10n = context.l10n;
     final r = record;
     final out = <(String, IconData, VoidCallback)>[];
     if (r.status == DownloadStatus.done) {
-      out.add(('Play', Icons.play_arrow_rounded,
+      out.add((l10n.play, Icons.play_arrow_rounded,
           () => launchDownloadedEpisode(context, r)));
     }
     if (r.status == DownloadStatus.downloading) {
-      out.add(('Pause', Icons.pause_rounded, () => unawaited(manager.pause(r))));
+      out.add((l10n.pause, Icons.pause_rounded, () => unawaited(manager.pause(r))));
     }
     if (r.status == DownloadStatus.paused) {
-      out.add(('Resume', Icons.play_arrow_rounded,
+      out.add((l10n.resume, Icons.play_arrow_rounded,
           () => unawaited(manager.resume(r))));
     }
     if (r.status == DownloadStatus.failed && !r.isTorrent) {
-      out.add(('Retry', Icons.refresh_rounded, () => unawaited(manager.retry(r))));
+      out.add((l10n.retry, Icons.refresh_rounded, () => unawaited(manager.retry(r))));
     }
     if (r.isActive) {
-      out.add(('Cancel', Icons.close_rounded, () => unawaited(manager.delete(r))));
+      out.add((l10n.cancel, Icons.close_rounded, () => unawaited(manager.delete(r))));
     }
-    out.add(('Delete', Icons.delete_outline_rounded,
+    out.add((l10n.delete, Icons.delete_outline_rounded,
         () => unawaited(manager.delete(r))));
     return out;
   }
@@ -384,17 +387,18 @@ class _TvLocationHeader extends StatefulWidget {
 class _TvLocationHeaderState extends State<_TvLocationHeader> {
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     // Guard the DI lookup so widget tests (which inject a fake manager and skip
     // GetIt) still render the header with the default label.
     final label = (sl.isRegistered<DownloadPrefs>()
             ? sl<DownloadPrefs>().locationLabel
             : null) ??
-        'Download › Zangetsu';
+        l10n.downloadsZangetsu;
     return Padding(
       padding: const EdgeInsets.fromLTRB(48, 0, 48, 12),
       child: TvListFocusable(
         autofocus: widget.autofocus,
-        semanticLabel: 'Change download folder',
+        semanticLabel: l10n.changeDownloadFolder,
         onTap: () async {
           await showDialog<void>(
             context: context,
@@ -417,7 +421,7 @@ class _TvLocationHeaderState extends State<_TvLocationHeader> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Saving to', style: AppText.caption),
+                    Text(l10n.savingTo, style: AppText.caption),
                     const SizedBox(height: 2),
                     Text(label,
                         style: AppText.body,
@@ -427,7 +431,7 @@ class _TvLocationHeaderState extends State<_TvLocationHeader> {
                 ),
               ),
               const SizedBox(width: 12),
-              Text('Change',
+              Text(l10n.change,
                   style: AppText.body.copyWith(color: AppColors.accent)),
             ],
           ),
@@ -533,6 +537,7 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = context.l10n;
     final prefs = sl.isRegistered<DownloadPrefs>() ? sl<DownloadPrefs>() : null;
     final current = prefs?.locationUri;
     final hasCustom = current != null;
@@ -546,7 +551,7 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
             ? Icons.sd_storage_rounded
             : Icons.smartphone_rounded,
         title: v.label,
-        subtitle: v.removable ? 'Removable drive' : 'On this device',
+        subtitle: v.removable ? l10n.removableDrive : l10n.onThisDevice,
         autofocus: rows.isEmpty,
         selected: current == v.path,
         onTap: () => _select(v.path, v.label),
@@ -554,15 +559,15 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
     }
     rows.add(_row(
       icon: Icons.folder_open_outlined,
-      title: 'Choose folder…',
-      subtitle: 'Needs a file-manager app on the TV',
+      title: l10n.chooseFolder,
+      subtitle: l10n.needsAFileManagerAppOnTheTV,
       autofocus: rows.isEmpty,
       onTap: _pickSaf,
     ));
     if (hasCustom) {
       rows.add(_row(
         icon: Icons.restore_rounded,
-        title: 'Reset to default',
+        title: l10n.resetToDefault,
         autofocus: false,
         onTap: () => _select(null, null),
       ));
@@ -580,12 +585,12 @@ class _TvLocationPickerState extends State<_TvLocationPicker> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 6),
-              child: Text('Download location',
+              child: Text(l10n.downloadLocation,
                   style: AppText.title.copyWith(color: AppColors.textPrimary)),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
-              child: Text(prefs?.locationLabel ?? 'Download › Zangetsu',
+              child: Text(prefs?.locationLabel ?? l10n.downloadsZangetsu,
                   style: AppText.body),
             ),
             const Divider(height: 1, color: AppColors.hairline),

@@ -18,10 +18,10 @@
 
     <!-- Right-side options menu (Settings / Episodes / Speed / …).
          Populated + driven by the Activity; native focus handles D-pad. -->
-    <ScrollView android:id="@+id/menu_panel" android:layout_width="452dp" android:layout_height="match_parent" android:layout_gravity="end" android:background="#F00C0C10" android:paddingHorizontal="30dp" android:paddingVertical="34dp" android:scrollbars="none" android:visibility="gone">
+    <com.spyou.watch_app.LockedScrollView android:id="@+id/menu_panel" android:layout_width="520dp" android:layout_height="match_parent" android:layout_gravity="end" android:background="#A80C0C10" android:paddingHorizontal="30dp" android:paddingVertical="34dp" android:scrollbars="none" android:visibility="gone">
 
         <LinearLayout android:id="@+id/menu_content" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-    </ScrollView>
+    </com.spyou.watch_app.LockedScrollView>
 
     <!-- Controls overlay — toggled GONE/VISIBLE by the Activity, auto-hides. -->
     <FrameLayout android:id="@+id/controls" android:layout_width="match_parent" android:layout_height="match_parent" android:clipChildren="false" android:clipToPadding="false" android:visibility="gone">
@@ -31,7 +31,7 @@
 
         <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|start" android:layout_marginStart="44dp" android:layout_marginTop="30dp" android:orientation="vertical">
 
-            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="760dp" android:ellipsize="end" android:maxLines="1" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" tools:ignore="HardcodedText" />
+            <TextView android:id="@+id/title" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="500dp" android:ellipsize="marquee" android:maxLines="1" android:textColor="#FFFFFF" android:textSize="24sp" android:textStyle="bold" tools:ignore="HardcodedText" />
 
             <TextView android:id="@+id/episode_label" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="2dp" android:textColor="#CCFFFFFF" android:textSize="15sp" />
 
@@ -78,6 +78,8 @@
                 <TextView android:id="@+id/btn_episodes" style="@style/TvPillButtonSmall" android:drawableStart="@drawable/ic_tv_episodes" android:text="Episodes" tools:ignore="HardcodedText" />
 
                 <TextView android:id="@+id/btn_next" style="@style/TvPillButtonSmall" android:layout_marginStart="10dp" android:drawableStart="@drawable/ic_tv_next" android:text="Next Episode" tools:ignore="HardcodedText" />
+
+                <TextView android:id="@+id/btn_ratio" style="@style/TvPillButtonSmall" android:layout_marginStart="10dp" android:drawableStart="@drawable/ic_aspect_ratio_fit" android:text="Fit" tools:ignore="HardcodedText" />
 
                 <!-- MegaSkip: manual jump-forward N seconds (Aniyomi-style).
                      Text + visibility set in code from the megaSkip prefs. -->

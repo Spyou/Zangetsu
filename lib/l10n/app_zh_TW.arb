@@ -1,0 +1,2787 @@
+{
+	"@@locale": "zh_TW",
+	"cancel": "取消",
+	"ok": "好的",
+	"save": "儲存",
+	"close": "關閉",
+	"retry": "重試",
+	"search": "搜尋",
+	"off": "關",
+	"on": "開",
+	"done": "完成",
+	"next": "下一步",
+	"back": "返回",
+	"edit": "編輯",
+	"delete": "刪除",
+	"share": "分享",
+	"copy": "複製",
+	"play": "播放",
+	"pause": "暫停",
+	"yes": "是",
+	"no": "不",
+	"all": "全部",
+	"none": "無",
+	"auto": "汽車",
+	"add": "新增",
+	"remove": "移除",
+	"install": "安裝",
+	"uninstall": "解除安裝",
+	"reset": "重設",
+	"clear": "清除",
+	"resume": "繼續",
+	"download": "下載",
+	"update": "更新",
+	"apply": "套用",
+	"enable": "啟用",
+	"create": "建立",
+	"rename": "重新命名",
+	"move": "移動",
+	"join": "加入",
+	"leave": "離開",
+	"skip": "跳過",
+	"later": "稍後",
+	"dismiss": "關閉",
+	"refresh": "重新整理",
+	"more": "更多",
+	"info": "資訊",
+	"filter": "篩選",
+	"connect": "連線",
+	"disconnect": "中斷連線",
+	"signIn": "登入",
+	"logOut": "登出",
+	"tryAgain": "再試一次",
+	"showDetails": "顯示詳細資料",
+	"hideDetails": "隱藏詳細資料",
+	"notNow": "現在不要",
+	"change": "變更",
+	"go": "前往",
+	"read": "閱讀",
+	"web": "網路",
+	"live": "居住",
+	"sub": "子",
+	"dub": "配音",
+	"nsfw": "NSFW",
+	"system": "系統",
+	"custom": "自訂",
+	"defaultLabel": "預設",
+	"selected": "已選",
+	"loading": "載入中…",
+	"searching": "搜尋中",
+	"searchingEllipsis": "搜尋中…",
+	"downloading": "下載中…",
+	"updating": "更新中…",
+	"testing": "測試中…",
+	"working": "正常",
+	"dead": "失效",
+	"error": "錯誤",
+	"appLanguage": "App 語言",
+	"appLanguageSubtitle": "介面語言",
+	"appLanguageSystem": "系統（自動）",
+	"appLanguageSystemSubtitle": "系統（{name}）",
+	"@appLanguageSystemSubtitle": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"appLanguageKeywords": "語言 地區 翻譯 i18n 介面 日語 中文 西班牙語 德語 法語 義大利語 language locale translation japanese chinese spanish german french italian",
+	"settingsTitle": "設定",
+	"settingsSearchHint": "搜尋設定",
+	"settingsNoMatch": "沒有與「{query}」相符的設定",
+	"@settingsNoMatch": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"settingsSectionAccount": "帳號與同步",
+	"settingsSectionSources": "來源",
+	"settingsSectionPlayback": "播放",
+	"settingsSectionReading": "閱讀",
+	"settingsSectionHistory": "紀錄",
+	"settingsSectionDownloads": "下載",
+	"settingsSectionInterface": "介面",
+	"settingsSectionNotifications": "通知",
+	"settingsSectionAdvanced": "進階",
+	"settingsSectionAbout": "關於",
+	"settingsSectionAccountSummary": "追蹤、Discord、備份、同步",
+	"settingsSectionSourcesSummary": "擴充套件、目前來源、更新",
+	"settingsSectionPlaybackSummary": "畫質、自動播放、速度",
+	"settingsSectionReadingSummary": "漫畫與小說閱讀預設",
+	"settingsSectionHistorySummary": "看過的作品",
+	"settingsSectionDownloadsSummary": "下載、儲存空間、種子",
+	"settingsSectionInterfaceSummary": "外觀、語言、搜尋版面",
+	"settingsSectionNotificationsSummary": "新一集通知",
+	"settingsSectionAdvancedSummary": "DNS、隱私、紀錄檔",
+	"settingsSectionAboutSummary": "更新、支援、版本",
+	"couldNotExportLogs": "無法匯出紀錄檔",
+	"logsShareSubject": "Zangetsu 紀錄檔",
+	"signInSubtitle": "同步清單、紀錄與繼續觀看",
+	"signInSubtitleTv": "同步清單與繼續觀看",
+	"connections": "連線",
+	"discord": "Discord",
+	"discordSubtitle": "Rich Presence — 顯示正在觀看",
+	"watchParty": "一起看",
+	"watchPartySubtitle": "建立或加入好友一起看房間",
+	"signInToWatchTogether": "登入後一起觀看",
+	"syncLibraryToCloud": "將收藏庫同步到雲端",
+	"syncLibraryToCloudSubtitle": "將紀錄與清單重新上傳到此帳號",
+	"signInFirst": "請先登入",
+	"reconnectToSyncLibrary": "請重新連線以同步收藏庫。",
+	"syncingLibraryToCloud": "正在將收藏庫同步到雲端…",
+	"backupAndRestore": "備份與還原",
+	"backupAndRestoreSubtitle": "儲存來源、清單與設定",
+	"providers": "擴充套件",
+	"providersEnabledCount": "已啟用 {count} 個",
+	"@providersEnabledCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"activeSource": "使用中的來源",
+	"sourceHealth": "來源狀態",
+	"sourceHealthSubtitle": "測試哪些來源可用",
+	"sourceUpdates": "來源更新",
+	"sourceUpdatesSubtitle": "已安裝來源有更新時通知",
+	"autoUpdateExtensions": "自動更新擴充功能",
+	"autoUpdateExtensionsSubtitle": "啟動時自動更新已安裝來源",
+	"playback": "播放",
+	"playbackSubtitle": "畫質、自動播放、速度",
+	"reader": "閱讀器",
+	"readerSubtitle": "漫畫與小說閱讀預設",
+	"history": "紀錄",
+	"historySubtitle": "看過的作品",
+	"downloads": "下載",
+	"downloadsSubtitle": "管理已下載的集數",
+	"downloadsSubtitleTv": "離線觀看",
+	"storage": "儲存空間",
+	"storageSubtitle": "管理 App 使用空間",
+	"torrents": "種子",
+	"torrentsSubtitle": "串流與流量設定",
+	"appearance": "外觀",
+	"appearanceSubtitle": "強調色、海報徽章",
+	"searchLayout": "搜尋版面",
+	"searchLayoutSubtitle": "跨來源結果的顯示方式",
+	"searchLayoutBlurb": "跨來源結果的顯示方式。直向＝每個來源一個格狀；橫向＝每個來源一列可捲動。",
+	"searchLayoutVertical": "直向（格狀）",
+	"searchLayoutHorizontal": "橫向（列）",
+	"batchDownloadStyle": "批次下載樣式",
+	"batchDownloadStyleSubtitle": "多集下載面板的外觀",
+	"batchDownloadStyleBlurb": "下載整季時顯示的面板。下載內容完全相同，只有選擇介面不同。",
+	"batchDownloadClassic": "經典",
+	"batchDownloadClassicBlurb": "含每集縮圖網格的完整面板。",
+	"batchDownloadMinimal": "極簡主義",
+	"batchDownloadMinimalBlurb": "用數字滾輪選擇要下載的集數。",
+	"notifications": "通知",
+	"notificationsSubtitle": "已訂閱作品的新一集通知",
+	"dns": "DNS",
+	"dnsSubtitle": "繞過 CS 來源的 ISP 封鎖",
+	"dnsBlurb": "用於 CloudStream 來源的加密 DNS，有助繞過 ISP 封鎖。關＝使用一般連線。",
+	"dnsOffTvSubtitle": "關 · 繞過 CS 來源的 ISP 封鎖",
+	"privacy": "隱私",
+	"privacySubtitle": "NSFW 來源",
+	"shareLogs": "分享紀錄檔",
+	"shareLogsSubtitle": "傳送診斷紀錄檔以協助排除問題",
+	"about": "關於",
+	"versionLabel": "v{version}",
+	"@versionLabel": {
+		"placeholders": {
+			"version": {
+				"type": "String"
+			}
+		}
+	},
+	"contributors": "貢獻者",
+	"website": "網站",
+	"communityChat": "社群聊天",
+	"joinTheServer": "加入伺服器",
+	"viewTheSourceCode": "查看原始碼",
+	"howItWorks": "使用方式",
+	"howItWorksSubtitle": "新手快速指南",
+	"checkForUpdates": "檢查更新",
+	"checkForUpdatesSubtitle": "從 GitHub 取得最新版本",
+	"checkingForUpdates": "正在檢查更新…",
+	"betaUpdates": "測試版更新",
+	"betaUpdatesSubtitle": "提前取得預先發布版本 — 可能不穩定",
+	"supportTheApp": "支持此 App",
+	"buyMeACoffee": "請我喝杯咖啡",
+	"leadDeveloper": "主要開發者",
+	"addCloudStreamRepository": "新增 CloudStream 儲庫",
+	"installCloudStreamSources": "安裝 CloudStream 來源",
+	"connectionsTvSubtitle": "AniList、MyAnimeList、Simkl",
+	"profile": "個人檔案",
+	"home": "首頁",
+	"myList": "我的清單",
+	"schedule": "日程",
+	"pressBackAgainToExit": "再按一次返回鍵結束",
+	"pressBackAgainToExitTv": "再按一次返回結束",
+	"selectSource": "選擇來源",
+	"accentWallpaper": "桌布",
+	"accentCoral": "珊瑚",
+	"accentBlue": "藍色",
+	"accentViolet": "紫色",
+	"accentEmerald": "翠綠",
+	"accentAmber": "琥珀",
+	"accentRose": "玫瑰",
+	"accentCyan": "青色",
+	"accentCrimson": "深紅",
+	"shaderOff": "關",
+	"shaderOffDesc": "不增強",
+	"shaderSharpen": "銳化",
+	"shaderSharpenDesc": "還原細節 — 適合清晰來源",
+	"shaderDeblur": "去模糊",
+	"shaderDeblurDesc": "較柔和的還原 — 適合模糊來源",
+	"shaderDenoise": "降噪",
+	"shaderDenoiseDesc": "去除雜訊 — 適合壓縮來源",
+	"shaderTierHigh": "高階 GPU",
+	"shaderTierHighDesc": "較重的 VL 超分 + HQ 縮放 — 需要強勁 GPU",
+	"shaderTierMid": "中階 GPU",
+	"shaderTierMidDesc": "輕量超分 + 去色帶 — 多數手機可順暢執行",
+	"playerInfoResolution": "解析度",
+	"playerInfoSource": "來源",
+	"playerInfoQuality": "畫質",
+	"playerInfoVideoCodec": "視訊編碼",
+	"playerInfoAudioCodec": "音訊編碼",
+	"playerInfoFrameRate": "幀率",
+	"playerInfoVideoBitrate": "視訊位元率",
+	"playerInfoBuffer": "緩衝",
+	"playerInfoDroppedFrames": "掉幀",
+	"playerInfoDecoder": "解碼器",
+	"playerInfoSpeed": "速度",
+	"playerInfoAudioTrack": "音軌",
+	"playerInfoSubtitleTrack": "字幕軌",
+	"playerInfoAudioBoost": "音量增益",
+	"statusPlanToWatch": "打算觀看",
+	"statusWatching": "正在觀看",
+	"statusCompleted": "已看完",
+	"statusPaused": "已暫停",
+	"statusDropped": "已放棄",
+	"statusPlanning": "計畫中",
+	"statusReading": "正在閱讀",
+	"statusPlanToRead": "打算閱讀",
+	"modeStreaming": "串流媒體",
+	"modeManga": "漫畫",
+	"modeNovel": "小說",
+	"relativeToday": "今天",
+	"relativeYesterday": "昨天",
+	"relativeDaysAgo": "{count, plural, one {{count} 天前} other {{count} 天前}}",
+	"@relativeDaysAgo": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"relativeWeeksAgo": "{count, plural, one {{count} 週前} other {{count} 週前}}",
+	"@relativeWeeksAgo": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"relativeMonthsAgo": "{count, plural, one {{count} 個月前} other {{count} 個月前}}",
+	"@relativeMonthsAgo": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"relativeYearsAgo": "{count, plural, one {{count} 年前} other {{count} 年前}}",
+	"@relativeYearsAgo": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"bootErrorTitle": "Zangetsu 未能完成啟動",
+	"bootErrorBody": "此裝置上儲存的資料導致無法開啟。內容沒有遺失 — 帳號與已同步到雲端的資料都安全。",
+	"resetAppData": "重設 App 資料",
+	"resetAppDataTitle": "要重設 App 資料嗎？",
+	"resetAppDataBody": "這會清除 Zangetsu 在此裝置上儲存的資料，以便重新啟動。\n\n不會更動你的帳號與已同步到雲端的內容 — 重新登入後收藏庫就會回來。",
+	"resetAppDataDone": "請完全關閉 Zangetsu 後再開啟。",
+	"detailsCopied": "已複製詳細資料 — 傳給我們即可",
+	"copyDetails": "複製詳細資料",
+	"goodToHaveYouHere": "很高興你來了。",
+	"onboardingIntro": "動畫、漫畫和小說 — 都在一個 App 裡，照你的方式設定。",
+	"youChooseWhatsInside": "內容由你決定",
+	"addTheSourcesYouWant": "新增想用的來源 — 方法如下。",
+	"openProviders": "開啟擴充套件",
+	"pickStreamingMangaOrNovels": "選擇串流、漫畫或小說",
+	"pasteInARepositoryLink": "貼上儲庫連結",
+	"browseAndGrab": "瀏覽並挑選喜歡的",
+	"readyWhenYouAre": "準備好了就開始。",
+	"addSourcesNow": "現在新增來源",
+	"illDoItLater": "稍後再說",
+	"howToUseTheApp": "如何使用 App",
+	"aFewTapsToAnything": "點幾下就能開始。",
+	"findSomething": "找作品",
+	"watchIt": "觀看",
+	"ifItWontLoad": "無法載入時",
+	"saveForOffline": "儲存以便離線觀看",
+	"commonQuestions": "常見問題",
+	"noCommunityContributorsYet": "還沒有社群貢獻者。",
+	"paged": "分頁",
+	"vertical": "垂直的",
+	"tapZonesReset": "已重設點按區域",
+	"noUPIAppFoundUPIIDCopiedPasteItInYourUPIApp": "找不到 UPI App — 已複製 UPI ID，請貼到你的 UPI App",
+	"donateWithPayPal": "透過 PayPal 捐款",
+	"payViaUPI": "透過 UPI 付款",
+	"copyUPIID": "複製 UPI ID",
+	"readingMode": "閱讀模式",
+	"fit": "符合畫面",
+	"background": "背景",
+	"colourFilter": "顏色濾鏡",
+	"orientationLock": "鎖定方向",
+	"doublePageLandscape": "雙頁（橫向）",
+	"pairFacingPagesInALandscapeSpread": "橫向時將左右頁配對成跨頁",
+	"cropBorders": "裁切邊距",
+	"trimNearUniformEdgeMarginsFromAPage": "裁掉頁面邊緣接近均勻的空白",
+	"preloadPages": "預先載入頁面",
+	"keepScreenOn": "保持螢幕常亮",
+	"tapZones": "點按區域",
+	"whatTappingEachPartOfThePageDoes": "點選頁面各區域時的作用",
+	"font": "字型",
+	"theme": "主題",
+	"fontSize": "字級",
+	"lineHeight": "行高",
+	"margin": "邊界",
+	"justifyText": "左右對齊",
+	"textDirection": "文字方向",
+	"paragraphSpacing": "段落間距",
+	"paginated": "分頁",
+	"bookStylePagesInsteadOfAContinuousScroll": "像翻書一樣分頁，而不是連續捲動",
+	"enableNSFWSources": "要啟用 NSFW 來源嗎？",
+	"showNSFWAniyomiSources": "要顯示 NSFW 的 Aniyomi 來源嗎？",
+	"incognitoMode": "無痕模式",
+	"pauseHistoryTrackingDiscordPresence": "暫停紀錄、追蹤與 Discord 狀態",
+	"enableNSFWSources2": "啟用 NSFW 來源",
+	"showSourcesMarked18": "顯示標示 18+ 的來源",
+	"showNSFWSources": "顯示 NSFW 來源",
+	"adultAniyomiExtensions": "成人向 Aniyomi 擴充功能",
+	"opensubtitlesAPIKey": "OpenSubtitles API 金鑰",
+	"pasteYourKey": "貼上金鑰",
+	"createAFreeKeyAtOpensubtitlesComConsumers": "在 opensubtitles.com → Consumers 免費建立金鑰。",
+	"shaderDownloadFailedCheckNetwork": "著色器下載失敗 — 請檢查網路",
+	"anime4kEnhancement": "Anime4K 增強",
+	"anime4kGPUTier": "Anime4K GPU 等級",
+	"cacheCleared": "已清除快取",
+	"videoBufferSize": "視訊緩衝大小",
+	"videoBufferLength": "視訊緩衝時長",
+	"playerInfoOverlay": "播放器資訊浮層",
+	"defaultQuality": "預設畫質",
+	"videoDecoder": "視訊解碼器",
+	"videoRenderer": "視訊渲染器",
+	"defaultAudio": "預設音訊",
+	"defaultSpeed": "預設速度",
+	"doubleTapSkip": "點兩下跳轉",
+	"closeConfirmation": "關閉確認",
+	"megaskipDuration": "MegaSkip 時長",
+	"defaultPlayer": "預設播放器",
+	"defaultAudioAnimeSubDub": "預設音訊（動畫字幕／配音）",
+	"builtIn": "內建",
+	"playerControls": "播放器控制項",
+	"reorderOrHideTheButtonsOnThePlayerBar": "重新排序或隱藏播放列按鈕",
+	"resumePlayback": "繼續播放",
+	"continueFromWhereYouLeftOff": "從上次停下的地方繼續",
+	"askBeforeJumping": "跳轉前詢問",
+	"autoAddToMyList": "自動加入我的清單",
+	"addATitleToMyListWhenYouStartWatchingIt": "開始觀看時將作品加入我的清單",
+	"autoTrack": "自動追蹤",
+	"confirm": "確認",
+	"autoplayNextEpisode": "自動播放下一集",
+	"autoSkipFillerEpisodes": "自動跳過過場集",
+	"autoplayTrailer": "自動播放預告",
+	"playATitleSTrailerOnItsDetailPage": "在詳細頁播放作品預告",
+	"playTrailersInHD": "以 HD 播放預告",
+	"skipIntroButton": "跳過片頭按鈕",
+	"showSkipOpeningEndingOnAnimeWhenDetected": "偵測到時顯示跳過片頭／片尾",
+	"autoSkipOpening": "自動跳過 OP",
+	"jumpPastTheOPOnItsOwnNoTap": "自動跳過 OP，無需點按",
+	"autoSkipRecap": "自動跳過前情提要",
+	"jumpPastThePreviouslyOnRecapNoTap": "自動跳過「上次回顧」，無需點按",
+	"autoSkipEnding": "自動跳過 ED",
+	"jumpPastTheEDOnItsOwnNoTap": "自動跳過 ED，無需點按",
+	"megaskipButton": "MegaSkip 按鈕",
+	"aJumpForwardButtonInThePlayerAnyVideo": "播放器中的快轉按鈕（任何影片）",
+	"nativeTVPlayer": "系統電視播放器",
+	"softwareAudioDolbyDTS": "軟體音訊（Dolby/DTS）",
+	"seekPreviewOnline": "進度預覽（線上）",
+	"thumbnailsWhileScrubbingStreamsCostsExtraData": "拖曳進度時顯示縮圖 — 會多用流量",
+	"autoPictureInPicture": "自動子母畫面",
+	"shrinkToAFloatingWindowWhenYouLeaveTheApp": "離開 App 時縮小為浮動視窗",
+	"showQualityLabel": "顯示畫質標籤",
+	"plainQualityTextEG1080pOnTheTopBarRight": "頂端列右側顯示畫質文字（如 1080p）",
+	"gestureControls": "手勢控制",
+	"swipeLeftForBrightnessRightForVolume": "左側滑動調亮度，右側調音量",
+	"swipeToSeek": "滑動快轉／倒轉",
+	"dragLeftOrRightAcrossTheVideoToScrub": "在畫面上左右拖曳以調整進度",
+	"holdFor2Speed": "長按 2× 倍速",
+	"longPressTheVideoToPlayAt2WhileHeld": "長按畫面時以 2× 播放",
+	"clearImageVideoCache": "清除圖片與影片快取",
+	"styledSubtitlesLibass": "樣式字幕（libass）",
+	"subtitleStyle": "字幕樣式",
+	"requiredForOnlineSubtitleSearch": "線上搜尋字幕時需要",
+	"subtitleLanguage": "字幕語言",
+	"autoDownloadSubtitles": "自動下載字幕",
+	"whenTheSourceHasNoSubtitleInYourLanguage": "來源沒有你使用語言的字幕時",
+	"autoTranslateSubtitles": "自動翻譯字幕",
+	"translateToYourLanguageOnPlayWhenTheSourceHasNone": "來源沒有字幕時，播放時翻譯成你的語言",
+	"translateSubtitlesTo": "將字幕翻譯為",
+	"pickALanguage": "選擇語言",
+	"customColour": "自訂顏色",
+	"materialYou": "材料你",
+	"coloursFromYourWallpaper": "取自桌布的顏色",
+	"pureBlackBackground": "純黑背景",
+	"trueBlackForOLED": "OLED 真黑",
+	"posterBadges": "海報徽章",
+	"qualityAndSubDubBadges": "畫質與字幕／配音徽章",
+	"animateLists": "清單動畫",
+	"cardsFadeInAsYouScroll": "捲動時卡片淡入",
+	"animationStyle": "動畫風格",
+	"turnOffMaterialYouToPickAColourYourself": "關閉 Material You 後可自選顏色",
+	"downloadsZangetsu": "下載 › 斬月",
+	"removableDrive": "可移除磁碟",
+	"chooseFolder": "選擇資料夾…",
+	"resetToDefault": "恢復預設",
+	"connected": "已連線",
+	"imageCacheCleared": "已清除圖片快取",
+	"providerCacheCleared": "已清除擴充套件快取",
+	"clearImageCache": "清除圖片快取",
+	"clearProviderCache": "清除擴充套件快取",
+	"showTitleE2": "顯示標題 · E2",
+	"pinned": "已釘選",
+	"exoplayerSpikeDev": "ExoPlayer 試驗（開發）",
+	"sp0TestSurfaceViewPlaybackSmoothness": "SP0 — 測試 SurfaceView 播放順暢度",
+	"pasteDiscordToken": "貼上 Discord 權杖",
+	"yourDiscordUserToken": "你的 Discord 使用者權杖",
+	"pasteToken": "貼上權杖",
+	"useMobileDataForTorrents": "使用行動數據下載種子",
+	"discordConnected": "已連線 Discord",
+	"disconnectDiscord": "要中斷 Discord 連線嗎？",
+	"notConfigured": "尚未設定",
+	"aDiscordApplicationIDMustBeSetInTheBuildFirst": "必須先在建置中設定 Discord Application ID。",
+	"richPresence": "豐富的存在感",
+	"showWhatYouReWatchingOnYourProfile": "在個人檔案顯示正在觀看的內容",
+	"signInToLinkYourAccount": "登入以連結帳號",
+	"autoSync": "自動同步",
+	"disconnectingHereOnlySignsThisTrackerOutOnTheTVYourPhoneStaysConnected": "此處中斷只會登出電視上的追蹤帳號 — 手機仍保持連線。",
+	"continueWatching": "繼續觀看",
+	"continueReading": "繼續閱讀",
+	"seeAll": "查看全部",
+	"libraryLabel": "收藏庫",
+	"sortBy": "排序",
+	"newCategory": "新分類",
+	"personaGym": "Persona、健身房、…",
+	"deleteCategory": "刪除分類",
+	"yourTitlesStayOnlyTheLabelGoes": "作品會保留 — 只去掉分類名稱",
+	"renameCategory": "重新命名分類",
+	"manageTrackers": "管理追蹤",
+	"trackers": "追蹤器",
+	"showLabel": "作品",
+	"couldnTLoadPullToRefresh": "無法載入 — 下拉重新整理",
+	"noTitlesInThisList": "此清單中沒有作品",
+	"signInToBuildYourList": "登入以建立清單",
+	"titlesYouAddAppearHere": "你新增的作品會出現在這裡",
+	"couldnTLoadTryAgainFromSettings": "無法載入 — 請到設定中重試",
+	"search2": "搜尋…",
+	"voiceSearch": "語音搜尋",
+	"allSources": "全部來源",
+	"currentSource": "目前來源",
+	"searchFailedTryAgain": "搜尋失敗 — 請重試",
+	"searchForSomethingToWatch": "搜尋想看的內容",
+	"recentSearches": "最近搜尋",
+	"clearSearchHistory": "清除搜尋紀錄",
+	"checkTheSpellingOrTryADifferentTitle": "請檢查拼字，或換個標題試試。",
+	"browseSources": "瀏覽來源",
+	"thisSourceHasNoFilters": "此來源沒有篩選",
+	"searchIn": "搜尋範圍",
+	"filters": "篩選",
+	"sourceFilters": "來源篩選",
+	"clearFilters": "清除篩選",
+	"topPicks": "精選",
+	"anime": "日本卡通",
+	"moviesSeries": "電影與影集",
+	"noSourcesInstalled": "尚未安裝來源",
+	"fromYourResults": "· 來自搜尋結果",
+	"any": "不限",
+	"someSourcesDonTProvideGenres": "部分來源不提供類型",
+	"searchInSources": "在來源中搜尋",
+	"turnAllOff": "全部關閉",
+	"extensionsUpdated": "擴充功能已更新",
+	"incognito": "隱身",
+	"reconnectToSync": "重新連線以同步",
+	"yourSessionExpiredTapToSignInAndSyncYourLibrary": "登入已過期 — 點一下以登入並同步收藏庫。",
+	"solveCloudflare": "通過 Cloudflare 驗證",
+	"moviesTV": "電影與電視",
+	"couldnTLoadComingSoonPullToRefresh": "無法載入即將上線 — 請下拉重新整理。",
+	"streamURL": "串流網址",
+	"exoplayerSurfaceViewSpikeSP0": "ExoPlayer SurfaceView 試驗（SP0）",
+	"episodes": "集數",
+	"season": "季",
+	"jumpToEpisode": "跳到集數…",
+	"preferredLanguage": "偏好語言…",
+	"searchOnline": "線上搜尋…",
+	"onlineSubtitles": "線上字幕",
+	"audioSubs": "音訊與字幕",
+	"nextEpisode": "下一集",
+	"colour": "顏色",
+	"snapshot": "截圖",
+	"sleepTimer": "睡眠計時",
+	"pictureInPicture": "子母畫面",
+	"cast": "投射",
+	"playbackStats": "播放統計",
+	"sleepTimerOn": "睡眠計時已開",
+	"lockControls": "鎖定控制",
+	"chat": "聊天",
+	"previousEpisode": "上一集",
+	"nextEpisode2": "下一集",
+	"translated": "已翻譯",
+	"thisSourceCanTBeCastTryAnotherSource": "此來源無法投射 — 請換一個來源。",
+	"rewind10Seconds": "倒轉 10 秒",
+	"forward10Seconds": "快轉 10 秒",
+	"stopCasting": "停止投射",
+	"usingTheBuiltInPlayerForThisSource": "此來源將使用內建播放器。",
+	"closeVideo": "要關閉影片嗎？",
+	"areYouSureYouWantToCloseTheVideo": "確定要關閉影片嗎？",
+	"downloadInSettings": "在設定中下載",
+	"getTheAnime4KShaders06MBThenTurnItOn": "取得 Anime4K 著色器（約 0.6 MB），然後再開啟",
+	"gpuTIER": "GPU 層級",
+	"endOfEpisode": "本集結束",
+	"closeAppWhenTimerEnds": "計時結束時關閉 App",
+	"exitTheAppToSaveBattery": "離開 App 以節省電量",
+	"playNow": "立即播放",
+	"skipRecap": "跳過前情",
+	"unlockControls": "解鎖控制",
+	"tapToUnlock": "點一下解鎖",
+	"subtitleDelay": "字幕延遲",
+	"audioDelay": "音訊延遲",
+	"audioNormalization": "音訊響度均衡",
+	"searchSubtitlesOnline": "線上搜尋字幕",
+	"loadFromFile": "從檔案載入…",
+	"translateSubtitles": "翻譯字幕…",
+	"language": "語言：",
+	"movieOrShowTitle": "電影或影集標題",
+	"theQuickBrownFox": "敏捷的棕色狐狸",
+	"seekBar": "進度列",
+	"autoScrollSettings": "自動捲動設定",
+	"autoScroll": "自動捲動",
+	"touchThePageToPauseItPicksUpAgainWhenYouLetGo": "按住頁面可暫停 — 放開後繼續捲動。",
+	"floatingButton": "浮動按鈕",
+	"nextChapter": "下一章",
+	"orKeepPulling": "或繼續下拉",
+	"thatSTheLastChapter": "這是最後一章。",
+	"readerSettings": "閱讀器設定",
+	"noOtherChaptersLoadedYet": "尚未載入其他章節",
+	"chapters": "章節",
+	"direction": "方向",
+	"autoWebtoonMode": "自動條漫模式",
+	"pullToChangeChapter": "下拉切換章節",
+	"volumeKeysTurnPages": "音量鍵翻頁",
+	"invertVolumeKeys": "反轉音量鍵",
+	"brightness": "亮度",
+	"previousChapter": "上一章",
+	"thisTitle": "這部作品",
+	"nextChapter2": "下一章 →",
+	"textSize": "文字大小",
+	"appliesStraightAway": "立即生效",
+	"left": "靠左",
+	"justify": "左右對齊",
+	"ltr": "長期",
+	"rtl": "右向左",
+	"letterSpacing": "字距",
+	"wordSpacing": "詞距",
+	"alignment": "對齊",
+	"a": "一個",
+	"searchEpisodes": "搜尋集數",
+	"titleOrEpisodeNumber": "標題或集數",
+	"failedToLoadThisTitle": "無法載入這部作品",
+	"changeStatus": "變更狀態",
+	"tracking": "追蹤",
+	"noEpisodesAvailableFromThisSource": "此來源沒有可用集數",
+	"noEpisodesMatchYourSearch": "沒有符合搜尋的集數",
+	"everyChapterIsAlreadyDownloaded": "所有章節均已下載",
+	"downloadChapters": "下載章節",
+	"thisWillTakeAWhileAndUseALotOfStorage": "這需要較長時間並佔用大量儲存空間",
+	"findEpisode": "尋找集數",
+	"refreshChapters": "重新整理章節",
+	"refreshEpisodes": "刷新劇集",
+	"seasons": "季",
+	"goToEpisode": "前往該集",
+	"episodeNumber": "集數",
+	"cancelDownload": "取消下載",
+	"downloaded": "已下載",
+	"downloadChapter": "下載章節",
+	"deleteDownload": "刪除下載",
+	"resumeDownload": "繼續下載",
+	"status": "地位",
+	"year": "年份",
+	"studio": "工作室",
+	"genres": "類型",
+	"synopsis": "概要",
+	"readMore": "閱讀更多",
+	"downloadChooseServer": "下載 · 選擇伺服器",
+	"noDownloadSourcesFound": "找不到下載來源",
+	"audio": "聲音的",
+	"noEpisodesMatch": "沒有相符的集數",
+	"selectEpisodes": "選擇集數",
+	"startFrom": "開始於",
+	"jumpToEpisode2": "跳到集數",
+	"downloadEpisodes": "下載集數",
+	"noEpisodes": "沒有集數",
+	"dub2": "配音",
+	"autoBestAvailable": "自動 · 最佳可用",
+	"linksReloaded": "已重新載入連結",
+	"noSourcesFoundForThisEpisode": "找不到此集的來源",
+	"starring": "主演",
+	"creators": "創作者",
+	"notify": "通知",
+	"stopAlerts": "停止通知",
+	"trackedEditStatusScoreProgress": "已追蹤 — 編輯狀態、評分與進度",
+	"openSourceSite": "開啟來源網站",
+	"welcomeBack": "歡迎回來",
+	"signInToSyncYourListAcrossDevices": "登入以在多台裝置間同步清單。",
+	"logIn": "登入",
+	"passwordMustBeAtLeast8Characters": "密碼至少需要 8 個字元",
+	"createAccount": "建立帳號",
+	"saveYourListAndContinueWatchingAnywhere": "儲存清單，隨時隨地繼續觀看。",
+	"notSignedIn": "尚未登入",
+	"haveTheApp": "已有 App？",
+	"openZangetsuOnYourNphoneAndScan": "在手機開啟 Zangetsu\\n並掃描",
+	"noApp": "沒有 App？",
+	"resetPassword": "重設密碼",
+	"youExampleCom": "you@example.com",
+	"sendLink": "傳送連結",
+	"email": "電子郵件",
+	"password": "密碼",
+	"forgotPassword": "忘記密碼？",
+	"name": "姓名",
+	"password8Characters": "密碼（8 個字元以上）",
+	"editName": "編輯名稱",
+	"yourName": "你的名稱",
+	"couldnTUpdateYourName": "無法更新名稱",
+	"pairATV": "配對電視",
+	"addPhoto": "新增照片",
+	"backUpBeforeLoggingOut": "登出前要備份嗎？",
+	"logOutAnyway": "仍要登出",
+	"reconnect": "重新連線",
+	"signInWithYourPhone": "用手機登入",
+	"onTheZangetsuAppOnYourPhoneOpenNPairATVAndEnterThisCodeOrScanTheQR": "在手機上的 Zangetsu 開啟「配對電視」，\\n輸入此代碼或掃描 QR。",
+	"signingIn": "正在登入…",
+	"getANewCode": "取得新代碼",
+	"sendTrackers": "傳送追蹤帳號",
+	"chooseTrackersToSend": "選擇要傳送的追蹤",
+	"sendToTV": "傳送到電視",
+	"signInToYourAccountFirstNthenPairYourTV": "請先登入帳號，\\n然後再配對電視。",
+	"enterTheCodeFromYourTV": "輸入電視上的代碼",
+	"openZangetsuOnYourTVAndSignInWithYourPhoneToSeeIt": "在電視開啟 Zangetsu，並用手機登入即可看到。",
+	"abcd2345": "ABCD 2345",
+	"thisTVWillSignIntoYourAccountYouCanSignItOutLater": "這台電視將登入你的帳號。之後可以再登出。",
+	"alsoSendYourTrackersAniListMyAnimeListSimkl": "同時傳送追蹤帳號（AniList、MyAnimeList、Simkl）",
+	"yourTVIsSignedIn": "電視已登入",
+	"itShouldSwitchToYourAccountInAMoment": "稍後就會切換到你的帳號。",
+	"backedUpToCloud": "已備份到雲端",
+	"couldnTSaveTheBackupFileStoragePermissionMayBeNeeded": "無法儲存備份檔 — 可能需要儲存權限。",
+	"noCloudBackupFound": "找不到雲端備份",
+	"thatFileIsnTAValidBackup": "該檔案不是有效的備份。",
+	"pickABackup": "選擇備份",
+	"couldnTReadThatBackupFile": "無法讀取該備份檔。",
+	"restoreComplete": "還原完成",
+	"reopenZangetsuToSeeRestoredLibrarySources": "重新開啟 Zangetsu 即可看到還原的收藏庫與來源。",
+	"saveToAFile": "儲存成檔案",
+	"saveABackupFileToYourDownloadsFolder": "將備份檔儲存到下載資料夾",
+	"backUpToCloud": "備份到雲端",
+	"saveACopyToYourAccountNeedsSignIn": "儲存副本到帳號 · 需要登入",
+	"restoreFromAFile": "從檔案還原",
+	"pickABackupFileYouSavedEarlier": "選擇先前儲存的備份檔",
+	"restoreFromCloud": "從雲端還原",
+	"bringBackYourLatestCloudBackup": "還原最新的雲端備份",
+	"episodesYouDownloadAppearHere": "下載的集數會出現在這裡",
+	"deleteAllEpisodes": "刪除全部集數",
+	"deleteAllDownloads": "要刪除全部下載嗎？",
+	"deleteAll": "全部刪除",
+	"changeDownloadFolder": "變更下載資料夾",
+	"savingTo": "儲存至",
+	"needsAFileManagerAppOnTheTV": "電視上需要檔案管理 App",
+	"downloadLocation": "下載位置",
+	"novelChaptersYouDownloadAppearHere": "下載的小說章節會出現在這裡",
+	"stopDownloading": "要停止下載嗎？",
+	"keepGoing": "繼續",
+	"stopAll": "全部停止",
+	"searchDownloads": "搜尋下載",
+	"deleteAllChapters": "刪除全部章節",
+	"deleteAllChapters2": "要刪除全部章節嗎？",
+	"chapter": "章節",
+	"downloadSettings": "下載設定",
+	"parallelDownloads": "平行下載",
+	"connectionsPerDownload": "每個下載的連線數",
+	"novels": "小說",
+	"noDownloadsMatchYourSearch": "沒有符合搜尋的下載",
+	"collapseAll": "全部收合",
+	"requestedControl": "已請求控制",
+	"noParticipantsYet": "還沒有參與者",
+	"guest": "訪客",
+	"wantsControl": "想要控制",
+	"giveControl": "交出控制",
+	"hostControlsPlayback": "房主控制播放",
+	"requestControl": "請求控制",
+	"inviteCopied": "已複製邀請",
+	"roomChat": "房間聊天",
+	"noMessagesYet": "還沒有訊息",
+	"message": "訊息…",
+	"invite": "邀請",
+	"watchTogether": "一起看",
+	"createARoom": "建立房間",
+	"joinWithACode": "用代碼加入",
+	"roomNotFound": "找不到房間",
+	"enterRoomCode": "輸入房間代碼",
+	"eGABC234": "例如 ABC234",
+	"hostIsChoosing": "房主正在選擇…",
+	"youLlStartWatchingAutomaticallyWhenTheHostPlaysSomething": "房主開始播放後，你會自動一起看。",
+	"participants": "參加者",
+	"signInToUseWatchParty": "登入以使用一起看",
+	"youReAlreadyInAParty": "你已在一個房間中",
+	"watchTogether2": "一起看",
+	"createAPartyAndInviteFriendsOrJoinAnExistingOneWithACode": "建立房間並邀請好友，或用代碼加入現有房間。",
+	"aniyomiIsnTAvailableOnThisDevice": "此裝置不支援 Aniyomi。",
+	"installed": "已安裝",
+	"repositories": "儲庫",
+	"languages": "語言",
+	"addAniyomiRepo": "新增 Aniyomi 儲庫",
+	"noAniyomiSourcesInstalled": "尚未安裝 Aniyomi 來源。",
+	"removeRepo": "要移除儲庫嗎？",
+	"noAniyomiReposAddedYetNPressAddAniyomiRepoToAddOne": "尚未新增 Aniyomi 儲庫。\\n請按「新增 Aniyomi 儲庫」來新增。",
+	"addRepository": "新增儲庫",
+	"searchNovelSources": "搜尋小說來源",
+	"noSourcesInstalledYet": "尚未安裝來源。",
+	"addNovelRepo": "新增小說儲庫",
+	"removeRepository": "移除儲庫",
+	"noSourcesInThisRepo": "此儲庫中沒有來源。",
+	"zangetsuProviders": "Zangetsu 擴充套件",
+	"addRepo": "新增儲庫",
+	"noProvidersInstalled": "尚未安裝擴充套件。",
+	"noSourcesInThisRepoYet": "此儲庫中還沒有來源。",
+	"leaveBlankToUseTheRepoSOwnName": "留空則使用儲庫自帶名稱",
+	"addCloudStreamRepo": "新增 CloudStream 儲庫",
+	"noCloudStreamSourcesInstalled": "尚未安裝 CloudStream 來源。",
+	"cloudstream": "雲端",
+	"sourceSettings": "來源設定",
+	"removeRepository2": "要移除儲庫嗎？",
+	"removeThisRepositoryAndItsSources": "要移除此儲庫及其來源嗎？",
+	"removed": "已移除",
+	"alreadyUpToDate": "已是最新",
+	"removeRepo2": "移除儲庫",
+	"noInstallableSourcesFoundInThisRepo": "此儲庫中沒有可安裝的來源。",
+	"thisRemovesTheSourceFromYourInstalledList": "這會從來源安裝清單中移除此來源。",
+	"addCSRepo": "新增 CS 儲庫",
+	"cloudstreamIsnTAvailableOnThisDevice": "此裝置不支援 CloudStream。",
+	"checkUpdates": "檢查更新",
+	"pasteACloudStreamRepositoryURL": "貼上 CloudStream 儲庫網址。",
+	"reTest": "重新測試",
+	"noEnabledSourcesToTest": "沒有已啟用來測試的來源。",
+	"notSearched": "未搜尋",
+	"thisSourceHasNoSettings": "此來源沒有設定",
+	"resetToDefaults": "恢復預設",
+	"providerSettings": "擴充套件設定",
+	"openThisSourceSOwnSettingsEGServerLanguage": "開啟此來源自己的設定（如伺服器、語言）",
+	"addZangetsuRepo": "新增 Zangetsu 儲庫",
+	"theProviderWillBeRemovedFromYourInstalledSources": "此擴充套件將從已安裝來源中移除。",
+	"addMihonRepo": "新增 Mihon 儲庫",
+	"noMihonReposAddedYetNTapAddMihonRepoToAddOne": "尚未新增 Mihon 儲庫。\\n點一下「新增 Mihon 儲庫」來新增。",
+	"n1Update": "1 個更新",
+	"noExtensionsFoundInThisRepo": "此儲庫中沒有擴充功能。",
+	"thisRemovesTheExtensionFromYourInstalledSources": "這會從已安裝來源中移除此擴充功能。",
+	"noMihonSourcesInstalled": "尚未安裝 Mihon 來源。",
+	"noAniyomiReposAddedYetNTapAddAniyomiRepoToAddOne": "尚未新增 Aniyomi 儲庫。\\n點一下「新增 Aniyomi 儲庫」來新增。",
+	"clearAll": "全部清除",
+	"nothingWatchedYet": "還沒有觀看紀錄",
+	"nothingReadYet": "還沒有閱讀紀錄",
+	"checkingForNewEpisodes": "正在檢查新一集…",
+	"checkNow": "立即檢查",
+	"turnOff": "關閉",
+	"joinBetaUpdates": "要加入測試版更新嗎？",
+	"joinBeta": "加入測試版",
+	"whatSNew": "新功能",
+	"categories": "分類",
+	"moviesSeries2": "電影／影集",
+	"longPressASourceToPinItToTheTop": "長按來源可將其釘到頂端",
+	"searchSources": "搜尋來源",
+	"justLook": "先看看",
+	"moveProgressHere": "將進度移到這裡",
+	"newAniListList": "新增 AniList 清單",
+	"rewatchingFavourites": "重看、收藏、…",
+	"anilistCustomLists": "AniList 自訂清單",
+	"savedToYourAniListAccount": "已儲存到你的 AniList 帳號",
+	"newList": "新增清單",
+	"createsItOnAniList": "會在 AniList 上建立",
+	"yourTrackersDisagree": "各追蹤紀錄不一致",
+	"applyingSetsThemAllToTheNumberBelow": "套用後會把它們全部設為下面的數字。",
+	"wrongTitleChangeMatch": "標題不對？  變更配對",
+	"searchTheCorrectTitle": "搜尋正確的標題…",
+	"noMatchesFound": "找不到相符項目",
+	"removeFromMyList": "從我的清單移除",
+	"details": "細節",
+	"noDescriptionAvailable": "暫無簡介。",
+	"playWith": "用此播放…",
+	"playMirror": "播放鏡像",
+	"chooseTheSourceBeforeItStarts": "開始前選擇來源",
+	"reloadLinks": "重新載入連結",
+	"fetchFreshStreamsIfPlaybackKeepsFailing": "播放一直失敗時取得新的串流",
+	"alsoUpdatesYourConnectedTrackers": "同時更新已連結的追蹤",
+	"markThisAndAllAboveAsWatched": "將此項及上方全部標為已看",
+	"playThisEpisodeWith": "用此播放本集",
+	"builtInPlayer": "內建播放器",
+	"otherApps": "其他 App",
+	"seeAll2": "查看全部",
+	"openInBrowser": "在瀏覽器開啟",
+	"copyLink": "複製連結",
+	"removeTracking": "取消追蹤",
+	"noTrackersConnectedNConnectOneInSettingsConnections": "尚未連結追蹤。\\n請到設定 → 連線 中連接。",
+	"syncAllAtOnce": "一次全部同步",
+	"addTracking": "新增追蹤",
+	"addToYourList": "加入清單",
+	"removeFromList": "從清單移除",
+	"customLists": "自訂清單",
+	"notInAny": "未加入任何",
+	"status2": "地位",
+	"applyChanges": "套用變更",
+	"navigationBar": "導覽列",
+	"navigationBarSubtitle": "顯示哪些分頁及順序",
+	"connectedCount": "已連線 {count} 個",
+	"@connectedCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"syncLibraryAlreadySynced": "你的媒體庫已與此帳戶同步。",
+	"syncLibraryPushed": "已將 {history} 筆觀看紀錄和 {list} 個清單項目同步到帳戶。",
+	"@syncLibraryPushed": {
+		"placeholders": {
+			"history": {
+				"type": "int"
+			},
+			"list": {
+				"type": "int"
+			}
+		}
+	},
+	"navTabsOnBar": "在酒吧 · {count}/{max}",
+	"@navTabsOnBar": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"max": {
+				"type": "int"
+			}
+		}
+	},
+	"navTabsNotShown": "未顯示",
+	"navTabsEveryTabOnBar": "所有標籤頁都在工具列上。",
+	"navTabsHelp": "拖曳即可重新排序。工具列最多可容納 {minTabs}–{maxTabs} 個標籤頁。\n\n個人資料頁面已置頂，因為它是進入「設定」的唯一入口——隱藏它將導致無法返回此畫面。節目表僅在串流模式下顯示；閱讀時不會顯示播出時間表。",
+	"@navTabsHelp": {
+		"placeholders": {
+			"minTabs": {
+				"type": "int"
+			},
+			"maxTabs": {
+				"type": "int"
+			}
+		}
+	},
+	"navTabsStreamingOnly": "僅限串流媒體播放",
+	"navTabsRemove": "消除",
+	"navTabsKeepMinTabs": "至少保留 {min} 個標籤頁",
+	"@navTabsKeepMinTabs": {
+		"placeholders": {
+			"min": {
+				"type": "int"
+			}
+		}
+	},
+	"navTabsAdd": "添加",
+	"navTabsBarFull": "酒吧客滿了",
+	"filterShowResults": "{count, plural, one{Show # result} other{Show # results}}",
+	"@filterShowResults": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"addedCloudStreamSourcesCount": "已新增 — {count} 個 CloudStream 來源可用",
+	"@addedCloudStreamSourcesCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"failedToAddRepository": "新增倉庫失敗： {error}",
+	"@failedToAddRepository": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"repositoryUrlLabel": "儲存庫 URL",
+	"noResultsFor": "沒有找到「{query}」的結果",
+	"@noResultsFor": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"yourSavedTitles": "您儲存的標題",
+	"myListPlusTrackers": "我的列表 + {count} {count, plural, one{tracker} other{trackers}}",
+	"@myListPlusTrackers": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"sort": "種類",
+	"giveItAName": "給它取個名字",
+	"youAlreadyHaveThatOne": "你已經有那個了。",
+	"thatNameIsTaken": "這個名字已被佔用",
+	"notConnected": "未連接",
+	"connectedWithViewer": "已連接 · {name}",
+	"@connectedWithViewer": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"allTypes": "所有類型",
+	"nothingHereInThisFilter": "此篩選器中沒有任何內容",
+	"noMangaHereInThisFilter": "此篩選條件中不包含漫畫。",
+	"noNovelsHereInThisFilter": "此篩選條件中沒有小說",
+	"mangaYouAddAppearHere": "您新增的漫畫會顯示在這裡。",
+	"novelsYouAddAppearHere": "您新增的小說會顯示在這裡。",
+	"relations": "關係",
+	"characters": "人物",
+	"noCastInformation": "無演員訊息",
+	"noRelatedTitles": "沒有相關標題",
+	"markedAsWatched": "已關注",
+	"markedUnwatched": "標記為無人看管",
+	"markedEpisodesAsWatched": "已觀看 {count} 集",
+	"@markedEpisodesAsWatched": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadChaptersQuestion": "下載 {count} 章？",
+	"@downloadChaptersQuestion": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"cachedSourceJsFiles": "快取的來源 .js 文件",
+	"disconnectTrackerQuestion": "斷開連接 {name}？",
+	"@disconnectTrackerQuestion": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"trackerDisconnectBody": "自動同步將停止。您的 {name} 帳戶不會變更－您可以隨時重新連線。",
+	"@trackerDisconnectBody": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"connectedAs": "已連接為 {name}",
+	"@connectedAs": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"trackerConnectionCanceled": "{name} 連線已取消",
+	"@trackerConnectionCanceled": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"connectTracker": "連接 {name}",
+	"@connectTracker": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"connectingEllipsis": "連接...",
+	"updateTrackerAsYouWatch": "觀看時更新 {name} ",
+	"@updateTrackerAsYouWatch": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"findingTitle": "找到“{title}”…",
+	"@findingTitle": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"titleIsntOnThisSource": "此來源中不包含“{title}”。",
+	"@titleIsntOnThisSource": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"couldntOpenTitle": "無法打開“{title}”",
+	"@couldntOpenTitle": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"noWebPageForThisSource": "此來源沒有網頁。",
+	"couldNotOpenSourceSite": "無法開啟來源網站",
+	"notificationsOffFor": "已關閉「{title}」的通知",
+	"@notificationsOffFor": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"youllBeNotifiedOfNewEpisodesFor": "您將收到「{title}」新集數的通知",
+	"@youllBeNotifiedOfNewEpisodesFor": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"youllBeNotifiedOfNewChaptersFor": "您將收到「{title}」新章節的通知",
+	"@youllBeNotifiedOfNewChaptersFor": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"external": "外部的",
+	"episodeLabel": "第 {number}集",
+	"@episodeLabel": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadSeasonEpisode": "下載 S{season}:E{episode}",
+	"@downloadSeasonEpisode": {
+		"placeholders": {
+			"season": {
+				"type": "int"
+			},
+			"episode": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadEpisodeLabel": "下載 E{episode}",
+	"@downloadEpisodeLabel": {
+		"placeholders": {
+			"episode": {
+				"type": "int"
+			}
+		}
+	},
+	"continueLabel": "繼續",
+	"continueEpisode": "繼續 E{episode}",
+	"@continueEpisode": {
+		"placeholders": {
+			"episode": {
+				"type": "int"
+			}
+		}
+	},
+	"noEpisodesToDownload": "沒有劇集可供下載",
+	"addedToDownloads": "已新增至下載列表",
+	"downloadingNEpisodes": "正在下載 {count} 集",
+	"@downloadingNEpisodes": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"addToMyList": "添加到我的列表",
+	"notifyOnNewChapters": "新章節發佈時通知",
+	"notifyOnNewEpisodes": "新劇集上線時通知我",
+	"syncStatusScoreProgress": "同步狀態、分數和進度",
+	"seasonCount": "{count} 季節",
+	"@seasonCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeCount": "{count, plural, one{1 Episode} other{{count} Episodes}}",
+	"@episodeCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"chapterCount": "{count, plural, one{1 Chapter} other{{count} Chapters}}",
+	"@chapterCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"thisSourceNeedsSpecialHeadersUsingBuiltIn": "使用內建播放器時，此來源需要外部播放器無法傳送的特殊標頭。",
+	"timerMinutes": "{count} minutes",
+	"@timerMinutes": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"couldNotLoadSubtitle": "無法載入字幕： {error}",
+	"@couldNotLoadSubtitle": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"speed": "速度",
+	"styledSubtitlesLibassSubtitle": "真正的.ass造型－標語、卡拉OK。重新開啟本集節目即可申請。",
+	"couldntDownloadFile": "無法下載 {file}",
+	"@couldntDownloadFile": {
+		"placeholders": {
+			"file": {
+				"type": "String"
+			}
+		}
+	},
+	"audioNormalizationSubtitle": "平衡音量－增強輕聲對話，降低吵雜場景的音量",
+	"playbackSpeed": "播放速度",
+	"quality": "品質",
+	"sources": "來源",
+	"normalSpeed": "普通的",
+	"subtitles": "字幕",
+	"preferredLanguageColon": "首選語言： {name}",
+	"@preferredLanguageColon": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"nextCount": "下一個 {count}",
+	"@nextCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"allCount": "所有 {count}",
+	"@allCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"notSavedCount": "{count} 未儲存",
+	"@notSavedCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"airsIn": "播出",
+	"selectAll": "選擇全部",
+	"best": "最好的",
+	"direct": "直接的",
+	"hls": "HLS",
+	"serverWithHost": "伺服器 {number} · {host}",
+	"@serverWithHost": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			},
+			"host": {
+				"type": "String"
+			}
+		}
+	},
+	"serverNumber": "伺服器 {number}",
+	"@serverNumber": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadCountEpisodes": "{count, plural, one{Download 1 episode} other{Download {count} episodes}}",
+	"@downloadCountEpisodes": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"chapterOneAtATimeWarning": "它一次只運行一個章節，可能需要很長時間。您可以從“下載”中停止運行。",
+	"queuedChapters": "已排隊 {count, plural, one{1 chapter} other{{count} chapters}}",
+	"@queuedChapters": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"seasonNumber": "第 {number}季",
+	"@seasonNumber": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"listView": "清單顯示",
+	"gridView": "網格視圖",
+	"refreshingChapters": "令人耳目一新的章節…",
+	"refreshingEpisodes": "令人耳目一新的劇集…",
+	"chapterLabel": "第 {number}章",
+	"@chapterLabel": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"continueBadge": "繼續",
+	"fillerBadge": "填料",
+	"downloadUnsupported": "下載不支援的",
+	"retryDownload": "重試下載",
+	"downloadEpisode": "下載劇集",
+	"pauseDownload": "暫停下載",
+	"fromEpisode": "來自 E{episode}",
+	"@fromEpisode": {
+		"placeholders": {
+			"episode": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeWithTitle": "E{number} · {title}",
+	"@episodeWithTitle": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			},
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"episodeNumberShort": "E{number}",
+	"@episodeNumberShort": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeRange": "E{first} – E{last}",
+	"@episodeRange": {
+		"placeholders": {
+			"first": {
+				"type": "int"
+			},
+			"last": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeSemanticWithTitle": "第 {number}集， {title}集",
+	"@episodeSemanticWithTitle": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			},
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"searchColon": "搜尋： {query}",
+	"@searchColon": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"decoderColon": "解碼器 · {label}",
+	"@decoderColon": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"megaSkipDuration": "MegaSkip 時長",
+	"settingsTooltip": "設定",
+	"episodeCountWithRange": "{count, plural, one{1 episode} other{{count} episodes}} · {range}",
+	"@episodeCountWithRange": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"range": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceTimedOut": "超時",
+	"blockedByTheSite": "已被網站封鎖",
+	"sourceCouldntBeReached": "無法聯繫到",
+	"thatSourceCouldNotBeReached": "無法聯繫到該消息來源。",
+	"noSourceCouldBeReached": "無法聯繫到任何消息來源。",
+	"andNMore": "還有 {count} 個",
+	"@andNMore": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"tryClearingYourFiltersOrSearchDifferentTitle": "請嘗試清除篩選條件或搜尋其他標題。",
+	"noModeSourcesYet": "目前尚無 {mode} 個來源",
+	"@noModeSourcesYet": {
+		"placeholders": {
+			"mode": {
+				"type": "String"
+			}
+		}
+	},
+	"browseRepositories": "瀏覽儲存庫",
+	"filteredSource": "已篩選 · {source}",
+	"@filteredSource": {
+		"placeholders": {
+			"source": {
+				"type": "String"
+			}
+		}
+	},
+	"turnAllOn": "全部開啟",
+	"sortUpper": "種類",
+	"typeUpper": "類型",
+	"audioUpper": "聲音的",
+	"genreUpper": "類型",
+	"movieLabel": "電影",
+	"speakTheTitle": "說出標題",
+	"signedIn": "已登入",
+	"syncYourListNav": "同步您的列表",
+	"sourceNavLabel": "來源",
+	"activeSourceHint": "目前的",
+	"clearKindHistoryTitle": "清除 {kind} 歷史記錄？",
+	"@clearKindHistoryTitle": {
+		"placeholders": {
+			"kind": {
+				"type": "String"
+			}
+		}
+	},
+	"clearKindHistoryBody": "這將刪除您 {kind} 歷史記錄中的所有 {noun} 。您的其他歷史記錄、清單和下載內容將保持不變。",
+	"@clearKindHistoryBody": {
+		"placeholders": {
+			"noun": {
+				"type": "String"
+			},
+			"kind": {
+				"type": "String"
+			}
+		}
+	},
+	"showsYouWatchWillAppearHere": "您觀看的節目將顯示在此處，以便您可以從上次中斷的地方繼續觀看。",
+	"mangaYouReadWillAppearHere": "你讀過的漫畫會出現在這裡，方便你從上次中斷的地方繼續閱讀。",
+	"novelsYouReadWillAppearHere": "你讀過的小說會出現在這裡，方便下次再繼續閱讀。",
+	"episodeWatchedPct": "Episode {number} · {percent}% watched",
+	"@episodeWatchedPct": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			},
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"percentWatched": "{percent}% 觀看",
+	"@percentWatched": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"addSourceFromProvidersHint": "從提供者處新增來源，您的 {content} 將顯示在此。",
+	"@addSourceFromProvidersHint": {
+		"placeholders": {
+			"content": {
+				"type": "String"
+			}
+		}
+	},
+	"continueDotEpisode": "繼續 · E{episode}",
+	"@continueDotEpisode": {
+		"placeholders": {
+			"episode": {
+				"type": "int"
+			}
+		}
+	},
+	"sourceNameItemCount": "{name} · {count}",
+	"@sourceNameItemCount": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"sourceCountBadge": "{sourceName} {count}",
+	"@sourceCountBadge": {
+		"placeholders": {
+			"sourceName": {
+				"type": "String"
+			},
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"logOutQuestion": "登出登入？",
+	"contentShows": "演出",
+	"contentManga": "漫畫",
+	"contentNovels": "小說",
+	"historyKindWatch": "手錶",
+	"historyKindManga": "漫畫",
+	"historyKindNovel": "小說",
+	"historyNounShow": "展示",
+	"historyNounMangaItem": "漫畫",
+	"historyNounNovelItem": "小說",
+	"qualityAndAudio": "音質與音訊",
+	"sectionPlayer": "玩家",
+	"sectionGestures": "手勢",
+	"sectionCache": "快取",
+	"gestures": "手勢",
+	"cache": "快取",
+	"social": "社會的",
+	"appSection": "應用程式",
+	"team": "團隊",
+	"communityContributors": "社區貢獻者",
+	"accentColour": "強調色",
+	"display": "展示",
+	"appIcon": "應用程式圖標",
+	"currentLocation": "目前位置",
+	"availableDrives": "可用驅動器",
+	"dataSection": "數據",
+	"modeLabel": "模式",
+	"tapAZoneToChangeIt": "點擊區域即可更改",
+	"supportTitle": "支援",
+	"enjoyingApp": "享受 {appName}嗎？",
+	"@enjoyingApp": {
+		"placeholders": {
+			"appName": {
+				"type": "String"
+			}
+		}
+	},
+	"donateBlurb": "{appName} 完全免費且無廣告。如果它已經贏得了你手機主螢幕的一席之地，不妨打賞一點小費，讓它發展得更好——用於添加新功能、修復漏洞和加快更新速度。你的每一份支持都彌足珍貴。謝謝！ ♥",
+	"@donateBlurb": {
+		"placeholders": {
+			"appName": {
+				"type": "String"
+			}
+		}
+	},
+	"upiIdCopied": "UPI ID 已複製",
+	"upiIndia": "UPI · 印度",
+	"askBeforeJumpingSubtitle": "開啟與上次離開位置不同的頁面，可以在不中斷進度的情況下查看其他內容。",
+	"autoTrackSubtitle": "觀看動畫時，請同時更新 AniList、MyAnimeList 和 Simkl。即使關閉此功能，您仍然可以手動追蹤動畫。",
+	"closeConfirmationAsk": "離開玩家前請詢問。",
+	"closeConfirmationDirect": "立即離開",
+	"closeConfirmationDoubleBack": "按兩次返回鍵退出",
+	"autoSkipFillerSubtitle": "跳過填充劇情直接進入下一集（僅限動畫）",
+	"playTrailersInHDSubtitle": "最高支援 1080p 解析度（如有），否則回退到標清。消耗更多流量",
+	"nativeTvPlayerSubtitle": "推薦。僅當您喜歡舊版播放器時才可關閉。",
+	"softwareAudioSubtitle": "僅當杜比/DTS音訊無聲時才開啟—在某些電視上可能不穩定。",
+	"playerInfoOff": "離開",
+	"playerInfoFieldsCount": "{count} 個欄位（ⓘ 按鈕）",
+	"@playerInfoFieldsCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadingPercent": "正在下載… {percent}%",
+	"@downloadingPercent": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"tapToDownloadShaders": "點選下載著色器（約0.8 MB）",
+	"noOtherVideoAppsFound": "未找到其他視訊應用。請安裝 MX Player、VLC、mpv、Just Player 或 Next Player。",
+	"externalApp": "外部應用程式",
+	"noSubsResumeSuffix": "· 無字幕/履歷",
+	"pickWhatShowsOverVideo": "選擇影片上方顯示的內容（與控制鈕一起顯示）。類似於 YouTube 的「極客統計」。",
+	"styledSubtitlesLibassSubtitlePlayback": "真正的 .ass 風格化——字體、位置、卡拉OK、標誌。最適合動漫。從下一集開始生效。",
+	"subtitleStyleSubtitle": "字體、顏色、輪廓、不透明度、大小、位置——即時預覽",
+	"keySavedOnlineSearchEnabled": "密鑰已儲存 — 已啟用線上搜索",
+	"incognitoModeBlurb": "開啟此功能後，搜尋記錄、觀看歷史記錄、追蹤器記錄和 Discord 線上狀態都會暫停——直到您將其關閉，才會記錄任何內容。",
+	"enableNsfwSourcesBody": "這會將來源清單和切換器中標記為 18+ 的來源顯示出來。僅當您想要存取成人內容時才啟用此功能。",
+	"showNsfwAniyomiSourcesBody": "這會將 Aniyomi 擴充功能標記為 18+，並在來源清單和切換器中顯示。僅當您想要存取成人內容時才啟用此選項。",
+	"sourcesMarked18Hidden": "除非啟用此功能，否則標記為 18+ 的來源將從來源清單和切換器中隱藏。",
+	"syncProgressAsYouWatch": "觀看時同步進度",
+	"connectionsBlurb": "將觀看進度和清單狀態同步到您的帳戶。動畫同步到所有三個平台；電影和劇集同步到 Simkl。",
+	"connectDiscord": "連結 Discord",
+	"signInSoYourStatusCanShow": "登入後，您的狀態即可顯示在您的個人資料中。",
+	"disconnectDiscordBody": "Rich Presence 功能已停止，您的代幣已從此裝置移除。您的 Discord 帳戶不會更改，您可以隨時重新連線。",
+	"discordPresenceBlurb": "當應用程式開啟時，會在你的 Discord 個人資料頁面顯示「正在觀看 <title> • 第 N 集」（以及你正在瀏覽的內容）。使用你的 Discord 登入訊息，僅儲存在此裝置上。可隨時關閉此功能。",
+	"github": "GitHub",
+	"telegram": "電報",
+	"accentColourBlurb": "用於按鈕、晶片、進度和選定項目的突出顯示顏色。",
+	"appIconBlurb": "主畫面上的圖示。更改圖示時，Zangetsu 會關閉－Android 需要切換啟動器項目。",
+	"useTheIcon": "使用 {label} 圖示？",
+	"@useTheIcon": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"useTheIconBody": "斬月應用程式將會關閉，以便 Android 應用新的圖示。之後請從主畫面重新打開它。\n\n如果您已將斬月應用程式新增至資料夾或 Dock 欄中，則可能需要重新新增。",
+	"animRise": "上升",
+	"animRiseDesc": "升起並逐漸淡入",
+	"animFade": "褪色",
+	"animFadeDesc": "畫面淡入，無動作",
+	"animZoom": "飛漲",
+	"animZoomDesc": "隨著出現而放大",
+	"usedInVerticalMode": "採用垂直螢幕模式，章節為一條連續的條帶。",
+	"usedWhenPagesTurn": "用於頁面左右翻頁。在從右到左的模式下，兩個翻頁區域會互換。",
+	"openPullRequestOnGitHub": "在 GitHub 上提交 pull request，你的名字就會自動顯示在這裡。",
+	"onThisDevice": "在這個設備上",
+	"newDownloadsSaveHere": "新下載的檔案會儲存到這裡。已完成的下載檔案會保留在原來的位置。",
+	"torrentsOffWifiBlurb": "關閉後，BT下載將僅在Wi-Fi網路下運作（節省行動數據流量）。在線下載BT檔案會消耗大量數據流量。",
+	"everyControlIsOnABar": "所有控制項都在一個工具列上。",
+	"nothingHereMoveControl": "這裡什麼都沒有——使用 Move 移動控制。",
+	"playerControlsHelp": "拖曳即可在工具列內重新排序。使用「移動」按鈕可將控制項移至其他位置。隱藏的控制項仍然可以在播放器內的“更多”選單中找到。\n\n「返回」、「鎖定」和「設定」按鈕固定在頂部工具列中，節目標題也位於該行——頂部工具列的內容越多，節目標題的可用空間就越少。",
+	"topBarFull": "{label} （完整）",
+	"@topBarFull": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"apiKeyLabel": "API金鑰",
+	"secondsShort": "{count}秒",
+	"@secondsShort": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"gotIt": "知道了",
+	"signInToAction": "登入 {action}",
+	"@signInToAction": {
+		"placeholders": {
+			"action": {
+				"type": "String"
+			}
+		}
+	},
+	"cloudBackupFailed": "雲端備份失敗。請檢查您的網路連線是否正常—如果備份持續失敗，則可能是雲端備份儲存尚未設定完成。",
+	"savedToDownloadsZangetsu": "已儲存至下載 › 斬月",
+	"restoreFailed": "恢復失敗： {error}",
+	"@restoreFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"noBackupFilesOnDevice": "此設備上未找到備份檔案。請先儲存備份，或使用「從雲端恢復」。",
+	"backupScreenBlurb": "將您的資源、清單和設定儲存到裝置上的檔案或您的Zangetsu帳戶。恢復操作只會新增內容，絕不會刪除您已有的內容。",
+	"includeInTheBackup": "包含在備份中",
+	"sourcesAndRepos": "資源與儲存庫",
+	"installedSourcesAndRepoLinks": "已安裝的來源及其倉庫鏈接",
+	"libraryBundle": "圖書館",
+	"myListAndContinueWatching": "我的清單和繼續觀看",
+	"appSettingsBundle": "應用程式設定",
+	"playerSubtitlesQualityPreferences": "播放器、字幕、品質和偏好設定",
+	"lastCloudBackup": "上次雲端備份： {when}",
+	"@lastCloudBackup": {
+		"placeholders": {
+			"when": {
+				"type": "String"
+			}
+		}
+	},
+	"never": "絕不",
+	"restoredColon": "已恢復： {names}。",
+	"@restoredColon": {
+		"placeholders": {
+			"names": {
+				"type": "String"
+			}
+		}
+	},
+	"couldnTReinstall": "無法重新安裝：\n{failures}",
+	"@couldnTReinstall": {
+		"placeholders": {
+			"failures": {
+				"type": "String"
+			}
+		}
+	},
+	"onLatestVersion": "您使用的是最新版本{versionSuffix}。",
+	"@onLatestVersion": {
+		"placeholders": {
+			"versionSuffix": {
+				"type": "String"
+			}
+		}
+	},
+	"joinBetaUpdatesBody": "您將提前獲得預發布版本。這些版本可能不穩定—如果某個版本出現問題，只需關閉此功能，下次更新時您將自動切換回穩定版。您可以隨時退出。",
+	"betaUpdateAvailable": "Beta 版更新已發布",
+	"updateAvailable": "更新可用",
+	"startingInstaller": "正在啟動安裝程式…",
+	"couldnTOpenInstaller": "安裝程式無法開啟。請在系統設定中為 Zangetsu 啟用「安裝未知應用程式」選項，然後重試。",
+	"downloadFailedCheckConnection": "下載失敗—請檢查您的網路連線並重試。",
+	"libraryIsntSavedReconnect": "您的圖書館尚未儲存到雲端，因此登出登入會將其從此裝置中刪除。是否需要先重新連線進行備份？",
+	"sessionExpiredEnterPassword": "您的會話已過期。請輸入密碼重新連線 {account} 並同步您的媒體庫。",
+	"@sessionExpiredEnterPassword": {
+		"placeholders": {
+			"account": {
+				"type": "String"
+			}
+		}
+	},
+	"yourAccount": "您的帳戶",
+	"reconnecting": "重新連線…",
+	"wrongPassword": "密碼錯誤",
+	"trackersSynced": "已同步的追蹤器： {list}",
+	"@trackersSynced": {
+		"placeholders": {
+			"list": {
+				"type": "String"
+			}
+		}
+	},
+	"signInOnDevice": "登入 {device}？",
+	"@signInOnDevice": {
+		"placeholders": {
+			"device": {
+				"type": "String"
+			}
+		}
+	},
+	"thisTV": "這台電視",
+	"announcements": "公告",
+	"subscribedShows": "訂閱節目",
+	"noNotificationsYet": "暫無通知。\n\n點擊節目旁邊的鈴鐺圖標，即可在新劇集上線時收到提醒。",
+	"hostBadge": "主持人",
+	"controlGivenTo": "控制權交給 {name}",
+	"@controlGivenTo": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"youReTheHost": "你是主持人",
+	"couldnTCreateParty": "無法創建政黨： {error}",
+	"@couldnTCreateParty": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"series": "系列",
+	"movie": "電影",
+	"epWithTime": "Ep {episode} · {time}",
+	"@epWithTime": {
+		"placeholders": {
+			"episode": {
+				"type": "String"
+			},
+			"time": {
+				"type": "String"
+			}
+		}
+	},
+	"chooseChapterSemantic": "{title}， {subtitle}。選擇章節",
+	"@chooseChapterSemantic": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			},
+			"subtitle": {
+				"type": "String"
+			}
+		}
+	},
+	"chapterProgress": "第 {current} / {total}章",
+	"@chapterProgress": {
+		"placeholders": {
+			"current": {
+				"type": "int"
+			},
+			"total": {
+				"type": "int"
+			}
+		}
+	},
+	"chapterNumber": "第 {number}章",
+	"@chapterNumber": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"activeSourceColon": "活動源： {name}",
+	"@activeSourceColon": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"settingsSemantic": "{name}，設定",
+	"@settingsSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"enterTheCodeShownOnTV": "輸入電視螢幕上顯示的代碼。",
+	"codeNotFoundExpired": "未找到該代碼——它可能已過期。",
+	"alsoSendTrackers": "也請發送您的追蹤器（AniList、MyAnimeList、Simkl）",
+	"scrollRowsOrSearch": "在「首頁」頁面捲動瀏覽，或點擊底部的「搜尋」。",
+	"openTitleAndPlay": "打開影片並點擊播放。如果是劇集，請先選擇一集。",
+	"switchSourceAtTop": "點擊頂部的來源名稱，切換到其他來源。",
+	"tapDownloadForOffline": "點選標題，點選「下載」－稍後可在「下載」中觀看。",
+	"faqSourceNotWorkingQ": "某個資料來源無法正常運作？",
+	"faqSourceNotWorkingA": "資訊來源會不時更新或關閉。您可以從頂部選單切換資訊來源，或查看「設定」→「資訊來源運作狀況」。",
+	"faqSubOrDubQ": "字幕還是配音？",
+	"faqSubOrDubA": "在動漫標題上使用字幕/配音切換功能。",
+	"faqDownloadsQ": "我的下載檔案在哪裡？",
+	"faqDownloadsA": "設定 → 下載 — 隨時離線觀看。",
+	"resetPasswordBody": "請輸入您的帳戶郵箱，我們將發送一個連結供您設定新密碼。",
+	"couldnTSignIn": "無法登入",
+	"aniyomi": "阿尼約米",
+	"mihon": "米洪",
+	"lnreader": "LNReader",
+	"zangetsu": "斬月",
+	"cloudStream": "雲端",
+	"installedCount": "已安裝{count} ",
+	"@installedCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"installedName": "已安裝 {name}",
+	"@installedName": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"uninstalledName": "已卸載 {name}",
+	"@uninstalledName": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"removedName": "已移除 {name}",
+	"@removedName": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"updatedName": "更新了 {name}",
+	"@updatedName": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"installFailed": "安裝失敗： {error}",
+	"@installFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"uninstallFailed": "卸載失敗： {error}",
+	"@uninstallFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"removeFailed": "移除失敗： {error}",
+	"@removeFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"updateFailed": "更新失敗： {error}",
+	"@updateFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"checkFailed": "檢查失敗： {error}",
+	"@checkFailed": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"failedToAddRepo": "新增倉庫失敗： {error}",
+	"@failedToAddRepo": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"uninstallNameQuestion": "卸載 {name}？",
+	"@uninstallNameQuestion": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"removeNameQuestion": "移除 {name}？",
+	"@removeNameQuestion": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"updateNameToVersion": "{name}，更新至 v{version}",
+	"@updateNameToVersion": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"version": {
+				"type": "String"
+			}
+		}
+	},
+	"updateArrowVersion": "更新 → v{version}",
+	"@updateArrowVersion": {
+		"placeholders": {
+			"version": {
+				"type": "String"
+			}
+		}
+	},
+	"repoBaseUrl": "倉庫基本 URL",
+	"repoBaseUrlHint": "https://.../repo",
+	"pluginIndexUrl": "插件索引 URL",
+	"pluginIndexUrlHint": "https://.../plugins.min.json",
+	"manifestUrl": "清單網址",
+	"manifestUrlHint": "https://.../index.json",
+	"repoUrl": "倉庫網址",
+	"repoUrlHint": "https://.../repo.json",
+	"customNameOptional": "自訂名稱（可選）",
+	"leaveBlankToUseRepo": "留空則使用倉庫",
+	"alreadyInstalledSourcesStay": "此倉庫中已安裝的原始程式碼將保持安裝狀態。",
+	"alreadyInstalledExtensionsStay": "從該倉庫已安裝的擴充功能將保持安裝狀態。",
+	"updateAllCount": "更新所有（{count}）",
+	"@updateAllCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"updatedSourcesCount": "更新 {done} 來源{suffix}",
+	"@updatedSourcesCount": {
+		"placeholders": {
+			"done": {
+				"type": "int"
+			},
+			"suffix": {
+				"type": "String"
+			}
+		}
+	},
+	"slow": "慢的",
+	"noResults": "沒有結果",
+	"timedOut": "超時",
+	"blocked": "已屏蔽",
+	"notUsable": "無法使用",
+	"openThisSource": "開啟此原始碼",
+	"nameRemovedFromSearch": "從搜尋移除{name} ",
+	"@nameRemovedFromSearch": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"connectLabel": "連接 {label}",
+	"@connectLabel": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"scanToLogInWith": "在瀏覽器中掃描\n{label} 登入",
+	"@scanToLogInWith": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"anilist": "動畫列表",
+	"myAnimeList": "我的動漫列表",
+	"simkl": "西姆克爾",
+	"code": "程式碼",
+	"signInToBackUpToCloud": "恢復到雲端",
+	"signInToRestoreFromCloud": "從雲端恢復",
+	"signInToUseThis": "使用這個",
+	"enabled": "啟用",
+	"disabled": "殘障人士",
+	"sourcesCount": "{count} 個來源",
+	"@sourcesCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"removeRepoSemantic": "{name}，移除倉庫",
+	"@removeRepoSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"repoDisplaySemantic": "{name}，",
+	"@repoDisplaySemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"entryInstalledSemantic": "{name}， {state}",
+	"@entryInstalledSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"state": {
+				"type": "String"
+			}
+		}
+	},
+	"repoSourcesCount": "{name}， {count} 個來源",
+	"@repoSourcesCount": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"repoRefreshSemantic": "{name}，重新整理",
+	"@repoRefreshSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"repoUpdateAllSemantic": "{name}，更新所有（{count}）",
+	"@repoUpdateAllSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"repoRemoveSemantic": "{name}，移除",
+	"@repoRemoveSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceUpdateSemantic": "{name}，更新",
+	"@sourceUpdateSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceUninstallSemantic": "{name}，卸載",
+	"@sourceUninstallSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceInstallSemantic": "{name}，安裝",
+	"@sourceInstallSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceSettingsSemantic": "{name}，設定",
+	"@sourceSettingsSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceRemoveSemantic": "{name}，移除",
+	"@sourceRemoveSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"sourceEnabledSemantic": "{name}， {state}",
+	"@sourceEnabledSemantic": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			},
+			"state": {
+				"type": "String"
+			}
+		}
+	},
+	"titleInstalledCount": "已安裝{title}、 {count} ",
+	"@titleInstalledCount": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			},
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"titleCheckUpdatesSemantic": "{title}，檢查更新",
+	"@titleCheckUpdatesSemantic": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"titleRemoveRepoSemantic": "{title}，移除倉庫",
+	"@titleRemoveRepoSemantic": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"titleApplyUpdatesSemantic": "{title}，應用 {what}",
+	"@titleApplyUpdatesSemantic": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			},
+			"what": {
+				"type": "String"
+			}
+		}
+	},
+	"oneUpdate": "1 次更新",
+	"nUpdates": "{count} 更新",
+	"@nUpdates": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"percentRead": "{percent}% 讀取",
+	"@percentRead": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"couldntLoadDownloadOptions": "無法載入下載選項",
+	"selectedEpisodesOfTotal": "{selected} 共 {total} 集",
+	"@selectedEpisodesOfTotal": {
+		"placeholders": {
+			"selected": {
+				"type": "int"
+			},
+			"total": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeSemantic": "第 {number}集",
+	"@episodeSemantic": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			}
+		}
+	},
+	"textColour": "文字顏色",
+	"textOpacity": "文字不透明度",
+	"outlineStyle": "輪廓樣式",
+	"outlineColour": "輪廓顏色",
+	"outlineWidth": "輪廓寬度",
+	"positionTop": "頂部",
+	"positionBottom": "底部",
+	"subtitleSize": "尺寸",
+	"colourWhite": "白色的",
+	"colourYellow": "黃色的",
+	"colourGreen": "綠色的",
+	"colourRed": "紅色的",
+	"colourBlack": "黑色的",
+	"tapToDownloadFont": "點擊下載",
+	"subtitleOutlineNone": "沒有任何",
+	"subtitleOutlineSoft": "柔和的陰影",
+	"subtitleOutlineOutline": "大綱",
+	"subtitleOutlineBold": "粗體輪廓",
+	"subtitleOutlineShadow": "陰影",
+	"subtitleOutlineGlow": "輝光",
+	"noSubtitlesFoundFor": "未找到「{query}」的字幕。",
+	"@noSubtitlesFoundFor": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"searchFailedWithError": "搜尋失敗： {error}",
+	"@searchFailedWithError": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"downloadFailedWithError": "下載失敗： {error}",
+	"@downloadFailedWithError": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"decreaseDelay": "減少 {label}",
+	"@decreaseDelay": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"increaseDelay": "增加 {label}",
+	"@increaseDelay": {
+		"placeholders": {
+			"label": {
+				"type": "String"
+			}
+		}
+	},
+	"alignedDelay": "對齊 {offset}",
+	"@alignedDelay": {
+		"placeholders": {
+			"offset": {
+				"type": "String"
+			}
+		}
+	},
+	"subtitleSyncVoiceCaptured": "語音已錄製 ✓ — 播放直到字幕出現，然後點選「字幕已顯示」。 （您可以同時關閉此視窗。）",
+	"subtitleSyncTextCaptured": "字幕已擷取 ✓ — 現在，當您聽到該台詞時，請點擊「聽到的聲音」。",
+	"subtitleSyncHint": "自動同步：聽到台詞時點擊，然後字幕出現時點擊。",
+	"voiceHeard": "聽到聲音",
+	"subtitleSeen": "字幕已顯示",
+	"contrast": "對比",
+	"saturation": "飽和",
+	"gamma": "伽瑪",
+	"hue": "色調",
+	"drm": "數位版權管理",
+	"sourceFallback": "來源",
+	"expandAll": "全部展開",
+	"downloadedSummary": "{count} downloaded · {size}",
+	"@downloadedSummary": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"size": {
+				"type": "String"
+			}
+		}
+	},
+	"ofTotalDownloaded": " 第{done} 個（共 {total}個） ",
+	"@ofTotalDownloaded": {
+		"placeholders": {
+			"done": {
+				"type": "int"
+			},
+			"total": {
+				"type": "int"
+			}
+		}
+	},
+	"episodesDownloadedOfTotal": "已下載{done} / {total} ",
+	"@episodesDownloadedOfTotal": {
+		"placeholders": {
+			"done": {
+				"type": "int"
+			},
+			"total": {
+				"type": "int"
+			}
+		}
+	},
+	"removeAllEpisodesOfShow": "從此裝置移除所有「{title}」中的 {count, plural, one{1 episode} other{{count} episodes}} ？",
+	"@removeAllEpisodesOfShow": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"mangaChaptersYouDownloadAppearHere": "您下載的漫畫章節會顯示在這裡。",
+	"parallelDownloadsSubtitle": "同時下載多少集？章節總是逐章下載。",
+	"connectionsPerDownloadSubtitle": "劇集使用的片段連結數，以及章節中一次取得的頁數。數值越高，速度越快，一次取得的資料量也越大。",
+	"savingToYourFolder": "正在儲存到您的資料夾…",
+	"notAvailableOfflineYet": "尚不支援離線使用",
+	"downloadQueued": "已排隊",
+	"downloadPreparing": "準備中…",
+	"downloadPausedProgress": "已暫停 · {percent}%",
+	"@downloadPausedProgress": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadProgressPercent": "{percent}%",
+	"@downloadProgressPercent": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadProgressPercentOfSize": "{percent}% 的 {size}",
+	"@downloadProgressPercentOfSize": {
+		"placeholders": {
+			"percent": {
+				"type": "int"
+			},
+			"size": {
+				"type": "String"
+			}
+		}
+	},
+	"downloadCanceled": "取消",
+	"downloadFailedStatus": "失敗的",
+	"peerCount": "{count, plural, one{1 peer} other{{count} peers}}",
+	"@peerCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"downloadSpeedMbps": "{speed} MB/s",
+	"@downloadSpeedMbps": {
+		"placeholders": {
+			"speed": {
+				"type": "String"
+			}
+		}
+	},
+	"downloadSpeedKbps": "{speed} KB/s",
+	"@downloadSpeedKbps": {
+		"placeholders": {
+			"speed": {
+				"type": "int"
+			}
+		}
+	},
+	"episodeWithTitleDot": "E{number} · {title}",
+	"@episodeWithTitleDot": {
+		"placeholders": {
+			"number": {
+				"type": "int"
+			},
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"mangaDownloads": "漫畫下載",
+	"novelDownloads": "小說下載",
+	"downloadingSection": "正在下載",
+	"stopAllCount": "全部停止（{count}）",
+	"@stopAllCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"clearFailedCount": "清除失敗（{count}）",
+	"@clearFailedCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"stopDownloadingBody": "取消 {count, plural, one{1 queued chapter} other{{count} queued chapters}}。已下載的章節將保留。",
+	"@stopDownloadingBody": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"clearedFailedCount": "清除 {count} 失敗",
+	"@clearedFailedCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"chapterPagesProgress": "{done}/{total} pages",
+	"@chapterPagesProgress": {
+		"placeholders": {
+			"done": {
+				"type": "int"
+			},
+			"total": {
+				"type": "int"
+			}
+		}
+	},
+	"showTitleQueued": "{title} · 已排隊",
+	"@showTitleQueued": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"showTitleDownloading": "{title} · 正在下載…",
+	"@showTitleDownloading": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"showTitleWithError": "{title} · {error}",
+	"@showTitleWithError": {
+		"placeholders": {
+			"title": {
+				"type": "String"
+			},
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"removeAllChaptersOfShow": "從此裝置移除所有「{title}」中的 {count, plural, one{1 chapter} other{{count} chapters}} ？",
+	"@removeAllChaptersOfShow": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"title": {
+				"type": "String"
+			}
+		}
+	},
+	"chaptersWithSize": "{count, plural, one{1 chapter} other{{count} chapters}} · {size}",
+	"@chaptersWithSize": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"size": {
+				"type": "String"
+			}
+		}
+	},
+	"deleteAllEpisodesTooltip": "刪除所有劇集",
+	"deleteAllChaptersTooltip": "刪除所有章節",
+	"cancelDownloadTooltip": "取消",
+	"removeDownloadTooltip": "消除",
+	"positionLabel": "位置",
+	"relativeTomorrow": "明天",
+	"weekView": "星期",
+	"monthView": "月",
+	"scheduleSlotMorning": "早晨",
+	"scheduleSlotAfternoon": "午安",
+	"scheduleSlotEvening": "晚上",
+	"scheduleSlotLateNight": "深夜",
+	"nothingAiringOnThisDay": "今天沒有節目播出。",
+	"nothingReleasingOnThisDay": "今天沒有新片發布。",
+	"noneOfFollowedAirOnThisDay": "你追的動畫今天都沒有播出。",
+	"scheduleAired": "播出",
+	"scheduleLive": "● 直播",
+	"scheduleSoon": "很快",
+	"scheduleInHours": "在 {hours}小時",
+	"@scheduleInHours": {
+		"placeholders": {
+			"hours": {
+				"type": "int"
+			}
+		}
+	},
+	"scheduleInDays": "在 {days}d",
+	"@scheduleInDays": {
+		"placeholders": {
+			"days": {
+				"type": "int"
+			}
+		}
+	},
+	"scheduleCountDot": "· {count} {noun}",
+	"@scheduleCountDot": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			},
+			"noun": {
+				"type": "String"
+			}
+		}
+	},
+	"scheduleNounAiring": "播出",
+	"scheduleNounReleasing": "發布",
+	"seriesWithDate": "系列 · {date}",
+	"@seriesWithDate": {
+		"placeholders": {
+			"date": {
+				"type": "String"
+			}
+		}
+	},
+	"movieWithDate": "電影 · {date}",
+	"@movieWithDate": {
+		"placeholders": {
+			"date": {
+				"type": "String"
+			}
+		}
+	},
+	"todayWithDate": "今天， {date}",
+	"@todayWithDate": {
+		"placeholders": {
+			"date": {
+				"type": "String"
+			}
+		}
+	},
+	"extensionCount": "{count, plural, one{1 extension} other{{count} extensions}}",
+	"@extensionCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"pasteRepoBaseUrlMihon": "貼上倉庫的根 URL－應用程式會自動找到索引檔。直接提供 index.pb 或 index.json 的連結也可以。",
+	"pasteRepoBaseUrlAniyomi": "貼上倉庫的基本 URL — 應用程式會自動附加「/index.min.json」。",
+	"pasteRepoBaseUrlAniyomiTv": "貼上倉庫基本 URL — 應用程式會自動附加「/index.min.json」。",
+	"pasteRepoIndexJsonUrl": "貼上倉庫的 index.json URL——該 JSON 檔案列出了倉庫中的每個來源，而不是單一 provider.js URL。",
+	"pasteRepoIndexJsonUrlShort": "貼上倉庫的 index.json URL。",
+	"pasteCloudStreamRepoUrlFull": "貼上 CloudStream 儲存庫 URL — 該應用程式會載入它列出的每個來源。",
+	"youCanAddRepoBackLater": "您可以稍後再新增該倉庫。",
+	"failedToLoad": "載入失敗",
+	"failedToLoadError": "載入失敗： {error}",
+	"@failedToLoadError": {
+		"placeholders": {
+			"error": {
+				"type": "String"
+			}
+		}
+	},
+	"noSourceLoaded": "未載入來源－擴充功能可能不相容或下載失敗。",
+	"repoAdded": "倉庫已新增。",
+	"repoAddedWithSources": "倉庫已新增 — {count} {count, plural, one{source} other{sources}}",
+	"@repoAddedWithSources": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"upToDate": "最新",
+	"updatedNSources": "已更新 {count} 個來源",
+	"@updatedNSources": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"enterManifestUrl": "請輸入清單檔案的URL。",
+	"approve": "核准",
+	"changePhoto": "更換照片",
+	"typingIsAPain": "打字很麻煩嗎？",
+	"dontHaveAnAccount": "沒有帳戶？",
+	"signUp": "報名",
+	"resetLinkSent": "重置連結已發送－請檢查您的電子郵件（包括垃圾郵件）。",
+	"codeExpired": "代碼已過期",
+	"somethingWentWrong": "出了點問題",
+	"pairingCodeTimedOut": "配對碼已過期，請重新取得。",
+	"couldntStartPairing": "無法開始配對—請檢查您的連線。",
+	"approvalFailed": "審批失敗，請重試。",
+	"pickAtLeastOneTracker": "至少選擇一個已連接的追蹤器。",
+	"sendFailedTryAgain": "發送失敗，請重試。",
+	"signUpFailed": "註冊失敗",
+	"invalidEmailOrPassword": "無效的電子郵件或密碼",
+	"authenticationFailed": "身份驗證失敗",
+	"couldNotReconnect": "無法重新連接",
+	"couldntUpdatePhoto": "無法更新照片",
+	"welcomeToApp": "歡迎來到 {appName}",
+	"@welcomeToApp": {
+		"placeholders": {
+			"appName": {
+				"type": "String"
+			}
+		}
+	},
+	"onboardingTvSubtitle": "{appName} 沒有內建任何資源－你需要自行加入。你可以隨時在「設定」→「提供者」中新增資源庫並選擇要安裝的內容。",
+	"@onboardingTvSubtitle": {
+		"placeholders": {
+			"appName": {
+				"type": "String"
+			}
+		}
+	},
+	"onboardingPickEcosystem": "選擇一個生態系統－串流媒體、漫畫或小說",
+	"onboardingAddRepository": "貼上倉庫 URL 即可新增倉庫",
+	"onboardingBrowseAndInstall": "瀏覽並安裝你想要的軟體。",
+	"providersWaitingInSettings": "立即新增來源，或先四處看看—「提供者」始終在「設定」中等待著您。",
+	"bufferSizeLow": "低（32 MB）— 低記憶體/電視",
+	"bufferSizeDefault": "預設（128 MB）",
+	"bufferSizeHigh": "高畫質（512 MB）— 更流暢",
+	"bufferLengthLow": "低（15秒）— 低內存/電視",
+	"bufferLengthDefault": "預設值（60秒）",
+	"bufferLengthHigh": "高（120）—更平滑",
+	"bufferLengthMax": "最大（300秒）－最長",
+	"repoAddedWithSourcesAvailable": "已新增倉庫－ {count} {count, plural, one{source} other{sources}} 個可用。安裝您需要的倉庫。",
+	"@repoAddedWithSourcesAvailable": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"nUpdatesAvailable": "{count, plural, one{1 update available} other{{count} updates available}}",
+	"@nUpdatesAvailable": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"languageCount": "{count, plural, one{1 language} other{{count} languages}}",
+	"@languageCount": {
+		"placeholders": {
+			"count": {
+				"type": "int"
+			}
+		}
+	},
+	"noExtensionsMatchQuery": "沒有副檔名與「{query}」相符。",
+	"@noExtensionsMatchQuery": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"noCloudStreamReposAddedYetTap": "尚未新增任何 CloudStream 儲存庫。\n\n點選 {add} 新增一個。",
+	"@noCloudStreamReposAddedYetTap": {
+		"placeholders": {
+			"add": {
+				"type": "String"
+			}
+		}
+	},
+	"noCloudStreamReposAddedYetPress": "尚未新增任何 CloudStream 儲存庫。\n\n按 {add} 新增一個。",
+	"@noCloudStreamReposAddedYetPress": {
+		"placeholders": {
+			"add": {
+				"type": "String"
+			}
+		}
+	},
+	"noProvidersMatchQuery": "沒有提供者與「{query}」相符。",
+	"@noProvidersMatchQuery": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"noInstalledProvidersMatchQuery": "沒有已安裝的提供者與“{query}”相符。",
+	"@noInstalledProvidersMatchQuery": {
+		"placeholders": {
+			"query": {
+				"type": "String"
+			}
+		}
+	},
+	"noReposAddedYetTap": "尚未新增任何倉庫。\n\n點選 {add} 新增一個。",
+	"@noReposAddedYetTap": {
+		"placeholders": {
+			"add": {
+				"type": "String"
+			}
+		}
+	},
+	"noReposAddedYetPress": "尚未新增任何倉庫。\n\n按 {add} 新增一個。",
+	"@noReposAddedYetPress": {
+		"placeholders": {
+			"add": {
+				"type": "String"
+			}
+		}
+	},
+	"showingEveryInstalledProvider": "顯示所有已安裝的提供者",
+	"showingMangaNovelProviders": "顯示漫畫和小說提供者",
+	"mangaNovelOnly": "限漫畫和小說",
+	"showAllProviders": "顯示所有",
+	"noMangaNovelProvidersInstalled": "未安裝漫畫/小說提供者。",
+	"alreadyInstalledSourcesFromRepoStay": "來自「{name}」的已安裝來源將保持安裝狀態。",
+	"@alreadyInstalledSourcesFromRepoStay": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
+	"pluginIndexPasteHelp": "貼上外掛程式索引的 URL——外掛程式條目的 JSON 陣列（id、名稱、網站、語言、版本、url、iconUrl）。",
+	"loadingTrailer": "正在裝載拖車…",
+	"trailerUnavailable": "預告片暫不可用",
+	"decoderHardwareRecommended": "硬體+（建議）",
+	"decoderHardwareFaster": "硬體（速度更快）",
+	"decoderSoftwareCompatible": "軟體（相容性最強）",
+	"decoderAuto": "汽車",
+	"rendererAutoRecommended": "自動（建議）",
+	"rendererGpuStandard": "GPU－標準渲染器",
+	"rendererGpuNextExperimental": "GPU Next－Vulkan，實驗性",
+	"rendererMediacodecEmbed": "MediaCodec 嵌入 — 修復黑屏視頻",
+	"shaderStyleSharpenClean": "銳利化－清晰的 1080p 源",
+	"shaderStyleDeblurSoft": "消除模糊—模糊/柔和源",
+	"shaderStyleDenoiseGrainy": "降噪——顆粒感/壓縮感",
+	"shaderTierMidLight": "中階顯示卡－輕巧流暢",
+	"shaderTierHighHeavy": "高階GPU－更重，更銳利",
+	"closeConfirmDoubleBackLabel": "返回 — 按兩次返回鍵退出",
+	"closeConfirmAskLabel": "最後確認——離開前請再詢問",
+	"closeConfirmExitImmediatelyLabel": "直接關閉－立即出口"
+}

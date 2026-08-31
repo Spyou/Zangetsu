@@ -6,6 +6,11 @@
 const String kJsBootstrap = r'''
 var __pendingFetches = {};
 var __fetchSeq = 0;
+// Physical tvOS cannot invoke Dart through JavaScriptCore's FFI callback while
+// evaluate() is active. In polling mode requests are drained by Dart instead.
+globalThis.__usePollingBridge = false;
+globalThis.__nativeRequests = [];
+globalThis.__providerResults = {};
 globalThis.__providers = globalThis.__providers || {};
 globalThis.__extractors = globalThis.__extractors || {};
 globalThis.__settings = globalThis.__settings || {};
@@ -42,7 +47,11 @@ function __crypto(op, payload) {
   var promise = new Promise(function(resolve, reject) {
     __pendingCrypto[id] = { resolve: resolve, reject: reject };
   });
-  sendMessage('crypto', JSON.stringify(msg));
+  if (globalThis.__usePollingBridge) {
+    globalThis.__nativeRequests.push({ channel: 'crypto', payload: msg });
+  } else {
+    sendMessage('crypto', JSON.stringify(msg));
+  }
   return promise;
 }
 globalThis.sha256Hex = function(message) { return __crypto('sha256', { message: String(message) }); };
@@ -97,7 +106,11 @@ globalThis.__fetch = function(src, url, opts) {
   var promise = new Promise(function(resolve, reject) {
     __pendingFetches[id] = { resolve: resolve, reject: reject };
   });
-  sendMessage('fetch', JSON.stringify(payload));
+  if (globalThis.__usePollingBridge) {
+    globalThis.__nativeRequests.push({ channel: 'fetch', payload: payload });
+  } else {
+    sendMessage('fetch', JSON.stringify(payload));
+  }
   return promise.then(function(res) {
     return {
       ok: res.status >= 200 && res.status < 300,
@@ -120,7 +133,12 @@ globalThis.__console = function(src, level, args) {
       var a = args[i];
       parts.push(typeof a === 'string' ? a : JSON.stringify(a));
     }
-    sendMessage('console', JSON.stringify({ __src: src, level: level, message: parts.join(' ') }));
+    var payload = { __src: src, level: level, message: parts.join(' ') };
+    if (globalThis.__usePollingBridge) {
+      globalThis.__nativeRequests.push({ channel: 'console', payload: payload });
+    } else {
+      sendMessage('console', JSON.stringify(payload));
+    }
   } catch (e) {}
 };
 
@@ -216,7 +234,12 @@ if (typeof globalThis.setTimeout !== 'function') {
   globalThis.setTimeout = function(fn, ms) {
     var id = __nextTimerId();
     __timers[id] = fn;
-    sendMessage('timer', JSON.stringify({ id: id, ms: ms || 0 }));
+    var payload = { id: id, ms: ms || 0 };
+    if (globalThis.__usePollingBridge) {
+      globalThis.__nativeRequests.push({ channel: 'timer', payload: payload });
+    } else {
+      sendMessage('timer', JSON.stringify(payload));
+    }
     return id;
   };
   globalThis.clearTimeout = function(id) { delete __timers[id]; };

@@ -10,6 +10,7 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/states.dart';
 import 'sources_search_field.dart';
+import '../../l10n/l10n.dart';
 
 /// Hive box name for persisted LNReader repo index URLs — the novel twin of
 /// `kMihonReposBoxName` (`lib/features/sources/mihon_repo_tab.dart`).
@@ -193,24 +194,24 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: AppColors.surface,
-        title: Text('Remove repo?', style: AppText.headline),
+        title: Text(context.l10n.removeRepo, style: AppText.headline),
         content: Text(
-          'Already-installed sources from this repo stay installed. '
-          'You can add the repo back later.',
+          context.l10n.alreadyInstalledSourcesStay +
+              context.l10n.youCanAddRepoBackLater,
           style: AppText.body,
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.cancel,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(
-              'Remove',
+              context.l10n.removeDownloadTooltip,
               style: AppText.body.copyWith(color: AppColors.accent),
             ),
           ),
@@ -236,13 +237,13 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
       child: Scaffold(
         backgroundColor: AppColors.bg,
         appBar: AppBar(
-          title: Text('LNReader', style: AppText.barTitle),
+          title: Text(context.l10n.lnreader, style: AppText.barTitle),
           actions: [
             // Only worth showing when the catalog actually spans more than one
             // language (otherwise there's nothing to filter).
             if (_state == _LoadState.loaded && _availableLangs.length > 1)
               IconButton(
-                tooltip: 'Languages',
+                tooltip: context.l10n.languages,
                 icon: const Icon(Icons.language_rounded),
                 onPressed: _openLanguageSheet,
               ),
@@ -255,9 +256,9 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
             labelStyle: AppText.headline,
             unselectedLabelStyle: AppText.headline,
             dividerHeight: 0,
-            tabs: const [
-              Tab(text: 'Installed'),
-              Tab(text: 'Repositories'),
+            tabs: [
+              Tab(text: context.l10n.installed),
+              Tab(text: context.l10n.repositories),
             ],
           ),
         ),
@@ -267,7 +268,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
           onPressed: _showAddRepoDialog,
           icon: const Icon(Icons.add),
           label: Text(
-            'Add repository',
+            context.l10n.addRepository,
             style: AppText.button.copyWith(color: Colors.white),
           ),
         ),
@@ -278,7 +279,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
               child: SourcesSearchField(
                 controller: _searchCtrl,
                 onChanged: (q) => setState(() => _query = q),
-                hint: 'Search novel sources',
+                hint: context.l10n.searchNovelSources,
               ),
             ),
             Expanded(
@@ -297,7 +298,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
 
   /// Installed tab: every installed plugin (regardless of whether its repo is
   /// still tracked), each with a Remove action. Reuses `_LnReaderCatalogCard`/
-  /// `_LnReaderSourceRow` — an installed entry always renders as a "Remove"
+  /// `_LnReaderSourceRow` — an installed entry always renders as a context.l10n.removeDownloadTooltip
   /// row, same as an installed catalog entry does today.
   Widget _installedTab() {
     final installed = sl<LnReaderExtensionService>()
@@ -308,7 +309,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
       return EmptyState(
         icon: Icons.menu_book_outlined,
         message: _query.trim().isEmpty
-            ? 'No sources installed yet.'
+            ? context.l10n.noSourcesInstalledYet
             : 'No installed sources match "${_query.trim()}".',
       );
     }
@@ -373,7 +374,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
                     padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
                     child: Row(
                       children: [
-                        Text('Languages', style: AppText.headline),
+                        Text(context.l10n.languages, style: AppText.headline),
                         const Spacer(),
                         Text(
                           '${enabled.where(counts.containsKey).length} of ${langs.length}',
@@ -425,7 +426,7 @@ class _LnReaderSourcesScreenState extends State<LnReaderSourcesScreen> {
   /// Repositories tab body: the tracked repo list, each with its fetched
   /// catalog, or the "no repos" empty state. Installed plugins live entirely
   /// in [_installedTab] now — a catalog entry that's installed still shows as
-  /// a "Remove" row here too (via [installedIds]), it just isn't given its
+  /// a context.l10n.removeDownloadTooltip row here too (via [installedIds]), it just isn't given its
   /// own section.
   Widget _repositoriesList() {
     final installedIds =
@@ -496,7 +497,7 @@ class _LnReaderAddRepoDialogState extends State<LnReaderAddRepoDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.surface,
-      title: Text('Add novel repo', style: AppText.headline),
+      title: Text(context.l10n.addNovelRepo, style: AppText.headline),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -509,15 +510,14 @@ class _LnReaderAddRepoDialogState extends State<LnReaderAddRepoDialog> {
               cursorColor: AppColors.accent,
               style: AppText.body.copyWith(color: AppColors.textPrimary),
               onSubmitted: (_) => _submit(),
-              decoration: const InputDecoration(
-                labelText: 'Plugin index URL',
-                hintText: 'https://.../plugins.min.json',
+              decoration: InputDecoration(
+                labelText: context.l10n.pluginIndexUrl,
+                hintText: context.l10n.pluginIndexUrlHint,
               ),
             ),
             const SizedBox(height: 10),
             Text(
-              'Paste the URL of a plugin index — a JSON array of '
-              '{id, name, site, lang, version, url, iconUrl}.',
+              context.l10n.pluginIndexPasteHelp,
               style: AppText.caption,
             ),
           ],
@@ -527,7 +527,7 @@ class _LnReaderAddRepoDialogState extends State<LnReaderAddRepoDialog> {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(
-            'Cancel',
+            context.l10n.cancel,
             style: AppText.body.copyWith(color: AppColors.textSecondary),
           ),
         ),
@@ -537,7 +537,7 @@ class _LnReaderAddRepoDialogState extends State<LnReaderAddRepoDialog> {
             foregroundColor: Colors.white,
           ),
           onPressed: _submit,
-          child: const Text('Add'),
+          child: Text(context.l10n.navTabsAdd),
         ),
       ],
     );
@@ -658,7 +658,7 @@ class _LnReaderRepoSectionState extends State<_LnReaderRepoSection> {
                               const SizedBox(height: 2),
                               Text(
                                 error != null
-                                    ? 'Failed to load'
+                                    ? context.l10n.failedToLoad
                                     : '${widget.catalog?.entries?.length ?? 0} source'
                                           '${(widget.catalog?.entries?.length ?? 0) == 1 ? '' : 's'}',
                                 style: AppText.caption.copyWith(
@@ -688,7 +688,7 @@ class _LnReaderRepoSectionState extends State<_LnReaderRepoSection> {
                     PopupMenuItem(
                       value: 'refresh',
                       child: Text(
-                        'Refresh',
+                        context.l10n.refresh,
                         style: AppText.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -697,7 +697,7 @@ class _LnReaderRepoSectionState extends State<_LnReaderRepoSection> {
                     PopupMenuItem(
                       value: 'remove',
                       child: Text(
-                        'Remove repository',
+                        context.l10n.removeRepository,
                         style: AppText.body.copyWith(
                           color: AppColors.textPrimary,
                         ),
@@ -726,7 +726,7 @@ class _LnReaderRepoSectionState extends State<_LnReaderRepoSection> {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
         child: Text(
-          'Failed to load: $error',
+          context.l10n.failedToLoadError('$error'),
           style: AppText.caption.copyWith(color: AppColors.textSecondary),
         ),
       );
@@ -734,7 +734,7 @@ class _LnReaderRepoSectionState extends State<_LnReaderRepoSection> {
     if (filtered.isEmpty) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Text('No sources in this repo.', style: AppText.caption),
+        child: Text(context.l10n.noSourcesInThisRepo, style: AppText.caption),
       );
     }
     return _LnReaderCatalogCard(
@@ -838,11 +838,11 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
       widget.onChanged();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Installed ${widget.meta.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installedName(widget.meta.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Install failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.installFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -860,11 +860,11 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
       widget.onChanged();
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Removed ${widget.meta.name}')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.removedName(widget.meta.name))));
     } catch (e) {
       messenger
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text('Remove failed: $e')));
+        ..showSnackBar(SnackBar(content: Text(context.l10n.removeFailed('$e'))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -917,13 +917,13 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
             // `_MihonSourceRow` (LNReader plugins have no per-source settings,
             // so no `tune` icon alongside it).
             IconButton(
-              tooltip: 'Remove',
+              tooltip: context.l10n.navTabsRemove,
               icon: const Icon(Icons.delete_outline_rounded, size: 20),
               color: AppColors.textSecondary,
               onPressed: _remove,
             )
           else if (widget.installed)
-            // A repo's catalog: an installed source shows an "Uninstall" text
+            // A repo's catalog: an installed source shows an context.l10n.uninstall text
             // button, matching Mihon's repo tab (`_MihonExtensionRow`).
             OutlinedButton(
               onPressed: _remove,
@@ -934,7 +934,7 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
                 shape:
                     RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Uninstall'),
+              child: Text(context.l10n.uninstall),
             )
           else
             // Mirrors Mihon's catalog Install control exactly
@@ -949,7 +949,7 @@ class _LnReaderSourceRowState extends State<_LnReaderSourceRow> {
                 shape:
                     RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
-              child: const Text('Install'),
+              child: Text(context.l10n.install),
             ),
         ],
       ),

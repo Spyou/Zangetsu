@@ -1,10 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../../core/ui/nav_prefs.dart';
+
 /// The custom navbar icon set — clean single-silhouette glyphs drawn on a
 /// 24×24 grid (1.7px rounded stroke), each with a solid `filled` twin used
 /// for the active tab (outline → fill is the whole active signal; nothing is
 /// drawn around the icon).
 enum DockGlyph { home, search, bookmark, calendar }
+
+/// The hand-drawn glyph for a tab, or null when it uses a Material icon.
+///
+/// Shared by the dock and by the Settings preview so the two can't drift —
+/// a preview that draws a different icon than the bar is worse than none.
+/// The original four are custom paths; tabs added later reuse Material's
+/// outlined/filled pair rather than having a glyph drawn for them.
+DockGlyph? dockGlyphFor(DockTab t) => switch (t) {
+  DockTab.home => DockGlyph.home,
+  DockTab.search => DockGlyph.search,
+  DockTab.myList => DockGlyph.bookmark,
+  DockTab.schedule => DockGlyph.calendar,
+  _ => null,
+};
 
 class DockIcon extends StatelessWidget {
   const DockIcon(

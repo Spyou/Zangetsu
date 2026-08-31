@@ -4,6 +4,8 @@ import '../../core/mihon/mihon_filters.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 
+import '../../l10n/l10n.dart';
+
 /// Shows the per-source Mihon filter sheet.
 ///
 /// Mihon twin of [showAniyomiFilterSheet] — kept as a SEPARATE widget over the
@@ -163,12 +165,12 @@ class _MihonFilterSheetState extends State<_MihonFilterSheet> {
       child: Row(
         children: [
           Expanded(
-            child: Text('Source Filters', style: AppText.headline),
+            child: Text(context.l10n.sourceFilters, style: AppText.headline),
           ),
           TextButton(
             onPressed: _reset,
             child: Text(
-              'Reset',
+              context.l10n.reset,
               style: AppText.body.copyWith(color: AppColors.textSecondary),
             ),
           ),
@@ -189,7 +191,7 @@ class _MihonFilterSheetState extends State<_MihonFilterSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               child: Text(
-                'Cancel',
+                context.l10n.cancel,
                 style: AppText.body.copyWith(color: AppColors.textSecondary),
               ),
             ),
@@ -208,7 +210,7 @@ class _MihonFilterSheetState extends State<_MihonFilterSheet> {
                 elevation: 0,
               ),
               onPressed: () => Navigator.pop(context, widget.filters),
-              child: Text('Apply', style: AppText.button),
+              child: Text(context.l10n.apply, style: AppText.button),
             ),
           ),
         ],
@@ -379,16 +381,16 @@ class _MihonFilterSheetState extends State<_MihonFilterSheet> {
                   dropdownColor: AppColors.surface2,
                   style: AppText.body.copyWith(color: AppColors.textPrimary),
                   hint: Text(
-                    'None',
+                    context.l10n.none,
                     style:
                         AppText.body.copyWith(color: AppColors.textSecondary),
                   ),
                   underline:
                       const Divider(color: AppColors.hairline, height: 1),
                   items: [
-                    const DropdownMenuItem<int?>(
+                    DropdownMenuItem<int?>(
                       value: null,
-                      child: Text('None'),
+                      child: Text(context.l10n.none),
                     ),
                     for (int i = 0; i < f.values.length; i++)
                       DropdownMenuItem<int?>(

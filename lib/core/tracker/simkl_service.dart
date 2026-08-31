@@ -11,6 +11,7 @@ import '../environment.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import '../models/watch_status.dart';
+import '../platform/apple_tv.dart';
 import 'tracker.dart';
 
 /// Simkl tracker (movies + TV + anime). OAuth2 authorization-code with a client
@@ -19,6 +20,8 @@ import 'tracker.dart';
 /// goes to `/sync/add-to-list`, watched episodes to `/sync/history`.
 class SimklService extends ChangeNotifier implements Tracker {
   SimklService(this._dio) {
+    // app_links has no tvOS impl; TV connects trackers via phone QR pairing.
+    if (isAppleTv) return;
     _linkSub = _appLinks.uriLinkStream.listen(_onLink, onError: (_) {});
     _appLinks.getInitialLink().then((uri) {
       if (uri != null) _onLink(uri);
@@ -378,7 +381,10 @@ class SimklService extends ChangeNotifier implements Tracker {
                   : e;
 
           final ids = (media['ids'] is Map) ? media['ids'] as Map : const {};
-          final simklId = _asInt(ids['simkl']);
+          // Simkl is inconsistent about this key: the sync endpoints answer
+          // with `simkl`, /search/* with `simkl_id`. Accept either everywhere
+          // rather than guess per endpoint.
+          final simklId = _asInt(ids['simkl'] ?? ids['simkl_id']);
           final malId = anime ? _asInt(ids['mal']) : null;
           final tmdbId = anime ? null : _asInt(ids['tmdb']);
           final title = (media['title'] as String?) ??
@@ -524,9 +530,17 @@ class SimklService extends ChangeNotifier implements Tracker {
   }) async {
     if (kind == MediaKind.manga) return const []; // Simkl has no manga/novel API
     if (query.trim().isEmpty) return const [];
+    // Simkl keeps anime, movies and TV in SEPARATE catalogues. Searching
+    // /search/anime for a movie is how "Change match" came back empty for
+    // TMDB titles — the endpoint has to follow the kind.
+    final path = switch (kind) {
+      MediaKind.movie => 'movie',
+      MediaKind.tv => 'tv',
+      _ => 'anime',
+    };
     try {
       final res = await _dio.get<dynamic>(
-        '$_api/search/anime?q=${Uri.encodeComponent(query)}&extended=full&limit=12',
+        '$_api/search/$path?q=${Uri.encodeComponent(query)}&extended=full&limit=12',
         options: Options(
           headers: _headers,
           validateStatus: (s) => s != null && s < 500,
@@ -538,7 +552,10 @@ class SimklService extends ChangeNotifier implements Tracker {
       for (final e in list) {
         if (e is! Map) continue;
         final ids = (e['ids'] is Map) ? e['ids'] as Map : const {};
-        final simkl = _asInt(ids['simkl']);
+        // /search/* returns `simkl_id`, not `simkl` — reading only the latter
+        // silently dropped EVERY search result, for anime as well as movies,
+        // so "Change match" always said "No matches found".
+        final simkl = _asInt(ids['simkl'] ?? ids['simkl_id']);
         if (simkl == null) continue;
         final total = _asInt(e['total_episodes']) ?? _asInt(e['episodes']);
         final year = _asInt(e['year']);
