@@ -68,13 +68,22 @@ class SourceMatcher {
     try {
       results = await _sources.search(title, sourceId: sourceId);
     } catch (e) {
-      debugPrint('[zmode] $sourceId search failed for "$title": $e');
+      debugPrint('[zmode] $sourceId search THREW for "$title": $e');
       return null;
     }
+    // Diagnostic: every candidate and its outcome. Without this a source that
+    // searched fine but title-missed, and one that came back empty because it
+    // was blocked, are indistinguishable — both just vanish from matching.
+    debugPrint('[zmode] $sourceId -> ${results.length} results for "$title"');
     final hit = bestTitleMatch(results, title, altTitle: altTitle, wantedMalId: malId);
     if (hit == null || !titleMatches(hit, title, altTitle: altTitle, wantedMalId: malId)) {
+      debugPrint(
+        '[zmode] $sourceId REJECTED "$title"'
+        '${results.isEmpty ? " (no results — blocked or genuinely absent)" : " (best was: ${hit?.title ?? "none"})"}',
+      );
       return null;
     }
+    debugPrint('[zmode] $sourceId MATCHED "$title" -> "${hit.title}"');
     final m = SourceMatch(
       sourceId: hit.sourceId,
       showUrl: hit.url,
