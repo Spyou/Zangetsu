@@ -104,8 +104,8 @@ class _RootShellState extends State<RootShell>
     ZModePrefs.revision.addListener(_onZMode);
   }
 
-  /// The toggle changed: Search enters or leaves the dock, so an active tab
-  /// that just disappeared has to move somewhere real.
+  /// The toggle changed: close the mode bar and, as a safety net, bounce off
+  /// any tab that somehow stopped being visible.
   void _onZMode() {
     if (!mounted) return;
     setState(() {
@@ -130,13 +130,9 @@ class _RootShellState extends State<RootShell>
   List<DockTab> _visibleTabs() {
     final mode = sl<ContentModeCubit>().state;
     final tabs = _navPrefs.tabs;
-    // Z Mode: Search moves to the top of Home, so it leaves the dock.
-    final base = ZModePrefs.enabled
-        ? [for (final t in tabs) if (t != DockTab.search) t]
-        : tabs;
-    if (!mode.isReading) return base;
-    final out = [for (final t in base) if (!t.isAnimeOnly) t];
-    return out.isEmpty ? base : out;
+    if (!mode.isReading) return tabs;
+    final out = [for (final t in tabs) if (!t.isAnimeOnly) t];
+    return out.isEmpty ? tabs : out;
   }
 
   @override

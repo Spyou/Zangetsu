@@ -39,9 +39,11 @@ import 'package:watch_app/core/theme/theme_controller.dart';
 import 'package:watch_app/core/tracker/mal_service.dart';
 import 'package:watch_app/core/tracker/simkl_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/auth/auth_cubit.dart';
 import 'package:watch_app/features/auth/migration_bridge.dart';
 import 'package:watch_app/features/home/cubit/home_cubit.dart';
+import 'package:watch_app/features/home/home_screen.dart';
 import 'package:watch_app/features/shell/root_shell.dart';
 import 'package:watch_app/features/shell/root_shell_tv.dart';
 
@@ -307,6 +309,10 @@ void main() {
     // and start tests in the wrong mode.
     await Hive.deleteBoxFromDisk('content_mode');
     contentMode = await ContentModeCubit.create(activeSource);
+    // Same leak-prevention as content_mode above, so the toggle starts off
+    // (its default) in every test regardless of run order.
+    await Hive.deleteBoxFromDisk(ZModePrefs.boxName);
+    await ZModePrefs.init();
 
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<ContentModeCubit>(contentMode);
@@ -453,5 +459,28 @@ void main() {
 
     expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
     expect(find.text('Schedule'), findsNothing);
+  });
+
+  // Task 11: Search used to leave the dock and a search bar took its place on
+  // Home while Z Mode was on — that rule is reversed (Search dock visibility
+  // is covered by nav_tabs_screen_test.dart, against the lighter NavTabsScreen
+  // harness). Pumped as bare HomeScreen, not the full RootShell: the shell's
+  // IndexedStack also mounts SearchScreen (offstage), whose SearchScope stays
+  // reactive to ZModePrefs.revision even offstage and would need a real
+  // MetadataRepository the moment Z Mode flips on — nothing this test cares
+  // about.
+  testWidgets("Home no longer shows the old Z Mode search bar", (
+    tester,
+  ) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const HomeScreen()));
+    await tester.pumpAndSettle();
+
+    await tester.runAsync(() => ZModePrefs.setEnabled(true));
+    await tester.pumpAndSettle();
+
+    // The old bar's tell: a bare Icons.search_rounded row with the "Search"
+    // caption, above the mode cards. Nothing on Home draws that icon now.
+    expect(find.byIcon(Icons.search_rounded), findsNothing);
   });
 }
