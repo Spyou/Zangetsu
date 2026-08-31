@@ -75,57 +75,62 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  // View state, not screen state — no Cubit. Seeded from the pref, falling
-  // back to whichever index the app is currently browsing so neither audience
-  // sees their search change under them on upgrade.
-  late SearchScope _scope =
-      sl<SearchPrefs>().scope ??
-      (ZModePrefs.enabled ? SearchScope.library : SearchScope.sources);
+  // Derived, not user-chosen: Sources whenever the app itself is source-driven
+  // (Z Mode off, or Z Mode on with the Sources mode picked), Library
+  // otherwise. Search no longer offers its own scope choice — it follows
+  // whatever Home is browsing.
+  SearchScope get _scope => (!ZModePrefs.enabled || ZModePrefs.sourcesMode)
+      ? SearchScope.sources
+      : SearchScope.library;
 
   /// The bloc caches results and its source list, so a scope change has to
   /// build a NEW bloc rather than swap the repo underneath the old one. The
   /// ValueKey below is what makes BlocProvider dispose and recreate it.
-  CatalogueRepository get _repoForScope => switch (_scope) {
+  CatalogueRepository _repoForScope(SearchScope scope) => switch (scope) {
     SearchScope.library => sl<MetadataRepository>(),
     SearchScope.sources => sl<SourceRepository>(),
   };
 
-  void _setScope(SearchScope s) {
-    if (s == _scope) return;
-    setState(() => _scope = s);
-    unawaited(sl<SearchPrefs>().setScope(s));
-  }
-
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      key: ValueKey(_scope),
-      create: (_) {
-        final bloc = SearchBloc(
-          repo: _repoForScope,
-          history: sl<SearchHistory>(),
-        )..add(const SearchStarted());
-        final q = widget.initialQuery?.trim();
-        // An initial query (e.g. "see all results" from Home) runs the full
-        // search straight away rather than waiting for the user to type.
-        if (q != null && q.isNotEmpty) bloc.add(SearchRunRequested(q));
-        return bloc;
-      },
-      // On Android TV, hand off to the D-pad-optimised layout. The BlocProvider
-      // above is still the provider for both paths — SearchScreenTv reads the
-      // same SearchBloc from context, so no duplication of bloc creation.
-      child: sl<AppMode>().isTv
-          ? SearchScreenTv(
-              initialQuery: widget.initialQuery,
+    // Reactive to ZModePrefs.revision so a mode-bar pick (Sources vs a
+    // content mode) rebuilds this with the right derived scope, recreating
+    // the bloc via the ValueKey below — same pattern as HomeSourceSwitcherSlot.
+    return ValueListenableBuilder<int>(
+      valueListenable: ZModePrefs.revision,
+      builder: (context, _, _) {
+        final scope = _scope;
+        return BlocProvider(
+          key: ValueKey(scope),
+          create: (_) {
+            final bloc = SearchBloc(
+              repo: _repoForScope(scope),
               history: sl<SearchHistory>(),
-            )
-          : _SearchView(
-              initialQuery: widget.initialQuery,
-              showBack: widget.showBack,
-              focusSignal: widget.focusSignal,
-              scope: _scope,
-              onScopeChanged: _setScope,
-            ),
+            )..add(const SearchStarted());
+            final q = widget.initialQuery?.trim();
+            // An initial query (e.g. "see all results" from Home) runs the
+            // full search straight away rather than waiting for the user to
+            // type.
+            if (q != null && q.isNotEmpty) bloc.add(SearchRunRequested(q));
+            return bloc;
+          },
+          // On Android TV, hand off to the D-pad-optimised layout. The
+          // BlocProvider above is still the provider for both paths —
+          // SearchScreenTv reads the same SearchBloc from context, so no
+          // duplication of bloc creation.
+          child: sl<AppMode>().isTv
+              ? SearchScreenTv(
+                  initialQuery: widget.initialQuery,
+                  history: sl<SearchHistory>(),
+                )
+              : _SearchView(
+                  initialQuery: widget.initialQuery,
+                  showBack: widget.showBack,
+                  focusSignal: widget.focusSignal,
+                  scope: scope,
+                ),
+        );
+      },
     );
   }
 }
@@ -136,14 +141,12 @@ class _SearchView extends StatefulWidget {
     required this.showBack,
     this.focusSignal,
     required this.scope,
-    required this.onScopeChanged,
   });
 
   final String? initialQuery;
   final bool showBack;
   final ValueListenable<int>? focusSignal;
   final SearchScope scope;
-  final void Function(SearchScope) onScopeChanged;
 
   @override
   State<_SearchView> createState() => _SearchViewState();
@@ -456,7 +459,6 @@ class _SearchViewState extends State<_SearchView>
             // Control row — ecosystem tabs (or a result count once scoped to a
             // single source) on the left, sort + filter actions on the right.
             _controlRow(modeSources),
-            _scopeChips(context),
             // Per-source result pills — direct jump to one source's results.
             // Only meaningful once the scope is Sources.
             if (widget.scope == SearchScope.sources) _sourcePillsRow(),
@@ -1119,41 +1121,6 @@ class _SearchViewState extends State<_SearchView>
     }
     return _ecoTabController!;
   }
-
-  // ── Scope chips (library vs sources) ────────────────────────────────────────
-  /// Library / Sources. Deliberately above the source pills: the pills narrow
-  /// WHICH sources are searched, which only means anything once the scope is
-  /// Sources — so the broader choice reads first.
-  Widget _scopeChips(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-    child: Row(
-      children: [
-        for (final s in SearchScope.values)
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              selected: widget.scope == s,
-              onSelected: (_) => widget.onScopeChanged(s),
-              showCheckmark: false,
-              backgroundColor: AppColors.surface2,
-              selectedColor: AppColors.textPrimary,
-              side: BorderSide.none,
-              label: Text(
-                s == SearchScope.library
-                    ? context.l10n.libraryLabel
-                    : context.l10n.sources,
-                style: AppText.caption.copyWith(
-                  color: widget.scope == s
-                      ? AppColors.bg
-                      : AppColors.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
-  );
 
   // ── Per-source result pills (jump straight to one source) ──────────────────
   /// Recovered from the pre-redesign source-chip row (`_filterChips`/`_chip`,
