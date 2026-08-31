@@ -16,6 +16,7 @@ import '../../core/app_mode.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/discord/discord_rpc.dart';
+import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/metadata/episode_metadata_service.dart';
 import '../../core/metadata/metadata_enrichment.dart';
 import '../../core/notify/cs_notify.dart';
@@ -157,6 +158,111 @@ String? _repoLabelFromUrl(String? repoUrl) {
     return u.host.isEmpty ? null : u.host;
   } catch (_) {
     return null;
+  }
+}
+
+/// Shown instead of the detail body when the title's source needs a
+/// Cloudflare challenge solved — the Detail-path counterpart of Home's
+/// Cloudflare-blocked state (`_SourceUnavailable` in home_screen.dart), so a
+/// title opened from AniList/TMDB (Z Mode) offers the same solve instead of
+/// failing silently. Uses the SAME solver Home does and reloads on success.
+class _DetailCloudflareBlocked extends StatefulWidget {
+  const _DetailCloudflareBlocked({required this.url});
+
+  final String url;
+
+  @override
+  State<_DetailCloudflareBlocked> createState() =>
+      _DetailCloudflareBlockedState();
+}
+
+class _DetailCloudflareBlockedState extends State<_DetailCloudflareBlocked> {
+  static const Color _cloudflareOrange = Color(0xFFF48120);
+
+  bool _solving = false;
+
+  Future<void> _solve() async {
+    setState(() => _solving = true);
+    await MihonExtensionService.solveCloudflare(widget.url);
+    if (!mounted) return;
+    setState(() => _solving = false);
+    context.read<DetailCubit>().load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(36, 40, 36, 56),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 88,
+              height: 88,
+              decoration: BoxDecoration(
+                color: _cloudflareOrange.withValues(alpha: 0.14),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.shield_rounded,
+                size: 40,
+                color: _cloudflareOrange,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'This source is protected by Cloudflare',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Complete the Cloudflare check once and this title will load '
+              'normally from then on.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 14,
+                height: 1.45,
+              ),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _solving ? null : _solve,
+              icon: _solving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.shield_rounded, size: 20),
+              label: Text(context.l10n.solveCloudflare),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _cloudflareOrange,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1371,6 +1477,9 @@ class _DetailViewState extends State<_DetailView>
         builder: (context, state) {
           if (state.status == DetailStatus.loading) {
             return const _DetailSkeleton(heroHeight: _expandedHeight);
+          }
+          if (state.cloudflareUrl != null) {
+            return _DetailCloudflareBlocked(url: state.cloudflareUrl!);
           }
           if (state.status == DetailStatus.error || state.detail == null) {
             return EmptyState(
