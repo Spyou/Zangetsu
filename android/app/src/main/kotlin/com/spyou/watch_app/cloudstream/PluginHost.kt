@@ -471,6 +471,20 @@ class PluginHost(private val context: Context) {
         return cleared
     }
 
+    /**
+     * [apiName]'s CURRENT `MainAPI.mainUrl`, read fresh off the loaded native
+     * provider — NOT the snapshot [installedApis] captured at list time.
+     * `mainUrl` is a `var` a plugin rewrites in place once it resolves its
+     * live domain (e.g. a source that fetches a redirect list at runtime, as
+     * opposed to the domain compiled into the plugin); reading it here, at
+     * solve time, is what lets the Cloudflare-solve action target the domain
+     * the source ACTUALLY uses right now instead of a stale listing value.
+     *
+     * @return the live url, or null when the source isn't loaded or declares
+     *   none — the Dart caller falls back to its own cached listing value.
+     */
+    fun liveMainUrl(apiName: String): String? = apiByName(apiName)?.mainUrl?.ifBlank { null }
+
     /** Re-instantiate the plugin in [file] with [activity] as its load context and
      *  return its freshly-bound openSettings, undoing the duplicate registration. */
     private fun freshOpener(
