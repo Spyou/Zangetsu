@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/mode/content_mode.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -31,6 +32,14 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
   String _query = '';
   late final TabController _tab = TabController(length: 3, vsync: this);
 
+  /// [SourceListKind] and [ContentMode] both split streaming/manga/novel the
+  /// same way; this just names the mapping for [SearchScreen.forceMode].
+  ContentMode _modeOf(SourceListKind kind) => switch (kind) {
+    SourceListKind.streaming => ContentMode.anime,
+    SourceListKind.manga => ContentMode.manga,
+    SourceListKind.novel => ContentMode.novel,
+  };
+
   @override
   void dispose() {
     _controller.dispose();
@@ -49,9 +58,15 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
           IconButton(
             icon: const Icon(Icons.search_rounded),
             tooltip: context.l10n.search,
+            // forceMode: the tab this was opened from, so the search fans out
+            // over that tab's sources instead of Home's global content mode —
+            // see [SearchScreen.forceMode].
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const SearchScreen(forceSources: true),
+                builder: (_) => SearchScreen(
+                  forceSources: true,
+                  forceMode: _modeOf(SourceListKind.values[_tab.index]),
+                ),
               ),
             ),
           ),
