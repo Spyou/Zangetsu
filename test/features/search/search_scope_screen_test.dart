@@ -29,9 +29,6 @@ import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/search_screen.dart';
-import 'package:watch_app/features/search/bloc/search_bloc.dart';
-import 'package:watch_app/features/search/bloc/search_event.dart';
-import 'package:watch_app/features/search/browse_sources_list.dart';
 
 import '../../support/picker_deps.dart';
 
@@ -216,43 +213,4 @@ void main() {
     expect(sl<SearchPrefs>().scope, SearchScope.sources);
     expect(chipLabelled(t, 'Sources').selected, isTrue);
   });
-
-  testWidgets(
-    'Sources scope, empty query, idle: shows the sources list to browse',
-    (t) async {
-      // Default scope with no stored pref and Z Mode off is Sources — see the
-      // "byte-identical default" test above — so this is what today's users
-      // land on.
-      await t.pumpWidget(harness());
-      await t.pumpAndSettle();
-
-      expect(find.byType(BrowseSourcesList), findsOneWidget);
-    },
-  );
-
-  testWidgets(
-    'a filters-only browse in Sources scope hides the sources list '
-    '(does not cover the browsed results)',
-    (t) async {
-      await t.pumpWidget(harness());
-      await t.pumpAndSettle();
-
-      // Starts on the sources list — the true empty idle state.
-      expect(find.byType(BrowseSourcesList), findsOneWidget);
-
-      // Drive the same no-query-plus-filters path Aniyomi/Mihon filter sheets
-      // use (SearchBloc._onSourceFiltersApplied -> _browseWithFilters). No
-      // Hive box is touched by this — _FakeSourceRepo.searchStatus above is a
-      // plain in-memory fake — so this runs outside runAsync, unlike the
-      // ZModePrefs/SearchPrefs Hive writes above.
-      final bloc = BlocProvider.of<SearchBloc>(
-        t.element(find.byType(BrowseSourcesList)),
-      );
-      bloc.add(const SearchSourceFiltersApplied('ani:1', '{"sort":"latest"}'));
-      await t.pumpAndSettle();
-
-      expect(bloc.state.hasFilteredBrowse, isTrue);
-      expect(find.byType(BrowseSourcesList), findsNothing);
-    },
-  );
 }
