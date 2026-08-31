@@ -13,25 +13,40 @@ import '../../l10n/l10n.dart';
 /// right for a search fan-out, wrong for a list that claims to show what you
 /// have installed.
 class BrowseSourcesList extends StatelessWidget {
-  const BrowseSourcesList({super.key, required this.onBrowse});
+  const BrowseSourcesList({super.key, required this.onBrowse, this.query = ''});
 
   final void Function(String sourceId, String name) onBrowse;
+
+  /// Filters the rows by source name (label, and repo tag when present) —
+  /// case-insensitive substring, empty = show everything. This narrows which
+  /// installed sources are listed; it never touches content search.
+  final String query;
 
   @override
   Widget build(BuildContext context) {
     final b = categorizedSources();
+    final q = query.trim().toLowerCase();
+    bool matches(({String id, String label, String? repo}) s) =>
+        q.isEmpty ||
+        s.label.toLowerCase().contains(q) ||
+        (s.repo?.toLowerCase().contains(q) ?? false);
+
     final groups = <(String, List<({String id, String label, String? repo})>)>[
-      (context.l10n.anime, b.anime),
-      (context.l10n.moviesSeries, b.movies),
-      (context.l10n.modeManga, b.manga),
-      (context.l10n.modeNovel, b.novel),
+      (context.l10n.anime, b.anime.where(matches).toList()),
+      (context.l10n.moviesSeries, b.movies.where(matches).toList()),
+      (context.l10n.modeManga, b.manga.where(matches).toList()),
+      (context.l10n.modeNovel, b.novel.where(matches).toList()),
     ].where((g) => g.$2.isNotEmpty).toList();
 
     if (groups.isEmpty) {
+      final nothingInstalled =
+          b.anime.isEmpty && b.movies.isEmpty && b.manga.isEmpty && b.novel.isEmpty;
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
-          context.l10n.noSourcesInstalled,
+          nothingInstalled
+              ? context.l10n.noSourcesInstalled
+              : context.l10n.noMatchesFound,
           style: AppText.caption,
           textAlign: TextAlign.center,
         ),
