@@ -877,6 +877,15 @@ class _SourceRow extends StatelessWidget {
   /// Cloudflare solve). Null everywhere else, so the row is untouched.
   final Widget? trailing;
 
+  /// First letter of the source's own name for the avatar — the ecosystem
+  /// prefix ("CS · ", "Ani · ") is stripped first, or every CloudStream row
+  /// would read "C".
+  String get _initial {
+    final i = label.indexOf('· ');
+    final name = (i == -1 ? label : label.substring(i + 2)).trim();
+    return name.isEmpty ? '?' : name.characters.first.toUpperCase();
+  }
+
   @override
   Widget build(BuildContext context) {
     final hasRepo = repo != null && repo!.isNotEmpty;
@@ -885,10 +894,38 @@ class _SourceRow extends StatelessWidget {
       onLongPress: onLongPress,
       splashColor: AppColors.accent.withValues(alpha: 0.08),
       highlightColor: AppColors.accent.withValues(alpha: 0.04),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      child: DecoratedBox(
+        // Selected row: accent bar down the leading edge plus a wash, instead
+        // of a tick stranded on the far right of a wide row.
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.accent.withValues(alpha: 0.10)
+              : Colors.transparent,
+          border: Border(
+            left: BorderSide(
+              color: isActive ? AppColors.accent : Colors.transparent,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Padding(
+        padding: const EdgeInsets.fromLTRB(17, 11, 20, 11),
         child: Row(
           children: [
+            Container(
+              width: 36,
+              height: 36,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: AppColors.surface2,
+                borderRadius: BorderRadius.circular(9),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _initial,
+                style: AppText.headline.copyWith(color: AppColors.textSecondary),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -920,9 +957,8 @@ class _SourceRow extends StatelessWidget {
                 ),
               ),
             ?trailing,
-            if (isActive)
-              Icon(Icons.check, color: AppColors.accent, size: 20),
           ],
+        ),
         ),
       ),
     );

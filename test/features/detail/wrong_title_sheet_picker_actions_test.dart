@@ -56,6 +56,12 @@ class _FakeTitlePrefs extends TitlePrefsStore {
   Future<void> setCategory(String s, String u, String c) async {}
 }
 
+/// The selector row on the Detail screen carries the same shield/gear pair for
+/// the selected source, so a bare byIcon finder matches twice once the sheet is
+/// open. Scope to the sheet.
+Finder inSheet(Finder f) =>
+    find.descendant(of: find.byType(BottomSheet), matching: f);
+
 void main() {
   late Directory dir;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
@@ -126,7 +132,7 @@ void main() {
     // The shared picker has no title row — its tabs identify it.
     expect(find.text('Movies/Series'), findsOneWidget);
 
-    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+    expect(inSheet(find.byIcon(Icons.tune_rounded)), findsOneWidget);
   });
 
   testWidgets('tapping the gear opens settings but does not change the selection', (t) async {
@@ -142,9 +148,9 @@ void main() {
     await t.pumpAndSettle();
 
     final before = sl<MatchStore>().selectedSource(fma);
-    expect(find.byIcon(Icons.tune_rounded), findsOneWidget);
+    expect(inSheet(find.byIcon(Icons.tune_rounded)), findsOneWidget);
 
-    await t.tap(find.byIcon(Icons.tune_rounded));
+    await t.tap(inSheet(find.byIcon(Icons.tune_rounded)));
     await t.pumpAndSettle();
 
     // The sheet is still open (only a row's own body pops it) and the
@@ -173,10 +179,10 @@ void main() {
 
     // ani:1 is site-backed and gets the shield; allanime is a JS provider
     // with no base url and must not.
-    expect(find.byIcon(Icons.shield_rounded), findsOneWidget);
+    expect(inSheet(find.byIcon(Icons.shield_rounded)), findsOneWidget);
     // The shared picker builds its own row widget, not a ListTile.
     final shieldRow = find.ancestor(
-      of: find.byIcon(Icons.shield_rounded),
+      of: inSheet(find.byIcon(Icons.shield_rounded)),
       matching: find.byType(InkWell),
     );
     expect(
