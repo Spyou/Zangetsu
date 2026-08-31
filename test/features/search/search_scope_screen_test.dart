@@ -15,11 +15,13 @@ import 'package:hive/hive.dart';
 import 'package:watch_app/core/di/injector.dart' show sl;
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_item.dart';
+import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_scope.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/playback/source_health_store.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
@@ -27,6 +29,9 @@ import 'package:watch_app/core/state/active_source_cubit.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/home/search_screen.dart';
+import 'package:watch_app/features/search/bloc/search_bloc.dart';
+import 'package:watch_app/features/search/bloc/search_event.dart';
+import 'package:watch_app/features/search/browse_sources_list.dart';
 
 import '../../support/picker_deps.dart';
 
@@ -59,6 +64,29 @@ class _FakeSourceRepo implements SourceRepository {
     String category = 'sub',
     String? sourceId,
   }) async => const [];
+
+  /// Drives a filters-only browse (`SearchBloc._browseWithFilters`) so tests
+  /// can put the idle screen into `hasFilteredBrowse` without touching Hive.
+  @override
+  Future<({List<MediaItem> items, SourceOutcome outcome})> searchStatus(
+    String query, {
+    String category = 'sub',
+    String? sourceId,
+    String? filtersJson,
+    bool cache = false,
+    int page = 1,
+  }) async => (
+    items: [
+      MediaItem(
+        id: '1',
+        title: 'Browsed show',
+        url: 'https://x/1',
+        type: ProviderType.anime,
+        sourceId: sourceId ?? '',
+      ),
+    ],
+    outcome: SourceOutcome.ok,
+  );
 }
 
 class _FakeMetadataRepo implements MetadataRepository {
@@ -188,4 +216,43 @@ void main() {
     expect(sl<SearchPrefs>().scope, SearchScope.sources);
     expect(chipLabelled(t, 'Sources').selected, isTrue);
   });
+
+  testWidgets(
+    'Sources scope, empty query, idle: shows the sources list to browse',
+    (t) async {
+      // Default scope with no stored pref and Z Mode off is Sources — see the
+      // "byte-identical default" test above — so this is what today's users
+      // land on.
+      await t.pumpWidget(harness());
+      await t.pumpAndSettle();
+
+      expect(find.byType(BrowseSourcesList), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'a filters-only browse in Sources scope hides the sources list '
+    '(does not cover the browsed results)',
+    (t) async {
+      await t.pumpWidget(harness());
+      await t.pumpAndSettle();
+
+      // Starts on the sources list — the true empty idle state.
+      expect(find.byType(BrowseSourcesList), findsOneWidget);
+
+      // Drive the same no-query-plus-filters path Aniyomi/Mihon filter sheets
+      // use (SearchBloc._onSourceFiltersApplied -> _browseWithFilters). No
+      // Hive box is touched by this — _FakeSourceRepo.searchStatus above is a
+      // plain in-memory fake — so this runs outside runAsync, unlike the
+      // ZModePrefs/SearchPrefs Hive writes above.
+      final bloc = BlocProvider.of<SearchBloc>(
+        t.element(find.byType(BrowseSourcesList)),
+      );
+      bloc.add(const SearchSourceFiltersApplied('ani:1', '{"sort":"latest"}'));
+      await t.pumpAndSettle();
+
+      expect(bloc.state.hasFilteredBrowse, isTrue);
+      expect(find.byType(BrowseSourcesList), findsNothing);
+    },
+  );
 }
