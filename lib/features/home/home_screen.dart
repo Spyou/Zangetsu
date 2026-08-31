@@ -1276,12 +1276,10 @@ class _HomeViewState extends State<_HomeView>
 /// [HomeSourceSwitcherSlot] chip's job; this is for peeking at a different
 /// source without switching what Home itself is driven by.
 ///
-/// Sources-mode only: the old mode bar had its own "Sources" entry that
-/// navigated straight here. Now that picking Sources is a mode switch (see
-/// [ZModePrefs.sourcesMode]) rather than navigation, this button is what
-/// replaces that navigation once you're actually in the mode — so it's
-/// gated tighter than the switcher above (which also shows with Z Mode off
-/// entirely, where this screen was never reachable).
+/// Z Mode only: with Z Mode off, Home is already source-driven and the
+/// switcher below covers it — this is the ONLY way into the sources
+/// destination once Z Mode is on, so it shows whenever the toggle is on,
+/// full stop.
 ///
 /// Reactive to [ZModePrefs.revision], same pattern as
 /// [HomeSourceSwitcherSlot].
@@ -1293,7 +1291,7 @@ class HomeBrowseSourcesAction extends StatelessWidget {
     return ValueListenableBuilder<int>(
       valueListenable: ZModePrefs.revision,
       builder: (context, _, _) =>
-          (ZModePrefs.enabled && ZModePrefs.sourcesMode)
+          ZModePrefs.enabled
           ? IconButton(
               icon: const Icon(
                 Icons.extension_outlined,
