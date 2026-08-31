@@ -9,10 +9,26 @@ import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/content_row.dart';
 import '../../core/ui/poster_card.dart';
+import '../../core/ui/source_switcher.dart' show categorizedSources;
 import '../../l10n/l10n.dart';
 import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
 import 'cubit/browse_source_cubit.dart';
+
+/// The "ecosystem · language" tag [BrowseSourcesList] already shows as a row
+/// subtitle — same [categorizedSources] row, found here by id so the identity
+/// header can reuse it rather than inventing a new lookup. Null when the id
+/// isn't in any bucket (nothing installed with that id any more) or carries
+/// no tag.
+String? _repoTagFor(String sourceId) {
+  final b = categorizedSources();
+  for (final list in [b.anime, b.movies, b.manga, b.novel, b.nsfw]) {
+    for (final row in list) {
+      if (row.id == sourceId) return row.repo;
+    }
+  }
+  return null;
+}
 
 /// One source's catalogue — today's Home, pinned to a chosen source.
 ///
@@ -54,6 +70,15 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   bool _searching = false;
   late final _controller = TextEditingController();
   final _focusNode = FocusNode();
+
+  // Identity header content — computed once, it never changes for the life
+  // of this screen. [_displayName] is the source's clean name (unlike
+  // [widget.title], which can carry an ecosystem prefix baked into the
+  // picker's label); [_repoTag] is the same "ecosystem · lang" string
+  // [BrowseSourcesList] already shows as a row subtitle.
+  late final String _displayName =
+      sl<SourceRepository>().displayName(widget.sourceId);
+  late final String? _repoTag = _repoTagFor(widget.sourceId);
 
   @override
   void dispose() {
@@ -122,53 +147,66 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           ),
         ],
       ),
-      body: BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
-        builder: (context, state) {
-          if (state.isSearchActive) {
-            return _searchBody(context, state);
-          }
-          if (state.loading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (state.failed || state.sections.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  state.failed
-                      ? context.l10n.somethingWentWrong
-                      : context.l10n.noTitlesInThisList,
-                  style: AppText.caption,
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-          return ListView.builder(
-            padding: const EdgeInsets.only(bottom: 24),
-            itemCount: state.sections.length,
-            itemBuilder: (_, i) {
-              final section = state.sections[i];
-              final items = section.items;
-              return ContentRow(
-                title: section.title,
-                itemWidth: 140,
-                itemHeight: 236,
-                itemCount: items.length,
-                onSeeAll: () => _openSeeAll(context, section),
-                itemBuilder: (c, j) => PosterCard(
-                  title: items[j].title,
-                  imageUrl: items[j].cover,
-                  headers: items[j].coverHeaders,
-                  cellWidth: 140,
-                  qualityBadge: items[j].quality,
-                  dubBadge: items[j].dubBadge,
-                  onTap: () => _openDetail(context, items[j]),
-                ),
-              );
-            },
-          );
-        },
+      body: Column(
+        children: [
+          // Above the rows, not the search field — matches the mockup, and
+          // keeps the search AppBar exactly as it was.
+          if (!_searching)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: _SourceIdentityHeader(name: _displayName, tag: _repoTag),
+            ),
+          Expanded(
+            child: BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
+              builder: (context, state) {
+                if (state.isSearchActive) {
+                  return _searchBody(context, state);
+                }
+                if (state.loading) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (state.failed || state.sections.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        state.failed
+                            ? context.l10n.somethingWentWrong
+                            : context.l10n.noTitlesInThisList,
+                        style: AppText.caption,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  itemCount: state.sections.length,
+                  itemBuilder: (_, i) {
+                    final section = state.sections[i];
+                    final items = section.items;
+                    return ContentRow(
+                      title: section.title,
+                      itemWidth: 140,
+                      itemHeight: 236,
+                      itemCount: items.length,
+                      onSeeAll: () => _openSeeAll(context, section),
+                      itemBuilder: (c, j) => PosterCard(
+                        title: items[j].title,
+                        imageUrl: items[j].cover,
+                        headers: items[j].coverHeaders,
+                        cellWidth: 140,
+                        qualityBadge: items[j].quality,
+                        dubBadge: items[j].dubBadge,
+                        onTap: () => _openDetail(context, items[j]),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -224,6 +262,65 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           onTap: () => _openDetail(context, item),
         );
       },
+    );
+  }
+}
+
+/// Rounded-square initial + name + muted "ecosystem · lang" line, above the
+/// rows — so a source's own catalogue reads as its own place rather than a
+/// bare list under an AppBar title.
+class _SourceIdentityHeader extends StatelessWidget {
+  const _SourceIdentityHeader({required this.name, required this.tag});
+
+  final String name;
+  final String? tag;
+
+  @override
+  Widget build(BuildContext context) {
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              initial,
+              style: AppText.headline.copyWith(fontSize: 19, fontWeight: FontWeight.w800),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  style: AppText.body.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (tag != null && tag!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(tag!, style: AppText.caption, maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

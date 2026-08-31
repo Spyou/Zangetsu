@@ -51,5 +51,37 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.textContaining('HiAnime'), findsNothing);
+    expect(find.text('No sources installed'), findsOneWidget);
+  });
+
+  testWidgets('query narrows the rows by source name', (t) async {
+    await sl.reset();
+    await registerPickerDeps(
+      aniyomi: [
+        aniSource(id: 1, name: 'HiAnime'),
+        aniSource(id: 2, name: 'AllAnime'),
+      ],
+    );
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(body: BrowseSourcesList(onBrowse: (_, _) {}, query: 'hi')),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('HiAnime'), findsOneWidget);
+    expect(find.textContaining('AllAnime'), findsNothing);
+  });
+
+  testWidgets('a query nothing matches shows the no-matches state, not '
+      'the nothing-installed one', (t) async {
+    await t.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BrowseSourcesList(onBrowse: (_, _) {}, query: 'zzz-nope'),
+      ),
+    ));
+    await t.pumpAndSettle();
+
+    expect(find.textContaining('HiAnime'), findsNothing);
+    expect(find.text('No matches found'), findsOneWidget);
+    expect(find.text('No sources installed'), findsNothing);
   });
 }
