@@ -37,9 +37,29 @@ void main() {
     expect(ZModePrefs.streamKind, StreamKind.movie);
   });
 
+  test('sourcesMode is off by default, round-trips and bumps revision', () async {
+    expect(ZModePrefs.sourcesMode, isFalse);
+    final before = ZModePrefs.revision.value;
+    await ZModePrefs.setSourcesMode(true);
+    expect(ZModePrefs.sourcesMode, isTrue);
+    expect(ZModePrefs.revision.value, before + 1);
+    await Hive.close();
+    Hive.init(dir.path);
+    await ZModePrefs.init();
+    expect(ZModePrefs.sourcesMode, isTrue);
+  });
+
+  test('setting sourcesMode to the same value does not bump revision', () async {
+    await ZModePrefs.setSourcesMode(true);
+    final before = ZModePrefs.revision.value;
+    await ZModePrefs.setSourcesMode(true);
+    expect(ZModePrefs.revision.value, before);
+  });
+
   test('reads as off before init without throwing', () async {
     await Hive.close();
     Hive.init(dir.path);
     expect(ZModePrefs.enabled, isFalse);
+    expect(ZModePrefs.sourcesMode, isFalse);
   });
 }
