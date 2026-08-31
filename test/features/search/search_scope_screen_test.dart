@@ -1,8 +1,7 @@
 // Search no longer offers its own Library/Sources choice — no chips, no
-// persisted pref. The scope is DERIVED from Zangetsu Mode: Sources whenever
-// the app itself is source-driven (Z Mode off, or Z Mode on with the
-// Sources mode picked), Library otherwise. Coverage lives entirely in the
-// widget tests below, against the real screen, since the derivation is only
+// persisted pref. The scope is DERIVED from Zangetsu Mode: Sources when Z
+// Mode is off, Library when it's on. Coverage lives entirely in the widget
+// tests below, against the real screen, since the derivation is only
 // meaningful once it decides what actually renders (no chips, and the
 // Sources-only source line shows/hides with it).
 import 'dart:io';
@@ -163,7 +162,6 @@ void main() {
     await t.runAsync(() async {
       await ZModePrefs.init();
       await ZModePrefs.setEnabled(true);
-      await ZModePrefs.setSourcesMode(true);
     });
 
     await t.pumpWidget(harness());
@@ -186,9 +184,7 @@ void main() {
     },
   );
 
-  testWidgets('Z Mode on, Sources mode off: Search is library-scoped', (
-    t,
-  ) async {
+  testWidgets('Z Mode on: Search is library-scoped', (t) async {
     await t.runAsync(() async {
       await ZModePrefs.init();
       await ZModePrefs.setEnabled(true);
@@ -200,45 +196,4 @@ void main() {
     expect(find.byType(ChoiceChip), findsNothing);
     expect(sourceLine, findsNothing);
   });
-
-  testWidgets('Z Mode on, Sources mode on: Search is source-scoped', (
-    t,
-  ) async {
-    await t.runAsync(() async {
-      await ZModePrefs.init();
-      await ZModePrefs.setEnabled(true);
-      await ZModePrefs.setSourcesMode(true);
-    });
-
-    await t.pumpWidget(harness());
-    await t.pumpAndSettle();
-
-    expect(find.byType(ChoiceChip), findsNothing);
-    expect(sourceLine, findsOneWidget);
-  });
-
-  testWidgets(
-    'picking Sources vs another mode rebuilds the bloc against the right '
-    'repository, without remounting the screen',
-    (t) async {
-      await t.runAsync(() async {
-        await ZModePrefs.init();
-        await ZModePrefs.setEnabled(true);
-      });
-
-      await t.pumpWidget(harness());
-      await t.pumpAndSettle();
-      expect(sourceLine, findsNothing); // library-scoped
-
-      // Same real Hive write drain gotcha as ZModePrefs.setEnabled above —
-      // this is what the mode bar's "Sources" pick does under the hood.
-      await t.runAsync(() => ZModePrefs.setSourcesMode(true));
-      await t.pump();
-      expect(sourceLine, findsOneWidget); // now source-scoped
-
-      await t.runAsync(() => ZModePrefs.setSourcesMode(false));
-      await t.pump();
-      expect(sourceLine, findsNothing); // back to library-scoped
-    },
-  );
 }
