@@ -19,6 +19,7 @@ import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
 import '../i18n/source_languages.dart';
 import '../prefs/source_lang_prefs.dart';
+import '../provider/cf_solve_needed.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
@@ -309,6 +310,38 @@ class SourceRepository implements CatalogueRepository {
     // item url into an absolute one.
     final c = _csManager.get(sourceId);
     return c is CloudStreamProvider ? c.mainUrl : '';
+  }
+
+  /// The url to actually TARGET when the user asks to solve Cloudflare for
+  /// [sourceId] — [baseUrlFor] stays the synchronous, cached value the
+  /// picker shield's sync visibility check and "open in browser" already
+  /// depend on; this is the one callers should await right before opening
+  /// the solve WebView.
+  ///
+  /// Order of preference:
+  ///  1. A host [CfSolveNeeded] actually saw hit a challenge for this source
+  ///     — the freshest signal there is.
+  ///  2. For CloudStream, the plugin's CURRENT `MainAPI.mainUrl`, read fresh
+  ///     off the loaded native provider (see [csPluginLiveMainUrl]). A
+  ///     plugin rewrites `mainUrl` in place once it resolves its live domain
+  ///     (e.g. by fetching a redirect list at runtime), so the snapshot a
+  ///     [CloudStreamProvider] carries — captured once when the source was
+  ///     listed — can point at a domain the plugin has already moved off.
+  ///  3. [baseUrlFor]'s cached listing value — stale is still better than
+  ///     nothing when the plugin isn't loaded right now.
+  ///
+  /// Null when none of those is usable — callers must hide the solve action
+  /// rather than open a url that can't be solved.
+  Future<String?> cfSolveTargetFor(String sourceId) async {
+    final flagged = CfSolveNeeded.urlFor(sourceId);
+    if (flagged != null && flagged.isNotEmpty) return flagged;
+    final c = _csManager.get(sourceId);
+    if (c is CloudStreamProvider) {
+      final live = await csPluginLiveMainUrl(c.hostKey);
+      if (live != null && live.isNotEmpty) return live;
+    }
+    final cached = baseUrlFor(sourceId);
+    return cached.isEmpty ? null : cached;
   }
 
   /// Best-effort language code for a source (e.g. "en"), or null when the

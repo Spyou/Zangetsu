@@ -66,6 +66,27 @@ Future<bool> csPluginResetData(String apiName) async {
   }
 }
 
+/// The CloudStream source [apiName]'s CURRENT `MainAPI.mainUrl`, read fresh
+/// off the loaded native plugin — NOT the value captured when the source was
+/// last listed. `mainUrl` is mutable; a plugin rewrites it in place once it
+/// resolves its live domain (e.g. by fetching a redirect list at runtime), so
+/// the listing-time snapshot a [CloudStreamProvider] carries can point at a
+/// domain the plugin has already moved off by the time the user acts on it.
+/// No native solver on this platform (iOS / not wired) or the plugin isn't
+/// loaded → the channel throws/answers null, same as [ProviderManager]'s own
+/// Cloudflare channel call — this degrades to null either way, and callers
+/// fall back to the cached listing value.
+Future<String?> csPluginLiveMainUrl(String apiName) async {
+  try {
+    final url = await _csChannel.invokeMethod<String>('liveMainUrl', {
+      'name': apiName,
+    });
+    return (url != null && url.isNotEmpty) ? url : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 /// CloudStream source types that map to the [ProviderType.anime] bucket.
 /// Everything else (Movie, TvSeries, AsianDrama, etc.) is treated as
 /// [ProviderType.movie] — the catalog's non-anime value.
