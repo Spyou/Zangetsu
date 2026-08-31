@@ -2312,6 +2312,11 @@ class AppLocalizationsFr extends AppLocalizations {
   String get sourceSettings => 'Réglages de la source';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return 'Réinitialiser les données enregistrées de $name ? Cela efface ses réglages enregistrés, sa connexion et ses cookies. Votre liste, historique et téléchargements restent intacts.';
+  }
+
+  @override
   String get removeRepository2 => 'Retirer le dépôt ?';
 
   @override

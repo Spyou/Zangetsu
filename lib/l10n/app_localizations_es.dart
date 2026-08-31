@@ -2304,6 +2304,11 @@ class AppLocalizationsEs extends AppLocalizations {
   String get sourceSettings => 'Ajustes de la fuente';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return '¿Restablecer los datos guardados de $name? Esto borra su configuración guardada, el inicio de sesión y las cookies. Tu lista, historial y descargas no se ven afectados.';
+  }
+
+  @override
   String get removeRepository2 => '¿Quitar repositorio?';
 
   @override

@@ -2232,6 +2232,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sourceSettings => 'ソース設定';
 
   @override
+  String resetSourceDataConfirm(String name) {
+    return '$nameの保存データをリセットしますか?保存された設定、ログイン情報、Cookieが削除されます。リスト、履歴、ダウンロードには影響しません。';
+  }
+
+  @override
   String get removeRepository2 => 'リポジトリを削除しますか？';
 
   @override

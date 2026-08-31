@@ -48,6 +48,23 @@ Future<void> csPluginOpenSettings(String apiName) async {
   } catch (_) {}
 }
 
+/// Clears the CloudStream source [apiName]'s OWN stored state — its
+/// DataStore-backed settings and any cookies for its site — without touching
+/// any other plugin. Android-only; returns false on any failure or other
+/// platform, so a caller can tell "nothing to clear" and "couldn't clear"
+/// apart from a genuine success.
+Future<bool> csPluginResetData(String apiName) async {
+  if (!Platform.isAndroid) return false;
+  try {
+    return await _csChannel.invokeMethod<bool>('resetPluginData', {
+          'name': apiName,
+        }) ??
+        false;
+  } catch (_) {
+    return false;
+  }
+}
+
 /// CloudStream source types that map to the [ProviderType.anime] bucket.
 /// Everything else (Movie, TvSeries, AsianDrama, etc.) is treated as
 /// [ProviderType.movie] — the catalog's non-anime value.

@@ -772,6 +772,14 @@
 	"noCloudStreamSourcesInstalled": "尚未安裝 CloudStream 來源。",
 	"cloudstream": "雲端",
 	"sourceSettings": "來源設定",
+	"resetSourceDataConfirm": "重設{name}的已儲存資料?這會清除它儲存的設定、登入狀態和 Cookie。你的清單、記錄和下載不受影響。",
+	"@resetSourceDataConfirm": {
+		"placeholders": {
+			"name": {
+				"type": "String"
+			}
+		}
+	},
 	"removeRepository2": "要移除儲庫嗎？",
 	"removeThisRepositoryAndItsSources": "要移除此儲庫及其來源嗎？",
 	"removed": "已移除",

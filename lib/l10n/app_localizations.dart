@@ -4406,6 +4406,12 @@ abstract class AppLocalizations {
   /// **'Source settings'**
   String get sourceSettings;
 
+  /// No description provided for @resetSourceDataConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset {name}\'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.'**
+  String resetSourceDataConfirm(String name);
+
   /// No description provided for @removeRepository2.
   ///
   /// In en, this message translates to:

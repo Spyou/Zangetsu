@@ -361,6 +361,67 @@ class PluginHost(private val context: Context) {
         return runCatching { opener(activity); true }.getOrDefault(false)
     }
 
+    /**
+     * Clears [apiName]'s own stored state — its DataStore-backed settings and
+     * any cookies set for its site — WITHOUT touching any other plugin or the
+     * shared cookie jar. For a source whose own login/session/preferences
+     * have gone stale, this is the narrow alternative to clearing the app's
+     * data entirely.
+     *
+     * Settings: CloudStream plugins persist through [DataStore], keyed
+     * `"<folder>/<path>"` — folder is the provider's own name (the same
+     * `MainAPI.name` [apiByName] resolves sources by; see DataStore.kt's
+     * "StremioX" example). Only keys under that folder are removed.
+     * ponytail: an older plugin that inlines CloudStream's original
+     * (folder-less) `getKey`/`setKey` stores a bare key we can't attribute to
+     * it, so this can't be a guarantee for every plugin ever loaded — just
+     * the modern, documented convention. No broader sweep exists without a
+     * "clear every plugin's prefs" call, which is exactly what this is meant
+     * to avoid.
+     *
+     * Cookies: expires every cookie WebView's [android.webkit.CookieManager]
+     * holds for [MainAPI.mainUrl] — that source's own site only.
+     *
+     * @return true if something was actually cleared.
+     */
+    fun resetPluginData(apiName: String): Boolean {
+        val api = apiByName(apiName) ?: return false
+        var cleared = false
+
+        runCatching {
+            val prefix = "${api.name}/"
+            val prefs = com.lagradost.cloudstream3.utils.DataStore.getSharedPrefs(context)
+            val keys = prefs.all.keys.filter { it.startsWith(prefix) }
+            if (keys.isNotEmpty()) {
+                val editor = prefs.edit()
+                keys.forEach { editor.remove(it) }
+                editor.apply()
+                cleared = true
+            }
+        }
+
+        runCatching {
+            val url = api.mainUrl
+            if (url.isBlank()) return@runCatching
+            val cm = android.webkit.CookieManager.getInstance()
+            val existing = cm.getCookie(url) ?: return@runCatching
+            var any = false
+            existing.split(";").forEach { pair ->
+                val cookieName = pair.substringBefore('=').trim()
+                if (cookieName.isNotEmpty()) {
+                    cm.setCookie(url, "$cookieName=; Max-Age=0; Path=/")
+                    any = true
+                }
+            }
+            if (any) {
+                cm.flush()
+                cleared = true
+            }
+        }
+
+        return cleared
+    }
+
     /** Re-instantiate the plugin in [file] with [activity] as its load context and
      *  return its freshly-bound openSettings, undoing the duplicate registration. */
     private fun freshOpener(
