@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/mode/content_mode.dart';
+import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/features/shell/mode_bar.dart';
 
@@ -64,22 +65,28 @@ void main() {
   });
 
   testWidgets(
-    'sourcesSelected renders Sources selected and the four content modes unselected',
+    'Manga selected AND Sources on render active at the same time '
+    '(the combination that is unreachable today)',
     (t) async {
       await t.pumpWidget(MaterialApp(home: Scaffold(
         body: ModeBar(
           open: true,
-          current: (ContentMode.anime, StreamKind.anime),
+          current: (ContentMode.manga, StreamKind.anime),
           sourcesSelected: true,
           onPicked: (_, _) {},
           onSourcesPicked: () {},
         ),
       )));
 
-      final sources = t.widget<Text>(find.text('Sources'));
+      final manga = t.widget<Text>(find.text('Manga'));
       final anime = t.widget<Text>(find.text('Anime'));
-      // Selected labels render in the accent colour; unselected in the
-      // secondary one — see _Choice.build.
+      final sources = t.widget<Text>(find.text('Sources'));
+
+      // Manga stays the selected content mode — sourcesSelected doesn't
+      // knock it out of the segmented group.
+      expect(manga.style?.color, AppColors.accent);
+      expect(anime.style?.color, isNot(AppColors.accent));
+      // Sources renders its own independent "on" state at the same time.
       expect(sources.style?.color, isNot(anime.style?.color));
     },
   );
