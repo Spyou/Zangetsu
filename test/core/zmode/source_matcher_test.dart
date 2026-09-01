@@ -6,6 +6,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
@@ -41,45 +42,10 @@ class _FakeSources implements SourceRepository {
   }
 }
 
-/// Records how many searches are in flight AT ONCE, and lets a source be made
-/// slow, so the sweep's concurrency and its ordering can be asserted without
-/// depending on wall-clock timing.
-class _ConcurrentSources implements SourceRepository {
-  _ConcurrentSources(this.bySource, {this.slow = const {}});
-  final Map<String, List<MediaItem>> bySource;
-
-  /// Sources that yield to the event loop [slow] times before answering, so a
-  /// later-but-faster source would win any race decided by reply order.
-  final Map<String, int> slow;
-
-  final searched = <String>[];
-  int _live = 0;
-  int peak = 0;
-
-  @override
-  noSuchMethod(Invocation i) => super.noSuchMethod(i);
-  @override
-  List<({String id, String name})> get pickableSources => loadedSources;
-  @override
-  bool hasSource(String sourceId) => bySource.containsKey(sourceId);
-
-  @override
-  Future<List<MediaItem>> search(String query,
-      {String category = 'sub', String? sourceId}) async {
-    searched.add(sourceId!);
-    _live++;
-    if (_live > peak) peak = _live;
-    for (var i = 0; i < (slow[sourceId] ?? 0); i++) {
-      await Future<void>.delayed(Duration.zero);
-    }
-    _live--;
-    return bySource[sourceId] ?? const [];
-  }
-}
-
 void main() {
   late Directory dir;
   late MatchStore store;
+  late ZSourcePrefs prefs;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
   final two = [(id: 'allanime', name: 'AllAnime'), (id: 'hianime', name: 'HiAnime')];
 
@@ -87,6 +53,7 @@ void main() {
     dir = await Directory.systemTemp.createTemp('matcher');
     Hive.init(dir.path);
     store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
   });
   tearDown(() async {
     await Hive.close();
@@ -99,7 +66,7 @@ void main() {
         'allanime': [_hit('allanime', 'Naruto')],
         'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
       }, candidates: {'allanime', 'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolveOn(fma, 'hianime', title: 'Fullmetal Alchemist: Brotherhood');
       expect(r?.sourceId, 'hianime');
       expect(repo.searched, ['hianime']); // allanime was never touched
@@ -108,7 +75,7 @@ void main() {
 
     test('returns null (not a throw) when the named source genuinely lacks it', () async {
       final repo = _FakeSources({'allanime': [_hit('allanime', 'Naruto')]});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolveOn(fma, 'allanime', title: 'Fullmetal Alchemist: Brotherhood');
       expect(r, isNull);
       expect(store.get(fma, 'allanime'), isNull);
@@ -116,105 +83,95 @@ void main() {
 
     test('a throwing source returns null, not an exception', () async {
       final repo = _FakeSources({}, candidates: {'allanime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       expect(await m.resolveOn(fma, 'allanime', title: 'anything'), isNull);
     });
   });
 
   group('resolve', () {
-    test('finds the title on the first source that has it, saves it and selects it', () async {
+    test('with no stored pick, the first candidate is the source', () async {
       final repo = _FakeSources({
-        'allanime': [_hit('allanime', 'Naruto')],
+        'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
         'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
       });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
-      expect(r?.sourceId, 'hianime');
-      expect(store.get(fma, 'hianime')?.sourceId, 'hianime');
-      expect(store.selectedSource(fma), 'hianime');
+      expect(r?.sourceId, 'allanime');
+      expect(store.get(fma, 'allanime')?.sourceId, 'allanime');
+      // The defining rule: one source is asked, never a sweep of all of them.
+      expect(repo.searched, ['allanime']);
     });
 
     test('honours a stored selection over candidate order', () async {
       await store.save(fma, const SourceMatch(sourceId: 'hianime',
           showUrl: 'u', showId: 'i', showTitle: 't', pinned: false));
-      await store.selectSource(fma, 'hianime');
+      prefs.set(fma.kind, 'hianime');
       final repo = _FakeSources({
         'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
       }, candidates: {'allanime', 'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'anything');
       expect(r?.sourceId, 'hianime');
       expect(repo.searched, isEmpty); // selection short-circuited the sweep
     });
 
     test('a selected, installed source with no match returns null honestly, no fallback sweep', () async {
-      await store.selectSource(fma, 'allanime');
+      prefs.set(fma.kind, 'allanime');
       final repo = _FakeSources({
         'allanime': [_hit('allanime', 'Naruto')], // genuinely not FMA
         'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
       }, candidates: {'allanime', 'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
       expect(r, isNull);
       expect(repo.searched, ['allanime']); // hianime never tried
-      expect(store.selectedSource(fma), 'allanime'); // selection unchanged
+      expect(prefs.get(fma.kind), 'allanime'); // selection unchanged
     });
 
-    test('a saved unpinned match on an uninstalled source searches again', () async {
+    test('a pick that was uninstalled falls back to one that still exists', () async {
       await store.save(fma, const SourceMatch(sourceId: 'allanime',
           showUrl: 'u', showId: 'i', showTitle: 't', pinned: false));
-      await store.selectSource(fma, 'allanime');
-      // allanime was uninstalled since the match was saved; only hianime is left.
+      await prefs.set(fma.kind, 'allanime');
+      // allanime is gone — candidatesForKind only ever lists installed sources,
+      // so the stored pick no longer appears in it.
       final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]},
           installed: {'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs,
+          candidates: (_) => [(id: 'hianime', name: 'HiAnime')]);
       final r = await m.resolve(fma, title: 'FMA');
       expect(r?.sourceId, 'hianime');
       expect(store.get(fma, 'hianime')?.sourceId, 'hianime');
-      expect(store.selectedSource(fma), 'hianime');
+      // The stored pick is NOT rewritten by falling back — reinstall allanime
+      // and it is the source again, without the user re-choosing it.
+      expect(prefs.get(fma.kind), 'allanime');
     });
 
     test('a saved PINNED match on an uninstalled source is still honoured', () async {
       await store.pin(fma, const SourceMatch(sourceId: 'allanime',
           showUrl: 'u', showId: 'i', showTitle: 't', pinned: true));
-      await store.selectSource(fma, 'allanime');
+      prefs.set(fma.kind, 'allanime');
       final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]},
           installed: {'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'FMA');
       expect(r?.sourceId, 'allanime');
       expect(repo.searched, isEmpty);
     });
 
-    test('a pin on a non-selected candidate still wins when the sweep reaches it', () async {
-      // Pinned earlier, then the user moved the selection elsewhere and that
-      // source later vanished — the sweep falls back to hianime, which still
-      // carries its own pin and must not be re-searched over.
-      await store.pin(fma, const SourceMatch(sourceId: 'hianime',
-          showUrl: 'https://h/pinned', showId: 'pinned', showTitle: 'FMA', pinned: true));
-      await store.selectSource(fma, 'allanime'); // then uninstalled + unpinned
-      final repo = _FakeSources({'hianime': [_hit('hianime', 'wrong result')]},
-          installed: {'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
-      final r = await m.resolve(fma, title: 'anything');
-      expect(r?.showId, 'pinned');
-      expect(repo.searched, isEmpty); // never re-searched hianime
-      expect(store.selectedSource(fma), 'hianime');
-    });
-
-    test('a dead source is skipped, not fatal', () async {
+    test('a dead selected source returns null, not an exception', () async {
+      // allanime is the pick (first candidate) and throws. There is no longer
+      // another source to fall through to, so this must be a clean null.
       final repo = _FakeSources({'hianime': [_hit('hianime', 'FMA')]},
           candidates: {'allanime', 'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
-      final r = await m.resolve(fma, title: 'FMA');
-      expect(r?.sourceId, 'hianime');
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
+      expect(await m.resolve(fma, title: 'FMA'), isNull);
     });
 
     test('nothing anywhere returns null and saves/selects nothing', () async {
       final repo = _FakeSources({'allanime': [], 'hianime': []});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       expect(await m.resolve(fma, title: 'x'), isNull);
-      expect(store.selectedSource(fma), isNull);
+      expect(prefs.get(fma.kind), isNull);
     });
 
     test('a MAL id on the result beats a closer title', () async {
@@ -222,7 +179,7 @@ void main() {
         'allanime': [_hit('allanime', 'Fullmetal Alchemist', malId: 121),
                      _hit('allanime', 'FMA Brotherhood', malId: 5114)],
       });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => [two.first]);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => [two.first]);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist', malId: 5114);
       expect(r?.showUrl, 'https://allanime/FMA Brotherhood');
     });
@@ -232,10 +189,10 @@ void main() {
         'allanime': [_hit('allanime', 'Naruto')],
         'hianime': [_hit('hianime', 'One Piece')],
       });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
       expect(r, isNull);
-      expect(store.selectedSource(fma), isNull);
+      expect(prefs.get(fma.kind), isNull);
     });
 
     test('a genuine match on the first source stops the search', () async {
@@ -243,7 +200,7 @@ void main() {
         'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
         'hianime': [_hit('hianime', 'Should not be reached')],
       });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
       expect(r?.sourceId, 'allanime');
       expect(repo.searched, ['allanime']);
@@ -255,7 +212,7 @@ void main() {
             englishTitle: 'Fullmetal Alchemist: Brotherhood')],
         'hianime': [_hit('hianime', 'Should not be reached')],
       });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.resolve(fma, title: 'Fullmetal Alchemist: Brotherhood');
       expect(r?.sourceId, 'allanime');
       expect(r?.showTitle, 'Hagane no Renkinjutsushi');
@@ -265,9 +222,9 @@ void main() {
     test('the last candidate source throwing does not propagate', () async {
       // allanime is alive but has nothing; hianime (the last candidate) is dead.
       final repo = _FakeSources({'allanime': []}, candidates: {'allanime', 'hianime'});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       expect(await m.resolve(fma, title: 'anything'), isNull);
-      expect(store.selectedSource(fma), isNull);
+      expect(prefs.get(fma.kind), isNull);
     });
   });
 
@@ -277,9 +234,10 @@ void main() {
           showUrl: 'a', showId: 'a', showTitle: 'a', pinned: false));
       await store.save(fma, const SourceMatch(sourceId: 'hianime',
           showUrl: 'h', showId: 'h', showTitle: 'h', pinned: false));
-      final m = SourceMatcher(sources: _FakeSources({}), store: store, candidates: (_) => two);
-      expect(m.saved(fma), isNull); // nothing selected yet
-      await store.selectSource(fma, 'hianime');
+      final m = SourceMatcher(sources: _FakeSources({}), store: store, prefs: prefs, candidates: (_) => two);
+      // No stored pick — the first candidate is the source, so its match answers.
+      expect(m.saved(fma)?.sourceId, 'allanime');
+      await prefs.set(fma.kind, 'hianime');
       expect(m.saved(fma)?.sourceId, 'hianime');
     });
   });
@@ -287,94 +245,15 @@ void main() {
   group('pinManual', () {
     test('pins the pick and selects its source', () async {
       final repo = _FakeSources({});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       final r = await m.pinManual(fma, _hit('hianime', 'FMA'));
       expect(r.pinned, isTrue);
       expect(store.get(fma, 'hianime')?.pinned, isTrue);
-      expect(store.selectedSource(fma), 'hianime');
+      expect(prefs.get(fma.kind), 'hianime');
     });
   });
 
-  group('parallel sweep', () {
-    // 5 candidates; only the last has it, so the whole list gets searched.
-    List<({String id, String name})> five() => const [
-      (id: 's0', name: 'S0'),
-      (id: 's1', name: 'S1'),
-      (id: 's2', name: 'S2'),
-      (id: 's3', name: 'S3'),
-      (id: 's4', name: 'S4'),
-    ];
 
-    test('the first candidate is probed alone, the rest go out together',
-        () async {
-      final repo = _ConcurrentSources({
-        's0': [_hit('s0', 'Nope')],
-        's1': [_hit('s1', 'Nope')],
-        's2': [_hit('s2', 'Nope')],
-        's3': [_hit('s3', 'Nope')],
-        's4': [_hit('s4', 'FMA')],
-        // every one is made slow so overlap is observable at all
-      }, slow: {'s0': 2, 's1': 2, 's2': 2, 's3': 2, 's4': 2});
-      final m = SourceMatcher(
-          sources: repo, store: store, candidates: (_) => five());
-
-      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 's4');
-      expect(repo.searched.length, 5);
-      // s0 alone, then s1..s4 four-wide.
-      expect(repo.peak, 4);
-    });
-
-    test('a slow earlier source still beats a fast later one', () async {
-      final repo = _ConcurrentSources({
-        's0': [_hit('s0', 'Nope')], // head misses, so the tail runs in parallel
-        's1': [_hit('s1', 'FMA')], // slow, but earlier
-        's2': [_hit('s2', 'FMA')], // instant, but later
-      }, slow: {'s1': 8});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => const [
-        (id: 's0', name: 'S0'),
-        (id: 's1', name: 'S1'),
-        (id: 's2', name: 'S2'),
-      ]);
-
-      // Candidate order decides, not who replied first — otherwise which
-      // source a title lands on would change between runs.
-      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 's1');
-      expect(store.selectedSource(fma), 's1');
-    });
-  });
-
-  group('concurrent resolves', () {
-    test('two at once for the same title sweep only once', () async {
-      final repo = _FakeSources({
-        'allanime': [_hit('allanime', 'FMA')],
-        'hianime': [_hit('hianime', 'FMA')],
-      });
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
-
-      // What the Detail screen does: the episode list and the source-selector
-      // row both ask for the same title at the same moment.
-      final both = await Future.wait([
-        m.resolve(fma, title: 'FMA'),
-        m.resolve(fma, title: 'FMA'),
-      ]);
-
-      expect(both[0]?.sourceId, 'allanime');
-      expect(both[1]?.sourceId, 'allanime');
-      expect(repo.searched, ['allanime'], reason: 'one sweep, not two');
-    });
-
-    test('a later resolve still sweeps once the first has finished', () async {
-      final repo = _FakeSources({'allanime': [], 'hianime': [_hit('hianime', 'FMA')]});
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
-      await m.resolve(fma, title: 'FMA');
-      expect(repo.searched, ['allanime', 'hianime']);
-      // The in-flight entry must be cleared on completion, not leaked — a
-      // second, later call is a fresh question, answered from the store here.
-      repo.searched.clear();
-      expect((await m.resolve(fma, title: 'FMA'))?.sourceId, 'hianime');
-      expect(repo.searched, isEmpty);
-    });
-  });
 
   group('remembered misses', () {
     // Every candidate answers, none of them with this title.
@@ -383,15 +262,14 @@ void main() {
       'hianime': [_hit('hianime', 'Another Thing')],
     });
 
-    test('a title nothing has re-asks no one on the next resolve', () async {
+    test('a source that said no is not asked again on the next resolve', () async {
       final repo = noneHaveIt();
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
 
       expect(await m.resolve(fma, title: 'Fullmetal Alchemist'), isNull);
-      expect(repo.searched, ['allanime', 'hianime']);
+      expect(repo.searched, ['allanime']);
 
-      // This is the whole point: opening the title again used to pay for the
-      // same two searches, every visit, forever.
+      // Opening the title again used to pay for the same search, every visit.
       repo.searched.clear();
       expect(await m.resolve(fma, title: 'Fullmetal Alchemist'), isNull);
       expect(repo.searched, isEmpty);
@@ -400,7 +278,7 @@ void main() {
     test('the miss expires, so a source that later adds the title is found',
         () async {
       final repo = noneHaveIt();
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       await m.resolve(fma, title: 'Fullmetal Alchemist');
       expect(store.missedRecently(fma, 'allanime'), isTrue);
 
@@ -418,12 +296,12 @@ void main() {
 
     test('a manual pin clears that source\'s miss', () async {
       final repo = noneHaveIt();
-      final m = SourceMatcher(sources: repo, store: store, candidates: (_) => two);
+      final m = SourceMatcher(sources: repo, store: store, prefs: prefs, candidates: (_) => two);
       await m.resolve(fma, title: 'Fullmetal Alchemist');
-      expect(store.missedRecently(fma, 'hianime'), isTrue);
+      expect(store.missedRecently(fma, 'allanime'), isTrue);
 
-      await m.pinManual(fma, _hit('hianime', 'Fullmetal Alchemist'));
-      expect(store.missedRecently(fma, 'hianime'), isFalse);
+      await m.pinManual(fma, _hit('allanime', 'Fullmetal Alchemist'));
+      expect(store.missedRecently(fma, 'allanime'), isFalse);
     });
   });
 }

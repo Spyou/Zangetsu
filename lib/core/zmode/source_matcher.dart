@@ -6,6 +6,7 @@ import '../provider/cf_solve_needed.dart';
 import '../repository/source_repository.dart';
 import 'match_store.dart';
 import 'zmode_ids.dart';
+import 'zmode_source_prefs.dart';
 
 /// Thrown by playback when a metadata title has no source at all.
 class NoSourceMatch implements Exception {
@@ -34,19 +35,22 @@ class SourceMatcher {
   SourceMatcher({
     required SourceRepository sources,
     required MatchStore store,
+    required ZSourcePrefs prefs,
     required List<({String id, String name})> Function(ZKind) candidates,
   }) : _sources = sources,
        _store = store,
+       _prefs = prefs,
        _candidates = candidates;
 
   final SourceRepository _sources;
   final MatchStore _store;
+  final ZSourcePrefs _prefs;
   final List<({String id, String name})> Function(ZKind) _candidates;
 
   /// The remembered match for the currently selected source, without
   /// searching. Null when no source is selected, or nothing is stored for it.
   SourceMatch? saved(ZCanonical c) {
-    final sel = _store.selectedSource(c);
+    final sel = selectedFor(c.kind);
     return sel == null ? null : _store.get(c, sel);
   }
 
@@ -152,11 +156,6 @@ class SourceMatcher {
   /// the network work and the wait.
   final Map<String, Future<SourceMatch?>> _inFlight = {};
 
-  /// How many candidates are searched at once once the first has missed.
-  /// Small on purpose: firing every installed source at once invites rate
-  /// limiting, and the JS providers still decode on the main isolate, so a
-  /// wide fan-out would jank the very screen this exists to speed up.
-  static const int _sweepWidth = 4;
 
   Future<SourceMatch?> resolve(
     ZCanonical c, {
@@ -183,44 +182,33 @@ class SourceMatcher {
     String? altTitle,
     int? malId,
   }) async {
-    final selId = _store.selectedSource(c);
-    if (selId != null) {
-      final r = await _matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
-      if (r != null) return r;
-      if (_sources.hasSource(selId)) return null;
-      // Selected source is gone and had nothing pinned — fall through and
-      // pick a new one below.
-    }
-
-    final rest = [
-      for (final s in _candidates(c.kind))
-        if (s.id != selId) s, // already checked above
-    ];
-    for (var i = 0; i < rest.length;) {
-      // The FIRST candidate is probed alone. It usually has the title, and
-      // searching past a source that is about to say yes would put load on
-      // other sources for nothing. Only once it misses is it worth
-      // speculating, and then the rest go out [_sweepWidth] at a time.
-      final width = i == 0 ? 1 : _sweepWidth;
-      final end = i + width < rest.length ? i + width : rest.length;
-      final batch = rest.sublist(i, end);
-      final found = await Future.wait([
-        for (final s in batch)
-          _matchOn(c, s.id, title: title, altTitle: altTitle, malId: malId),
-      ]);
-      // Searched together, READ in candidate order: which source wins must
-      // not depend on which one happened to answer first, or the selection a
-      // title lands on changes between runs.
-      for (var j = 0; j < found.length; j++) {
-        if (found[j] != null) {
-          await _store.selectSource(c, batch[j].id);
-          return found[j];
-        }
-      }
-      i = end;
-    }
-    return null;
+    final selId = selectedFor(c.kind);
+    if (selId == null) return null; // nothing installed that can play this
+    return _matchOn(c, selId, title: title, altTitle: altTitle, malId: malId);
   }
+
+  /// The source that plays [kind]: the user's remembered pick when it is still
+  /// installed, else the first candidate. Null only when nothing installed can
+  /// play this kind at all.
+  ///
+  /// Synchronous and never searches, which is the point — the Detail screen
+  /// reads this to name its source on the first frame. This used to be derived
+  /// by searching every installed source in turn and taking whichever had the
+  /// title, so the row could name nothing until that finished, and could then
+  /// change under the user. One declared source per kind means there is
+  /// nothing to wait for and nothing to disagree with; a source that turns out
+  /// not to have a title now says so instead of being silently replaced.
+  String? selectedFor(ZKind kind) {
+    final list = _candidates(kind);
+    if (list.isEmpty) return null;
+    final saved = _prefs.get(kind);
+    if (saved != null && list.any((s) => s.id == saved)) return saved;
+    return list.first.id;
+  }
+
+  /// Make [sourceId] the source for [kind], for every title of that kind.
+  Future<void> selectSource(ZKind kind, String sourceId) =>
+      _prefs.set(kind, sourceId);
 
   /// The Cloudflare-challenge url for a [kind] candidate that got flagged
   /// mid-search (see [CfSolveNeeded]), or null. [resolve] returning null
@@ -244,7 +232,7 @@ class SourceMatcher {
     // The user just proved this source has it, whatever an earlier search
     // concluded — drop any remembered miss so it is never skipped again.
     await _store.forgetMiss(c, picked.sourceId);
-    await _store.selectSource(c, picked.sourceId);
+    await _prefs.set(c.kind, picked.sourceId);
     return m;
   }
 }

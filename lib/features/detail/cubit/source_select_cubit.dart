@@ -45,7 +45,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
        _matcher = matcher,
        _canonical = canonical,
        _title = title,
-       super(_seed(store, canonical, sources));
+       super(_seed(store, matcher, canonical, sources));
 
   /// The first state, built from what is ALREADY on disk. Both reads are
   /// synchronous, so a title that has been opened before shows its source and
@@ -54,16 +54,18 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
   /// the store already had.
   static SourceSelectState _seed(
     MatchStore store,
+    SourceMatcher matcher,
     ZCanonical canonical,
     List<({String id, String name})> sources,
   ) {
-    final remembered = store.selectedSource(canonical);
+    // Both reads are synchronous, so the row names its source on the very
+    // first frame — for every title, including one never opened before. Only
+    // whether that source HAS this title still has to be looked up.
+    final selected = matcher.selectedFor(canonical.kind);
     return SourceSelectState(
       sources: sources,
-      selectedId: remembered,
-      match: remembered == null ? null : store.get(canonical, remembered),
-      // Still loading: the sweep can still correct this (the remembered
-      // source may since have been uninstalled, or have nothing pinned).
+      selectedId: selected,
+      match: selected == null ? null : store.get(canonical, selected),
       loading: sources.isNotEmpty,
     );
   }
@@ -83,7 +85,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     if (isClosed) return;
     emit(SourceSelectState(
       sources: state.sources,
-      selectedId: _store.selectedSource(_canonical),
+      selectedId: _matcher.selectedFor(_canonical.kind),
       match: m,
       loading: false,
     ));
@@ -91,9 +93,11 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
 
   /// The user picked a different source in the picker: it becomes the
   /// remembered selection, and its own match (or honest lack of one) resolves.
+  /// Picking a source is global for this kind, not a note about this title:
+  /// every other title of the same kind opens on it from now on.
   Future<void> selectSource(String id) async {
     emit(SourceSelectState(sources: state.sources, selectedId: id, loading: true));
-    await _store.selectSource(_canonical, id);
+    await _matcher.selectSource(_canonical.kind, id);
     final m = await _matcher.resolve(_canonical, title: _title, altTitle: altTitle, malId: malId);
     if (isClosed) return;
     emit(SourceSelectState(sources: state.sources, selectedId: id, match: m, loading: false));

@@ -40,6 +40,7 @@ import 'package:watch_app/core/supabase/supabase_service.dart';
 import 'package:watch_app/core/tracker/tracker_hub.dart';
 import 'package:watch_app/core/trailer/trailer_service.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/features/detail/detail_screen.dart';
 import 'package:watch_app/features/detail/wrong_title_sheet.dart';
@@ -219,6 +220,7 @@ const _plainDetail = MediaDetail(
 );
 
 void main() {
+  late ZSourcePrefs prefs;
   late Directory tempDir;
 
   setUpAll(() {
@@ -263,7 +265,9 @@ void main() {
     // MatchLine's own dependencies — the source list is empty, so it settles
     // straight into the "no source" state without any async matcher work.
     final matchStore = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     sl.registerSingleton<MatchStore>(matchStore);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
   });
 
   tearDown(() async {
@@ -286,6 +290,7 @@ void main() {
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
       sources: stub,
       store: sl<MatchStore>(),
+      prefs: sl<ZSourcePrefs>(),
       candidates: (_) => stub.loadedSources,
     ));
 

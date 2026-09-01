@@ -46,9 +46,12 @@ class SourceMatch {
 
 /// Per-title, per-source matches, plus which source is currently selected for
 /// each title. One Hive box, two key shapes:
-///  - a match:            `'${c.key}@$sourceId'`      → [SourceMatch.toMap]
-///  - a title's selection: `'sel:${c.key}'`            → `{'sourceId': ...}`
-///  - a remembered miss:   `'miss:${c.key}@$sourceId'` → `{'at': millis}`
+///  - a match:           `'${c.key}@$sourceId'`      → [SourceMatch.toMap]
+///  - a remembered miss: `'miss:${c.key}@$sourceId'` → `{'at': millis}`
+///
+/// Which source PLAYS a title is not here: that is one global choice per kind
+/// (see [ZSourcePrefs]), not a per-title one. Old `sel:` entries are simply
+/// never read again, the same way the pre-per-source scheme's were.
 ///
 /// The `@`/`sel:` prefixes can never collide with each other or with a plain
 /// `c.key` — so an entry written by the old (pre-per-source) scheme, keyed by
@@ -59,7 +62,6 @@ class MatchStore {
   final Box<Map> _box;
 
   static const String boxName = 'zmode_matches';
-  static const String _selPrefix = 'sel:';
   static const String _missPrefix = 'miss:';
 
   /// How long "this source doesn't have this title" is trusted. A miss is
@@ -122,13 +124,4 @@ class MatchStore {
   Future<void> forgetMiss(ZCanonical c, String sourceId) =>
       _box.delete(_missKey(c, sourceId));
 
-  /// Which source plays this title. Null until something has resolved or the
-  /// user has picked one.
-  String? selectedSource(ZCanonical c) {
-    final v = _box.get('$_selPrefix${c.key}')?['sourceId'];
-    return v is String ? v : null;
-  }
-
-  Future<void> selectSource(ZCanonical c, String sourceId) =>
-      _box.put('$_selPrefix${c.key}', {'sourceId': sourceId});
 }
