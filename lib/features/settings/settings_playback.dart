@@ -418,10 +418,10 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
     final picked = await _pick<int>(
       title: context.l10n.seekButtonDuration,
       options: _skipOptions,
-      current: _prefs.seekSeconds,
+      current: _prefs.tvSeekSeconds,
     );
     if (picked == null) return;
-    await _prefs.setSeekSeconds(picked);
+    await _prefs.setTvSeekSeconds(picked);
     if (mounted) setState(() {});
   }
 
@@ -853,7 +853,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                 SettingsTile(
                   icon: Icons.timer_outlined,
                   title: context.l10n.seekButtonDuration,
-                  subtitle: context.l10n.secondsShort(_prefs.seekSeconds),
+                  subtitle: context.l10n.secondsShort(_prefs.tvSeekSeconds),
                   onTap: _pickSeekSecondsForTV,
                 ), 
               _toggleRow(

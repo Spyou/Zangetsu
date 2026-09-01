@@ -202,7 +202,7 @@ class TvNativePlayer {
       'autoSkipFiller': prefs.autoSkipFiller,
       'fillerFlags': fillerFlags,
       'enableSeekButtons': prefs.seekButtons,
-      'seekButtonDuration': prefs.seekSeconds,
+      'seekButtonDuration': prefs.tvSeekSeconds,
     });
 
     // Player closed — stop any active torrent stream.
