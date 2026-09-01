@@ -226,6 +226,33 @@ MediaItem? bestTitleMatch(
   return results.first;
 }
 
+/// Accented letters folded to their plain form. Stripping non-alphanumerics
+/// DELETES an accent rather than folding it, so "Pokémon" became `pokmon` and
+/// could never equal a source's "Pokemon" (`pokemon`) — the same title, never
+/// matching. Only the Latin-1 range that actually shows up in titles.
+const Map<String, String> _foldedLetters = {
+  'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'ā': 'a',
+  'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e',
+  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'ī': 'i',
+  'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o', 'ō': 'o',
+  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ū': 'u',
+  'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y',
+  'ß': 'ss', 'æ': 'ae', 'œ': 'oe',
+};
+
 /// Lowercase + strip non-alphanumerics, for tolerant title comparison.
-String normalizeTitle(String s) =>
-    s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+///
+/// Two things happen before the strip, both for the same reason: the strip
+/// DELETES what it doesn't understand, which silently turns a title into
+/// something that can never equal the same title written slightly differently.
+///
+///  - `&` is spelled out, because sources write it both ways ("Above & Below"
+///    vs "Above and Below"); dropping it gives `abovebelow` vs `aboveandbelow`.
+///  - Accents are folded (see [_foldedLetters]); dropping them gives `pokmon`.
+String normalizeTitle(String s) {
+  var out = s.toLowerCase().replaceAll(RegExp(r'[&＆﹠]'), 'and');
+  _foldedLetters.forEach((accented, plain) {
+    if (out.contains(accented)) out = out.replaceAll(accented, plain);
+  });
+  return out.replaceAll(RegExp(r'[^a-z0-9]+'), '');
+}

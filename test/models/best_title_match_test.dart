@@ -120,5 +120,42 @@ void main() {
       );
       expect(match!.title, 'Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2');
     });
+
+    test('an ampersand matches the same title spelled with "and"', () {
+      // Sources write it either way. Dropping the symbol made these normalise
+      // to `abovebelow` vs `aboveandbelow` — never equal, on the same film.
+      expect(
+        titleMatches(_item('Above and Below'), 'Above & Below'),
+        isTrue,
+      );
+      expect(
+        titleMatches(_item('Above & Below'), 'Above and Below'),
+        isTrue,
+      );
+    });
+
+    test('spelling out & does not make unrelated titles collide', () {
+      expect(titleMatches(_item('Above & Beyond'), 'Above & Below'), isFalse);
+      expect(titleMatches(_item('Below'), 'Above & Below'), isFalse);
+    });
+
+    test('normalizeTitle agrees on both spellings', () {
+      expect(normalizeTitle('Above & Below'), normalizeTitle('Above and Below'));
+      expect(normalizeTitle('Tom & Jerry'), 'tomandjerry');
+    });
+
+    test('an accented title matches the plain spelling a source uses', () {
+      // The strip used to DELETE the accent: pokémon -> pokmon, which cannot
+      // equal pokemon. Folding makes both sides land on the same letters.
+      expect(normalizeTitle('Pokémon'), 'pokemon');
+      expect(normalizeTitle('Amélie'), 'amelie');
+      expect(normalizeTitle('Café Society'), normalizeTitle('Cafe Society'));
+      expect(titleMatches(_item('Pokemon'), 'Pokémon'), isTrue);
+      expect(titleMatches(_item('Pokémon'), 'Pokemon'), isTrue);
+    });
+
+    test('folding does not merge titles that are genuinely different', () {
+      expect(titleMatches(_item('Pokemon Journeys'), 'Pokémon'), isFalse);
+    });
   });
 }
