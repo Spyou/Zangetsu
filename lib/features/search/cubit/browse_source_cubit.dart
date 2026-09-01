@@ -13,6 +13,10 @@ class BrowseSourceState {
     this.searchFailed = false,
     this.searchResults,
     this.filtersJson = '',
+    this.query = '',
+    this.page = 1,
+    this.loadingMore = false,
+    this.atEnd = false,
   });
 
   final List<HomeSection> sections;
@@ -38,6 +42,18 @@ class BrowseSourceState {
   /// Empty means unfiltered. Kept so the sheet reopens on the last choice and
   /// the app bar can show the filter as active.
   final String filtersJson;
+
+  /// The query behind [searchResults], kept so the next page can ask for the
+  /// same thing.
+  final String query;
+
+  /// Last page fetched. The first request is page 1.
+  final int page;
+  final bool loadingMore;
+
+  /// No more pages: an empty page, or one whose items we already had. Sources
+  /// rarely report a total, so the end is something you discover.
+  final bool atEnd;
 
   /// Whether the screen should be showing search results/spinner/failure
   /// instead of the catalogue rows.
@@ -149,6 +165,58 @@ class BrowseSourceCubit extends Cubit<BrowseSourceState> {
       );
     }
   }
+
+  /// Appends the next page of whatever is on screen — a filtered browse or a
+  /// text search, both of which the source pages the same way.
+  ///
+  /// Stops on an empty page OR one that adds nothing new: sources rarely say
+  /// how many pages exist, and several answer an out-of-range page with the
+  /// first one again, which would otherwise scroll forever.
+  Future<void> loadMore() async {
+    if (state.loadingMore || state.atEnd || !state.isSearchActive) return;
+    final current = state.searchResults ?? const [];
+    emit(_copy(loadingMore: true));
+    try {
+      final res = await _repo.searchStatus(
+        state.query,
+        sourceId: sourceId,
+        filtersJson: state.filtersJson.isEmpty ? null : state.filtersJson,
+        page: state.page + 1,
+      );
+      if (isClosed) return;
+      final seen = {for (final i in current) i.url};
+      final fresh = [
+        for (final i in res.items)
+          if (seen.add(i.url)) i,
+      ];
+      emit(_copy(
+        searchResults: [...current, ...fresh],
+        page: state.page + 1,
+        loadingMore: false,
+        atEnd: fresh.isEmpty,
+      ));
+    } catch (_) {
+      if (isClosed) return;
+      // A failed page is not the end — the next scroll may work.
+      emit(_copy(loadingMore: false));
+    }
+  }
+
+  BrowseSourceState _copy({
+    List<MediaItem>? searchResults,
+    int? page,
+    bool? loadingMore,
+    bool? atEnd,
+  }) => BrowseSourceState(
+    sections: state.sections,
+    loading: false,
+    searchResults: searchResults ?? state.searchResults,
+    filtersJson: state.filtersJson,
+    query: state.query,
+    page: page ?? state.page,
+    loadingMore: loadingMore ?? state.loadingMore,
+    atEnd: atEnd ?? state.atEnd,
+  );
 
   /// Drops the search results and returns to the already-loaded catalogue
   /// rows — never re-fetches [home].
