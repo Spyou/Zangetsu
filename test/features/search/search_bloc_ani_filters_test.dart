@@ -77,6 +77,9 @@ class _FakeSuggestions extends TitleSuggestionService {
 /// never called. Only the members touched by `_onSourceFiltersApplied` carry
 /// real logic; everything else throws UnimplementedError.
 class _FakeRepo implements SourceRepository {
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
+
   /// The items returned by the next `searchStatus` call.
   List<MediaItem> searchItems = const [];
 
@@ -175,6 +178,7 @@ class _FakeRepo implements SourceRepository {
     String url, {
     String category = 'sub',
     String? sourceId,
+    void Function(MediaDetail partial)? onPartial,
   }) => throw UnimplementedError();
 
   @override

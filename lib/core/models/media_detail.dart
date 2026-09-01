@@ -29,6 +29,11 @@ class MediaDetail extends Equatable {
   final String? englishTitle;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Wide 16:9 art (AniList `bannerImage` / TMDB `backdrop_path`), for the
+  /// detail hero. Null outside Z Mode — every existing source keeps
+  /// rendering its hero from [cover], exactly as before this field existed.
+  final String? banner;
   final String url;
   final String? description;
 
@@ -93,6 +98,7 @@ class MediaDetail extends Equatable {
     this.englishTitle,
     this.cover,
     this.coverHeaders,
+    this.banner,
     required this.url,
     this.description,
     this.status = MediaStatus.unknown,
@@ -123,6 +129,7 @@ class MediaDetail extends Equatable {
     String? englishTitle,
     String? cover,
     Map<String, String>? coverHeaders,
+    String? banner,
     String? url,
     String? description,
     MediaStatus? status,
@@ -147,6 +154,7 @@ class MediaDetail extends Equatable {
     englishTitle: englishTitle ?? this.englishTitle,
     cover: cover ?? this.cover,
     coverHeaders: coverHeaders ?? this.coverHeaders,
+    banner: banner ?? this.banner,
     url: url ?? this.url,
     description: description ?? this.description,
     status: status ?? this.status,
@@ -174,6 +182,7 @@ class MediaDetail extends Equatable {
     englishTitle,
     cover,
     coverHeaders,
+    banner,
     url,
     description,
     status,

@@ -25,7 +25,10 @@ import 'package:watch_app/core/playback/playback_prefs.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
 import 'package:watch_app/core/playback/search_source_prefs.dart';
+import 'package:watch_app/core/provider/cloudstream_provider.dart';
+import 'package:watch_app/core/provider/provider_manager.dart';
 import 'package:watch_app/core/provider/provider_registry.dart';
+import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/schedule/airing_service.dart';
 import 'package:watch_app/core/schedule/coming_soon_service.dart';
@@ -58,6 +61,8 @@ MigrationBridge _fakeBridge() => MigrationBridge(
 class _FakeSourceRepository implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   Future<List<HomeSection>> home({
@@ -156,6 +161,12 @@ class _FakeProviderRegistry implements ProviderRegistry {
 
   @override
   ProviderRegistryEntry? entryFor(String sourceId) => null;
+
+  @override
+  Set<String> nsfwSourceIds() => const {};
+
+  @override
+  Map<String, String> typeMapOf() => const {};
 }
 
 /// Fake tracker — always disconnected, no Hive box.
@@ -308,6 +319,7 @@ void main() {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     sl.registerSingleton<HomeCubit>(HomeCubit(fakeRepo));
     sl.registerSingleton<SourceRepository>(fakeRepo);
+    sl.registerSingleton<CatalogueRepository>(fakeRepo);
     sl.registerSingleton<MyListStore>(_FakeMyListStore());
     sl.registerSingleton<SearchHistory>(_FakeSearchHistory());
     sl.registerSingleton<SearchPrefs>(_FakeSearchPrefs());
@@ -321,6 +333,8 @@ void main() {
       ChapterDownloader(fakeRepo, sl<ChapterDownloadStore>()),
     );
     sl.registerSingleton<ProviderRegistry>(_FakeProviderRegistry());
+    sl.registerSingleton<CloudStreamManager>(CloudStreamManager());
+    sl.registerSingleton<AniyomiManager>(AniyomiManager());
     sl.registerSingleton<AniListService>(_FakeAniListService());
     sl.registerSingleton<MalService>(_FakeMalService());
     sl.registerSingleton<SimklService>(_FakeSimklService());

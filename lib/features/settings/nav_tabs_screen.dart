@@ -28,8 +28,10 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
 
   late List<DockTab> _shown = List.of(_prefs.tabs);
 
-  List<DockTab> get _hidden =>
-      [for (final t in DockTab.values) if (!_shown.contains(t)) t];
+  List<DockTab> get _hidden => [
+    for (final t in DockTab.values)
+      if (!_shown.contains(t)) t,
+  ];
 
   bool get _canRemove => _shown.length > NavPrefs.minTabs;
   bool get _canAdd => _shown.length < NavPrefs.maxTabs;
@@ -277,17 +279,6 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (t.isAnimeOnly)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                l10n.navTabsStreamingOnly,
-                style: AppText.caption.copyWith(
-                  color: AppColors.textTertiary,
-                  fontSize: 11.5,
-                ),
-              ),
-            ),
           if (t.isPinned)
             Padding(
               padding: const EdgeInsets.only(right: 12),

@@ -99,7 +99,9 @@ class _TvHeroState extends State<_TvHero> {
   Widget build(BuildContext context) {
     final item = _item;
     final inList = widget.inListOf(item);
-    final cover = item.cover;
+    // The wide banner when the item has one (Z Mode), else the regular
+    // poster cover — same as before [MediaItem.banner] existed.
+    final cover = item.banner ?? item.cover;
     final hasCover = cover != null && cover.isNotEmpty;
     final mq = MediaQuery.of(context);
     final memW = (mq.size.width * mq.devicePixelRatio).round();

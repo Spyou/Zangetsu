@@ -117,33 +117,30 @@ class ContinueWatchingRow extends StatelessWidget {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: ContentRow(
-          title: 'Continue Watching',
-          // Compact 16:9 landscape card — same design, just smaller/tighter.
-          itemWidth: 190,
-          itemHeight: 107,
-          onSeeAll: onSeeAll,
-          itemCount: history.length,
-          itemBuilder: (c, i) {
-            final e = history[i];
-            return ContinueCard(
-              title: e.showTitle,
-              // Prefer the landscape episode thumbnail; fall back to the
-              // portrait cover (older entries / sources without them).
-              imageUrl: e.thumbnail ?? e.cover,
-              headers: e.coverHeaders,
-              progress: e.progress,
-              cellWidth: 190,
-              subtitle: e.episodeNumber != null
-                  ? 'Episode ${e.episodeNumber!.toInt()}'
-                  : null,
-              onTap: () => onResume(e),
-              onLongPress: () => onLongPress(e),
-            );
-          },
-        ),
+      child: ContentRow(
+        title: 'Continue Watching',
+        // Compact 16:9 landscape card — same design, just smaller/tighter.
+        itemWidth: 190,
+        itemHeight: 107,
+        onSeeAll: onSeeAll,
+        itemCount: history.length,
+        itemBuilder: (c, i) {
+          final e = history[i];
+          return ContinueCard(
+            title: e.showTitle,
+            // Prefer the landscape episode thumbnail; fall back to the
+            // portrait cover (older entries / sources without them).
+            imageUrl: e.thumbnail ?? e.cover,
+            headers: e.coverHeaders,
+            progress: e.progress,
+            cellWidth: 190,
+            subtitle: e.episodeNumber != null
+                ? 'Episode ${e.episodeNumber!.toInt()}'
+                : null,
+            onTap: () => onResume(e),
+            onLongPress: () => onLongPress(e),
+          );
+        },
       ),
     );
   }
@@ -171,34 +168,31 @@ class ContinueReadingRow extends StatelessWidget {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
     return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: ContentRow(
-          title: 'Continue Reading',
-          // Compact horizontal "keep reading" chip (cover + title + chapter +
-          // slim progress), NOT the landscape Continue Watching card nor a full
-          // portrait poster — smaller and its own shape for reading.
-          itemWidth: 236,
-          itemHeight: 76,
-          onSeeAll: onSeeAll,
-          itemCount: history.length,
-          itemBuilder: (c, i) {
-            final e = history[i];
-            final progress =
-                e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
-            return ContinueReadingCard(
-              title: e.title,
-              imageUrl: e.cover,
-              headers: e.coverHeaders,
-              progress: progress,
-              subtitle: e.chapterNumber != null
-                  ? 'Chapter ${e.chapterNumber!.toInt()}'
-                  : null,
-              onTap: () => onResumeReading(e),
-              onLongPress: onLongPress == null ? null : () => onLongPress!(e),
-            );
-          },
-        ),
+      child: ContentRow(
+        title: 'Continue Reading',
+        // Compact horizontal "keep reading" chip (cover + title + chapter +
+        // slim progress), NOT the landscape Continue Watching card nor a full
+        // portrait poster — smaller and its own shape for reading.
+        itemWidth: 236,
+        itemHeight: 76,
+        onSeeAll: onSeeAll,
+        itemCount: history.length,
+        itemBuilder: (c, i) {
+          final e = history[i];
+          final progress =
+              e.total > 0 ? (e.pos / e.total).clamp(0.0, 1.0) : 0.0;
+          return ContinueReadingCard(
+            title: e.title,
+            imageUrl: e.cover,
+            headers: e.coverHeaders,
+            progress: progress,
+            subtitle: e.chapterNumber != null
+                ? 'Chapter ${e.chapterNumber!.toInt()}'
+                : null,
+            onTap: () => onResumeReading(e),
+            onLongPress: onLongPress == null ? null : () => onLongPress!(e),
+          );
+        },
       ),
     );
   }

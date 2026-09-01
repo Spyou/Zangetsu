@@ -11,18 +11,20 @@ import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../l10n/ui_strings.dart';
 import '../../l10n/l10n.dart';
 import '../../core/ui/nav_prefs.dart';
 import '../downloads/downloads_screen.dart';
 import '../history/history_screen.dart';
 import '../auth/auth_cubit.dart';
+import '../home/cubit/home_cubit.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
-import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
 import 'dock_icons.dart';
+import 'mode_bar.dart';
 import '../../core/ui/dock_visibility.dart';
 import 'root_shell_tv.dart';
 
@@ -30,8 +32,10 @@ import 'root_shell_tv.dart';
 /// [RootShellTv] (TV left rail). Any change to the page set must be
 /// reflected in BOTH shells; this single function is the one source of truth.
 ///
-/// [searchFocusSignal] is bumped each time the Search tab/rail-item is
-/// (re)selected so the embedded search screen can auto-focus its field.
+/// [searchFocusSignal] is bumped each time the Search rail item is
+/// (re)selected on TV so the embedded search screen can auto-focus its
+/// field. Phone has no Search dock tab any more — Search moved to a Home
+/// header icon — so [RootShell] always passes null here.
 List<Widget> buildShellPages(ValueNotifier<int>? searchFocusSignal) => [
   const HomeScreen(),
   SearchScreen(showBack: false, focusSignal: searchFocusSignal),
@@ -39,8 +43,9 @@ List<Widget> buildShellPages(ValueNotifier<int>? searchFocusSignal) => [
   const SettingsScreen(),
 ];
 
-/// App-level navigation shell — five tabs via a custom floating dock
-/// (frosted capsule hovering over the content; no Material NavigationBar).
+/// App-level navigation shell — a reorderable dock (3-5 tabs, [NavPrefs])
+/// via a custom floating capsule (frosted, hovering over the content; no
+/// Material NavigationBar).
 ///
 /// Uses [IndexedStack] so each screen preserves its scroll/state when
 /// the user switches tabs.
@@ -57,14 +62,20 @@ class _RootShellState extends State<RootShell>
   /// which stopped meaning anything once the dock became reorderable.
   DockTab _tab = DockTab.home;
 
+  /// Whether the floating mode bar (Anime / Movie/TV / Manga / Novel) is
+  /// showing above the dock. Z Mode only — the centre button that toggles it
+  /// doesn't exist otherwise.
+  bool _modeBarOpen = false;
+
   /// Falls back to an unregistered instance rather than throwing.
   ///
   /// Production always registers it; widget tests build this shell with only
   /// the deps they care about. A bare [NavPrefs] reads no Hive box and returns
   /// [NavPrefs.defaultTabs], which is the dock those tests expect anyway —
   /// same guard the bloc uses for ContentModeCubit.
-  late final NavPrefs _navPrefs =
-      sl.isRegistered<NavPrefs>() ? sl<NavPrefs>() : NavPrefs();
+  late final NavPrefs _navPrefs = sl.isRegistered<NavPrefs>()
+      ? sl<NavPrefs>()
+      : NavPrefs();
 
   /// Double-back-to-exit: timestamp of the last root Back press. A second Back
   /// within 2s exits the app; the first just shows the "press back again" toast.
@@ -78,11 +89,6 @@ class _RootShellState extends State<RootShell>
   late final AnimationController _switchCtrl;
   late final Animation<double> _switch;
 
-  /// Bumped each time the Search tab is (re)selected so the search screen can
-  /// auto-focus its field and pop the keyboard, without stealing focus while
-  /// the tab sits idle in the [IndexedStack].
-  final ValueNotifier<int> _searchFocusSignal = ValueNotifier<int>(0);
-
   @override
   void initState() {
     super.initState();
@@ -93,6 +99,18 @@ class _RootShellState extends State<RootShell>
     );
     _switch = CurvedAnimation(parent: _switchCtrl, curve: Curves.easeOutCubic);
     _navPrefs.addListener(_onTabsChanged);
+    ZModePrefs.revision.addListener(_onZMode);
+  }
+
+  /// The toggle changed: close the mode bar and, as a safety net, bounce off
+  /// any tab that somehow stopped being visible.
+  void _onZMode() {
+    if (!mounted) return;
+    setState(() {
+      _modeBarOpen = false;
+      final visible = _visibleTabs();
+      if (!visible.contains(_tab)) _tab = visible.first;
+    });
   }
 
   /// The dock was edited in Settings. If the tab we're on just got hidden,
@@ -105,32 +123,22 @@ class _RootShellState extends State<RootShell>
     });
   }
 
-  /// The dock as actually rendered: the user's order, minus anything the
-  /// current content mode has no use for.
-  List<DockTab> _visibleTabs() {
-    final mode = sl<ContentModeCubit>().state;
-    final tabs = _navPrefs.tabs;
-    if (!mode.isReading) return tabs;
-    final out = [for (final t in tabs) if (!t.isAnimeOnly) t];
-    return out.isEmpty ? tabs : out;
-  }
+  /// The dock as actually rendered. Every tab suits every content mode now
+  /// that Schedule lives on Home instead (see `_scheduleCard` there), so this
+  /// is just the user's order.
+  List<DockTab> _visibleTabs() => _navPrefs.tabs;
 
   @override
   void dispose() {
     _navPrefs.removeListener(_onTabsChanged);
+    ZModePrefs.revision.removeListener(_onZMode);
     _switchCtrl.dispose();
-    _searchFocusSignal.dispose();
     super.dispose();
   }
 
   void _onTabSelected(DockTab tab) {
-    if (tab == _tab) {
-      // Re-tapping the current tab: no transition, just re-focus Search.
-      if (tab == DockTab.search) _searchFocusSignal.value++;
-      return;
-    }
+    if (tab == _tab) return; // Re-tapping the current tab: no transition.
     setState(() => _tab = tab);
-    if (tab == DockTab.search) _searchFocusSignal.value++;
     _switchCtrl.forward(from: 0);
   }
 
@@ -156,7 +164,7 @@ class _RootShellState extends State<RootShell>
       gravity: ToastGravity.BOTTOM,
       toastDuration: const Duration(seconds: 2),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 104),
+        margin: const EdgeInsets.only(bottom: kDockClearance),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
         decoration: BoxDecoration(
           color: const Color(0xF01C1C1E),
@@ -174,17 +182,18 @@ class _RootShellState extends State<RootShell>
   /// [IndexedStack] index is just the tab's position in that list.
   ///
   /// [buildShellPages] stays the shared Home/Search/My List/Settings set that
-  /// the TV rail also builds from — untouched, so TV is unaffected.
+  /// the TV rail also builds from — untouched, so TV is unaffected. Search is
+  /// no longer a phone dock tab (it's a Home header icon now), so this never
+  /// places `shared[1]` — it's still built, just unused here, the same way
+  /// Settings only ever takes `shared.last`.
   List<Widget> _pagesFor(List<DockTab> tabs) {
-    final shared = buildShellPages(_searchFocusSignal);
+    final shared = buildShellPages(null);
     return [
       for (final t in tabs)
         switch (t) {
           DockTab.home => shared[0],
-          DockTab.search => shared[1],
           DockTab.myList => shared[2],
           DockTab.profile => shared.last, // Settings, shown as "Profile"
-          DockTab.schedule => const ScheduleScreen(),
           // Both normally get pushed with a back button; as tabs they own the
           // whole screen, so their own back affordance is suppressed.
           DockTab.downloads => const DownloadsScreen(showBack: false),
@@ -196,10 +205,6 @@ class _RootShellState extends State<RootShell>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const RootShellTv();
-    // Reading modes have no Schedule tab (it's omitted from the dock below).
-    // If the mode flips to Manga/Novel while Schedule (tab 1) is showing,
-    // bounce back to Home rather than leaving the user on a tab that no
-    // longer has a dock item.
     return PopScope(
       // Intercept Back at the app root: first press toasts, second exits.
       canPop: false,
@@ -210,50 +215,47 @@ class _RootShellState extends State<RootShell>
         bloc: sl<ContentModeCubit>(),
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, mode) {
-          // Always rebuild: the dock's items are computed in build() now, so
-          // the mode change has to reach it. (The Row used to sit inside its
-          // own BlocBuilder; the tab list replaced that.) Schedule is dropped
-          // in reading modes, so if that's where we were, land on the first
-          // tab that survives rather than on a page with no dock item.
-          setState(() {
-            if (mode.isReading && _tab.isAnimeOnly) {
-              _tab = _visibleTabs().first;
-            }
-          });
+          // Always rebuild: the dock's items are computed in build(), so the
+          // mode change has to reach it. No tab has to be bounced off any
+          // more — the dock is the same in every mode now that Schedule is
+          // not in it.
+          setState(() {});
         },
         child: Scaffold(
           backgroundColor: AppColors.bg,
           // Content runs under the floating dock (screens keep their own bottom
           // padding so the last row scrolls clear of it).
           extendBody: true,
-          body: Builder(builder: (context) {
-            final visible = _visibleTabs();
-            final active = visible.indexOf(_tab);
-            return AnimatedBuilder(
-            animation: _switch,
-            builder: (context, child) {
-              final v = _switch.value;
-              // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
-              return Opacity(
-                opacity: 0.4 + 0.6 * v,
-                child: Transform.translate(
-                  offset: Offset(0, (1 - v) * 20),
-                  child: child,
+          body: Builder(
+            builder: (context) {
+              final visible = _visibleTabs();
+              final active = visible.indexOf(_tab);
+              return AnimatedBuilder(
+                animation: _switch,
+                builder: (context, child) {
+                  final v = _switch.value;
+                  // Incoming tab fades in from 0.4 and slides up 20px. Never blanks.
+                  return Opacity(
+                    opacity: 0.4 + 0.6 * v,
+                    child: Transform.translate(
+                      offset: Offset(0, (1 - v) * 20),
+                      child: child,
+                    ),
+                  );
+                },
+                // RepaintBoundary → the page is a single cached layer the transition
+                // just composites (opacity + translate), so no repaint per frame.
+                child: RepaintBoundary(
+                  child: IndexedStack(
+                    // indexOf can be -1 for one frame if the mode flipped before
+                    // the listener ran; clamp rather than throw.
+                    index: active < 0 ? 0 : active,
+                    children: _pagesFor(visible),
+                  ),
                 ),
               );
             },
-            // RepaintBoundary → the page is a single cached layer the transition
-            // just composites (opacity + translate), so no repaint per frame.
-            child: RepaintBoundary(
-              child: IndexedStack(
-                // indexOf can be -1 for one frame if the mode flipped before
-                // the listener ran; clamp rather than throw.
-                index: active < 0 ? 0 : active,
-                children: _pagesFor(visible),
-              ),
-            ),
-          );
-          }),
+          ),
           bottomNavigationBar: ValueListenableBuilder<bool>(
             valueListenable: dockHiddenBySection,
             builder: (context, sectionOpen, _) {
@@ -261,18 +263,73 @@ class _RootShellState extends State<RootShell>
               // Settings (Profile, last) tab is the one showing — every other tab
               // keeps its dock.
               final hide = sectionOpen && _tab == DockTab.profile;
-              return AnimatedSlide(
-                offset: hide ? const Offset(0, 1.6) : Offset.zero,
-                duration: const Duration(milliseconds: 240),
-                curve: Curves.easeOutCubic,
-                child: IgnorePointer(
-                  ignoring: hide,
-                  child: _FloatingDock(
-                    tabs: _visibleTabs(),
-                    active: _tab,
-                    onSelected: _onTabSelected,
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (ZModePrefs.enabled)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: BlocBuilder<ContentModeCubit, ContentMode>(
+                        bloc: sl<ContentModeCubit>(),
+                        builder: (_, mode) => ModeBar(
+                          open: _modeBarOpen,
+                          current: (mode, ZModePrefs.streamKind),
+                          onPicked: (m, k) async {
+                            setState(() => _modeBarOpen = false);
+                            await ZModePrefs.setStreamKind(k);
+                            await sl<ContentModeCubit>().setMode(m);
+                            sl<HomeCubit>().load(reset: true);
+                          },
+                        ),
+                      ),
+                    ),
+                  // Collapse the SLOT as well as sliding the dock out of it.
+                  // The dock is this Scaffold's bottomNavigationBar and the
+                  // shell sets extendBody, so its height lands in the body's
+                  // MediaQuery bottom padding whether or not it is on screen.
+                  // Sliding alone left an open Settings section reserving a
+                  // dock's worth of space for a dock that wasn't there.
+                  TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 1, end: hide ? 0 : 1),
+                    duration: const Duration(milliseconds: 240),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, factor, child) => ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        heightFactor: factor,
+                        child: child,
+                      ),
+                    ),
+                    child: AnimatedSlide(
+                      offset: hide ? const Offset(0, 1.6) : Offset.zero,
+                      duration: const Duration(milliseconds: 240),
+                      curve: Curves.easeOutCubic,
+                      child: IgnorePointer(
+                        ignoring: hide,
+                        child: _FloatingDock(
+                          tabs: _visibleTabs(),
+                          active: _tab,
+                          onSelected: _onTabSelected,
+                          centre: ZModePrefs.enabled
+                              ? BlocBuilder<ContentModeCubit, ContentMode>(
+                                  bloc: sl<ContentModeCubit>(),
+                                  builder: (_, mode) => ModeFab(
+                                    open: _modeBarOpen,
+                                    icon: iconForMode(
+                                      mode,
+                                      ZModePrefs.streamKind,
+                                    ),
+                                    onTap: () => setState(
+                                      () => _modeBarOpen = !_modeBarOpen,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
+                ],
               );
             },
           ),
@@ -291,6 +348,7 @@ class _FloatingDock extends StatelessWidget {
     required this.tabs,
     required this.active,
     required this.onSelected,
+    this.centre,
   });
 
   /// Exactly what to draw, already ordered and already filtered for the
@@ -299,9 +357,26 @@ class _FloatingDock extends StatelessWidget {
   final DockTab active;
   final ValueChanged<DockTab> onSelected;
 
+  /// The Z Mode centre button. Not a [DockTab] — it isn't reorderable,
+  /// hideable, or counted toward the tab limit. Null when Z Mode is off.
+  final Widget? centre;
+
+  Widget _item(BuildContext context, DockTab t) => t == DockTab.profile
+      ? _ProfileDockItem(selected: active == t, onTap: () => onSelected(t))
+      : _DockItem(
+          label: t.localizedLabel(context),
+          glyph: dockGlyphFor(t),
+          icon: _iconFor(t),
+          selected: active == t,
+          onTap: () => onSelected(t),
+        );
+
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
+    final half = tabs.length ~/ 2;
+    final first = tabs.sublist(0, half);
+    final rest = tabs.sublist(half);
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, bottomInset + 12),
       child: ClipRRect(
@@ -320,20 +395,13 @@ class _FloatingDock extends StatelessWidget {
             ),
             child: Row(
               children: [
-                for (final t in tabs)
-                  if (t == DockTab.profile)
-                    _ProfileDockItem(
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                    )
-                  else
-                    _DockItem(
-                      label: t.localizedLabel(context),
-                      glyph: dockGlyphFor(t),
-                      icon: _iconFor(t),
-                      selected: active == t,
-                      onTap: () => onSelected(t),
-                    ),
+                for (final t in first) _item(context, t),
+                if (centre != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: centre!,
+                  ),
+                for (final t in rest) _item(context, t),
               ],
             ),
           ),
@@ -345,14 +413,8 @@ class _FloatingDock extends StatelessWidget {
 
 /// (outline, filled) Material icons for tabs with no hand-drawn glyph.
 (IconData, IconData)? _iconFor(DockTab t) => switch (t) {
-  DockTab.downloads => (
-    Icons.download_outlined,
-    Icons.download_rounded,
-  ),
-  DockTab.history => (
-    Icons.history_outlined,
-    Icons.history_rounded,
-  ),
+  DockTab.downloads => (Icons.download_outlined, Icons.download_rounded),
+  DockTab.history => (Icons.history_outlined, Icons.history_rounded),
   _ => null,
 };
 

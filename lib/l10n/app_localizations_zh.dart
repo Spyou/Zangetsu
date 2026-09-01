@@ -1701,6 +1701,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get failedToLoadThisTitle => '无法加载这部作品';
 
   @override
+  String get offlineTitle => 'You are offline';
+
+  @override
+  String get offlineBody => 'Check your connection and try again.';
+
+  @override
   String get changeStatus => '更改状态';
 
   @override
@@ -2221,6 +2227,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get sourceSettings => '来源设置';
 
   @override
+  String get sourceDomain => '来源域名';
+
+  @override
+  String get sourceDomainHint => '留空则使用来源自带的域名。';
+
+  @override
+  String resetSourceDataConfirm(String name) {
+    return '重置$name的已保存数据?这会清除它保存的设置、登录状态和 Cookie。你的列表、历史记录和下载不受影响。';
+  }
+
+  @override
   String get removeRepository2 => '要移除仓库吗？';
 
   @override
@@ -2492,6 +2509,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get navTabsEveryTabOnBar => '所有标签页都在工具栏上。';
+
+  @override
+  String get searchMovesToHomeInZMode =>
+      'Search moves to the top of Home in Z Mode.';
 
   @override
   String navTabsHelp(int minTabs, int maxTabs) {
@@ -4630,6 +4651,142 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get closeConfirmExitImmediatelyLabel => '直接关闭——立即出口';
+
+  @override
+  String get zMode => 'Z Mode';
+
+  @override
+  String get zModeSubtitle =>
+      'Browse from AniList and TMDB, play from your sources';
+
+  @override
+  String get animeMetadata => 'Anime metadata';
+
+  @override
+  String get animeMetadataSubtitle => 'Where anime and manga info comes from';
+
+  @override
+  String get videoMetadata => 'Movie & TV metadata';
+
+  @override
+  String get videoMetadataSubtitle => 'Where movie and series info comes from';
+
+  @override
+  String get malLoginForLists =>
+      'Log in to MyAnimeList in Trackers to sync your lists';
+
+  @override
+  String get zModeExperimental => 'Experimental';
+
+  @override
+  String get modeAnime => 'Anime';
+
+  @override
+  String get modeMovieTv => 'Movie/TV';
+
+  @override
+  String sourceLabel(String name) {
+    return 'Source: $name';
+  }
+
+  @override
+  String get wrongTitle => 'Wrong title?';
+
+  @override
+  String get noSourceHasThisYet => 'No source has this yet';
+
+  @override
+  String get pickTheRightTitle => 'Pick the right title';
+
+  @override
+  String get searchThisSource => 'Search this source';
+
+  @override
+  String matchSaved(String name) {
+    return 'Saved. Matched to $name now.';
+  }
+
+  @override
+  String get chooseSource => 'Choose a source';
+
+  @override
+  String get scheduleAndLists => 'Schedule & lists';
+
+  @override
+  String get scheduleHubDesc => 'What is airing, day by day';
+
+  @override
+  String get trackerCoversVideo => 'Movies and series';
+
+  @override
+  String get listKindManga => 'Manga';
+
+  @override
+  String get listKindNovel => 'Novel';
+
+  @override
+  String get listKindAnimeDesc => 'Watching, completed, planning';
+
+  @override
+  String get listKindMangaDesc => 'Reading, completed, planning';
+
+  @override
+  String get listKindNovelDesc => 'Light novels on this account';
+
+  @override
+  String get sortPopularity => 'Popular';
+
+  @override
+  String get sortScore => 'Top rated';
+
+  @override
+  String get sortTrending => 'Trending';
+
+  @override
+  String get sortNewest => 'Newest';
+
+  @override
+  String get sortTitle => 'A-Z';
+
+  @override
+  String filtersNeedProvider(String provider) {
+    return 'Filters need $provider. Switch it in Settings.';
+  }
+
+  @override
+  String get format => 'Format';
+
+  @override
+  String get minimumScore => 'Minimum score';
+
+  @override
+  String get searchAnime => 'Search anime';
+
+  @override
+  String get searchMoviesTv => 'Search movies & TV';
+
+  @override
+  String get searchManga => 'Search manga';
+
+  @override
+  String get searchNovels => 'Search novels';
+
+  @override
+  String get adultCatalogue => 'Adult titles in catalogue';
+
+  @override
+  String get adultCatalogueSubtitle =>
+      'Let AniList, MyAnimeList and TMDB return 18+ results';
+
+  @override
+  String get enableAdultCatalogue => 'Show adult titles?';
+
+  @override
+  String get enableAdultCatalogueBody =>
+      'Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.';
+
+  @override
+  String get adultOnly => 'Adult';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -6847,6 +7004,17 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get sourceSettings => '來源設定';
+
+  @override
+  String get sourceDomain => '來源網域';
+
+  @override
+  String get sourceDomainHint => '留空則使用來源自帶的網域。';
+
+  @override
+  String resetSourceDataConfirm(String name) {
+    return '重設$name的已儲存資料?這會清除它儲存的設定、登入狀態和 Cookie。你的清單、記錄和下載不受影響。';
+  }
 
   @override
   String get removeRepository2 => '要移除儲庫嗎？';

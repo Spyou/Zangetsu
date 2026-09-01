@@ -19,15 +19,18 @@ import '../playback/source_health_store.dart';
 import '../provider/base_provider.dart';
 import '../i18n/source_languages.dart';
 import '../prefs/source_lang_prefs.dart';
+import '../provider/cf_solve_needed.dart';
 import '../provider/cloudstream_provider.dart';
 import '../provider/provider_manager.dart';
 import '../provider/reading_provider.dart';
 import '../state/active_source_cubit.dart';
+import 'catalogue_repository.dart';
+import 'source_domain_overrides.dart';
 
 /// Facade over the active provider runtime for the UI layer.
 /// The active source is driven by [activeSource] so callers can switch at
 /// runtime without recreating the repository.
-class SourceRepository {
+class SourceRepository implements CatalogueRepository {
   SourceRepository({
     required ProviderManager manager,
     required CloudStreamManager csManager,
@@ -124,6 +127,7 @@ class SourceRepository {
   /// Drop the search cache when the set of loaded sources changed since the last
   /// call (a source was added, removed, or enabled/disabled) — so cached results
   /// never outlive a source-list change. Cheap; call once before a search batch.
+  @override
   void syncSearchCache() {
     final sig = loadedSources.map((s) => s.id).join(',');
     if (sig != _searchSourcesSig) {
@@ -151,6 +155,7 @@ class SourceRepository {
   static bool _isLnReader(String id) => id.startsWith('lnr:');
 
   /// The currently-active source identifier.
+  @override
   String get sourceId => _active.state;
 
   /// All currently-loaded sources (id + display name), for cross-source search
@@ -167,8 +172,19 @@ class SourceRepository {
   /// "MangaDex" chips, an unreadable picker, and a stack of identical result
   /// sections. Only names that actually collide get the suffix, so a
   /// single-language source reads exactly as before.
-  List<({String id, String name})> get loadedSources {
-    final raw = _rawLoadedSources;
+  /// Every installed, enabled, non-hidden source — including ones the language
+  /// preference narrows out of [loadedSources]. For explicit per-title source
+  /// pickers only; browse and search must keep using [loadedSources].
+  List<({String id, String name})> get pickableSources =>
+      _named(_rawSources(narrowByLang: false));
+
+  @override
+  List<({String id, String name})> get loadedSources => _named(_rawLoadedSources);
+
+  /// Disambiguates same-named sources by appending their language code.
+  List<({String id, String name})> _named(
+    List<({String id, String name, String? lang})> raw,
+  ) {
     final counts = <String, int>{};
     for (final s in raw) {
       counts[s.name] = (counts[s.name] ?? 0) + 1;
@@ -217,7 +233,17 @@ class SourceRepository {
   bool _langOk(String? lang, Set<String>? enabled) =>
       enabled == null || sourceLangVisible(lang ?? '', enabled);
 
-  List<({String id, String name, String? lang})> get _rawLoadedSources => [
+  List<({String id, String name, String? lang})> get _rawLoadedSources =>
+      _rawSources(narrowByLang: true);
+
+  /// [narrowByLang] false keeps sources the LANGUAGE preference would drop.
+  /// Browse and search narrow by language so a multi-language extension does
+  /// not fan a query across a dozen copies of itself. A per-title picker is
+  /// the opposite situation: the user is choosing one source by hand, and an
+  /// installed source missing from that list just reads as broken.
+  List<({String id, String name, String? lang})> _rawSources({
+    required bool narrowByLang,
+  }) => [
     ..._manager.all.map(
       (p) => (id: p.sourceId, name: p.displayName, lang: null),
     ),
@@ -238,7 +264,7 @@ class SourceRepository {
             lang: p is AniyomiProvider ? p.info.lang : null,
           ),
         )
-        .where((s) => _langOk(s.lang, _langsFor(_animeLangs))),
+        .where((s) => !narrowByLang || _langOk(s.lang, _langsFor(_animeLangs))),
     // Mihon manga sources. There is no Mihon-specific NSFW pref, so these
     // reuse the general "show NSFW sources" toggle rather than inventing a
     // third one — same default (off), so an 18+ manga source stays hidden
@@ -251,7 +277,7 @@ class SourceRepository {
         // every one — Hebrew results for a user who'd chosen English. The
         // sources screen already filtered its list this way; the source list
         // that actually gets searched never did.
-        .where((s) => _langOk(s.lang, _langsFor(_mangaLangs))),
+        .where((s) => !narrowByLang || _langOk(s.lang, _langsFor(_mangaLangs))),
     // LNReader novel sources — already `{id, name}` shaped, straight from
     // stored plugin meta (no NSFW concept for these yet).
     if (_lnrManager != null)
@@ -260,11 +286,18 @@ class SourceRepository {
       ),
   ];
 
-  /// Base site URL for a source, used to turn a relative item URL into an
-  /// absolute web link. Aniyomi stores `SAnime.url` as a path (the native side
-  /// requests `baseUrl + anime.url`); CloudStream/JS items are already
-  /// absolute, so this returns '' for them.
+  /// Base site URL for a source. For Mihon/Aniyomi/LNReader this turns a
+  /// RELATIVE item URL into an absolute web link. CloudStream/JS items are
+  /// already absolute, so this is never prepended to one of THOSE — it only
+  /// exists there so the Cloudflare-solve / open-in-browser actions (which
+  /// need a URL, not an item) have one to work with. Both gate on
+  /// `.isNotEmpty`, so a source with no known site simply hides the actions
+  /// rather than offering a control that can't work.
   String baseUrlFor(String sourceId) {
+    // A domain the user set by hand outranks whatever the extension reports —
+    // that's the whole point of setting one (see [SourceDomainOverrides]).
+    final override = _domainOverride(sourceId);
+    if (override != null) return override;
     // Mihon stores `SManga.url` as a path for the same reason Aniyomi does
     // (the native side requests `baseUrl + manga.url`), so a manga item needs
     // the same relative→absolute treatment before it can be shared/opened.
@@ -274,11 +307,77 @@ class SourceRepository {
     // `site`), same rationale as Mihon above.
     final l = _lnrManager?.get(sourceId);
     if (l != null) return l.site;
-    final p = _aniManager.get(sourceId);
-    return p is AniyomiProvider ? p.info.baseUrl : '';
+    final a = _aniManager.get(sourceId);
+    if (a is AniyomiProvider) return a.info.baseUrl;
+    // CloudStream plugins declare their own site as `MainAPI.mainUrl`. Their
+    // item urls are already absolute (unlike the three above), so this value
+    // is used only for the Cloudflare/browser actions, never for turning an
+    // item url into an absolute one.
+    final c = _csManager.get(sourceId);
+    return c is CloudStreamProvider ? c.mainUrl : '';
+  }
+
+  /// The url to actually TARGET when the user asks to solve Cloudflare for
+  /// [sourceId] — [baseUrlFor] stays the synchronous, cached value the
+  /// picker shield's sync visibility check and "open in browser" already
+  /// depend on; this is the one callers should await right before opening
+  /// the solve WebView.
+  ///
+  /// Order of preference:
+  ///  1. A host [CfSolveNeeded] actually saw hit a challenge for this source
+  ///     — the freshest signal there is.
+  ///  2. For CloudStream, the plugin's CURRENT `MainAPI.mainUrl`, read fresh
+  ///     off the loaded native provider (see [csPluginLiveMainUrl]). A
+  ///     plugin rewrites `mainUrl` in place once it resolves its live domain
+  ///     (e.g. by fetching a redirect list at runtime), so the snapshot a
+  ///     [CloudStreamProvider] carries — captured once when the source was
+  ///     listed — can point at a domain the plugin has already moved off.
+  ///  3. [baseUrlFor]'s cached listing value — stale is still better than
+  ///     nothing when the plugin isn't loaded right now.
+  ///
+  /// Null when none of those is usable — callers must hide the solve action
+  /// rather than open a url that can't be solved.
+  Future<String?> cfSolveTargetFor(String sourceId) async {
+    // Ahead of every derived value: the user set this precisely because the
+    // derived ones were wrong.
+    final override = _domainOverride(sourceId);
+    if (override != null) return override;
+    final flagged = CfSolveNeeded.urlFor(sourceId);
+    if (flagged != null && flagged.isNotEmpty) return flagged;
+    final c = _csManager.get(sourceId);
+    if (c is CloudStreamProvider) {
+      final live = await csPluginLiveMainUrl(c.hostKey);
+      if (live != null && live.isNotEmpty) return live;
+    }
+    final cached = baseUrlFor(sourceId);
+    return cached.isEmpty ? null : cached;
+  }
+
+  /// The user's own domain for [sourceId], or null. Read through the locator
+  /// rather than the constructor so the many `implements SourceRepository`
+  /// fakes don't all have to grow a parameter; guarded on registration so a
+  /// test that never registers the store behaves exactly as before.
+  String? _domainOverride(String sourceId) =>
+      sl.isRegistered<SourceDomainOverrides>()
+          ? sl<SourceDomainOverrides>().get(sourceId)
+          : null;
+
+  /// Best-effort language code for a source (e.g. "en"), or null when the
+  /// ecosystem doesn't report one. Only Aniyomi and Mihon carry a declared
+  /// language today (mirrors [_rawSources] above, which does the same lang:
+  /// null for CloudStream/JS/LNReader) — used for display only (the browse
+  /// screen's identity tags), never for the language-filtering this class
+  /// already does elsewhere.
+  String? languageFor(String sourceId) {
+    final a = _aniManager.get(sourceId);
+    if (a is AniyomiProvider) return a.info.lang.isEmpty ? null : a.info.lang;
+    final m = _mihonManager.get(sourceId);
+    if (m != null) return m.info.lang.isEmpty ? null : m.info.lang;
+    return null;
   }
 
   /// Human-friendly name for a source id (falls back to the id itself).
+  @override
   String displayName(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.get(sourceId)?.displayName ?? sourceId;
@@ -299,6 +398,7 @@ class SourceRepository {
   /// this device. Read-only — does not affect resolution or health.
   /// CS ids use identity-compatible lookup ([resolveCompatible]); Aniyomi and JS
   /// ids use their respective manager registries.
+  @override
   bool hasSource(String sourceId) {
     if (_isCloudStream(sourceId)) {
       return _csManager.resolveCompatible(sourceId) != null;
@@ -359,6 +459,7 @@ class SourceRepository {
   /// dropped). When it doesn't, we synthesize the legacy three rows from
   /// [popular] so older providers keep working. Each underlying fetch is
   /// fail-safe — one broken row never kills the others.
+  @override
   Future<List<HomeSection>> home({
     String category = 'sub',
     String? sourceId,
@@ -427,6 +528,7 @@ class SourceRepository {
     }
   }
 
+  @override
   Future<List<MediaItem>> search(
     String query, {
     String category = 'sub',
@@ -456,6 +558,7 @@ class SourceRepository {
   /// [cache] opts this call into the short-TTL search cache + in-flight dedup
   /// (see [_searchCache]). Off by default so probes/tests and filter-apply always
   /// hit the network fresh; the cross-source search fan-out passes `cache: true`.
+  @override
   Future<({List<MediaItem> items, SourceOutcome outcome})> searchStatus(
     String query, {
     String category = 'sub',
@@ -593,16 +696,22 @@ class SourceRepository {
     return SourceOutcome.error;
   }
 
+  @override
   Future<MediaDetail> detail(
     String url, {
     String category = 'sub',
     String? sourceId,
+    // A source detail arrives whole — there is no slow second half to skip
+    // ahead of, so this is accepted for the interface and never called.
+    void Function(MediaDetail partial)? onPartial,
   }) => _providerFor(sourceId).getDetail(url, category: category);
 
   /// Drop the native source HTTP cache (Mihon/Aniyomi) so a subsequent fetch is
   /// fresh — used by pull-to-refresh. No-op on platforms/sources without it.
+  @override
   Future<void> clearHttpCache() => clearMihonHttpCache();
 
+  @override
   Future<List<Episode>> episodes(
     String url, {
     String category = 'sub',
@@ -618,6 +727,7 @@ class SourceRepository {
   /// CloudStream sources only — every other provider resolves in one shot, so
   /// there is nothing to poll. Those (and any failure) report `done: true` with
   /// no sources, which tells a caller to simply stop asking.
+  @override
   Future<({List<VideoSource> sources, bool done})> polledSources(
     String episodeUrl, {
     String? sourceId,
@@ -637,6 +747,7 @@ class SourceRepository {
   /// Resolve playable sources. [fast] (playback) returns as soon as the first
   /// link(s) are ready; downloads leave it false to get every mirror. A fast
   /// call reuses a fresh [prefetch] for the same episode when one exists.
+  @override
   Future<List<VideoSource>> sources(
     String episodeUrl, {
     String? sourceId,

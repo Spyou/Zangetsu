@@ -69,6 +69,43 @@ void main() {
       expect(match!.title, 'Target');
     });
 
+    test('matches a source title decorated with a year', () {
+      final results = [_item('Reacher (2022)')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Reacher (2022)');
+    });
+
+    test('matches a source title decorated with a season suffix', () {
+      final results = [_item('Reacher Season 1')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Reacher Season 1');
+    });
+
+    test('matches a source title wrapped in "Watch ... Online"', () {
+      final results = [_item('Watch Reacher Online')];
+      expect(bestTitleMatch(results, 'Reacher')!.title, 'Watch Reacher Online');
+    });
+
+    test('does not match an unrelated title that merely contains the substring', () {
+      // The reported bug: "Reacher" must not fall through to a result whose
+      // title happens to contain it as a substring.
+      final results = [_item('The Reluctant Preacher')];
+      final match = bestTitleMatch(results, 'Reacher');
+      expect(match, isNotNull); // falls back to first result (only one here)
+      expect(titleMatches(match!, 'Reacher'), isFalse);
+    });
+
+    test('matches a decorated title but not the bare franchise name', () {
+      final decorated = _item('Spider-Man: Brand New Day (2026)');
+      final bare = _item('Spider-Man');
+      expect(
+        titleMatches(decorated, 'Spider-Man: Brand New Day'),
+        isTrue,
+      );
+      expect(
+        titleMatches(bare, 'Spider-Man: Brand New Day'),
+        isFalse,
+      );
+    });
+
     test('matches the Romaji alt title when the source indexes by Romaji', () {
       // The real bug: metadata gives English, source lists Romaji, no malId.
       final results = [
@@ -82,6 +119,43 @@ void main() {
         altTitle: 'Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2',
       );
       expect(match!.title, 'Mushoku Tensei II: Isekai Ittara Honki Dasu Part 2');
+    });
+
+    test('an ampersand matches the same title spelled with "and"', () {
+      // Sources write it either way. Dropping the symbol made these normalise
+      // to `abovebelow` vs `aboveandbelow` — never equal, on the same film.
+      expect(
+        titleMatches(_item('Above and Below'), 'Above & Below'),
+        isTrue,
+      );
+      expect(
+        titleMatches(_item('Above & Below'), 'Above and Below'),
+        isTrue,
+      );
+    });
+
+    test('spelling out & does not make unrelated titles collide', () {
+      expect(titleMatches(_item('Above & Beyond'), 'Above & Below'), isFalse);
+      expect(titleMatches(_item('Below'), 'Above & Below'), isFalse);
+    });
+
+    test('normalizeTitle agrees on both spellings', () {
+      expect(normalizeTitle('Above & Below'), normalizeTitle('Above and Below'));
+      expect(normalizeTitle('Tom & Jerry'), 'tomandjerry');
+    });
+
+    test('an accented title matches the plain spelling a source uses', () {
+      // The strip used to DELETE the accent: pokémon -> pokmon, which cannot
+      // equal pokemon. Folding makes both sides land on the same letters.
+      expect(normalizeTitle('Pokémon'), 'pokemon');
+      expect(normalizeTitle('Amélie'), 'amelie');
+      expect(normalizeTitle('Café Society'), normalizeTitle('Cafe Society'));
+      expect(titleMatches(_item('Pokemon'), 'Pokémon'), isTrue);
+      expect(titleMatches(_item('Pokémon'), 'Pokemon'), isTrue);
+    });
+
+    test('folding does not merge titles that are genuinely different', () {
+      expect(titleMatches(_item('Pokemon Journeys'), 'Pokémon'), isFalse);
     });
   });
 }

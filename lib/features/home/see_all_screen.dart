@@ -137,9 +137,9 @@ class _SeeAllScreenState extends State<SeeAllScreen> {
         controller: paginating ? _controller : null,
         padding: const EdgeInsets.all(16),
         cacheExtent: 800,
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
-          childAspectRatio: 0.62,
+          childAspectRatio: posterGridAspect(context),
           crossAxisSpacing: 12,
           mainAxisSpacing: 16,
         ),

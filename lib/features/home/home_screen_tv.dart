@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/ui/global_messenger.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
@@ -20,6 +21,7 @@ import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/resume_store.dart';
 import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -105,7 +107,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         sl<PlaybackPrefs>().defaultCategory;
     List<Episode> episodes;
     try {
-      episodes = await sl<SourceRepository>().episodes(
+      episodes = await sl<CatalogueRepository>().episodes(
         item.url,
         sourceId: item.sourceId,
       );
@@ -113,8 +115,11 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       episodes = const [];
     }
     if (!mounted || episodes.isEmpty) return;
-    resolveSources(String u) =>
-        sl<SourceRepository>().sources(u, sourceId: item.sourceId, fast: true);
+    resolveSources(String u) => sl<CatalogueRepository>().sources(
+      u,
+      sourceId: item.sourceId,
+      fast: true,
+    );
     await launchTvPlayback(
       context: context,
       sourceId: item.sourceId,
@@ -145,7 +150,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   Future<void> _resume(HistoryEntry e) async {
     List<Episode> episodes;
     try {
-      episodes = await sl<SourceRepository>().episodes(
+      episodes = await sl<CatalogueRepository>().episodes(
         e.showUrl,
         category: e.category,
         sourceId: e.sourceId,
@@ -157,7 +162,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
     if (idx < 0) idx = 0;
     resolveSources(String u) =>
-        sl<SourceRepository>().sources(u, sourceId: e.sourceId, fast: true);
+        sl<CatalogueRepository>().sources(u, sourceId: e.sourceId, fast: true);
     await launchTvPlayback(
       context: context,
       sourceId: e.sourceId,
@@ -195,7 +200,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
         try {
-          final d = await sl<SourceRepository>().detail(
+          final d = await sl<CatalogueRepository>().detail(
             m.url,
             sourceId: m.sourceId,
           );
@@ -222,6 +227,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           items: section.items,
           onTap: _openDetail,
           onLongPress: _showInfo,
+          // Pagination isn't part of CatalogueRepository — go straight to the
+          // source for it, same as it always has.
           onLoadMore: section.more == null
               ? null
               : (page) =>
@@ -238,7 +245,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
 
   Future<MediaDetail?> _detailOf(String url, String sourceId) async {
     try {
-      return await sl<SourceRepository>().detail(url, sourceId: sourceId);
+      return await sl<CatalogueRepository>().detail(url, sourceId: sourceId);
     } catch (_) {
       return null;
     }
@@ -296,10 +303,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       playLabel: context.l10n.resume,
       progress: e.progress,
       progressLabel: e.episodeNumber != null
-          ? context.l10n.episodeWatchedPct(
-              e.episodeNumber!.toInt(),
-              pct,
-            )
+          ? context.l10n.episodeWatchedPct(e.episodeNumber!.toInt(), pct)
           : context.l10n.percentWatched(pct),
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
@@ -316,7 +320,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       onRemoveFromContinue: () async {
         try {
           await sl<WatchHistory>().remove(e.sourceId, e.showId);
-        } catch (_) {}
+        } catch (_) {
+          showGlobalSnack("Couldn't remove from Continue Watching");
+          return;
+        }
         if (mounted) setState(() {});
       },
     );
