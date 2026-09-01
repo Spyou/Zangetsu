@@ -12,6 +12,7 @@ class BrowseSourceState {
     this.searching = false,
     this.searchFailed = false,
     this.searchResults,
+    this.filtersJson = '',
   });
 
   final List<HomeSection> sections;
@@ -33,6 +34,11 @@ class BrowseSourceState {
   /// "searched and found nothing" (that's an empty, non-null list).
   final List<MediaItem>? searchResults;
 
+  /// The source's own filter selection currently applied, as selection JSON.
+  /// Empty means unfiltered. Kept so the sheet reopens on the last choice and
+  /// the app bar can show the filter as active.
+  final String filtersJson;
+
   /// Whether the screen should be showing search results/spinner/failure
   /// instead of the catalogue rows.
   bool get isSearchActive => searching || searchFailed || searchResults != null;
@@ -43,8 +49,8 @@ class BrowseSourceState {
 /// browses a real source by definition.
 class BrowseSourceCubit extends Cubit<BrowseSourceState> {
   BrowseSourceCubit({required CatalogueRepository repo, required this.sourceId})
-      : _repo = repo,
-        super(const BrowseSourceState());
+    : _repo = repo,
+      super(const BrowseSourceState());
 
   final CatalogueRepository _repo;
   final String sourceId;
@@ -69,36 +75,90 @@ class BrowseSourceCubit extends Cubit<BrowseSourceState> {
       clearSearch();
       return;
     }
-    emit(BrowseSourceState(
-      sections: state.sections,
-      loading: false,
-      searching: true,
-    ));
+    emit(
+      BrowseSourceState(
+        sections: state.sections,
+        loading: false,
+        searching: true,
+      ),
+    );
     try {
       final results = await _repo.search(q, sourceId: sourceId);
       if (isClosed) return;
-      emit(BrowseSourceState(
-        sections: state.sections,
-        loading: false,
-        searchResults: results,
-      ));
+      emit(
+        BrowseSourceState(
+          sections: state.sections,
+          loading: false,
+          searchResults: results,
+        ),
+      );
     } catch (_) {
       if (isClosed) return;
-      emit(BrowseSourceState(
+      emit(
+        BrowseSourceState(
+          sections: state.sections,
+          loading: false,
+          searchFailed: true,
+        ),
+      );
+    }
+  }
+
+  /// Applies the source's own filters (genre, sort, status) with no query.
+  ///
+  /// [home] takes no filters, so a filtered browse has to go through search.
+  /// That isn't a workaround: the extensions treat no-query-plus-filters as an
+  /// ordinary search and implement it that way, so we ask for the same thing.
+  Future<void> applyFilters(String filtersJson) async {
+    if (filtersJson.isEmpty) {
+      clearSearch();
+      return;
+    }
+    emit(
+      BrowseSourceState(
         sections: state.sections,
         loading: false,
-        searchFailed: true,
-      ));
+        searching: true,
+        filtersJson: filtersJson,
+      ),
+    );
+    try {
+      final res = await _repo.searchStatus(
+        '',
+        sourceId: sourceId,
+        filtersJson: filtersJson,
+      );
+      if (isClosed) return;
+      emit(
+        BrowseSourceState(
+          sections: state.sections,
+          loading: false,
+          searchResults: res.items,
+          filtersJson: filtersJson,
+        ),
+      );
+    } catch (_) {
+      if (isClosed) return;
+      emit(
+        BrowseSourceState(
+          sections: state.sections,
+          loading: false,
+          searchFailed: true,
+          filtersJson: filtersJson,
+        ),
+      );
     }
   }
 
   /// Drops the search results and returns to the already-loaded catalogue
   /// rows — never re-fetches [home].
   void clearSearch() {
-    emit(BrowseSourceState(
-      sections: state.sections,
-      loading: state.loading,
-      failed: state.failed,
-    ));
+    emit(
+      BrowseSourceState(
+        sections: state.sections,
+        loading: state.loading,
+        failed: state.failed,
+      ),
+    );
   }
 }
