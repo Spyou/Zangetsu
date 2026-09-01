@@ -63,7 +63,10 @@ class SimklCatalogue implements VideoCatalogue {
       _rows.map((row) async {
         final (title, path, isTv) = row;
         try {
-          final res = await _get(path, {'extended': _listExtended, 'limit': 30});
+          final res = await _get(path, {
+            'extended': _listExtended,
+            'limit': 30,
+          });
           final items = _items(res.data, isTv: isTv);
           return items.isEmpty
               ? null
@@ -81,7 +84,10 @@ class SimklCatalogue implements VideoCatalogue {
         }
       }),
     );
-    return [for (final s in sections) if (s != null) s];
+    return [
+      for (final s in sections)
+        if (s != null) s,
+    ];
   }
 
   /// Their docs do not commit to `page` on the trending endpoints, but it works
@@ -151,8 +157,9 @@ class SimklCatalogue implements VideoCatalogue {
     }
 
     // Hop 2: the record itself.
-    final res = await _get('/${isTv ? 'tv' : 'movies'}/$simklId',
-        {'extended': 'full'});
+    final res = await _get('/${isTv ? 'tv' : 'movies'}/$simklId', {
+      'extended': 'full',
+    });
     final m = res.data;
     if (m is! Map) throw StateError('Simkl returned no media for $c');
     final map = Map<String, dynamic>.from(m);
@@ -163,9 +170,7 @@ class SimklCatalogue implements VideoCatalogue {
       banner: _fanart(map['fanart'] as String?),
       url: ZmodeIds.showUrl(c),
       description: map['overview'] as String?,
-      genres: [
-        for (final g in (map['genres'] as List? ?? const [])) '$g',
-      ],
+      genres: [for (final g in (map['genres'] as List? ?? const [])) '$g'],
       // Simkl exposes a director, not studios; close enough to the same line
       // on the Detail screen and better than leaving it blank.
       studios: [
@@ -195,9 +200,8 @@ class SimklCatalogue implements VideoCatalogue {
 
   /// Simkl serves art off its own CDN by path, the same shape the release
   /// calendar uses (see `parseSimklCalendar`).
-  static String? _poster(String? p) => (p == null || p.isEmpty)
-      ? null
-      : 'https://simkl.in/posters/${p}_m.jpg';
+  static String? _poster(String? p) =>
+      (p == null || p.isEmpty) ? null : 'https://simkl.in/posters/${p}_m.jpg';
 
   static String? _fanart(String? p) => (p == null || p.isEmpty)
       ? null
@@ -213,23 +217,27 @@ class SimklCatalogue implements VideoCatalogue {
       if (row is! Map) continue;
       final ids = row['ids'];
       final tmdbRaw = ids is Map ? ids['tmdb'] : null;
-      final tmdbId = tmdbRaw is int ? tmdbRaw : int.tryParse('${tmdbRaw ?? ''}');
+      final tmdbId = tmdbRaw is int
+          ? tmdbRaw
+          : int.tryParse('${tmdbRaw ?? ''}');
       if (tmdbId == null) continue;
       final title = (row['title'] as String? ?? '').trim();
       if (title.isEmpty) continue;
       final c = ZCanonical(isTv ? ZKind.tv : ZKind.movie, 'tmdb:$tmdbId');
       if (!seen.add(c.id)) continue;
-      out.add(MediaItem(
-        id: c.id,
-        title: title,
-        cover: _poster(row['poster'] as String?),
-        banner: _fanart(row['fanart'] as String?),
-        url: ZmodeIds.showUrl(c),
-        type: ProviderType.movie,
-        sourceId: ZmodeIds.sourceId,
-        tmdbId: tmdbId,
-        tmdbIsTv: isTv,
-      ));
+      out.add(
+        MediaItem(
+          id: c.id,
+          title: title,
+          cover: _poster(row['poster'] as String?),
+          banner: _fanart(row['fanart'] as String?),
+          url: ZmodeIds.showUrl(c),
+          type: ProviderType.movie,
+          sourceId: ZmodeIds.sourceId,
+          tmdbId: tmdbId,
+          tmdbIsTv: isTv,
+        ),
+      );
     }
     return out;
   }

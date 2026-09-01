@@ -91,6 +91,10 @@ class _FakeMetadataRepo implements MetadataRepository {
   dynamic noSuchMethod(Invocation i) => super.noSuchMethod(i);
   @override
   String get sourceId => 'zm';
+  // The pill row asks before rendering: a provider that cannot filter gets a
+  // line of text instead of controls that would not work.
+  @override
+  bool get supportsFilters => true;
   @override
   List<({String id, String name})> get loadedSources => const [];
   @override

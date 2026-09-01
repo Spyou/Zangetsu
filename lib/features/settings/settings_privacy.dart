@@ -1,7 +1,6 @@
 // Privacy and advanced: DNS, incognito, logs, API keys.
 part of 'settings_screen.dart';
 
-
 // ---------------------------------------------------------------------------
 // Privacy
 // ---------------------------------------------------------------------------
@@ -18,6 +17,39 @@ class PrivacySettingsScreen extends StatefulWidget {
 class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
   bool get _nsfw => sl<PlaybackPrefs>().nsfwSources;
   bool get _nsfwAni => sl<PlaybackPrefs>().showNsfwAniyomi;
+  bool get _adultMeta => sl<PlaybackPrefs>().adultMetadata;
+
+  /// The catalogue's own 18+ switch, separate from the source ones above: this
+  /// governs what AniList, MAL and TMDB may return, not which sources appear.
+  Future<void> _onAdultMetaChanged(bool value) async {
+    final prefs = sl<PlaybackPrefs>();
+    if (value) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: AppColors.surface,
+          title: Text(context.l10n.enableAdultCatalogue, style: AppText.title),
+          content: Text(
+            context.l10n.enableAdultCatalogueBody,
+            style: AppText.body,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(context.l10n.cancel),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(context.l10n.enable),
+            ),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    await prefs.setAdultMetadata(value);
+    if (mounted) setState(() {});
+  }
 
   Future<void> _onNsfwChanged(bool value) async {
     final prefs = sl<PlaybackPrefs>();
@@ -59,7 +91,10 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         context: context,
         builder: (ctx) => AlertDialog(
           backgroundColor: AppColors.surface,
-          title: Text(context.l10n.showNSFWAniyomiSources, style: AppText.title),
+          title: Text(
+            context.l10n.showNSFWAniyomiSources,
+            style: AppText.title,
+          ),
           content: Text(
             context.l10n.showNsfwAniyomiSourcesBody,
             style: AppText.body,
@@ -175,6 +210,20 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
                 ),
               ),
               SettingsTile(
+                icon: Icons.no_adult_content_outlined,
+                title: context.l10n.adultCatalogue,
+                subtitle: context.l10n.adultCatalogueSubtitle,
+                onTap: () => _onAdultMetaChanged(!_adultMeta),
+                // A checkbox, not a switch: this one gates a capability the
+                // search screen then exposes as its own toggle, so it reads as
+                // "allowed" rather than "on".
+                trailing: Checkbox(
+                  value: _adultMeta,
+                  activeColor: AppColors.accent,
+                  onChanged: (v) => _onAdultMetaChanged(v ?? false),
+                ),
+              ),
+              SettingsTile(
                 icon: Icons.extension_outlined,
                 title: context.l10n.showNSFWSources,
                 subtitle: context.l10n.adultAniyomiExtensions,
@@ -241,7 +290,7 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
             decoration: InputDecoration(
               labelText: context.l10n.apiKeyLabel,
               hintText: context.l10n.pasteYourKey,
-              ),
+            ),
             onSubmitted: (v) => Navigator.pop(context, v.trim()),
           ),
           const SizedBox(height: 10),
@@ -271,4 +320,3 @@ class _ApiKeyDialogState extends State<_ApiKeyDialog> {
     );
   }
 }
-

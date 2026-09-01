@@ -98,11 +98,15 @@ class AniListCatalogue implements AnimeCatalogue {
     };
     return [
       ('Trending', 'sort:TRENDING_DESC'),
-      ('Popular this season',
-          'sort:POPULARITY_DESC,season:$season,seasonYear:${now.year}'),
-      ('Upcoming next season',
-          'sort:POPULARITY_DESC,season:$nextSeason,seasonYear:$nextYear,'
-              'status:NOT_YET_RELEASED'),
+      (
+        'Popular this season',
+        'sort:POPULARITY_DESC,season:$season,seasonYear:${now.year}',
+      ),
+      (
+        'Upcoming next season',
+        'sort:POPULARITY_DESC,season:$nextSeason,seasonYear:$nextYear,'
+            'status:NOT_YET_RELEASED',
+      ),
       ('All-time popular', 'sort:POPULARITY_DESC'),
       ('Top rated', 'sort:SCORE_DESC'),
       ('Action', 'genre_in:["Action"],sort:POPULARITY_DESC'),
@@ -116,10 +120,12 @@ class AniListCatalogue implements AnimeCatalogue {
   /// all) just drops that row rather than throwing.
   Future<List<HomeSection>> home(ZKind kind) async {
     final rows = _rows(kind);
-    final query = rows.indexed.map((e) {
-      final (i, (_, args)) = e;
-      return 'r$i: Page(perPage:30){ media(type:${_type(kind)}${_format(kind)},$args){ $_listFields } }';
-    }).join(' ');
+    final query = rows.indexed
+        .map((e) {
+          final (i, (_, args)) = e;
+          return 'r$i: Page(perPage:30){ media(type:${_type(kind)}${_format(kind)},$args){ $_listFields } }';
+        })
+        .join(' ');
     final data = await _gql('query{ $query }', const {});
     final out = <HomeSection>[];
     for (final (i, (title, args)) in rows.indexed) {
@@ -127,15 +133,17 @@ class AniListCatalogue implements AnimeCatalogue {
       if (items.isEmpty) continue;
       // The row's own query fragment IS its identity — hand it back through
       // `more` and [browseRow] can ask for page 2 of exactly this row.
-      out.add(HomeSection(
-        title: title,
-        items: items,
-        more: BrowseMore(
-          sourceId: ZmodeIds.sourceId,
-          kind: 'zm_${kind.name}',
-          categoryId: args,
+      out.add(
+        HomeSection(
+          title: title,
+          items: items,
+          more: BrowseMore(
+            sourceId: ZmodeIds.sourceId,
+            kind: 'zm_${kind.name}',
+            categoryId: args,
+          ),
         ),
-      ));
+      );
     }
     return out;
   }
@@ -150,7 +158,8 @@ class AniListCatalogue implements AnimeCatalogue {
     return _itemsFromPage(data?['Page'], kind);
   }
 
-  Future<List<MediaItem>> search(String q, ZKind kind) => searchFiltered(q, kind);
+  Future<List<MediaItem>> search(String q, ZKind kind) =>
+      searchFiltered(q, kind);
 
   @override
   bool get supportsFilters => true;
@@ -172,6 +181,7 @@ class AniListCatalogue implements AnimeCatalogue {
       if (q.trim().isNotEmpty) 'search:\$q',
       'type:${_type(kind)}',
       if (_format(kind).isNotEmpty) _format(kind).replaceFirst(',', ''),
+      if (f == null) 'isAdult:false',
       if (f != null) ...[
         if (f.genres.isNotEmpty)
           'genre_in:[${f.genres.map((g) => '"$g"').join(',')}]',
@@ -184,6 +194,10 @@ class AniListCatalogue implements AnimeCatalogue {
           'format:${_alFormat(f.format)}',
         if (_alStatus(f.status) != null) 'status:${_alStatus(f.status)}',
         if (f.minScore != null) 'averageScore_greater:${f.minScore! - 1}',
+        // Omitted entirely when adult is on, so the results include both —
+        // `isAdult:true` would return ONLY adult titles, which is not what a
+        // "show adult content" switch means.
+        if (!f.adult) 'isAdult:false',
         'sort:${_alSort(f.sort)}',
       ],
     ].where((a) => a.isNotEmpty).join(',');
@@ -192,7 +206,8 @@ class AniListCatalogue implements AnimeCatalogue {
     final decl = q.trim().isEmpty ? r'($n:Int)' : r'($q:String,$n:Int)';
     if (q.trim().isNotEmpty) vars['q'] = q;
 
-    final full = 'query$decl{ Page(page:$page,perPage:\$n){ '
+    final full =
+        'query$decl{ Page(page:$page,perPage:\$n){ '
         'media($args){ $_listFields } } }';
     return _items(await _gql(full, vars), kind);
   }
@@ -245,7 +260,8 @@ class AniListCatalogue implements AnimeCatalogue {
       status: _status(map['status'] as String?),
       genres: [for (final g in (map['genres'] as List? ?? const [])) '$g'],
       studios: [
-        for (final n in ((map['studios'] as Map?)?['nodes'] as List? ?? const []))
+        for (final n
+            in ((map['studios'] as Map?)?['nodes'] as List? ?? const []))
           if (n is Map && n['name'] is String) n['name'] as String,
       ],
       episodes: eps,

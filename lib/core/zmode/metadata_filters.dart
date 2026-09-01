@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'zmode_ids.dart';
 
 /// Filters for a metadata-provider search or browse.
@@ -15,6 +17,7 @@ class MetaFilters {
     this.status,
     this.sort = MetaSort.popularity,
     this.minScore,
+    this.adult = false,
   });
 
   /// Genre names as the provider spells them, e.g. `Action`. Translated to
@@ -30,6 +33,10 @@ class MetaFilters {
   /// is out of 10, so it is divided on the way out.
   final int? minScore;
 
+  /// Include adult (18+) titles. Only reachable when the Privacy switch is on,
+  /// and re-checked there before any request — see [PlaybackPrefs.adultMetadata].
+  final bool adult;
+
   /// Whether anything here would actually narrow a request. A search with
   /// nothing set must take the plain path, so an untouched sheet does not turn
   /// a search into a filtered browse.
@@ -40,6 +47,7 @@ class MetaFilters {
       format == null &&
       status == null &&
       minScore == null &&
+      !adult &&
       sort == MetaSort.popularity;
 
   bool get isNotEmpty => !isEmpty;
@@ -52,6 +60,7 @@ class MetaFilters {
     MetaStatus? status,
     MetaSort? sort,
     int? minScore,
+    bool? adult,
     bool clearYear = false,
     bool clearSeason = false,
     bool clearFormat = false,
@@ -65,7 +74,44 @@ class MetaFilters {
     status: clearStatus ? null : (status ?? this.status),
     sort: sort ?? this.sort,
     minScore: clearScore ? null : (minScore ?? this.minScore),
+    adult: adult ?? this.adult,
   );
+
+  /// Encoded for [HomeSection]-style plumbing: the search bloc already carries
+  /// an opaque per-source filter string, so riding that instead of adding a
+  /// parallel channel keeps one path for "filters were applied".
+  String toJson() => jsonEncode({
+    if (genres.isNotEmpty) 'g': genres,
+    if (year != null) 'y': year,
+    if (season != null) 's': season!.name,
+    if (format != null) 'f': format!.name,
+    if (status != null) 'st': status!.name,
+    if (minScore != null) 'ms': minScore,
+    if (adult) 'a': true,
+    'so': sort.name,
+  });
+
+  static MetaFilters? fromJson(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final m = jsonDecode(raw) as Map<String, dynamic>;
+      T? pick<T extends Enum>(List<T> values, String? name) =>
+          name == null ? null : values.where((v) => v.name == name).firstOrNull;
+      return MetaFilters(
+        genres: [...?(m['g'] as List?)?.cast<String>()],
+        year: m['y'] as int?,
+        season: pick(MetaSeason.values, m['s'] as String?),
+        format: pick(MetaFormat.values, m['f'] as String?),
+        status: pick(MetaStatus.values, m['st'] as String?),
+        minScore: m['ms'] as int?,
+        adult: m['a'] == true,
+        sort: pick(MetaSort.values, m['so'] as String?) ?? MetaSort.popularity,
+      );
+    } catch (_) {
+      // A malformed string means an unfiltered search, never a crash.
+      return null;
+    }
+  }
 }
 
 enum MetaSeason { winter, spring, summer, fall }
