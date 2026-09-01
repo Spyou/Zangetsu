@@ -7,6 +7,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'video_catalogue.dart';
+import 'metadata_filters.dart';
 import 'zmode_ids.dart';
 
 typedef TmdbGet =
@@ -97,6 +98,60 @@ class TmdbCatalogue implements VideoCatalogue {
 
   Future<List<MediaItem>> search(String q) async =>
       _items(await _get('/search/multi', {'query': q}), forcedTv: null);
+
+  @override
+  bool get supportsFilters => true;
+
+  /// Filtering lives on `/discover`, which takes no query, while `/search`
+  /// takes a query and no filters — TMDB genuinely has no endpoint that does
+  /// both. So a filtered search runs /discover and narrows by title locally;
+  /// a filtered browse (no query) is just /discover.
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async {
+    final f = filters;
+    if (f == null || f.isEmpty) {
+      return _items(
+        await _get('/search/multi', {'query': q, 'page': page}),
+        forcedTv: null,
+      );
+    }
+    // One side at a time: /discover is per-media-type, and a TV request with a
+    // movie-only genre id returns nothing rather than an error.
+    final isTv = f.format == MetaFormat.tv;
+    final ids = f.genres
+        .map((g) => tmdbGenreId(g, isTv: isTv))
+        .whereType<int>()
+        .toSet();
+    final params = <String, dynamic>{
+      'page': page,
+      'sort_by': switch (f.sort) {
+        MetaSort.score => 'vote_average.desc',
+        MetaSort.newest => isTv ? 'first_air_date.desc' : 'primary_release_date.desc',
+        MetaSort.title => 'title.asc',
+        _ => 'popularity.desc',
+      },
+      if (ids.isNotEmpty) 'with_genres': ids.join(','),
+      if (f.year != null)
+        (isTv ? 'first_air_date_year' : 'primary_release_year'): f.year,
+      // Sorting by score with no vote floor surfaces titles with one 10/10
+      // vote, which reads as broken rather than as a top-rated list.
+      if (f.sort == MetaSort.score || f.minScore != null) 'vote_count.gte': 200,
+      if (f.minScore != null) 'vote_average.gte': f.minScore! / 10,
+    };
+    final items = _items(
+      await _get('/discover/${isTv ? 'tv' : 'movie'}', params),
+      forcedTv: isTv,
+    );
+    final needle = q.trim().toLowerCase();
+    if (needle.isEmpty) return items;
+    return items
+        .where((i) => i.title.toLowerCase().contains(needle))
+        .toList(growable: false);
+  }
 
   Future<MediaDetail> detail(ZCanonical c) async {
     final isTv = c.kind == ZKind.tv;

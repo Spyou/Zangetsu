@@ -6,6 +6,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'anime_catalogue.dart';
+import 'metadata_filters.dart';
 import 'zmode_ids.dart';
 
 typedef Gql =
@@ -149,12 +150,79 @@ class AniListCatalogue implements AnimeCatalogue {
     return _itemsFromPage(data?['Page'], kind);
   }
 
-  Future<List<MediaItem>> search(String q, ZKind kind) async {
-    const query = r'query($q:String,$n:Int){ Page(perPage:$n){ media(search:$q,type:';
-    final full =
-        '$query${_type(kind)}${_format(kind)}){ $_listFields } } }';
-    return _items(await _gql(full, {'q': q, 'n': 20}), kind);
+  Future<List<MediaItem>> search(String q, ZKind kind) => searchFiltered(q, kind);
+
+  @override
+  bool get supportsFilters => true;
+
+  /// Search, browse, or both.
+  ///
+  /// An empty [q] with filters set is a browse — AniList is happy to return
+  /// `media()` with no `search:` at all, which is what makes "filters with no
+  /// query" work without a second endpoint. [page] is 1-based.
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q,
+    ZKind kind, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async {
+    final f = filters;
+    final args = <String>[
+      if (q.trim().isNotEmpty) 'search:\$q',
+      'type:${_type(kind)}',
+      if (_format(kind).isNotEmpty) _format(kind).replaceFirst(',', ''),
+      if (f != null) ...[
+        if (f.genres.isNotEmpty)
+          'genre_in:[${f.genres.map((g) => '"$g"').join(',')}]',
+        if (f.year != null) 'seasonYear:${f.year}',
+        if (f.season != null) 'season:${f.season!.name.toUpperCase()}',
+        // Manga and novel already pin the format by kind (`format_in:[NOVEL]`
+        // / `format_not_in:[NOVEL]`), so only anime may set it here — two
+        // format clauses would contradict each other and return nothing.
+        if (kind == ZKind.anime && _alFormat(f.format) != null)
+          'format:${_alFormat(f.format)}',
+        if (_alStatus(f.status) != null) 'status:${_alStatus(f.status)}',
+        if (f.minScore != null) 'averageScore_greater:${f.minScore! - 1}',
+        'sort:${_alSort(f.sort)}',
+      ],
+    ].where((a) => a.isNotEmpty).join(',');
+
+    final vars = <String, dynamic>{'n': 30};
+    final decl = q.trim().isEmpty ? r'($n:Int)' : r'($q:String,$n:Int)';
+    if (q.trim().isNotEmpty) vars['q'] = q;
+
+    final full = 'query$decl{ Page(page:$page,perPage:\$n){ '
+        'media($args){ $_listFields } } }';
+    return _items(await _gql(full, vars), kind);
   }
+
+  static String? _alFormat(MetaFormat? f) => switch (f) {
+    null => null,
+    MetaFormat.tv => 'TV',
+    MetaFormat.movie => 'MOVIE',
+    MetaFormat.ova => 'OVA',
+    MetaFormat.special => 'SPECIAL',
+    MetaFormat.manga => 'MANGA',
+    MetaFormat.novel => 'NOVEL',
+    MetaFormat.oneShot => 'ONE_SHOT',
+  };
+
+  static String? _alStatus(MetaStatus? s) => switch (s) {
+    null => null,
+    MetaStatus.releasing => 'RELEASING',
+    MetaStatus.finished => 'FINISHED',
+    MetaStatus.notYetReleased => 'NOT_YET_RELEASED',
+    MetaStatus.cancelled => 'CANCELLED',
+  };
+
+  static String _alSort(MetaSort s) => switch (s) {
+    MetaSort.popularity => 'POPULARITY_DESC',
+    MetaSort.score => 'SCORE_DESC',
+    MetaSort.trending => 'TRENDING_DESC',
+    MetaSort.newest => 'START_DATE_DESC',
+    MetaSort.title => 'TITLE_ROMAJI',
+  };
 
   Future<MediaDetail> detail(ZCanonical c) async {
     final (arg, vars) = _idArg(c);

@@ -7,6 +7,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'anime_catalogue.dart';
+import 'metadata_filters.dart';
 import 'zmode_ids.dart';
 
 /// Anime/manga metadata from MyAnimeList, as a stand-in for AniList.
@@ -124,6 +125,36 @@ class MalCatalogue implements AnimeCatalogue {
     }
   }
 
+  /// MAL v2 has no server-side filtering: `genres=26` alongside `q=naruto`
+  /// returns Naruto titles with no such genre and no error. So this ignores
+  /// [filters] rather than pretending, and [supportsFilters] tells the UI not
+  /// to offer them while MAL is the provider.
+  @override
+  bool get supportsFilters => false;
+
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q,
+    ZKind kind, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async {
+    const limit = 20;
+    if (q.trim().isEmpty) return const [];
+    try {
+      final res = await _get('/${_path(kind)}', {
+        'q': q,
+        'limit': limit,
+        'offset': (page - 1) * limit,
+        'fields': _listFields,
+      });
+      return _items(res.data, kind);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
   Future<List<MediaItem>> search(String q, ZKind kind) async {
     final res = await _get('/${_path(kind)}', {
       'q': q,
