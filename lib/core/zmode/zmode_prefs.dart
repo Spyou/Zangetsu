@@ -24,6 +24,16 @@ class ZModePrefs {
 
   static Future<void> init() async {
     if (!Hive.isBoxOpen(boxName)) await openBoxSafely(boxName);
+    // Anyone who turned the mode OFF while the toggle existed still has that
+    // false on disk, and the default only applies to an absent key — so
+    // without this they would be stranded in the source-only app with no
+    // control left to bring them back. Clearing the key once puts them on the
+    // same footing as a fresh install.
+    final box = _boxOrNull;
+    if (box != null && box.get(_kEnabled) == false) {
+      await box.delete(_kEnabled);
+      revision.value++;
+    }
   }
 
   static Box? get _boxOrNull =>
