@@ -134,6 +134,10 @@ class SimklCatalogue implements VideoCatalogue {
       type: ProviderType.movie,
       sourceId: ZmodeIds.sourceId,
       tmdbId: int.tryParse(tmdbId),
+      // Selects TMDB's movie vs tv namespace for tracking. Without it every
+      // series scrobbles as a film — TmdbCatalogue has always set this, and a
+      // provider that stands in for it has to as well.
+      tmdbIsTv: isTv,
     );
   }
 
@@ -181,6 +185,7 @@ class SimklCatalogue implements VideoCatalogue {
         type: ProviderType.movie,
         sourceId: ZmodeIds.sourceId,
         tmdbId: tmdbId,
+        tmdbIsTv: isTv,
       ));
     }
     return out;
