@@ -460,9 +460,15 @@ class _PlayButton extends StatelessWidget {
     required this.label,
     this.onPressed,
     this.icon = Icons.play_arrow_rounded,
+    this.loading = false,
   });
   final String label;
   final VoidCallback? onPressed;
+
+  /// The episode list hasn't arrived yet. The button can't act, but dimming
+  /// it would say "there is nothing to play" — which isn't known yet — so it
+  /// keeps its normal look while the Episodes tab shows the skeleton.
+  final bool loading;
 
   /// Reading types (manga/novel) show a book icon instead of the play glyph.
   final IconData icon;
@@ -471,7 +477,7 @@ class _PlayButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
     return Opacity(
-      opacity: enabled ? 1.0 : 0.4,
+      opacity: enabled || loading ? 1.0 : 0.4,
       child: Material(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -505,32 +511,45 @@ class _PlayButton extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DownloadButton extends StatelessWidget {
-  const _DownloadButton({required this.label, required this.onPressed});
+  const _DownloadButton({
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
   final String label;
-  final VoidCallback onPressed;
+
+  /// Null disables the button, dimmed the same way [_PlayButton] dims — the
+  /// two sit stacked, so they have to read as disabled the same way.
+  final VoidCallback? onPressed;
+
+  /// See [_PlayButton.loading] — same rule, same reason.
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.surface2,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
+    return Opacity(
+      opacity: onPressed != null || loading ? 1.0 : 0.4,
+      child: Material(
+        color: AppColors.surface2,
         borderRadius: BorderRadius.circular(8),
-        onTap: onPressed,
-        child: SizedBox(
-          height: 52,
-          width: double.infinity,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.file_download_outlined,
-                color: Colors.white,
-                size: 24,
-              ),
-              const SizedBox(width: 8),
-              Text(label, style: AppText.button.copyWith(color: Colors.white)),
-            ],
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onPressed,
+          child: SizedBox(
+            height: 52,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.file_download_outlined,
+                  color: Colors.white,
+                  size: 24,
+                ),
+                const SizedBox(width: 8),
+                Text(label, style: AppText.button.copyWith(color: Colors.white)),
+              ],
+            ),
           ),
         ),
       ),

@@ -3386,6 +3386,18 @@ abstract class AppLocalizations {
   /// **'Failed to load this title'**
   String get failedToLoadThisTitle;
 
+  /// No description provided for @offlineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You are offline'**
+  String get offlineTitle;
+
+  /// No description provided for @offlineBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your connection and try again.'**
+  String get offlineBody;
+
   /// No description provided for @changeStatus.
   ///
   /// In en, this message translates to:
@@ -4406,6 +4418,24 @@ abstract class AppLocalizations {
   /// **'Source settings'**
   String get sourceSettings;
 
+  /// No description provided for @sourceDomain.
+  ///
+  /// In en, this message translates to:
+  /// **'Source domain'**
+  String get sourceDomain;
+
+  /// No description provided for @sourceDomainHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave blank to use the source\'s own domain.'**
+  String get sourceDomainHint;
+
+  /// No description provided for @resetSourceDataConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Reset {name}\'s saved data? This clears its saved settings, login and cookies. Your list, history and downloads stay untouched.'**
+  String resetSourceDataConfirm(String name);
+
   /// No description provided for @removeRepository2.
   ///
   /// In en, this message translates to:
@@ -4927,6 +4957,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Every tab is on the bar.'**
   String get navTabsEveryTabOnBar;
+
+  /// No description provided for @searchMovesToHomeInZMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Search moves to the top of Home in Z Mode.'**
+  String get searchMovesToHomeInZMode;
 
   /// No description provided for @navTabsHelp.
   ///
@@ -8227,6 +8263,258 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Close directly — exit immediately'**
   String get closeConfirmExitImmediatelyLabel;
+
+  /// No description provided for @zMode.
+  ///
+  /// In en, this message translates to:
+  /// **'Z Mode'**
+  String get zMode;
+
+  /// No description provided for @zModeSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Browse from AniList and TMDB, play from your sources'**
+  String get zModeSubtitle;
+
+  /// No description provided for @animeMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Anime metadata'**
+  String get animeMetadata;
+
+  /// No description provided for @animeMetadataSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where anime and manga info comes from'**
+  String get animeMetadataSubtitle;
+
+  /// No description provided for @videoMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Movie & TV metadata'**
+  String get videoMetadata;
+
+  /// No description provided for @videoMetadataSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where movie and series info comes from'**
+  String get videoMetadataSubtitle;
+
+  /// No description provided for @malLoginForLists.
+  ///
+  /// In en, this message translates to:
+  /// **'Log in to MyAnimeList in Trackers to sync your lists'**
+  String get malLoginForLists;
+
+  /// No description provided for @zModeExperimental.
+  ///
+  /// In en, this message translates to:
+  /// **'Experimental'**
+  String get zModeExperimental;
+
+  /// No description provided for @modeAnime.
+  ///
+  /// In en, this message translates to:
+  /// **'Anime'**
+  String get modeAnime;
+
+  /// No description provided for @modeMovieTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Movie/TV'**
+  String get modeMovieTv;
+
+  /// No description provided for @sourceLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Source: {name}'**
+  String sourceLabel(String name);
+
+  /// No description provided for @wrongTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wrong title?'**
+  String get wrongTitle;
+
+  /// No description provided for @noSourceHasThisYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No source has this yet'**
+  String get noSourceHasThisYet;
+
+  /// No description provided for @pickTheRightTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick the right title'**
+  String get pickTheRightTitle;
+
+  /// No description provided for @searchThisSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Search this source'**
+  String get searchThisSource;
+
+  /// No description provided for @matchSaved.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved. Matched to {name} now.'**
+  String matchSaved(String name);
+
+  /// No description provided for @chooseSource.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a source'**
+  String get chooseSource;
+
+  /// No description provided for @scheduleAndLists.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule & lists'**
+  String get scheduleAndLists;
+
+  /// No description provided for @scheduleHubDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'What is airing, day by day'**
+  String get scheduleHubDesc;
+
+  /// No description provided for @trackerCoversVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Movies and series'**
+  String get trackerCoversVideo;
+
+  /// No description provided for @listKindManga.
+  ///
+  /// In en, this message translates to:
+  /// **'Manga'**
+  String get listKindManga;
+
+  /// No description provided for @listKindNovel.
+  ///
+  /// In en, this message translates to:
+  /// **'Novel'**
+  String get listKindNovel;
+
+  /// No description provided for @listKindAnimeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching, completed, planning'**
+  String get listKindAnimeDesc;
+
+  /// No description provided for @listKindMangaDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading, completed, planning'**
+  String get listKindMangaDesc;
+
+  /// No description provided for @listKindNovelDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Light novels on this account'**
+  String get listKindNovelDesc;
+
+  /// No description provided for @sortPopularity.
+  ///
+  /// In en, this message translates to:
+  /// **'Popular'**
+  String get sortPopularity;
+
+  /// No description provided for @sortScore.
+  ///
+  /// In en, this message translates to:
+  /// **'Top rated'**
+  String get sortScore;
+
+  /// No description provided for @sortTrending.
+  ///
+  /// In en, this message translates to:
+  /// **'Trending'**
+  String get sortTrending;
+
+  /// No description provided for @sortNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest'**
+  String get sortNewest;
+
+  /// No description provided for @sortTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A-Z'**
+  String get sortTitle;
+
+  /// No description provided for @filtersNeedProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Filters need {provider}. Switch it in Settings.'**
+  String filtersNeedProvider(String provider);
+
+  /// No description provided for @format.
+  ///
+  /// In en, this message translates to:
+  /// **'Format'**
+  String get format;
+
+  /// No description provided for @minimumScore.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum score'**
+  String get minimumScore;
+
+  /// No description provided for @searchAnime.
+  ///
+  /// In en, this message translates to:
+  /// **'Search anime'**
+  String get searchAnime;
+
+  /// No description provided for @searchMoviesTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Search movies & TV'**
+  String get searchMoviesTv;
+
+  /// No description provided for @searchManga.
+  ///
+  /// In en, this message translates to:
+  /// **'Search manga'**
+  String get searchManga;
+
+  /// No description provided for @searchNovels.
+  ///
+  /// In en, this message translates to:
+  /// **'Search novels'**
+  String get searchNovels;
+
+  /// No description provided for @adultCatalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult titles in catalogue'**
+  String get adultCatalogue;
+
+  /// No description provided for @adultCatalogueSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Let AniList, MyAnimeList and TMDB return 18+ results'**
+  String get adultCatalogueSubtitle;
+
+  /// No description provided for @enableAdultCatalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Show adult titles?'**
+  String get enableAdultCatalogue;
+
+  /// No description provided for @enableAdultCatalogueBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.'**
+  String get enableAdultCatalogueBody;
+
+  /// No description provided for @adultOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult'**
+  String get adultOnly;
 }
 
 class _AppLocalizationsDelegate

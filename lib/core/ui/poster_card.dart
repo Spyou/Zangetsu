@@ -211,12 +211,22 @@ class _PosterCardState extends State<PosterCard> {
                 ),
               ),
               if (widget.showTitle) ...[
-                const SizedBox(height: 8),
-                Text(
-                  widget.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppText.caption.copyWith(color: AppColors.textPrimary),
+                const SizedBox(height: _kTitleGap),
+                // A FIXED two-line box, even for a one-line title. The image
+                // above is Expanded, so a shorter title used to hand it the
+                // leftover space and posters came out different heights across
+                // the same row. Pinning the text also pins the gap to whatever
+                // follows the row.
+                SizedBox(
+                  height: _titleBoxHeight,
+                  child: Text(
+                    widget.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppText.caption.copyWith(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -226,6 +236,29 @@ class _PosterCardState extends State<PosterCard> {
     );
   }
 }
+
+/// Height of exactly two lines of the poster title, derived from the style so a
+/// change to the type scale carries here instead of silently clipping.
+final double _titleBoxHeight =
+    (AppText.caption.fontSize! * AppText.caption.height!) * 2;
+
+/// Gap between the poster art and its title.
+const double _kTitleGap = 8;
+
+/// Aspect ratio (width / height) for a grid cell holding a [PosterCard] of
+/// [cellWidth]: a 2:3 poster plus the gap and the fixed two-line title.
+///
+/// Grids used to hardcode 0.62, which squashed the art to roughly 1.2:1 while
+/// the horizontal rows drew a proper 1.5 — the same poster looked like a
+/// different component depending on which screen you were on.
+double posterCellAspect(double cellWidth) =>
+    cellWidth / (cellWidth * 1.5 + _kTitleGap + _titleBoxHeight);
+
+/// [posterCellAspect] for the app's standard poster grid: three columns, 16px
+/// page padding, 12px between cells. Depends on the screen width, so it cannot
+/// be a constant — which is exactly why the hardcoded 0.62 drifted.
+double posterGridAspect(BuildContext context) =>
+    posterCellAspect((MediaQuery.sizeOf(context).width - 32 - 24) / 3);
 
 /// Small frosted badge drawn over poster art (e.g. "SUB", "DUB", "MOVIE").
 class _PosterTag extends StatelessWidget {

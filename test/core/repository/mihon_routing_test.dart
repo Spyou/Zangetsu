@@ -93,10 +93,11 @@ class _RecordingMihonProvider extends MihonProvider {
 SourceRepository _repoWith({
   MihonManager? mihon,
   AniyomiManager? ani,
+  CloudStreamManager? cs,
   PlaybackPrefs? prefs,
 }) => SourceRepository(
   manager: ProviderManager(dio: Dio()),
-  csManager: CloudStreamManager(),
+  csManager: cs ?? CloudStreamManager(),
   aniManager: ani ?? AniyomiManager(),
   mihonManager: mihon,
   activeSource: ActiveSourceCubit(),
@@ -196,6 +197,67 @@ void main() {
       expect(repo.hasSource('mihon:8'), isFalse);
       // Mihon item urls are paths, so the base url is needed to build a link.
       expect(repo.baseUrlFor('mihon:7'), 'https://md.test');
+    });
+  });
+
+  group('baseUrlFor answers for a cs: id (Task 22)', () {
+    // Regression net for the bug this task fixes: baseUrlFor had no
+    // CloudStream branch at all, so every cs: id fell through to '' —
+    // structurally hiding "Solve Cloudflare" / "Open in browser" for every
+    // CloudStream source regardless of whether it actually had a site.
+    CloudStreamManager csWith(Map<String, dynamic> raw) =>
+        CloudStreamManager()..rebuildFromForTest([raw]);
+
+    test('a CS source with a mainUrl answers with it', () {
+      final cs = csWith({
+        'name': 'Netflix',
+        'lang': 'en',
+        'types': ['Movie'],
+        'mainUrl': 'https://cncsite.example.com',
+      });
+      final repo = _repoWith(cs: cs);
+
+      expect(repo.baseUrlFor('cs:Netflix'), 'https://cncsite.example.com');
+    });
+
+    test('a CS source with no mainUrl answers with \'\'', () {
+      final cs = csWith({
+        'name': 'NoSite',
+        'lang': 'en',
+        'types': ['Movie'],
+        // No 'mainUrl' key at all — mirrors a plugin that genuinely doesn't
+        // declare one, or an older native build that predates this field.
+      });
+      final repo = _repoWith(cs: cs);
+
+      expect(repo.baseUrlFor('cs:NoSite'), '');
+    });
+
+    test('an uninstalled cs: id still answers with \'\' (unchanged)', () {
+      final repo = _repoWith(cs: CloudStreamManager());
+      expect(repo.baseUrlFor('cs:Whatever'), '');
+    });
+
+    test('CS ordering does not shadow Mihon/Aniyomi/LNReader branches', () {
+      // Same mainUrl-bearing CS source registered alongside a Mihon source —
+      // proves the CS branch was appended, not inserted ahead of the
+      // existing checks (which the brief requires stay in their exact order).
+      final mihon = MihonManager()
+        ..register(
+          MihonProvider(
+            info: _info(id: 7, name: 'MangaDex', baseUrl: 'https://md.test'),
+          ),
+        );
+      final cs = csWith({
+        'name': 'Netflix',
+        'lang': 'en',
+        'types': ['Movie'],
+        'mainUrl': 'https://cncsite.example.com',
+      });
+      final repo = _repoWith(mihon: mihon, cs: cs);
+
+      expect(repo.baseUrlFor('mihon:7'), 'https://md.test');
+      expect(repo.baseUrlFor('cs:Netflix'), 'https://cncsite.example.com');
     });
   });
 

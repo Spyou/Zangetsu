@@ -360,6 +360,20 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             runOnUiThread { csChannel?.invokeMethod("onRepoAdded", url) }
         }
 
+        // Same idea for a Cloudflare challenge PluginHost's shared-client
+        // interceptor sees (applyBaseClient): forward host + best-effort
+        // source id so Dart can flag it in the same CfSolveNeeded latch the
+        // JS-provider path uses. Static wiring — doesn't force `host` (the
+        // lazy PluginHost) to construct here.
+        PluginHost.onCfChallenge = { chHost, chUrl, sourceId ->
+            runOnUiThread {
+                csChannel?.invokeMethod(
+                    "onCfChallenge",
+                    mapOf("host" to chHost, "url" to chUrl, "sourceId" to sourceId),
+                )
+            }
+        }
+
         // TV ExoPlayer spike (SP0) — register the SurfaceView PlatformView.
         flutterEngine.platformViewsController.registry.registerViewFactory(
             "zangetsu/exoplayer_view",
@@ -1052,6 +1066,31 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                             } catch (e: Exception) {
                                 result.error("cs_error", e.message, null)
                             }
+                        }
+                    }
+                    // Clear this plugin's own DataStore-backed settings + its
+                    // site's cookies — narrow reset when a plugin's saved
+                    // state (login, chosen server, prefs) has gone stale.
+                    // Never touches any other plugin or the shared cookie jar.
+                    "resetPluginData" -> {
+                        val name = call.argument<String>("name")
+                        try {
+                            result.success(host.resetPluginData(name ?: ""))
+                        } catch (e: Exception) {
+                            result.error("cs_error", e.message, null)
+                        }
+                    }
+                    // The source's CURRENT mainUrl, read fresh off the loaded
+                    // plugin rather than the value captured when sources were
+                    // listed — see PluginHost.liveMainUrl. Used by the
+                    // Cloudflare-solve action so it targets the domain the
+                    // source actually uses right now.
+                    "liveMainUrl" -> {
+                        val name = call.argument<String>("name")
+                        try {
+                            result.success(host.liveMainUrl(name ?: ""))
+                        } catch (e: Exception) {
+                            result.error("cs_error", e.message, null)
                         }
                     }
                     else -> result.notImplemented()

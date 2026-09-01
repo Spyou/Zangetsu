@@ -21,6 +21,7 @@ class ScheduleState extends Equatable {
     this.loadingAiring = true,
     this.loadingSoon = true,
     this.errorAiring = false,
+    this.offline = false,
     this.errorSoon = false,
     // ── redesign additions (phone) ──
     this.view = ScheduleView.week,
@@ -48,6 +49,11 @@ class ScheduleState extends Equatable {
   final bool loadingAiring;
   final bool loadingSoon;
   final bool errorAiring;
+
+  /// Nothing reached the network on the last load. Distinct from an empty
+  /// schedule: "nothing airing this week" is a claim, and it should not be
+  /// made on a dropped connection.
+  final bool offline;
   final bool errorSoon;
 
   // ── redesign additions ──
@@ -84,6 +90,7 @@ class ScheduleState extends Equatable {
     bool? loadingAiring,
     bool? loadingSoon,
     bool? errorAiring,
+    bool? offline,
     bool? errorSoon,
     ScheduleView? view,
     DateTime? monthAnchor,
@@ -103,6 +110,7 @@ class ScheduleState extends Equatable {
         loadingAiring: loadingAiring ?? this.loadingAiring,
         loadingSoon: loadingSoon ?? this.loadingSoon,
         errorAiring: errorAiring ?? this.errorAiring,
+        offline: offline ?? this.offline,
         errorSoon: errorSoon ?? this.errorSoon,
         view: view ?? this.view,
         monthAnchor: monthAnchor ?? this.monthAnchor,
@@ -118,7 +126,7 @@ class ScheduleState extends Equatable {
   @override
   List<Object?> get props => [
         airingAll, airingByDay, myListByDay, comingSoon, loadingAiring,
-        loadingSoon, errorAiring, errorSoon, view, monthAnchor, selectedDay,
+        loadingSoon, errorAiring, errorSoon, offline, view, monthAnchor, selectedDay,
         myListOnly, monthAiringByDay, followed, soonByDay, loadingMonth,
         errorMonth,
       ];
@@ -240,6 +248,7 @@ class ScheduleCubit extends Cubit<ScheduleState> {
       followed: followed,
       loadingAiring: false,
       errorAiring: entries.isEmpty, // still empty after retries → genuine miss
+      offline: entries.isEmpty && _airing.lastFailureOffline,
     ));
   }
 
@@ -257,6 +266,7 @@ class ScheduleCubit extends Cubit<ScheduleState> {
       soonByDay: groupSoonByLocalDay(soon),
       loadingSoon: false,
       errorSoon: soon.isEmpty,
+      offline: soon.isEmpty && _soon.lastFailureOffline,
     ));
   }
 

@@ -54,6 +54,8 @@ class _StubSuggestions extends TitleSuggestionService {
 class _StubSourceRepository implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   String get sourceId => 'stub';

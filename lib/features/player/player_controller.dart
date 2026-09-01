@@ -36,7 +36,10 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/playback/subtitle_download_service.dart';
 import '../../core/playback/subtitle_translate_service.dart';
+import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../watch_together/model/room_state.dart';
 import 'color_profiles.dart';
 import 'shader_presets.dart';
@@ -534,7 +537,7 @@ class PlayerCubit extends Cubit<PlayerState> {
       var epUrl = _episodeUrl(currentEpisode);
       if (epUrl == currentEpisode.url &&
           (showUrl?.isNotEmpty ?? false)) {
-        final catEps = await sl<SourceRepository>()
+        final catEps = await sl<CatalogueRepository>()
             .episodes(showUrl!, sourceId: sourceId, category: cat);
         if (gen != _gen) return;
         if (state.currentIndex < catEps.length) {
@@ -969,8 +972,12 @@ class PlayerCubit extends Cubit<PlayerState> {
             _lastDur > Duration.zero &&
             p >= _lastDur * 0.85) {
           _prefetchedNextForIndex = idx;
-          sl<SourceRepository>()
-              .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
+          // SourceRepository.prefetch has no metadata-catalogue equivalent and
+          // throws for the zm pseudo source, so skip it there.
+          if (sourceId != ZmodeIds.sourceId) {
+            sl<SourceRepository>()
+                .prefetch(_episodeUrl(episodes[idx + 1]), sourceId: sourceId);
+          }
         }
       }),
     );
@@ -1723,6 +1730,24 @@ class PlayerCubit extends Cubit<PlayerState> {
       // alongside the open above so it can't compete with the stream starting.
       unawaited(_pollForMoreSources(_episodeUrl(currentEpisode)));
       if (roomRole == RoomRole.host) onLocalPlayback?.call('episode', Duration.zero);
+    } on NoSourceMatch {
+      // No BuildContext down here to call context.l10n — this mirrors
+      // AppLocalizationsEn.noSourceHasThisYet verbatim.
+      if (gen != _gen) return;
+      emit(
+        state.copyWith(loadingSources: false, error: () => 'No source has this yet'),
+      );
+    } on EpisodeNotOnSource catch (e) {
+      // The show matched fine — this one episode just isn't on that source.
+      // Its own toString() carries the canonical (a raw storage key), so
+      // build the message by hand instead of interpolating $e.
+      if (gen != _gen) return;
+      emit(
+        state.copyWith(
+          loadingSources: false,
+          error: () => "Episode ${e.episode} isn't on this source yet",
+        ),
+      );
     } catch (e) {
       if (gen != _gen) return;
       emit(

@@ -19,6 +19,8 @@ import 'package:watch_app/core/repository/source_repository.dart';
 class _FakeSourceRepository implements SourceRepository {
   @override
   noSuchMethod(Invocation i) => super.noSuchMethod(i);
+  @override
+  List<({String id, String name})> get pickableSources => loadedSources;
 
   @override
   Future<List<PageImage>> pages(String chapterUrl, {String? sourceId}) =>

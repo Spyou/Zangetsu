@@ -18,6 +18,11 @@ class MediaItem extends Equatable {
   final String? englishTitle;
   final String? cover;
   final Map<String, String>? coverHeaders;
+
+  /// Wide 16:9 art (AniList `bannerImage` / TMDB `backdrop_path`), for the
+  /// home hero. Null outside Z Mode — every existing source keeps rendering
+  /// its hero from [cover], exactly as before this field existed.
+  final String? banner;
   final String url;
   final ProviderType type;
   final String sourceId;
@@ -72,6 +77,7 @@ class MediaItem extends Equatable {
     this.englishTitle,
     this.cover,
     this.coverHeaders,
+    this.banner,
     required this.url,
     required this.type,
     required this.sourceId,
@@ -104,6 +110,7 @@ class MediaItem extends Equatable {
     englishTitle: englishTitle,
     cover: cover,
     coverHeaders: coverHeaders,
+    banner: banner,
     url: url,
     type: type,
     sourceId: sourceId ?? this.sourceId,
@@ -124,6 +131,7 @@ class MediaItem extends Equatable {
     englishTitle,
     cover,
     coverHeaders,
+    banner,
     url,
     type,
     sourceId,
@@ -139,6 +147,54 @@ class MediaItem extends Equatable {
   ];
 }
 
+/// Decorations source catalogues routinely bolt onto a title — a year,
+/// season/part/episode markers, "Watch ... Online" wrapper words, quality or
+/// audio tags — that carry no identifying information. [titleMatches] strips
+/// these from both sides before comparing, so "Reacher" matches "Reacher
+/// (2022)" / "Reacher Season 1" / "Watch Reacher Online" without loosening
+/// the check itself: it's still whole-string equality afterwards, never
+/// containment, so "The Reluctant Preacher" (no decorations to strip) still
+/// misses "Reacher".
+final RegExp _titleDecorations = RegExp(
+  r'\b(?:'
+  r'(?:19|20)\d{2}' // year: 2022, 2026...
+  r'|s\d{1,2}(?:e\d{1,3})?' // s01, s01e02
+  r'|season\s*\d+|part\s*\d+|episode\s*\d+'
+  r'|watch|online|full\s*movie|free'
+  r'|dual\s*audio|multi\s*audio'
+  r'|\d{3,4}p|4k|hd|cam|hdrip|webrip|bluray'
+  r')\b',
+  caseSensitive: false,
+);
+
+String _stripTitleDecorations(String s) => s.replaceAll(_titleDecorations, ' ');
+
+/// Whether [m] is the title being looked for: same MAL id, or a normalized
+/// title (or English title) equal to [wanted] or [altTitle] once decorations
+/// (see [_stripTitleDecorations]) are stripped from both sides. This is the
+/// acceptance rule [bestTitleMatch] ranks by, exposed so callers that must
+/// reject its fallback-to-first-result can apply the same test.
+bool titleMatches(
+  MediaItem m,
+  String wanted, {
+  String? altTitle,
+  int? wantedMalId,
+}) {
+  if (wantedMalId != null && m.malId != null && m.malId == wantedMalId) {
+    return true;
+  }
+  final wants = <String>{
+    normalizeTitle(_stripTitleDecorations(wanted)),
+    if (altTitle != null && altTitle.isNotEmpty)
+      normalizeTitle(_stripTitleDecorations(altTitle)),
+  }..removeWhere((s) => s.isEmpty);
+  final title = normalizeTitle(_stripTitleDecorations(m.title));
+  final english = m.englishTitle == null
+      ? null
+      : normalizeTitle(_stripTitleDecorations(m.englishTitle!));
+  return wants.contains(title) || (english != null && wants.contains(english));
+}
+
 /// Pick the search result that best matches a tapped relation / work. Prefers a
 /// [MediaItem.malId] match (exact + unique), then an exact normalized match on
 /// EITHER the English [wanted] or the Romaji [altTitle] against the result's
@@ -148,6 +204,10 @@ class MediaItem extends Equatable {
 /// sources index by Romaji — tapping "Mushoku Tensei: Jobless Reincarnation
 /// Season 2 Part 2" must still find the source's "Mushoku Tensei II: Isekai
 /// Ittara Honki Dasu Part 2". Returns null only when [results] is empty.
+///
+/// The malId pass and the title pass stay separate (rather than one loop
+/// calling [titleMatches] once per item) so a malId match anywhere in
+/// [results] still wins over a title match on an earlier item.
 MediaItem? bestTitleMatch(
   List<MediaItem> results,
   String wanted, {
@@ -160,20 +220,39 @@ MediaItem? bestTitleMatch(
       if (m.malId != null && m.malId == wantedMalId) return m;
     }
   }
-  final wants = <String>{
-    normalizeTitle(wanted),
-    if (altTitle != null && altTitle.isNotEmpty) normalizeTitle(altTitle),
-  }..removeWhere((s) => s.isEmpty);
   for (final m in results) {
-    if (wants.contains(normalizeTitle(m.title)) ||
-        (m.englishTitle != null &&
-            wants.contains(normalizeTitle(m.englishTitle!)))) {
-      return m;
-    }
+    if (titleMatches(m, wanted, altTitle: altTitle)) return m;
   }
   return results.first;
 }
 
+/// Accented letters folded to their plain form. Stripping non-alphanumerics
+/// DELETES an accent rather than folding it, so "Pokémon" became `pokmon` and
+/// could never equal a source's "Pokemon" (`pokemon`) — the same title, never
+/// matching. Only the Latin-1 range that actually shows up in titles.
+const Map<String, String> _foldedLetters = {
+  'á': 'a', 'à': 'a', 'â': 'a', 'ä': 'a', 'ã': 'a', 'å': 'a', 'ā': 'a',
+  'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e', 'ē': 'e',
+  'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i', 'ī': 'i',
+  'ó': 'o', 'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o', 'ō': 'o',
+  'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ū': 'u',
+  'ñ': 'n', 'ç': 'c', 'ý': 'y', 'ÿ': 'y',
+  'ß': 'ss', 'æ': 'ae', 'œ': 'oe',
+};
+
 /// Lowercase + strip non-alphanumerics, for tolerant title comparison.
-String normalizeTitle(String s) =>
-    s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '');
+///
+/// Two things happen before the strip, both for the same reason: the strip
+/// DELETES what it doesn't understand, which silently turns a title into
+/// something that can never equal the same title written slightly differently.
+///
+///  - `&` is spelled out, because sources write it both ways ("Above & Below"
+///    vs "Above and Below"); dropping it gives `abovebelow` vs `aboveandbelow`.
+///  - Accents are folded (see [_foldedLetters]); dropping them gives `pokmon`.
+String normalizeTitle(String s) {
+  var out = s.toLowerCase().replaceAll(RegExp(r'[&＆﹠]'), 'and');
+  _foldedLetters.forEach((accented, plain) {
+    if (out.contains(accented)) out = out.replaceAll(accented, plain);
+  });
+  return out.replaceAll(RegExp(r'[^a-z0-9]+'), '');
+}

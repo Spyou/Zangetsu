@@ -29,6 +29,8 @@ import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
 import 'core/locale/locale_controller.dart';
+import 'core/zmode/metadata_provider_prefs.dart';
+import 'core/zmode/zmode_prefs.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'core/tv/tv_viewport.dart';
@@ -297,12 +299,24 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (mounted) setState(() {}); // language changed → rebuild MaterialApp.locale
   }
 
+  /// The toggle, stream kind, or metadata provider changed: Home must refetch
+  /// from the other catalogue, and the shell must redraw its dock. The
+  /// provider case matters just as much — the rows themselves differ between
+  /// AniList and MAL, so leaving the old ones up shows the previous provider's
+  /// data under the new provider's name.
+  void _onZModeChanged() {
+    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load(reset: true);
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
     LocaleController.revision.addListener(_onLocaleChanged);
+    ZModePrefs.revision.addListener(_onZModeChanged);
+    MetadataProviderPrefs.revision.addListener(_onZModeChanged);
     _watchBoot(_boot);
   }
 
@@ -310,6 +324,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
     LocaleController.revision.removeListener(_onLocaleChanged);
+    ZModePrefs.revision.removeListener(_onZModeChanged);
+    MetadataProviderPrefs.revision.removeListener(_onZModeChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();

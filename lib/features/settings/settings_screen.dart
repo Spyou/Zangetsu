@@ -10,6 +10,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/tracker/tracker_hub.dart';
+import '../../core/zmode/metadata_provider_prefs.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
 import '../../core/tracker/mal_service.dart';
@@ -126,6 +129,121 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
+
+  /// The metadata provider store is registered by `registerZangetsuMode`,
+  /// which runs late in boot — and this screen is built eagerly as the dock's
+  /// Profile tab. Guarded so it reads as the default rather than throwing if
+  /// it is built first. Same guard `SourceRepository._domainOverride` uses.
+  static MetadataProviderPrefs? get _providerPrefs =>
+      sl.isRegistered<MetadataProviderPrefs>()
+          ? sl<MetadataProviderPrefs>()
+          : null;
+
+  static String _animeProviderLabel() =>
+      _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
+
+  static String _videoProviderLabel() =>
+      _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+
+  /// MAL browsing works signed out (public reads), but the *list* does not.
+  /// The switch-time toast only fires once, so someone who picked MAL months
+  /// ago, or signed out since, gets no explanation for the missing list. Say
+  /// it on the row instead, where it stays true.
+  static bool get _malNeedsLogin =>
+      _providerPrefs?.anime == AnimeProvider.mal &&
+      !(sl.isRegistered<TrackerHub>() &&
+          sl<TrackerHub>().connected.any(
+            (t) => t.displayName.toLowerCase().contains('myanimelist'),
+          ));
+
+  /// Movie/TV twin of [_pickAnimeMetadataProvider]. No login nudge: Simkl's
+  /// catalogue is public, and the Simkl tracker is a separate concern the
+  /// Trackers screen already handles.
+  Future<void> _pickVideoMetadataProvider() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final l10n = context.l10n;
+    final picked = await showModalBottomSheet<VideoProvider>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(l10n.videoMetadata, style: AppText.headline),
+            const SizedBox(height: 10),
+            for (final p in VideoProvider.values)
+              ListTile(
+                title: Text(
+                  p == VideoProvider.simkl ? 'Simkl' : 'TMDB',
+                  style: AppText.body,
+                ),
+                trailing: prefs.video == p
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(p),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setVideo(picked);
+  }
+
+  /// Choose who supplies anime/manga metadata.
+  ///
+  /// Both providers serve public data without a login, so this changes nothing
+  /// about signing in — but MAL can only show YOUR lists once the MAL tracker
+  /// is connected, which is easy to miss right after switching to it.
+  Future<void> _pickAnimeMetadataProvider() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final l10n = context.l10n;
+    final picked = await showModalBottomSheet<AnimeProvider>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(l10n.animeMetadata, style: AppText.headline),
+            const SizedBox(height: 10),
+            for (final p in AnimeProvider.values)
+              ListTile(
+                title: Text(
+                  p == AnimeProvider.mal ? 'MyAnimeList' : 'AniList',
+                  style: AppText.body,
+                ),
+                trailing: prefs.anime == p
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(p),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setAnime(picked);
+    if (!mounted) return;
+    // prefs already holds the pick, so the row's own check answers this too.
+    if (_malNeedsLogin) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.malLoginForLists)));
+    }
+  }
 
   /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
   Future<void> _shareLogs() async {
@@ -817,6 +935,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ],
         ),
         onTap: () => _push(const AppearanceScreen()),
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.auto_awesome_outlined,
+        title: l10n.zMode,
+        subtitle: l10n.zModeSubtitle,
+        keywords: 'zangetsu mode metadata anilist tmdb experimental catalogue',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              l10n.zModeExperimental,
+              style: AppText.caption.copyWith(color: AppColors.textTertiary),
+            ),
+            const SizedBox(width: 6),
+            Switch.adaptive(
+              value: ZModePrefs.enabled,
+              activeThumbColor: AppColors.accent,
+              onChanged: (v) async {
+                await ZModePrefs.setEnabled(v);
+                if (mounted) setState(() {});
+              },
+            ),
+          ],
+        ),
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.hub_outlined,
+        title: l10n.animeMetadata,
+        subtitle:
+            _malNeedsLogin ? l10n.malLoginForLists : l10n.animeMetadataSubtitle,
+        keywords: 'anime metadata provider anilist mal myanimelist fallback '
+            'catalogue',
+        trailing: _value(_animeProviderLabel()),
+        onTap: () async {
+          await _pickAnimeMetadataProvider();
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.movie_filter_outlined,
+        title: l10n.videoMetadata,
+        subtitle: l10n.videoMetadataSubtitle,
+        keywords: 'movie tv series metadata provider tmdb simkl fallback '
+            'catalogue',
+        trailing: _value(_videoProviderLabel()),
+        onTap: () async {
+          await _pickVideoMetadataProvider();
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: SettingsSection.interface,

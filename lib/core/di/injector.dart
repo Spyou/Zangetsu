@@ -44,10 +44,14 @@ import '../provider/provider_manager.dart';
 import '../share/open_link_service.dart';
 import '../provider/provider_registry.dart';
 import '../provider/provider_repo_registry.dart';
+import '../repository/catalogue_repository.dart';
 import '../repository/provider_settings_repository.dart';
+import '../repository/source_domain_overrides.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
+import '../zmode/zmode_module.dart';
+import '../zmode/zmode_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
 import '../metadata/metadata_enrichment.dart';
@@ -292,6 +296,7 @@ Future<void> initDependencies() async {
   // Apply the saved accent colour before the first frame (default = coral).
   await ThemeController.init();
   await LocaleController.init();
+  await ZModePrefs.init();
   await DownloadPrefs.init();
   sl.registerSingleton<DownloadPrefs>(DownloadPrefs());
   await TorrentPrefs.init();
@@ -322,6 +327,12 @@ Future<void> initDependencies() async {
   // sources, and backs the "Source health" test screen.
   await SourceHealthStore.init();
   sl.registerSingleton<SourceHealthStore>(SourceHealthStore());
+
+  // Read by SourceRepository.baseUrlFor / cfSolveTargetFor, so it has to be
+  // registered before that repository is used, not just before it is built.
+  sl.registerSingleton<SourceDomainOverrides>(
+    await SourceDomainOverrides.open(),
+  );
   // Persisted Cloudflare clearances: JS sources reuse a solved cf_clearance
   // across restarts instead of re-popping the "Verifying…" solver each session.
   await CfClearanceStore.init();
@@ -839,6 +850,10 @@ Future<void> initDependencies() async {
     ),
   );
 
+  // Z Mode: the catalogue router and its metadata side. Off by default;
+  // registering it costs nothing but makes the toggle instant.
+  await registerZangetsuMode(sl);
+
   // Now that SourceRepository can enumerate loaded sources, make sure the
   // restored content mode points at a source that belongs to it (e.g. a
   // novel-mode launch shouldn't show an anime source). No-op for anime mode
@@ -900,7 +915,9 @@ Future<void> initDependencies() async {
   // Home data cubit as a singleton so the splash can warm it (preload the
   // rows for the active source) while the intro animation plays — Home then
   // appears already populated instead of flashing skeletons.
-  sl.registerLazySingleton<HomeCubit>(() => HomeCubit(sl<SourceRepository>()));
+  sl.registerLazySingleton<HomeCubit>(
+    () => HomeCubit(sl<CatalogueRepository>()),
+  );
 
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is
