@@ -177,6 +177,8 @@ class _SearchScreenState extends State<SearchScreen> {
               ? SearchScreenTv(
                   initialQuery: widget.initialQuery,
                   history: sl<SearchHistory>(),
+                  scope: scope,
+                  forceMode: widget.forceMode,
                 )
               : _SearchView(
                   initialQuery: widget.initialQuery,

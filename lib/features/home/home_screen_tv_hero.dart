@@ -17,6 +17,7 @@ class _TvHero extends StatefulWidget {
     required this.onInfo,
     required this.onToggleList,
     required this.wrapButton,
+    required this.onBrowseSources,
   });
 
   /// Featured titles the hero rotates through (Apple-TV style).
@@ -26,6 +27,7 @@ class _TvHero extends StatefulWidget {
   final void Function(MediaItem) onPlay;
   final void Function(MediaItem) onInfo;
   final void Function(MediaItem) onToggleList;
+  final VoidCallback onBrowseSources;
   final Widget Function(
     Widget child,
     VoidCallback onTap, {
@@ -55,11 +57,22 @@ class _TvHeroState extends State<_TvHero> {
   @override
   void didUpdateWidget(_TvHero old) {
     super.didUpdateWidget(old);
-    if (old.items.length != widget.items.length) {
-      _i = widget.items.isEmpty ? 0 : _i % widget.items.length;
+    final itemsChanged = old.items.length != widget.items.length ||
+        !_sameHeroItems(old.items, widget.items);
+    if (itemsChanged) {
+      _i = 0;
+      _logoUrl = null;
       _startRotation();
       _loadLogo();
     }
+  }
+
+  bool _sameHeroItems(List<MediaItem> a, List<MediaItem> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].url != b[i].url) return false;
+    }
+    return true;
   }
 
   /// Cycle the featured title every few seconds. The Focus nodes persist across
@@ -209,6 +222,12 @@ class _TvHeroState extends State<_TvHero> {
                       _glassBtn(Icons.info_outline_rounded, 'Info'),
                       () => widget.onInfo(item),
                       semanticLabel: 'Info',
+                    ),
+                    const SizedBox(width: 14),
+                    widget.wrapButton(
+                      _glassBtn(Icons.extension_outlined, context.l10n.sources),
+                      widget.onBrowseSources,
+                      semanticLabel: context.l10n.sources,
                     ),
                   ],
                 ),

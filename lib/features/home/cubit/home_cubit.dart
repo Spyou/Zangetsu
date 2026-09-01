@@ -1,34 +1,23 @@
 import 'dart:async';
 
 import 'package:equatable/equatable.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, ValueNotifier;
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:get_it/get_it.dart';
 
-import '../../../core/anilist/anilist_network_policy.dart';
-import '../../../core/app_mode.dart';
+import '../../../core/platform/apple_tv.dart';
 import '../../../core/error/exceptions.dart';
 import '../../../core/error/network_failure.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
-import '../../../core/models/home_row.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
+import '../../../core/app_mode.dart';
+import '../../../core/di/injector.dart';
 import '../../../core/mode/content_mode.dart';
 import '../../../core/mode/content_mode_cubit.dart';
-import '../../../core/platform/apple_tv.dart';
 import '../../../core/repository/catalogue_repository.dart';
-import '../../../core/tracker/tracker.dart';
-import '../../../core/tracker/tracker_hub.dart';
-import '../../../core/ui/home_rows_prefs.dart';
-import '../../../core/zmode/home_layouts.dart';
-import '../../../core/zmode/metadata_provider_prefs.dart';
-import '../../../core/zmode/zmode_ids.dart';
-import '../../../core/zmode/zmode_module.dart' show browseKindFor;
+import '../../../core/zmode/metadata_repository.dart';
+import '../../../core/zmode/zmode_module.dart';
 import '../../../core/zmode/zmode_prefs.dart';
-import 'home_rows_composer.dart';
-import 'tracker_home_rows.dart';
-
-final _sl = GetIt.instance;
 
 /// Immutable view-state for the Home screen. The rows are CloudStream-style:
 /// the active provider decides what sections exist (and what they're named),
@@ -37,20 +26,12 @@ final _sl = GetIt.instance;
 /// A null [sections] means "not yet loaded OR failed". The first section also
 /// feeds the hero carousel via [heroItems]; the screen renders the remaining
 /// sections as browse rows.
-///
-/// [rows] is the merged, user-arranged view of the same load: local continue
-/// row, tracker rows (when enabled in Settings → Interface → Appearance →
-/// Home rows) and
-/// the provider sections, in the saved order. Additive on top of [sections],
-/// which stays the raw fetch so the empty/offline/hero logic is unchanged.
 class HomeState extends Equatable {
   const HomeState({
     this.sections,
     this.loading = false,
     this.cloudflareUrl,
     this.offline = false,
-    this.rateLimitedSeconds,
-    this.rows,
   });
 
   /// The provider's named home rows, in order. Null until the first load.
@@ -70,137 +51,126 @@ class HomeState extends Equatable {
   /// which sent people to reinstall extensions over a dropped connection.
   final bool offline;
 
-  /// Seconds until the metadata provider will answer again, when the load
-  /// failed because we are rate-limited. Null in every other case — a limit
-  /// passes on its own, and saying how long is the difference between waiting
-  /// and hunting a fault that isn't there.
-  final int? rateLimitedSeconds;
-
-  /// The merged arrangement the screens render. Null until the first load
-  /// completes (skeletons show meanwhile), kept as-is across reloads so a
-  /// refresh never flashes the rows away.
-  final List<HomeRow>? rows;
-
-  /// Items that drive the hero carousel. Prefers the Trending section — the
-  /// banner is a trending spotlight, same as every catalogue names one (Simkl
-  /// prefixes its titles, hence the startsWith) — so the opening row can be
-  /// something else (recently released) without changing what the banner
-  /// shows. Falls back to the first section for sources with no Trending row
-  /// (CloudStream feeds, Aniyomi/Mihon Popular), which is every non-Z source.
-  /// Empty until something loads.
-  List<MediaItem> get heroItems {
-    final s = sections;
-    if (s == null || s.isEmpty) return const [];
-    for (final section in s) {
-      if (section.title.startsWith('Trending')) return section.items;
-    }
-    return s.first.items;
-  }
+  /// Items that drive the hero carousel — the first section's items. Empty
+  /// until something loads.
+  List<MediaItem> get heroItems => (sections != null && sections!.isNotEmpty)
+      ? sections!.first.items
+      : const [];
 
   HomeState copyWith({
     List<HomeSection>? sections,
     bool? loading,
     String? cloudflareUrl,
     bool? offline,
-    int? rateLimitedSeconds,
-    List<HomeRow>? rows,
   }) => HomeState(
     sections: sections ?? this.sections,
     loading: loading ?? this.loading,
     cloudflareUrl: cloudflareUrl ?? this.cloudflareUrl,
     offline: offline ?? this.offline,
-    rateLimitedSeconds: rateLimitedSeconds ?? this.rateLimitedSeconds,
-    rows: rows ?? this.rows,
   );
 
   @override
-  List<Object?> get props => [
-    sections,
-    loading,
-    cloudflareUrl,
-    offline,
-    rateLimitedSeconds,
-    rows,
-  ];
+  List<Object?> get props => [sections, loading, cloudflareUrl, offline];
 }
 
 /// Owns the Home rows. Delegates entirely to [SourceRepository.home], which
 /// returns the active provider's own sections (or a default set for providers
 /// without `getHome`). No `sourceId` is passed — `home` uses the active source
 /// by design, so a source switch simply re-runs [load].
-///
-/// The tracker library for the tracker-driven rows is read through
-/// [TrackerHub] (optional so existing tests and DI setups keep working) and
-/// cached for the session; connecting or disconnecting a tracker invalidates
-/// the cache and re-merges.
 class HomeCubit extends Cubit<HomeState> {
-  HomeCubit(this._repo, {TrackerHub? trackerHub})
-    : _hub = trackerHub,
-      super(const HomeState());
+  HomeCubit(this._repo) : super(const HomeState());
 
   final CatalogueRepository _repo;
-  final TrackerHub? _hub;
-
-  TrackerHub? get _hubOrNull =>
-      _hub ?? (_sl.isRegistered<TrackerHub>() ? _sl<TrackerHub>() : null);
 
   /// Monotonic load id. Each [load] bumps it; a fetch only emits its result if
   /// it's still the latest. This makes source switches "latest wins" — a slow
   /// previous-source fetch can't land after a newer switch and clobber the UI.
   int _gen = 0;
 
-  /// Session cache of the tracker library, per tracker display name, so
-  /// revisiting Home (or re-merging after an arrangement change) doesn't
-  /// re-read the whole list. Cleared when a tracker connects/disconnects.
-  (String, List<TrackerListItem>)? _trackerCache;
+  /// Last fetched metadata rows per streaming kind — toggling Anime ↔ Movie/TV
+  /// can swap instantly instead of waiting on AniList/TMDB again.
+  final Map<StreamKind, List<HomeSection>> _streamKindCache = {};
 
-  /// Last-seen connection flags, so a tracker's ChangeNotifier only counts
-  /// when connectivity actually flipped (it also fires for avatar/name
-  /// refreshes, which must not reload Home).
-  final _trackerConnected = <String, bool>{};
+  /// Bumped when a stream-kind cache is filled without a [HomeState] emit, so
+  /// TV can mount the inactive catalogue offstage before the user toggles.
+  final ValueNotifier<int> streamCatalogRevision = ValueNotifier(0);
 
-  bool _watchingTrackers = false;
-  void _watchTrackersOnce(TrackerHub hub) {
-    if (_watchingTrackers) return;
-    _watchingTrackers = true;
-    for (final t in hub.trackers) {
-      _trackerConnected[t.displayName] = t.isConnected;
-      t.addListener(() {
-        final now = t.isConnected;
-        if (_trackerConnected[t.displayName] == now) return;
-        _trackerConnected[t.displayName] = now;
-        _trackerCache = null;
-        load(reset: false);
-      });
+  /// Drop cached rows when the metadata provider changes — the rows themselves
+  /// differ between AniList and MAL (etc.).
+  void clearStreamKindCache() {
+    _streamKindCache.clear();
+    if (sl.isRegistered<MetadataRepository>()) {
+      sl<MetadataRepository>().clearHomeCache();
     }
   }
 
-  /// The Z Mode browse kind for this load, or null when the home is
-  /// source-backed. Read per load (not cached) because mode and stream kind
-  /// change under the cubit without a new registration.
-  ZKind? get _browseKind {
-    if (!ZModePrefs.enabled) return null;
-    final mode = _sl.isRegistered<ContentModeCubit>()
-        ? _sl<ContentModeCubit>().state
-        : ContentMode.anime;
-    return browseKindFor(mode, ZModePrefs.streamKind);
+  /// Copies prefetched metadata rows into the per-kind cache (from
+  /// [MetadataRepository] warm/prefetch — not a public reload API).
+  void rememberStreamKindRows(StreamKind kind, List<HomeSection> sections) {
+    if (sections.isEmpty) return;
+    _streamKindCache[kind] = sections;
+    streamCatalogRevision.value++;
   }
 
-  /// The storage key of the arrangement this cubit is composing, from the
-  /// same inputs [_mergedRows] uses. Read per call, like [_browseKind]: mode
-  /// and provider prefs both change under the cubit.
-  String get _layoutKey {
-    final kind = _browseKind;
-    final providerPrefs = _sl.isRegistered<MetadataProviderPrefs>()
-        ? _sl<MetadataProviderPrefs>()
-        : null;
-    return layoutKeyFor(
-      sourceId: _repo.sourceId,
-      zModeOn: kind != null,
-      browseKind: kind,
-      malPreferred: providerPrefs?.anime == AnimeProvider.mal,
-      simklPreferred: providerPrefs?.video == VideoProvider.simkl,
-    );
+  /// Pull any rows [MetadataRepository] already cached (prefetch / warm).
+  void primeStreamKindCacheFromMetadata() {
+    if (!sl.isRegistered<MetadataRepository>()) return;
+    final meta = sl<MetadataRepository>();
+    var changed = false;
+    for (final kind in StreamKind.values) {
+      final zKind = browseKindFor(ContentMode.anime, kind);
+      final rows = meta.peekHomeCache(zKind);
+      if (rows != null && rows.isNotEmpty) {
+        _streamKindCache[kind] = rows;
+        changed = true;
+      }
+    }
+    if (changed) streamCatalogRevision.value++;
+  }
+
+  /// Cached rows for [kind], if a previous load/prefetch already has them.
+  List<HomeSection>? sectionsFor(StreamKind kind) =>
+      _cachedRowsForStreamKind(kind);
+
+  List<HomeSection>? _cachedRowsForStreamKind(StreamKind kind) {
+    final hit = _streamKindCache[kind];
+    if (hit != null) return hit;
+    if (!sl.isRegistered<MetadataRepository>()) return null;
+    final zKind = browseKindFor(ContentMode.anime, kind);
+    final rows = sl<MetadataRepository>().peekHomeCache(zKind);
+    if (rows != null && rows.isNotEmpty) {
+      _streamKindCache[kind] = rows;
+    }
+    return rows;
+  }
+
+  /// Anime ↔ Movie/TV flip. Keeps the previous rows on screen when there is no
+  /// cache yet; shows cached rows immediately when revisiting a kind.
+  Future<void> loadForStreamKindChange() async {
+    if (!sl.isRegistered<ContentModeCubit>() ||
+        sl<ContentModeCubit>().state != ContentMode.anime) {
+      return load(reset: true);
+    }
+    final kind = ZModePrefs.streamKind;
+    final sw = Stopwatch()..start();
+    debugPrint('[home] stream kind → $kind');
+    final gen = ++_gen;
+    final cached = _cachedRowsForStreamKind(kind);
+    if (cached != null) {
+      debugPrint(
+        '[home] stream kind ← $kind · cache hit · ${sw.elapsedMilliseconds}ms',
+      );
+      // Phone Home reads cubit.state.sections. TV keeps both catalogues
+      // mounted and swaps with [ZModePrefs.revision] — emitting here would
+      // rebuild the 10-foot hero + every poster and freeze for seconds.
+      final tv = sl.isRegistered<AppMode>() && sl<AppMode>().isTv;
+      if (!tv) {
+        emit(HomeState(sections: cached, loading: false));
+      }
+      return;
+    }
+    emit(state.copyWith(loading: true));
+    await _fetchHome(gen: gen, logLabel: 'stream kind ← $kind', sw: sw);
   }
 
   /// (Re)load the rows. Emits `loading: true` (keeping any existing sections so
@@ -211,77 +181,61 @@ class HomeCubit extends Cubit<HomeState> {
   /// source's content while the (possibly slow) fetch runs.
   Future<void> load({bool reset = false}) async {
     final gen = ++_gen;
-    // A reset means the whole composition changed — source, provider, or the
-    // title language. The cached library holds PARSED items, titles included,
-    // so keeping it would show the old spelling until something else happened
-    // to invalidate it.
-    if (reset) _trackerCache = null;
     final sourceId = _repo.sourceId;
+    final sw = Stopwatch()..start();
+    debugPrint('[home] load(reset=$reset) · source=$sourceId');
     emit(
       reset ? const HomeState(loading: true) : state.copyWith(loading: true),
     );
 
-    // Tracker pick + fetch start alongside the provider fetch, so the two
-    // never serialize. Best-effort throughout: no tracker, no rows.
-    final kind = _browseKind;
-    final hub = kind != null ? _hubOrNull : null;
-    Tracker? tracker;
-    Future<List<TrackerListItem>>? libraryFuture;
-    if (hub != null && kind != null) {
-      _watchTrackersOnce(hub);
-      tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
-      if (tracker != null) {
-        final cached = _trackerCache;
-        libraryFuture = cached != null && cached.$1 == tracker.displayName
-            ? Future.value(cached.$2)
-            : tracker
-                  .fetchList()
-                  .timeout(
-                    const Duration(seconds: 12),
-                    onTimeout: () => const [],
-                  )
-                  .catchError((_) => const <TrackerListItem>[]);
-      }
-    }
-
     if (isAppleTv && !_repo.hasSource(sourceId)) {
       if (isClosed || gen != _gen) return;
-      emit(const HomeState(sections: [], loading: false, rows: []));
+      emit(const HomeState(sections: [], loading: false));
+      debugPrint('[home] load done · source=$sourceId · no provider · ${sw.elapsedMilliseconds}ms');
       return;
     }
 
+    await _fetchHome(
+      gen: gen,
+      logLabel: 'load done · source=$sourceId',
+      sw: sw,
+    );
+  }
+
+  void _rememberStreamKindCache(List<HomeSection> sections) {
+    if (!ZModePrefs.enabled || sections.isEmpty) return;
+    if (!sl.isRegistered<ContentModeCubit>() ||
+        sl<ContentModeCubit>().state != ContentMode.anime) {
+      return;
+    }
+    _streamKindCache[ZModePrefs.streamKind] = sections;
+  }
+
+  Future<void> _fetchHome({
+    required int gen,
+    required String logLabel,
+    required Stopwatch sw,
+  }) async {
     List<HomeSection> sections;
     String? cloudflareUrl;
     var offline = false;
-    int? limitedSeconds;
     try {
       final homeFuture = _repo.home();
       sections = isAppleTv
           ? await homeFuture.timeout(const Duration(seconds: 20))
           : await homeFuture;
     } on TimeoutException catch (_) {
-      debugPrint('[home] load timed out · source=$sourceId');
+      debugPrint('[home] $logLabel · timed out after ${sw.elapsedMilliseconds}ms');
       sections = const <HomeSection>[];
       offline = true; // nothing came back at all — same story as no route
     } on CloudflareRequiredException catch (e) {
-      debugPrint('[home] load needs Cloudflare · source=$sourceId');
+      debugPrint('[home] $logLabel · needs Cloudflare · ${sw.elapsedMilliseconds}ms');
       sections = const <HomeSection>[];
       cloudflareUrl = e.url;
     } catch (e, st) {
-      debugPrint('[home] load failed · source=$sourceId · $e\n$st');
+      debugPrint('[home] $logLabel · failed · $e · ${sw.elapsedMilliseconds}ms\n$st');
       sections = const <HomeSection>[];
-      limitedSeconds = aniListRateLimitOf(e)?.seconds;
-      offline = limitedSeconds == null && await isOfflineErrorConfirmed(e);
-    }
-
-    // The tracker read finishes on its own; a miss just means no tracker rows
-    // this load (the provider rows are independent of it).
-    List<TrackerListItem>? library;
-    if (libraryFuture != null) {
-      library = await libraryFuture;
-      if (tracker != null) {
-        _trackerCache = (tracker.displayName, library);
-      }
+      offline = await isOfflineErrorConfirmed(e);
     }
 
     // A novel plugin catches its own fetch errors and returns nothing, so a
@@ -296,6 +250,7 @@ class HomeCubit extends Cubit<HomeState> {
 
     // A newer load started while we were fetching — discard this stale result.
     if (isClosed || gen != _gen) return;
+    _rememberStreamKindCache(sections);
     emit(
       HomeState(
         sections: sections,
@@ -304,79 +259,10 @@ class HomeCubit extends Cubit<HomeState> {
         // Only meaningful when nothing came back: a partial load that hit one
         // bad row is not an offline screen.
         offline: offline && sections.isEmpty,
-        rateLimitedSeconds: limitedSeconds,
-        rows: _mergedRows(sections, kind, library, tracker),
       ),
     );
-  }
-
-  /// Re-merge the rows over the sections already held, without refetching.
-  ///
-  /// This is the whole answer to an arrangement change: the provider data is
-  /// unchanged, only its order and visibility moved. Going through [load]
-  /// instead would put a provider round trip behind every switch flip and
-  /// every drag in the editor.
-  void relayout() {
-    final sections = state.sections;
-    // Nothing fetched yet — the first load merges the new arrangement itself.
-    if (sections == null) return;
-    final kind = _browseKind;
-    Tracker? tracker;
-    List<TrackerListItem>? library;
-    if (kind != null) {
-      final hub = _hubOrNull;
-      if (hub != null) {
-        tracker = pickHomeTracker(hub, kind, preferred: layoutTrackerName(_layoutKey));
-        final cached = _trackerCache;
-        // Only the cached library, never a fetch. A miss means the tracker
-        // rows sit this one out, the same as a load whose read timed out.
-        if (tracker != null && cached != null &&
-            cached.$1 == tracker.displayName) {
-          library = cached.$2;
-        }
-      }
-    }
-    emit(state.copyWith(rows: _mergedRows(sections, kind, library, tracker)));
-  }
-
-  /// The sanitized, merged arrangement of one load. Pure given its inputs;
-  /// kept here (not in the composer) because the layout key and platform
-  /// come from app state.
-  List<HomeRow> _mergedRows(
-    List<HomeSection> sections,
-    ZKind? kind,
-    List<TrackerListItem>? library,
-    Tracker? tracker,
-  ) {
-    final isTv = _sl.isRegistered<AppMode>() ? _sl<AppMode>().isTv : false;
-    final rowSections = providerRowSections(sections, isTv: isTv);
-    final withTrackerRows = kind != null;
-    final layoutKey = _layoutKey;
-    final available = availableRowIds(
-      rowSections,
-      withTrackerRows: withTrackerRows,
-      kind: kind,
-    );
-    final saved = HomeRowsPrefs.savedFor(layoutKey);
-    final layout = sanitizeLayout(
-      saved ??
-          defaultLayout(
-            [for (final s in rowSections) 'section:${s.title}'],
-            withTrackerRows: withTrackerRows,
-            kind: kind,
-          ),
-      available,
-    );
-    return mergeHomeRows(
-      layout: layout,
-      rowSections: rowSections,
-      trackerRows: library != null && tracker != null
-          ? buildTrackerHomeRows(
-              trackerName: tracker.displayName,
-              library: library,
-              kind: kind!,
-            )
-          : const [],
+    debugPrint(
+      '[home] $logLabel · ${sections.length} rows · ${sw.elapsedMilliseconds}ms',
     );
   }
 }

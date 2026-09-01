@@ -21,6 +21,30 @@ void main() {
   });
 
   testWidgets(
+    'waitForKeyUp fires onTap on KeyUp, not KeyDown',
+    (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(MaterialApp(
+        home: TvFocusable(
+          autofocus: true,
+          waitForKeyUp: true,
+          onTap: () => taps++,
+          child: const SizedBox(width: 100, height: 100),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(taps, 0);
+
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.select);
+      await tester.pump();
+      expect(taps, 1);
+    },
+  );
+
+  testWidgets(
     'with onLongPress, a short OK press still fires onTap (not long-press)',
     (tester) async {
       var taps = 0;

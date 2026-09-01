@@ -6,39 +6,43 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../core/app_config.dart';
 import '../../core/di/injector.dart';
-import '../../core/locale/app_language_picker.dart';
 import '../../core/platform/apple_tv.dart';
-import '../../core/playback/my_list.dart';
-import '../../core/playback/playback_prefs.dart';
 import '../../core/playback/search_prefs.dart';
-import '../../core/playback/watch_history.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/zmode/metadata_provider_prefs.dart';
+import '../../core/locale/app_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
 import '../../l10n/ui_strings.dart';
+import '../../core/tv/tv_focusable.dart';
 import '../../core/tv/tv_list_focusable.dart';
 import '../../core/ui/settings_widgets.dart';
+import '../../core/update/update_service.dart';
 import '../auth/auth_cubit.dart';
 import '../auth/auth_screens.dart';
-import '../auth/reconnect.dart';
 import '../backup/backup_screen.dart';
 import '../downloads/downloads_screen.dart';
-import '../history/history_screen.dart';
 import '../notify/subscriptions_screen.dart';
+import '../onboarding/how_it_works.dart';
+import '../player/tv_exo_spike_screen.dart';
 import '../sources/source_health_screen.dart';
 import '../sources/sources_screen.dart';
+import '../update/update_dialog.dart';
 import 'connections_screen_tv.dart';
 import 'discord_settings_screen.dart';
+import 'donate_screen.dart';
 import 'settings_screen.dart';
 import '../shell/tv_source_picker.dart';
 
-/// TV Settings: one flat D-pad list grouped with [SettingsSectionLabel] headers
-/// (same section names as mobile where applicable). Sub-screens inherit focus
-/// from shared [SettingsTile] / [SettingsCard] widgets.
+/// TV Settings list: same sections as the phone [SettingsScreen]. Tappable
+/// rows use the TV-aware [SettingsTile] (white pill focus). Pickers open
+/// D-pad dialogs. Sub-screens inherit focus from shared [SettingsTile] /
+/// [SettingsCard] widgets.
 class SettingsScreenTv extends StatefulWidget {
   const SettingsScreenTv({super.key});
 
@@ -49,6 +53,9 @@ class SettingsScreenTv extends StatefulWidget {
 class _SettingsScreenTvState extends State<SettingsScreenTv> {
   int _dnsChoice = CsDns.off;
 
+  final UpdateService _updateService = UpdateService();
+  bool _betaUpdates = false;
+
   @override
   void initState() {
     super.initState();
@@ -57,6 +64,9 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
         if (mounted) setState(() => _dnsChoice = c);
       });
     }
+    _updateService.betaOptIn().then((v) {
+      if (mounted) setState(() => _betaUpdates = v);
+    });
   }
 
   ActiveSourceCubit get _active => context.read<ActiveSourceCubit>();
@@ -105,6 +115,73 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     if (mounted) setState(() {});
   }
 
+  MetadataProviderPrefs? get _providerPrefs =>
+      sl.isRegistered<MetadataProviderPrefs>()
+          ? sl<MetadataProviderPrefs>()
+          : null;
+
+  String _animeProviderLabel() =>
+      _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
+
+  String _videoProviderLabel() =>
+      _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+
+  bool get _malNeedsLogin =>
+      _providerPrefs?.anime == AnimeProvider.mal &&
+      !(sl.isRegistered<TrackerHub>() &&
+          sl<TrackerHub>().connected.any(
+            (t) => t.displayName.toLowerCase().contains('myanimelist'),
+          ));
+
+  Future<void> _pickAnimeMetadataTv() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final picked = await showDialog<AnimeProvider>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _TvOptionPicker<AnimeProvider>(
+        title: ctx.l10n.animeMetadata,
+        options: AnimeProvider.values
+            .map(
+              (p) => (
+                p,
+                p == AnimeProvider.mal ? 'MyAnimeList' : 'AniList',
+              ),
+            )
+            .toList(),
+        current: prefs.anime,
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setAnime(picked);
+    if (!mounted) return;
+    if (_malNeedsLogin) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(context.l10n.malLoginForLists)));
+    }
+    setState(() {});
+  }
+
+  Future<void> _pickVideoMetadataTv() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final picked = await showDialog<VideoProvider>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _TvOptionPicker<VideoProvider>(
+        title: ctx.l10n.videoMetadata,
+        options: VideoProvider.values
+            .map((p) => (p, p == VideoProvider.simkl ? 'Simkl' : 'TMDB'))
+            .toList(),
+        current: prefs.video,
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setVideo(picked);
+    if (mounted) setState(() {});
+  }
+
   void _pickActiveSourceTv() {
     final currentId = _active.state;
     showDialog<void>(
@@ -117,50 +194,20 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     );
   }
 
-  Future<void> _syncLibraryToCloud() async {
-    final l10n = context.l10n;
-    if (sl<AuthCubit>().state.user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.signInFirst)),
-      );
-      return;
-    }
-    final live = await ensureLiveSession(context);
-    // State.mounted, not context.mounted: every use below is State.context.
-    if (!mounted) return;
-    if (!live) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.reconnectToSyncLibrary)),
-      );
-      return;
-    }
+  Future<void> _addCloudStreamRepo() async {
+    final url = await showDialog<String>(context: context, builder: (_) => const _TvAddRepoDialog());
+    if (url == null || url.isEmpty || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(content: Text(l10n.syncingLibraryToCloud)),
-      );
-    final h = (await sl<WatchHistory>().pushAllLocalToCloud()).pushed;
-    final l = (await sl<MyListStore>().pushAllLocalToCloud()).pushed;
-    if (!context.mounted) return;
-    messenger
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            h == 0 && l == 0
-                ? l10n.syncLibraryAlreadySynced
-                : l10n.syncLibraryPushed(h, l),
-          ),
-        ),
-      );
-  }
-
-  Widget _sectionLabel(String section, {bool first = false}) {
-    return SettingsSectionLabel(
-      settingsSectionTitle(context.l10n, section),
-      first: first,
-    );
+    final l10n = context.l10n;
+    try {
+      final count = await _csManager.addRepo(url);
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(l10n.addedCloudStreamSourcesCount(count))));
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text(l10n.failedToAddRepository('$e'))));
+    }
   }
 
   Widget _accountCard(BuildContext context) {
@@ -236,47 +283,21 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
               child: ListView(
                 clipBehavior: Clip.none,
                 padding: const EdgeInsets.only(top: 4, bottom: 24),
+
                 children: [
                   _accountCard(context),
                   const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.account, first: true),
                   SettingsCard(
                     children: [
-                      SettingsTile(
-                        icon: Icons.sync_alt_rounded,
-                        title: l10n.connections,
-                        subtitle: l10n.connectionsTvSubtitle,
-                        onTap: () async {
-                          await _push(const ConnectionsScreenTv());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                      if (!isAppleTv)
-                        SettingsTile(
-                          icon: Icons.gamepad_outlined,
-                          title: l10n.discord,
-                          subtitle: l10n.discordSubtitle,
-                          onTap: () async {
-                            await _push(const DiscordSettingsScreen());
-                            if (mounted) setState(() {});
-                          },
-                        ),
                       SettingsTile(
                         icon: Icons.cloud_sync_outlined,
                         title: l10n.backupAndRestore,
                         subtitle: l10n.backupAndRestoreSubtitle,
                         onTap: () => _push(const BackupScreen()),
                       ),
-                      SettingsTile(
-                        icon: Icons.cloud_upload_outlined,
-                        title: l10n.syncLibraryToCloud,
-                        subtitle: l10n.syncLibraryToCloudSubtitle,
-                        onTap: _syncLibraryToCloud,
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.sources),
                   SettingsCard(
                     children: [
                       SettingsTile(
@@ -300,7 +321,81 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         subtitle: l10n.sourceHealthSubtitle,
                         onTap: () => _push(const SourceHealthScreen()),
                       ),
-                      if (Platform.isAndroid)
+                      if (Platform.isAndroid) ...[
+                        SettingsTile(
+                          icon: Icons.extension_outlined,
+                          title: l10n.addCloudStreamRepository,
+                          subtitle: l10n.installCloudStreamSources,
+                          onTap: _addCloudStreamRepo,
+                        ),
+                        SettingsTile(
+                          icon: Icons.vpn_lock_outlined,
+                          title: l10n.dns,
+                          subtitle: _dnsChoice == CsDns.off
+                              ? l10n.dnsOffTvSubtitle
+                              : CsDns.labelFor(_dnsChoice),
+                          onTap: _pickDnsTv,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SettingsCard(
+                    children: [
+                      SettingsTile(
+                        icon: Icons.help_outline_rounded,
+                        title: l10n.howItWorks,
+                        subtitle: l10n.howItWorksSubtitle,
+                        onTap: () => _push(const HowItWorksScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.play_circle_outline,
+                        title: l10n.playback,
+                        subtitle: l10n.playbackSubtitle,
+                        onTap: () => _push(const PlaybackSettingsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.download_outlined,
+                        title: l10n.downloads,
+                        subtitle: l10n.downloadsSubtitleTv,
+                        onTap: () => _push(const DownloadsScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.search_rounded,
+                        title: l10n.searchLayout,
+                        subtitle: sl<SearchPrefs>().layout.localizedLabel(context),
+                        onTap: _pickSearchLayoutTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.hub_outlined,
+                        title: l10n.animeMetadata,
+                        subtitle: _malNeedsLogin
+                            ? l10n.malLoginForLists
+                            : _animeProviderLabel(),
+                        onTap: _pickAnimeMetadataTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.movie_filter_outlined,
+                        title: l10n.videoMetadata,
+                        subtitle: _videoProviderLabel(),
+                        onTap: _pickVideoMetadataTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.language_rounded,
+                        title: l10n.appLanguage,
+                        subtitle: appLanguageValueLabel(context),
+                        onTap: () async {
+                          await pickAppLanguageTv(context);
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                      if (Platform.isAndroid) ...[
+                        SettingsTile(
+                          icon: Icons.notifications_none_rounded,
+                          title: l10n.notifications,
+                          subtitle: l10n.notificationsSubtitle,
+                          onTap: () => _push(const SubscriptionsScreen()),
+                        ),
                         SettingsTile(
                           icon: Icons.update_rounded,
                           title: l10n.sourceUpdates,
@@ -319,118 +414,71 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                             },
                           ),
                         ),
-                      SettingsTile(
-                        icon: Icons.autorenew_rounded,
-                        title: l10n.autoUpdateExtensions,
-                        subtitle: l10n.autoUpdateExtensionsSubtitle,
-                        onTap: () async {
-                          final prefs = sl<PlaybackPrefs>();
-                          await prefs.setAutoUpdateExtensions(!prefs.autoUpdateExtensions);
-                          if (mounted) setState(() {});
-                        },
-                        trailing: Switch.adaptive(
-                          value: sl<PlaybackPrefs>().autoUpdateExtensions,
-                          activeThumbColor: AppColors.accent,
-                          onChanged: (v) async {
-                            await sl<PlaybackPrefs>().setAutoUpdateExtensions(v);
-                            if (mounted) setState(() {});
+                        SettingsTile(
+                          icon: Icons.science_outlined,
+                          title: l10n.betaUpdates,
+                          subtitle: l10n.betaUpdatesSubtitle,
+                          subtitleMaxLines: null,
+                          onTap: () async {
+                            final v = !_betaUpdates;
+                            if (v && !await confirmJoinBeta(context)) return;
+                            await _updateService.setBetaOptIn(v);
+                            if (!mounted) return;
+                            setState(() => _betaUpdates = v);
+                            if (v && context.mounted) {
+                              maybeShowUpdateDialog(context, manual: true);
+                            }
                           },
+                          trailing: Switch.adaptive(
+                            value: _betaUpdates,
+                            activeThumbColor: AppColors.accent,
+                            onChanged: (v) async {
+                              if (v && !await confirmJoinBeta(context)) {
+                                return;
+                              }
+                              await _updateService.setBetaOptIn(v);
+                              if (!mounted) return;
+                              setState(() => _betaUpdates = v);
+                              if (v && context.mounted) {
+                                maybeShowUpdateDialog(context, manual: true);
+                              }
+                            },
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.playback),
                   SettingsCard(
                     children: [
-                      SettingsTile(
-                        icon: Icons.play_circle_outline,
-                        title: l10n.playback,
-                        subtitle: l10n.playbackSubtitle,
-                        onTap: () => _push(const PlaybackSettingsScreen()),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.history),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.history_rounded,
-                        title: l10n.history,
-                        subtitle: l10n.historySubtitle,
-                        onTap: () async {
-                          await _push(const HistoryScreen());
-                          if (mounted) setState(() {});
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.downloads),
-                  SettingsCard(
-                    children: [
-                      SettingsTile(
-                        icon: Icons.download_outlined,
-                        title: l10n.downloads,
-                        subtitle: l10n.downloadsSubtitleTv,
-                        onTap: () => _push(const DownloadsScreen()),
-                      ),
                       SettingsTile(
                         icon: Icons.sd_storage_outlined,
                         title: l10n.storage,
-                        subtitle: l10n.storageSubtitle,
                         onTap: () => _push(const StorageSettingsScreen()),
                       ),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.interface),
                   SettingsCard(
                     children: [
                       SettingsTile(
-                        icon: Icons.language_rounded,
-                        title: l10n.appLanguage,
-                        subtitle: appLanguageValueLabel(context),
+                        icon: Icons.sync_alt_rounded,
+                        title: l10n.connections,
+                        subtitle: l10n.connectionsTvSubtitle,
                         onTap: () async {
-                          await pickAppLanguageTv(context);
+                          await _push(const ConnectionsScreenTv());
                           if (mounted) setState(() {});
                         },
                       ),
-                      SettingsTile(
-                        icon: Icons.search_rounded,
-                        title: l10n.searchLayout,
-                        subtitle: sl<SearchPrefs>().layout.localizedLabel(context),
-                        onTap: _pickSearchLayoutTv,
-                      ),
-                    ],
-                  ),
-                  if (Platform.isAndroid) ...[
-                    const SizedBox(height: 8),
-                    _sectionLabel(SettingsSection.notifications),
-                    SettingsCard(
-                      children: [
+                      if (!isAppleTv)
                         SettingsTile(
-                          icon: Icons.notifications_none_rounded,
-                          title: l10n.notifications,
-                          subtitle: l10n.notificationsSubtitle,
-                          onTap: () => _push(const SubscriptionsScreen()),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.advanced),
-                  SettingsCard(
-                    children: [
-                      if (Platform.isAndroid)
-                        SettingsTile(
-                          icon: Icons.vpn_lock_outlined,
-                          title: l10n.dns,
-                          subtitle: _dnsChoice == CsDns.off
-                              ? l10n.dnsOffTvSubtitle
-                              : CsDns.labelFor(_dnsChoice),
-                          onTap: _pickDnsTv,
+                          icon: Icons.gamepad_outlined,
+                          title: l10n.discord,
+                          subtitle: l10n.discordSubtitle,
+                          onTap: () async {
+                            await _push(const DiscordSettingsScreen());
+                            if (mounted) setState(() {});
+                          },
                         ),
                       SettingsTile(
                         icon: Icons.shield_outlined,
@@ -444,9 +492,32 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  _sectionLabel(SettingsSection.about),
                   SettingsCard(
                     children: [
+                      SettingsTile(
+                        icon: Icons.coffee_rounded,
+                        title: l10n.supportTheApp,
+                        subtitle: l10n.buyMeACoffee,
+                        onTap: () => _push(const DonateScreen()),
+                      ),
+                      SettingsTile(
+                        icon: Icons.system_update_rounded,
+                        title: l10n.checkForUpdates,
+                        subtitle: l10n.checkForUpdatesSubtitle,
+                        onTap: () {
+                          ScaffoldMessenger.of(
+                            context,
+                          ).showSnackBar(SnackBar(content: Text(l10n.checkingForUpdates)));
+                          maybeShowUpdateDialog(context, manual: true);
+                        },
+                      ),
+                      if (kExoSpikeEnabled)
+                        SettingsTile(
+                          icon: Icons.speed_rounded,
+                          title: l10n.exoplayerSpikeDev,
+                          subtitle: l10n.sp0TestSurfaceViewPlaybackSmoothness,
+                          onTap: () => _push(const TvExoSpikeScreen()),
+                        ),
                       SettingsTile(
                         icon: Icons.info_outline_rounded,
                         title: l10n.about,
@@ -465,7 +536,7 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
   }
 }
 
-/// D-pad option picker dialog (DNS).
+/// D-pad option picker dialog (DNS / search layout).
 class _TvOptionPicker<T> extends StatelessWidget {
   const _TvOptionPicker({super.key, required this.title, required this.options, required this.current});
 
@@ -511,6 +582,81 @@ class _TvOptionPicker<T> extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TvAddRepoDialog extends StatefulWidget {
+  const _TvAddRepoDialog();
+
+  @override
+  State<_TvAddRepoDialog> createState() => _TvAddRepoDialogState();
+}
+
+class _TvAddRepoDialogState extends State<_TvAddRepoDialog> {
+  final _controller = TextEditingController();
+  final _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      title: Text(context.l10n.addCloudStreamRepository, style: AppText.headline),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: _controller,
+              focusNode: _focusNode,
+              keyboardType: TextInputType.url,
+              cursorColor: AppColors.accent,
+              style: AppText.body.copyWith(color: AppColors.textPrimary),
+              decoration: InputDecoration(labelText: context.l10n.repositoryUrlLabel, hintText: 'https://.../repo.json'),
+              onSubmitted: (v) => Navigator.pop(context, v.trim()),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TvFocusable(
+          variant: TvFocusVariant.pill,
+          onTap: () => Navigator.pop(context),
+          semanticLabel: context.l10n.cancel,
+          builder: (focused) => ExcludeSemantics(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                context.l10n.cancel,
+                style: AppText.body.copyWith(color: focused ? Colors.black : AppColors.textSecondary),
+              ),
+            ),
+          ),
+        ),
+        TvFocusable(
+          variant: TvFocusVariant.pill,
+          onTap: () => Navigator.pop(context, _controller.text.trim()),
+          semanticLabel: context.l10n.add,
+          builder: (focused) => ExcludeSemantics(
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: focused ? Colors.black : AppColors.accent,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () => Navigator.pop(context, _controller.text.trim()),
+              child: Text(context.l10n.add),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

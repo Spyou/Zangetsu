@@ -21,14 +21,10 @@ import 'core/notify/cs_notify.dart';
 import 'core/notify/notification_service.dart';
 import 'core/notify/push_service.dart';
 import 'core/ui/route_observer.dart';
-import 'core/ui/home_rows_prefs.dart';
 import 'core/notify/subscription_checker.dart';
 import 'core/notify/subscription_store.dart';
 import 'core/playback/category_store.dart';
 import 'core/playback/my_list.dart';
-import 'core/playback/history_merge.dart';
-import 'core/playback/resume_store.dart';
-import 'core/zmode/match_store.dart';
 import 'core/playback/watch_history.dart';
 import 'core/reading/read_history.dart';
 import 'core/state/active_source_cubit.dart';
@@ -217,11 +213,14 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
             // splash frame stayed composited. Load provider JS first, then reveal
             // the already-mounted [_TvBootGate].
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              unawaited(_finishAppleTvBoot());
+              unawaited(_finishTvProviderBoot());
             });
           } else {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               _pushShellRouteIfNeeded();
+              if (sl.isRegistered<AppMode>() && sl<AppMode>().isTv) {
+                unawaited(_finishTvProviderBoot());
+              }
             });
           }
           if (!_handledLaunchTaps) {
@@ -242,17 +241,19 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   }
 
   /// tvOS-only second boot phase: provider eval, then reveal the shell.
-  Future<void> _finishAppleTvBoot() async {
+  Future<void> _finishTvProviderBoot() async {
     await runDeferredAppleTvBootTasks();
     if (!mounted || !_bootReady || _bootFailed || !_depsReady) {
       debugPrint(
-        '[boot] tvOS shell reveal skipped · mounted=$mounted '
+        '[boot] TV provider boot skipped · mounted=$mounted '
         'boot=$_bootReady deps=$_depsReady failed=$_bootFailed',
       );
       return;
     }
-    _tvShellGate.value = true;
-    setState(() {});
+    if (isAppleTv) {
+      _tvShellGate.value = true;
+      setState(() {});
+    }
   }
 
   /// Re-runs startup after a failure. GetIt must be cleared first — every
@@ -303,21 +304,27 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     if (mounted) setState(() {}); // language changed → rebuild MaterialApp.locale
   }
 
-  /// The toggle, stream kind, or metadata provider changed: Home must refetch
-  /// from the other catalogue, and the shell must redraw its dock. The
-  /// provider case matters just as much — the rows themselves differ between
-  /// AniList and MAL, so leaving the old ones up shows the previous provider's
-  /// data under the new provider's name.
-  void _onZModeChanged() {
-    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().load(reset: true);
-    if (mounted) setState(() {});
+  /// The streaming kind changed: swap Home rows without blanking the screen.
+  /// Cached rows for the target kind appear immediately; a fresh fetch runs in
+  /// the background.
+  void _onStreamKindChanged() {
+    // TV shell + HomeCubit listen to [ZModePrefs.revision] / bloc state — a
+    // full [MaterialApp] rebuild here (phone path) stalls the isolate on TV.
+    if (!sl.isRegistered<AppMode>() || !sl<AppMode>().isTv) {
+      if (mounted) setState(() {});
+    }
+    if (sl.isRegistered<HomeCubit>()) {
+      sl<HomeCubit>().loadForStreamKindChange();
+    }
   }
 
-  /// A home-rows arrangement was saved or reset: re-merge the layout Home
-  /// already fetched (no refetch, no scroll reset — provider data is
-  /// unchanged, only its arrangement is).
-  void _onHomeRowsChanged() {
-    if (sl.isRegistered<HomeCubit>()) sl<HomeCubit>().relayout();
+  /// Metadata provider changed: rows differ between AniList/MAL/TMDB/Simkl, so
+  /// drop any cached streaming-kind rows and hard-reset Home.
+  void _onMetadataProviderChanged() {
+    if (sl.isRegistered<HomeCubit>()) {
+      sl<HomeCubit>().clearStreamKindCache();
+      sl<HomeCubit>().load(reset: true);
+    }
     if (mounted) setState(() {});
   }
 
@@ -327,9 +334,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     ThemeController.revision.addListener(_onThemeChanged);
     LocaleController.revision.addListener(_onLocaleChanged);
-    ZModePrefs.revision.addListener(_onZModeChanged);
-    MetadataProviderPrefs.revision.addListener(_onZModeChanged);
-    HomeRowsPrefs.revision.addListener(_onHomeRowsChanged);
+    ZModePrefs.revision.addListener(_onStreamKindChanged);
+    MetadataProviderPrefs.revision.addListener(_onMetadataProviderChanged);
     _watchBoot(_boot);
   }
 
@@ -337,9 +343,8 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
   void dispose() {
     ThemeController.revision.removeListener(_onThemeChanged);
     LocaleController.revision.removeListener(_onLocaleChanged);
-    ZModePrefs.revision.removeListener(_onZModeChanged);
-    MetadataProviderPrefs.revision.removeListener(_onZModeChanged);
-    HomeRowsPrefs.revision.removeListener(_onHomeRowsChanged);
+    ZModePrefs.revision.removeListener(_onStreamKindChanged);
+    MetadataProviderPrefs.revision.removeListener(_onMetadataProviderChanged);
     WidgetsBinding.instance.removeObserver(this);
     _tvShellGate.dispose();
     super.dispose();
@@ -431,20 +436,6 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
         }
       }
     } catch (_) {}
-    // Rows saved under a source before the browse screen started resolving
-    // titles to the catalogue: move them onto the show they belong to so
-    // Continue Watching stops listing the same title twice. Once, after the
-    // cloud pull so rows from another device are covered, and unawaited so it
-    // never sits in front of the splash.
-    if (sl.isRegistered<MatchStore>()) {
-      unawaited(
-        HistoryCanonicalMerge.runOnce(
-          history: sl<WatchHistory>(),
-          resume: sl<ResumeStore>(),
-          matches: sl<MatchStore>(),
-        ),
-      );
-    }
     if (isOnboarded()) {
       // tvOS: Home fetch waits until provider JS is loaded (deferred boot task).
       if (!isAppleTv) sl<HomeCubit>().load();
@@ -487,7 +478,9 @@ class _WatchAppState extends State<WatchApp> with WidgetsBindingObserver {
       await sl<WatchHistory>().pullFromCloud();
       await sl<ReadHistory>().pullFromCloud();
         unawaited(sl<MyListStore>().retryPending());
-        if (!isAppleTv || tvosProvidersReady) {
+        if (!sl.isRegistered<AppMode>() ||
+            !sl<AppMode>().isTv ||
+            tvosProvidersReady) {
           sl<HomeCubit>().load();
         }
       }
