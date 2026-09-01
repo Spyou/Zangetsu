@@ -8,6 +8,9 @@ import '../models/video_source.dart';
 import '../repository/catalogue_repository.dart';
 import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
+import 'anime_catalogue.dart';
+import 'mal_catalogue.dart';
+import 'metadata_provider_prefs.dart';
 import 'match_store.dart';
 import 'source_matcher.dart';
 import 'tmdb_catalogue.dart';
@@ -23,13 +26,25 @@ class MetadataRepository implements CatalogueRepository {
     required SourceRepository sources,
     required SourceMatcher matcher,
     required ZKind Function() browseKind,
+    MalCatalogue? mal,
+    MetadataProviderPrefs? providerPrefs,
+    void Function(String message)? onProviderFallback,
   }) : _al = anilist,
        _tmdb = tmdb,
+       _mal = mal,
+       _providerPrefs = providerPrefs,
+       _onFallback = onProviderFallback,
        _src = sources,
        _matcher = matcher,
        _browseKind = browseKind;
 
   final AniListCatalogue _al;
+  final MalCatalogue? _mal;
+  final MetadataProviderPrefs? _providerPrefs;
+
+  /// Told when a request had to be served by the other provider, so the UI can
+  /// say so. Optional — tests and the TV shell pass nothing.
+  final void Function(String message)? _onFallback;
   final TmdbCatalogue _tmdb;
   final SourceRepository _src;
   final SourceMatcher _matcher;
@@ -40,6 +55,50 @@ class MetadataRepository implements CatalogueRepository {
   final _titles = <String, ({String title, String? alt, int? malId})>{};
 
   static bool _isTmdb(ZKind k) => k == ZKind.movie || k == ZKind.tv;
+
+  /// The chosen anime/manga provider, and the one that stands in for it.
+  ///
+  /// Falling back is worth doing because the two are genuinely
+  /// interchangeable for most titles: AniList stamps `mal:` ids wherever a
+  /// title has one, so the id a screen is already holding usually resolves on
+  /// either. An `al:` id is the exception — MAL has nothing to look up — and
+  /// [MalCatalogue.detail] throws rather than guessing, which lands us back on
+  /// the original error below.
+  (AnimeCatalogue, AnimeCatalogue?) get _animeChain {
+    final mal = _mal;
+    if (mal == null) return (_al, null);
+    return _providerPrefs?.anime == AnimeProvider.mal
+        ? (mal, _al)
+        : (_al, mal);
+  }
+
+  /// Runs [op] on the chosen provider, and on the other one if that fails.
+  ///
+  /// Deliberately per-request rather than sticky: a provider that 500s once is
+  /// usually back a moment later, and a session-long switch would leave the
+  /// user on the fallback long after the outage ended, with no sign of it.
+  Future<T> _viaAnime<T>(Future<T> Function(AnimeCatalogue c) op) async {
+    final (primary, backup) = _animeChain;
+    try {
+      return await op(primary);
+    } catch (primaryError, primaryStack) {
+      if (backup == null) rethrow;
+      try {
+        final out = await op(backup);
+        _onFallback?.call(_fallbackName(backup));
+        return out;
+      } catch (_) {
+        // The stand-in failed too. Report the ORIGINAL failure with its own
+        // stack: that is the provider the user chose, and "MAL is down" is a
+        // confusing thing to be told when you are using AniList. A plain
+        // `rethrow` here would surface the stand-in's error instead.
+        Error.throwWithStackTrace(primaryError, primaryStack);
+      }
+    }
+  }
+
+  static String _fallbackName(AnimeCatalogue c) =>
+      c is MalCatalogue ? 'MyAnimeList' : 'AniList';
 
   // ── identity ─────────────────────────────────────────────────────────────
 
@@ -63,7 +122,8 @@ class MetadataRepository implements CatalogueRepository {
   @override
   Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) async {
     final k = _browseKind();
-    final rows = _isTmdb(k) ? await _tmdb.home() : await _al.home(k);
+    final rows =
+        _isTmdb(k) ? await _tmdb.home() : await _viaAnime((c) => c.home(k));
     for (final r in rows) {
       r.items.forEach(_remember);
     }
@@ -73,7 +133,9 @@ class MetadataRepository implements CatalogueRepository {
   @override
   Future<List<MediaItem>> search(String query, {String category = 'sub', String? sourceId}) async {
     final k = _browseKind();
-    final items = _isTmdb(k) ? await _tmdb.search(query) : await _al.search(query, k);
+    final items = _isTmdb(k)
+        ? await _tmdb.search(query)
+        : await _viaAnime((c) => c.search(query, k));
     items.forEach(_remember);
     return items;
   }
@@ -106,7 +168,9 @@ class MetadataRepository implements CatalogueRepository {
   }) async {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
-    final d = _isTmdb(c.kind) ? await _tmdb.detail(c) : await _al.detail(c);
+    final d = _isTmdb(c.kind)
+        ? await _tmdb.detail(c)
+        : await _viaAnime((x) => x.detail(c));
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
 
     // Hand the caller everything that does NOT depend on a source right now:
@@ -246,7 +310,9 @@ class MetadataRepository implements CatalogueRepository {
     if (saved != null) return saved;
     var t = _titles[c.key];
     if (t == null) {
-      final d = _isTmdb(c.kind) ? await _tmdb.detail(c) : await _al.detail(c);
+      final d = _isTmdb(c.kind)
+        ? await _tmdb.detail(c)
+        : await _viaAnime((x) => x.detail(c));
       t = (title: d.title, alt: d.englishTitle, malId: d.malId);
       _titles[c.key] = t;
     }

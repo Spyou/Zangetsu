@@ -10,6 +10,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/app_config.dart';
 import '../../core/app_mode.dart';
+import '../../core/tracker/tracker_hub.dart';
+import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/zmode/zmode_prefs.dart';
 import '../../core/cache/media_cache.dart';
 import '../../core/logging/app_logger.dart';
@@ -127,6 +129,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _push(Widget screen) => Navigator.of(
     context,
   ).push(MaterialPageRoute<void>(builder: (_) => screen));
+
+  /// The metadata provider store is registered by `registerZangetsuMode`,
+  /// which runs late in boot — and this screen is built eagerly as the dock's
+  /// Profile tab. Guarded so it reads as the default rather than throwing if
+  /// it is built first. Same guard `SourceRepository._domainOverride` uses.
+  static MetadataProviderPrefs? get _providerPrefs =>
+      sl.isRegistered<MetadataProviderPrefs>()
+          ? sl<MetadataProviderPrefs>()
+          : null;
+
+  static String _animeProviderLabel() =>
+      _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
+
+  /// Choose who supplies anime/manga metadata.
+  ///
+  /// Both providers serve public data without a login, so this changes nothing
+  /// about signing in — but MAL can only show YOUR lists once the MAL tracker
+  /// is connected, which is easy to miss right after switching to it.
+  Future<void> _pickAnimeMetadataProvider() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final l10n = context.l10n;
+    final picked = await showModalBottomSheet<AnimeProvider>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(l10n.animeMetadata, style: AppText.headline),
+            const SizedBox(height: 10),
+            for (final p in AnimeProvider.values)
+              ListTile(
+                title: Text(
+                  p == AnimeProvider.mal ? 'MyAnimeList' : 'AniList',
+                  style: AppText.body,
+                ),
+                trailing: prefs.anime == p
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(p),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setAnime(picked);
+    if (!mounted) return;
+    // Same guard: the hub may not be registered in a stripped-down build.
+    final malConnected = sl.isRegistered<TrackerHub>() &&
+        sl<TrackerHub>()
+            .connected
+            .any((t) => t.displayName.toLowerCase().contains('myanimelist'));
+    if (picked == AnimeProvider.mal && !malConnected) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(l10n.malLoginForLists)));
+    }
+  }
 
   /// Bottom sheet to pick the in-app DNS-over-HTTPS provider for CS sources.
   Future<void> _shareLogs() async {
@@ -843,6 +910,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           ],
         ),
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.hub_outlined,
+        title: l10n.animeMetadata,
+        subtitle: l10n.animeMetadataSubtitle,
+        keywords: 'anime metadata provider anilist mal myanimelist fallback '
+            'catalogue',
+        trailing: _value(_animeProviderLabel()),
+        onTap: () async {
+          await _pickAnimeMetadataProvider();
+          if (mounted) setState(() {});
+        },
       ),
       _SettingsEntry(
         section: SettingsSection.interface,

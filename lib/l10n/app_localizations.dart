@@ -8264,6 +8264,24 @@ abstract class AppLocalizations {
   /// **'Browse from AniList and TMDB, play from your sources'**
   String get zModeSubtitle;
 
+  /// No description provided for @animeMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Anime metadata'**
+  String get animeMetadata;
+
+  /// No description provided for @animeMetadataSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where anime and manga info comes from'**
+  String get animeMetadataSubtitle;
+
+  /// No description provided for @malLoginForLists.
+  ///
+  /// In en, this message translates to:
+  /// **'Log in to MyAnimeList in Trackers to sync your lists'**
+  String get malLoginForLists;
+
   /// No description provided for @zModeExperimental.
   ///
   /// In en, this message translates to:

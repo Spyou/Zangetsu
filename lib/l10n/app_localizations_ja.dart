@@ -4693,6 +4693,16 @@ class AppLocalizationsJa extends AppLocalizations {
       'Browse from AniList and TMDB, play from your sources';
 
   @override
+  String get animeMetadata => 'Anime metadata';
+
+  @override
+  String get animeMetadataSubtitle => 'Where anime and manga info comes from';
+
+  @override
+  String get malLoginForLists =>
+      'Log in to MyAnimeList in Trackers to sync your lists';
+
+  @override
   String get zModeExperimental => 'Experimental';
 
   @override
