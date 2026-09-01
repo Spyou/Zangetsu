@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:watch_app/core/zmode/zmode_prefs.dart';
 import 'package:watch_app/core/appwrite/appwrite_service.dart';
 import 'package:watch_app/core/anilist/anilist_service.dart';
 import 'package:watch_app/core/announce/announcement.dart';
@@ -310,6 +311,10 @@ void main() {
     // SettingsScreen (rendered eagerly in the shared shell pages) reads
     // sl<PlaybackPrefs>(), which reads its own Hive box — open it first.
     await PlaybackPrefs.init();
+    // These cover the shell as it stands without the metadata mode, which is
+    // on by default now that its Settings toggle is gone — so ask for off.
+    await ZModePrefs.init();
+    await ZModePrefs.setEnabled(false);
 
     final dio = Dio();
     final fakeRepo = _FakeSourceRepository();

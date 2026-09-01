@@ -314,6 +314,9 @@ void main() {
     // (its default) in every test regardless of run order.
     await Hive.deleteBoxFromDisk(ZModePrefs.boxName);
     await ZModePrefs.init();
+    // Both paths are covered here, so start from off and let the Z Mode
+    // cases opt in — it is on by default since the toggle was removed.
+    await ZModePrefs.setEnabled(false);
     // The dock builds every tab's screen into an IndexedStack, and Downloads
     // is a default tab now — so DownloadsScreen is constructed by every test
     // here and needs its store, whether or not the test looks at it.

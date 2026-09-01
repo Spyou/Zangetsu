@@ -177,11 +177,16 @@ void main() {
   });
 
   testWidgets(
-    'Z Mode off: Search is source-scoped (byte-identical default for the '
-    'audience that never opted in)',
+    'Z Mode off: Search is source-scoped (the path is still there)',
     (t) async {
-      // ZModePrefs box deliberately left unopened — ZModePrefs.enabled reads
-      // false when its box was never touched, matching a real off install.
+      // Has to be asked for now. This used to rely on an unopened box reading
+      // false; the mode is on by default since the Settings toggle went, so
+      // the source-only path needs saying out loud. No UI reaches it any
+      // more — this keeps the code path honest.
+      await t.runAsync(() async {
+        await ZModePrefs.init();
+        await ZModePrefs.setEnabled(false);
+      });
       await t.pumpWidget(harness());
       await t.pumpAndSettle();
 
