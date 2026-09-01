@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
 void main() {
+  late ZSourcePrefs prefs;
   late Directory dir;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
   const allanime = SourceMatch(
@@ -32,12 +34,14 @@ void main() {
     await Hive.close();
     Hive.init(dir.path);
     store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     expect(store.get(fma, 'allanime')?.sourceId, 'allanime');
     expect(store.get(fma, 'allanime')?.pinned, isFalse);
   });
 
   test('per-source matches do not collide', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     await store.save(fma, allanime);
     await store.save(fma, hianime);
     expect(store.get(fma, 'allanime')?.showId, 'fma');
@@ -46,6 +50,7 @@ void main() {
 
   test('pinning source A does not affect source B', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     await store.pin(fma, allanime);
     await store.save(fma, hianime);
     expect(store.get(fma, 'allanime')?.pinned, isTrue);
@@ -63,6 +68,7 @@ void main() {
   test('a pin replaces an earlier pin for the same source, and forget clears just that source',
       () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     await store.pin(fma, allanime);
     await store.save(fma, hianime);
     const fixed = SourceMatch(
@@ -76,37 +82,21 @@ void main() {
     expect(store.get(fma, 'hianime')?.showId, 'fma-h');
   });
 
-  test('selectedSource round-trips and survives reopen', () async {
-    var store = await MatchStore.open();
-    expect(store.selectedSource(fma), isNull);
-    await store.selectSource(fma, 'hianime');
-    expect(store.selectedSource(fma), 'hianime');
-    await Hive.close();
-    Hive.init(dir.path);
-    store = await MatchStore.open();
-    expect(store.selectedSource(fma), 'hianime');
-  });
-
-  test('a selection key never collides with a match key', () async {
-    final store = await MatchStore.open();
-    await store.save(fma, allanime);
-    await store.selectSource(fma, 'hianime');
-    expect(store.get(fma, 'allanime')?.sourceId, 'allanime');
-    expect(store.selectedSource(fma), 'hianime');
-  });
 
   test('an old bare-key entry (pre-per-source) is ignored, not thrown on', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final box = Hive.box<Map>(MatchStore.boxName);
     // Simulates data written before this store keyed matches by source too.
     await box.put(fma.key, allanime.toMap());
     expect(store.get(fma, 'allanime'), isNull);
-    expect(store.selectedSource(fma), isNull);
+    expect(prefs.get(fma.kind), isNull);
   });
 
   test('malformed optional fields (wrong types) deserialize to empty strings, not throw',
       () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final box = Hive.box<Map>(MatchStore.boxName);
     await box.put('${fma.key}@test', {
       'sourceId': 'test',
@@ -124,6 +114,7 @@ void main() {
 
   test('missing required field (sourceId) returns null, not throw', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final box = Hive.box<Map>(MatchStore.boxName);
     await box.put('${fma.key}@test', {
       'showUrl': 'https://test.com',
@@ -136,8 +127,9 @@ void main() {
 
   test('a malformed selection value is ignored, not thrown on', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final box = Hive.box<Map>(MatchStore.boxName);
     await box.put('sel:${fma.key}', {'sourceId': 42}); // wrong type
-    expect(store.selectedSource(fma), isNull);
+    expect(prefs.get(fma.kind), isNull);
   });
 }

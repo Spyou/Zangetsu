@@ -6,6 +6,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 import 'package:watch_app/features/detail/cubit/wrong_title_cubit.dart';
@@ -37,11 +38,12 @@ class _Src implements SourceRepository {
 void main() {
   late Directory dir;
   late MatchStore store;
+  late ZSourcePrefs prefs;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
 
   WrongTitleCubit build(_Src src, {String sourceId = 'allanime'}) => WrongTitleCubit(
     sources: src,
-    matcher: SourceMatcher(sources: src, store: store,
+    matcher: SourceMatcher(sources: src, store: store, prefs: prefs,
         candidates: (_) => [(id: 'allanime', name: 'AllAnime'), (id: 'hianime', name: 'HiAnime')]),
     canonical: fma,
     sourceId: sourceId,
@@ -51,6 +53,7 @@ void main() {
     dir = await Directory.systemTemp.createTemp('wrongshow_cubit');
     Hive.init(dir.path);
     store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
   });
   tearDown(() async {
     await Hive.close();
@@ -86,6 +89,6 @@ void main() {
     final m = await c.choose(c.state.results.single);
     expect(m.pinned, isTrue);
     expect(store.get(fma, 'hianime')?.showId, 'fmab');
-    expect(store.selectedSource(fma), 'hianime');
+    expect(prefs.get(fma.kind), 'hianime');
   });
 }

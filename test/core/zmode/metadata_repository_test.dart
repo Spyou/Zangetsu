@@ -9,6 +9,7 @@ import 'package:watch_app/core/models/video_source.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/anilist_catalogue.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/metadata_repository.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/tmdb_catalogue.dart';
@@ -83,6 +84,7 @@ void main() {
     Hive.init(dir.path);
     src = _Src();
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     repo = MetadataRepository(
       anilist: AniListCatalogue((q, v) async {
         if (q.contains('Media(')) {
@@ -95,7 +97,7 @@ void main() {
       }),
       tmdb: TmdbCatalogue((p, q) async => {'results': []}),
       sources: src,
-      matcher: SourceMatcher(sources: src, store: store,
+      matcher: SourceMatcher(sources: src, store: store, prefs: prefs,
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => kind,
     );
@@ -126,12 +128,13 @@ void main() {
 
   test('sources() with no match throws NoSourceMatch', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final dead = _NoHits();
     final r = MetadataRepository(
       anilist: AniListCatalogue((q, v) async => {'Media': _al()}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: dead,
-      matcher: SourceMatcher(sources: dead, store: store,
+      matcher: SourceMatcher(sources: dead, store: store, prefs: prefs,
           candidates: (_) => [(id: 'x', name: 'X')]),
       browseKind: () => ZKind.anime,
     );
@@ -166,13 +169,14 @@ void main() {
 
   test('unmatched anime detail drops the synthesised episode list', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final dead = _NoHits();
     final r = MetadataRepository(
       anilist: AniListCatalogue((q, v) async =>
           q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: dead,
-      matcher: SourceMatcher(sources: dead, store: store,
+      matcher: SourceMatcher(sources: dead, store: store, prefs: prefs,
           candidates: (_) => [(id: 'x', name: 'X')]),
       browseKind: () => ZKind.anime,
     );
@@ -193,13 +197,14 @@ void main() {
 
   test('unmatched manga detail drops the synthesised chapter list', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final dead = _NoHits();
     final r = MetadataRepository(
       anilist: AniListCatalogue((q, v) async =>
           q.contains('Media(') ? {'Media': _al(chapters: 5)} : {'Page': {'media': [_al()]}}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: dead,
-      matcher: SourceMatcher(sources: dead, store: store,
+      matcher: SourceMatcher(sources: dead, store: store, prefs: prefs,
           candidates: (_) => [(id: 'x', name: 'X')]),
       browseKind: () => ZKind.manga,
     );
@@ -210,6 +215,7 @@ void main() {
 
   test('episode missing on a matched source throws EpisodeNotOnSource, not NoSourceMatch', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final es = _EpSrc(const [
       Episode(id: 'a', title: 'Ep 1', number: 1, url: 'https://src/fma/1'),
       Episode(id: 'b', title: 'Ep 2', number: 2, url: 'https://src/fma/2'),
@@ -219,7 +225,7 @@ void main() {
           q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: es,
-      matcher: SourceMatcher(sources: es, store: store,
+      matcher: SourceMatcher(sources: es, store: store, prefs: prefs,
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => ZKind.anime,
     );
@@ -228,6 +234,7 @@ void main() {
 
   test('unnumbered source episodes resolve by position', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final es = _EpSrc(const [
       Episode(id: 'a', title: 'Ch 1', url: 'https://src/fma/1'),
       Episode(id: 'b', title: 'Ch 2', url: 'https://src/fma/2'),
@@ -237,7 +244,7 @@ void main() {
           q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: es,
-      matcher: SourceMatcher(sources: es, store: store,
+      matcher: SourceMatcher(sources: es, store: store, prefs: prefs,
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => ZKind.anime,
     );
@@ -252,6 +259,7 @@ void main() {
   // one true lookup for both — so what's shown at a spot is what plays.
   test('a non-sequentially-numbered source plays the same episode it displays', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final es = _EpSrc(const [
       Episode(id: 'a', title: 'Ep 0', number: 0, url: 'https://src/fma/0'),
       Episode(id: 'b', title: 'Ep 1', number: 1, url: 'https://src/fma/1'),
@@ -261,7 +269,7 @@ void main() {
           q.contains('Media(') ? {'Media': _al()} : {'Page': {'media': [_al()]}}),
       tmdb: TmdbCatalogue((p, q) async => null),
       sources: es,
-      matcher: SourceMatcher(sources: es, store: store,
+      matcher: SourceMatcher(sources: es, store: store, prefs: prefs,
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => ZKind.anime,
     );
@@ -279,11 +287,12 @@ void main() {
 
   test('a saved match skips the metadata round trip entirely', () async {
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     const canonical = ZCanonical(ZKind.anime, 'mal:100');
     await store.save(canonical, const SourceMatch(
       sourceId: 'allanime', showUrl: 'https://src/fma', showId: 'fma', showTitle: 'FMA', pinned: false,
     ));
-    await store.selectSource(canonical, 'allanime');
+    prefs.set(canonical.kind, 'allanime');
     var gqlCalls = 0;
     final r = MetadataRepository(
       anilist: AniListCatalogue((q, v) async {
@@ -295,7 +304,7 @@ void main() {
         return null;
       }),
       sources: src,
-      matcher: SourceMatcher(sources: src, store: store,
+      matcher: SourceMatcher(sources: src, store: store, prefs: prefs,
           candidates: (_) => [(id: 'allanime', name: 'AllAnime')]),
       browseKind: () => ZKind.anime,
     );

@@ -20,6 +20,7 @@ import 'package:watch_app/core/playback/title_prefs.dart';
 import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 import 'package:watch_app/features/detail/cubit/detail_cubit.dart';
@@ -64,6 +65,7 @@ Finder inSheet(Finder f) =>
     find.descendant(of: find.byType(BottomSheet), matching: f);
 
 void main() {
+  late ZSourcePrefs prefs;
   late Directory dir;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
   const aniChannel = MethodChannel('zangetsu/aniyomi');
@@ -105,10 +107,12 @@ void main() {
           url: 'https://a/2', type: ProviderType.anime, sourceId: 'allanime')],
     });
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: src, store: store, candidates: (_) => src.loadedSources));
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
   });
 
   tearDown(() async {
@@ -148,7 +152,7 @@ void main() {
     await t.pumpAndSettle();
     await t.pumpAndSettle();
 
-    final before = sl<MatchStore>().selectedSource(fma);
+    final before = prefs.get(fma.kind);
     expect(inSheet(find.byIcon(Icons.tune_rounded)), findsOneWidget);
 
     await t.tap(inSheet(find.byIcon(Icons.tune_rounded)));
@@ -158,7 +162,7 @@ void main() {
     // selection is untouched.
     // The shared picker has no title row — its tabs identify it.
     expect(find.text('Movies/Series'), findsOneWidget);
-    expect(sl<MatchStore>().selectedSource(fma), before);
+    expect(prefs.get(fma.kind), before);
     expect(aniCalls.any((c) => c.method == 'openSourceSettings'), isTrue);
   });
 
