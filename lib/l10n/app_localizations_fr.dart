@@ -1157,6 +1157,20 @@ class AppLocalizationsFr extends AppLocalizations {
       'Un bouton pour avancer dans le lecteur (n’importe quelle vidéo)';
 
   @override
+  String get seekButton => 'Afficher les boutons d’avance/recul';
+
+  @override
+  String get seekButtonDescription =>
+      'Affiche les boutons d’avance et de recul rapides dans le lecteur';
+
+  @override
+  String get seekButtonDuration => 'Durée d’avance';
+
+  @override
+  String get selectSeekButtonDurationDescription =>
+      'Choisissez la durée d’avance pour ces boutons';
+
+  @override
   String get nativeTVPlayer => 'Lecteur TV natif';
 
   @override

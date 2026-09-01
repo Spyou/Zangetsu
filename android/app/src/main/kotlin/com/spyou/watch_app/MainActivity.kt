@@ -335,10 +335,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
      */
     private fun extensionScope(tag: String): CoroutineScope = CoroutineScope(
         SupervisorJob() +
-            Dispatchers.IO +
-            CoroutineExceptionHandler { _, e ->
-                Log.e(TAG, "uncaught in $tag extension: ${e::class.java.name}: ${e.message}", e)
-            },
+                Dispatchers.IO +
+                CoroutineExceptionHandler { _, e ->
+                    Log.e(TAG, "uncaught in $tag extension: ${e::class.java.name}: ${e.message}", e)
+                },
     )
 
     /** Required by [FlutterEngineConfigurator]. Everything we register in
@@ -820,7 +820,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                                     // or a legacy un-tagged one (1 '@').
                                     val mine = installed.any {
                                         it.substringBefore('@') == plugin.internalName &&
-                                            (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
+                                                (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
                                     }
                                     if (!mine) continue
                                     val newId = "${plugin.internalName}@${plugin.version}@$tag"
@@ -868,7 +868,7 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                                     val installedVersion = installed
                                         .filter {
                                             it.substringBefore('@') == plugin.internalName &&
-                                                (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
+                                                    (it.endsWith("@$tag") || it.count { c -> c == '@' } == 1)
                                         }
                                         .mapNotNull { it.split('@').getOrNull(1)?.toIntOrNull() }
                                         .maxOrNull() ?: continue
@@ -1131,8 +1131,8 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                     "isTv" -> {
                         val uiModeManager = getSystemService(android.content.Context.UI_MODE_SERVICE) as android.app.UiModeManager
                         val isTv = uiModeManager.currentModeType == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION ||
-                            packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
-                            packageManager.hasSystemFeature("android.software.leanback_only")
+                                packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_LEANBACK) ||
+                                packageManager.hasSystemFeature("android.software.leanback_only")
                         result.success(isTv)
                     }
                     // Does a SAF content:// document still exist on disk? Used by
@@ -1513,6 +1513,10 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
                 )
             }
 
+            // Seek Buttons
+            intent.putExtra(TvPlayerActivity.ENABLE_SEEK_BUTTONS, call.argument<Boolean>(TvPlayerActivity.ENABLE_SEEK_BUTTONS) ?: true)
+            intent.putExtra(TvPlayerActivity.SEEK_BUTTON_DURATION, (call.argument<Int>(TvPlayerActivity.SEEK_BUTTON_DURATION) ?: 10).toLong())
+
             val headers = call.argument<Map<String, String>>("headers")
             if (!headers.isNullOrEmpty()) {
                 val arr = ArrayList<String>()
@@ -1659,18 +1663,18 @@ class MainActivity : AppCompatActivity(), FlutterEngineConfigurator {
             val r = ensureRetriever(url, headers) ?: return null
             val timeUs = positionMs * 1000L
             val bmp: Bitmap = (
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    r.getScaledFrameAtTime(
-                        timeUs,
-                        MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        maxWidth,
-                        maxWidth,
-                    )
-                } else {
-                    r.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                        ?.let { scaleDown(it, maxWidth) }
-                }
-            ) ?: run {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        r.getScaledFrameAtTime(
+                            timeUs,
+                            MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            maxWidth,
+                            maxWidth,
+                        )
+                    } else {
+                        r.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                            ?.let { scaleDown(it, maxWidth) }
+                    }
+                    ) ?: run {
                 Log.w(TAG, "frame NULL (decoder returned no bitmap) pos=${positionMs}ms")
                 return null
             }
