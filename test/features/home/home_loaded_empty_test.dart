@@ -96,6 +96,7 @@ Future<void> pumpEmptyView(
   VoidCallback? onRetry,
   String? cloudflareUrl,
   Future<void> Function()? onSolveCloudflare,
+  bool offline = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -107,6 +108,7 @@ Future<void> pumpEmptyView(
           onInstallSources: onInstall ?? () {},
           cloudflareUrl: cloudflareUrl,
           onSolveCloudflare: onSolveCloudflare,
+          offline: offline,
         ),
       ),
     ),
@@ -304,5 +306,41 @@ void main() {
         expect(find.text('Solve Cloudflare'), findsNothing);
       },
     );
+  });
+
+  group('offline', () {
+    testWidgets('says the connection failed, and does not blame the source',
+        (tester) async {
+      await pumpEmptyView(tester, mode: ContentMode.anime, offline: true);
+
+      expect(find.text("You're offline"), findsOneWidget);
+      // The whole point: "Couldn't load allanime" sent people off
+      // reinstalling a source that was never the problem.
+      expect(find.text("Couldn't load allanime"), findsNothing);
+      expect(find.textContaining('allanime is probably fine'), findsOneWidget);
+    });
+
+    testWidgets('outranks the install-sources guide', (tester) async {
+      // No sources installed AND offline: telling someone to go install an
+      // extension is useless advice when nothing can reach the network.
+      await pumpEmptyView(tester, mode: ContentMode.novel, offline: true);
+
+      expect(find.text("You're offline"), findsOneWidget);
+      expect(find.textContaining('Browse'), findsNothing);
+    });
+
+    testWidgets('a Cloudflare block still wins — that one IS actionable',
+        (tester) async {
+      await pumpEmptyView(
+        tester,
+        mode: ContentMode.anime,
+        offline: true,
+        cloudflareUrl: 'https://animepahe.ru/',
+        onSolveCloudflare: () async {},
+      );
+
+      expect(find.text('Solve Cloudflare'), findsOneWidget);
+      expect(find.text("You're offline"), findsNothing);
+    });
   });
 }

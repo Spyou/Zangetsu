@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/platform/apple_tv.dart';
 import '../../../core/error/exceptions.dart';
+import '../../../core/error/network_failure.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/models/home_section.dart';
 import '../../../core/models/media_item.dart';
@@ -19,7 +20,12 @@ import '../../../core/repository/catalogue_repository.dart';
 /// feeds the hero carousel via [heroItems]; the screen renders the remaining
 /// sections as browse rows.
 class HomeState extends Equatable {
-  const HomeState({this.sections, this.loading = false, this.cloudflareUrl});
+  const HomeState({
+    this.sections,
+    this.loading = false,
+    this.cloudflareUrl,
+    this.offline = false,
+  });
 
   /// The provider's named home rows, in order. Null until the first load.
   final List<HomeSection>? sections;
@@ -32,6 +38,12 @@ class HomeState extends Equatable {
   /// solve. Null in every other state. Drives the "Solve Cloudflare" empty view.
   final String? cloudflareUrl;
 
+  /// The last load failed because the request never left the device — no
+  /// route, DNS down, captive portal. Distinct from a source that answered
+  /// with nothing: both used to render as "this source returned nothing",
+  /// which sent people to reinstall extensions over a dropped connection.
+  final bool offline;
+
   /// Items that drive the hero carousel — the first section's items. Empty
   /// until something loads.
   List<MediaItem> get heroItems => (sections != null && sections!.isNotEmpty)
@@ -42,14 +54,16 @@ class HomeState extends Equatable {
     List<HomeSection>? sections,
     bool? loading,
     String? cloudflareUrl,
+    bool? offline,
   }) => HomeState(
     sections: sections ?? this.sections,
     loading: loading ?? this.loading,
     cloudflareUrl: cloudflareUrl ?? this.cloudflareUrl,
+    offline: offline ?? this.offline,
   );
 
   @override
-  List<Object?> get props => [sections, loading, cloudflareUrl];
+  List<Object?> get props => [sections, loading, cloudflareUrl, offline];
 }
 
 /// Owns the Home rows. Delegates entirely to [SourceRepository.home], which
@@ -87,6 +101,7 @@ class HomeCubit extends Cubit<HomeState> {
 
     List<HomeSection> sections;
     String? cloudflareUrl;
+    var offline = false;
     try {
       final homeFuture = _repo.home();
       sections = isAppleTv
@@ -95,6 +110,7 @@ class HomeCubit extends Cubit<HomeState> {
     } on TimeoutException catch (_) {
       debugPrint('[home] load timed out · source=$sourceId');
       sections = const <HomeSection>[];
+      offline = true; // nothing came back at all — same story as no route
     } on CloudflareRequiredException catch (e) {
       debugPrint('[home] load needs Cloudflare · source=$sourceId');
       sections = const <HomeSection>[];
@@ -102,6 +118,7 @@ class HomeCubit extends Cubit<HomeState> {
     } catch (e, st) {
       debugPrint('[home] load failed · source=$sourceId · $e\n$st');
       sections = const <HomeSection>[];
+      offline = await isOfflineErrorConfirmed(e);
     }
 
     // A novel plugin catches its own fetch errors and returns nothing, so a
@@ -118,9 +135,12 @@ class HomeCubit extends Cubit<HomeState> {
     if (isClosed || gen != _gen) return;
     emit(
       HomeState(
-      sections: sections,
-      loading: false,
-      cloudflareUrl: cloudflareUrl,
+        sections: sections,
+        loading: false,
+        cloudflareUrl: cloudflareUrl,
+        // Only meaningful when nothing came back: a partial load that hit one
+        // bad row is not an offline screen.
+        offline: offline && sections.isEmpty,
       ),
     );
   }

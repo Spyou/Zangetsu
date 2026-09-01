@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../metadata/tmdb.dart';
+import '../error/network_failure.dart';
 import 'schedule_models.dart';
 
 /// Maps a TMDB results array to entries; drops title-less or poster-and-date-less rows.
@@ -167,7 +168,17 @@ class ComingSoonService {
   /// re-opening Schedule should not re-download them. Deliberately NOT on
   /// disk — a stale calendar is worse than a slow one, and the day-level data
   /// it holds turns over constantly.
+  /// Whether the LAST attempt failed because nothing could reach the network.
+  ///
+  /// This service returns `[]` for every failure so a bad response never
+  /// breaks the screen — which also means the caller cannot tell "offline"
+  /// from "genuinely nothing scheduled". Reset at the start of each attempt
+  /// and read straight after, so the two can be told apart without changing
+  /// the return type everything already depends on.
+  bool lastFailureOffline = false;
+
   Future<List<ComingSoonEntry>> upcoming() async {
+    lastFailureOffline = false;
     final cached = _cache;
     if (cached != null && DateTime.now().difference(_cachedAt!) < _cacheTtl) {
       return cached;
@@ -203,7 +214,8 @@ class ComingSoonService {
         parseSimklCalendar(movies is List ? movies : const [], isTv: false),
       );
       return onlyUpcoming(merged, DateTime.now());
-    } catch (_) {
+    } catch (e) {
+      lastFailureOffline = await isOfflineErrorConfirmed(e);
       return const [];
     }
   }
@@ -242,7 +254,8 @@ class ComingSoonService {
         parseTmdbResults(_results(tvRes.data), isTv: true),
       );
       return onlyUpcoming(merged, today); // safety net; Discover is already future-only
-    } catch (_) {
+    } catch (e) {
+      lastFailureOffline = await isOfflineErrorConfirmed(e);
       return const [];
     }
   }

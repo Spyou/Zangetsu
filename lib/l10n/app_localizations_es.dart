@@ -1760,6 +1760,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get failedToLoadThisTitle => 'No se pudo cargar este título';
 
   @override
+  String get offlineTitle => 'You are offline';
+
+  @override
+  String get offlineBody => 'Check your connection and try again.';
+
+  @override
   String get changeStatus => 'Cambiar estado';
 
   @override

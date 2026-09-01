@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/cache/app_image_cache.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
+import '../../core/ui/global_messenger.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
 import '../../core/models/episode.dart';
@@ -160,11 +161,8 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     if (!mounted || episodes.isEmpty) return;
     var idx = episodes.indexWhere((ep) => ep.id == e.episodeId);
     if (idx < 0) idx = 0;
-    resolveSources(String u) => sl<CatalogueRepository>().sources(
-      u,
-      sourceId: e.sourceId,
-      fast: true,
-    );
+    resolveSources(String u) =>
+        sl<CatalogueRepository>().sources(u, sourceId: e.sourceId, fast: true);
     await launchTvPlayback(
       context: context,
       sourceId: e.sourceId,
@@ -305,10 +303,7 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       playLabel: context.l10n.resume,
       progress: e.progress,
       progressLabel: e.episodeNumber != null
-          ? context.l10n.episodeWatchedPct(
-              e.episodeNumber!.toInt(),
-              pct,
-            )
+          ? context.l10n.episodeWatchedPct(e.episodeNumber!.toInt(), pct)
           : context.l10n.percentWatched(pct),
       onPlay: () => _resume(e),
       onOpenDetail: () => _openDetail(stub),
@@ -325,7 +320,10 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
       onRemoveFromContinue: () async {
         try {
           await sl<WatchHistory>().remove(e.sourceId, e.showId);
-        } catch (_) {}
+        } catch (_) {
+          showGlobalSnack("Couldn't remove from Continue Watching");
+          return;
+        }
         if (mounted) setState(() {});
       },
     );

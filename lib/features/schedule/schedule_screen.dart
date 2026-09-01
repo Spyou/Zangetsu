@@ -449,9 +449,13 @@ class _ScheduleBodyState extends State<ScheduleBody>
             l10n.scheduleNounAiring,
           ),
           if (list.isEmpty)
-            _empty(state.myListOnly
-                ? l10n.noneOfFollowedAirOnThisDay
-                : l10n.nothingAiringOnThisDay)
+            // "Nothing airing today" is a claim about the schedule. Don't make
+            // it when the schedule never loaded.
+            _empty(state.offline
+                ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
+                : state.myListOnly
+                    ? l10n.noneOfFollowedAirOnThisDay
+                    : l10n.nothingAiringOnThisDay)
           else
             _timeline(context, list),
         ],
@@ -469,7 +473,9 @@ class _ScheduleBodyState extends State<ScheduleBody>
           l10n.scheduleNounReleasing,
         ),
         if (list.isEmpty)
-          _empty(l10n.nothingReleasingOnThisDay)
+          _empty(state.offline
+              ? '${l10n.offlineTitle}\n${l10n.offlineBody}'
+              : l10n.nothingReleasingOnThisDay)
         else
           for (final e in list)
             _ReleaseCard(

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/di/injector.dart';
 import '../../../core/error/exceptions.dart';
+import '../../../core/error/network_failure.dart';
 import '../../../core/lnreader/novel_cloudflare.dart';
 import '../../../core/metadata/episode_metadata_service.dart';
 import '../../../core/metadata/metadata_enrichment.dart';
@@ -212,10 +213,13 @@ class DetailCubit extends Cubit<DetailState> {
         cloudflareUrl: e.url,
         episodesLoading: false,
       ));
-    } catch (_) {
+    } catch (e) {
+      // Same distinction Home makes: a request that never left the device is
+      // not the title failing to load.
+      final offline = await isOfflineErrorConfirmed(e);
       emit(state.copyWith(
         status: DetailStatus.error,
-        error: 'load_failed',
+        error: offline ? 'offline' : 'load_failed',
         episodesLoading: false,
       ));
     }
@@ -434,8 +438,12 @@ class DetailCubit extends Cubit<DetailState> {
       // Netflix-style: remember THIS title's Sub/Dub choice so reopening it
       // restores the last-picked category. Only after a successful switch.
       await _prefs.setCategory(_prefsSourceId, _url, cat);
-    } catch (_) {
-      emit(state.copyWith(status: DetailStatus.error, error: 'load_failed'));
+    } catch (e) {
+      final offline = await isOfflineErrorConfirmed(e);
+      emit(state.copyWith(
+        status: DetailStatus.error,
+        error: offline ? 'offline' : 'load_failed',
+      ));
     }
   }
 

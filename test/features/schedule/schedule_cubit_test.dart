@@ -8,6 +8,9 @@ import 'package:watch_app/core/playback/my_list.dart';
 import 'package:watch_app/features/schedule/schedule_cubit.dart';
 
 class _FakeAiring implements AiringService {
+  @override
+  bool lastFailureOffline = false;
+
   _FakeAiring(this._out, {List<AiringEntry>? month}) : _month = month ?? _out;
   final List<AiringEntry> _out;
   final List<AiringEntry> _month;
@@ -22,6 +25,9 @@ class _FakeAiring implements AiringService {
 /// Returns empty for the first [emptyFirst] calls, then [_out] — models a
 /// transient failure the retry loop should recover from.
 class _FlakyAiring implements AiringService {
+  @override
+  bool lastFailureOffline = false;
+
   _FlakyAiring(this._out, this.emptyFirst);
   final List<AiringEntry> _out;
   int emptyFirst;
@@ -34,6 +40,9 @@ class _FlakyAiring implements AiringService {
 }
 
 class _FakeSoon implements ComingSoonService {
+  @override
+  bool lastFailureOffline = false;
+
   _FakeSoon(this._out);
   final List<ComingSoonEntry> _out;
   @override

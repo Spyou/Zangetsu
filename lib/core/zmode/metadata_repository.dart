@@ -141,9 +141,20 @@ class MetadataRepository implements CatalogueRepository {
       [(id: ZmodeIds.sourceId, name: displayName(ZmodeIds.sourceId))];
   @override
   bool hasSource(String sourceId) => sourceId == ZmodeIds.sourceId;
+
+  /// The provider actually answering right now, so an error can name what
+  /// failed. Hardcoding TMDB/AniList here stopped being true the moment MAL
+  /// and Simkl could stand in for them.
   @override
-  String displayName(String sourceId) =>
-      _isTmdb(_browseKind()) ? 'TMDB' : 'AniList';
+  String displayName(String sourceId) {
+    if (_isTmdb(_browseKind())) {
+      return _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+    }
+    return _providerPrefs?.anime == AnimeProvider.mal
+        ? 'MyAnimeList'
+        : 'AniList';
+  }
+
   @override
   void syncSearchCache() {}
   @override
