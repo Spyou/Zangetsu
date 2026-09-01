@@ -35,6 +35,9 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('home_search_action');
     Hive.init(tempDir.path);
     await ZModePrefs.init();
+    // On by default since the Settings toggle was removed; these tests cover
+    // both paths, so start from off and let each one opt in.
+    await ZModePrefs.setEnabled(false);
   });
 
   tearDown(() async {

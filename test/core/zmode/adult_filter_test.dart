@@ -54,4 +54,15 @@ void main() {
     // And the default decodes as off rather than as missing.
     expect(MetaFilters.fromJson(const MetaFilters().toJson())!.adult, isFalse);
   });
+
+  test('adult alone is not a catalogue filter', () {
+    // TMDB serves filters from /discover, which takes no query. If NSFW-on
+    // counted as a filter, a text search went there and matched almost
+    // nothing.
+    expect(const MetaFilters(adult: true).narrowsCatalogue, isFalse);
+    expect(const MetaFilters().narrowsCatalogue, isFalse);
+    expect(const MetaFilters(genres: ['Action']).narrowsCatalogue, isTrue);
+    expect(const MetaFilters(year: 2020).narrowsCatalogue, isTrue);
+    expect(const MetaFilters(sort: MetaSort.score).narrowsCatalogue, isTrue);
+  });
 }

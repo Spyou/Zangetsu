@@ -938,31 +938,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       _SettingsEntry(
         section: SettingsSection.interface,
-        icon: Icons.auto_awesome_outlined,
-        title: l10n.zMode,
-        subtitle: l10n.zModeSubtitle,
-        keywords: 'zangetsu mode metadata anilist tmdb experimental catalogue',
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              l10n.zModeExperimental,
-              style: AppText.caption.copyWith(color: AppColors.textTertiary),
-            ),
-            const SizedBox(width: 6),
-            Switch.adaptive(
-              value: ZModePrefs.enabled,
-              activeThumbColor: AppColors.accent,
-              onChanged: (v) async {
-                await ZModePrefs.setEnabled(v);
-                if (mounted) setState(() {});
-              },
-            ),
-          ],
-        ),
-      ),
-      _SettingsEntry(
-        section: SettingsSection.interface,
         icon: Icons.hub_outlined,
         title: l10n.animeMetadata,
         subtitle:

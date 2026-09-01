@@ -113,7 +113,9 @@ class TmdbCatalogue implements VideoCatalogue {
     int page = 1,
   }) async {
     final f = filters;
-    if (f == null || f.isEmpty) {
+    // Adult alone stays on /search: both endpoints take include_adult, but
+    // only /search takes the query.
+    if (f == null || !f.narrowsCatalogue) {
       return _items(
         await _get('/search/multi', {
           'query': q,

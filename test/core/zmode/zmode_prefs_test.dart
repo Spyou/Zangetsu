@@ -16,20 +16,28 @@ void main() {
     await dir.delete(recursive: true);
   });
 
-  test('is off by default and follows anime', () {
-    expect(ZModePrefs.enabled, isFalse);
+  // On for everyone since the Settings toggle was removed: the metadata
+  // catalogue is how the app browses now, so a fresh box must land there
+  // rather than on the source-only path nothing can switch back to.
+  test('is on by default and follows anime', () {
+    expect(ZModePrefs.enabled, isTrue);
     expect(ZModePrefs.streamKind, StreamKind.anime);
   });
 
   test('persists the toggle and bumps revision', () async {
     final before = ZModePrefs.revision.value;
-    await ZModePrefs.setEnabled(true);
-    expect(ZModePrefs.enabled, isTrue);
+    // Off is now the value that differs from the default, so that is the one
+    // worth writing. The path still exists for tests even though no UI
+    // reaches it.
+    await ZModePrefs.setEnabled(false);
+    expect(ZModePrefs.enabled, isFalse);
     expect(ZModePrefs.revision.value, before + 1);
     await Hive.close();
     Hive.init(dir.path);
     await ZModePrefs.init();
-    expect(ZModePrefs.enabled, isTrue);
+    // Survives a restart: the stored false must win over the on-by-default,
+    // or the write did nothing.
+    expect(ZModePrefs.enabled, isFalse);
   });
 
   test('persists streamKind', () async {
@@ -37,9 +45,12 @@ void main() {
     expect(ZModePrefs.streamKind, StreamKind.movie);
   });
 
-  test('reads as off before init without throwing', () async {
+  // The splash reads this before Hive is up. It must give the same answer the
+  // opened box would, or the app would start on one path and switch to the
+  // other a moment later.
+  test('reads as the default before init without throwing', () async {
     await Hive.close();
     Hive.init(dir.path);
-    expect(ZModePrefs.enabled, isFalse);
+    expect(ZModePrefs.enabled, isTrue);
   });
 }
