@@ -602,6 +602,8 @@
 	"searchEpisodes": "Search episodes",
 	"titleOrEpisodeNumber": "Title or episode number",
 	"failedToLoadThisTitle": "Failed to load this title",
+	"offlineTitle": "You are offline",
+	"offlineBody": "Check your connection and try again.",
 	"changeStatus": "Change status",
 	"tracking": "Tracking",
 	"noEpisodesAvailableFromThisSource": "No episodes available from this source",

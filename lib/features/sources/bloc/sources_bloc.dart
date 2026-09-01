@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/provider/provider_registry.dart';
 import '../../../core/provider/provider_repo_registry.dart';
+import '../../../core/ui/global_messenger.dart';
 import 'sources_event.dart';
 import 'sources_state.dart';
 
@@ -215,8 +216,7 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
       };
       var updates = 0;
       for (final s in repo.sources) {
-        final entry =
-            installed[ProviderRegistry.providerKey(repo.url, s.id)];
+        final entry = installed[ProviderRegistry.providerKey(repo.url, s.id)];
         if (entry != null && isProviderVersionNewer(s.version, entry.version)) {
           updates++;
         }
@@ -237,10 +237,20 @@ class SourcesBloc extends Bloc<SourcesEvent, SourcesState> {
   /// Pull-to-refresh: re-fetch every tracked repo's manifest. Awaitable so the
   /// RefreshIndicator can spin until done.
   Future<void> refreshAllRepos() async {
-    for (final repo in _repos.getAll()) {
+    var failed = 0;
+    final repos = _repos.getAll();
+    for (final repo in repos) {
       try {
         await _repos.fetchAndCache(repo.url);
-      } catch (_) {}
+      } catch (_) {
+        failed++;
+      }
+    }
+    // Pulling to refresh and watching the spinner finish is read as success.
+    // Only speak up when nothing got through; a single flaky repo out of
+    // several isn't worth interrupting for.
+    if (failed > 0 && failed == repos.length) {
+      showGlobalSnack("Couldn't refresh sources");
     }
     if (!isClosed) add(const SourcesRefreshed());
   }

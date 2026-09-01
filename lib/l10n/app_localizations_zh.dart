@@ -1701,6 +1701,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get failedToLoadThisTitle => '无法加载这部作品';
 
   @override
+  String get offlineTitle => 'You are offline';
+
+  @override
+  String get offlineBody => 'Check your connection and try again.';
+
+  @override
   String get changeStatus => '更改状态';
 
   @override

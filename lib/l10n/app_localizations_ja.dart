@@ -1710,6 +1710,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get failedToLoadThisTitle => 'この作品を読み込めませんでした';
 
   @override
+  String get offlineTitle => 'You are offline';
+
+  @override
+  String get offlineBody => 'Check your connection and try again.';
+
+  @override
   String get changeStatus => 'ステータスを変更';
 
   @override

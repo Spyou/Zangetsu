@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../models/media_item.dart' show normalizeTitle;
+import '../error/network_failure.dart';
 import 'schedule_models.dart';
 
 const String _kAniListEndpoint = 'https://graphql.anilist.co';
@@ -160,7 +161,17 @@ query ($start: Int, $end: Int, $page: Int) {
 }''';
 
   /// Returns every SFW airing event in the next 7 days, or `[]` on any error.
+  /// Whether the LAST attempt failed because nothing could reach the network.
+  ///
+  /// This service returns `[]` for every failure so a bad response never
+  /// breaks the screen — which also means the caller cannot tell "offline"
+  /// from "genuinely nothing scheduled". Reset at the start of each attempt
+  /// and read straight after, so the two can be told apart without changing
+  /// the return type everything already depends on.
+  bool lastFailureOffline = false;
+
   Future<List<AiringEntry>> weekAiring({DateTime? now}) {
+    lastFailureOffline = false;
     final win = weekWindowUtc(now ?? DateTime.now());
     return _fetchRange(win.startSec, win.endSec, maxPages: 10);
   }
@@ -196,7 +207,8 @@ query ($start: Int, $end: Int, $page: Int) {
         ...first.entries,
         for (final r in rest) ...r.entries,
       ];
-    } catch (_) {
+    } catch (e) {
+      lastFailureOffline = await isOfflineErrorConfirmed(e);
       return const [];
     }
   }

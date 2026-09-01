@@ -14,6 +14,7 @@ import '../../core/mihon/mihon_image_provider.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/mode/content_mode_cubit.dart';
 import '../../core/notify/notification_service.dart';
+import '../../core/ui/global_messenger.dart';
 import '../../core/update/extension_auto_updater.dart';
 import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
@@ -352,7 +353,14 @@ class _HomeViewState extends State<_HomeView>
         return _myList.contains(stub);
       },
       onRemoveFromContinue: () async {
-        await sl<WatchHistory>().remove(e.sourceId, e.showId);
+        // Tapping Remove and having the row stay put with no explanation is
+        // the worst version of this: it reads as the button being broken.
+        try {
+          await sl<WatchHistory>().remove(e.sourceId, e.showId);
+        } catch (_) {
+          showGlobalSnack("Couldn't remove from Continue Watching");
+          return;
+        }
         if (mounted) setState(() {});
       },
     );
@@ -395,7 +403,14 @@ class _HomeViewState extends State<_HomeView>
         return _myList.contains(stub);
       },
       onRemoveFromContinue: () async {
-        await sl<ReadHistory>().remove(e.sourceId, e.showId);
+        // Tapping Remove and having the row stay put with no explanation is
+        // the worst version of this: it reads as the button being broken.
+        try {
+          await sl<ReadHistory>().remove(e.sourceId, e.showId);
+        } catch (_) {
+          showGlobalSnack("Couldn't remove from Continue Reading");
+          return;
+        }
         if (mounted) setState(() {});
       },
     );
@@ -579,7 +594,7 @@ class _HomeViewState extends State<_HomeView>
                               'Incognito',
                               style: TextStyle(
                                 fontFamily: 'Inter',
-          fontFamilyFallback: AppText.fontFamilyFallback,
+                                fontFamilyFallback: AppText.fontFamilyFallback,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textSecondary,
@@ -671,7 +686,7 @@ class _HomeViewState extends State<_HomeView>
           headers: items[i].coverHeaders,
           cellWidth: 140,
           qualityBadge: items[i].quality,
-                  dubBadge: items[i].dubBadge,
+          dubBadge: items[i].dubBadge,
           onTap: () => _openDetail(items[i]),
           onLongPress: () => _showInfo(items[i]),
         ),
@@ -710,7 +725,8 @@ class _HomeViewState extends State<_HomeView>
           // source for it, same as it always has.
           onLoadMore: section.more == null
               ? null
-              : (page) => sl<SourceRepository>().browseMore(section.more!, page),
+              : (page) =>
+                    sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     ).then((_) {
@@ -911,7 +927,12 @@ class _HomeViewState extends State<_HomeView>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const DockIcon(DockGlyph.calendar, color: Colors.white, filled: true, size: 18),
+                    const DockIcon(
+                      DockGlyph.calendar,
+                      color: Colors.white,
+                      filled: true,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Text(
                       context.l10n.schedule,
@@ -945,7 +966,10 @@ class _HomeViewState extends State<_HomeView>
     if (!sl.isRegistered<TrackerHub>()) return const [];
     final connected = sl<TrackerHub>().connected;
     if (mode.isReading) {
-      return [for (final t in connected) if (t.supportsReading) t];
+      return [
+        for (final t in connected)
+          if (t.supportsReading) t,
+      ];
     }
     final movies = ZModePrefs.streamKind == StreamKind.movie;
     return [
@@ -1006,15 +1030,20 @@ class _HomeViewState extends State<_HomeView>
   /// show (streaming) or last read manga/novel. Null when there's nothing yet.
   ({String? cover, Map<String, String>? headers}) _modeArt(ContentMode m) {
     if (m == ContentMode.anime) {
-      if (!Hive.isBoxOpen(WatchHistory.boxName)) return (cover: null, headers: null);
+      if (!Hive.isBoxOpen(WatchHistory.boxName))
+        return (cover: null, headers: null);
       for (final e in sl<WatchHistory>().all()) {
         final c = e.thumbnail ?? e.cover;
-        if (c != null && c.isNotEmpty) return (cover: c, headers: e.coverHeaders);
+        if (c != null && c.isNotEmpty)
+          return (cover: c, headers: e.coverHeaders);
       }
       return (cover: null, headers: null);
     }
-    if (!Hive.isBoxOpen(ReadHistory.boxName)) return (cover: null, headers: null);
-    final type = m == ContentMode.manga ? ProviderType.manga : ProviderType.novel;
+    if (!Hive.isBoxOpen(ReadHistory.boxName))
+      return (cover: null, headers: null);
+    final type = m == ContentMode.manga
+        ? ProviderType.manga
+        : ProviderType.novel;
     for (final e in sl<ReadHistory>().all()) {
       if (e.type == type && (e.cover?.isNotEmpty ?? false)) {
         return (cover: e.cover, headers: e.coverHeaders);
@@ -1240,7 +1269,8 @@ class _HomeViewState extends State<_HomeView>
                       ? (sections.first.more?.sourceId ?? '')
                       : '';
                   final firstIsNativeCatalog =
-                      firstId.startsWith('ani:') || firstId.startsWith('mihon:');
+                      firstId.startsWith('ani:') ||
+                      firstId.startsWith('mihon:');
                   final rowSections =
                       (sections.length > 1 && !firstIsNativeCatalog)
                       ? sections.sublist(1)
@@ -1350,7 +1380,6 @@ class _HomeViewState extends State<_HomeView>
                         onLongPressReading: _showContinueReadingInfo,
                       ),
 
-
                       // ── Provider-defined browse rows (CloudStream-style) ──────
                       // The active provider decides the rows + their names; empty
                       // ones are already dropped by SourceRepository.home.
@@ -1363,10 +1392,14 @@ class _HomeViewState extends State<_HomeView>
                         SliverFillRemaining(
                           hasScrollBody: false,
                           child: HomeLoadedEmptyView(
+                            offline: state.offline,
                             mode: sl<ContentModeCubit>().state,
-                            sourceName: sl<SourceRepository>().displayName(
-                              context.read<ActiveSourceCubit>().state,
-                            ),
+                            // Name whatever ACTUALLY answered: in Z Mode the
+                            // rows come from AniList/MAL/TMDB/Simkl, not the
+                            // active source, so blaming the source was simply
+                            // pointing at the wrong thing. The router hands
+                            // back the right name in either mode.
+                            sourceName: _repo.displayName(_repo.sourceId),
                             onRetry: () =>
                                 context.read<HomeCubit>().load(reset: true),
                             // No-source guide points at the Providers hub (all
@@ -1387,9 +1420,9 @@ class _HomeViewState extends State<_HomeView>
                                       state.cloudflareUrl!,
                                     );
                                     if (context.mounted) {
-                                      context
-                                          .read<HomeCubit>()
-                                          .load(reset: true);
+                                      context.read<HomeCubit>().load(
+                                        reset: true,
+                                      );
                                     }
                                   },
                           ),
@@ -1405,7 +1438,8 @@ class _HomeViewState extends State<_HomeView>
                       SliverToBoxAdapter(
                         child: SizedBox(
                           height:
-                              kDockClearance + MediaQuery.paddingOf(context).bottom,
+                              kDockClearance +
+                              MediaQuery.paddingOf(context).bottom,
                         ),
                       ),
                     ],
@@ -1437,9 +1471,9 @@ class HomeSearchAction extends StatelessWidget {
         size: 20,
       ),
       tooltip: context.l10n.search,
-      onPressed: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(builder: (_) => const SearchScreen()),
-      ),
+      onPressed: () => Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: (_) => const SearchScreen())),
     );
   }
 }
@@ -1464,8 +1498,7 @@ class HomeBrowseSourcesAction extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: ZModePrefs.revision,
-      builder: (context, _, _) =>
-          ZModePrefs.enabled
+      builder: (context, _, _) => ZModePrefs.enabled
           ? IconButton(
               icon: const Icon(
                 Icons.extension_outlined,
@@ -1541,11 +1574,17 @@ class HomeLoadedEmptyView extends StatelessWidget {
     required this.onInstallSources,
     this.cloudflareUrl,
     this.onSolveCloudflare,
+    this.offline = false,
   });
 
   final ContentMode mode;
   final String sourceName;
   final VoidCallback onRetry;
+
+  /// Nothing reached the network. Takes priority over the no-sources guide:
+  /// offering to install extensions is useless advice when the problem is the
+  /// connection, and it is the wrong thing to blame.
+  final bool offline;
   final VoidCallback onInstallSources;
 
   /// Non-null when the active source is blocked by a Cloudflare challenge;
@@ -1564,10 +1603,21 @@ class HomeLoadedEmptyView extends StatelessWidget {
         onSolveCloudflare: onSolveCloudflare,
       );
     }
+    if (offline) {
+      return _SourceUnavailable(
+        sourceName: sourceName,
+        onRetry: onRetry,
+        offline: true,
+      );
+    }
     if (!hasSourcesFor(mode)) {
       return _NoSourcesGuide(mode: mode, onBrowse: onInstallSources);
     }
-    return _SourceUnavailable(sourceName: sourceName, onRetry: onRetry);
+    return _SourceUnavailable(
+      sourceName: sourceName,
+      onRetry: onRetry,
+      offline: offline,
+    );
   }
 }
 
@@ -1627,8 +1677,10 @@ class _NoSourcesGuide extends StatelessWidget {
               style: FilledButton.styleFrom(
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 26, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 26,
+                  vertical: 13,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(28),
                 ),
@@ -1650,10 +1702,16 @@ class _SourceUnavailable extends StatelessWidget {
     required this.sourceName,
     required this.onRetry,
     this.onSolveCloudflare,
+    this.offline = false,
   });
 
   final String sourceName;
   final VoidCallback onRetry;
+
+  /// The request never left the device. Says so instead of blaming the source
+  /// — telling someone in a tunnel that their extension is down is how people
+  /// end up reinstalling working extensions.
+  final bool offline;
 
   /// When set, this is a Cloudflare block (not a generic outage): show a shield
   /// + a primary "Solve Cloudflare" action that opens the visible solve WebView.
@@ -1679,7 +1737,11 @@ class _SourceUnavailable extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: Icon(
-              isCloudflare ? Icons.shield_rounded : Icons.cloud_off_rounded,
+              isCloudflare
+                  ? Icons.shield_rounded
+                  : offline
+                  ? Icons.wifi_off_rounded
+                  : Icons.cloud_off_rounded,
               size: 40,
               color: isCloudflare ? _cloudflareOrange : AppColors.textTertiary,
             ),
@@ -1688,6 +1750,8 @@ class _SourceUnavailable extends StatelessWidget {
           Text(
             isCloudflare
                 ? '$sourceName is protected by Cloudflare'
+                : offline
+                ? "You're offline"
                 : "Couldn't load $sourceName",
             textAlign: TextAlign.center,
             style: const TextStyle(
@@ -1701,9 +1765,12 @@ class _SourceUnavailable extends StatelessWidget {
             isCloudflare
                 ? 'Complete the Cloudflare check once and this source will '
                       'load normally from then on.'
-                : "This source isn't responding right now. It may be down or "
-                      "blocking requests — try again, or switch to another "
-                      "source from the top.",
+                : offline
+                ? "Nothing could reach the network. Check your connection "
+                      "and try again — $sourceName is probably fine."
+                : "This source isn't responding right now. It may be down "
+                      "or blocking requests — try again, or switch to "
+                      "another source from the top.",
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: AppColors.textSecondary,
@@ -1721,8 +1788,10 @@ class _SourceUnavailable extends StatelessWidget {
                 backgroundColor: _cloudflareOrange,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
@@ -1750,8 +1819,10 @@ class _SourceUnavailable extends StatelessWidget {
                 backgroundColor: AppColors.accent,
                 foregroundColor: Colors.white,
                 elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 30,
+                  vertical: 13,
+                ),
                 textStyle: const TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
