@@ -1039,6 +1039,29 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
+  /// How many of [entries] — already narrowed to the kind on screen — are in
+  /// [c].
+  int _categoryCount(List<MyListEntry> entries, ListCategory c) {
+    final cats = _cats;
+    if (cats == null) return 0;
+    return entries.where((e) => cats.isIn(e.item, c.id)).length;
+  }
+
+  /// Whether [c] earns a tab for the kind currently on screen.
+  ///
+  /// Kept if it holds something of this kind, if you are looking at it right
+  /// now, or if it is empty everywhere — that last case is what stops a
+  /// category vanishing the instant you create it, before anything is in it.
+  bool Function(ListCategory) _categoryFitsKind(List<MyListEntry> entries) {
+    final cats = _cats;
+    return (c) {
+      if (cats == null) return false;
+      if (_categoryFilter == c.id) return true;
+      if (_categoryCount(entries, c) > 0) return true;
+      return cats.countIn(c.id) == 0;
+    };
+  }
+
   // ── Status tabs (counts baked into the labels) ─────────────────────────────
 
   /// [isMyList] gates the category tabs and the + button. The row is shared
@@ -1127,14 +1150,22 @@ class _MyListViewState extends State<_MyListView> {
                       })),
             // User-made categories come after the statuses, in their own
             // order. Long-press one to rename, delete or reorder it.
-            for (final c
-                in isMyList ? (_cats?.all() ?? const <ListCategory>[]) : const <ListCategory>[])
+            //
+            // Only the ones that mean something for the kind on screen: a
+            // category is not tied to a kind, so one made under Streaming used
+            // to appear under Manga and Novel as an empty tab. Counted against
+            // THIS kind's entries too, for the same reason.
+            for (final c in isMyList
+                ? (_cats?.all() ?? const <ListCategory>[])
+                    .where(_categoryFitsKind(entries))
+                    .toList()
+                : const <ListCategory>[])
               GestureDetector(
                 onLongPress: () => _manageCategory(context, c),
                 child: tab(
                   c.name,
                   _categoryFilter == c.id,
-                  _cats?.countIn(c.id) ?? 0,
+                  _categoryCount(entries, c),
                   () => setState(() {
                     _categoryFilter = c.id;
                     // A category is its own view; a status tab would fight it.
