@@ -18,6 +18,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
@@ -40,6 +41,7 @@ MediaItem _hit(String src, String title) => MediaItem(
   type: ProviderType.anime, sourceId: src);
 
 void main() {
+  late ZSourcePrefs prefs;
   late Directory dir;
   const c = ZCanonical(ZKind.anime, 'mal:5114');
 
@@ -60,27 +62,32 @@ void main() {
     final episodeUrlBefore = ZmodeIds.episodeUrl(c, 7);
 
     final store = await MatchStore.open();
+
+    final prefs = await ZSourcePrefs.open();
     final src = _Src({
       'allanime': [_hit('allanime', 'Fullmetal Alchemist Brotherhood')],
       'hianime': [_hit('hianime', 'Fullmetal Alchemist Brotherhood')],
     });
     final matcher = SourceMatcher(
       sources: src,
-      store: store,
+      store: store, prefs: prefs,
       candidates: (_) => [(id: 'allanime', name: 'AllAnime'), (id: 'hianime', name: 'HiAnime')],
     );
 
     // A realistic sequence: auto-resolve, switch source, pin a correction —
     // everything this task's selector/"Wrong title?" can do to a title.
     await matcher.resolve(c, title: 'Fullmetal Alchemist: Brotherhood');
-    expect(store.selectedSource(c), 'allanime');
+    // Nothing was CHOSEN yet, so nothing is stored — the effective source is
+    // just the first candidate. Only an explicit pick is persisted.
+    expect(prefs.get(c.kind), isNull);
+    expect(matcher.selectedFor(c.kind), 'allanime');
 
-    await store.selectSource(c, 'hianime');
+    await prefs.set(c.kind, 'hianime');
     await matcher.resolve(c, title: 'Fullmetal Alchemist: Brotherhood');
-    expect(store.selectedSource(c), 'hianime');
+    expect(prefs.get(c.kind), 'hianime');
 
     await matcher.pinManual(c, _hit('allanime', 'Fullmetal Alchemist Brotherhood (2003)'));
-    expect(store.selectedSource(c), 'allanime');
+    expect(prefs.get(c.kind), 'allanime');
 
     // None of that touched the identity progress is keyed on.
     expect(ZmodeIds.sourceId, sourceIdBefore);
@@ -100,9 +107,10 @@ void main() {
     // c.kind/c.id (via c.key) — ZCanonical has no mutable fields for it to
     // change, so "the title" can never drift as a side effect of matching.
     final store = await MatchStore.open();
+    final prefs = await ZSourcePrefs.open();
     final src = _Src({'allanime': [_hit('allanime', 'FMA')]});
     final matcher = SourceMatcher(
-        sources: src, store: store, candidates: (_) => [(id: 'allanime', name: 'AllAnime')]);
+        sources: src, store: store, prefs: prefs, candidates: (_) => [(id: 'allanime', name: 'AllAnime')]);
     final keyBefore = c.key;
     await matcher.resolve(c, title: 'FMA');
     await matcher.pinManual(c, _hit('allanime', 'FMA'));

@@ -8,6 +8,7 @@ import '../repository/catalogue_router.dart';
 import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
 import 'match_store.dart';
+import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
 import 'source_matcher.dart';
 import 'tmdb_catalogue.dart';
@@ -23,9 +24,13 @@ Future<void> registerZangetsuMode(GetIt sl) async {
   final matchStore = await MatchStore.open();
   sl.registerSingleton<MatchStore>(matchStore);
 
+  final sourcePrefs = await ZSourcePrefs.open();
+  sl.registerSingleton<ZSourcePrefs>(sourcePrefs);
+
   sl.registerSingleton<SourceMatcher>(SourceMatcher(
     sources: sl<SourceRepository>(),
     store: matchStore,
+    prefs: sourcePrefs,
     candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
   ));
 

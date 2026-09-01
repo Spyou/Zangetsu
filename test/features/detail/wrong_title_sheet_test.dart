@@ -17,6 +17,7 @@ import 'package:watch_app/core/repository/catalogue_repository.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/theme/app_colors.dart';
 import 'package:watch_app/core/zmode/match_store.dart';
+import 'package:watch_app/core/zmode/zmode_source_prefs.dart';
 import 'package:watch_app/core/zmode/source_matcher.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 import 'package:watch_app/features/detail/cubit/detail_cubit.dart';
@@ -89,6 +90,7 @@ class _FakeTitlePrefs extends TitlePrefsStore {
 }
 
 void main() {
+  late ZSourcePrefs prefs;
   late Directory dir;
   const fma = ZCanonical(ZKind.anime, 'mal:5114');
 
@@ -133,10 +135,12 @@ void main() {
       ],
     });
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: src, store: store, candidates: (_) => src.loadedSources));
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
   });
   tearDown(() async {
     await disposePickerDeps();
@@ -183,7 +187,7 @@ void main() {
     await t.pumpAndSettle();
 
     expect(find.textContaining('HiAnime'), findsOneWidget);
-    expect(sl<MatchStore>().selectedSource(fma), 'ani:2');
+    expect(prefs.get(fma.kind), 'ani:2');
     // AllAnime's own match is untouched by switching to HiAnime.
     expect(sl<MatchStore>().get(fma, 'ani:1')?.sourceId, 'ani:1');
   });
@@ -253,6 +257,7 @@ void main() {
     await sl.reset();
     Hive.init(dir.path);
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     final src = _Src({
       'ani:1': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
           url: 'https://a/2003', type: ProviderType.anime, sourceId: 'ani:1')],
@@ -267,8 +272,9 @@ void main() {
     ]);
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: src, store: store, candidates: (_) => src.loadedSources));
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
 
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist (2003)'),
@@ -317,6 +323,7 @@ void main() {
           ],
         ));
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     final src = _Src({
       'mihon:1': [MediaItem(id: 'fma03', title: 'Fullmetal Alchemist (2003)',
           url: 'https://a/2003', type: ProviderType.manga, sourceId: 'mihon:1')],
@@ -325,8 +332,9 @@ void main() {
     });
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: src, store: store, candidates: (_) => src.loadedSources));
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
 
     await t.runAsync(
       () => sl<SourceMatcher>().resolve(manga, title: 'Fullmetal Alchemist (2003)'),
@@ -351,13 +359,13 @@ void main() {
   });
 
   testWidgets(
-      'candidates exist but nothing matches anywhere: still says so, still opens '
-      'the picker, but there is nothing yet for Wrong title? to correct',
+      'a source that has nothing is still named, and Wrong title? still offered',
       (t) async {
     // Neither source has anything resembling this title.
     await sl.reset();
     Hive.init(dir.path);
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     final src = _Src({'ani:1': [], 'ani:2': []});
     // sl.reset() above dropped the picker's own singletons; the sheet needs
     // them back before it can be opened.
@@ -367,8 +375,9 @@ void main() {
     ]);
     sl.registerSingleton<SourceRepository>(src);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: src, store: store, candidates: (_) => src.loadedSources));
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
 
     // runAsync: nothing matches, so the matcher records a miss per candidate
     // (MatchStore.rememberMiss) — real Hive writes, which never drain under
@@ -380,15 +389,20 @@ void main() {
     });
     await t.pumpAndSettle();
 
-    expect(find.text('No source has this yet'), findsOneWidget);
-    expect(find.text('Wrong title?'), findsNothing);
+    // The source is a choice, not a search result, so the row names it even
+    // though it turned out to have nothing — and says so underneath, with
+    // Wrong title? there to correct the match.
+    expect(find.textContaining('AllAnime'), findsWidgets);
+    expect(find.text('No source has this yet'), findsNothing);
+    expect(find.text('Wrong title?'), findsOneWidget);
+    expect(find.text('No episodes available from this source'), findsOneWidget);
 
-    // Still tappable — there ARE candidates, the user can still pick one.
-    await t.tap(find.text('No source has this yet'));
+    await t.tap(find.textContaining('AllAnime').first);
     await t.pumpAndSettle();
-    // The shared picker has no title row — its tabs identify it.
+    // The shared picker has no title row — its tabs identify it. Both sources
+    // are offered; AllAnime appears twice now (the pill names it too).
     expect(find.text('Movies/Series'), findsOneWidget);
-    expect(find.textContaining('AllAnime'), findsOneWidget);
+    expect(find.textContaining('AllAnime'), findsWidgets);
     expect(find.textContaining('HiAnime'), findsOneWidget);
   });
 
@@ -396,11 +410,13 @@ void main() {
     await sl.reset();
     Hive.init(dir.path);
     final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
     final none = _None();
     sl.registerSingleton<SourceRepository>(none);
     sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
     sl.registerSingleton<SourceMatcher>(SourceMatcher(
-        sources: none, store: store, candidates: (_) => const []));
+        sources: none, store: store, prefs: prefs, candidates: (_) => const []));
     await t.pumpWidget(harness(const MatchLine(canonical: fma, title: 'x')));
     await t.pumpAndSettle();
     expect(find.text('No source has this yet'), findsOneWidget);
