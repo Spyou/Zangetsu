@@ -51,6 +51,7 @@ class ComingSoonEntry extends Equatable {
     required this.releaseDate,
     this.backdropUrl,
     this.synopsis,
+    this.episodeLabel,
   });
 
   final int tmdbId;
@@ -65,7 +66,15 @@ class ComingSoonEntry extends Equatable {
   /// Plain-text synopsis (TMDB `overview`), or null.
   final String? synopsis;
 
+  /// `S2E7` for a dated TV airing, null for a movie release (or a TV entry
+  /// from a source that only knows premieres). A per-episode calendar lists
+  /// the same series on many days, so without this the rows read as the same
+  /// title repeated with nothing to tell them apart.
+  final String? episodeLabel;
+
   @override
-  List<Object?> get props =>
-      [tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis];
+  List<Object?> get props => [
+    tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis,
+    episodeLabel,
+  ];
 }
