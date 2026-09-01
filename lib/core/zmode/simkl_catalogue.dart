@@ -40,15 +40,20 @@ class SimklCatalogue implements VideoCatalogue {
         ),
       );
 
-  /// Verified endpoints only. Simkl has no `/movies/best` (404), so the movie
-  /// side has trending periods and no top-rated row; inventing one would just
-  /// render empty.
+  /// Verified endpoints only, and verified to return USABLE rows — a 200 is
+  /// not enough on its own:
+  ///  - `/movies/best` does not exist (404).
+  ///  - `/tv/best/month` answers 200 with 60 titles and ZERO tmdb ids, so
+  ///    every row is dropped by [_items] and the section renders empty. It is
+  ///    left out rather than shipped as a row that can never appear.
+  ///
+  /// The first row also feeds Home's hero banner rather than showing as a
+  /// row, which is why this list is one longer than what you see.
   static const List<(String, String, bool)> _rows = [
     ('Trending movies', '/movies/trending/week', false),
     ('Trending series', '/tv/trending/week', true),
     ('Popular movies', '/movies/trending/month', false),
     ('Popular series', '/tv/trending/month', true),
-    ('Top rated series', '/tv/best/month', true),
   ];
 
   @override
