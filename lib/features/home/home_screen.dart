@@ -66,8 +66,11 @@ import '../player/player_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
+import '../../core/tracker/tracker.dart';
+import '../../core/tracker/tracker_hub.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
+import 'my_list_screen.dart';
 import 'search_screen.dart';
 import 'see_all_screen.dart';
 
@@ -763,19 +766,41 @@ class _HomeViewState extends State<_HomeView>
             ? const <ContentMode>[]
             : ContentMode.values.where((m) => m != current).toList();
         final showSchedule = current == ContentMode.anime;
-        if (others.isEmpty && !showSchedule) return const SizedBox.shrink();
+        final trackers = _trackerCards(current);
+        if (others.isEmpty && !showSchedule && trackers.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        // Two rows rather than one: four cards across is unreadable on a
+        // phone, and the tracker cards are a different kind of destination
+        // from the mode switchers anyway.
+        final top = <Widget>[
+          for (final m in others) _modeCard(m),
+          if (showSchedule) _scheduleCard(),
+        ];
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
-          child: Row(
+          child: Column(
             children: [
-              for (var i = 0; i < others.length; i++) ...[
-                if (i > 0) const SizedBox(width: 12),
-                Expanded(child: _modeCard(others[i])),
-              ],
-              if (showSchedule) ...[
-                if (others.isNotEmpty) const SizedBox(width: 12),
-                Expanded(child: _scheduleCard()),
-              ],
+              if (top.isNotEmpty)
+                Row(
+                  children: [
+                    for (var i = 0; i < top.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 12),
+                      Expanded(child: top[i]),
+                    ],
+                  ],
+                ),
+              if (top.isNotEmpty && trackers.isNotEmpty)
+                const SizedBox(height: 12),
+              if (trackers.isNotEmpty)
+                Row(
+                  children: [
+                    for (var i = 0; i < trackers.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 12),
+                      Expanded(child: _trackerCard(trackers[i])),
+                    ],
+                  ],
+                ),
             ],
           ),
         );
@@ -882,6 +907,74 @@ class _HomeViewState extends State<_HomeView>
                       ),
                     ),
                   ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Trackers worth offering for what is on screen: AniList and MAL are
+  /// anime/manga services and say nothing about a film; Simkl is the reverse.
+  /// [Tracker.supportsReading] happens to split them exactly — the two that
+  /// handle manga are the two that handle anime.
+  ///
+  /// Anime vs movies/TV is not a ContentMode, so the stream kind decides,
+  /// same as the Schedule tab split.
+  List<Tracker> _trackerCards(ContentMode mode) {
+    if (!sl.isRegistered<TrackerHub>()) return const [];
+    final connected = sl<TrackerHub>().connected;
+    if (mode.isReading) {
+      return [for (final t in connected) if (t.supportsReading) t];
+    }
+    final movies = ZModePrefs.streamKind == StreamKind.movie;
+    return [
+      for (final t in connected)
+        if (movies ? !t.supportsReading : t.supportsReading) t,
+    ];
+  }
+
+  /// Opens one tracker's library, on the same screen My List uses so statuses,
+  /// custom lists, sort and filter all still work there.
+  Widget _trackerCard(Tracker t) {
+    final label = t.displayName == 'MyAnimeList' ? 'MAL' : t.displayName;
+    return GestureDetector(
+      key: ValueKey('home_tracker_card_${t.displayName}'),
+      onTap: _slashing
+          ? null
+          : () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MyListScreen(initialTracker: t),
+              ),
+            ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: SizedBox(
+          height: 52,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _modeArtBg((cover: null, headers: null)),
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [Color(0xCC000000), Color(0x55000000)],
+                  ),
+                ),
+              ),
+              Center(
+                child: Text(
+                  label,
+                  style: AppText.body.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    shadows: const [Shadow(color: Colors.black, blurRadius: 6)],
+                  ),
                 ),
               ),
             ],
@@ -1238,6 +1331,7 @@ class _HomeViewState extends State<_HomeView>
                         onResumeReading: _resumeReading,
                         onLongPressReading: _showContinueReadingInfo,
                       ),
+
 
                       // ── Provider-defined browse rows (CloudStream-style) ──────
                       // The active provider decides the rows + their names; empty
