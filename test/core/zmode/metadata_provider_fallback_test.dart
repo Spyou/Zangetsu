@@ -10,6 +10,7 @@ import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/zmode/anime_catalogue.dart';
+import 'package:watch_app/core/zmode/metadata_filters.dart';
 import 'package:watch_app/core/zmode/metadata_provider_prefs.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
@@ -48,6 +49,23 @@ class _Cat implements AnimeCatalogue {
 
   @override
   Future<List<Episode>> episodes(ZCanonical c) async => const [];
+
+  @override
+  bool get supportsFilters => true;
+
+  MetaFilters? lastFilters;
+
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q,
+    ZKind kind, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async {
+    if (broken) _fail();
+    lastFilters = filters;
+    return const [];
+  }
 
   ZKind? lastRowKind;
   String? lastRowId;

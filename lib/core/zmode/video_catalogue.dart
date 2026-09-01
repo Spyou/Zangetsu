@@ -1,6 +1,7 @@
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
+import 'metadata_filters.dart';
 import 'zmode_ids.dart';
 
 /// What a movie/TV metadata provider has to answer, so TMDB and Simkl are
@@ -17,5 +18,17 @@ abstract interface class VideoCatalogue {
   /// output, empty means stop.
   Future<List<MediaItem>> browseRow(String rowId, int page);
   Future<List<MediaItem>> search(String q);
+
+  /// Movie/TV twin of [AnimeCatalogue.searchFiltered]. Simkl ignores filter
+  /// parameters the same way MAL does, so the same rule applies: only offer
+  /// filters when [supportsFilters] is true.
+  Future<List<MediaItem>> searchFiltered(
+    String q, {
+    MetaFilters? filters,
+    int page,
+  });
+
+  /// Whether [searchFiltered] actually honours its filters.
+  bool get supportsFilters;
   Future<MediaDetail> detail(ZCanonical c);
 }

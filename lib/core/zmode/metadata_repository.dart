@@ -10,6 +10,7 @@ import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
 import 'anime_catalogue.dart';
 import 'mal_catalogue.dart';
+import 'metadata_filters.dart';
 import 'metadata_provider_prefs.dart';
 import 'simkl_catalogue.dart';
 import 'video_catalogue.dart';
@@ -171,6 +172,33 @@ class MetadataRepository implements CatalogueRepository {
       r.items.forEach(_remember);
     }
     return rows;
+  }
+
+  /// Whether the CHOSEN provider filters server-side.
+  ///
+  /// Deliberately the chosen one, not the chain: the fallback only runs when a
+  /// request fails, so a filter button must not appear because the backup
+  /// could have honoured it. AniList and TMDB can; MAL and Simkl accept filter
+  /// parameters and return unfiltered results, which is worse than refusing.
+  bool get supportsFilters => _isTmdb(_browseKind())
+      ? _videoChain.$1.supportsFilters
+      : _animeChain.$1.supportsFilters;
+
+  /// Search and/or browse with filters. An empty [query] plus filters is a
+  /// browse; both are the same request to the providers that support it.
+  Future<List<MediaItem>> searchFiltered(
+    String query, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async {
+    final k = _browseKind();
+    final items = _isTmdb(k)
+        ? await _viaVideo((c) => c.searchFiltered(query, filters: filters, page: page))
+        : await _viaAnime(
+            (c) => c.searchFiltered(query, k, filters: filters, page: page),
+          );
+    items.forEach(_remember);
+    return items;
   }
 
   /// Next page of one home row, for the "See all" grid.
