@@ -142,6 +142,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static String _animeProviderLabel() =>
       _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
 
+  static String _videoProviderLabel() =>
+      _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+
+  /// Movie/TV twin of [_pickAnimeMetadataProvider]. No login nudge: Simkl's
+  /// catalogue is public, and the Simkl tracker is a separate concern the
+  /// Trackers screen already handles.
+  Future<void> _pickVideoMetadataProvider() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final l10n = context.l10n;
+    final picked = await showModalBottomSheet<VideoProvider>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            Text(l10n.videoMetadata, style: AppText.headline),
+            const SizedBox(height: 10),
+            for (final p in VideoProvider.values)
+              ListTile(
+                title: Text(
+                  p == VideoProvider.simkl ? 'Simkl' : 'TMDB',
+                  style: AppText.body,
+                ),
+                trailing: prefs.video == p
+                    ? Icon(Icons.check_rounded, color: AppColors.accent)
+                    : null,
+                onTap: () => Navigator.of(sheet).pop(p),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setVideo(picked);
+  }
+
   /// Choose who supplies anime/manga metadata.
   ///
   /// Both providers serve public data without a login, so this changes nothing
@@ -921,6 +964,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         trailing: _value(_animeProviderLabel()),
         onTap: () async {
           await _pickAnimeMetadataProvider();
+          if (mounted) setState(() {});
+        },
+      ),
+      _SettingsEntry(
+        section: SettingsSection.interface,
+        icon: Icons.movie_filter_outlined,
+        title: l10n.videoMetadata,
+        subtitle: l10n.videoMetadataSubtitle,
+        keywords: 'movie tv series metadata provider tmdb simkl fallback '
+            'catalogue',
+        trailing: _value(_videoProviderLabel()),
+        onTap: () async {
+          await _pickVideoMetadataProvider();
           if (mounted) setState(() {});
         },
       ),

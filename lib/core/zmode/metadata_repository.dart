@@ -11,6 +11,8 @@ import 'anilist_catalogue.dart';
 import 'anime_catalogue.dart';
 import 'mal_catalogue.dart';
 import 'metadata_provider_prefs.dart';
+import 'simkl_catalogue.dart';
+import 'video_catalogue.dart';
 import 'match_store.dart';
 import 'source_matcher.dart';
 import 'tmdb_catalogue.dart';
@@ -27,11 +29,13 @@ class MetadataRepository implements CatalogueRepository {
     required SourceMatcher matcher,
     required ZKind Function() browseKind,
     MalCatalogue? mal,
+    SimklCatalogue? simkl,
     MetadataProviderPrefs? providerPrefs,
     void Function(String message)? onProviderFallback,
   }) : _al = anilist,
        _tmdb = tmdb,
        _mal = mal,
+       _simkl = simkl,
        _providerPrefs = providerPrefs,
        _onFallback = onProviderFallback,
        _src = sources,
@@ -40,6 +44,7 @@ class MetadataRepository implements CatalogueRepository {
 
   final AniListCatalogue _al;
   final MalCatalogue? _mal;
+  final SimklCatalogue? _simkl;
   final MetadataProviderPrefs? _providerPrefs;
 
   /// Told when a request had to be served by the other provider, so the UI can
@@ -100,6 +105,33 @@ class MetadataRepository implements CatalogueRepository {
   static String _fallbackName(AnimeCatalogue c) =>
       c is MalCatalogue ? 'MyAnimeList' : 'AniList';
 
+  /// The movie/TV twin of [_animeChain].
+  (VideoCatalogue, VideoCatalogue?) get _videoChain {
+    final simkl = _simkl;
+    if (simkl == null) return (_tmdb, null);
+    return _providerPrefs?.video == VideoProvider.simkl
+        ? (simkl, _tmdb)
+        : (_tmdb, simkl);
+  }
+
+  /// The movie/TV twin of [_viaAnime]. Interchangeable for the same reason:
+  /// Simkl carries a TMDB id on nearly everything, so both speak `tmdb:`.
+  Future<T> _viaVideo<T>(Future<T> Function(VideoCatalogue c) op) async {
+    final (primary, backup) = _videoChain;
+    try {
+      return await op(primary);
+    } catch (primaryError, primaryStack) {
+      if (backup == null) rethrow;
+      try {
+        final out = await op(backup);
+        _onFallback?.call(backup is SimklCatalogue ? 'Simkl' : 'TMDB');
+        return out;
+      } catch (_) {
+        Error.throwWithStackTrace(primaryError, primaryStack);
+      }
+    }
+  }
+
   // ── identity ─────────────────────────────────────────────────────────────
 
   @override
@@ -123,7 +155,7 @@ class MetadataRepository implements CatalogueRepository {
   Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) async {
     final k = _browseKind();
     final rows =
-        _isTmdb(k) ? await _tmdb.home() : await _viaAnime((c) => c.home(k));
+        _isTmdb(k) ? await _viaVideo((c) => c.home()) : await _viaAnime((c) => c.home(k));
     for (final r in rows) {
       r.items.forEach(_remember);
     }
@@ -134,7 +166,7 @@ class MetadataRepository implements CatalogueRepository {
   Future<List<MediaItem>> search(String query, {String category = 'sub', String? sourceId}) async {
     final k = _browseKind();
     final items = _isTmdb(k)
-        ? await _tmdb.search(query)
+        ? await _viaVideo((c) => c.search(query))
         : await _viaAnime((c) => c.search(query, k));
     items.forEach(_remember);
     return items;
@@ -169,7 +201,7 @@ class MetadataRepository implements CatalogueRepository {
     final c = ZmodeIds.parseShow(url);
     if (c == null) throw ArgumentError('not a metadata url: $url');
     final d = _isTmdb(c.kind)
-        ? await _tmdb.detail(c)
+        ? await _viaVideo((x) => x.detail(c))
         : await _viaAnime((x) => x.detail(c));
     _titles[c.key] = (title: d.title, alt: d.englishTitle, malId: d.malId);
 
@@ -311,7 +343,7 @@ class MetadataRepository implements CatalogueRepository {
     var t = _titles[c.key];
     if (t == null) {
       final d = _isTmdb(c.kind)
-        ? await _tmdb.detail(c)
+        ? await _viaVideo((x) => x.detail(c))
         : await _viaAnime((x) => x.detail(c));
       t = (title: d.title, alt: d.englishTitle, malId: d.malId);
       _titles[c.key] = t;
