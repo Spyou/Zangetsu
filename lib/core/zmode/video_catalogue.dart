@@ -11,6 +11,11 @@ import 'zmode_ids.dart';
 /// comes from the matched source, never from metadata.
 abstract interface class VideoCatalogue {
   Future<List<HomeSection>> home();
+
+  /// One home row's next page — the movie/TV twin of
+  /// [AnimeCatalogue.browseRow]. Same contract: 1-based, page 1 is [home]'s
+  /// output, empty means stop.
+  Future<List<MediaItem>> browseRow(String rowId, int page);
   Future<List<MediaItem>> search(String q);
   Future<MediaDetail> detail(ZCanonical c);
 }

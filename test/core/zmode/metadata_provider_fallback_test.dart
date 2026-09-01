@@ -48,6 +48,27 @@ class _Cat implements AnimeCatalogue {
 
   @override
   Future<List<Episode>> episodes(ZCanonical c) async => const [];
+
+  ZKind? lastRowKind;
+  String? lastRowId;
+  int? lastPage;
+
+  @override
+  Future<List<MediaItem>> browseRow(ZKind kind, String rowId, int page) async {
+    if (broken) _fail();
+    lastRowKind = kind;
+    lastRowId = rowId;
+    lastPage = page;
+    return [
+      MediaItem(
+        id: 'p$page',
+        title: '$name page $page',
+        url: 'zm://x/p$page',
+        type: ProviderType.anime,
+        sourceId: ZmodeIds.sourceId,
+      ),
+    ];
+  }
 }
 
 void main() {

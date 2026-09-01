@@ -173,6 +173,26 @@ class MetadataRepository implements CatalogueRepository {
     return rows;
   }
 
+  /// Next page of one home row, for the "See all" grid.
+  ///
+  /// Not part of [CatalogueRepository] — pagination never was, and the source
+  /// side reaches its own repository the same way. Routes on the `kind` the
+  /// catalogue stamped onto [HomeSection.more], so an AniList row keeps going
+  /// to AniList even if the browse mode changed underneath.
+  Future<List<MediaItem>> browseMore(BrowseMore more, int page) async {
+    final rowId = more.categoryId;
+    if (rowId == null || rowId.isEmpty) return const [];
+    final items = switch (more.kind) {
+      'zm_video' => await _viaVideo((c) => c.browseRow(rowId, page)),
+      'zm_anime' => await _viaAnime((c) => c.browseRow(ZKind.anime, rowId, page)),
+      'zm_manga' => await _viaAnime((c) => c.browseRow(ZKind.manga, rowId, page)),
+      'zm_novel' => await _viaAnime((c) => c.browseRow(ZKind.novel, rowId, page)),
+      _ => const <MediaItem>[],
+    };
+    items.forEach(_remember);
+    return items;
+  }
+
   @override
   Future<List<MediaItem>> search(String query, {String category = 'sub', String? sourceId}) async {
     final k = _browseKind();
