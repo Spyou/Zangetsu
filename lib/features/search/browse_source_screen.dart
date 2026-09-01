@@ -437,15 +437,15 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
                     final items = section.items;
                     return ContentRow(
                       title: section.title,
-                      itemWidth: 140,
-                      itemHeight: 236,
+                      itemWidth: 116,
+                      itemHeight: 216,
                       itemCount: items.length,
                       onSeeAll: () => _openSeeAll(context, section),
                       itemBuilder: (c, j) => PosterCard(
                         title: items[j].title,
                         imageUrl: items[j].cover,
                         headers: items[j].coverHeaders,
-                        cellWidth: 140,
+                        cellWidth: 116,
                         qualityBadge: items[j].quality,
                         dubBadge: items[j].dubBadge,
                         onTap: () => _openDetail(context, items[j]),
@@ -494,9 +494,9 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     }
     return GridView.builder(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 3,
-        childAspectRatio: 0.62,
+        childAspectRatio: posterGridAspect(context),
         crossAxisSpacing: 12,
         mainAxisSpacing: 16,
       ),

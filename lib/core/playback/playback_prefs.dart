@@ -87,8 +87,7 @@ class PlaybackPrefs {
       _box.put('defaultCategory', value);
 
   /// Whether to automatically start the next episode when one finishes.
-  bool get autoplayNext =>
-      _box.get('autoplayNext', defaultValue: true) as bool;
+  bool get autoplayNext => _box.get('autoplayNext', defaultValue: true) as bool;
   Future<void> setAutoplayNext(bool value) => _box.put('autoplayNext', value);
 
   /// Whether the detail-screen hero trailer autoplays once it resolves
@@ -123,8 +122,7 @@ class PlaybackPrefs {
   Future<void> setDoubleTapSeconds(int value) => setSeekSeconds(value);
 
   /// Whether to keep the screen awake while playing.
-  bool get keepScreenOn =>
-      _box.get('keepScreenOn', defaultValue: true) as bool;
+  bool get keepScreenOn => _box.get('keepScreenOn', defaultValue: true) as bool;
   Future<void> setKeepScreenOn(bool value) => _box.put('keepScreenOn', value);
 
   /// Auto-enter Picture-in-Picture when leaving the app mid-playback (Android).
@@ -308,8 +306,7 @@ class PlaybackPrefs {
     };
   }
 
-  Future<void> setVideoDecoder(String value) =>
-      _box.put('videoDecoder', value);
+  Future<void> setVideoDecoder(String value) => _box.put('videoDecoder', value);
 
   /// mpv video output (renderer) for the phone player: 'auto' (default), 'gpu',
   /// 'gpu-next' or 'mediacodec_embed'. 'auto' reproduces the behaviour from
@@ -528,8 +525,8 @@ class PlaybackPrefs {
   Future<void> setPlayerInfoFields(List<String> value) =>
       _box.put('playerInfoFields', value);
 
-  /// Show the current quality as plain text on the top-bar right (reDantotsu-
-  /// style), fading with the controls — separate from the ⓘ info panel. The
+  /// Show the current quality as plain text on the top-bar right, fading
+  /// with the controls — separate from the ⓘ info panel. The
   /// legacy Hive key name is kept. Default off.
   bool get alwaysShowQuality =>
       _box.get('alwaysShowQuality', defaultValue: false) as bool;
@@ -574,8 +571,7 @@ class PlaybackPrefs {
   /// actually want, and unlike an opening it can start at 0:00.
   bool get autoSkipRecap =>
       _box.get('autoSkipRecap', defaultValue: false) as bool;
-  Future<void> setAutoSkipRecap(bool value) =>
-      _box.put('autoSkipRecap', value);
+  Future<void> setAutoSkipRecap(bool value) => _box.put('autoSkipRecap', value);
 
   /// MegaSkip — a manual "jump forward N seconds" button shown in the player
   /// (Aniyomi-style), independent of the accurate AniSkip OP/ED skip above.
@@ -659,7 +655,8 @@ class PlaybackPrefs {
 
   /// Subtitle font family — one of [kBundledSubtitleFonts]. Empty = mpv default
   /// (don't override the font). Maps to mpv's `sub-font`.
-  String get subtitleFont => _box.get('subtitleFont', defaultValue: '') as String;
+  String get subtitleFont =>
+      _box.get('subtitleFont', defaultValue: '') as String;
   Future<void> setSubtitleFont(String value) => _box.put('subtitleFont', value);
 
   /// Subtitle text colour as an 8-digit hex (`#RRGGBBAA`), default opaque white.
@@ -755,6 +752,7 @@ class PlaybackPrefs {
     final p = subtitlePreference;
     return p == 'off' ? '' : p;
   }
+
   Future<void> setPreferredSubtitleLanguage(String value) =>
       setSubtitlePreference(value);
 

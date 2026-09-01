@@ -79,7 +79,12 @@ class _Header extends StatelessWidget {
     return Padding(
       // Top clears the previous row's posters so each section reads as its
       // own block; bottom is the tighter title-to-poster gap within this row.
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
+      // The two are deliberately far apart — a header belongs to the row under
+      // it, so the space above must beat the space below or the title reads as
+      // a caption on the row above. Now that the poster title is a fixed two
+      // lines, this gap is the same under every row instead of shifting with
+      // how long the last title happened to be.
+      padding: const EdgeInsets.fromLTRB(16, 26, 16, 14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
