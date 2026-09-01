@@ -67,6 +67,8 @@ import '../schedule/schedule_screen.dart';
 import '../search/browse_sources_screen.dart';
 import '../shell/dock_icons.dart';
 import '../../core/tracker/tracker.dart';
+import '../../core/zmode/source_matcher.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/tracker/tracker_hub.dart';
 import 'cubit/home_cubit.dart';
 import 'home_screen_tv.dart';
@@ -408,6 +410,22 @@ class _HomeViewState extends State<_HomeView>
     if (sl<ContentModeCubit>().state.isReading) {
       _openDetail(item);
       return;
+    }
+    // A metadata title only plays once a source has been paired with it. If
+    // that pairing isn't known yet, go to Detail rather than into the player:
+    // Detail resolves it, and when nothing matches it says so (dimmed Play,
+    // "No episodes available from this source", Wrong title?). Pushing the
+    // player instead just spins and fails, and that got more likely once one
+    // declared source replaced the search-every-source sweep.
+    //
+    // `saved` is a synchronous store read, so a title you have opened before
+    // still plays instantly — only the unknown ones take the detour.
+    if (ZmodeIds.isZ(item.url)) {
+      final c = ZmodeIds.parseShow(item.url);
+      if (c == null || sl<SourceMatcher>().saved(c) == null) {
+        _openDetail(item);
+        return;
+      }
     }
     // Fresh play: prefer a saved per-title sub/dub choice, else the global
     // default category, else 'sub'.
