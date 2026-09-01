@@ -118,5 +118,50 @@ void main() {
       expect(parseSimklCalendar([tvRow(tmdb: 1399)], isTv: true).single.tmdbId,
           1399);
     });
+
+    test('rank 0 reads as no rank, since the feed uses 0 for "unranked"', () {
+      final row = tvRow()..['rank'] = 0;
+      expect(parseSimklCalendar([row], isTv: true).single.rank, isNull);
+      final ranked = tvRow()..['rank'] = 14;
+      expect(parseSimklCalendar([ranked], isTv: true).single.rank, 14);
+    });
+  });
+
+  group('groupSoonByLocalDay ordering', () {
+    ComingSoonEntry e(String title, {int? rank}) => ComingSoonEntry(
+          tmdbId: title.hashCode,
+          isTv: true,
+          title: title,
+          posterUrl: null,
+          releaseDate: DateTime(2026, 9, 1, 12),
+          rank: rank,
+        );
+
+    test('most popular first, unranked last, alphabetical within a tie', () {
+      // A day of this calendar is ~330 rows; alphabetical put daily serials
+      // on top and buried anything worth seeing.
+      final day = groupSoonByLocalDay([
+        e('Zed Show', rank: 14),      // popular despite the name
+        e('A Daily Serial'),          // unranked
+        e('Beta Show', rank: 900),
+        e('Alpha Show', rank: 900),   // ties with Beta -> alphabetical
+        e('B Daily Serial'),          // unranked -> after every ranked row
+      ]).values.single;
+
+      expect(day.map((x) => x.title), [
+        'Zed Show',
+        'Alpha Show',
+        'Beta Show',
+        'A Daily Serial',
+        'B Daily Serial',
+      ]);
+    });
+
+    test('with no ranks at all it stays alphabetical, as movies will be', () {
+      final day = groupSoonByLocalDay([e('Charlie'), e('Alpha'), e('Bravo')])
+          .values
+          .single;
+      expect(day.map((x) => x.title), ['Alpha', 'Bravo', 'Charlie']);
+    });
   });
 }
