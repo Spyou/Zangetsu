@@ -64,7 +64,11 @@ class _MatchLineState extends State<MatchLine> {
   /// titles and count from the source too, not just manga/novel. So any
   /// change of selection or correction must re-fetch the Detail screen,
   /// regardless of kind.
-  void _refreshAfterMatchChange() => context.read<DetailCubit>().refresh();
+  void _refreshAfterMatchChange() =>
+      // dropCache: false — the source just switched TO was never in that
+      // cache, and clearing it would slow this switch down and every other
+      // source with it. Only a deliberate pull-to-refresh wants that.
+      context.read<DetailCubit>().refresh(dropCache: false);
 
   /// Picking a row selects it directly (rather than popping an id for the
   /// caller to act on afterward) so the real store write is a direct

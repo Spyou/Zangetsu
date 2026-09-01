@@ -233,21 +233,38 @@ class DetailCubit extends Cubit<DetailState> {
   /// because its usual guard (Cast/Relations already present) would otherwise
   /// skip it. A match change makes that mandatory — the episode list is new,
   /// so its per-episode metadata has to be fetched again.
-  Future<void> refresh() async {
-    await _repo.clearHttpCache();
+  Future<void> refresh({bool dropCache = true}) async {
+    // Pull-to-refresh wants genuinely fresh data, so it drops the cache. A
+    // SOURCE CHANGE does not: the source being switched to was never in that
+    // cache, and clearing it throws away every other source's responses too,
+    // making the switch (and everything after it) slower for no gain.
+    if (dropCache) await _repo.clearHttpCache();
     final previous = state.detail;
     try {
       final fresh = await _repo.detail(
         _url,
         category: state.category,
         sourceId: _sourceId,
+        // Same early paint load() gets. It matters more here: without it the
+        // PREVIOUS source's episodes sit on screen, looking like this
+        // source's, until the new list lands.
+        onPartial: (partial) {
+          if (isClosed || state.status != DetailStatus.success) return;
+          emit(state.copyWith(
+            detail: partial.copyWith(
+              malId: partial.malId ?? previous?.malId,
+              tmdbId: partial.tmdbId ?? previous?.tmdbId,
+            ),
+            episodesLoading: true,
+          ));
+        },
       );
       if (isClosed) return;
       // Same novel-latch fallback as load() — a swallowed fetch failure
       // surfaces as an empty detail, not an exception.
       final latched = fresh.title.isEmpty ? NovelCloudflare.pendingUrl : null;
       if (latched != null) {
-        emit(state.copyWith(cloudflareUrl: latched));
+        emit(state.copyWith(cloudflareUrl: latched, episodesLoading: false));
         return;
       }
       NovelCloudflare.clear();
@@ -260,14 +277,18 @@ class DetailCubit extends Cubit<DetailState> {
           status: DetailStatus.success,
           detail: merged,
           clearCloudflareUrl: true,
+          episodesLoading: false,
         ),
       );
       _enrich(merged, force: true);
     } on CloudflareRequiredException catch (e) {
       if (isClosed) return;
-      emit(state.copyWith(cloudflareUrl: e.url));
+      emit(state.copyWith(cloudflareUrl: e.url, episodesLoading: false));
     } catch (_) {
-      // Keep what's on screen — a failed pull shouldn't blank the page.
+      // Keep what's on screen — a failed pull shouldn't blank the page. The
+      // skeleton must still come down though: onPartial may have armed it,
+      // and nothing else would ever turn it off.
+      if (!isClosed) emit(state.copyWith(episodesLoading: false));
     }
   }
 
