@@ -52,6 +52,22 @@ class MetaFilters {
 
   bool get isNotEmpty => !isEmpty;
 
+  /// Whether anything here narrows the CATALOGUE, ignoring [adult].
+  ///
+  /// Adult is a visibility flag, not a query. TMDB serves filters from
+  /// /discover, which takes no query at all, so counting "NSFW on" as a filter
+  /// sent a plain text search down the discover path — where the query is
+  /// dropped and the title match is done locally against popular titles, which
+  /// finds almost nothing.
+  bool get narrowsCatalogue =>
+      genres.isNotEmpty ||
+      year != null ||
+      season != null ||
+      format != null ||
+      status != null ||
+      minScore != null ||
+      sort != MetaSort.popularity;
+
   MetaFilters copyWith({
     List<String>? genres,
     int? year,

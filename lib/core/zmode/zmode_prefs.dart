@@ -29,10 +29,14 @@ class ZModePrefs {
   static Box? get _boxOrNull =>
       Hive.isBoxOpen(boxName) ? Hive.box(boxName) : null;
 
-  /// Safe before [init] (the splash reads prefs before Hive is up): an
-  /// unopened box means off.
+  /// On for everyone. The metadata catalogue is how the app browses now, and
+  /// the Settings toggle that used to turn it off is gone.
+  ///
+  /// The stored key is still read by [setEnabled] so tests can exercise the
+  /// source-only path, which still exists underneath — but nothing in the UI
+  /// can reach it, so a fresh install and an upgrade both land here.
   static bool get enabled =>
-      (_boxOrNull?.get(_kEnabled, defaultValue: false) as bool?) ?? false;
+      (_boxOrNull?.get(_kEnabled, defaultValue: true) as bool?) ?? true;
 
   static Future<void> setEnabled(bool value) async {
     if (value == enabled) return;

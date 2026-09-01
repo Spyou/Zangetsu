@@ -28,6 +28,9 @@ void main() {
     Hive.init(dir.path);
     await NavPrefs.init();
     await ZModePrefs.init();
+    // On by default since the Settings toggle was removed; these tests cover
+    // both paths, so start from off and let each one opt in.
+    await ZModePrefs.setEnabled(false);
     navPrefs = NavPrefs();
 
     await sl.reset();
