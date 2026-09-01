@@ -11,6 +11,7 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/models/media_item.dart';
 import '../../core/anilist/anilist_service.dart';
 import '../../core/playback/category_store.dart';
+import '../../l10n/ui_strings.dart';
 import '../../core/ui/reveal_item.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/ui/anilist_custom_lists_sheet.dart';
@@ -43,24 +44,43 @@ import 'search_screen.dart';
 /// each connected tracker) via a segmented control, and by status via tabs.
 /// Trackers are connected/managed from the header's accounts button.
 class MyListScreen extends StatelessWidget {
-  const MyListScreen({super.key});
+  const MyListScreen({super.key, this.initialTracker});
+
+  /// Open straight onto one tracker's library instead of your own list, with
+  /// the account switcher hidden.
+  ///
+  /// This is how the Home cards reach a tracker: reusing this screen rather
+  /// than writing a thinner one keeps statuses, custom lists, sort and filter
+  /// working, which a purpose-built list screen would have quietly lost.
+  final Tracker? initialTracker;
 
   @override
   Widget build(BuildContext context) {
+    final pinned = initialTracker;
     return MultiBlocProvider(
       providers: [
         BlocProvider(
           create: (_) => MyListCubit(sl<MyListStore>(), sl<ListStatusStore>()),
         ),
-        BlocProvider(create: (_) => TrackerListCubit()),
+        BlocProvider(
+          create: (_) {
+            final c = TrackerListCubit();
+            if (pinned != null) c.selectTracker(pinned);
+            return c;
+          },
+        ),
       ],
-      child: const _MyListView(),
+      child: _MyListView(pinnedTracker: pinned),
     );
   }
 }
 
 class _MyListView extends StatefulWidget {
-  const _MyListView();
+  const _MyListView({this.pinnedTracker});
+
+  /// Non-null when this screen was opened FOR one tracker — the switcher is
+  /// hidden and there is nothing to switch to.
+  final Tracker? pinnedTracker;
 
   @override
   State<_MyListView> createState() => _MyListViewState();
@@ -90,6 +110,12 @@ class _MyListViewState extends State<_MyListView> {
   /// showing (your own keeps insertion order, a tracker leads with score), and
   /// that can change under us when the source switcher moves.
   ListSort? _sort = ListSortPrefs.sortBy;
+
+  /// Which kind the local list is showing. Replaces the old implicit filter on
+  /// the app's ContentMode, so you can see your manga list without switching
+  /// the whole app into manga mode. Tracker screens ignore it — a tracker
+  /// answers for one kind already.
+  ContentMode _kind = sl<ContentModeCubit>().state;
   bool _sortDesc = ListSortPrefs.descending;
 
   ListSort _sortFor({required bool isMyList}) {
@@ -124,7 +150,7 @@ class _MyListViewState extends State<_MyListView> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context),
-                _sourceSegmented(context, tlState),
+                if (widget.pinnedTracker == null) _kindTabs(context),
                 Expanded(
                   child: tlState.isMyList
                       ? _myListBody(context)
@@ -149,13 +175,14 @@ class _MyListViewState extends State<_MyListView> {
       // Rebuild when a tracker connects/disconnects.
       animation: Listenable.merge(hub.trackers),
       builder: (context, _) {
-        final n = hub
-            .connectedForMode(sl<ContentModeCubit>().state)
-            .length;
         final l10n = context.l10n;
-        final subtitle = n == 0
-            ? l10n.yourSavedTitles
-            : l10n.myListPlusTrackers(n);
+        final pinned = widget.pinnedTracker;
+        // Opened for one tracker: name it. Saying "Library / My List + 3
+        // trackers" on a screen showing only AniList was just wrong.
+        final title = pinned?.displayName ?? l10n.libraryLabel;
+        // Always "your saved titles" now: the trackers moved out to their own
+        // screens, so counting them here described a switcher that is gone.
+        final subtitle = l10n.yourSavedTitles;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: DecoratedBox(
@@ -195,7 +222,7 @@ class _MyListViewState extends State<_MyListView> {
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(context.l10n.libraryLabel,
+                            Text(title,
                                 style: AppText.title.copyWith(fontSize: 19)),
                             const SizedBox(height: 1),
                             Text(
@@ -653,166 +680,75 @@ class _MyListViewState extends State<_MyListView> {
     );
   }
 
-  // ── Source segmented control (sliding accent thumb) ────────────────────────
-
-  Widget _sourceSegmented(BuildContext context, TrackerListState tlState) {
-    final cubit = context.read<TrackerListCubit>();
-    final hub = sl<TrackerHub>();
-    return AnimatedBuilder(
-      animation: Listenable.merge(hub.trackers),
-      builder: (context, _) {
-        final connected =
-            hub.connectedForMode(sl<ContentModeCubit>().state).toList();
-        final segments = <({
-          String label,
-          IconData? icon,
-          String? avatarUrl,
-          bool active,
-          VoidCallback onTap,
-        })>[
-          (
-            label: context.l10n.myList,
-            icon: Icons.bookmark_rounded,
-            avatarUrl: null,
-            active: tlState.isMyList,
-            onTap: cubit.selectMyList,
-          ),
-          for (final t in connected)
-            (
-              label: t.displayName == 'MyAnimeList' ? 'MAL' : t.displayName,
-              icon: null,
-              avatarUrl: t.viewerAvatar,
-              active: tlState.tracker == t,
-              onTap: () => cubit.selectTracker(t),
+  /// Streaming / Manga / Novel across your own list.
+  ///
+  /// This replaced the account switcher: accounts are their own screens now,
+  /// reached from Home, and My List is only ever yours.
+  Widget _kindTabs(BuildContext context) {
+    const kinds = ContentMode.values;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final segW = (c.maxWidth - 8) / kinds.length;
+          return Container(
+            height: 46,
+            padding: const EdgeInsets.all(4),
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: AppColors.surface2,
+              borderRadius: BorderRadius.circular(23),
             ),
-        ];
-        final n = segments.length;
-        final activeIndex = segments.indexWhere((s) => s.active).clamp(0, n - 1);
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 2, 16, 10),
-          child: LayoutBuilder(
-            builder: (context, c) {
-              final segW = (c.maxWidth - 8) / n; // container padding = 4 each side
-              return Container(
-                height: 46,
-                padding: const EdgeInsets.all(4),
-                clipBehavior: Clip.antiAlias,
-                decoration: BoxDecoration(
-                  color: AppColors.surface2,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    AnimatedPositioned(
-                      duration: const Duration(milliseconds: 260),
-                      curve: Curves.easeOutQuint,
-                      left: activeIndex * segW,
-                      top: 0,
-                      bottom: 0,
-                      width: segW,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: AppColors.accent,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
+            child: Stack(
+              children: [
+                AnimatedAlign(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment(
+                    kinds.length == 1
+                        ? 0
+                        : -1 + 2 * (kinds.indexOf(_kind) / (kinds.length - 1)),
+                    0,
+                  ),
+                  child: Container(
+                    width: segW,
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(19),
                     ),
-                    Row(
-                      children: [
-                        for (final s in segments)
-                          Expanded(
-                            child: GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: s.onTap,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _segAvatar(
-                                    icon: s.icon,
-                                    avatarUrl: s.avatarUrl,
-                                    label: s.label,
-                                    active: s.active,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Flexible(
-                                    child: Text(
-                                      s.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: AppText.body.copyWith(
-                                        color: s.active
-                                            ? Colors.white
-                                            : AppColors.textSecondary,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                  ),
+                ),
+                Row(
+                  children: [
+                    for (final k in kinds)
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _kind = k),
+                          child: Center(
+                            child: Text(
+                              contentModeLabel(context.l10n, k),
+                              style: AppText.body.copyWith(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w700,
+                                color: _kind == k
+                                    ? Colors.white
+                                    : AppColors.textSecondary,
                               ),
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                      ),
                   ],
                 ),
-              );
-            },
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
-  Widget _segAvatar({
-    IconData? icon,
-    String? avatarUrl,
-    required String label,
-    required bool active,
-  }) {
-    final bg = active
-        ? Colors.white.withValues(alpha: 0.22)
-        : Colors.white.withValues(alpha: 0.10);
-    if (avatarUrl != null && avatarUrl.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: avatarUrl,
-          width: 22,
-          height: 22,
-          fit: BoxFit.cover,
-          errorWidget: (_, _, _) => Container(
-            width: 22,
-            height: 22,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-            child: Text(
-              label.isNotEmpty ? label[0] : '?',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11),
-            ),
-          ),
-        ),
-      );
-    }
-    return Container(
-      width: 22,
-      height: 22,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: icon != null
-          ? Icon(icon, size: 14, color: Colors.white)
-          : Text(
-              label.isNotEmpty ? label[0] : '?',
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11),
-            ),
-    );
-  }
 
   // ── Filter sheet (type) ────────────────────────────────────────────────────
 
@@ -981,7 +917,12 @@ class _MyListViewState extends State<_MyListView> {
     // Narrow by mode FIRST: the status tabs' counts and which tabs even appear
     // are both derived from this, so counting raw `entries` showed anime totals
     // (and anime-only status tabs) while in manga/novel mode.
-    final mode = sl<ContentModeCubit>().state;
+    // The kind tab decides, not the app's current mode — the point of the
+    // tabs is seeing all three without leaving the mode you're browsing in.
+    // A tracker screen has no tabs and keeps following the app mode.
+    final mode = widget.pinnedTracker == null
+        ? _kind
+        : sl<ContentModeCubit>().state;
     final modeEntries =
         entries.where((e) => mode.matchesProvider(e.item.type)).toList();
 
