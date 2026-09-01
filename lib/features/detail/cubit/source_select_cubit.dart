@@ -45,7 +45,28 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
        _matcher = matcher,
        _canonical = canonical,
        _title = title,
-       super(SourceSelectState(sources: sources, loading: sources.isNotEmpty));
+       super(_seed(store, canonical, sources));
+
+  /// The first state, built from what is ALREADY on disk. Both reads are
+  /// synchronous, so a title that has been opened before shows its source and
+  /// episode count on the very first frame. Reading them after the sweep (as
+  /// this used to) left the row blank for seconds while re-deriving an answer
+  /// the store already had.
+  static SourceSelectState _seed(
+    MatchStore store,
+    ZCanonical canonical,
+    List<({String id, String name})> sources,
+  ) {
+    final remembered = store.selectedSource(canonical);
+    return SourceSelectState(
+      sources: sources,
+      selectedId: remembered,
+      match: remembered == null ? null : store.get(canonical, remembered),
+      // Still loading: the sweep can still correct this (the remembered
+      // source may since have been uninstalled, or have nothing pinned).
+      loading: sources.isNotEmpty,
+    );
+  }
 
   final MatchStore _store;
   final SourceMatcher _matcher;
