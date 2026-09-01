@@ -10,6 +10,7 @@ import '../../core/playback/my_list.dart';
 import '../../core/schedule/airing_service.dart';
 import '../../core/schedule/coming_soon_service.dart';
 import '../../core/schedule/schedule_models.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/dock_visibility.dart';
@@ -121,7 +122,14 @@ class _ScheduleBodyState extends State<ScheduleBody>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this)
+    // Open on the tab for the kind you were browsing: Schedule is reached from
+    // the Home card now, and arriving on Anime after tapping it from a
+    // Movies/TV Home meant a tab switch every single time.
+    _tabs = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: ZModePrefs.streamKind == StreamKind.movie ? 1 : 0,
+    )
       ..addListener(() {
         if (mounted) setState(() {}); // header (My List / busy) follows the tab
       });
@@ -420,9 +428,18 @@ class _ScheduleBodyState extends State<ScheduleBody>
             _ReleaseCard(
               title: e.title,
               imageUrl: e.posterUrl,
-              subtitle: e.isTv
-                  ? l10n.seriesWithDate(_monthDay(e.releaseDate ?? selected, locale))
-                  : l10n.movieWithDate(_monthDay(e.releaseDate ?? selected, locale)),
+              // The TV calendar is per-episode, so one series appears on many
+              // days — without its S/E the rows read as the same title over
+              // and over. Prefixed onto the existing line rather than adding
+              // a third, which would make every movie row taller for nothing.
+              subtitle: [
+                if (e.episodeLabel != null) e.episodeLabel!,
+                e.isTv
+                    ? l10n.seriesWithDate(
+                        _monthDay(e.releaseDate ?? selected, locale))
+                    : l10n.movieWithDate(
+                        _monthDay(e.releaseDate ?? selected, locale)),
+              ].join('  ·  '),
               onTap: () => openTitle(context, e.title),
             ),
       ],
