@@ -501,7 +501,7 @@ void main() {
   );
 
   testWidgets(
-    'RootShellTv shows a source indicator in the rail',
+    'RootShellTv does not show an active-source row in the rail',
     (tester) async {
       await tester.pumpWidget(
         MultiBlocProvider(
@@ -513,13 +513,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      // The source indicator is keyed 'tv-source-indicator' — exactly one
-      // in the rail. The swap_horiz icon is only on this row.
       expect(
         find.byKey(const ValueKey('tv-source-indicator')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.byIcon(Icons.swap_horiz_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.swap_horiz_rounded), findsNothing);
     },
   );
 

@@ -278,7 +278,9 @@ class _RootShellState extends State<RootShell>
                             setState(() => _modeBarOpen = false);
                             await ZModePrefs.setStreamKind(k);
                             await sl<ContentModeCubit>().setMode(m);
-                            sl<HomeCubit>().load(reset: true);
+                            if (m != ContentMode.anime) {
+                              sl<HomeCubit>().load(reset: true);
+                            }
                           },
                         ),
                       ),

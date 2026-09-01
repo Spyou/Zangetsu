@@ -26,6 +26,23 @@ Future<MetaFilters?> showMetaFilterSheet(
   builder: (_) => _MetaFilterSheet(kind: kind, initial: current),
 );
 
+/// D-pad-friendly dialog variant for TV search.
+Future<MetaFilters?> showMetaFilterDialog(
+  BuildContext context,
+  ZKind kind,
+  MetaFilters current,
+) => showDialog<MetaFilters>(
+  context: context,
+  builder: (ctx) => Dialog(
+    backgroundColor: AppColors.surface,
+    insetPadding: const EdgeInsets.symmetric(horizontal: 80, vertical: 48),
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
+      child: _MetaFilterSheet(kind: kind, initial: current),
+    ),
+  ),
+);
+
 class _MetaFilterSheet extends StatefulWidget {
   const _MetaFilterSheet({required this.kind, required this.initial});
 

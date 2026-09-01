@@ -79,6 +79,7 @@ class TvRail extends StatelessWidget {
                         height: _cardHeight,
                         child: TvFocusable(
                           onTap: onSeeAll!,
+                          waitForKeyUp: true,
                           variant: TvFocusVariant.float,
                           scale: 1.10,
                           semanticLabel: context.l10n.seeAll,

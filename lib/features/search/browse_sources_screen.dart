@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_mode.dart';
+import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
@@ -7,6 +9,7 @@ import '../../l10n/l10n.dart';
 import '../home/search_screen.dart';
 import 'browse_source_screen.dart';
 import 'browse_sources_list.dart';
+import 'browse_sources_screen_tv.dart';
 
 /// Entry point for browsing installed sources without disturbing Home's
 /// active source, reached from Home's header action while Z Mode is on (see
@@ -49,6 +52,7 @@ class _BrowseSourcesScreenState extends State<BrowseSourcesScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) return const BrowseSourcesScreenTv();
     return Scaffold(
       backgroundColor: AppColors.bg,
       appBar: AppBar(

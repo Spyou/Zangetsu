@@ -1,4 +1,6 @@
 import '../error/exceptions.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
+import 'dart:async' show unawaited;
 import '../models/episode.dart';
 import '../models/home_section.dart';
 import '../models/media_detail.dart';
@@ -57,6 +59,43 @@ class MetadataRepository implements CatalogueRepository {
   final SourceRepository _src;
   final SourceMatcher _matcher;
   final ZKind Function() _browseKind;
+
+  /// Cached metadata home rows per catalogue kind. Anime ↔ Movie/TV toggles can
+  /// swap without waiting on AniList/TMDB again; the counterpart kind is
+  /// prefetched after each successful home fetch.
+  final Map<ZKind, List<HomeSection>> _homeCache = {};
+
+  /// Optional hook when anime/movie home rows land in [_homeCache] — wired in
+  /// [initDependencies] so [HomeCubit] can mirror them for instant toggles.
+  void Function(ZKind kind, List<HomeSection> rows)? onStreamHomeCached;
+
+  void clearHomeCache() => _homeCache.clear();
+
+  /// Synchronous read of cached home rows — used by [HomeCubit] on Anime ↔
+  /// Movie/TV toggles so a prefetched counterpart swaps instantly.
+  List<HomeSection>? peekHomeCache(ZKind kind) => _homeCache[kind];
+
+  /// Fetches and caches [kind] when missing. TV warms both streaming kinds
+  /// up front so toggling never waits on AniList/TMDB.
+  Future<List<HomeSection>> ensureHomeCached(ZKind kind) async {
+    final hit = _homeCache[kind];
+    if (hit != null) return hit;
+    final sw = Stopwatch()..start();
+    debugPrint('[metadata] warm · kind=$kind · fetch');
+    final rows = await _homeForKind(kind);
+    _homeCache[kind] = rows;
+    debugPrint(
+      '[metadata] warm · kind=$kind · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
+    );
+    _syncHomeCubitStreamCache(kind, rows);
+    return rows;
+  }
+
+  void _syncHomeCubitStreamCache(ZKind kind, List<HomeSection> rows) {
+    if (rows.isEmpty) return;
+    if (kind != ZKind.anime && kind != ZKind.movie) return;
+    onStreamHomeCached?.call(kind, rows);
+  }
 
   /// Titles seen on this run, so `sources()` can search by name without a
   /// second metadata round-trip.
@@ -170,6 +209,24 @@ class MetadataRepository implements CatalogueRepository {
     String? sourceId,
   }) async {
     final k = _browseKind();
+    final cached = _homeCache[k];
+    if (cached != null) {
+      debugPrint('[metadata] home · kind=$k · cache (${cached.length} rows)');
+      return cached;
+    }
+    final sw = Stopwatch()..start();
+    debugPrint('[metadata] home · kind=$k · fetch');
+    final rows = await _homeForKind(k);
+    _homeCache[k] = rows;
+    debugPrint(
+      '[metadata] home · kind=$k · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
+    );
+    _syncHomeCubitStreamCache(k, rows);
+    _prefetchStreamingCounterpart(k);
+    return rows;
+  }
+
+  Future<List<HomeSection>> _homeForKind(ZKind k) async {
     final rows = _isTmdb(k)
         ? await _viaVideo((c) => c.home())
         : await _viaAnime((c) => c.home(k));
@@ -177,6 +234,28 @@ class MetadataRepository implements CatalogueRepository {
       r.items.forEach(_remember);
     }
     return rows;
+  }
+
+  void _prefetchStreamingCounterpart(ZKind loaded) {
+    final other = switch (loaded) {
+      ZKind.anime => ZKind.movie,
+      ZKind.movie => ZKind.anime,
+      _ => null,
+    };
+    if (other == null || _homeCache.containsKey(other)) return;
+    unawaited(() async {
+      final sw = Stopwatch()..start();
+      try {
+        final rows = await _homeForKind(other);
+        _homeCache[other] = rows;
+        _syncHomeCubitStreamCache(other, rows);
+        debugPrint(
+          '[metadata] prefetch · kind=$other · ${rows.length} rows · ${sw.elapsedMilliseconds}ms',
+        );
+      } catch (e) {
+        debugPrint('[metadata] prefetch · kind=$other · failed · $e');
+      }
+    }());
   }
 
   /// The Privacy switch. Read through GetIt rather than injected because this

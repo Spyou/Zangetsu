@@ -12,7 +12,9 @@ import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/cs_dns.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
+import '../../core/tracker/tracker_hub.dart';
 import '../../core/theme/app_colors.dart';
+import '../../core/zmode/metadata_provider_prefs.dart';
 import '../../core/locale/app_language_picker.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -110,6 +112,73 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
     );
     if (picked == null) return;
     await prefs.setLayout(picked);
+    if (mounted) setState(() {});
+  }
+
+  MetadataProviderPrefs? get _providerPrefs =>
+      sl.isRegistered<MetadataProviderPrefs>()
+          ? sl<MetadataProviderPrefs>()
+          : null;
+
+  String _animeProviderLabel() =>
+      _providerPrefs?.anime == AnimeProvider.mal ? 'MyAnimeList' : 'AniList';
+
+  String _videoProviderLabel() =>
+      _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
+
+  bool get _malNeedsLogin =>
+      _providerPrefs?.anime == AnimeProvider.mal &&
+      !(sl.isRegistered<TrackerHub>() &&
+          sl<TrackerHub>().connected.any(
+            (t) => t.displayName.toLowerCase().contains('myanimelist'),
+          ));
+
+  Future<void> _pickAnimeMetadataTv() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final picked = await showDialog<AnimeProvider>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _TvOptionPicker<AnimeProvider>(
+        title: ctx.l10n.animeMetadata,
+        options: AnimeProvider.values
+            .map(
+              (p) => (
+                p,
+                p == AnimeProvider.mal ? 'MyAnimeList' : 'AniList',
+              ),
+            )
+            .toList(),
+        current: prefs.anime,
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setAnime(picked);
+    if (!mounted) return;
+    if (_malNeedsLogin) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(context.l10n.malLoginForLists)));
+    }
+    setState(() {});
+  }
+
+  Future<void> _pickVideoMetadataTv() async {
+    final prefs = _providerPrefs;
+    if (prefs == null) return;
+    final picked = await showDialog<VideoProvider>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (ctx) => _TvOptionPicker<VideoProvider>(
+        title: ctx.l10n.videoMetadata,
+        options: VideoProvider.values
+            .map((p) => (p, p == VideoProvider.simkl ? 'Simkl' : 'TMDB'))
+            .toList(),
+        current: prefs.video,
+      ),
+    );
+    if (picked == null) return;
+    await prefs.setVideo(picked);
     if (mounted) setState(() {});
   }
 
@@ -296,6 +365,20 @@ class _SettingsScreenTvState extends State<SettingsScreenTv> {
                         title: l10n.searchLayout,
                         subtitle: sl<SearchPrefs>().layout.localizedLabel(context),
                         onTap: _pickSearchLayoutTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.hub_outlined,
+                        title: l10n.animeMetadata,
+                        subtitle: _malNeedsLogin
+                            ? l10n.malLoginForLists
+                            : _animeProviderLabel(),
+                        onTap: _pickAnimeMetadataTv,
+                      ),
+                      SettingsTile(
+                        icon: Icons.movie_filter_outlined,
+                        title: l10n.videoMetadata,
+                        subtitle: _videoProviderLabel(),
+                        onTap: _pickVideoMetadataTv,
                       ),
                       SettingsTile(
                         icon: Icons.language_rounded,

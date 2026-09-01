@@ -50,7 +50,9 @@ import '../repository/source_domain_overrides.dart';
 import '../repository/source_repository.dart';
 import '../state/active_source_cubit.dart';
 import '../locale/locale_controller.dart';
+import '../zmode/metadata_repository.dart';
 import '../zmode/zmode_module.dart';
+import '../zmode/zmode_ids.dart';
 import '../zmode/zmode_prefs.dart';
 import '../theme/theme_controller.dart';
 import '../metadata/episode_metadata_service.dart';
@@ -107,13 +109,14 @@ import 'package:supabase_flutter/supabase_flutter.dart' show OtpType;
 
 final GetIt sl = GetIt.instance;
 
-/// tvOS-only deferred boot work (provider JS load). Must not run during
-/// [initDependencies] — evaluating provider scripts on the main isolate can
-/// wedge JavaScriptCore and trap the splash (Dart timers never fire).
+/// TV-only deferred boot work. Must not run during [initDependencies] on
+/// Apple TV (splash wedge). Android TV skips [loadAll] entirely — metadata
+/// Home does not need JS providers, and evaluating hanging sources blocked
+/// D-pad for seconds.
 Future<void> Function()? _deferredAppleTvBoot;
 
-/// Runs work queued by [initDependencies] on Apple TV. Call only after the
-/// splash gate ([WatchApp._boot]) has completed.
+/// Runs work queued by [initDependencies] on TV. Call only after the splash
+/// gate ([WatchApp._boot]) has completed.
 Future<void> runDeferredAppleTvBootTasks() async {
   final task = _deferredAppleTvBoot;
   _deferredAppleTvBoot = null;
@@ -131,7 +134,7 @@ Future<void> runDeferredAppleTvBootTasks() async {
 }
 
 /// True once [runDeferredAppleTvBootTasks] has finished (success or failure).
-/// Home must not call into provider JS before this on Apple TV.
+/// Home must not call into provider JS before this on TV.
 bool tvosProvidersReady = false;
 
 /// Browser-like default headers for LNReader plugin requests — a straight
@@ -183,7 +186,7 @@ Future<void> initDependencies() async {
     isTv = false;
   }
   if (!isTv && isAppleTv) isTv = true;
-  if (isAppleTv) tvosProvidersReady = false;
+  if (isTv) tvosProvidersReady = false;
   sl.registerSingleton<AppMode>(AppMode(isTv: isTv));
 
   await initHiveForApp();
@@ -654,7 +657,9 @@ Future<void> initDependencies() async {
         sl<ActiveSourceCubit>()
             .reapplySaved((id) => manager.installedIds.contains(id));
       }
-      if (!isAppleTv &&
+      // Metadata home on TV loads from AniList/TMDB — no JS providers needed.
+      // Reloading here after a slow background loadAll only blocks toggles.
+      if (!isTv &&
           sl.isRegistered<HomeCubit>() &&
           sl.isRegistered<SourceRepository>() &&
           sl<SourceRepository>().hasSource(sl<ActiveSourceCubit>().state)) {
@@ -665,8 +670,9 @@ Future<void> initDependencies() async {
   }
 
   Future<void> loadProviders() async {
-    final providerLoad =
-        registry.loadAll(perEntryTimeout: const Duration(seconds: 6));
+    final providerLoad = registry.loadAll(
+      perEntryTimeout: const Duration(seconds: 6),
+    );
     providerLoad.whenComplete(onProviderLoadFinished);
     await providerLoad.timeout(
       const Duration(seconds: 8),
@@ -677,14 +683,12 @@ Future<void> initDependencies() async {
       },
     );
   }
-  // Do not START provider load during init on tvOS — even unawaited, the first
-  // cached provider hits synchronous JavaScriptCore evaluate() and can wedge the
-  // isolate before ActiveSourceCubit / DownloadManager finish opening boxes.
-  if (isAppleTv) {
-    _deferredAppleTvBoot = () async {
-      await loadProviders();
-    };
-  } else {
+
+  // Phone: load every enabled provider during splash (same as always). TV:
+  // skip loadAll — metadata Home/search never touch JS, and hanging sources
+  // (miruro, uhdmovies, …) freeze the isolate for their timeout each.
+  // Playback still loads a source on demand via ensureRuntimeLoaded.
+  if (!isTv) {
     await loadProviders();
   }
 
@@ -854,6 +858,15 @@ Future<void> initDependencies() async {
   // registering it costs nothing but makes the toggle instant.
   await registerZangetsuMode(sl);
 
+  // TV never started loadAll above. Reapply the saved active source once the
+  // shell is up (CloudStream/Aniyomi may still land later via their microtasks).
+  if (isTv) {
+    _deferredAppleTvBoot = () async {
+      onProviderLoadFinished();
+    };
+    tvosProvidersReady = true;
+  }
+
   // Now that SourceRepository can enumerate loaded sources, make sure the
   // restored content mode points at a source that belongs to it (e.g. a
   // novel-mode launch shouldn't show an anime source). No-op for anime mode
@@ -918,6 +931,13 @@ Future<void> initDependencies() async {
   sl.registerLazySingleton<HomeCubit>(
     () => HomeCubit(sl<CatalogueRepository>()),
   );
+
+  sl<MetadataRepository>().onStreamHomeCached = (kind, rows) {
+    if (!sl.isRegistered<HomeCubit>()) return;
+    final streamKind =
+        kind == ZKind.movie ? StreamKind.movie : StreamKind.anime;
+    sl<HomeCubit>().rememberStreamKindRows(streamKind, rows);
+  };
 
   // Guarded CloudStream boot step — load the installed .cs3 plugins OFF the
   // splash path (see the note where csManager is registered) so startup is

@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/playback/search_scope.dart';
+import 'package:watch_app/core/playback/playback_prefs.dart';
+import 'package:watch_app/core/di/injector.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/features/home/search_screen_tv.dart';
@@ -24,6 +27,14 @@ class _StubSearchHistory extends SearchHistory {
   Future<void> remove(String query) async {}
   @override
   Future<void> clear() async {}
+}
+
+class _StubPlaybackPrefs extends PlaybackPrefs {
+  @override
+  noSuchMethod(Invocation i) => super.noSuchMethod(i);
+
+  @override
+  bool get adultMetadata => false;
 }
 
 class _StubSearchPrefs extends SearchPrefs {
@@ -104,7 +115,9 @@ void main() {
     await tester.pumpWidget(MaterialApp(
       home: BlocProvider<SearchBloc>.value(
         value: bloc,
-        child: const Scaffold(body: SearchScreenTv()),
+        child: const Scaffold(
+          body: SearchScreenTv(scope: SearchScope.sources),
+        ),
       ),
     ));
     await tester.pump();
@@ -124,5 +137,29 @@ void main() {
     await tester.pump();
 
     expect(bloc.scopeEvents, contains(true));
+  });
+
+  testWidgets('library scope hides source scope chips', (tester) async {
+    if (sl.isRegistered<PlaybackPrefs>()) sl.unregister<PlaybackPrefs>();
+    sl.registerSingleton<PlaybackPrefs>(_StubPlaybackPrefs());
+    addTearDown(() {
+      if (sl.isRegistered<PlaybackPrefs>()) sl.unregister<PlaybackPrefs>();
+    });
+
+    final bloc = _FakeSearchBloc();
+    addTearDown(bloc.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: BlocProvider<SearchBloc>.value(
+        value: bloc,
+        child: const Scaffold(
+          body: SearchScreenTv(scope: SearchScope.library),
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('tv-search-scope-current')), findsNothing);
+    expect(find.byKey(const ValueKey('tv-search-filters')), findsOneWidget);
   });
 }

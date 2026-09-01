@@ -242,6 +242,12 @@ class _HomeViewState extends State<_HomeView>
   /// Genres + episode count for the hero banner (lazily fetched, cached).
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
+        if (ZmodeIds.isZ(m.url)) {
+          return HeroMeta(
+            genres: m.genres,
+            episodeCount: m.subCount ?? 0,
+          );
+        }
         final d = await _detailOf(m.url, m.sourceId);
         if (d == null) return null;
         return HeroMeta(

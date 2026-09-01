@@ -11,6 +11,7 @@ import '../../core/platform/apple_tv.dart';
 import '../../core/ui/global_messenger.dart';
 import '../../core/ui/native_cover_provider.dart';
 import '../../core/metadata/title_logo_service.dart';
+import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/models/episode.dart';
 import '../../core/models/home_section.dart';
 import '../../core/models/media_detail.dart';
@@ -23,6 +24,10 @@ import '../../core/playback/title_prefs.dart';
 import '../../core/playback/watch_history.dart';
 import '../../core/repository/catalogue_repository.dart';
 import '../../core/repository/source_repository.dart';
+import '../../core/state/active_source_cubit.dart';
+import '../../core/zmode/metadata_repository.dart';
+import '../../core/zmode/zmode_ids.dart';
+import '../../core/zmode/zmode_prefs.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../l10n/l10n.dart';
@@ -38,7 +43,9 @@ import '../../core/mode/content_mode_cubit.dart';
 import '../../core/ui/source_switcher.dart';
 import '../detail/detail_screen.dart';
 import '../player/tv_playback_launch.dart';
+import '../search/browse_sources_screen.dart';
 import '../sources/providers_hub_screen.dart';
+import 'home_screen.dart' show HomeLoadedEmptyView;
 import 'see_all_screen.dart';
 import 'cubit/home_cubit.dart';
 
@@ -69,26 +76,31 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   @override
   void initState() {
     super.initState();
-    if (isAppleTv) {
-      // Let shell chrome paint first, then fetch from the now-loaded provider.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() => _historyLive = true);
-        final cubit = context.read<HomeCubit>();
-        if (tvosProvidersReady &&
-            cubit.state.sections == null &&
-            !cubit.state.loading) {
-          cubit.load();
-        }
-      });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (isAppleTv) setState(() => _historyLive = true);
+      final cubit = context.read<HomeCubit>();
+      if (cubit.state.sections == null && !cubit.state.loading) {
+        cubit.load();
+      }
+      unawaited(_warmStreamingHomeCaches());
+    });
+  }
+
+  /// Prefetch both Anime and Movie/TV metadata home rows in parallel so the
+  /// rail toggle swaps instantly — same effective behaviour as phone once splash
+  /// has finished loading providers.
+  Future<void> _warmStreamingHomeCaches() async {
+    if (!ZModePrefs.enabled || !sl.isRegistered<MetadataRepository>()) {
       return;
     }
-    // Kick the first load ourselves, exactly like the phone home does. main()
-    // only calls HomeCubit.load() when isOnboarded() was already true at boot,
-    // so someone who just finished onboarding lands here with sections == null
-    // and nothing ever fetches them — a permanently empty TV home.
-    final cubit = context.read<HomeCubit>();
-    if (cubit.state.sections == null && !cubit.state.loading) cubit.load();
+    final meta = sl<MetadataRepository>();
+    await Future.wait([
+      meta.ensureHomeCached(ZKind.anime),
+      meta.ensureHomeCached(ZKind.movie),
+    ]);
+    if (!mounted) return;
+    context.read<HomeCubit>().primeStreamKindCacheFromMetadata();
   }
 
   // ── Navigation helpers ────────────────────────────────────────────────────
@@ -194,11 +206,17 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
   }
 
   /// Genres + episode count for the hero banner, lazily fetched and cached.
-  /// Mirrors the phone's _HomeViewState._heroMeta.  Swallows any error
-  /// (missing sl registration in tests, network failure) and returns null so
-  /// the hero meta line gracefully stays empty.
+  /// Metadata (`zm://`) rows already carry genres + counts on the [MediaItem]
+  /// — skip [CatalogueRepository.detail] there or every stream-kind swap would
+  /// re-match the title on AniKoto and pull the full episode list.
   Future<HeroMeta?> _heroMeta(MediaItem m) =>
       _metaCache.putIfAbsent('${m.sourceId}:${m.id}', () async {
+        if (ZmodeIds.isZ(m.url)) {
+          return HeroMeta(
+            genres: m.genres,
+            episodeCount: m.subCount ?? 0,
+          );
+        }
         try {
           final d = await sl<CatalogueRepository>().detail(
             m.url,
@@ -214,7 +232,15 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
         }
       });
 
-  /// Open the full-grid "See All" view of a browse row. [SeeAllScreen] forwards
+  void _openBrowseSources() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const BrowseSourcesScreen(),
+      ),
+    );
+  }
+
+  /// Open the full-grid "See All" view of a browse row.
   /// to the TV variant when [AppMode.isTv]; a paginable row (Aniyomi
   /// popular/latest, CloudStream mainPage) carries a `more` descriptor that
   /// drives infinite scroll, everything else stays a fixed list.
@@ -227,12 +253,14 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
           items: section.items,
           onTap: _openDetail,
           onLongPress: _showInfo,
-          // Pagination isn't part of CatalogueRepository — go straight to the
-          // source for it, same as it always has.
+          // Pagination isn't part of CatalogueRepository — go to whichever
+          // repository owns the row: metadata providers stamp the Z Mode
+          // source id, everything else is a real source.
           onLoadMore: section.more == null
               ? null
-              : (page) =>
-                    sl<SourceRepository>().browseMore(section.more!, page),
+              : (page) => section.more!.sourceId == ZmodeIds.sourceId
+                    ? sl<MetadataRepository>().browseMore(section.more!, page)
+                    : sl<SourceRepository>().browseMore(section.more!, page),
         ),
       ),
     ).then((_) {
@@ -369,93 +397,179 @@ class _HomeScreenTvState extends State<HomeScreenTv> {
     final mode = sl.isRegistered<ContentModeCubit>()
         ? sl<ContentModeCubit>().state
         : null;
-    if (mode != null && !hasSourcesFor(mode)) {
+    // Metadata-first Home browse doesn't require installed extensions. Match
+    // mobile: only show the no-sources guide in source-only mode (tests).
+    if (mode != null && !ZModePrefs.enabled && !hasSourcesFor(mode)) {
       return Scaffold(
         backgroundColor: AppColors.bg,
         body: _TvNoSourcesGuide(mode: mode),
       );
     }
 
-    // Use the same heroItems getter the phone uses (first section's items).
-    final heroItems = state.heroItems;
-    final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
+    final repo = sl<CatalogueRepository>();
+    final loadedEmpty =
+        !state.loading &&
+        state.sections != null &&
+        state.sections!.isEmpty;
+    final activeId = context.watch<ActiveSourceCubit>().state;
+    final noSourceForMode = ZModePrefs.enabled
+        ? false
+        : switch (mode) {
+            ContentMode.manga => !activeId.startsWith('mihon:'),
+            ContentMode.novel => !activeId.startsWith('lnr:'),
+            ContentMode.anime => false,
+            null => false,
+          };
 
     // Continue Watching — same login-gated local history the phone home uses.
     final loggedIn = context.watch<AuthCubit>().state.isLoggedIn;
 
-    // The scroll view, parameterised by the current history so a single source
-    // drives both the Continue Watching rail and the rails' autofocus.
-    Widget buildScroll(List<HistoryEntry> history) {
-      return CustomScrollView(
-        slivers: [
-          // ── Hero banner ──────────────────────────────────────────────────
-          // TV-only cinematic hero: full-bleed art with left-aligned title +
-          // meta + labelled buttons (Apple-TV style). Bespoke so it doesn't look
-          // like the phone's centred FeaturedHero card — that widget is left
-          // untouched for the phone.
-          if (heroItem != null)
-            SliverToBoxAdapter(
-              child: _TvHero(
-                items: heroItems.take(6).toList(),
-                inListOf: _inList,
-                metaOf: _heroMeta,
-                onPlay: _play,
-                onInfo: _openDetail,
-                onToggleList: (item) => showListStatusSheet(
-                  context,
-                  item: item,
-                  onChanged: () {
-                    if (mounted) setState(() {});
-                  },
-                ),
-                wrapButton: _tvWrapButton,
-              ),
+    if (noSourceForMode || loadedEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: HomeLoadedEmptyView(
+          offline: state.offline,
+          mode: mode ?? ContentMode.anime,
+          sourceName: repo.displayName(repo.sourceId),
+          onRetry: () => context.read<HomeCubit>().load(reset: true),
+          onInstallSources: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const ProvidersHubScreen(),
             ),
-
-          // ── Continue Watching (login-gated, resume on OK) ───────────────
-          if (history.isNotEmpty)
-            SliverToBoxAdapter(
-              child: _TvContinueRail(
-                history: history,
-                onResume: _resume,
-                onLongPress: _showContinueInfo,
-                firstAutofocus: heroItem == null,
-              ),
-            ),
-
-          // ── Poster rails (one per section) ──────────────────────────────
-          for (var i = 0; i < sections.length; i++)
-            SliverToBoxAdapter(
-              child: TvRail(
-                section: sections[i],
-                onTap: _openDetail,
-                onLongPress: _showInfo,
-                onSeeAll: () => _openSeeAll(sections[i]),
-                // Autofocus the first rail's first card only when nothing above
-                // it (hero or Continue Watching) can take the initial focus.
-                firstAutofocus: heroItem == null && history.isEmpty && i == 0,
-              ),
-            ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 48)),
-        ],
+          ),
+          cloudflareUrl: state.cloudflareUrl,
+          onSolveCloudflare: state.cloudflareUrl == null
+              ? null
+              : () async {
+                  // Mihon Cloudflare solve — same path as phone Home.
+                  await MihonExtensionService.solveCloudflare(
+                    state.cloudflareUrl!,
+                  );
+                  if (context.mounted) {
+                    context.read<HomeCubit>().load(reset: true);
+                  }
+                },
+        ),
       );
     }
 
+    Widget historyBody(List<HistoryEntry> history) {
+      return ValueListenableBuilder<int>(
+        valueListenable: ZModePrefs.revision,
+        builder: (context, _, _) {
+          return ValueListenableBuilder<int>(
+            valueListenable: context.read<HomeCubit>().streamCatalogRevision,
+            builder: (context, _, _) {
+              final cubit = context.read<HomeCubit>();
+              final kind = ZModePrefs.streamKind;
+              Widget catalog(StreamKind k) {
+                final visible = k == kind;
+                final rows = cubit.sectionsFor(k) ??
+                    (visible ? sections : const <HomeSection>[]);
+                return ExcludeFocus(
+                  excluding: !visible,
+                  child: TickerMode(
+                    enabled: visible,
+                    child: KeyedSubtree(
+                      key: ValueKey('tv-home-catalog-$k'),
+                      child: _catalogScroll(
+                        rows,
+                        history,
+                        loading: visible && state.loading,
+                        autofocus: visible,
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final haveBoth = cubit.sectionsFor(StreamKind.anime) != null &&
+                  cubit.sectionsFor(StreamKind.movie) != null;
+              if (haveBoth) {
+                return IndexedStack(
+                  index: kind == StreamKind.movie ? 1 : 0,
+                  sizing: StackFit.expand,
+                  children: [
+                    catalog(StreamKind.anime),
+                    catalog(StreamKind.movie),
+                  ],
+                );
+              }
+              return catalog(kind);
+            },
+          );
+        },
+      );
+    }
+
+    final body = (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
+        ? ValueListenableBuilder(
+            valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
+            builder: (context, _, _) =>
+                historyBody(sl<WatchHistory>().recent()),
+          )
+        : historyBody(const <HistoryEntry>[]);
     return Scaffold(
       backgroundColor: AppColors.bg,
-      // Continue Watching is login-gated; when signed in, rebuild on
-      // watch_history writes so the rail (and the rails' autofocus, which keys
-      // off history.isEmpty) reacts the instant the cloud pull lands — the pull
-      // finishes AFTER this build on login / boot-migration. The box is opened
-      // at boot; guard for a signed-out render and the test env where it isn't.
-      body: (loggedIn && _historyLive && Hive.isBoxOpen(WatchHistory.boxName))
-          ? ValueListenableBuilder(
-              valueListenable: Hive.box<Map>(WatchHistory.boxName).listenable(),
-              builder: (context, _, _) =>
-                  buildScroll(sl<WatchHistory>().recent()),
-            )
-          : buildScroll(const <HistoryEntry>[]),
+      body: body,
+    );
+  }
+
+  Widget _catalogScroll(
+    List<HomeSection> sections,
+    List<HistoryEntry> history, {
+    required bool loading,
+    required bool autofocus,
+  }) {
+    final heroItems =
+        sections.isNotEmpty ? sections.first.items : const <MediaItem>[];
+    final heroItem = heroItems.isNotEmpty ? heroItems.first : null;
+    return CustomScrollView(
+      slivers: [
+        if (heroItem != null)
+          SliverToBoxAdapter(
+            child: _TvHero(
+              items: heroItems.take(6).toList(),
+              inListOf: _inList,
+              metaOf: _heroMeta,
+              onPlay: _play,
+              onInfo: _openDetail,
+              onToggleList: (item) => showListStatusSheet(
+                context,
+                item: item,
+                onChanged: () {
+                  if (mounted) setState(() {});
+                },
+              ),
+              wrapButton: _tvWrapButton,
+              onBrowseSources: _openBrowseSources,
+            ),
+          ),
+        if (history.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _TvContinueRail(
+              history: history,
+              onResume: _resume,
+              onLongPress: _showContinueInfo,
+              firstAutofocus: autofocus && heroItem == null && !loading,
+            ),
+          ),
+        for (var i = 0; i < sections.length; i++)
+          SliverToBoxAdapter(
+            child: TvRail(
+              section: sections[i],
+              onTap: _openDetail,
+              onLongPress: _showInfo,
+              onSeeAll: () => _openSeeAll(sections[i]),
+              firstAutofocus: autofocus &&
+                  heroItem == null &&
+                  history.isEmpty &&
+                  i == 0 &&
+                  !loading,
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 48)),
+      ],
     );
   }
 }
@@ -510,7 +624,7 @@ class _TvNoSourcesGuide extends StatelessWidget {
             autofocus: true,
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
-                builder: (_) => const ProvidersHubScreen(),
+                builder: (_) => const BrowseSourcesScreen(),
               ),
             ),
             // ExcludeFocus so the D-pad stops on the TvFocusable itself, not on
@@ -521,7 +635,7 @@ class _TvNoSourcesGuide extends StatelessWidget {
                 child: FilledButton.icon(
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => const ProvidersHubScreen(),
+                      builder: (_) => const BrowseSourcesScreen(),
                     ),
                   ),
                   icon: const Icon(Icons.add_rounded, size: 22),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/ui/app_toast.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
@@ -23,6 +24,7 @@ import '../../core/mihon/mihon_filters.dart';
 import '../aniyomi/aniyomi_filter_sheet.dart';
 import '../mihon/mihon_filter_sheet.dart';
 import 'bloc/search_state.dart' show SearchEcosystem, ecosystemOf;
+import 'browse_source_screen_tv.dart';
 import 'cubit/browse_source_cubit.dart';
 
 /// One source's catalogue — today's Home, pinned to a chosen source.
@@ -40,12 +42,17 @@ class BrowseSourceScreen extends StatelessWidget {
   final String title;
 
   @override
-  Widget build(BuildContext context) => BlocProvider(
+  Widget build(BuildContext context) {
+    if (sl<AppMode>().isTv) {
+      return BrowseSourceScreenTv(sourceId: sourceId, title: title);
+    }
+    return BlocProvider(
     create: (_) =>
         BrowseSourceCubit(repo: sl<SourceRepository>(), sourceId: sourceId)
           ..load(),
     child: _BrowseSourceView(sourceId: sourceId, title: title),
-  );
+    );
+  }
 }
 
 class _BrowseSourceView extends StatefulWidget {

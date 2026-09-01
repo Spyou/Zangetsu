@@ -8,6 +8,7 @@ import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
 import 'package:watch_app/core/playback/search_history.dart';
 import 'package:watch_app/core/playback/search_prefs.dart';
+import 'package:watch_app/core/playback/search_scope.dart';
 import 'package:watch_app/core/repository/source_repository.dart';
 import 'package:watch_app/core/search/title_suggestion_service.dart';
 import 'package:watch_app/core/tv/tv_focusable.dart';
@@ -126,10 +127,16 @@ class _FakeSearchBloc extends SearchBloc {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-Widget _buildUnderTest(_FakeSearchBloc bloc, {SearchHistory? history}) =>
+Widget _buildUnderTest(
+  _FakeSearchBloc bloc, {
+  SearchHistory? history,
+  SearchScope scope = SearchScope.sources,
+}) =>
     BlocProvider<SearchBloc>.value(
       value: bloc,
-      child: MaterialApp(home: SearchScreenTv(history: history)),
+      child: MaterialApp(
+        home: SearchScreenTv(history: history, scope: scope),
+      ),
     );
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -289,7 +296,7 @@ void main() {
           child: MaterialApp(
             home: MediaQuery(
               data: const MediaQueryData(accessibleNavigation: false),
-              child: const SearchScreenTv(),
+              child: const SearchScreenTv(scope: SearchScope.sources),
             ),
           ),
         ),
@@ -326,7 +333,7 @@ void main() {
           child: MaterialApp(
             home: MediaQuery(
               data: const MediaQueryData(accessibleNavigation: true),
-              child: const SearchScreenTv(),
+              child: const SearchScreenTv(scope: SearchScope.sources),
             ),
           ),
         ),

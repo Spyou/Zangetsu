@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/platform/apple_tv.dart';
-import '../../core/provider/cloudstream_provider.dart';
 import '../../core/provider/provider_manager.dart';
 import '../../core/provider/provider_registry.dart';
 import '../../core/state/active_source_cubit.dart';
@@ -22,7 +22,6 @@ import '../home/cubit/home_cubit.dart';
 import '../schedule/schedule_screen.dart';
 import 'root_shell.dart';
 import 'tv_mode_page.dart';
-import 'tv_source_picker.dart';
 
 /// Collapsed (icon-only) and expanded (labelled) drawer widths.
 const double _kNavCollapsed = 74;
@@ -40,6 +39,10 @@ const double _kIconSlot = _kNavCollapsed - 2 * _kRailHPad;
 ///
 /// Rendered when [AppMode.isTv] is true (gated in [RootShell.build]). The phone
 /// [RootShell] and its [NavigationBar] are completely unchanged.
+///
+/// Metadata catalogue browse is always on in production ([ZModePrefs.enabled]
+/// defaults true). When on, an inline Anime / Movie·TV toggle sits in the rail
+/// under the profile row — no separate page.
 ///
 /// The drawer overlays the page area on the left. It shows a slim icon rail by
 /// default and pops open to a full labelled drawer whenever focus is in the
@@ -66,8 +69,7 @@ class _RailItem {
 }
 
 /// Nav item definitions (label + icons). Order matches [_RootShellTvState._pages].
-/// Six today; a seventh, Mode, when Z Mode is on.
-int get _kRailItemCount => ZModePrefs.enabled ? 7 : 6;
+const int _kRailItemCount = 6;
 
 List<_RailItem> _railItems(BuildContext context) {
   final l = context.l10n;
@@ -102,12 +104,6 @@ List<_RailItem> _railItems(BuildContext context) {
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings,
     ),
-    if (ZModePrefs.enabled)
-      _RailItem(
-        label: l.zMode,
-        icon: Icons.auto_awesome_outlined,
-        selectedIcon: Icons.auto_awesome,
-      ),
   ];
 }
 
@@ -147,11 +143,9 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       FocusScopeNode(debugLabel: 'tv-content-scope');
 
   // One focus node per nav item so entering the rail can land straight on the
-  // CURRENT page's item (so you always see where you are). Always allocate
-  // for the max (7): _kRailItemCount can change at runtime (the Z Mode
-  // toggle), but this list is built once at field-initialisation — a hidden
-  // node past the current count is simply never drawn (see [_railColumn]).
-  final List<FocusNode> _navNodes = List.generate(7, (_) => FocusNode());
+  // CURRENT page's item (so you always see where you are).
+  final List<FocusNode> _navNodes = List.generate(_kRailItemCount, (_) => FocusNode());
+  final FocusNode _streamKindNode = FocusNode(debugLabel: 'tv-stream-kind');
 
   @override
   void initState() {
@@ -161,14 +155,10 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     _recoverFocusIfNeeded();
   }
 
-  /// The rail redraws when the Z Mode toggle flips. If it just turned off
-  /// while the user was on the (now hidden) 7th page, clamp back to Home so
-  /// `_index` can't point past the end of `_pages`.
+  /// Redraw the rail when metadata browse or streaming kind changes.
   void _onZMode() {
     if (!mounted) return;
-    setState(() {
-      if (_index >= _kRailItemCount) _index = 0;
-    });
+    setState(() {});
   }
 
   @override
@@ -358,32 +348,21 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     for (final n in _navNodes) {
       n.dispose();
     }
+    _streamKindNode.dispose();
     super.dispose();
   }
 
-  /// Display name for a source id (mirrors SourceSwitcher._label).
-  String _sourceLabel(String id) {
-    if (id.startsWith('cs:')) {
-      try {
-        final name = sl<CloudStreamManager>().get(id)?.displayName;
-        if (name != null && name.isNotEmpty) return 'CS · $name';
-      } catch (_) {}
-      return id;
-    }
-    if (id.startsWith('ani:')) {
-      try {
-        final name = sl<AniyomiManager>().get(id)?.displayName;
-        if (name != null && name.isNotEmpty) return 'Ani · $name';
-      } catch (_) {}
-      return id;
-    }
-    try {
-      final entry = sl<ProviderRegistry>().entryFor(id);
-      if (entry != null && entry.displayName.isNotEmpty) return entry.displayName;
-      return entry?.name ?? id;
-    } catch (_) {
-      return id;
-    }
+  Future<void> _pickStreamKind(StreamKind kind) async {
+    if (kind == ZModePrefs.streamKind) return;
+    await ZModePrefs.setStreamKind(kind);
+    if (!mounted) return;
+    // Keep focus on the toggle so a Home rebuild can't steal the KeyUp and
+    // accidentally resume Continue Watching.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _streamKindNode.canRequestFocus) {
+        _streamKindNode.requestFocus();
+      }
+    });
   }
 
   void _onItemSelected(int i) {
@@ -445,7 +424,6 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       const DownloadsScreen(),
       const ScheduleScreen(),
       shared.last, // Settings
-      if (ZModePrefs.enabled) const TvModePage(),
     ];
   }
 
@@ -490,79 +468,13 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
     );
   }
 
-  /// Source indicator — unchanged behaviour (opens [TvSourcePicker]); label
-  /// fades in when open.
-  Widget _sourceIndicator() {
-    return BlocBuilder<ActiveSourceCubit, String>(
-      builder: (context, sourceId) {
-        return TvFocusable(
-          key: const ValueKey('tv-source-indicator'),
-          variant: TvFocusVariant.pill,
-          onTap: () {
-            showDialog<void>(
-              context: context,
-              barrierColor: Colors.black54,
-              builder: (_) => BlocProvider<ActiveSourceCubit>.value(
-                value: context.read<ActiveSourceCubit>(),
-                child: TvSourcePicker(currentId: sourceId),
-              ),
-            );
-          },
-          builder: (focused) {
-            final label = _sourceLabel(sourceId);
-            final clean = label.replaceFirst(RegExp(r'^(CS|Ani) · '), '');
-            final nameColor = focused ? Colors.black : AppColors.textPrimary;
-            final lblColor =
-                focused ? const Color(0xFF5A5A5A) : AppColors.textTertiary;
-            final iconColor = focused ? Colors.black : AppColors.textSecondary;
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: _kIconSlot,
-                    child: Center(
-                      child: Icon(Icons.swap_horiz_rounded,
-                          size: 26, color: iconColor),
-                    ),
-                  ),
-                  Expanded(
-                    child: _navOpen
-                        ? Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                context.l10n.sourceNavLabel,
-                                style: TextStyle(
-                                  color: lblColor,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.6,
-                                ),
-                              ),
-                              const SizedBox(height: 1),
-                              Text(
-                                clean,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: nameColor,
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          )
-                        : const SizedBox.shrink(),
-                  ),
-                  if (_navOpen) const SizedBox(width: 12),
-                ],
-              ),
-            );
-          },
-        );
-      },
+  Widget _streamKindToggle() {
+    if (!ZModePrefs.enabled) return const SizedBox.shrink();
+    return TvStreamKindRailToggle(
+      navOpen: _navOpen,
+      iconSlotWidth: _kIconSlot,
+      focusNode: _streamKindNode,
+      onToggle: _pickStreamKind,
     );
   }
 
@@ -748,8 +660,8 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
             _brand(), // Zangetsu wordmark, revealed when open
             const SizedBox(height: 8),
             _avatarBlock(), // profile
-            const SizedBox(height: 6),
-            _sourceIndicator(), // source switch right under the profile
+            const SizedBox(height: 4),
+            _streamKindToggle(),
             const SizedBox(height: 6),
             const Divider(
                 height: 1, color: AppColors.hairline, indent: 16, endIndent: 16),
@@ -784,7 +696,7 @@ class _RootShellTvState extends State<RootShellTv> with WidgetsBindingObserver {
       child: BlocListener<ActiveSourceCubit, String>(
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, sourceId) {
-          if (isAppleTv && !tvosProvidersReady) return;
+          if (sl<AppMode>().isTv && !tvosProvidersReady) return;
           unawaited(_reloadHomeForSource(sourceId));
         },
         child: Actions(
