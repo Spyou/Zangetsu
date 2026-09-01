@@ -10,7 +10,11 @@ import '../../core/playback/my_list.dart';
 import '../../core/schedule/airing_service.dart';
 import '../../core/schedule/coming_soon_service.dart';
 import '../../core/schedule/schedule_models.dart';
+import '../../core/models/media_item.dart';
+import '../../core/models/provider_info.dart';
+import '../../core/zmode/zmode_ids.dart';
 import '../../core/zmode/zmode_prefs.dart';
+import '../detail/detail_screen.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/ui/dock_visibility.dart';
@@ -38,13 +42,56 @@ class ScheduleScreen extends StatelessWidget {
   }
 }
 
-/// Search the user's sources for [title] so they can watch + subscribe. The
-/// schedule is metadata with no source/url of its own, so tapping a row routes
-/// through the normal search flow (across every source ecosystem); from the
-/// result's detail screen the user gets Play / Add to List / notify.
+/// Search the user's sources for [title]. The fallback for a row we can't
+/// identify — see [openCanonical], which is the normal path now.
 void openTitle(BuildContext context, String title) {
   Navigator.of(context).push(
     MaterialPageRoute<void>(builder: (_) => SearchScreen(initialQuery: title)),
+  );
+}
+
+/// Open a schedule row's Detail directly.
+///
+/// Every row used to bounce through Search, because the schedule was metadata
+/// with no url of its own. It isn't any more: the calendar carries TMDB ids
+/// and AniList carries MAL ids, which is exactly what a `zm://` url is made
+/// of — so the row can go straight to the title. [CatalogueRouter] picks the
+/// metadata repository off the url itself, so this works whether or not Z
+/// Mode is on.
+///
+/// Falls back to [openTitle] when there is no id, which is the case for a
+/// minority of AniList airings.
+void openCanonical(
+  BuildContext context, {
+  required ZKind kind,
+  required String? id,
+  required String title,
+  String? coverUrl,
+}) {
+  if (id == null || id.isEmpty) {
+    openTitle(context, title);
+    return;
+  }
+  final c = ZCanonical(kind, id);
+  Navigator.of(context).push(
+    DetailScreen.route(
+      MediaItem(
+        id: c.id,
+        title: title,
+        url: ZmodeIds.showUrl(c),
+        // Matches what TmdbCatalogue/AniListCatalogue stamp on their own
+        // items, so a row opened from here is the same shape as one opened
+        // from Home rather than a lookalike.
+        type: switch (kind) {
+          ZKind.manga => ProviderType.manga,
+          ZKind.novel => ProviderType.novel,
+          ZKind.movie || ZKind.tv => ProviderType.movie,
+          ZKind.anime => ProviderType.anime,
+        },
+        sourceId: ZmodeIds.sourceId,
+        cover: coverUrl,
+      ),
+    ),
   );
 }
 
@@ -440,7 +487,13 @@ class _ScheduleBodyState extends State<ScheduleBody>
                     : l10n.movieWithDate(
                         _monthDay(e.releaseDate ?? selected, locale)),
               ].join('  ·  '),
-              onTap: () => openTitle(context, e.title),
+              onTap: () => openCanonical(
+                context,
+                kind: e.isTv ? ZKind.tv : ZKind.movie,
+                id: 'tmdb:${e.tmdbId}',
+                title: e.title,
+                coverUrl: e.posterUrl,
+              ),
             ),
       ],
     );
@@ -619,7 +672,13 @@ class _ScheduleBodyState extends State<ScheduleBody>
         episodeLabel: l10n.episodeLabel(e.episode),
         last: i == list.length - 1 ||
             _slotLabel(l10n, list[i + 1].airsAtLocal.hour) != slot,
-        onTap: () => openTitle(context, e.title),
+        onTap: () => openCanonical(
+          context,
+          kind: ZKind.anime,
+          id: e.malId == null ? null : 'mal:${e.malId}',
+          title: e.title,
+          coverUrl: e.coverUrl,
+        ),
       ));
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: rows);
