@@ -90,6 +90,24 @@ void main() {
       Hive.init(dir.path);
       expect((await MetadataProviderPrefs.open()).anime, AnimeProvider.mal);
     });
+
+    test('video defaults to TMDB and round-trips independently', () async {
+      expect(prefs.video, VideoProvider.tmdb);
+      await prefs.setVideo(VideoProvider.simkl);
+      expect(prefs.video, VideoProvider.simkl);
+      // The two axes must not share a key: changing one silently changing the
+      // other would be invisible until Home came back wrong.
+      expect(prefs.anime, AnimeProvider.anilist);
+    });
+
+    test('each axis survives a reopen on its own', () async {
+      await prefs.setVideo(VideoProvider.simkl);
+      await Hive.close();
+      Hive.init(dir.path);
+      final reopened = await MetadataProviderPrefs.open();
+      expect(reopened.video, VideoProvider.simkl);
+      expect(reopened.anime, AnimeProvider.anilist);
+    });
   });
 
   // The fallback lives in MetadataRepository, but its shape is what matters:

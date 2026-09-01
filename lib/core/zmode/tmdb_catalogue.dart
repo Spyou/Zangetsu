@@ -6,6 +6,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
+import 'video_catalogue.dart';
 import 'zmode_ids.dart';
 
 typedef TmdbGet =
@@ -16,7 +17,7 @@ typedef TmdbGet =
 
 /// TMDB as a browsing catalogue for films and series. `sl<Dio>()` already
 /// attaches the API key, so paths are relative to [Tmdb.base].
-class TmdbCatalogue {
+class TmdbCatalogue implements VideoCatalogue {
   TmdbCatalogue(this._get);
   final TmdbGet _get;
 

@@ -8,6 +8,7 @@ import '../repository/catalogue_router.dart';
 import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
 import 'mal_catalogue.dart';
+import 'simkl_catalogue.dart';
 import 'metadata_provider_prefs.dart';
 import 'package:flutter/material.dart';
 
@@ -46,6 +47,7 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),
     tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
     mal: MalCatalogue(sl<Dio>()),
+    simkl: SimklCatalogue(sl<Dio>()),
     providerPrefs: providerPrefs,
     // Say it out loud when the chosen provider was unreachable — silently
     // serving different data is how "why do my rows look wrong" starts.
