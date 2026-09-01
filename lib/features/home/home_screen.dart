@@ -756,8 +756,14 @@ class _HomeViewState extends State<_HomeView>
     return BlocBuilder<ContentModeCubit, ContentMode>(
       bloc: sl<ContentModeCubit>(),
       builder: (context, current) {
-        final others = ContentMode.values.where((m) => m != current).toList();
+        // Z Mode drives the mode from its own controls, so the switcher cards
+        // would duplicate them — but the Schedule card still belongs here in
+        // BOTH modes: it left the dock, and this row is its only way in now.
+        final others = ZModePrefs.enabled
+            ? const <ContentMode>[]
+            : ContentMode.values.where((m) => m != current).toList();
         final showSchedule = current == ContentMode.anime;
+        if (others.isEmpty && !showSchedule) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
           child: Row(
@@ -1206,9 +1212,11 @@ class _HomeViewState extends State<_HomeView>
                         ),
                       ),
 
-                      // ── Mode cards (switch Anime / Manga / Novel) ─────────────
-                      if (!ZModePrefs.enabled)
-                        SliverToBoxAdapter(child: _modeCards()),
+                      // ── Mode cards, and Schedule ──────────────────────────────
+                      // Unconditional: _modeCards drops the mode switchers
+                      // itself under Z Mode and keeps Schedule, which has no
+                      // other entry point since it left the dock.
+                      SliverToBoxAdapter(child: _modeCards()),
 
                       // ── Reconnect banner (session lapsed → sync is off) ───────
                       if (needsReconnect)

@@ -439,6 +439,23 @@ void main() {
     },
   );
 
+  // The row used to be hidden entirely under Z Mode (`if (!ZModePrefs.enabled)`),
+  // which was survivable while Schedule also had a dock tab. It doesn't, so the
+  // card has to be there in BOTH modes or Schedule has no entry point at all.
+  testWidgets('Home keeps the Schedule card with Z Mode on', (tester) async {
+    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
+    await tester.pumpWidget(wrap(const RootShell()));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+
+    await tester.runAsync(() => ZModePrefs.setEnabled(true));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
+
+    await tester.runAsync(() => ZModePrefs.setEnabled(false));
+    await tester.pumpAndSettle();
+  });
+
   // Task 11 added a full-width "Search" bar to Home while Z Mode was on
   // (Search having left the dock); task 17 replaced that with a header icon
   // instead (HomeBrowseSourcesAction's sibling, HomeSearchAction — covered by
