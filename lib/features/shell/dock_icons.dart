@@ -17,7 +17,6 @@ enum DockGlyph { home, bookmark, calendar }
 DockGlyph? dockGlyphFor(DockTab t) => switch (t) {
   DockTab.home => DockGlyph.home,
   DockTab.myList => DockGlyph.bookmark,
-  DockTab.schedule => DockGlyph.calendar,
   _ => null,
 };
 

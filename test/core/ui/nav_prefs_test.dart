@@ -55,11 +55,11 @@ void main() {
       expect(sanitized(NavPrefs.defaultTabs), NavPrefs.defaultTabs);
     });
 
-    // Task 17: Search left the dock for a Home header icon.
-    test('the default dock no longer includes Search', () {
+    // Search left the dock for a Home header icon; Schedule left it for the
+    // card row on Home, beside the Manga/Novel mode cards.
+    test('the default dock has neither Search nor Schedule', () {
       expect(NavPrefs.defaultTabs, [
         DockTab.home,
-        DockTab.schedule,
         DockTab.myList,
         DockTab.profile,
       ]);
@@ -102,7 +102,6 @@ void main() {
       expect(out.length, greaterThanOrEqualTo(NavPrefs.minTabs));
       expect(out, [
         DockTab.home,
-        DockTab.schedule,
         DockTab.myList,
         DockTab.profile,
       ]);
@@ -122,8 +121,10 @@ void main() {
       expect(DockTab.values.where((t) => t.isPinned), [DockTab.profile]);
     });
 
-    test('only Schedule is anime-only', () {
-      expect(DockTab.values.where((t) => t.isAnimeOnly), [DockTab.schedule]);
+    // isAnimeOnly went with Schedule: it was that tab's only subject, and
+    // every remaining tab suits every content mode.
+    test('no tab is restricted to a content mode', () {
+      expect(DockTab.values.map((t) => t.name), isNot(contains('schedule')));
     });
 
     test('every tab has a label', () {

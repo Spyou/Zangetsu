@@ -22,7 +22,6 @@ import '../home/cubit/home_cubit.dart';
 import '../home/home_screen.dart';
 import '../home/my_list_screen.dart';
 import '../home/search_screen.dart';
-import '../schedule/schedule_screen.dart';
 import '../settings/settings_screen.dart';
 import 'dock_icons.dart';
 import 'mode_bar.dart';
@@ -123,15 +122,10 @@ class _RootShellState extends State<RootShell>
     });
   }
 
-  /// The dock as actually rendered: the user's order, minus anything the
-  /// current content mode has no use for.
-  List<DockTab> _visibleTabs() {
-    final mode = sl<ContentModeCubit>().state;
-    final tabs = _navPrefs.tabs;
-    if (!mode.isReading) return tabs;
-    final out = [for (final t in tabs) if (!t.isAnimeOnly) t];
-    return out.isEmpty ? tabs : out;
-  }
+  /// The dock as actually rendered. Every tab suits every content mode now
+  /// that Schedule lives on Home instead (see `_scheduleCard` there), so this
+  /// is just the user's order.
+  List<DockTab> _visibleTabs() => _navPrefs.tabs;
 
   @override
   void dispose() {
@@ -199,7 +193,6 @@ class _RootShellState extends State<RootShell>
           DockTab.home => shared[0],
           DockTab.myList => shared[2],
           DockTab.profile => shared.last, // Settings, shown as "Profile"
-          DockTab.schedule => const ScheduleScreen(),
           // Both normally get pushed with a back button; as tabs they own the
           // whole screen, so their own back affordance is suppressed.
           DockTab.downloads => const DownloadsScreen(showBack: false),
@@ -211,10 +204,6 @@ class _RootShellState extends State<RootShell>
   @override
   Widget build(BuildContext context) {
     if (sl<AppMode>().isTv) return const RootShellTv();
-    // Reading modes have no Schedule tab (it's omitted from the dock below).
-    // If the mode flips to Manga/Novel while Schedule (tab 1) is showing,
-    // bounce back to Home rather than leaving the user on a tab that no
-    // longer has a dock item.
     return PopScope(
       // Intercept Back at the app root: first press toasts, second exits.
       canPop: false,
@@ -225,16 +214,11 @@ class _RootShellState extends State<RootShell>
         bloc: sl<ContentModeCubit>(),
         listenWhen: (prev, curr) => prev != curr,
         listener: (context, mode) {
-          // Always rebuild: the dock's items are computed in build() now, so
-          // the mode change has to reach it. (The Row used to sit inside its
-          // own BlocBuilder; the tab list replaced that.) Schedule is dropped
-          // in reading modes, so if that's where we were, land on the first
-          // tab that survives rather than on a page with no dock item.
-          setState(() {
-            if (mode.isReading && _tab.isAnimeOnly) {
-              _tab = _visibleTabs().first;
-            }
-          });
+          // Always rebuild: the dock's items are computed in build(), so the
+          // mode change has to reach it. No tab has to be bounced off any
+          // more — the dock is the same in every mode now that Schedule is
+          // not in it.
+          setState(() {});
         },
         child: Scaffold(
           backgroundColor: AppColors.bg,

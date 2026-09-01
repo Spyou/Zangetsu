@@ -10,7 +10,6 @@ import 'package:watch_app/core/hive/safe_box.dart';
 /// moment the user can reorder or hide them.
 enum DockTab {
   home('Home'),
-  schedule('Schedule'),
   myList('My List'),
   downloads('Downloads'),
   history('History'),
@@ -25,10 +24,6 @@ enum DockTab {
   /// list is edited. Hiding it would strand the user with no way back, so it
   /// is pinned: always present, never reorderable off the end.
   bool get isPinned => this == DockTab.profile;
-
-  /// Schedule is about airing anime, so it has nothing to say in a reading
-  /// mode; the shell drops it there regardless of the user's order.
-  bool get isAnimeOnly => this == DockTab.schedule;
 }
 
 /// Which tabs the phone dock shows, and in what order.
@@ -48,7 +43,6 @@ class NavPrefs extends ChangeNotifier {
   /// to. Search lives in the Home header now, not the dock.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
-    DockTab.schedule,
     DockTab.myList,
     DockTab.profile,
   ];
