@@ -19,6 +19,8 @@ class _Repo implements CatalogueRepository {
   final bool searchThrows;
   String? askedFor;
   String? lastFiltersJson;
+  int? lastPage;
+  Map<int, List<MediaItem>>? pages;
   String? filteredQuery;
   int homeCalls = 0;
   String? searchAskedFor;
@@ -62,7 +64,12 @@ class _Repo implements CatalogueRepository {
     filteredQuery = query;
     lastFiltersJson = filtersJson;
     searchAskedFor = sourceId;
+    lastPage = page;
     if (searchThrows) throw StateError('boom');
+    // Per-page answers when a test supplies them, so paging can be exercised.
+    if (pages != null) {
+      return (items: pages![page] ?? const [], outcome: SourceOutcome.ok);
+    }
     return (items: searchResults, outcome: SourceOutcome.ok);
   }
 }
@@ -242,5 +249,70 @@ void main() {
     expect(cubit.state.searchFailed, isTrue);
     expect(cubit.state.searchResults, isNull);
     await cubit.close();
+  });
+
+  test('scrolling asks for the next page and appends it', () async {
+    final repo = _Repo(
+      [_section('Latest')],
+      searchResults: [_item('1', 'One')],
+    )..pages = {
+        1: [_item('1', 'One')],
+        2: [_item('2', 'Two')],
+      };
+    final cubit = BrowseSourceCubit(repo: repo, sourceId: 'ani:1');
+    await cubit.load();
+    await cubit.applyFilters('{"g":1}');
+
+    await cubit.loadMore();
+
+    expect(repo.lastPage, 2);
+    expect(cubit.state.searchResults!.map((i) => i.title), ['One', 'Two']);
+  });
+
+  test('an empty page ends it', () async {
+    final repo = _Repo([_section('Latest')])
+      ..pages = {
+        1: [_item('1', 'One')],
+        2: const [],
+      };
+    final cubit = BrowseSourceCubit(repo: repo, sourceId: 'ani:1');
+    await cubit.load();
+    await cubit.applyFilters('{"g":1}');
+
+    await cubit.loadMore();
+    expect(cubit.state.atEnd, isTrue);
+
+    // And it stops asking.
+    await cubit.loadMore();
+    expect(repo.lastPage, 2);
+  });
+
+  test('a page that repeats itself ends it too', () async {
+    // Plenty of sources answer an out-of-range page with the first one again,
+    // which would scroll forever and duplicate every card.
+    final repo = _Repo([_section('Latest')])
+      ..pages = {
+        1: [_item('1', 'One')],
+        2: [_item('1', 'One')],
+      };
+    final cubit = BrowseSourceCubit(repo: repo, sourceId: 'ani:1');
+    await cubit.load();
+    await cubit.applyFilters('{"g":1}');
+
+    await cubit.loadMore();
+
+    expect(cubit.state.atEnd, isTrue);
+    expect(cubit.state.searchResults!.length, 1, reason: 'no duplicate card');
+  });
+
+  test('the catalogue rows do not page', () async {
+    // Nothing is searched or filtered, so there is no page 2 to ask for.
+    final repo = _Repo([_section('Latest')]);
+    final cubit = BrowseSourceCubit(repo: repo, sourceId: 'ani:1');
+    await cubit.load();
+
+    await cubit.loadMore();
+
+    expect(repo.lastPage, isNull);
   });
 }
