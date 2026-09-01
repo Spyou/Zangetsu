@@ -41,8 +41,7 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     required String title,
     this.altTitle,
     this.malId,
-  }) : _store = store,
-       _matcher = matcher,
+  })  : _matcher = matcher,
        _canonical = canonical,
        _title = title,
        super(_seed(store, matcher, canonical, sources));
@@ -70,7 +69,6 @@ class SourceSelectCubit extends Cubit<SourceSelectState> {
     );
   }
 
-  final MatchStore _store;
   final SourceMatcher _matcher;
   final ZCanonical _canonical;
   final String _title;

@@ -250,6 +250,39 @@ void main() {
     expect(repo.detailCalls, greaterThan(0));
   });
 
+  testWidgets('the row names the title it matched, so a wrong one is visible',
+      (t) async {
+    // The case this control exists for: the source matched confidently, but to
+    // the wrong show. Same source name, a full episode list — indistinguishable
+    // from a correct match unless the matched TITLE is on screen.
+    await sl.reset();
+    Hive.init(dir.path);
+    final store = await MatchStore.open();
+    prefs = await ZSourcePrefs.open();
+    final src = _Src({
+      'ani:1': [MediaItem(id: 'brother', title: 'Fullmetal Alchemist Brotherhood',
+          url: 'https://a/bro', type: ProviderType.anime, sourceId: 'ani:1')],
+    });
+    await registerPickerDeps(aniyomi: [aniSource(id: 1, name: 'AllAnime')]);
+    sl.registerSingleton<SourceRepository>(src);
+    sl.registerSingleton<MatchStore>(store);
+    sl.registerSingleton<ZSourcePrefs>(prefs);
+    sl.registerSingleton<SourceMatcher>(SourceMatcher(
+        sources: src, store: store, prefs: prefs, candidates: (_) => src.loadedSources));
+
+    await t.runAsync(
+      () => sl<SourceMatcher>().resolve(fma, title: 'Fullmetal Alchemist Brotherhood'),
+    );
+    await t.pumpWidget(harness(const MatchLine(
+        canonical: fma, title: 'Fullmetal Alchemist Brotherhood')));
+    await t.pumpAndSettle();
+
+    // The source, and what it landed on, both on screen without opening a thing.
+    expect(find.textContaining('AllAnime'), findsOneWidget);
+    expect(find.text('Fullmetal Alchemist Brotherhood'), findsOneWidget);
+    expect(find.text('Wrong title?'), findsOneWidget);
+  });
+
   testWidgets('a source with no match still appears in the picker; choosing it shows the honest empty state',
       (t) async {
     // hianime is installed but genuinely has nothing matching this title —

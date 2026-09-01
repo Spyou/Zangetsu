@@ -188,13 +188,24 @@ class _MatchLineState extends State<MatchLine> {
   }
 
   Future<void> _fix(String sourceId) async {
+    final kind = widget.canonical.kind;
+    final before = sl<SourceMatcher>().selectedFor(kind);
     final picked = await showWrongTitleSheet(
       context,
       canonical: widget.canonical,
       title: widget.title,
       sourceId: sourceId,
     );
-    if (picked == null || !mounted) return;
+    if (!mounted) return;
+    if (picked == null) {
+      // Closed without pinning — but the sheet can change the SOURCE on its
+      // own, so a stale row here would name the source the user just left.
+      if (sl<SourceMatcher>().selectedFor(kind) != before) {
+        await _cubit.load();
+        if (mounted) _refreshAfterMatchChange();
+      }
+      return;
+    }
     _cubit.applyPinned(picked);
     _refreshAfterMatchChange();
     ScaffoldMessenger.of(context)
@@ -259,7 +270,6 @@ class _MatchLineState extends State<MatchLine> {
           final label = selectedId == null
               ? l10n.noSourceHasThisYet
               : sl<SourceRepository>().displayName(selectedId);
-          final hasMatch = state.match != null;
           // Sized and filled like _DownloadButton directly above, so Play,
           // Download and Source read as one stack. The row body opens the
           // picker; the trailing icons act on the SELECTED source and are
@@ -321,24 +331,29 @@ class _MatchLineState extends State<MatchLine> {
                 if (selectedId != null)
                   Row(
                     children: [
-                      // The selected source searched fine and simply doesn't
-                      // carry this title. It goes here rather than inside the
-                      // pill because the pill's trailing icons leave too
-                      // little width (it truncated mid-word), and because
-                      // this puts the verdict beside its remedy: the two read
-                      // as one line, "nothing here" → "Wrong title?".
+                      // What the source actually matched, beside the button
+                      // that corrects it. Naming only the SOURCE hid the case
+                      // this whole control exists for: a confident match on
+                      // the wrong show looks identical to a right one — same
+                      // source name, a full episode list — until you play it
+                      // and get someone else's episodes. Showing the title
+                      // makes a bad match visible without opening anything.
+                      //
+                      // Silent while still resolving: the screen paints before
+                      // the match lands, and an unguarded line would claim
+                      // "nothing here" for every title during that window.
                       Expanded(
-                        // Silent while the match is still resolving: the
-                        // detail screen now paints before the source sweep
-                        // finishes, so an unguarded line would claim "nothing
-                        // here" for every title during that window.
-                        child: hasMatch || state.loading
+                        child: state.loading
                             ? const SizedBox.shrink()
                             : Text(
-                                l10n.noEpisodesAvailableFromThisSource,
+                                state.match?.showTitle.isNotEmpty == true
+                                    ? state.match!.showTitle
+                                    : l10n.noEpisodesAvailableFromThisSource,
                                 style: AppText.caption.copyWith(
                                   color: AppColors.textSecondary,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                       ),
                       InkWell(
@@ -444,8 +459,47 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                 const SizedBox(height: 12),
                 Text(l10n.pickTheRightTitle, style: AppText.headline),
                 const SizedBox(height: 2),
-                Text(l10n.sourceLabel(sl<SourceRepository>().displayName(cubit.sourceId)),
-                    style: AppText.caption.copyWith(color: AppColors.textSecondary)),
+                // Tappable: the moment you discover a source doesn't have a
+                // title is the moment you want a different one, and backing
+                // out of this sheet to change it is the long way round.
+                InkWell(
+                  onTap: () => SourceSwitcher(
+                    currentId: cubit.sourceId,
+                    onChanged: (_) {},
+                    onInstallSources: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const ZangetsuSourcesScreen(
+                          openToRepos: true,
+                        ),
+                      ),
+                    ),
+                  ).showPicker(
+                    context,
+                    onPick: (id) => cubit.setSource(id),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          l10n.sourceLabel(sl<SourceRepository>()
+                              .displayName(cubit.sourceId)),
+                          style: AppText.caption
+                              .copyWith(color: AppColors.textSecondary),
+                        ),
+                        Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          size: 16,
+                          color: AppColors.textSecondary,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 10),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -460,7 +514,25 @@ class _WrongTitleViewState extends State<_WrongTitleView> {
                     ),
                   ),
                 ),
-                if (state.loading) const LinearProgressIndicator(minHeight: 2),
+                if (state.loading) ...[
+                  const LinearProgressIndicator(minHeight: 2),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      // Which query is running, not just that one is: a source
+                      // can take seconds, and after switching source it is the
+                      // only thing saying what is being re-searched.
+                      child: Text(
+                        '${l10n.searching}: ${state.query}',
+                        style: AppText.caption
+                            .copyWith(color: AppColors.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
                 Expanded(
                   child: ListView.builder(
                     itemCount: state.results.length,
