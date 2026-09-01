@@ -279,17 +279,6 @@ class _NavTabsScreenState extends State<NavTabsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          if (t.isAnimeOnly)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Text(
-                l10n.navTabsStreamingOnly,
-                style: AppText.caption.copyWith(
-                  color: AppColors.textTertiary,
-                  fontSize: 11.5,
-                ),
-              ),
-            ),
           if (t.isPinned)
             Padding(
               padding: const EdgeInsets.only(right: 12),
