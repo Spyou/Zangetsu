@@ -370,14 +370,16 @@ void main() {
     matching: find.text(label),
   );
 
-  testWidgets('phone shell shows a Schedule destination and no Downloads', (
+  // Schedule left the dock for the card row on Home, beside the Manga/Novel
+  // mode cards — two doors to one screen was the point of removing it.
+  testWidgets('the phone dock offers neither Schedule nor Downloads', (
     tester,
   ) async {
     sl.registerSingleton<AppMode>(const AppMode(isTv: false));
     await tester.pumpWidget(wrap(const RootShell()));
     await tester.pumpAndSettle();
 
-    expect(dockLabel('Schedule'), findsOneWidget);
+    expect(dockLabel('Schedule'), findsNothing);
     expect(find.text('Downloads'), findsNothing);
   });
 
@@ -410,25 +412,10 @@ void main() {
     expect(find.text('Schedule'), findsOneWidget);
   });
 
-  testWidgets('reading mode hides the Schedule dock item', (tester) async {
-    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-    await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
-    expect(dockLabel('Schedule'), findsOneWidget);
-
-    // setMode emits synchronously now, but its Hive writes are still real,
-    // fire-and-forget I/O — FakeAsync (which testWidgets runs in) never
-    // drains that on its own, and a dangling write hangs tearDown's
-    // Hive.close(). runAsync gives it a real event loop turn to finish.
-    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Schedule'), findsNothing);
-  });
-
-  // Home's mode-cards row gained a Schedule card (task 11) alongside the
-  // Manga/Novel switcher cards — Schedule-only-in-Anime-mode, same as the
-  // dock tab (DockTab.schedule.isAnimeOnly).
+  // Home's mode-cards row carries the Schedule card alongside the Manga/Novel
+  // switcher cards. Since Schedule left the dock this is the ONLY way in, so
+  // this test is now load-bearing rather than a second opinion. Anime mode
+  // only — Schedule has nothing to say in a reading mode.
   testWidgets(
     "Home's Schedule card shows in Anime mode, hidden in Manga/Novel",
     (tester) async {
@@ -451,26 +438,6 @@ void main() {
       expect(find.byKey(const ValueKey('home_schedule_card')), findsOneWidget);
     },
   );
-
-  testWidgets('switching to a reading mode while on Schedule bounces to Home', (
-    tester,
-  ) async {
-    sl.registerSingleton<AppMode>(const AppMode(isTv: false));
-    await tester.pumpWidget(wrap(const RootShell()));
-    await tester.pumpAndSettle();
-
-    await tester.tap(dockLabel('Schedule'));
-    await tester.pumpAndSettle();
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 1);
-
-    // See the runAsync note above — setMode's fire-and-forget Hive writes
-    // need a real event loop turn or tearDown's Hive.close() hangs.
-    await tester.runAsync(() => contentMode.setMode(ContentMode.manga));
-    await tester.pumpAndSettle();
-
-    expect(tester.widget<IndexedStack>(find.byType(IndexedStack)).index, 0);
-    expect(find.text('Schedule'), findsNothing);
-  });
 
   // Task 11 added a full-width "Search" bar to Home while Z Mode was on
   // (Search having left the dock); task 17 replaced that with a header icon
