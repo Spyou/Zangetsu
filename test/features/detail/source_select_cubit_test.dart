@@ -114,6 +114,30 @@ void main() {
     expect(c.state.loading, isFalse);
   });
 
+  test('a remembered title names its source before load() is even called',
+      () async {
+    // What the Detail screen sees on its first frame. Both reads are on disk
+    // already, so holding the row blank until the sweep finished was
+    // re-deriving an answer we had.
+    await store.selectSource(fma, 'hianime');
+    await store.save(fma, const SourceMatch(
+        sourceId: 'hianime', showUrl: 'h', showId: 'h', showTitle: 'FMA',
+        pinned: false));
+
+    // A source that would hang if asked — proving nothing here waits on it.
+    final c = build(_Src({}));
+    expect(c.state.selectedId, 'hianime');
+    expect(c.state.match?.showTitle, 'FMA');
+  });
+
+  test('a title never opened before still starts with nothing to name',
+      () async {
+    final c = build(_Src({}));
+    expect(c.state.selectedId, isNull);
+    expect(c.state.match, isNull);
+    expect(c.state.loading, isTrue);
+  });
+
   test('an empty candidate list never marks itself loading forever', () async {
     final c = build(_Src({}), sources: const []);
     expect(c.state.loading, isFalse);
