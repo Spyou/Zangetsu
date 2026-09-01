@@ -608,6 +608,18 @@ class PlaybackPrefs {
   bool get nsfwSources => _box.get('nsfwSources', defaultValue: false) as bool;
   Future<void> setNsfwSources(bool value) => _box.put('nsfwSources', value);
 
+  /// Whether the metadata catalogues may return adult (18+) titles.
+  ///
+  /// Separate from [nsfwSources], which is about which SOURCES are listed —
+  /// this is about the AniList/MAL/TMDB catalogue itself. Off by default, and
+  /// enforced in [MetadataRepository] rather than only in the filter sheet, so
+  /// a stale saved filter cannot bring adult results back after it is turned
+  /// off. Simkl has no such flag, so it is unaffected either way.
+  bool get adultMetadata =>
+      _box.get('adultMetadata', defaultValue: false) as bool;
+  Future<void> setAdultMetadata(bool value) =>
+      _box.put('adultMetadata', value);
+
   /// Whether Aniyomi sources flagged as NSFW (18+) are shown in the source
   /// list and switcher. Off by default; turning it on requires confirmation.
   /// When off, NSFW-flagged Aniyomi providers are hidden at display time;

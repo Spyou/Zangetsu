@@ -4898,4 +4898,59 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get listKindNovelDesc => 'Light novels on this account';
+
+  @override
+  String get sortPopularity => 'Popular';
+
+  @override
+  String get sortScore => 'Top rated';
+
+  @override
+  String get sortTrending => 'Trending';
+
+  @override
+  String get sortNewest => 'Newest';
+
+  @override
+  String get sortTitle => 'A-Z';
+
+  @override
+  String filtersNeedProvider(String provider) {
+    return 'Filters need $provider. Switch it in Settings.';
+  }
+
+  @override
+  String get format => 'Format';
+
+  @override
+  String get minimumScore => 'Minimum score';
+
+  @override
+  String get searchAnime => 'Search anime';
+
+  @override
+  String get searchMoviesTv => 'Search movies & TV';
+
+  @override
+  String get searchManga => 'Search manga';
+
+  @override
+  String get searchNovels => 'Search novels';
+
+  @override
+  String get adultCatalogue => 'Adult titles in catalogue';
+
+  @override
+  String get adultCatalogueSubtitle =>
+      'Let AniList, MyAnimeList and TMDB return 18+ results';
+
+  @override
+  String get enableAdultCatalogue => 'Show adult titles?';
+
+  @override
+  String get enableAdultCatalogueBody =>
+      'Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.';
+
+  @override
+  String get adultOnly => 'Adult';
 }
