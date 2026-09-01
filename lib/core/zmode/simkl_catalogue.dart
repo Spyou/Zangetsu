@@ -6,6 +6,7 @@ import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
 import 'video_catalogue.dart';
+import 'metadata_filters.dart';
 import 'zmode_ids.dart';
 
 /// Movie/TV metadata from Simkl, as a stand-in for TMDB.
@@ -100,6 +101,20 @@ class SimklCatalogue implements VideoCatalogue {
       return const [];
     }
   }
+
+  /// Simkl ignores filter parameters the way MAL does — `genre=action` on a
+  /// trending endpoint returns byte-identical results. So filters are dropped
+  /// here rather than faked, and [supportsFilters] keeps the UI from offering
+  /// them while Simkl is the provider.
+  @override
+  bool get supportsFilters => false;
+
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async => q.trim().isEmpty ? const [] : search(q);
 
   /// Simkl keeps movies and shows in separate catalogues, so a single query is
   /// two calls; results are interleaved movies-first the way TMDB's mixed

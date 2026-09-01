@@ -10,6 +10,7 @@ import 'package:watch_app/core/models/home_section.dart';
 import 'package:watch_app/core/models/media_detail.dart';
 import 'package:watch_app/core/models/media_item.dart';
 import 'package:watch_app/core/models/provider_info.dart';
+import 'package:watch_app/core/zmode/metadata_filters.dart';
 import 'package:watch_app/core/zmode/video_catalogue.dart';
 import 'package:watch_app/core/zmode/zmode_ids.dart';
 
@@ -31,6 +32,16 @@ class _Video implements VideoCatalogue {
     type: ProviderType.movie,
     sourceId: ZmodeIds.sourceId,
   );
+
+  @override
+  bool get supportsFilters => true;
+
+  @override
+  Future<List<MediaItem>> searchFiltered(
+    String q, {
+    MetaFilters? filters,
+    int page = 1,
+  }) async => const [];
 
   @override
   Future<List<MediaItem>> browseRow(String rowId, int page) async {
