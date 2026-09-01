@@ -52,6 +52,7 @@ class ComingSoonEntry extends Equatable {
     this.backdropUrl,
     this.synopsis,
     this.episodeLabel,
+    this.rank,
   });
 
   final int tmdbId;
@@ -72,9 +73,14 @@ class ComingSoonEntry extends Equatable {
   /// title repeated with nothing to tell them apart.
   final String? episodeLabel;
 
+  /// Simkl's popularity rank — LOWER is more popular (Formula 1 sits at 14,
+  /// obscure regional shows in the tens of thousands). Null when the feed has
+  /// none, which is most movies. Used only for ordering a day's rows.
+  final int? rank;
+
   @override
   List<Object?> get props => [
     tmdbId, isTv, title, posterUrl, releaseDate, backdropUrl, synopsis,
-    episodeLabel,
+    episodeLabel, rank,
   ];
 }

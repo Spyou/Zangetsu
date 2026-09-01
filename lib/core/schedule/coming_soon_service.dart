@@ -93,6 +93,7 @@ List<ComingSoonEntry> parseSimklCalendar(List<dynamic> rows,
           : 'https://simkl.in/posters/${poster}_m.jpg',
       releaseDate: date,
       episodeLabel: epLabel,
+      rank: raw['rank'] is int && raw['rank'] != 0 ? raw['rank'] as int : null,
     ));
   }
   return out;
@@ -136,7 +137,20 @@ Map<DateTime, List<ComingSoonEntry>> groupSoonByLocalDay(
     (map[day] ??= []).add(e);
   }
   for (final list in map.values) {
-    list.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    // Most-popular first, unranked last, alphabetical within a tie. A day of
+    // this calendar is ~330 rows and alphabetical buried anything worth
+    // seeing under daily serials; rank is the feed's own popularity order.
+    // Movies mostly have no rank (the feed only ranks ~7% of them), so that
+    // side stays effectively alphabetical — no worse than before.
+    list.sort((a, b) {
+      final ra = a.rank, rb = b.rank;
+      if (ra != rb) {
+        if (ra == null) return 1;
+        if (rb == null) return -1;
+        return ra.compareTo(rb);
+      }
+      return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+    });
   }
   return map;
 }
