@@ -31,7 +31,10 @@ class MalCatalogue implements AnimeCatalogue {
   /// fields you ask for, so this list IS the schema.
   static const String _listFields =
       'id,title,main_picture,alternative_titles,num_episodes,status,genres,'
-      'start_season,mean';
+      // media_type is what separates a light novel from a manga: MAL has no
+      // novel endpoint, so /manga/ranking answers for both and only this
+      // field says which one came back.
+      'start_season,mean,media_type';
   static const String _detailFields =
       '$_listFields,synopsis,studios,media_type,num_chapters';
 
@@ -55,6 +58,24 @@ class MalCatalogue implements AnimeCatalogue {
 
   /// MAL splits anime and manga across different paths and ranking types.
   static String _path(ZKind k) => k == ZKind.anime ? 'anime' : 'manga';
+
+  /// What an item actually IS. MAL keeps light novels on the manga endpoint,
+  /// so only `media_type` separates them — the same rule the tracker's list
+  /// reader uses, which is why a MAL novel list works but these rows did not.
+  static ProviderType _typeOf(ZKind kind, String? mediaType) {
+    if (kind != ZKind.manga && kind != ZKind.novel) return ProviderType.anime;
+    return (mediaType == 'novel' || mediaType == 'light_novel')
+        ? ProviderType.novel
+        : ProviderType.manga;
+  }
+
+  /// Whether an item's real type belongs in the kind being browsed. Anime and
+  /// movies share MAL's anime catalogue, so both pass there.
+  static bool _matchesKind(ZKind kind, ProviderType type) => switch (kind) {
+    ZKind.manga => type == ProviderType.manga,
+    ZKind.novel => type == ProviderType.novel,
+    _ => type == ProviderType.anime || type == ProviderType.movie,
+  };
 
   /// The home rows, as (title, ranking_type). Deliberately close to the
   /// AniList set so switching provider changes the data, not the shape of the
@@ -84,7 +105,10 @@ class MalCatalogue implements AnimeCatalogue {
       for (final (_, rankingType) in rows)
         _get('/${_path(kind)}/ranking', {
               'ranking_type': rankingType,
-              'limit': 30,
+              // The reading kinds share one endpoint and are filtered after
+              // the fact: only about a third of a manga page is light novels,
+              // so asking for 30 left a novel row with roughly eight entries.
+              'limit': kind == ZKind.anime ? 30 : 100,
               'fields': _listFields,
             })
             .then<List<MediaItem>>((r) => _items(r.data, kind))
@@ -279,7 +303,7 @@ class MalCatalogue implements AnimeCatalogue {
           cover: _picture(m, large: true),
           banner: null,
           url: ZmodeIds.showUrl(c),
-          type: _providerType(kind),
+          type: _typeOf(kind, m['media_type'] as String?),
           sourceId: ZmodeIds.sourceId,
           malId: id,
           genres: [
@@ -289,6 +313,12 @@ class MalCatalogue implements AnimeCatalogue {
         ),
       );
     }
-    return out;
+    // /manga/ranking returns manga AND light novels together. Without this,
+    // novel mode listed manga — labelled "novel", because the old mapper
+    // trusted the kind it asked for — and manga mode listed novels.
+    return [
+      for (final i in out)
+        if (_matchesKind(kind, i.type)) i,
+    ];
   }
 }
