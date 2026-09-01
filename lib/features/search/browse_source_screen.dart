@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/ui/app_toast.dart';
 import '../../core/di/injector.dart';
 import '../../core/mihon/mihon_extension_service.dart';
 import '../../core/models/home_section.dart';
@@ -304,11 +305,7 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// False when there is nothing to show, having said so.
   bool _warnIfEmpty(List<Object?> filters) {
     if (filters.isNotEmpty) return true;
-    ScaffoldMessenger.of(context)
-      ..clearSnackBars()
-      ..showSnackBar(
-        SnackBar(content: Text(context.l10n.thisSourceHasNoFilters)),
-      );
+    showAppToast(context, context.l10n.thisSourceHasNoFilters);
     return false;
   }
 

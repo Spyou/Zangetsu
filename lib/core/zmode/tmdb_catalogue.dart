@@ -64,8 +64,8 @@ class TmdbCatalogue implements VideoCatalogue {
     final forcedTv = path.startsWith('/tv/')
         ? true
         : path.startsWith('/movie/')
-            ? false
-            : null;
+        ? false
+        : null;
     final items = _items(await _get(path, const {}), forcedTv: forcedTv);
     return items.isEmpty
         ? null
@@ -87,8 +87,8 @@ class TmdbCatalogue implements VideoCatalogue {
     final forcedTv = rowId.startsWith('/tv/')
         ? true
         : rowId.startsWith('/movie/')
-            ? false
-            : null;
+        ? false
+        : null;
     try {
       return _items(await _get(rowId, {'page': page}), forcedTv: forcedTv);
     } catch (_) {
@@ -115,7 +115,11 @@ class TmdbCatalogue implements VideoCatalogue {
     final f = filters;
     if (f == null || f.isEmpty) {
       return _items(
-        await _get('/search/multi', {'query': q, 'page': page}),
+        await _get('/search/multi', {
+          'query': q,
+          'page': page,
+          'include_adult': f?.adult ?? false,
+        }),
         forcedTv: null,
       );
     }
@@ -128,9 +132,11 @@ class TmdbCatalogue implements VideoCatalogue {
         .toSet();
     final params = <String, dynamic>{
       'page': page,
+      'include_adult': f.adult,
       'sort_by': switch (f.sort) {
         MetaSort.score => 'vote_average.desc',
-        MetaSort.newest => isTv ? 'first_air_date.desc' : 'primary_release_date.desc',
+        MetaSort.newest =>
+          isTv ? 'first_air_date.desc' : 'primary_release_date.desc',
         MetaSort.title => 'title.asc',
         _ => 'popularity.desc',
       },
@@ -224,17 +230,19 @@ class TmdbCatalogue implements VideoCatalogue {
       final id = m['id'];
       if (id is! int) continue;
       final c = ZCanonical(isTv ? ZKind.tv : ZKind.movie, 'tmdb:$id');
-      out.add(MediaItem(
-        id: c.id,
-        title: ((isTv ? m['name'] : m['title']) as String?) ?? '',
-        cover: _poster(m['poster_path'] as String?),
-        banner: _backdrop(m['backdrop_path'] as String?),
-        url: ZmodeIds.showUrl(c),
-        type: ProviderType.movie,
-        sourceId: ZmodeIds.sourceId,
-        tmdbId: id,
-        tmdbIsTv: isTv,
-      ));
+      out.add(
+        MediaItem(
+          id: c.id,
+          title: ((isTv ? m['name'] : m['title']) as String?) ?? '',
+          cover: _poster(m['poster_path'] as String?),
+          banner: _backdrop(m['backdrop_path'] as String?),
+          url: ZmodeIds.showUrl(c),
+          type: ProviderType.movie,
+          sourceId: ZmodeIds.sourceId,
+          tmdbId: id,
+          tmdbIsTv: isTv,
+        ),
+      );
     }
     return out;
   }
@@ -243,12 +251,16 @@ class TmdbCatalogue implements VideoCatalogue {
   /// "episode 11" of a 10-episode-season show is S2E1. Specials (season 0)
   /// are skipped.
   static List<Episode> _tvEpisodes(Map<String, dynamic> m, ZCanonical c) {
-    final seasons = (m['seasons'] as List? ?? const [])
-        .whereType<Map>()
-        .where((s) => (s['season_number'] as int? ?? 0) > 0)
-        .toList()
-      ..sort((a, b) =>
-          (a['season_number'] as int).compareTo(b['season_number'] as int));
+    final seasons =
+        (m['seasons'] as List? ?? const [])
+            .whereType<Map>()
+            .where((s) => (s['season_number'] as int? ?? 0) > 0)
+            .toList()
+          ..sort(
+            (a, b) => (a['season_number'] as int).compareTo(
+              b['season_number'] as int,
+            ),
+          );
     final out = <Episode>[];
     var n = 0;
     for (final s in seasons) {
@@ -256,13 +268,15 @@ class TmdbCatalogue implements VideoCatalogue {
       final season = s['season_number'] as int;
       for (var i = 1; i <= count; i++) {
         n++;
-        out.add(Episode(
-          id: '$n',
-          title: 'S$season · E$i',
-          number: n.toDouble(),
-          url: ZmodeIds.episodeUrl(c, n),
-          season: season,
-        ));
+        out.add(
+          Episode(
+            id: '$n',
+            title: 'S$season · E$i',
+            number: n.toDouble(),
+            url: ZmodeIds.episodeUrl(c, n),
+            season: season,
+          ),
+        );
       }
     }
     return out;

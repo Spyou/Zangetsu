@@ -10,6 +10,8 @@ import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
 import 'anime_catalogue.dart';
 import 'mal_catalogue.dart';
+import '../di/injector.dart';
+import '../playback/playback_prefs.dart';
 import 'metadata_filters.dart';
 import 'metadata_provider_prefs.dart';
 import 'simkl_catalogue.dart';
@@ -73,9 +75,7 @@ class MetadataRepository implements CatalogueRepository {
   (AnimeCatalogue, AnimeCatalogue?) get _animeChain {
     final mal = _mal;
     if (mal == null) return (_al, null);
-    return _providerPrefs?.anime == AnimeProvider.mal
-        ? (mal, _al)
-        : (_al, mal);
+    return _providerPrefs?.anime == AnimeProvider.mal ? (mal, _al) : (_al, mal);
   }
 
   /// Runs [op] on the chosen provider, and on the other one if that fails.
@@ -138,8 +138,9 @@ class MetadataRepository implements CatalogueRepository {
   @override
   String get sourceId => ZmodeIds.sourceId;
   @override
-  List<({String id, String name})> get loadedSources =>
-      [(id: ZmodeIds.sourceId, name: displayName(ZmodeIds.sourceId))];
+  List<({String id, String name})> get loadedSources => [
+    (id: ZmodeIds.sourceId, name: displayName(ZmodeIds.sourceId)),
+  ];
   @override
   bool hasSource(String sourceId) => sourceId == ZmodeIds.sourceId;
 
@@ -164,15 +165,24 @@ class MetadataRepository implements CatalogueRepository {
   // ── browsing ─────────────────────────────────────────────────────────────
 
   @override
-  Future<List<HomeSection>> home({String category = 'sub', String? sourceId}) async {
+  Future<List<HomeSection>> home({
+    String category = 'sub',
+    String? sourceId,
+  }) async {
     final k = _browseKind();
-    final rows =
-        _isTmdb(k) ? await _viaVideo((c) => c.home()) : await _viaAnime((c) => c.home(k));
+    final rows = _isTmdb(k)
+        ? await _viaVideo((c) => c.home())
+        : await _viaAnime((c) => c.home(k));
     for (final r in rows) {
       r.items.forEach(_remember);
     }
     return rows;
   }
+
+  /// The Privacy switch. Read through GetIt rather than injected because this
+  /// is a guard, and a build that forgets to wire it must fail closed.
+  bool _adultAllowed() =>
+      sl.isRegistered<PlaybackPrefs>() && sl<PlaybackPrefs>().adultMetadata;
 
   /// Whether the CHOSEN provider filters server-side.
   ///
@@ -192,8 +202,16 @@ class MetadataRepository implements CatalogueRepository {
     int page = 1,
   }) async {
     final k = _browseKind();
+    // Enforced here, not just in the sheet: filters are persisted, so a saved
+    // "adult" selection would otherwise survive the Privacy switch being
+    // turned back off.
+    if (filters != null && filters.adult && !_adultAllowed()) {
+      filters = filters.copyWith(adult: false);
+    }
     final items = _isTmdb(k)
-        ? await _viaVideo((c) => c.searchFiltered(query, filters: filters, page: page))
+        ? await _viaVideo(
+            (c) => c.searchFiltered(query, filters: filters, page: page),
+          )
         : await _viaAnime(
             (c) => c.searchFiltered(query, k, filters: filters, page: page),
           );
@@ -212,9 +230,15 @@ class MetadataRepository implements CatalogueRepository {
     if (rowId == null || rowId.isEmpty) return const [];
     final items = switch (more.kind) {
       'zm_video' => await _viaVideo((c) => c.browseRow(rowId, page)),
-      'zm_anime' => await _viaAnime((c) => c.browseRow(ZKind.anime, rowId, page)),
-      'zm_manga' => await _viaAnime((c) => c.browseRow(ZKind.manga, rowId, page)),
-      'zm_novel' => await _viaAnime((c) => c.browseRow(ZKind.novel, rowId, page)),
+      'zm_anime' => await _viaAnime(
+        (c) => c.browseRow(ZKind.anime, rowId, page),
+      ),
+      'zm_manga' => await _viaAnime(
+        (c) => c.browseRow(ZKind.manga, rowId, page),
+      ),
+      'zm_novel' => await _viaAnime(
+        (c) => c.browseRow(ZKind.novel, rowId, page),
+      ),
       _ => const <MediaItem>[],
     };
     items.forEach(_remember);
@@ -222,7 +246,11 @@ class MetadataRepository implements CatalogueRepository {
   }
 
   @override
-  Future<List<MediaItem>> search(String query, {String category = 'sub', String? sourceId}) async {
+  Future<List<MediaItem>> search(
+    String query, {
+    String category = 'sub',
+    String? sourceId,
+  }) async {
     final k = _browseKind();
     final items = _isTmdb(k)
         ? await _viaVideo((c) => c.search(query))
@@ -240,9 +268,19 @@ class MetadataRepository implements CatalogueRepository {
     bool cache = false,
     int page = 1,
   }) async {
-    if (page > 1) return (items: const <MediaItem>[], outcome: SourceOutcome.ok);
+    final filters = MetaFilters.fromJson(filtersJson);
+    // Filters ride the same opaque per-source string the extension sheets use,
+    // so the search bloc needs no special case for Z Mode. Without filters the
+    // old behaviour stands: one page, because a plain metadata search has no
+    // paging UI behind it.
+    if (filters == null && page > 1) {
+      return (items: const <MediaItem>[], outcome: SourceOutcome.ok);
+    }
     try {
-      return (items: await search(query), outcome: SourceOutcome.ok);
+      final items = filters == null
+          ? await search(query)
+          : await searchFiltered(query, filters: filters, page: page);
+      return (items: items, outcome: SourceOutcome.ok);
     } catch (_) {
       return (items: const <MediaItem>[], outcome: SourceOutcome.error);
     }
@@ -276,7 +314,12 @@ class MetadataRepository implements CatalogueRepository {
       // Reading: the reader screens fetch pages/text from SourceRepository
       // with the detail's sourceId + id, so hand them the matched source's
       // chapters, real urls and all — progress there is keyed off that.
-      final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
+      final m = await _matcher.resolve(
+        c,
+        title: d.title,
+        altTitle: d.englishTitle,
+        malId: d.malId,
+      );
       if (m == null) {
         // A candidate genuinely had this title but a Cloudflare challenge
         // suppressed its search (see SourceMatcher.cfBlockedUrl) — surface
@@ -317,7 +360,12 @@ class MetadataRepository implements CatalogueRepository {
     // from the matched source here: titles, thumbnails, dates, descriptions,
     // and the count. id/url are rewritten back to the canonical, numbered-by-
     // position form so progress keeps following the title, not the source.
-    final m = await _matcher.resolve(c, title: d.title, altTitle: d.englishTitle, malId: d.malId);
+    final m = await _matcher.resolve(
+      c,
+      title: d.title,
+      altTitle: d.englishTitle,
+      malId: d.malId,
+    );
     if (m == null) {
       // Same Cloudflare-suppressed-search check as the reading branch above.
       final blocked = _matcher.cfBlockedUrl(c.kind);
@@ -332,7 +380,8 @@ class MetadataRepository implements CatalogueRepository {
     }
     final srcEpisodes = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     final episodes = [
-      for (var i = 0; i < srcEpisodes.length; i++) _canonicalize(srcEpisodes[i], c, i + 1),
+      for (var i = 0; i < srcEpisodes.length; i++)
+        _canonicalize(srcEpisodes[i], c, i + 1),
     ];
     return d.copyWith(episodes: episodes);
   }
@@ -362,19 +411,29 @@ class MetadataRepository implements CatalogueRepository {
   );
 
   @override
-  Future<List<Episode>> episodes(String url, {String category = 'sub', String? sourceId}) async =>
-      (await detail(url)).episodes;
+  Future<List<Episode>> episodes(
+    String url, {
+    String category = 'sub',
+    String? sourceId,
+  }) async => (await detail(url)).episodes;
 
   // ── playback ─────────────────────────────────────────────────────────────
 
   @override
-  Future<List<VideoSource>> sources(String episodeUrl, {String? sourceId, bool fast = false}) async {
+  Future<List<VideoSource>> sources(
+    String episodeUrl, {
+    String? sourceId,
+    bool fast = false,
+  }) async {
     final ep = await _sourceEpisode(episodeUrl);
     return _src.sources(ep.url, sourceId: ep.sourceId, fast: fast);
   }
 
   @override
-  Future<({List<VideoSource> sources, bool done})> polledSources(String episodeUrl, {String? sourceId}) async {
+  Future<({List<VideoSource> sources, bool done})> polledSources(
+    String episodeUrl, {
+    String? sourceId,
+  }) async {
     final ep = await _sourceEpisode(episodeUrl);
     return _src.polledSources(ep.url, sourceId: ep.sourceId);
   }
@@ -384,9 +443,12 @@ class MetadataRepository implements CatalogueRepository {
   /// DISPLAY from, fetched the exact same way, so position is not a guess,
   /// it's the same lookup. Out of range is an honest "not found", not a
   /// guess: [EpisodeNotOnSource], not [NoSourceMatch] (the show did match).
-  Future<({String url, String sourceId})> _sourceEpisode(String episodeUrl) async {
+  Future<({String url, String sourceId})> _sourceEpisode(
+    String episodeUrl,
+  ) async {
     final p = ZmodeIds.parseEpisode(episodeUrl);
-    if (p == null) throw ArgumentError('not a metadata episode url: $episodeUrl');
+    if (p == null)
+      throw ArgumentError('not a metadata episode url: $episodeUrl');
     final m = await _matchFor(p.show);
     final eps = await _src.episodes(m.showUrl, sourceId: m.sourceId);
     final i = p.episode - 1;
@@ -402,18 +464,24 @@ class MetadataRepository implements CatalogueRepository {
     var t = _titles[c.key];
     if (t == null) {
       final d = _isTmdb(c.kind)
-        ? await _viaVideo((x) => x.detail(c))
-        : await _viaAnime((x) => x.detail(c));
+          ? await _viaVideo((x) => x.detail(c))
+          : await _viaAnime((x) => x.detail(c));
       t = (title: d.title, alt: d.englishTitle, malId: d.malId);
       _titles[c.key] = t;
     }
-    final m = await _matcher.resolve(c, title: t.title, altTitle: t.alt, malId: t.malId);
+    final m = await _matcher.resolve(
+      c,
+      title: t.title,
+      altTitle: t.alt,
+      malId: t.malId,
+    );
     if (m == null) throw NoSourceMatch(c);
     return m;
   }
 
   void _remember(MediaItem i) {
     final c = ZmodeIds.parseShow(i.url);
-    if (c != null) _titles[c.key] = (title: i.title, alt: i.englishTitle, malId: i.malId);
+    if (c != null)
+      _titles[c.key] = (title: i.title, alt: i.englishTitle, malId: i.malId);
   }
 }

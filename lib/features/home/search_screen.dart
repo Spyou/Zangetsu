@@ -4,6 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../search/meta_filter_sheet.dart';
+import '../../core/ui/app_toast.dart';
+import '../../core/zmode/zmode_module.dart';
+import '../../core/zmode/zmode_ids.dart';
+import '../../core/zmode/metadata_filters.dart';
 import '../../core/app_mode.dart';
 import '../../core/di/injector.dart';
 import '../../core/mode/content_mode.dart';
@@ -355,6 +360,112 @@ class _SearchViewState extends State<_SearchView>
     );
   }
 
+  /// What the metadata filter sheet last returned. View state: it belongs to
+  /// this screen, not the bloc, because only this screen can open the sheet.
+  MetaFilters _metaFilters = const MetaFilters();
+
+  /// What this search will actually look through.
+  ///
+  /// A bare "Search" left people typing a film name into a manga catalogue and
+  /// blaming the app for the empty result — the mode lives in the dock's FAB,
+  /// which is not where you look while typing.
+  String _searchHint() {
+    if (widget.scope == SearchScope.sources) return context.l10n.search2;
+    return switch (browseKindFor(
+      sl<ContentModeCubit>().state,
+      ZModePrefs.streamKind,
+    )) {
+      ZKind.anime => context.l10n.searchAnime,
+      ZKind.movie || ZKind.tv => context.l10n.searchMoviesTv,
+      ZKind.manga => context.l10n.searchManga,
+      ZKind.novel => context.l10n.searchNovels,
+    };
+  }
+
+  /// The 18+ toggle. Visible only once Settings → Privacy allows it, and the
+  /// repository re-checks that on every request, so turning Privacy off while
+  /// this is on cannot leak results.
+  Widget _adultToggle() {
+    final on = _metaFilters.adult;
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: GestureDetector(
+        onTap: () {
+          setState(() => _metaFilters = _metaFilters.copyWith(adult: !on));
+          _applyMetaFilters();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+          decoration: BoxDecoration(
+            color: on
+                ? AppColors.accent.withValues(alpha: 0.16)
+                : AppColors.surface,
+            borderRadius: BorderRadius.circular(13),
+            border: Border.all(
+              color: on ? AppColors.accent : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            'NSFW',
+            style: AppText.caption.copyWith(
+              fontSize: 10.5,
+              letterSpacing: 0.3,
+              color: on ? AppColors.accent : AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// How many metadata filters are set, for the icon's badge. Sort is excluded
+  /// unless moved off its default — every search has a sort, so counting it
+  /// would badge an untouched screen.
+  int get _metaFilterCount {
+    final f = _metaFilters;
+    return (f.genres.isNotEmpty ? 1 : 0) +
+        (f.year != null ? 1 : 0) +
+        (f.season != null ? 1 : 0) +
+        (f.format != null ? 1 : 0) +
+        (f.status != null ? 1 : 0) +
+        (f.minScore != null ? 1 : 0) +
+        (f.sort != MetaSort.popularity ? 1 : 0);
+  }
+
+  /// Re-runs with whatever is set. Same event the extension sheets fire, so an
+  /// empty query with filters becomes a browse rather than a no-op.
+  void _applyMetaFilters() {
+    context.read<SearchBloc>().add(
+      SearchSourceFiltersApplied(
+        ZmodeIds.sourceId,
+        _metaFilters.isEmpty ? '' : _metaFilters.toJson(),
+      ),
+    );
+  }
+
+  /// The metadata catalogue's filters, opened from the same tune icon the
+  /// Sources search uses. A provider that cannot filter says so rather than
+  /// opening a sheet whose settings would be silently dropped.
+  Future<void> _openMetaFilters() async {
+    final kind = browseKindFor(
+      sl<ContentModeCubit>().state,
+      ZModePrefs.streamKind,
+    );
+    if (!sl<MetadataRepository>().supportsFilters) {
+      final needed = (kind == ZKind.movie || kind == ZKind.tv)
+          ? 'TMDB'
+          : 'AniList';
+      showAppToast(context, context.l10n.filtersNeedProvider(needed));
+      return;
+    }
+    FocusScope.of(context).unfocus();
+    final picked = await showMetaFilterSheet(context, kind, _metaFilters);
+    if (picked == null || !mounted) return;
+    setState(() => _metaFilters = picked);
+    _applyMetaFilters();
+  }
+
   /// Mihon twin of [_openAniFilters] — same flow, [MihonFilter] types and
   /// `_repo.mihonFilters`/`showMihonFilterSheet` instead of the Aniyomi ones.
   Future<void> _openMihonFilters(String sourceId) async {
@@ -604,7 +715,7 @@ class _SearchViewState extends State<_SearchView>
                       ),
                       cursorColor: AppColors.accent,
                       decoration: InputDecoration(
-                        hintText: context.l10n.search2,
+                        hintText: _searchHint(),
                         hintStyle: AppText.body,
                         border: InputBorder.none,
                         isDense: true,
@@ -784,7 +895,9 @@ class _SearchViewState extends State<_SearchView>
                       // Point out the active source even when the scope is "All
                       // sources" — otherwise nothing on this sheet says which
                       // one "current source" actually means.
-                      hint: activeId == s.id ? context.l10n.activeSourceHint : null,
+                      hint: activeId == s.id
+                          ? context.l10n.activeSourceHint
+                          : null,
                       onTap: () {
                         Navigator.pop(ctx);
                         if (selected) return;
@@ -863,6 +976,12 @@ class _SearchViewState extends State<_SearchView>
         height: 40,
         child: Row(
           children: [
+            // Adult is not a filter-sheet row: it is a mode you flip while
+            // looking at results, so it sits in the open ahead of them rather
+            // than tucked in beside the icons. Only when Privacy allows it.
+            if (widget.scope == SearchScope.library &&
+                sl<PlaybackPrefs>().adultMetadata)
+              _adultToggle(),
             Expanded(child: _controlRowLeft(modeSources)),
             // Per-source filter sheet — Library scope has no per-source
             // filters to apply, they'd be silently dropped.
@@ -932,6 +1051,19 @@ class _SearchViewState extends State<_SearchView>
   /// of only a tint) for how many of those are non-default, so the icon
   /// carries the same signal the old separate sort icon's tint used to.
   Widget _filterAction() {
+    // Library scope searches the metadata catalogue, so the tune icon must
+    // open the CATALOGUE's filters. The Sources sheet next door is all about
+    // sources — excluded sources, current-source-only, per-source audio — none
+    // of which exist here, so opening it in this scope offered settings that
+    // could not do anything.
+    if (widget.scope == SearchScope.library) {
+      return _iconWithBadge(
+        icon: Icons.tune_rounded,
+        tooltip: context.l10n.filters,
+        count: _metaFilterCount,
+        onPressed: _openMetaFilters,
+      );
+    }
     return BlocBuilder<SearchBloc, SearchState>(
       buildWhen: (p, c) =>
           p.sort != c.sort ||
@@ -1109,13 +1241,13 @@ class _SearchViewState extends State<_SearchView>
       // sort/filter icons and has less height to spend.
       labelStyle: const TextStyle(
         fontFamily: 'Inter',
-          fontFamilyFallback: AppText.fontFamilyFallback,
+        fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w700,
       ),
       unselectedLabelStyle: const TextStyle(
         fontFamily: 'Inter',
-          fontFamilyFallback: AppText.fontFamilyFallback,
+        fontFamilyFallback: AppText.fontFamilyFallback,
         fontSize: 13,
         fontWeight: FontWeight.w600,
       ),
@@ -1223,7 +1355,10 @@ class _SearchViewState extends State<_SearchView>
             Padding(
               padding: const EdgeInsets.only(left: 8),
               child: _chip(
-                label: context.l10n.sourceCountBadge(g.sourceName, state.countFor(g)),
+                label: context.l10n.sourceCountBadge(
+                  g.sourceName,
+                  state.countFor(g),
+                ),
                 selected: state.sourceFilter == g.sourceId,
                 onTap: () => context.read<SearchBloc>().add(
                   SearchSourceFilterChanged(g.sourceId),
@@ -1641,7 +1776,10 @@ class _SearchViewState extends State<_SearchView>
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(outcomeReason(context.l10n, outcome), style: AppText.caption),
+                Text(
+                  outcomeReason(context.l10n, outcome),
+                  style: AppText.caption,
+                ),
               ],
             ),
           ),
@@ -1851,7 +1989,11 @@ class _SearchViewState extends State<_SearchView>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.search_rounded, size: 48, color: AppColors.textTertiary),
+            const Icon(
+              Icons.search_rounded,
+              size: 48,
+              color: AppColors.textTertiary,
+            ),
             SizedBox(height: 12),
             Text(
               context.l10n.searchForSomethingToWatch,
@@ -1890,7 +2032,10 @@ class _SearchViewState extends State<_SearchView>
             Row(
               children: [
                 Expanded(
-                  child: Text(context.l10n.recentSearches, style: AppText.overline),
+                  child: Text(
+                    context.l10n.recentSearches,
+                    style: AppText.overline,
+                  ),
                 ),
                 GestureDetector(
                   onTap: () async {
@@ -2180,7 +2325,9 @@ class SearchSourcesEmptyView extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 28),
       child: EmptyState(
         icon: Icons.source_outlined,
-        message: context.l10n.noModeSourcesYet(contentModeLabel(context.l10n, mode)),
+        message: context.l10n.noModeSourcesYet(
+          contentModeLabel(context.l10n, mode),
+        ),
         actionLabel: context.l10n.browseRepositories,
         onAction: onInstallSources,
       ),
@@ -2768,7 +2915,10 @@ class _SearchFilterSheet extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                   child: Align(
                     alignment: Alignment.centerLeft,
-                    child: Text(subCtx.l10n.searchInSources, style: AppText.headline),
+                    child: Text(
+                      subCtx.l10n.searchInSources,
+                      style: AppText.headline,
+                    ),
                   ),
                 ),
                 Flexible(
@@ -2791,7 +2941,12 @@ class _SearchFilterSheet extends StatelessWidget {
                           padding: const EdgeInsets.only(bottom: 8),
                           children: [
                             for (final sec in sections) ...[
-                              _categoryHeader(subCtx, prefs, sec.title, sec.rows),
+                              _categoryHeader(
+                                subCtx,
+                                prefs,
+                                sec.title,
+                                sec.rows,
+                              ),
                               for (final r in sec.rows) _sourceRow(prefs, r),
                             ],
                           ],

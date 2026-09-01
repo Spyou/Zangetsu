@@ -8413,6 +8413,108 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Light novels on this account'**
   String get listKindNovelDesc;
+
+  /// No description provided for @sortPopularity.
+  ///
+  /// In en, this message translates to:
+  /// **'Popular'**
+  String get sortPopularity;
+
+  /// No description provided for @sortScore.
+  ///
+  /// In en, this message translates to:
+  /// **'Top rated'**
+  String get sortScore;
+
+  /// No description provided for @sortTrending.
+  ///
+  /// In en, this message translates to:
+  /// **'Trending'**
+  String get sortTrending;
+
+  /// No description provided for @sortNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest'**
+  String get sortNewest;
+
+  /// No description provided for @sortTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'A-Z'**
+  String get sortTitle;
+
+  /// No description provided for @filtersNeedProvider.
+  ///
+  /// In en, this message translates to:
+  /// **'Filters need {provider}. Switch it in Settings.'**
+  String filtersNeedProvider(String provider);
+
+  /// No description provided for @format.
+  ///
+  /// In en, this message translates to:
+  /// **'Format'**
+  String get format;
+
+  /// No description provided for @minimumScore.
+  ///
+  /// In en, this message translates to:
+  /// **'Minimum score'**
+  String get minimumScore;
+
+  /// No description provided for @searchAnime.
+  ///
+  /// In en, this message translates to:
+  /// **'Search anime'**
+  String get searchAnime;
+
+  /// No description provided for @searchMoviesTv.
+  ///
+  /// In en, this message translates to:
+  /// **'Search movies & TV'**
+  String get searchMoviesTv;
+
+  /// No description provided for @searchManga.
+  ///
+  /// In en, this message translates to:
+  /// **'Search manga'**
+  String get searchManga;
+
+  /// No description provided for @searchNovels.
+  ///
+  /// In en, this message translates to:
+  /// **'Search novels'**
+  String get searchNovels;
+
+  /// No description provided for @adultCatalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult titles in catalogue'**
+  String get adultCatalogue;
+
+  /// No description provided for @adultCatalogueSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Let AniList, MyAnimeList and TMDB return 18+ results'**
+  String get adultCatalogueSubtitle;
+
+  /// No description provided for @enableAdultCatalogue.
+  ///
+  /// In en, this message translates to:
+  /// **'Show adult titles?'**
+  String get enableAdultCatalogue;
+
+  /// No description provided for @enableAdultCatalogueBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Search and browse may return 18+ titles from your metadata provider. Simkl has no such setting and is unaffected.'**
+  String get enableAdultCatalogueBody;
+
+  /// No description provided for @adultOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Adult'**
+  String get adultOnly;
 }
 
 class _AppLocalizationsDelegate

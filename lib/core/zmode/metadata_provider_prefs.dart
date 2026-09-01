@@ -27,10 +27,9 @@ class MetadataProviderPrefs {
   static Future<MetadataProviderPrefs> open() async =>
       MetadataProviderPrefs._(await openBoxSafely(boxName));
 
-  AnimeProvider get anime =>
-      _box.get(_kAnime) == AnimeProvider.mal.name
-          ? AnimeProvider.mal
-          : AnimeProvider.anilist;
+  AnimeProvider get anime => _box.get(_kAnime) == AnimeProvider.mal.name
+      ? AnimeProvider.mal
+      : AnimeProvider.anilist;
 
   Future<void> setAnime(AnimeProvider p) async {
     if (p == anime) return;

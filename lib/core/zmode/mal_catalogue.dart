@@ -83,25 +83,27 @@ class MalCatalogue implements AnimeCatalogue {
     final results = await Future.wait([
       for (final (_, rankingType) in rows)
         _get('/${_path(kind)}/ranking', {
-          'ranking_type': rankingType,
-          'limit': 30,
-          'fields': _listFields,
-        }).then<List<MediaItem>>((r) => _items(r.data, kind)).catchError(
-              (_) => <MediaItem>[],
-            ),
+              'ranking_type': rankingType,
+              'limit': 30,
+              'fields': _listFields,
+            })
+            .then<List<MediaItem>>((r) => _items(r.data, kind))
+            .catchError((_) => <MediaItem>[]),
     ]);
     final out = <HomeSection>[];
     for (final (i, (title, rankingType)) in rows.indexed) {
       if (results[i].isNotEmpty) {
-        out.add(HomeSection(
-          title: title,
-          items: results[i],
-          more: BrowseMore(
-            sourceId: ZmodeIds.sourceId,
-            kind: 'zm_${kind.name}',
-            categoryId: rankingType,
+        out.add(
+          HomeSection(
+            title: title,
+            items: results[i],
+            more: BrowseMore(
+              sourceId: ZmodeIds.sourceId,
+              kind: 'zm_${kind.name}',
+              categoryId: rankingType,
+            ),
           ),
-        ));
+        );
       }
     }
     return out;
@@ -147,6 +149,9 @@ class MalCatalogue implements AnimeCatalogue {
         'limit': limit,
         'offset': (page - 1) * limit,
         'fields': _listFields,
+        // MAL cannot filter by genre but DOES honour this one, so it is the
+        // one filter that works here.
+        'nsfw': filters?.adult ?? false,
       });
       return _items(res.data, kind);
     } catch (_) {
@@ -217,7 +222,8 @@ class MalCatalogue implements AnimeCatalogue {
   static String? _picture(Map<String, dynamic> m, {bool large = false}) {
     final p = m['main_picture'] as Map?;
     if (p == null) return null;
-    return ((large ? p['large'] : null) ?? p['medium'] ?? p['large']) as String?;
+    return ((large ? p['large'] : null) ?? p['medium'] ?? p['large'])
+        as String?;
   }
 
   /// MAL's `status` strings mapped onto the app's own vocabulary. Anime and
@@ -263,23 +269,25 @@ class MalCatalogue implements AnimeCatalogue {
       if (id is! int) continue;
       final c = ZCanonical(kind, 'mal:$id');
       final titles = m['alternative_titles'] as Map? ?? const {};
-      out.add(MediaItem(
-        id: c.id,
-        title: m['title'] as String? ?? '',
-        englishTitle: (titles['en'] as String?)?.trim().isNotEmpty == true
-            ? titles['en'] as String
-            : null,
-        cover: _picture(m, large: true),
-        banner: null,
-        url: ZmodeIds.showUrl(c),
-        type: _providerType(kind),
-        sourceId: ZmodeIds.sourceId,
-        malId: id,
-        genres: [
-          for (final g in (m['genres'] as List? ?? const []))
-            if (g is Map && g['name'] is String) g['name'] as String,
-        ],
-      ));
+      out.add(
+        MediaItem(
+          id: c.id,
+          title: m['title'] as String? ?? '',
+          englishTitle: (titles['en'] as String?)?.trim().isNotEmpty == true
+              ? titles['en'] as String
+              : null,
+          cover: _picture(m, large: true),
+          banner: null,
+          url: ZmodeIds.showUrl(c),
+          type: _providerType(kind),
+          sourceId: ZmodeIds.sourceId,
+          malId: id,
+          genres: [
+            for (final g in (m['genres'] as List? ?? const []))
+              if (g is Map && g['name'] is String) g['name'] as String,
+          ],
+        ),
+      );
     }
     return out;
   }
