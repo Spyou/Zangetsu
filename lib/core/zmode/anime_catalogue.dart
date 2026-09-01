@@ -12,6 +12,15 @@ import 'zmode_ids.dart';
 /// provider is unreachable.
 abstract interface class AnimeCatalogue {
   Future<List<HomeSection>> home(ZKind kind);
+
+  /// One home row's next page, so "See all" can keep scrolling.
+  ///
+  /// [rowId] is whatever the provider put in its row's
+  /// [HomeSection.more.categoryId] — a query fragment for one provider, an
+  /// endpoint for another. Page numbers are 1-based and page 1 is what [home]
+  /// already returned. An empty list means the end (or that the row cannot
+  /// page), which is how the browse grid stops asking.
+  Future<List<MediaItem>> browseRow(ZKind kind, String rowId, int page);
   Future<List<MediaItem>> search(String q, ZKind kind);
   Future<MediaDetail> detail(ZCanonical c);
   Future<List<Episode>> episodes(ZCanonical c);

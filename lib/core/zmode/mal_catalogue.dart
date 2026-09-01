@@ -90,12 +90,38 @@ class MalCatalogue implements AnimeCatalogue {
             ),
     ]);
     final out = <HomeSection>[];
-    for (final (i, (title, _)) in rows.indexed) {
+    for (final (i, (title, rankingType)) in rows.indexed) {
       if (results[i].isNotEmpty) {
-        out.add(HomeSection(title: title, items: results[i]));
+        out.add(HomeSection(
+          title: title,
+          items: results[i],
+          more: BrowseMore(
+            sourceId: ZmodeIds.sourceId,
+            kind: 'zm_${kind.name}',
+            categoryId: rankingType,
+          ),
+        ));
       }
     }
     return out;
+  }
+
+  @override
+  Future<List<MediaItem>> browseRow(ZKind kind, String rowId, int page) async {
+    // MAL pages by offset rather than page number, and page 1 is what home()
+    // already showed.
+    const limit = 30;
+    try {
+      final r = await _get('/${_path(kind)}/ranking', {
+        'ranking_type': rowId,
+        'limit': limit,
+        'offset': (page - 1) * limit,
+        'fields': _listFields,
+      });
+      return _items(r.data, kind);
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<MediaItem>> search(String q, ZKind kind) async {

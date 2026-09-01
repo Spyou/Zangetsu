@@ -64,13 +64,41 @@ class SimklCatalogue implements VideoCatalogue {
         try {
           final res = await _get(path, {'extended': _listExtended, 'limit': 30});
           final items = _items(res.data, isTv: isTv);
-          return items.isEmpty ? null : HomeSection(title: title, items: items);
+          return items.isEmpty
+              ? null
+              : HomeSection(
+                  title: title,
+                  items: items,
+                  more: BrowseMore(
+                    sourceId: ZmodeIds.sourceId,
+                    kind: 'zm_video',
+                    categoryId: path,
+                  ),
+                );
         } catch (_) {
           return null;
         }
       }),
     );
     return [for (final s in sections) if (s != null) s];
+  }
+
+  /// Whether Simkl pages these trending endpoints is not something their docs
+  /// commit to, so this asks and lets the caller decide. The browse grid stops
+  /// on an empty page OR on a page whose items it already has, so a server
+  /// that ignores `page` ends the list instead of repeating it forever.
+  @override
+  Future<List<MediaItem>> browseRow(String rowId, int page) async {
+    try {
+      final res = await _get(rowId, {
+        'extended': _listExtended,
+        'limit': 30,
+        'page': page,
+      });
+      return _items(res.data, isTv: rowId.startsWith('/tv/'));
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Simkl keeps movies and shows in separate catalogues, so a single query is

@@ -66,7 +66,33 @@ class TmdbCatalogue implements VideoCatalogue {
             ? false
             : null;
     final items = _items(await _get(path, const {}), forcedTv: forcedTv);
-    return items.isEmpty ? null : HomeSection(title: title, items: items);
+    return items.isEmpty
+        ? null
+        // The endpoint path is the row's identity, and every TMDB list
+        // endpoint takes ?page=, so paging is the same call one page along.
+        : HomeSection(
+            title: title,
+            items: items,
+            more: BrowseMore(
+              sourceId: ZmodeIds.sourceId,
+              kind: 'zm_video',
+              categoryId: path,
+            ),
+          );
+  }
+
+  @override
+  Future<List<MediaItem>> browseRow(String rowId, int page) async {
+    final forcedTv = rowId.startsWith('/tv/')
+        ? true
+        : rowId.startsWith('/movie/')
+            ? false
+            : null;
+    try {
+      return _items(await _get(rowId, {'page': page}), forcedTv: forcedTv);
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<List<MediaItem>> search(String q) async =>
