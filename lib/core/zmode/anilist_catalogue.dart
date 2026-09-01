@@ -121,11 +121,32 @@ class AniListCatalogue implements AnimeCatalogue {
     }).join(' ');
     final data = await _gql('query{ $query }', const {});
     final out = <HomeSection>[];
-    for (final (i, (title, _)) in rows.indexed) {
+    for (final (i, (title, args)) in rows.indexed) {
       final items = _itemsFromPage(data?['r$i'], kind);
-      if (items.isNotEmpty) out.add(HomeSection(title: title, items: items));
+      if (items.isEmpty) continue;
+      // The row's own query fragment IS its identity — hand it back through
+      // `more` and [browseRow] can ask for page 2 of exactly this row.
+      out.add(HomeSection(
+        title: title,
+        items: items,
+        more: BrowseMore(
+          sourceId: ZmodeIds.sourceId,
+          kind: 'zm_${kind.name}',
+          categoryId: args,
+        ),
+      ));
     }
     return out;
+  }
+
+  @override
+  Future<List<MediaItem>> browseRow(ZKind kind, String rowId, int page) async {
+    final data = await _gql(
+      'query{ Page(page:$page,perPage:30){ '
+      'media(type:${_type(kind)}${_format(kind)},$rowId){ $_listFields } } }',
+      const {},
+    );
+    return _itemsFromPage(data?['Page'], kind);
   }
 
   Future<List<MediaItem>> search(String q, ZKind kind) async {
