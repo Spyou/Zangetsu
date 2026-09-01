@@ -2815,5 +2815,13 @@
 	"searchThisSource": "Search this source",
 	"matchSaved": "Saved. Matched to {name} now.",
 	"@matchSaved": {"placeholders": {"name": {"type": "String"}}},
-	"chooseSource": "Choose a source"
+	"chooseSource": "Choose a source",
+	"scheduleAndLists": "Schedule & lists",
+	"scheduleHubDesc": "What is airing, day by day",
+	"trackerCoversVideo": "Movies and series",
+	"listKindManga": "Manga",
+	"listKindNovel": "Novel",
+	"listKindAnimeDesc": "Watching, completed, planning",
+	"listKindMangaDesc": "Reading, completed, planning",
+	"listKindNovelDesc": "Light novels on this account"
 }

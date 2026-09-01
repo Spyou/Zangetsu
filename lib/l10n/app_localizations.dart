@@ -8365,6 +8365,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Choose a source'**
   String get chooseSource;
+
+  /// No description provided for @scheduleAndLists.
+  ///
+  /// In en, this message translates to:
+  /// **'Schedule & lists'**
+  String get scheduleAndLists;
+
+  /// No description provided for @scheduleHubDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'What is airing, day by day'**
+  String get scheduleHubDesc;
+
+  /// No description provided for @trackerCoversVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Movies and series'**
+  String get trackerCoversVideo;
+
+  /// No description provided for @listKindManga.
+  ///
+  /// In en, this message translates to:
+  /// **'Manga'**
+  String get listKindManga;
+
+  /// No description provided for @listKindNovel.
+  ///
+  /// In en, this message translates to:
+  /// **'Novel'**
+  String get listKindNovel;
+
+  /// No description provided for @listKindAnimeDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Watching, completed, planning'**
+  String get listKindAnimeDesc;
+
+  /// No description provided for @listKindMangaDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading, completed, planning'**
+  String get listKindMangaDesc;
+
+  /// No description provided for @listKindNovelDesc.
+  ///
+  /// In en, this message translates to:
+  /// **'Light novels on this account'**
+  String get listKindNovelDesc;
 }
 
 class _AppLocalizationsDelegate

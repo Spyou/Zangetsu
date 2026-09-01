@@ -4878,4 +4878,28 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get chooseSource => 'Choose a source';
+
+  @override
+  String get scheduleAndLists => 'Schedule & lists';
+
+  @override
+  String get scheduleHubDesc => 'What is airing, day by day';
+
+  @override
+  String get trackerCoversVideo => 'Movies and series';
+
+  @override
+  String get listKindManga => 'Manga';
+
+  @override
+  String get listKindNovel => 'Novel';
+
+  @override
+  String get listKindAnimeDesc => 'Watching, completed, planning';
+
+  @override
+  String get listKindMangaDesc => 'Reading, completed, planning';
+
+  @override
+  String get listKindNovelDesc => 'Light novels on this account';
 }
