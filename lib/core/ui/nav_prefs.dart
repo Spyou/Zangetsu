@@ -40,9 +40,11 @@ class NavPrefs extends ChangeNotifier {
   static const int maxTabs = 5;
 
   /// What the dock shipped with, and what a corrupt or empty value falls back
-  /// to. Search lives in the Home header now, not the dock.
+  /// to. Search lives in the Home header and Schedule on the Home card row,
+  /// so neither is here; Downloads took the slot Schedule left.
   static const List<DockTab> defaultTabs = [
     DockTab.home,
+    DockTab.downloads,
     DockTab.myList,
     DockTab.profile,
   ];
