@@ -5,6 +5,7 @@ import '../models/home_section.dart';
 import '../models/media_detail.dart';
 import '../models/media_item.dart';
 import '../models/provider_info.dart';
+import 'anime_catalogue.dart';
 import 'zmode_ids.dart';
 
 typedef Gql =
@@ -16,7 +17,7 @@ typedef Gql =
 /// AniList as a browsing catalogue: home rows, search, and a detail with a
 /// synthetic episode list. Anonymous — no token, so nothing here can touch the
 /// user's list.
-class AniListCatalogue {
+class AniListCatalogue implements AnimeCatalogue {
   AniListCatalogue(this._gql);
   final Gql _gql;
 

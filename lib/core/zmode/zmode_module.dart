@@ -7,6 +7,11 @@ import '../repository/catalogue_repository.dart';
 import '../repository/catalogue_router.dart';
 import '../repository/source_repository.dart';
 import 'anilist_catalogue.dart';
+import 'mal_catalogue.dart';
+import 'metadata_provider_prefs.dart';
+import 'package:flutter/material.dart';
+
+import '../ui/global_messenger.dart';
 import 'match_store.dart';
 import 'zmode_source_prefs.dart';
 import 'metadata_repository.dart';
@@ -34,9 +39,19 @@ Future<void> registerZangetsuMode(GetIt sl) async {
     candidates: (kind) => candidatesForKind(sl<SourceRepository>(), kind),
   ));
 
+  final providerPrefs = await MetadataProviderPrefs.open();
+  sl.registerSingleton<MetadataProviderPrefs>(providerPrefs);
+
   sl.registerSingleton<MetadataRepository>(MetadataRepository(
     anilist: AniListCatalogue(AniListCatalogue.dioGql(sl<Dio>())),
     tmdb: TmdbCatalogue(TmdbCatalogue.dioGet(sl<Dio>())),
+    mal: MalCatalogue(sl<Dio>()),
+    providerPrefs: providerPrefs,
+    // Say it out loud when the chosen provider was unreachable — silently
+    // serving different data is how "why do my rows look wrong" starts.
+    onProviderFallback: (name) => rootMessengerKey.currentState
+      ?..clearSnackBars()
+      ..showSnackBar(SnackBar(content: Text('Showing results from $name'))),
     sources: sl<SourceRepository>(),
     matcher: sl<SourceMatcher>(),
     browseKind: () => browseKindFor(
