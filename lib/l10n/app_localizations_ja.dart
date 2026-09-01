@@ -4699,6 +4699,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get animeMetadataSubtitle => 'Where anime and manga info comes from';
 
   @override
+  String get videoMetadata => 'Movie & TV metadata';
+
+  @override
+  String get videoMetadataSubtitle => 'Where movie and series info comes from';
+
+  @override
   String get malLoginForLists =>
       'Log in to MyAnimeList in Trackers to sync your lists';
 

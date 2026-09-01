@@ -8276,6 +8276,18 @@ abstract class AppLocalizations {
   /// **'Where anime and manga info comes from'**
   String get animeMetadataSubtitle;
 
+  /// No description provided for @videoMetadata.
+  ///
+  /// In en, this message translates to:
+  /// **'Movie & TV metadata'**
+  String get videoMetadata;
+
+  /// No description provided for @videoMetadataSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Where movie and series info comes from'**
+  String get videoMetadataSubtitle;
+
   /// No description provided for @malLoginForLists.
   ///
   /// In en, this message translates to:

@@ -2799,6 +2799,8 @@
 	"zModeSubtitle": "Browse from AniList and TMDB, play from your sources",
 	"animeMetadata": "Anime metadata",
 	"animeMetadataSubtitle": "Where anime and manga info comes from",
+	"videoMetadata": "Movie & TV metadata",
+	"videoMetadataSubtitle": "Where movie and series info comes from",
 	"malLoginForLists": "Log in to MyAnimeList in Trackers to sync your lists",
 	"zModeExperimental": "Experimental",
 	"modeAnime": "Anime",
