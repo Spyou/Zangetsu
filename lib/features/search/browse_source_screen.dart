@@ -17,7 +17,11 @@ import '../../core/ui/source_switcher.dart' show sourceTypeOf;
 import '../../l10n/l10n.dart';
 import '../detail/detail_screen.dart';
 import '../home/see_all_screen.dart';
-import 'bloc/search_state.dart' show ecosystemOf;
+import '../../core/aniyomi/aniyomi_filters.dart';
+import '../../core/mihon/mihon_filters.dart';
+import '../aniyomi/aniyomi_filter_sheet.dart';
+import '../mihon/mihon_filter_sheet.dart';
+import 'bloc/search_state.dart' show SearchEcosystem, ecosystemOf;
 import 'cubit/browse_source_cubit.dart';
 
 /// One source's catalogue — today's Home, pinned to a chosen source.
@@ -36,12 +40,11 @@ class BrowseSourceScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => BlocProvider(
-        create: (_) => BrowseSourceCubit(
-          repo: sl<SourceRepository>(),
-          sourceId: sourceId,
-        )..load(),
-        child: _BrowseSourceView(sourceId: sourceId, title: title),
-      );
+    create: (_) =>
+        BrowseSourceCubit(repo: sl<SourceRepository>(), sourceId: sourceId)
+          ..load(),
+    child: _BrowseSourceView(sourceId: sourceId, title: title),
+  );
 }
 
 class _BrowseSourceView extends StatefulWidget {
@@ -69,12 +72,21 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   // mode filter use) rather than inventing a new classification; [_language]
   // is null whenever the ecosystem doesn't report one (CloudStream/plain JS/
   // LNReader today) — omitted rather than shown as "unknown".
-  late final String _displayName =
-      sl<SourceRepository>().displayName(widget.sourceId);
-  late final String _ecosystem = ecosystemOf(widget.sourceId).label;
+  late final String _displayName = sl<SourceRepository>().displayName(
+    widget.sourceId,
+  );
+  late final SearchEcosystem _eco = ecosystemOf(widget.sourceId);
+  late final String _ecosystem = _eco.label;
+
+  /// Only the extension ecosystems publish a filter schema. CloudStream and
+  /// Zangetsu sources have no such concept, so they get no filter button
+  /// rather than one that opens an empty sheet.
+  bool get _canFilter =>
+      _eco == SearchEcosystem.aniyomi || _eco == SearchEcosystem.mihon;
   late final String _kind = sourceTypeOf(widget.sourceId).name;
-  late final String? _language =
-      sl<SourceRepository>().languageFor(widget.sourceId);
+  late final String? _language = sl<SourceRepository>().languageFor(
+    widget.sourceId,
+  );
 
   // Overflow-menu availability. [_baseUrl] is sync (a plain field lookup),
   // so Cloudflare/open-in-browser gate immediately; source-settings needs a
@@ -84,10 +96,12 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   String get _baseUrl => sl<SourceRepository>().baseUrlFor(widget.sourceId);
   bool get _canSolveCloudflare => _baseUrl.isNotEmpty;
   bool get _canOpenInBrowser => _baseUrl.isNotEmpty;
-  late final Future<bool> _hasSettings =
-      source_actions.hasSourceSettings(widget.sourceId);
-  late final bool _canResetData =
-      source_actions.canResetSourceData(widget.sourceId);
+  late final Future<bool> _hasSettings = source_actions.hasSourceSettings(
+    widget.sourceId,
+  );
+  late final bool _canResetData = source_actions.canResetSourceData(
+    widget.sourceId,
+  );
 
   @override
   void dispose() {
@@ -108,7 +122,8 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
             onTap: (i) => _openDetail(context, i),
             onLoadMore: section.more == null
                 ? null
-                : (page) => sl<SourceRepository>().browseMore(section.more!, page),
+                : (page) =>
+                      sl<SourceRepository>().browseMore(section.more!, page),
           ),
         ),
       );
@@ -134,8 +149,9 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// nothing usable can be found — [_canSolveCloudflare] already keeps the
   /// menu entry hidden in the ordinary case there's truly nothing at all.
   Future<void> _solveCloudflare() async {
-    final target =
-        await sl<SourceRepository>().cfSolveTargetFor(widget.sourceId);
+    final target = await sl<SourceRepository>().cfSolveTargetFor(
+      widget.sourceId,
+    );
     if (target == null || target.isEmpty) return;
     await MihonExtensionService.solveCloudflare(target);
   }
@@ -149,8 +165,9 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// "open in browser" and the Cloudflare solve.
   Future<void> _editDomain() async {
     final store = sl<SourceDomainOverrides>();
-    final controller =
-        TextEditingController(text: store.get(widget.sourceId) ?? _baseUrl);
+    final controller = TextEditingController(
+      text: store.get(widget.sourceId) ?? _baseUrl,
+    );
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -196,12 +213,16 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
   /// failure snackbar as Detail's Web button, just pointed at the source's
   /// base url instead of one title's url (this screen has no item in hand).
   Future<void> _openInBrowser() async {
-    final ok =
-        await launchUrl(Uri.parse(_baseUrl), mode: LaunchMode.externalApplication);
+    final ok = await launchUrl(
+      Uri.parse(_baseUrl),
+      mode: LaunchMode.externalApplication,
+    );
     if (!ok && mounted) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
-        ..showSnackBar(SnackBar(content: Text(context.l10n.couldNotOpenSourceSite)));
+        ..showSnackBar(
+          SnackBar(content: Text(context.l10n.couldNotOpenSourceSite)),
+        );
     }
   }
 
@@ -227,7 +248,10 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(ctx.l10n.reset, style: TextStyle(color: AppColors.accent)),
+            child: Text(
+              ctx.l10n.reset,
+              style: TextStyle(color: AppColors.accent),
+            ),
           ),
         ],
       ),
@@ -238,6 +262,54 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
     ScaffoldMessenger.of(context)
       ..clearSnackBars()
       ..showSnackBar(SnackBar(content: Text(context.l10n.done)));
+  }
+
+  /// Opens the source's own filter sheet and browses with the result.
+  ///
+  /// Split per ecosystem rather than unified behind a common type: the two
+  /// filter models are separate by design, and the same split is what the
+  /// search screen does.
+  Future<void> _openFilters(String stored) => _eco == SearchEcosystem.mihon
+      ? _openMihonFilters(stored)
+      : _openAniFilters(stored);
+
+  /// [stored] is the selection already applied, so reopening the sheet shows
+  /// the last choice instead of resetting to defaults.
+  Future<void> _openAniFilters(String stored) async {
+    final filters = stored.isNotEmpty
+        ? AniyomiFilters.parse(stored)
+        // Source-specific filter schema — not a CatalogueRepository call.
+        : await sl<SourceRepository>().aniFilters(widget.sourceId);
+    if (!mounted || !_warnIfEmpty(filters)) return;
+    final result = await showAniyomiFilterSheet(context, filters);
+    if (result == null || !mounted) return;
+    await context.read<BrowseSourceCubit>().applyFilters(
+      AniyomiFilters.toSelectionJson(result),
+    );
+  }
+
+  /// Mihon twin of [_openAniFilters].
+  Future<void> _openMihonFilters(String stored) async {
+    final filters = stored.isNotEmpty
+        ? MihonFilters.parse(stored)
+        : await sl<SourceRepository>().mihonFilters(widget.sourceId);
+    if (!mounted || !_warnIfEmpty(filters)) return;
+    final result = await showMihonFilterSheet(context, filters);
+    if (result == null || !mounted) return;
+    await context.read<BrowseSourceCubit>().applyFilters(
+      MihonFilters.toSelectionJson(result),
+    );
+  }
+
+  /// False when there is nothing to show, having said so.
+  bool _warnIfEmpty(List<Object?> filters) {
+    if (filters.isNotEmpty) return true;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(content: Text(context.l10n.thisSourceHasNoFilters)),
+      );
+    return false;
   }
 
   @override
@@ -259,11 +331,43 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
                   hintStyle: AppText.body,
                   border: InputBorder.none,
                 ),
-                onSubmitted: (q) =>
-                    context.read<BrowseSourceCubit>().search(q),
+                onSubmitted: (q) => context.read<BrowseSourceCubit>().search(q),
               )
             : Text(widget.title, style: AppText.headline),
         actions: [
+          if (_canFilter && !_searching)
+            BlocBuilder<BrowseSourceCubit, BrowseSourceState>(
+              buildWhen: (a, b) => a.filtersJson != b.filtersJson,
+              builder: (context, state) {
+                final on = state.filtersJson.isNotEmpty;
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        on
+                            ? Icons.filter_list_rounded
+                            : Icons.filter_list_outlined,
+                        color: on ? AppColors.accent : null,
+                      ),
+                      tooltip: context.l10n.sourceFilters,
+                      onPressed: () => _openFilters(state.filtersJson),
+                    ),
+                    // The sheet's Reset only restores default VALUES, and those
+                    // still serialise to a selection, so it can't be the way
+                    // back to the unfiltered catalogue. Without this there
+                    // isn't one.
+                    if (on)
+                      IconButton(
+                        icon: const Icon(Icons.filter_list_off_rounded),
+                        tooltip: context.l10n.clearFilters,
+                        onPressed: () =>
+                            context.read<BrowseSourceCubit>().applyFilters(''),
+                      ),
+                  ],
+                );
+              },
+            ),
           IconButton(
             icon: Icon(_searching ? Icons.close_rounded : Icons.search),
             tooltip: _searching
@@ -520,7 +624,10 @@ class _SourceIdentityHeader extends StatelessWidget {
           ),
           child: Text(
             initial,
-            style: AppText.headline.copyWith(fontSize: 21, fontWeight: FontWeight.w800),
+            style: AppText.headline.copyWith(
+              fontSize: 21,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
         const SizedBox(width: 13),
