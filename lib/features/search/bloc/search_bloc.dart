@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/zmode/metadata_provider_prefs.dart';
 import '../../../core/di/injector.dart';
 import '../../../core/mode/content_mode.dart';
 import '../../../core/mode/content_mode_cubit.dart';
@@ -57,6 +58,12 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     // Guarded: bloc tests construct SearchBloc with explicit deps and never
     // register the cubit, and subscribing unconditionally would blow up at
     // construction before such a test does anything. Production always has it.
+    // The same argument one step over: results belong to the PROVIDER they
+    // were fetched from, and switching AniList→MAL (or TMDB→Simkl) leaves the
+    // Z Mode source id as 'zm' either way — so nothing else on screen would
+    // notice that every zm result now came from a different catalogue. Home
+    // already reloads on this revision; search kept its stale hits.
+    MetadataProviderPrefs.revision.addListener(_onProviderChanged);
     if (sl.isRegistered<ContentModeCubit>()) {
       _modeSub = sl<ContentModeCubit>().stream.listen((_) {
         add(const SearchModeChanged());
@@ -552,9 +559,7 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     if (acc.isEmpty) {
       emit(
         state.copyWith(
-          status: failed.isNotEmpty
-              ? SearchStatus.error
-              : SearchStatus.success,
+          status: failed.isNotEmpty ? SearchStatus.error : SearchStatus.success,
           groups: const [],
           failedSources: Map.of(failed),
         ),
@@ -863,10 +868,15 @@ class SearchBloc extends Bloc<SearchEvent, SearchState> {
     );
   }
 
+  void _onProviderChanged() {
+    if (!isClosed) add(const SearchModeChanged());
+  }
+
   @override
   Future<void> close() {
     _suggestDebounce?.cancel();
     _modeSub?.cancel();
+    MetadataProviderPrefs.revision.removeListener(_onProviderChanged);
     return super.close();
   }
 }
