@@ -83,10 +83,10 @@ class SimklCatalogue implements VideoCatalogue {
     return [for (final s in sections) if (s != null) s];
   }
 
-  /// Whether Simkl pages these trending endpoints is not something their docs
-  /// commit to, so this asks and lets the caller decide. The browse grid stops
-  /// on an empty page OR on a page whose items it already has, so a server
-  /// that ignores `page` ends the list instead of repeating it forever.
+  /// Their docs do not commit to `page` on the trending endpoints, but it works
+  /// — verified on device. The safety net stays anyway: the browse grid stops
+  /// on an empty page OR on one whose items it already has, so if this ever
+  /// starts being ignored the list ends instead of repeating forever.
   @override
   Future<List<MediaItem>> browseRow(String rowId, int page) async {
     try {
