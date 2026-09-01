@@ -3386,6 +3386,18 @@ abstract class AppLocalizations {
   /// **'Failed to load this title'**
   String get failedToLoadThisTitle;
 
+  /// No description provided for @offlineTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'You are offline'**
+  String get offlineTitle;
+
+  /// No description provided for @offlineBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Check your connection and try again.'**
+  String get offlineBody;
+
   /// No description provided for @changeStatus.
   ///
   /// In en, this message translates to:

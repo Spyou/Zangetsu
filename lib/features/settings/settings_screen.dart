@@ -145,6 +145,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static String _videoProviderLabel() =>
       _providerPrefs?.video == VideoProvider.simkl ? 'Simkl' : 'TMDB';
 
+  /// MAL browsing works signed out (public reads), but the *list* does not.
+  /// The switch-time toast only fires once, so someone who picked MAL months
+  /// ago, or signed out since, gets no explanation for the missing list. Say
+  /// it on the row instead, where it stays true.
+  static bool get _malNeedsLogin =>
+      _providerPrefs?.anime == AnimeProvider.mal &&
+      !(sl.isRegistered<TrackerHub>() &&
+          sl<TrackerHub>().connected.any(
+            (t) => t.displayName.toLowerCase().contains('myanimelist'),
+          ));
+
   /// Movie/TV twin of [_pickAnimeMetadataProvider]. No login nudge: Simkl's
   /// catalogue is public, and the Simkl tracker is a separate concern the
   /// Trackers screen already handles.
@@ -226,12 +237,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (picked == null) return;
     await prefs.setAnime(picked);
     if (!mounted) return;
-    // Same guard: the hub may not be registered in a stripped-down build.
-    final malConnected = sl.isRegistered<TrackerHub>() &&
-        sl<TrackerHub>()
-            .connected
-            .any((t) => t.displayName.toLowerCase().contains('myanimelist'));
-    if (picked == AnimeProvider.mal && !malConnected) {
+    // prefs already holds the pick, so the row's own check answers this too.
+    if (_malNeedsLogin) {
       ScaffoldMessenger.of(context)
         ..clearSnackBars()
         ..showSnackBar(SnackBar(content: Text(l10n.malLoginForLists)));
@@ -958,7 +965,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         section: SettingsSection.interface,
         icon: Icons.hub_outlined,
         title: l10n.animeMetadata,
-        subtitle: l10n.animeMetadataSubtitle,
+        subtitle:
+            _malNeedsLogin ? l10n.malLoginForLists : l10n.animeMetadataSubtitle,
         keywords: 'anime metadata provider anilist mal myanimelist fallback '
             'catalogue',
         trailing: _value(_animeProviderLabel()),

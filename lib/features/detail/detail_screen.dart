@@ -1493,9 +1493,15 @@ class _DetailViewState extends State<_DetailView>
             return _DetailCloudflareBlocked(url: state.cloudflareUrl!);
           }
           if (state.status == DetailStatus.error || state.detail == null) {
+            // Offline is not the title failing: saying "failed to load this
+            // title" over a dropped connection sends people hunting a
+            // problem that isn't there.
+            final offline = state.error == 'offline';
             return EmptyState(
-              icon: Icons.error_outline,
-              message: context.l10n.failedToLoadThisTitle,
+              icon: offline ? Icons.wifi_off_rounded : Icons.error_outline,
+              message: offline
+                  ? '${context.l10n.offlineTitle}\n${context.l10n.offlineBody}'
+                  : context.l10n.failedToLoadThisTitle,
             );
           }
           return _buildBody(context, state, state.detail!);

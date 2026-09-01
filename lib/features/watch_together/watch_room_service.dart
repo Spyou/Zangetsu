@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/supabase/supabase_service.dart';
+import '../../core/ui/global_messenger.dart';
 import 'model/room_state.dart';
 import 'sync_math.dart';
 
@@ -60,7 +61,8 @@ class WatchRoomService {
     final ch = _channels[code];
     if (ch == null) return;
     final token = _c.auth.currentSession?.accessToken;
-    if (token != null && token.isNotEmpty) unawaited(_c.realtime.setAuth(token));
+    if (token != null && token.isNotEmpty)
+      unawaited(_c.realtime.setAuth(token));
     if (_c.realtime.isConnected) {
       _doSubscribe(code);
     } else {
@@ -100,14 +102,14 @@ class WatchRoomService {
   // ── Room mapping ─────────────────────────────────────────────────────────
 
   Map<String, dynamic> _toRow(RoomState s) => {
-        'code': s.code,
-        'host_key': s.hostId,
-        'status': s.status,
-        'content': s.toMap(),
-        'host_pos_ms': s.positionMs,
-        'host_rate': s.rate,
-        'host_playing': s.playing,
-      };
+    'code': s.code,
+    'host_key': s.hostId,
+    'status': s.status,
+    'content': s.toMap(),
+    'host_pos_ms': s.positionMs,
+    'host_rate': s.rate,
+    'host_playing': s.playing,
+  };
 
   RoomState _fromRow(Map<String, dynamic> row) {
     final content = row['content'];
@@ -130,7 +132,8 @@ class WatchRoomService {
   Future<RoomState> createRoom(RoomState initial) async {
     for (var attempt = 0; attempt < 5; attempt++) {
       final code = generateRoomCode(
-          DateTime.now().millisecondsSinceEpoch + attempt * 7919);
+        DateTime.now().millisecondsSinceEpoch + attempt * 7919,
+      );
       final state = RoomState.fromMap({...initial.toMap(), 'code': code});
       try {
         await _c.from(_table).insert(_toRow(state));
@@ -146,8 +149,7 @@ class WatchRoomService {
 
   /// Returns the room for [code], or null if it does not exist.
   Future<RoomState?> getRoom(String code) async {
-    final row =
-        await _c.from(_table).select().eq('code', code).maybeSingle();
+    final row = await _c.from(_table).select().eq('code', code).maybeSingle();
     if (row == null) return null;
     final state = _fromRow(row);
     _lastRoom[code] = state;
@@ -160,24 +162,35 @@ class WatchRoomService {
   Future<void> updateRoom(String code, Map<String, dynamic> patch) async {
     try {
       await _c.from(_table).update(patch).eq('code', code);
-    } catch (_) {/* best-effort; next write retries */}
+    } catch (_) {
+      /* best-effort; next write retries */
+    }
   }
 
   /// The 4s host beat: broadcasts {pos, rate, playing} to room [code] with
   /// ZERO database write. Not part of the original CRUD surface, but needed
   /// so the controller's heartbeat never has to reach into channel internals.
-  Future<void> broadcastHostState(String code,
-      {required int posMs, required double rate, required bool playing}) async {
+  Future<void> broadcastHostState(
+    String code, {
+    required int posMs,
+    required double rate,
+    required bool playing,
+  }) async {
     final ch = _channelFor(code);
     _ensureJoined(code);
     try {
-      await ch.sendBroadcastMessage(event: 'host_state', payload: {
-        'pos': posMs,
-        'rate': rate,
-        'playing': playing,
-        'at': DateTime.now().millisecondsSinceEpoch,
-      });
-    } catch (_) {/* best-effort; next beat retries */}
+      await ch.sendBroadcastMessage(
+        event: 'host_state',
+        payload: {
+          'pos': posMs,
+          'rate': rate,
+          'playing': playing,
+          'at': DateTime.now().millisecondsSinceEpoch,
+        },
+      );
+    } catch (_) {
+      /* best-effort; next beat retries */
+    }
   }
 
   /// Emits a new [RoomState] whenever the host broadcasts a `host_state`
@@ -202,12 +215,14 @@ class WatchRoomService {
             callback: (payload) {
               final cur = _lastRoom[code];
               if (cur == null) return;
-              emit(cur.copyWith(
-                positionMs: (payload['pos'] as num?)?.toInt(),
-                playing: payload['playing'] as bool?,
-                rate: (payload['rate'] as num?)?.toDouble(),
-                updatedAt: (payload['at'] as num?)?.toInt(),
-              ));
+              emit(
+                cur.copyWith(
+                  positionMs: (payload['pos'] as num?)?.toInt(),
+                  playing: payload['playing'] as bool?,
+                  rate: (payload['rate'] as num?)?.toDouble(),
+                  updatedAt: (payload['at'] as num?)?.toInt(),
+                ),
+              );
             },
           )
           ..onPostgresChanges(
@@ -235,12 +250,15 @@ class WatchRoomService {
   /// Tracks [p] in room [code]'s Presence state (create-or-update).
   Future<void> upsertParticipant(String code, RoomParticipant p) async {
     final ch = _channelFor(code);
-    _pendingPresence[code] = p.toMap(); // flushed on SUBSCRIBED (see _ensureJoined)
+    _pendingPresence[code] = p
+        .toMap(); // flushed on SUBSCRIBED (see _ensureJoined)
     _ensureJoined(code);
     if (_joined.contains(code)) {
       try {
         await ch.track(p.toMap());
-      } catch (_) {/* best-effort; next beat/track retries */}
+      } catch (_) {
+        /* best-effort; next beat/track retries */
+      }
     }
   }
 
@@ -299,7 +317,11 @@ class WatchRoomService {
     _ensureJoined(code);
     try {
       await ch.sendBroadcastMessage(event: 'chat', payload: m.toMap());
-    } catch (_) {}
+    } catch (_) {
+      // Chat keeps no history, so a dropped send leaves nothing behind at all
+      // and the sender assumes the room saw it.
+      showGlobalSnack('Message not sent');
+    }
   }
 
   /// Chat is live-only by design (Broadcast has no history) — always empty.
