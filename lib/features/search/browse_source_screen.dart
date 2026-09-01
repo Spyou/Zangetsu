@@ -489,26 +489,52 @@ class _BrowseSourceViewState extends State<_BrowseSourceView> {
         ),
       );
     }
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: posterGridAspect(context),
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 16,
-      ),
-      itemCount: results.length,
-      itemBuilder: (_, i) {
-        final item = results[i];
-        return PosterCard(
-          title: item.title,
-          imageUrl: item.cover,
-          headers: item.coverHeaders,
-          qualityBadge: item.quality,
-          dubBadge: item.dubBadge,
-          onTap: () => _openDetail(context, item),
-        );
+    final cubit = context.read<BrowseSourceCubit>();
+    return NotificationListener<ScrollNotification>(
+      // Keep paging as you scroll, the way the extensions' own browse does.
+      // Fires a screen early so the next page is usually there before you
+      // reach the bottom; the cubit ignores the call while one is in flight
+      // or once the source stops returning anything new.
+      onNotification: (n) {
+        if (n.metrics.pixels >= n.metrics.maxScrollExtent - n.metrics.viewportDimension) {
+          cubit.loadMore();
+        }
+        return false;
       },
+      child: GridView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          childAspectRatio: posterGridAspect(context),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 16,
+        ),
+        // One trailing cell for the spinner while the next page is coming.
+        itemCount: results.length + (state.loadingMore ? 1 : 0),
+        itemBuilder: (_, i) {
+          if (i >= results.length) {
+            return Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.accent,
+                ),
+              ),
+            );
+          }
+          final item = results[i];
+          return PosterCard(
+            title: item.title,
+            imageUrl: item.cover,
+            headers: item.coverHeaders,
+            qualityBadge: item.quality,
+            dubBadge: item.dubBadge,
+            onTap: () => _openDetail(context, item),
+          );
+        },
+      ),
     );
   }
 }
